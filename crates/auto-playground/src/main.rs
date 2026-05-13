@@ -66,7 +66,7 @@ async fn main() {
         .join("..")
         .join("..")
         .join("packages")
-        .join("auto-smith-ui")
+        .join("auto-forge-ui")
         .join("dist");
     let smith_dist_dir = smith_dist_dir.canonicalize().unwrap_or(smith_dist_dir);
 

@@ -58,7 +58,7 @@ Replace `MarkdownRenderer.vue` with `markstream-vue`:
 - `max-live-nodes=0` + `batch-rendering` → incremental typewriter effect with no flicker
 - `typewriter=true` → built-in streaming cursor
 
-**Dependencies**: add `markstream-vue` to `packages/auto-smith-ui/package.json`.
+**Dependencies**: add `markstream-vue` to `packages/auto-forge-ui/package.json`.
 
 ### Phase 2: Streaming Component Protocol (SCP) — JSON Code Blocks
 
@@ -164,9 +164,9 @@ The tool layer stays thin — it's just a translator between AI intent and the f
 
 ## Files to Touch (Phase 1 only)
 
-- `packages/auto-smith-ui/package.json` — add `markstream-vue`
-- `packages/auto-smith-ui/src/components/MarkdownRenderer.vue` — replace with markstream-vue wrapper
-- `packages/auto-smith-ui/src/views/FurnaceView.vue` — pass `streaming` flag
+- `packages/auto-forge-ui/package.json` — add `markstream-vue`
+- `packages/auto-forge-ui/src/components/MarkdownRenderer.vue` — replace with markstream-vue wrapper
+- `packages/auto-forge-ui/src/views/FurnaceView.vue` — pass `streaming` flag
 
 ## Trade-offs
 
@@ -186,4 +186,4 @@ markstream-vue gives us immediate parity with StreamDown. The Streaming Componen
 - [ ] Streaming assistant message shows zero-flicker markdown with stable incomplete blocks
 - [ ] Typing cursor built into markstream-vue appears during streaming
 - [ ] Completed messages render instantly with `final=true`
-- [ ] Build passes (`npm run build` in `packages/auto-smith-ui`)
+- [ ] Build passes (`npm run build` in `packages/auto-forge-ui`)

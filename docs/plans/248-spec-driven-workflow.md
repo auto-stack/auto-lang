@@ -251,13 +251,13 @@ GET    /api/smith/forge/{sid}/stream      → emits phase-change events
 - `crates/auto-playground/src/smith/tools.rs` — add Jades tools
 
 **Frontend:**
-- `packages/auto-smith-ui/src/composables/useForge.ts` — phase handling, approval actions
-- `packages/auto-smith-ui/src/composables/useLedger.ts` — NEW
-- `packages/auto-smith-ui/src/views/FurnaceView.vue` — approval UI, phase badge
-- `packages/auto-smith-ui/src/views/JadesView.vue` — real data, drift badges
-- `packages/auto-smith-ui/src/views/OrderView.vue` — live pipeline
-- `packages/auto-smith-ui/src/types/forge.ts` — add ForgePhase, SpecChange
-- `packages/auto-smith-ui/src/types/ledger.ts` — add version field
+- `packages/auto-forge-ui/src/composables/useForge.ts` — phase handling, approval actions
+- `packages/auto-forge-ui/src/composables/useLedger.ts` — NEW
+- `packages/auto-forge-ui/src/views/FurnaceView.vue` — approval UI, phase badge
+- `packages/auto-forge-ui/src/views/JadesView.vue` — real data, drift badges
+- `packages/auto-forge-ui/src/views/OrderView.vue` — live pipeline
+- `packages/auto-forge-ui/src/types/forge.ts` — add ForgePhase, SpecChange
+- `packages/auto-forge-ui/src/types/ledger.ts` — add version field
 
 **Design:**
 - `docs/design/spec-driven-forge.md` — update as implementation reveals issues

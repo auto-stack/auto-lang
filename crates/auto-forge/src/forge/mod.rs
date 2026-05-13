@@ -1,6 +1,6 @@
 //! AutoSmith — Spec-driven serial agent orchestration
 //!
-//! This module adds Forge (chat loop), Ledger (knowledge management),
+//! This module adds Forge (chat loop), Specs (knowledge management),
 //! and Relay (agent pipeline) endpoints to the auto-playground server.
 //! It reuses the existing NotebookActor for VM session sharing with AutoLab.
 
@@ -30,54 +30,283 @@ use axum::extract::FromRef;
 // ─── Persistent Session Store ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PhaseHistoryEntry {
-    pub phase: String,
-    pub entered_at: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForgeSession {
     pub id: String,
     pub notebook_sid: Option<String>,
     pub project_path: String,
     pub status: ForgeStatus,
-    pub phase: ForgePhase,
     pub messages: Vec<ForgeMessage>,
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
     pub pending_spec_changes: Vec<SpecChange>,
     #[serde(default)]
-    pub current_todo_index: Option<usize>,
-    #[serde(default)]
-    pub phase_history: Vec<PhaseHistoryEntry>,
+    pub focus_section: Option<String>,
 }
 
+/// Section type determines the lifecycle states and allowed transitions.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum ForgePhase {
-    Intake,
-    SpecDraft,
-    SpecReview,
-    Execution,
-    Verification,
+pub enum SectionType {
+    Goals,
+    Requirements,
+    Architecture,
+    Designs,
+    Plans,
+    Todos,
+    Tests,
+    Reviews,
+    Reports,
+    Apis,
 }
 
-impl ForgePhase {
+impl SectionType {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ForgePhase::Intake => "intake",
-            ForgePhase::SpecDraft => "spec_draft",
-            ForgePhase::SpecReview => "spec_review",
-            ForgePhase::Execution => "execution",
-            ForgePhase::Verification => "verification",
+            SectionType::Goals => "goals",
+            SectionType::Requirements => "requirements",
+            SectionType::Architecture => "architecture",
+            SectionType::Designs => "designs",
+            SectionType::Plans => "plans",
+            SectionType::Todos => "todos",
+            SectionType::Tests => "tests",
+            SectionType::Reviews => "reviews",
+            SectionType::Reports => "reports",
+            SectionType::Apis => "apis",
         }
+    }
+}
+
+/// Lifecycle status shared across all categories.
+/// Not every category uses every variant — each SectionType configures its own subset.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Status {
+    Empty,
+    Proposed,
+    Draft,
+    UnderReview,
+    Approved,
+    InProgress,
+    InImplementation,
+    Implemented,
+    Verified,
+    Done,
+    Archived,
+    Rejected,
+    Backlog,
+    Ready,
+    InReview,
+    Blocked,
+    Superseded,
+    Outdated,
+    Stable,
+    Deprecated,
+    Published,
+    Analysed,
+    Obsolete,
+}
+
+impl Status {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Status::Empty => "empty",
+            Status::Proposed => "proposed",
+            Status::Draft => "draft",
+            Status::UnderReview => "under_review",
+            Status::Approved => "approved",
+            Status::InProgress => "in_progress",
+            Status::InImplementation => "in_implementation",
+            Status::Implemented => "implemented",
+            Status::Verified => "verified",
+            Status::Done => "done",
+            Status::Archived => "archived",
+            Status::Rejected => "rejected",
+            Status::Backlog => "backlog",
+            Status::Ready => "ready",
+            Status::InReview => "in_review",
+            Status::Blocked => "blocked",
+            Status::Superseded => "superseded",
+            Status::Outdated => "outdated",
+            Status::Stable => "stable",
+            Status::Deprecated => "deprecated",
+            Status::Published => "published",
+            Status::Analysed => "analysed",
+            Status::Obsolete => "obsolete",
+        }
+    }
+}
+
+/// A single item inside a SpecsSection.
+/// Goals, Requirements, Todos, etc. are all represented as items with their own lifecycle.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecItem {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub status: Status,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    /// Auto-populated backlinks: IDs of items that reference this item.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignee: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test_file: Option<String>,
+    pub created_at: u64,
+    pub modified_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<u64>,
+}
+
+/// Per-category state-machine configuration.
+pub struct SectionConfig {
+    pub section_type: SectionType,
+    pub allowed_statuses: Vec<Status>,
+    pub allowed_transitions: Vec<(Status, Status)>,
+}
+
+impl SectionConfig {
+    pub fn for_type(section_type: &SectionType) -> Self {
+        match section_type {
+            SectionType::Goals => Self {
+                section_type: SectionType::Goals,
+                allowed_statuses: vec![
+                    Status::Empty, Status::Proposed, Status::Analysed, Status::Approved,
+                    Status::InProgress, Status::Implemented, Status::Done, Status::Archived,
+                ],
+                allowed_transitions: vec![
+                    (Status::Empty, Status::Proposed),
+                    (Status::Proposed, Status::Analysed),
+                    (Status::Analysed, Status::Approved),
+                    (Status::Approved, Status::InProgress),
+                    (Status::InProgress, Status::Implemented),
+                    (Status::Implemented, Status::Done),
+                    (Status::Done, Status::Archived),
+                    (Status::InProgress, Status::Archived),
+                ],
+            },
+            SectionType::Requirements => Self {
+                section_type: SectionType::Requirements,
+                allowed_statuses: vec![
+                    Status::Empty, Status::Proposed, Status::Draft, Status::UnderReview,
+                    Status::Approved, Status::InImplementation, Status::Implemented,
+                    Status::Verified, Status::Rejected,
+                ],
+                allowed_transitions: vec![
+                    (Status::Empty, Status::Proposed),
+                    (Status::Proposed, Status::Draft),
+                    (Status::Draft, Status::UnderReview),
+                    (Status::UnderReview, Status::Approved),
+                    (Status::UnderReview, Status::Rejected),
+                    (Status::Approved, Status::InImplementation),
+                    (Status::InImplementation, Status::Implemented),
+                    (Status::Implemented, Status::Verified),
+                    (Status::Rejected, Status::Draft),
+                ],
+            },
+            SectionType::Todos => Self {
+                section_type: SectionType::Todos,
+                allowed_statuses: vec![
+                    Status::Empty, Status::Backlog, Status::Ready, Status::InProgress,
+                    Status::InReview, Status::Done, Status::Verified, Status::Blocked,
+                ],
+                allowed_transitions: vec![
+                    (Status::Empty, Status::Backlog),
+                    (Status::Backlog, Status::Ready),
+                    (Status::Ready, Status::InProgress),
+                    (Status::InProgress, Status::InReview),
+                    (Status::InProgress, Status::Blocked),
+                    (Status::Blocked, Status::Ready),
+                    (Status::InReview, Status::Done),
+                    (Status::Done, Status::Verified),
+                ],
+            },
+            SectionType::Architecture | SectionType::Designs => Self {
+                section_type: section_type.clone(),
+                allowed_statuses: vec![
+                    Status::Empty, Status::Draft, Status::UnderReview, Status::Approved,
+                    Status::Superseded, Status::Outdated,
+                ],
+                allowed_transitions: vec![
+                    (Status::Empty, Status::Draft),
+                    (Status::Draft, Status::UnderReview),
+                    (Status::UnderReview, Status::Approved),
+                    (Status::UnderReview, Status::Rejected),
+                    (Status::Approved, Status::Superseded),
+                    (Status::Approved, Status::Outdated),
+                ],
+            },
+            SectionType::Plans => Self {
+                section_type: SectionType::Plans,
+                allowed_statuses: vec![
+                    Status::Empty, Status::Draft, Status::Approved, Status::InProgress,
+                    Status::Done, Status::Obsolete,
+                ],
+                allowed_transitions: vec![
+                    (Status::Empty, Status::Draft),
+                    (Status::Draft, Status::Approved),
+                    (Status::Approved, Status::InProgress),
+                    (Status::InProgress, Status::Done),
+                    (Status::Done, Status::Obsolete),
+                ],
+            },
+            SectionType::Apis => Self {
+                section_type: SectionType::Apis,
+                allowed_statuses: vec![
+                    Status::Empty, Status::Draft, Status::UnderReview, Status::Stable,
+                    Status::Deprecated,
+                ],
+                allowed_transitions: vec![
+                    (Status::Empty, Status::Draft),
+                    (Status::Draft, Status::UnderReview),
+                    (Status::UnderReview, Status::Stable),
+                    (Status::Stable, Status::Deprecated),
+                ],
+            },
+            SectionType::Tests => Self {
+                section_type: SectionType::Tests,
+                allowed_statuses: vec![
+                    Status::Empty, Status::Draft, Status::Implemented,
+                    Status::Done, Status::Verified, Status::Blocked,
+                ],
+                allowed_transitions: vec![
+                    (Status::Empty, Status::Draft),
+                    (Status::Draft, Status::Implemented),
+                    (Status::Implemented, Status::Done),
+                    (Status::Done, Status::Verified),
+                    (Status::Implemented, Status::Blocked),
+                    (Status::Blocked, Status::Implemented),
+                ],
+            },
+            SectionType::Reviews | SectionType::Reports => Self {
+                section_type: section_type.clone(),
+                allowed_statuses: vec![
+                    Status::Empty, Status::Draft, Status::Published,
+                ],
+                allowed_transitions: vec![
+                    (Status::Empty, Status::Draft),
+                    (Status::Draft, Status::Published),
+                ],
+            },
+        }
+    }
+
+    pub fn can_transition(&self, from: &Status, to: &Status) -> bool {
+        self.allowed_transitions.contains(&(from.clone(), to.clone()))
+            || from == to
+            || self.allowed_statuses.contains(to)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecChange {
     pub section_id: String,
+    #[serde(default)]
+    pub item_id: Option<String>,
     pub old_content: String,
     pub new_content: String,
     pub old_status: String,
@@ -185,25 +414,9 @@ impl SessionStore {
         self.save(&session_clone);
     }
 
-    fn update_phase(&mut self, sid: &str, phase: ForgePhase) {
+    fn set_focus_section(&mut self, sid: &str, section_id: Option<String>) {
         let Some(session) = self.sessions.get_mut(sid) else { return };
-        session.phase = phase;
-        let session_clone = session.clone();
-        self.save(&session_clone);
-    }
-
-    fn update_phase_and_status(&mut self, sid: &str, phase: ForgePhase, status: ForgeStatus) {
-        let Some(session) = self.sessions.get_mut(sid) else { return };
-        let phase_changed = session.phase != phase;
-        let phase_str = phase.as_str().to_string();
-        session.phase = phase;
-        session.status = status;
-        if phase_changed {
-            session.phase_history.push(PhaseHistoryEntry {
-                phase: phase_str,
-                entered_at: now_secs(),
-            });
-        }
+        session.focus_section = section_id;
         let session_clone = session.clone();
         self.save(&session_clone);
     }
@@ -311,31 +524,47 @@ pub enum ForgeStreamEvent {
     Error { message: String },
 }
 
-// ─── Ledger Types ────────────────────────────────────────────────────────────
+// ─── Specs Types ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LedgerDocument {
+pub struct SpecsDocument {
     pub project: String,
     pub version: u64,
-    pub sections: Vec<LedgerSection>,
+    pub sections: Vec<SpecsSection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LedgerSection {
+pub struct SpecsSection {
     pub id: String,
-    pub section_type: String,
+    #[serde(default = "default_section_type")]
+    pub section_type: SectionType,
     pub title: String,
-    pub status: String,
+    #[serde(default)]
+    pub items: Vec<SpecItem>,
+    /// Representative status of the whole section (aggregated from items or set manually).
+    #[serde(default = "default_status")]
+    pub status: Status,
+    /// Legacy content field kept for backward-compat during migration.
+    /// If `items` is empty on load, content is auto-migrated into a single item.
+    #[serde(default)]
     pub content: String,
     pub depends_on: Vec<String>,
     pub last_modified: u64,
     pub last_verified: Option<u64>,
 }
 
-// ─── Persistent Ledger Store ─────────────────────────────────────────────────
+fn default_section_type() -> SectionType {
+    SectionType::Goals
+}
 
-struct LedgerStore {
-    projects: std::collections::HashMap<String, LedgerDocument>,
+fn default_status() -> Status {
+    Status::Empty
+}
+
+// ─── Persistent Specs Store ─────────────────────────────────────────────────
+
+struct SpecsStore {
+    projects: std::collections::HashMap<String, SpecsDocument>,
     data_dir: PathBuf,
     templates_dir: PathBuf,
 }
@@ -343,21 +572,35 @@ struct LedgerStore {
 // ─── Embedded Default Templates ──────────────────────────────────────────────
 
 const TMPL_GOALS: &str = include_str!("templates/goals.ad");
+const TMPL_REQUIREMENTS: &str = include_str!("templates/requirements.ad");
 const TMPL_ARCHITECTURE: &str = include_str!("templates/architecture.ad");
 const TMPL_DESIGNS: &str = include_str!("templates/designs.ad");
 const TMPL_PLANS: &str = include_str!("templates/plans.ad");
+const TMPL_TODOS: &str = include_str!("templates/todos.ad");
+const TMPL_TESTS: &str = include_str!("templates/tests.ad");
 const TMPL_REVIEWS: &str = include_str!("templates/reviews.ad");
 const TMPL_REPORTS: &str = include_str!("templates/reports.ad");
 const TMPL_APIS: &str = include_str!("templates/apis.ad");
 
-impl LedgerStore {
+impl SpecsStore {
     fn new() -> Self {
-        let data_dir = dirs::data_local_dir()
+        // Specs are stored in the project's own directory under docs/specs/
+        // so they can be version-controlled alongside the code.
+        // Override with AUTOFORGE_SPECS_DIR env var if needed.
+        let data_dir = std::env::var("AUTOFORGE_SPECS_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join("docs")
+                    .join("specs")
+            });
+        let _ = std::fs::create_dir_all(&data_dir);
+        // Templates stay in a global cache dir so they don't pollute the repo
+        let templates_dir = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("autoforge")
-            .join("ledgers");
-        let _ = std::fs::create_dir_all(&data_dir);
-        let templates_dir = data_dir.join("templates");
+            .join("templates");
         let _ = std::fs::create_dir_all(&templates_dir);
 
         let mut store = Self {
@@ -371,11 +614,14 @@ impl LedgerStore {
     }
 
     fn extract_embedded_templates(&self) {
-        let templates: [(&str, &str); 7] = [
+        let templates: [(&str, &str); 10] = [
             ("goals", TMPL_GOALS),
+            ("requirements", TMPL_REQUIREMENTS),
             ("architecture", TMPL_ARCHITECTURE),
             ("designs", TMPL_DESIGNS),
             ("plans", TMPL_PLANS),
+            ("todos", TMPL_TODOS),
+            ("tests", TMPL_TESTS),
             ("reviews", TMPL_REVIEWS),
             ("reports", TMPL_REPORTS),
             ("apis", TMPL_APIS),
@@ -395,9 +641,12 @@ impl LedgerStore {
             tracing::warn!("Template file not found: {:?}, using embedded fallback", path);
             match name {
                 "goals" => TMPL_GOALS.to_string(),
+                "requirements" => TMPL_REQUIREMENTS.to_string(),
                 "architecture" => TMPL_ARCHITECTURE.to_string(),
                 "designs" => TMPL_DESIGNS.to_string(),
                 "plans" => TMPL_PLANS.to_string(),
+                "todos" => TMPL_TODOS.to_string(),
+                "tests" => TMPL_TESTS.to_string(),
                 "reviews" => TMPL_REVIEWS.to_string(),
                 "reports" => TMPL_REPORTS.to_string(),
                 "apis" => TMPL_APIS.to_string(),
@@ -414,38 +663,57 @@ impl LedgerStore {
                 continue;
             }
             let Ok(content) = std::fs::read_to_string(&path) else { continue };
-            let Ok(doc) = serde_json::from_str::<LedgerDocument>(&content) else { continue };
+            let Ok(doc) = serde_json::from_str::<SpecsDocument>(&content) else { continue };
             self.projects.insert(doc.project.clone(), doc);
         }
-        tracing::info!("Loaded {} persistent Ledger documents", self.projects.len());
+        tracing::info!("Loaded {} persistent specs documents", self.projects.len());
     }
 
-    fn get(&self, project: &str) -> Option<&LedgerDocument> {
+    fn get(&self, project: &str) -> Option<&SpecsDocument> {
         self.projects.get(project)
     }
 
-    fn get_or_default(&mut self, project: &str) -> &mut LedgerDocument {
+    fn get_or_default(&mut self, project: &str) -> &mut SpecsDocument {
         if !self.projects.contains_key(project) {
-            let doc = self.default_ledger(project);
+            let doc = self.default_specs(project);
             self.save(&doc);
             self.projects.insert(project.to_string(), doc);
         }
-        self.projects.get_mut(project).unwrap()
+        // Ensure all default sections exist (backward compat: add missing sections)
+        let default_doc = self.default_specs(project);
+        let missing: Vec<SpecsSection> = {
+            let doc = self.projects.get(project).unwrap();
+            let existing_ids: std::collections::HashSet<String> =
+                doc.sections.iter().map(|s| s.id.clone()).collect();
+            default_doc
+                .sections
+                .into_iter()
+                .filter(|s| !existing_ids.contains(&s.id))
+                .collect()
+        };
+        let doc = self.projects.get_mut(project).unwrap();
+        for section in missing {
+            doc.sections.push(section);
+        }
+        doc
     }
 
-    fn default_ledger(&self, project: &str) -> LedgerDocument {
+    fn default_specs(&self, project: &str) -> SpecsDocument {
         let now = now_secs();
-        LedgerDocument {
+        SpecsDocument {
             project: project.to_string(),
             version: 1,
             sections: vec![
-                LedgerSection { id: String::from("goals"), section_type: String::from("goals"), title: String::from("🎯 Goals"), status: String::from("draft"), content: self.load_template("goals"), depends_on: vec![], last_modified: now, last_verified: None },
-                LedgerSection { id: String::from("architecture"), section_type: String::from("architecture"), title: String::from("🏗️ Architecture"), status: String::from("draft"), content: self.load_template("architecture"), depends_on: vec![], last_modified: now, last_verified: None },
-                LedgerSection { id: String::from("designs"), section_type: String::from("designs"), title: String::from("🎨 Designs"), status: String::from("draft"), content: self.load_template("designs"), depends_on: vec![], last_modified: now, last_verified: None },
-                LedgerSection { id: String::from("plans"), section_type: String::from("plans"), title: String::from("📅 Plans"), status: String::from("draft"), content: self.load_template("plans"), depends_on: vec![], last_modified: now, last_verified: None },
-                LedgerSection { id: String::from("reviews"), section_type: String::from("reviews"), title: String::from("📝 Reviews"), status: String::from("draft"), content: self.load_template("reviews"), depends_on: vec![], last_modified: now, last_verified: None },
-                LedgerSection { id: String::from("reports"), section_type: String::from("reports"), title: String::from("📊 Reports"), status: String::from("draft"), content: self.load_template("reports"), depends_on: vec![], last_modified: now, last_verified: None },
-                LedgerSection { id: String::from("apis"), section_type: String::from("apis"), title: String::from("🔌 APIs"), status: String::from("draft"), content: self.load_template("apis"), depends_on: vec![], last_modified: now, last_verified: None },
+                SpecsSection { id: String::from("goals"), section_type: SectionType::Goals, title: String::from("🎯 Goals"), status: Status::Empty, items: vec![], content: self.load_template("goals"), depends_on: vec![], last_modified: now, last_verified: None },
+                SpecsSection { id: String::from("requirements"), section_type: SectionType::Requirements, title: String::from("📐 Requirements"), status: Status::Empty, items: vec![], content: self.load_template("requirements"), depends_on: vec![], last_modified: now, last_verified: None },
+                SpecsSection { id: String::from("architecture"), section_type: SectionType::Architecture, title: String::from("🏗️ Architecture"), status: Status::Empty, items: vec![], content: self.load_template("architecture"), depends_on: vec![], last_modified: now, last_verified: None },
+                SpecsSection { id: String::from("designs"), section_type: SectionType::Designs, title: String::from("🎨 Designs"), status: Status::Empty, items: vec![], content: self.load_template("designs"), depends_on: vec![], last_modified: now, last_verified: None },
+                SpecsSection { id: String::from("plans"), section_type: SectionType::Plans, title: String::from("📅 Plans"), status: Status::Empty, items: vec![], content: self.load_template("plans"), depends_on: vec![], last_modified: now, last_verified: None },
+                SpecsSection { id: String::from("todos"), section_type: SectionType::Todos, title: String::from("☑️ Todos"), status: Status::Empty, items: vec![], content: self.load_template("todos"), depends_on: vec![], last_modified: now, last_verified: None },
+                SpecsSection { id: String::from("tests"), section_type: SectionType::Tests, title: String::from("🧪 Tests"), status: Status::Empty, items: vec![], content: self.load_template("tests"), depends_on: vec![], last_modified: now, last_verified: None },
+                SpecsSection { id: String::from("reviews"), section_type: SectionType::Reviews, title: String::from("📝 Reviews"), status: Status::Empty, items: vec![], content: self.load_template("reviews"), depends_on: vec![], last_modified: now, last_verified: None },
+                SpecsSection { id: String::from("reports"), section_type: SectionType::Reports, title: String::from("📊 Reports"), status: Status::Empty, items: vec![], content: self.load_template("reports"), depends_on: vec![], last_modified: now, last_verified: None },
+                SpecsSection { id: String::from("apis"), section_type: SectionType::Apis, title: String::from("🔌 APIs"), status: Status::Empty, items: vec![], content: self.load_template("apis"), depends_on: vec![], last_modified: now, last_verified: None },
             ],
         }
     }
@@ -454,9 +722,35 @@ impl LedgerStore {
         let doc = self.get_or_default(project);
         if let Some(section) = doc.sections.iter_mut().find(|s| s.id == section_id) {
             section.content = content;
-            section.status = status;
+            section.status = match status.as_str() {
+                "empty" => Status::Empty,
+                "proposed" => Status::Proposed,
+                "draft" => Status::Draft,
+                "under_review" => Status::UnderReview,
+                "approved" => Status::Approved,
+                "in_progress" => Status::InProgress,
+                "in_implementation" => Status::InImplementation,
+                "implemented" => Status::Implemented,
+                "verified" => Status::Verified,
+                "done" => Status::Done,
+                "archived" => Status::Archived,
+                "rejected" => Status::Rejected,
+                "backlog" => Status::Backlog,
+                "ready" => Status::Ready,
+                "in_review" => Status::InReview,
+                "blocked" => Status::Blocked,
+                "superseded" => Status::Superseded,
+                "outdated" => Status::Outdated,
+                "stable" => Status::Stable,
+                "deprecated" => Status::Deprecated,
+                "published" => Status::Published,
+                "analysed" => Status::Analysed,
+                "obsolete" => Status::Obsolete,
+                _ => Status::Draft,
+            };
             section.last_modified = now_secs();
             doc.version += 1;
+            Self::rebuild_relations(doc);
             let doc_clone = doc.clone();
             self.save(&doc_clone);
             Ok(())
@@ -465,23 +759,68 @@ impl LedgerStore {
         }
     }
 
-    fn update_full(&mut self, incoming: LedgerDocument) -> Result<LedgerDocument, String> {
+    fn update_full(&mut self, incoming: SpecsDocument) -> Result<SpecsDocument, String> {
         let project = incoming.project.clone();
         let doc = self.get_or_default(&project);
         // Simple optimistic concurrency: just overwrite for now
         // (version check can be added later)
         *doc = incoming;
         doc.version += 1;
+        Self::rebuild_relations(doc);
         let doc_clone = doc.clone();
         self.save(&doc_clone);
         Ok(doc_clone)
     }
 
-    fn save(&self, doc: &LedgerDocument) {
+    fn save(&self, doc: &SpecsDocument) {
         let filename = sanitize_filename(&doc.project);
         let path = self.data_dir.join(format!("{}.json", filename));
         if let Ok(json) = serde_json::to_string_pretty(doc) {
             let _ = std::fs::write(path, json);
+        }
+    }
+
+    /// Rebuild bidirectional `related` links across all items.
+    /// Scans `depends_on` and content text for ID references.
+    fn rebuild_relations(doc: &mut SpecsDocument) {
+        use regex::Regex;
+        let id_re = Regex::new(r"\b([GRAPTVXIS]\d+(?:\.\d+)?)\b").unwrap();
+
+        // Collect all item IDs for validation
+        let mut all_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for section in &doc.sections {
+            for item in &section.items {
+                all_ids.insert(item.id.clone());
+            }
+        }
+
+        // Build forward links: ref_id -> [referrer_id]
+        let mut links: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        for section in &doc.sections {
+            for item in &section.items {
+                // From depends_on
+                for dep in &item.depends_on {
+                    if all_ids.contains(dep) {
+                        links.entry(dep.clone()).or_default().push(item.id.clone());
+                    }
+                }
+                // From content text
+                for cap in id_re.captures_iter(&item.content) {
+                    let ref_id = cap[1].to_string();
+                    if ref_id != item.id && all_ids.contains(&ref_id) {
+                        links.entry(ref_id).or_default().push(item.id.clone());
+                    }
+                }
+            }
+        }
+
+        // Write back
+        for section in &mut doc.sections {
+            for item in &mut section.items {
+                item.related = links.get(&item.id).cloned().unwrap_or_default();
+                item.related.sort();
+                item.related.dedup();
+            }
         }
     }
 }
@@ -492,9 +831,9 @@ fn sanitize_filename(name: &str) -> String {
     name.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_")
 }
 
-fn ledgers() -> &'static Mutex<LedgerStore> {
-    static STORE: OnceLock<Mutex<LedgerStore>> = OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(LedgerStore::new()))
+fn specs() -> &'static Mutex<SpecsStore> {
+    static STORE: OnceLock<Mutex<SpecsStore>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(SpecsStore::new()))
 }
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
@@ -505,122 +844,15 @@ mod handlers {
     use crate::forge::ai::{ChatMessage, ContentBlock, ToolChatEvent, ToolChatRequest, ToolClaudeProvider};
     use crate::forge::tools::ToolRegistry;
 
-    // ─── Phase Helpers ───────────────────────────────────────────────────
+    // ─── System Prompt & Tools ───────────────────────────────────────────
 
-    fn get_phase_system_prompt(phase: &ForgePhase) -> String {
-        let base = "You are AutoForge, an expert AI coding assistant.";
-        match phase {
-            ForgePhase::Intake => format!(
-                r#"{base}
-
-PHASE: INTAKE
-Your job is to understand the user's request and classify the intent.
-
-1. Ask clarifying questions if the request is ambiguous.
-2. Classify the intent into one of:
-   - NEW_GOAL: User wants to build something new → acknowledge and say you'll draft a spec
-   - REQ_UPDATE: User wants to change existing requirements → acknowledge and say you'll update the spec
-   - QUESTION: User is asking a question → answer directly, no spec needed
-   - DIRECT: User wants immediate code changes → acknowledge and say you'll proceed to execution
-
-Always explain your reasoning. If this is a new goal or requirement update, say so clearly."#
-            ),
-            ForgePhase::SpecDraft => format!(
-                r#"{base}
-
-PHASE: SPEC_DRAFT
-Your job is to draft or update the project specification using the Jades (Ledger) tools.
-
-Available tools: read_jade, write_jade, list_jades, read_file
-You may NOT use write_file, edit_file, or shell in this phase.
-
-1. Read existing Jades sections using list_jades and read_jade
-2. Draft changes using write_jade to update relevant sections (goals, requirements, plans, todos)
-3. Set status to "draft" for new/changed sections
-4. Explain what you changed and why
-
-Focus on correctness and completeness. Do not implement code yet."#
-            ),
-            ForgePhase::SpecReview => format!(
-                r#"{base}
-
-PHASE: SPEC_REVIEW
-Review the proposed specification changes. This phase is read-only.
-
-Available tools: read_jade, list_jades, read_file
-You may NOT modify any files or Jades in this phase.
-
-1. Read the current spec using list_jades and read_jade
-2. Check for completeness, consistency, and feasibility
-3. Report any issues or concerns
-4. Confirm if the spec is ready for execution
-
-After your review, the human will approve or reject the spec."#
-            ),
-            ForgePhase::Execution => format!(
-                r#"{base}
-
-PHASE: EXECUTION
-Your job is to implement the approved specification.
-
-Available tools: read_file, write_file, edit_file, shell, search
-You may NOT use write_jade in this phase. The spec is locked.
-
-1. Read the spec from Jades to understand requirements
-2. Examine existing code using read_file and search
-3. Implement changes using write_file and edit_file
-4. Run tests or checks using shell when appropriate
-5. Follow the spec precisely. Do not deviate without good reason.
-
-Report progress as you work."#
-            ),
-            ForgePhase::Verification => format!(
-                r#"{base}
-
-PHASE: VERIFICATION
-Your job is to verify that the implementation matches the specification.
-
-Available tools: read_file, read_jade, list_jades, search
-You may NOT modify any files in this phase.
-
-1. Re-read the spec requirements
-2. Examine the implemented code
-3. Check for:
-   - All requirements are met
-   - No unintended changes
-   - Code quality and correctness
-4. Report findings. Flag any drift from the spec.
-
-After verification, summarize the results."#
-            ),
-        }
-    }
-
-    fn get_phase_tools(
-        phase: &ForgePhase,
-        all_tools: Vec<crate::forge::tools::ToolDefinition>,
-    ) -> Vec<crate::forge::tools::ToolDefinition> {
-        let allowed: &[&str] = match phase {
-            ForgePhase::Intake => &["read_file", "read_jade", "list_jades"],
-            ForgePhase::SpecDraft => &["read_file", "read_jade", "write_jade", "list_jades"],
-            ForgePhase::SpecReview => &["read_file", "read_jade", "list_jades"],
-            ForgePhase::Execution => &["read_file", "write_file", "edit_file", "shell", "search"],
-            ForgePhase::Verification => &["read_file", "read_jade", "list_jades", "search"],
-        };
-        all_tools
-            .into_iter()
-            .filter(|t| allowed.contains(&t.name.as_str()))
-            .collect()
-    }
-
-    fn next_phase_after_turn(phase: &ForgePhase) -> (ForgePhase, ForgeStatus) {
-        match phase {
-            ForgePhase::Intake => (ForgePhase::SpecDraft, ForgeStatus::Idle),
-            ForgePhase::SpecDraft => (ForgePhase::SpecReview, ForgeStatus::WaitingApproval),
-            ForgePhase::SpecReview => (ForgePhase::SpecReview, ForgeStatus::WaitingApproval),
-            ForgePhase::Execution => (ForgePhase::Verification, ForgeStatus::Idle),
-            ForgePhase::Verification => (ForgePhase::Intake, ForgeStatus::Idle),
-        }
+    fn build_system_prompt(_focus_section: &Option<String>) -> String {
+        String::from(
+            "You are AutoForge, an expert AI coding assistant. \
+             You can read and write files, run shell commands, search code, \
+             and manage project specifications (Jades). \
+             Use the tools available to help the user build software."
+        )
     }
 
     pub async fn create_forge_session(
@@ -632,14 +864,9 @@ After verification, summarize the results."#
             notebook_sid: req.notebook_sid,
             project_path: req.project_path.unwrap_or_else(|| String::from(".")),
             status: ForgeStatus::Idle,
-            phase: ForgePhase::Intake,
             name: None,
             pending_spec_changes: vec![],
-            current_todo_index: None,
-            phase_history: vec![PhaseHistoryEntry {
-                phase: ForgePhase::Intake.as_str().to_string(),
-                entered_at: now_secs(),
-            }],
+            focus_section: None,
             messages: vec![ForgeMessage {
                 id: format!("m-{}", uuid::Uuid::new_v4()),
                 role: String::from("system"),
@@ -713,12 +940,12 @@ After verification, summarize the results."#
             let _provider = ToolClaudeProvider::new(ai);
 
             // Inject project/session context for Jades tools
-            let (_project_path, current_phase) = {
+            let focus_section = {
                 let store = forge_sessions().lock().unwrap();
                 match store.get(&sid) {
                     Some(session) => {
                         crate::forge::tools::set_tool_context(&session.project_path, &sid);
-                        (session.project_path.clone(), session.phase.clone())
+                        session.focus_section.clone()
                     }
                     None => {
                         let _ = event_tx.send(Ok(Event::default().data(
@@ -731,8 +958,6 @@ After verification, summarize the results."#
                     }
                 }
             };
-
-            // Phase already loaded above with project_path
 
             // Build conversation messages from session history
             let mut chat_messages = Vec::new();
@@ -782,14 +1007,13 @@ After verification, summarize the results."#
                 }
             }
 
-            // Build phase-aware system prompt and tool set
-            let system_prompt = get_phase_system_prompt(&current_phase);
-            let phase_tools = get_phase_tools(&current_phase, registry.definitions());
+            // Build system prompt and tool set
+            let system_prompt = build_system_prompt(&focus_section);
+            let all_tools = registry.definitions();
 
             // ReAct loop: chat → tool_use → execute → tool_result → chat → ...
             let mut turn_count = 0;
             let max_turns = 5;
-            let mut last_turn_text = String::new();
 
             while turn_count < max_turns {
                 turn_count += 1;
@@ -797,7 +1021,7 @@ After verification, summarize the results."#
 
                 let request = ToolChatRequest {
                     messages: chat_messages.clone(),
-                    tools: phase_tools.clone(),
+                    tools: all_tools.clone(),
                     system_prompt: Some(system_prompt.clone()),
                 };
 
@@ -944,44 +1168,16 @@ After verification, summarize the results."#
                     }
                 }
 
-                // Remember the last assistant text for intent classification
-                last_turn_text = turn_text.clone();
-
                 // If no tool_use was requested, we're done
                 if !got_tool_use {
                     break;
                 }
             }
 
-            // Determine next phase based on current phase and intent classification
-            let (next_phase, next_status) = if current_phase == ForgePhase::Intake {
-                let lower = last_turn_text.to_lowercase();
-                if lower.contains("classification: question") || lower.contains("**classification:** question") {
-                    (ForgePhase::Intake, ForgeStatus::Idle)
-                } else if lower.contains("classification: direct") || lower.contains("**classification:** direct") {
-                    (ForgePhase::Execution, ForgeStatus::Idle)
-                } else {
-                    (ForgePhase::SpecDraft, ForgeStatus::Idle)
-                }
-            } else {
-                next_phase_after_turn(&current_phase)
-            };
-
-            // Emit phase change event if transitioning
-            if next_phase != current_phase {
-                let phase_event = Event::default().data(
-                    serde_json::to_string(&ForgeStreamEvent::PhaseChange {
-                        phase: next_phase.as_str().to_string(),
-                    })
-                    .unwrap(),
-                );
-                let _ = event_tx.send(Ok(phase_event));
-            }
-
-            // Update session phase and status
+            // After turn completes, set session back to Idle
             {
                 let mut store = forge_sessions().lock().unwrap();
-                store.update_phase_and_status(&sid, next_phase, next_status);
+                store.update_status(&sid, ForgeStatus::Idle);
             }
 
             // Final done event
@@ -1011,7 +1207,7 @@ After verification, summarize the results."#
     pub struct ForgeSessionSummary {
         pub id: String,
         pub status: ForgeStatus,
-        pub phase: ForgePhase,
+        pub focus_section: Option<String>,
         pub name: Option<String>,
         pub preview: String,
         pub message_count: usize,
@@ -1073,7 +1269,7 @@ After verification, summarize the results."#
                 ForgeSessionSummary {
                     id: s.id.clone(),
                     status: s.status.clone(),
-                    phase: s.phase.clone(),
+                    focus_section: s.focus_section.clone(),
                     name: s.name.clone(),
                     preview,
                     message_count: s.messages.len(),
@@ -1087,19 +1283,19 @@ After verification, summarize the results."#
         Json(summaries)
     }
 
-    // ─── Ledger Handlers ─────────────────────────────────────────────────
+    // ─── Specs Handlers ─────────────────────────────────────────────────
 
-    pub async fn get_ledger(Path(project): Path<String>) -> Json<LedgerDocument> {
-        let mut store = ledgers().lock().unwrap();
+    pub async fn get_specs(Path(project): Path<String>) -> Json<SpecsDocument> {
+        let mut store = specs().lock().unwrap();
         let doc = store.get_or_default(&project).clone();
         Json(doc)
     }
 
-    pub async fn update_ledger(
+    pub async fn update_specs(
         Path(project): Path<String>,
-        Json(doc): Json<LedgerDocument>,
-    ) -> Result<Json<LedgerDocument>, String> {
-        let mut store = ledgers().lock().unwrap();
+        Json(doc): Json<SpecsDocument>,
+    ) -> Result<Json<SpecsDocument>, String> {
+        let mut store = specs().lock().unwrap();
         // Ensure the project matches the URL
         if doc.project != project {
             return Err("Project mismatch".to_string());
@@ -1108,17 +1304,17 @@ After verification, summarize the results."#
         Ok(Json(updated))
     }
 
-    pub async fn get_ledger_section(
+    pub async fn get_specs_section(
         Path((project, section_id)): Path<(String, String)>,
-    ) -> Json<Option<LedgerSection>> {
-        let store = ledgers().lock().unwrap();
+    ) -> Json<Option<SpecsSection>> {
+        let store = specs().lock().unwrap();
         let section = store
             .get(&project)
             .and_then(|d| d.sections.iter().find(|s| s.id == section_id).cloned());
         Json(section)
     }
 
-    pub async fn update_ledger_section(
+    pub async fn update_specs_section(
         Path((project, section_id)): Path<(String, String)>,
         Json(body): Json<serde_json::Value>,
     ) -> Result<Json<serde_json::Value>, String> {
@@ -1133,26 +1329,94 @@ After verification, summarize the results."#
             .unwrap_or("draft")
             .to_string();
 
-        let mut store = ledgers().lock().unwrap();
+        let mut store = specs().lock().unwrap();
         store.update_section(&project, &section_id, content, status)?;
         Ok(Json(serde_json::json!({"status": "ok"})))
+    }
+
+    pub async fn get_related_items(
+        Path((project, item_id)): Path<(String, String)>,
+    ) -> Json<serde_json::Value> {
+        let store = specs().lock().unwrap();
+        let doc = store.get(&project);
+
+        let mut parents: Vec<serde_json::Value> = vec![];
+        let mut children: Vec<serde_json::Value> = vec![];
+
+        if let Some(doc) = doc {
+            // Find the target item
+            let mut target_item: Option<&SpecItem> = None;
+            for section in &doc.sections {
+                if let Some(item) = section.items.iter().find(|i| i.id == item_id) {
+                    target_item = Some(item);
+                    break;
+                }
+            }
+
+            if let Some(target) = target_item {
+                // Parents = items referenced by target's depends_on
+                for dep_id in &target.depends_on {
+                    for section in &doc.sections {
+                        if let Some(item) = section.items.iter().find(|i| &i.id == dep_id) {
+                            parents.push(serde_json::json!({
+                                "id": item.id,
+                                "title": item.title,
+                                "section_type": section.section_type.as_str(),
+                                "status": item.status.as_str(),
+                            }));
+                        }
+                    }
+                }
+                // Children = items that have target in their related
+                for section in &doc.sections {
+                    for item in &section.items {
+                        if item.related.contains(&item_id) {
+                            children.push(serde_json::json!({
+                                "id": item.id,
+                                "title": item.title,
+                                "section_type": section.section_type.as_str(),
+                                "status": item.status.as_str(),
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+
+        Json(serde_json::json!({
+            "id": item_id,
+            "parents": parents,
+            "children": children,
+        }))
+    }
+
+    pub async fn rebuild_relations_endpoint(
+        Path(project): Path<String>,
+    ) -> Result<Json<SpecsDocument>, String> {
+        let mut store = specs().lock().unwrap();
+        let doc = store.get_or_default(&project);
+        SpecsStore::rebuild_relations(doc);
+        doc.version += 1;
+        let doc_clone = doc.clone();
+        store.save(&doc_clone);
+        Ok(Json(doc_clone))
     }
 
     pub async fn trigger_drift_check(
         Path(project): Path<String>,
         State(ai): State<AIProviderState>,
     ) -> Json<serde_json::Value> {
-        let ledger = {
-            let store = ledgers().lock().unwrap();
+        let specs_doc = {
+            let store = specs().lock().unwrap();
             store.get(&project).cloned()
         };
 
-        let Some(doc) = ledger else {
+        let Some(doc) = specs_doc else {
             return Json(serde_json::json!({
                 "status": "ok",
                 "drift_detected": false,
                 "sections_checked": 0,
-                "message": "No ledger found",
+                "message": "No specs found",
             }));
         };
 
@@ -1226,9 +1490,9 @@ If no requirement IDs exist, number them sequentially."#,
         let drift_detected = response.content.to_lowercase().contains("not implemented")
             || response.content.to_lowercase().contains("partially implemented");
 
-        // Update ledger: mark requirements section as drift if detected
+        // Update specs: mark requirements section as drift if detected
         if drift_detected {
-            let mut store = ledgers().lock().unwrap();
+            let mut store = specs().lock().unwrap();
             let _ = store.update_section(&project, "requirements", requirements.clone(), "drift".to_string());
         }
 
@@ -1287,12 +1551,10 @@ If no requirement IDs exist, number them sequentially."#,
                 notebook_sid: None,
                 project_path: String::new(),
                 status: ForgeStatus::Idle,
-                phase: ForgePhase::Intake,
                 name: None,
                 messages: vec![],
                 pending_spec_changes: vec![],
-                current_todo_index: None,
-                phase_history: vec![],
+                focus_section: None,
             });
             (session.project_path.clone(), session.pending_spec_changes.clone())
         };
@@ -1306,11 +1568,11 @@ If no requirement IDs exist, number them sequentially."#,
             }
         }
 
-        // 3. Apply pending (possibly edited) changes to Ledger
+        // 3. Apply pending (possibly edited) changes to Specs
         if !project.is_empty() && !changes.is_empty() {
-            let mut ledger = ledgers().lock().unwrap();
+            let mut specs = specs().lock().unwrap();
             for change in &changes {
-                let _ = ledger.update_section(
+                let _ = specs.update_section(
                     &project,
                     &change.section_id,
                     change.new_content.clone(),
@@ -1327,7 +1589,7 @@ If no requirement IDs exist, number them sequentially."#,
                 let clone = session.clone();
                 store.save(&clone);
             }
-            store.update_phase_and_status(&sid, ForgePhase::Execution, ForgeStatus::Idle);
+            store.update_status(&sid, ForgeStatus::Idle);
         }
 
         Json(serde_json::json!({"status": "ok", "phase": "execution"}))
@@ -1341,7 +1603,7 @@ If no requirement IDs exist, number them sequentially."#,
                 let clone = session.clone();
                 store.save(&clone);
             }
-            store.update_phase_and_status(&sid, ForgePhase::SpecDraft, ForgeStatus::Idle);
+            store.update_status(&sid, ForgeStatus::Idle);
         }
         Json(serde_json::json!({"status": "ok", "phase": "spec_draft"}))
     }
@@ -1371,19 +1633,21 @@ where
 {
     Router::new()
         // Forge
-        .route("/api/smith/forge/session", post(handlers::create_forge_session))
-        .route("/api/smith/forge/sessions", get(handlers::list_forge_sessions))
-        .route("/api/smith/forge/session/{sid}", get(handlers::get_forge_session).patch(handlers::rename_forge_session).delete(handlers::delete_forge_session))
-        .route("/api/smith/forge/{sid}/message", post(handlers::send_forge_message))
-        .route("/api/smith/forge/{sid}/stream", get(handlers::forge_stream))
-        .route("/api/smith/forge/{sid}/history", get(handlers::forge_history))
-        .route("/api/smith/forge/{sid}/approve", post(handlers::approve_spec))
-        .route("/api/smith/forge/{sid}/reject", post(handlers::reject_spec))
-        // Ledger (more specific routes FIRST)
-        .route("/api/smith/ledger/{project}/drift-check", post(handlers::trigger_drift_check))
-        .route("/api/smith/ledger/{project}/{section_id}", get(handlers::get_ledger_section).put(handlers::update_ledger_section))
-        .route("/api/smith/ledger/{project}", get(handlers::get_ledger).put(handlers::update_ledger))
+        .route("/api/forge/chats/session", post(handlers::create_forge_session))
+        .route("/api/forge/chats/sessions", get(handlers::list_forge_sessions))
+        .route("/api/forge/chats/session/{sid}", get(handlers::get_forge_session).patch(handlers::rename_forge_session).delete(handlers::delete_forge_session))
+        .route("/api/forge/chats/{sid}/message", post(handlers::send_forge_message))
+        .route("/api/forge/chats/{sid}/stream", get(handlers::forge_stream))
+        .route("/api/forge/chats/{sid}/history", get(handlers::forge_history))
+        .route("/api/forge/chats/{sid}/approve", post(handlers::approve_spec))
+        .route("/api/forge/chats/{sid}/reject", post(handlers::reject_spec))
+        // Specs (more specific routes FIRST)
+        .route("/api/forge/specs/{project}/drift-check", post(handlers::trigger_drift_check))
+        .route("/api/forge/specs/{project}/rebuild-relations", post(handlers::rebuild_relations_endpoint))
+        .route("/api/forge/specs/{project}/related/{item_id}", get(handlers::get_related_items))
+        .route("/api/forge/specs/{project}/{section_id}", get(handlers::get_specs_section).put(handlers::update_specs_section))
+        .route("/api/forge/specs/{project}", get(handlers::get_specs).put(handlers::update_specs))
         // Relay
-        .route("/api/smith/relay/run", post(handlers::start_run))
-        .route("/api/smith/relay/runs", get(handlers::list_runs))
+        .route("/api/forge/agents/run", post(handlers::start_run))
+        .route("/api/forge/agents/runs", get(handlers::list_runs))
 }

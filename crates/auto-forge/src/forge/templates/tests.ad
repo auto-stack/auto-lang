@@ -1,0 +1,28 @@
+## Tests
+
+<!-- Tests define how we prove each Requirement is correct.
+     Every Requirement MUST have at least one associated Test.
+     Tests are drafted during SpecDraft (Gate 2) and implemented during Execution (Gate 4).
+-->
+
+### S1.1 [R1.1] <test title>
+**Status:** Draft
+**Type:** Unit / Integration / E2E / Contract / Performance / Fuzz
+**Scope:** R1.1
+
+**Fixture:**
+```
+<!-- Setup code, mocks, test data -->
+```
+
+**Steps:**
+1. <imperative action>
+2. <imperative action>
+3. <imperative action>
+
+**Expected Outcome:**
+<!-- Unambiguous result that a human or AI can verify -->
+
+**Test File:** `<path-to-test-file>`
+
+**Depends on:** R1.1

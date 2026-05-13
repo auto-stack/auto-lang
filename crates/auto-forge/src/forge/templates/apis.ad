@@ -13,21 +13,21 @@ Authorization: Bearer <api_key>
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/smith/forge/session` | List all sessions |
-| POST | `/api/smith/forge/session` | Create new session |
-| GET | `/api/smith/forge/session/{sid}` | Get session details |
-| PATCH | `/api/smith/forge/session/{sid}` | Rename session |
-| DELETE | `/api/smith/forge/session/{sid}` | Delete session |
-| POST | `/api/smith/forge/session/{sid}/chat` | Send chat message |
-| GET | `/api/smith/forge/session/{sid}/chat/stream` | Stream chat response |
+| GET | `/api/forge/chats/session` | List all sessions |
+| POST | `/api/forge/chats/session` | Create new session |
+| GET | `/api/forge/chats/session/{sid}` | Get session details |
+| PATCH | `/api/forge/chats/session/{sid}` | Rename session |
+| DELETE | `/api/forge/chats/session/{sid}` | Delete session |
+| POST | `/api/forge/chats/session/{sid}/chat` | Send chat message |
+| GET | `/api/forge/chats/session/{sid}/chat/stream` | Stream chat response |
 
-### Ledger
+### Specs
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/smith/forge/ledger/{project}` | Get ledger document |
-| POST | `/api/smith/forge/ledger/{project}/section/{section}` | Update section |
-| POST | `/api/smith/forge/ledger/{project}` | Update full ledger |
+| GET | `/api/forge/specs/{project}` | Get specs document |
+| POST | `/api/forge/specs/{project}/{section}` | Update section |
+| POST | `/api/smith/forge/specs/{project}` | Update full specs |
 
 ## Schemas
 
@@ -46,7 +46,7 @@ Authorization: Bearer <api_key>
 }
 ```
 
-### LedgerDocument
+### SpecsDocument
 
 ```json
 {

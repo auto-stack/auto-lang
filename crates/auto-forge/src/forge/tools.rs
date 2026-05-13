@@ -473,7 +473,7 @@ fn search_file(path: &Path, pattern: &str, results: &mut Vec<String>) -> Result<
 
 // ─── Jades Tools ─────────────────────────────────────────────────────────────
 
-/// Read a Jades (Ledger) section.
+/// Read a Jades (Specs) section.
 struct ReadJadeTool;
 
 impl Tool for ReadJadeTool {
@@ -482,7 +482,7 @@ impl Tool for ReadJadeTool {
     }
 
     fn description(&self) -> &'static str {
-        "Read the content and status of a Jades (Ledger) section. \
+        "Read the content and status of a Jades (Specs) section. \
          Use this to examine the current project specification during Intake or SpecDraft."
     }
 
@@ -529,11 +529,11 @@ impl Tool for ReadJadeTool {
         let (content, status) = if let Some((c, s)) = pending {
             (c, s)
         } else {
-            let store = super::ledgers().lock().unwrap();
+            let store = super::specs().lock().unwrap();
             match store.get(&project)
                 .and_then(|doc| doc.sections.iter().find(|s| s.id == section_id))
             {
-                Some(sec) => (sec.content.clone(), sec.status.clone()),
+                Some(sec) => (sec.content.clone(), sec.status.as_str().to_string()),
                 None => return Err(format!("Section '{}' not found in project '{}'", section_id, project)),
             }
         };
@@ -554,7 +554,7 @@ impl Tool for ListJadesTool {
     }
 
     fn description(&self) -> &'static str {
-        "List all Jades (Ledger) sections with their titles and statuses. \
+        "List all Jades (Specs) sections with their titles and statuses. \
          Use this to get an overview of the project specification."
     }
 
@@ -587,17 +587,17 @@ impl Tool for ListJadesTool {
             HashMap::new()
         };
 
-        let store = super::ledgers().lock().unwrap();
+        let store = super::specs().lock().unwrap();
         let doc = store.get(&project)
-            .ok_or_else(|| format!("No ledger found for project '{}'", project))?;
+            .ok_or_else(|| format!("No specs found for project '{}'", project))?;
 
         let mut lines = vec![format!("Project: {}", project)];
         for section in &doc.sections {
             let has_pending = pending.contains_key(&section.id);
             let status = if has_pending {
-                &pending.get(&section.id).unwrap().1
+                pending.get(&section.id).unwrap().1.clone()
             } else {
-                &section.status
+                section.status.as_str().to_string()
             };
             let marker = if has_pending { " [pending changes]" } else { "" };
             lines.push(format!(
@@ -619,8 +619,8 @@ impl Tool for WriteJadeTool {
     }
 
     fn description(&self) -> &'static str {
-        "Draft an update to a Jades (Ledger) section. \
-         The change is queued in pending_spec_changes and applied to the Ledger only after human approval. \
+        "Draft an update to a Jades (Specs) section. \
+         The change is queued in pending_spec_changes and applied to the Specs only after human approval. \
          Use this during SpecDraft phase to propose updates to goals, requirements, plans, or todos."
     }
 
@@ -667,17 +667,17 @@ impl Tool for WriteJadeTool {
             .and_then(|v| v.as_str())
             .unwrap_or("draft");
 
-        // Capture old content from ledger (or from an earlier pending change)
+        // Capture old content from specs (or from an earlier pending change)
         let (old_content, old_status) = {
             let sessions = super::forge_sessions().lock().unwrap();
             let session = sessions.get(&sid).ok_or("Session not found")?;
             if let Some(existing) = session.pending_spec_changes.iter().find(|c| c.section_id == section_id) {
                 (existing.old_content.clone(), existing.old_status.clone())
             } else {
-                let ledger = super::ledgers().lock().unwrap();
-                ledger.get(&project)
+                let specs = super::specs().lock().unwrap();
+                specs.get(&project)
                     .and_then(|doc| doc.sections.iter().find(|s| s.id == section_id))
-                    .map(|s| (s.content.clone(), s.status.clone()))
+                    .map(|s| (s.content.clone(), s.status.as_str().to_string()))
                     .unwrap_or_default()
             }
         };
@@ -693,6 +693,7 @@ impl Tool for WriteJadeTool {
             } else {
                 session.pending_spec_changes.push(super::SpecChange {
                     section_id: section_id.to_string(),
+                    item_id: None,
                     old_content,
                     new_content: content.to_string(),
                     old_status,

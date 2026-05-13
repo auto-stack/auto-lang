@@ -1,0 +1,10 @@
+## Todos
+
+<!-- Todos are the atomic units of work.
+     Each Todo MUST reference a Plan phase [P<x>.<y>].
+     Each Todo SHOULD include a file path hint.
+-->
+
+- [ ] T1.1 [P1.1] <imperative action> — `<file>:<line>`
+- [ ] T1.2 [P1.1] <imperative action> — `<file>:<line>`
+- [ ] T1.3 [P1.2] <imperative action> — `<file>:<line>`
