@@ -5571,10 +5571,11 @@ impl Codegen {
                                 name.split('.').next().unwrap_or("")
                             )
                     {
-                        // Check if there's already a registered native for this name
+                        // Check if there's already a registered native with an actual shim
                         let has_existing = {
-                            let mut reg = BIGVM_NATIVES.lock().unwrap();
-                            reg.resolve_qualified(name).is_some()
+                            let reg = BIGVM_NATIVES.lock().unwrap();
+                            reg.resolve_qualified_to_canonical(name).is_some()
+                                && reg.get_id(name).is_some()
                         };
                         if has_existing {
                             // Use the existing native (e.g., toml.parse, json.parse)

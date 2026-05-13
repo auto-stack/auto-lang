@@ -4093,6 +4093,22 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             task.ram.push_i32(0);
         }
 
+        // ---- serde_json ----
+        ("serde_json", "from_str") => {
+            let json_str: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("serde_json.from_str: {}", e)))?;
+            // For MVP, store the raw JSON string as a RustStdlibObject
+            push_rust_obj(task, vm, "serde_json::Value", json_str)?;
+        }
+        ("serde_json", "to_string") => {
+            let _value: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("serde_json.to_string: {}", e)))?;
+            // For MVP, return the value as-is (no actual serialization)
+            let s = _value;
+            let str_idx = vm.add_string(s.into_bytes());
+            task.ram.push_str_idx(str_idx as u32);
+        }
+
         // ---- chrono DateTime methods ----
         ("Utc", "timestamp_opt") => {
             let _nanos: i32 = i32::pop_from_stack(task, vm)
