@@ -3610,6 +3610,40 @@ impl AutoVM {
                                     field_name, inst.mono_name
                                 )));
                             }
+                        } else if let Some(rust_obj) = heap_obj.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                            // Opaque external crate type — try field mutation
+                            let type_name = rust_obj.type_name.clone();
+                            drop(heap_obj); // release write lock
+                            // Handle semver field mutation
+                            let mut field_set = false;
+                            if type_name == "semver::Version" {
+                                #[cfg(feature = "nanbox")]
+                                let new_val = auto_val::decode_i32(value_nv);
+                                #[cfg(not(feature = "nanbox"))]
+                                let new_val = value;
+                                if let Some(obj) = self.heap_objects.get(&obj_id) {
+                                    let mut guard = obj.write().unwrap();
+                                    if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                                        if let Some(ver) = rso.downcast_mut::<std::sync::Mutex<semver::Version>>() {
+                                            let mut v = ver.lock().unwrap();
+                                            match field_name.as_str() {
+                                                "major" => v.major = new_val as u64,
+                                                "minor" => v.minor = new_val as u64,
+                                                "patch" => v.patch = new_val as u64,
+                                                _ => {}
+                                            }
+                                            field_set = true;
+                                        }
+                                    }
+                                }
+                            }
+                            if !field_set {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Cannot set field '{}' on opaque type {}",
+                                    field_name, type_name
+                                )));
+                            }
+                            // Field set successfully — fall through to next instruction
                         } else {
                             return Err(VMError::RuntimeError(format!(
                                 "Invalid object ID: {}",
@@ -3742,12 +3776,33 @@ impl AutoVM {
                                     field_name, inst.mono_name
                                 )));
                             }
+                        } else if let Some(rust_obj) = heap_obj.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                            // Opaque external crate type — try opaque dispatch for field access
+                            let type_name = &rust_obj.type_name;
+                            let native_name = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(type_name, &field_name);
+                            if let Some(native_name) = native_name {
+                                drop(heap_obj); // release read lock before calling shim
+                                // Push receiver (obj_id) and call the native shim
+                                task.ram.push_i32(obj_id as i32);
+                                if let Some(&native_id) = crate::vm::native_registry::NATIVE_ID_MAP.get(native_name) {
+                                    if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                                        shim(task, self)?;
+                                    } else {
+                                        task.ram.pop_i32();
+                                        task.ram.push_i32(0);
+                                    }
+                                } else {
+                                    task.ram.pop_i32();
+                                    task.ram.push_i32(0);
+                                }
+                            } else {
+                                task.ram.push_i32(0);
+                            }
                         } else {
                             task.ram.push_i32(0);
                         }
                     } else {
                         // Object not found - push 0 as error sentinel
-                        // TODO: Proper error handling for invalid object IDs
                         task.ram.push_i32(0);
                     }
                 }

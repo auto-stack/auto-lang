@@ -6155,7 +6155,18 @@ impl Codegen {
                             .unwrap_or(false)
                     } else { false }
                 } else { false };
-                if is_spec_dispatch || (func_name.is_some() && is_instance_method_call && resolved_func.is_none() && !is_native && !is_user_type_method) {
+                // Also use CALL_SPEC for unresolved static-like calls (e.g., Normal.new, Complex.new)
+                // where the type name starts with uppercase but isn't in exports/natives
+                // Exclude well-known Rust/stdlib types that should use CALL+reloc
+                const KNOWN_STATIC_TYPES: &[&str] = &["HashMap", "Option", "Result"];
+                let is_unresolved_static = !is_instance_method_call && func_name.as_ref()
+                    .map(|name| {
+                        let type_part = name.split('.').next().unwrap_or("");
+                        type_part.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                            && !KNOWN_STATIC_TYPES.contains(&type_part)
+                    })
+                    .unwrap_or(false);
+                if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static)) {
                     // Dynamic dispatch: emit CALL_SPEC with method name string index and arg count
                     self.emit(OpCode::CALL_SPEC);
                     let method_str = if let Expr::Dot(_, method) = call.name.as_ref() {
@@ -7424,7 +7435,9 @@ impl Codegen {
             "contains" | "starts_with" | "ends_with" | "is_empty"
             | "has_key" | "has_prefix" => ObjectType::Bool,
             // Methods returning a collection (nested object)
-            "keys" | "values" | "entries" | "split" | "lines" | "chars" => ObjectType::NestedObject,
+            "keys" | "values" | "entries" | "split" | "lines" | "chars"
+            | "graphemes" | "as_bytes" | "bytes" | "par_iter" | "par_iter_mut"
+            | "into_iter" | "iter" | "iter_mut" => ObjectType::NestedObject,
             // Methods returning void
             "push" | "insert" | "insert_int" | "insert_str" | "remove" | "clear"
             | "sort" | "reverse" | "print" | "println" | "write" => ObjectType::Void,
