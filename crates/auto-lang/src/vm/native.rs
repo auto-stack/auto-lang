@@ -1677,7 +1677,7 @@ pub fn shim_list_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
     use crate::vm::engine::Iterator;
-    
+
     let iterator_id = task.ram.pop_i32() as u32;
 
     // Plan 076 Phase 3: Always return i32 by extracting Int from Value

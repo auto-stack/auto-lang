@@ -4299,6 +4299,11 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let handle = task.ram.pop_i32() as u64;
             task.ram.push_i32(handle as i32);
         }
+        ("Command", "stderr") => {
+            let _stdio_val = task.ram.pop_i32();
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32);
+        }
         ("Command", "output") => {
             let handle = task.ram.pop_i32() as u64;
             if let Some(obj) = vm.get_heap_object(handle) {

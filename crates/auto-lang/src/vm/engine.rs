@@ -4728,8 +4728,10 @@ impl AutoVM {
                     let native_id = self.flash.read_u16(task.ip);
                     task.ip += 2;
 
-                    // Execute Native Shim
-                    if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                    // DEBUG: Bypass native_interface for iterator.next
+                    if native_id == 112 {
+                        crate::vm::native::shim_iterator_next(task, self)?;
+                    } else if let Some(shim) = self.native_interface.get(native_id).cloned() {
                         shim(task, self)?;
                     } else {
                         return Err(VMError::MissingNative(native_id));

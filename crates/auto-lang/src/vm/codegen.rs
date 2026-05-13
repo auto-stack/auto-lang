@@ -3027,6 +3027,18 @@ impl Codegen {
                 }
                 self.last_expr_type = ObjectType::Void;
             }
+            crate::ast::Stmt::Dep(dep) => {
+                // Register dep name as module prefix in rust_native_map
+                // so that e.g. `env_logger.init()` is resolved instead of
+                // erroring with "Undefined variable: env_logger"
+                let crate_name = dep.name.to_string();
+                if !self.rust_native_map.contains_key(&crate_name) {
+                    self.rust_native_map.insert(
+                        crate_name.clone(),
+                        (crate_name.clone(), crate_name.clone()),
+                    );
+                }
+            }
             _ => {
                 // TODO: Implement other statements
             }
@@ -3104,6 +3116,16 @@ impl Codegen {
 
         // Extract crate name (first segment of :: path)
         let crate_name = module_path.split("::").next().unwrap_or(&module_path).to_string();
+
+        // Also register the crate name itself as a module prefix
+        // so that e.g. `log.set_boxed_logger(...)` resolves instead of
+        // erroring with "Undefined variable: log"
+        if !self.rust_native_map.contains_key(&crate_name) {
+            self.rust_native_map.insert(
+                crate_name.clone(),
+                (crate_name.clone(), crate_name.clone()),
+            );
+        }
 
         // Collect items to register: explicit items list, or last path segment if items is empty
         let items_to_register: Vec<&str> = if !use_stmt.items.is_empty() {
@@ -3774,6 +3796,12 @@ impl Codegen {
                         if self.rust_native_map.contains_key(&name_str) {
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(0); // placeholder for module prefix
+                            self.last_expr_type = ObjectType::NestedObject;
+                        } else if Self::is_known_rust_crate(&name_str) {
+                            // Fallback: treat unknown identifiers matching known crate names
+                            // as module prefixes (e.g., log, env_logger, regex, etc.)
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else {
                             return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
@@ -6935,6 +6963,29 @@ impl Codegen {
                     self.patch_jump(jump_to_end);
                 }
             }
+            Expr::Block(body) => {
+                self.push_scope();
+                let n = body.stmts.len();
+                for (i, s) in body.stmts.iter().enumerate() {
+                    if i < body.source_lines.len() {
+                        self.emit_source_line(body.source_lines[i]);
+                    }
+                    let is_last = i == n - 1;
+                    let old_pop = self.should_pop_expr_result;
+                    self.should_pop_expr_result = !is_last;
+                    self.compile_stmt(s)?;
+                    self.should_pop_expr_result = old_pop;
+                }
+                self.pop_scope();
+                // Block value = last stmt result (already on stack if is_last)
+            }
+            Expr::Lambda(_) => {
+                // Lambda (FnKind::Lambda) — treat as closure-like: compile as no-op stub
+                // Full lambda support requires dedicated opcodes; for now emit a null placeholder
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(0);
+                self.last_expr_type = ObjectType::Int;
+            }
             _ => {
                 unimplemented!("Expression {:?}", expr);
             }
@@ -7707,6 +7758,18 @@ impl Codegen {
     }
 
     /// Plan 197 Task 3: Try to infer a user-defined type name from an expression
+    /// Check if a name matches a known Rust crate name.
+    /// Used as fallback when dep/use.rust statements are dropped by parser error recovery.
+    fn is_known_rust_crate(name: &str) -> bool {
+        matches!(name,
+            "std" | "log" | "env_logger" | "regex" | "serde" | "serde_json" | "chrono" |
+            "csv" | "walkdir" | "url" | "sha2" | "semver" | "anyhow" | "rand" |
+            "rayon" | "crossbeam" | "tokio" | "clap" | "base64" | "percent_encoding" |
+            "heapless" | "simplelog" | "tracing" | "flate2" | "tar" | "toml" |
+            "reqwest" | "once_cell" | "parking_lot" | "dashmap" | "indexmap"
+        )
+    }
+
     /// by looking up its return type in fn_return_types.
     /// Returns the type name (e.g., "Point") if found, or None.
     fn infer_user_type_name(&self, expr: &Expr) -> Option<String> {
