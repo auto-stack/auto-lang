@@ -1299,6 +1299,10 @@ impl Codegen {
                         ObjectType::Uint => {
                             self.emit(OpCode::U64_TO_F64);
                         }
+                        ObjectType::NestedObject | ObjectType::Void | ObjectType::String => {
+                            // Opaque handle or non-numeric — skip f64 coercion
+                            // The value stays as 1-slot i32 handle on stack
+                        }
                         _ => {
                             self.emit(OpCode::PROMOTE_F64);
                         }
@@ -1504,6 +1508,9 @@ impl Codegen {
                 let stored_type = self.var_types.get(&name_str).cloned();
                 let is_two_slot = matches!(stored_type, Some(Type::U64 | Type::I64 | Type::Double))
                     || matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint);
+                // Don't use 2-slot when actual value is an opaque handle (NestedObject)
+                let is_two_slot = is_two_slot
+                    && !matches!(self.last_expr_type, ObjectType::NestedObject | ObjectType::Void);
                 if is_two_slot {
                     // u64/i64 on stack: [low, high] (high on top)
                     // pop high first → var_index+1, then pop low → var_index
@@ -1511,6 +1518,11 @@ impl Codegen {
                     self.emit_store_loc(var_index);
                 } else {
                     self.emit_store_loc(var_index);
+                    // If declared type was 2-slot but actual value is 1-slot (opaque handle),
+                    // update var_types so subsequent loads also use 1-slot
+                    if matches!(stored_type, Some(Type::U64 | Type::I64 | Type::Double)) {
+                        self.var_types.insert(name_str.clone(), Type::Int);
+                    }
                 }
 
                 // Plan 080: DON'T load the value back to stack
@@ -7561,14 +7573,17 @@ impl Codegen {
             // Methods returning bool
             "contains" | "starts_with" | "ends_with" | "is_empty"
             | "has_key" | "has_prefix" => ObjectType::Bool,
-            // Methods returning a collection (nested object)
+            // Methods returning a collection or opaque handle (nested object)
             "keys" | "values" | "entries" | "split" | "lines" | "chars"
             | "graphemes" | "as_bytes" | "bytes" | "par_iter" | "par_iter_mut"
-            | "into_iter" | "iter" | "iter_mut" => ObjectType::NestedObject,
+            | "into_iter" | "iter" | "iter_mut"
+            | "sample" | "gen" | "gen_range" => ObjectType::NestedObject,
             // Methods returning void
             "push" | "insert" | "insert_int" | "insert_str" | "remove" | "clear"
             | "sort" | "reverse" | "print" | "println" | "write" => ObjectType::Void,
-            // Default: preserve current last_expr_type to avoid regressions
+            // Default: unknown method — preserve current last_expr_type
+            // (changed from self.last_expr_type to NestedObject for opaque handle
+            // safety, but that caused regressions in str.trim etc.)
             _ => self.last_expr_type,
         }
     }

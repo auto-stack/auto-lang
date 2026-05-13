@@ -4483,7 +4483,7 @@ impl AutoVM {
                             }
                             _ => {
                                 // Identity operations: return receiver unchanged, only pop args
-                                if matches!(method_name.as_str(), "collect" | "rev" | "filter_map" | "sort" | "sort_by_key" | "dedup" | "flatten" | "into_iter" | "iter" | "iter_mut" | "par_iter") {
+                                if matches!(method_name.as_str(), "collect" | "rev" | "filter_map" | "sort" | "sort_by_key" | "dedup" | "flatten" | "into_iter" | "iter" | "iter_mut" | "par_iter" | "par_iter_mut" | "for_each" | "map" | "filter" | "find" | "any" | "all" | "reduce" | "fold") {
                                     // Pop args only (not receiver) — receiver stays as return value
                                     #[cfg(feature = "nanbox")]
                                     { for _ in 0..arg_count { task.ram.pop_nv(); } }
