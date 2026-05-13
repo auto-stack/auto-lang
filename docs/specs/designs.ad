@@ -2,16 +2,16 @@
 
 > Module-level interfaces, state machines, and data models for the Agents Relay module.
 
----
 
 ## Designs
 
-### D1 AgentInstance & Soul Rendering
-**Status:** Implemented
-**Module:** `crates/auto-forge/src/relay/agent.rs`
-**Scope:** A2
+---
 
-**Interface:**
+## D1 AgentInstance & Soul Rendering
+**Status:** implemented
+**Module:** `crates/auto-forge/src/relay/agent.rs`
+**Depends on:** A2
+
 ```rust
 pub struct AgentInstance {
     pub id: String,
@@ -65,7 +65,6 @@ pub enum Provider {
 }
 ```
 
-**State Machine:**
 ```mermaid
 stateDiagram-v2
     [*] --> Unresolved: Soul ID provided
@@ -82,7 +81,6 @@ stateDiagram-v2
     Failed --> [*]
 ```
 
-**Data Model:**
 | Field | Type | Description |
 |---|---|---|
 | `id` | `String` | UUID for this agent instance |
@@ -93,16 +91,14 @@ stateDiagram-v2
 | `context.budget_used` | `u64` | Tokens consumed this step |
 | `context.turns_taken` | `u32` | Number of LLM turns this step |
 
-**Depends on:** A2
 
 ---
 
-### D2 PipelineEngine & Flow Execution
-**Status:** Implemented
+## D2 PipelineEngine & Flow Execution
+**Status:** implemented
 **Module:** `crates/auto-forge/src/relay/pipeline.rs`
-**Scope:** A1
+**Depends on:** A1, D1
 
-**Interface:**
 ```rust
 pub struct PipelineEngine {
     pub flow: FlowSpec,
@@ -151,7 +147,6 @@ pub enum StepResult {
 }
 ```
 
-**State Machine:**
 ```mermaid
 stateDiagram-v2
     [*] --> Idle: Flow loaded
@@ -168,7 +163,6 @@ stateDiagram-v2
     Completed --> [*]
 ```
 
-**Data Model:**
 | Field | Type | Description |
 |---|---|---|
 | `flow.id` | `String` | Flow specification identifier |
@@ -177,7 +171,6 @@ stateDiagram-v2
 | `checkpoints` | `Vec<Checkpoint>` | Ordered list of saved states |
 | `run_id` | `String` | Unique run identifier |
 
-**Algorithm (pseudocode):**
 ```
 fn execute_next():
     step = flow.steps[current_step]
@@ -205,16 +198,14 @@ fn execute_next():
             return StepResult::Error { message: "Max turns exceeded" }
 ```
 
-**Depends on:** A1, D1
 
 ---
 
-### D3 HandoffDocument Generation
-**Status:** Implemented
+## D3 HandoffDocument Generation
+**Status:** implemented
 **Module:** `crates/auto-forge/src/relay/handoff.rs`
-**Scope:** A1, G3
+**Depends on:** G3, D1
 
-**Interface:**
 ```rust
 pub struct HandoffDocument {
     pub from: String,
@@ -262,7 +253,6 @@ pub struct TokenUsage {
 }
 ```
 
-**State Machine:**
 ```mermaid
 stateDiagram-v2
     [*] --> Collecting: Agent turn complete
@@ -273,7 +263,6 @@ stateDiagram-v2
     Rendered --> [*]
 ```
 
-**Data Model:**
 | Field | Type | Description |
 |---|---|---|
 | `summary` | `String` | ≤200 words executive summary |
@@ -284,7 +273,6 @@ stateDiagram-v2
 | `work_product.path` | `String` | File path or artifact location |
 | `work_product.lines` | `u32` | Size indicator for context sizing |
 
-**Algorithm (pseudocode):**
 ```
 fn generate(agent, turn_history, specs):
     // Phase 1: Summarize (cheap model or rules)
@@ -308,16 +296,14 @@ fn generate(agent, turn_history, specs):
     return HandoffDocument { ... }
 ```
 
-**Depends on:** G3, D1
 
 ---
 
-### D4 Checkpoint Serialization
-**Status:** Implemented
+## D4 Checkpoint Serialization
+**Status:** implemented
 **Module:** `crates/auto-forge/src/relay/checkpoint.rs`
-**Scope:** A3, G4
+**Depends on:** A3
 
-**Interface:**
 ```rust
 pub struct Checkpoint {
     pub id: u64,
@@ -355,7 +341,6 @@ impl Checkpoint {
 }
 ```
 
-**State Machine:**
 ```mermaid
 stateDiagram-v2
     [*] --> Capturing: Handoff triggered
@@ -366,7 +351,6 @@ stateDiagram-v2
     Persisted --> [*]
 ```
 
-**Data Model:**
 | Field | Type | Description |
 |---|---|---|
 | `id` | `u64` | Monotonic within run |
@@ -375,16 +359,14 @@ stateDiagram-v2
 | `ledger_state` | `SpecsDocument` | Deep copy of specs at this point |
 | `file_manifest` | `Vec<FileState>` | Hash of every touched file |
 
-**Depends on:** A3
 
 ---
 
-### D5 TokenBudget Enforcement
-**Status:** Implemented
+## D5 TokenBudget Enforcement
+**Status:** implemented
 **Module:** `crates/auto-forge/src/relay/budget.rs`
-**Scope:** G5
+**Depends on:** G5
 
-**Interface:**
 ```rust
 pub struct TokenBudget {
     pub limit: u64,
@@ -425,7 +407,6 @@ pub enum BudgetAction {
 }
 ```
 
-**Data Model:**
 | Field | Type | Description |
 |---|---|---|
 | `limit` | `u64` | Hard token limit |
@@ -433,5 +414,3 @@ pub enum BudgetAction {
 | `strategy` | `BudgetStrategy` | Action when limit reached |
 | `cumulative` | `u64` | Total tokens this run |
 | `per_step` | `HashMap` | Tokens per profession/step |
-
-**Depends on:** G5

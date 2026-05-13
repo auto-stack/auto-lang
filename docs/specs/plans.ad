@@ -2,17 +2,14 @@
 
 > Phased implementation roadmap for the Agents Relay module.
 
----
 
 ## Plans
 
-### P1 Agents Relay — Foundation
-**Status:** Done
-**Objective:** G1, G2, G3
-**Estimated Duration:** 6 weeks
-**Owner:** Tooling Team
+---
 
-**Phase Breakdown:**
+## P1 Agents Relay — Foundation
+**Status:** done
+**Depends on:** G1, G2, G3, D1, D3
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
@@ -26,20 +23,13 @@
 | P1.8 | Handoff compression (cheap model or rule-based) | Tooling | 2 days | P1.6 | Done |
 | P1.9 | Unit tests for AgentInstance and Handoff generation | Tooling | 2 days | P1.5, P1.6 | Done |
 
-**Risk:** Soul markdown format may need iteration once real agents use it.  
-**Mitigation:** Start with simple Souls; evolve format based on first 3 real flows.
 
-**Depends on:** G1, G2, G3, D1, D3
 
 ---
 
-### P2 Agents Relay — Flow Engine
-**Status:** Done
-**Objective:** G2, G6
-**Estimated Duration:** 4 weeks
-**Owner:** Tooling Team
-
-**Phase Breakdown:**
+## P2 Agents Relay — Flow Engine
+**Status:** done
+**Depends on:** G2, G6, D2, P1
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
@@ -52,20 +42,13 @@
 | P2.7 | Gate rejection routing back to drafting profession | Tooling | 2 days | P2.6 | Done |
 | P2.8 | Deterministic orchestrator unit tests | Tooling | 2 days | P2.1-P2.7 | Done |
 
-**Risk:** Human gate UI may add friction and slow down development.  
-**Mitigation:** Allow auto-approve mode for internal dogfooding; gates mandatory for external users.
 
-**Depends on:** G2, G6, D2, P1
 
 ---
 
-### P3 Agents Relay — Checkpoint & Durability
-**Status:** Done
-**Objective:** G4
-**Estimated Duration:** 3 weeks
-**Owner:** Tooling Team
-
-**Phase Breakdown:**
+## P3 Agents Relay — Checkpoint & Durability
+**Status:** done
+**Depends on:** G4, D4, P2
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
@@ -79,20 +62,13 @@
 | P3.8 | Fork run from checkpoint with different parameters | Tooling | 2 days | P3.7 | Done |
 | P3.9 | Crash recovery integration tests | Tooling | 2 days | P3.5-P3.8 | Done |
 
-**Risk:** Git auto-commit may pollute project history with checkpoint commits.  
-**Mitigation:** Use a separate `autoforge-checkpoints` branch, or store diffs in checkpoint JSON without committing.
 
-**Depends on:** G4, D4, P2
 
 ---
 
-### P4 Agents Relay — Token Budgeting & Analytics
-**Status:** Done
-**Objective:** G5
-**Estimated Duration:** 2 weeks
-**Owner:** Tooling Team
-
-**Phase Breakdown:**
+## P4 Agents Relay — Token Budgeting & Analytics
+**Status:** done
+**Depends on:** G5, D5, P2
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
@@ -104,20 +80,13 @@
 | P4.6 | "Savings vs parallel" estimation heuristic | Tooling | 2 days | P4.5 | Done |
 | P4.7 | Unit tests for budget enforcement | Tooling | 2 days | P4.3 | Done |
 
-**Risk:** Token counting may differ between API provider reporting and actual billing.  
-**Mitigation:** Use API-reported usage where available; warn users that tracked usage is an estimate.
 
-**Depends on:** G5, D5, P2
 
 ---
 
-### P5 Agents Relay — Frontend Agents View
-**Status:** Done
-**Objective:** G5, G6
-**Estimated Duration:** 3 weeks
-**Owner:** UI Team
-
-**Phase Breakdown:**
+## P5 Agents Relay — Frontend Agents View
+**Status:** done
+**Depends on:** G5, G6, P2, P3, P4
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
@@ -130,20 +99,13 @@
 | P5.7 | Run control buttons: pause, resume, rollback, fork | UI | 2 days | P3.5, P3.7, P3.8 | Done |
 | P5.8 | Frontend integration tests | UI | 2 days | P5.1-P5.7 | Done |
 
-**Risk:** Real-time SSE updates for long-running flows may be unreliable over weak connections.  
-**Mitigation:** Use resilient SSE with automatic reconnect; show "last updated at" timestamp.
 
-**Depends on:** G5, G6, P2, P3, P4
 
 ---
 
-### P6 Agents Relay — Integration & Dogfooding
-**Status:** Done
-**Objective:** G1-G6
-**Estimated Duration:** 2 weeks
-**Owner:** Tooling Team
-
-**Phase Breakdown:**
+## P6 Agents Relay — Integration & Dogfooding
+**Status:** done
+**Depends on:** G1, G2, G3, G4, G5, G6, P1, P2, P3, P4, P5
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
@@ -152,8 +114,3 @@
 | P6.3 | Dogfooding: use Forge to implement P1-P5 specs | Tooling | 5 days | P6.2 | Done |
 | P6.4 | Drift detection on Agents module specs | Tooling | 2 days | P6.3 | Done |
 | P6.5 | Documentation and tutorial for custom flows | Tooling | 2 days | P6.1 | Done |
-
-**Risk:** Dogfooding may reveal fundamental workflow issues that require redesign.  
-**Mitigation:** Schedule buffer time in P6 for iteration. Treat dogfooding as a learning exercise, not a deadline.
-
-**Depends on:** G1, G2, G3, G4, G5, G6, P1, P2, P3, P4, P5

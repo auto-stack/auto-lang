@@ -52,6 +52,9 @@ async fn main() {
 
     let app = app.layer(cors);
 
+    // Start periodic specs reload task (picks up disk edits and derives statuses)
+    auto_forge::forge::start_periodic_reload();
+
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3031));
     tracing::info!("AutoForge server listening on http://{}", addr);
 

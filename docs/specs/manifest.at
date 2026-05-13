@@ -5,8 +5,8 @@ version = 11
 id = "goals"
 section_type = "goals"
 title = "🎯 Goals"
-status = "approved"
-last_modified = 1778693194
+status = "implemented"
+last_modified = 1778697507
 
 [[section]]
 id = "architecture"
@@ -26,15 +26,15 @@ last_modified = 1778693194
 id = "plans"
 section_type = "plans"
 title = "📅 Plans"
-status = "approved"
-last_modified = 1778693194
+status = "done"
+last_modified = 1778697507
 
 [[section]]
 id = "tests"
 section_type = "tests"
 title = "🧪 Tests"
-status = "approved"
-last_modified = 1778693194
+status = "done"
+last_modified = 1778697507
 
 [[section]]
 id = "reviews"

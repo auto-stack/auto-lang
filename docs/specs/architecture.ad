@@ -2,20 +2,17 @@
 
 > Structural decisions for the Agents Relay Orchestration module.
 
----
 
 ## Architecture
 
-### A1 Relay Orchestrator Architecture
-**Status:** Draft
-**Scope:** G2, G3, G4, G6
+---
 
-**Decision:** Use a deterministic Rust orchestrator (not an LLM) to manage agent flows, baton passing, and state machine transitions.
+## A1 Relay Orchestrator Architecture
+**Status:** draft
+**Depends on:** G2
 
-**Rationale:**
 An LLM-based orchestrator would consume tokens for routing decisions, violating G3's token-efficiency mandate. It would also introduce non-determinism into flow execution. A deterministic state machine in Rust provides zero-token coordination, predictable routing, and compile-time safety.
 
-**Components:**
 ```mermaid
 graph TB
     subgraph "Orchestrator (Rust)"
@@ -50,33 +47,26 @@ graph TB
     O -->|persist| R
 ```
 
-**Trade-offs:**
 | Approach | Pros | Cons |
 |---|---|---|
 | Deterministic Rust orchestrator | Zero token cost, predictable, fast, type-safe | Cannot adapt to novel flow patterns without code change |
 | LLM-based orchestrator | Flexible, natural language flow definitions | Token cost per routing decision, non-deterministic, harder to test |
 | Hybrid (LLM plans, Rust executes) | Flexibility + determinism | More complex, LLM still needed for plan generation |
 
-**Consequences:**
 - Positive: Flow execution is deterministic and unit-testable.
 - Positive: No token spend on coordination.
 - Negative: New flow patterns (e.g., conditional routing based on spec content) require code changes to `PipelineEngine`.
 - Mitigation: FlowSpec supports `branch`, `loop`, and `on_fail` primitives that cover 95% of use cases.
 
-**Depends on:** G2
 
 ---
 
-### A2 Agent Instance Lifecycle
-**Status:** Draft
-**Scope:** G1, G2
+## A2 Agent Instance Lifecycle
+**Status:** draft
+**Depends on:** G1, G2
 
-**Decision:** Agent instances are ephemeral per-step. They are spawned fresh at each handoff with scoped context, run their turn, and are dropped. No long-lived agent processes.
-
-**Rationale:**
 Long-lived agent processes would accumulate context and state, defeating the token-efficiency goal. By spawning fresh instances per step, each agent starts with a clean, minimal context window. This also simplifies crash recovery — no need to restore agent memory, only the checkpoint.
 
-**Components:**
 ```mermaid
 stateDiagram-v2
     [*] --> Spawning: Orchestrator starts step
@@ -91,32 +81,25 @@ stateDiagram-v2
     Error --> [*]: Run marked Failed, human notified
 ```
 
-**Trade-offs:**
 | Approach | Pros | Cons |
 |---|---|---|
 | Ephemeral per-step instances | Minimal context, easy recovery, cheap | Agent cannot learn across turns within a step |
 | Long-lived instances with context window | Agent remembers earlier turns | Context grows, recovery harder, more tokens |
 | Persistent agent processes with memory | Cross-run learning possible | Complex state management, not needed for relay |
 
-**Consequences:**
 - Positive: Maximum token efficiency.
 - Positive: Crash recovery is trivial — just re-spawn from checkpoint.
 - Negative: If an agent needs 5 turns to complete, each turn re-loads the same Soul + Specs. However, this is cheaper than maintaining a growing context.
 
-**Depends on:** G1, G2
 
 ---
 
-### A3 Checkpoint & State Persistence
-**Status:** Draft
-**Scope:** G4
+## A3 Checkpoint & State Persistence
+**Status:** draft
+**Depends on:** G4
 
-**Decision:** Checkpoints are serialized as JSON files on disk, with optional git auto-commits for file state. Ledger state is embedded in the checkpoint.
-
-**Rationale:**
 JSON provides human-readable, version-controllable checkpoints. Git auto-commits provide a robust file-level rollback mechanism that integrates with existing developer workflows. The Ledger is embedded (not referenced) to ensure self-contained checkpoints.
 
-**Components:**
 ```mermaid
 graph LR
     A[Handoff Triggered] --> B[Capture File Manifest]
@@ -127,17 +110,13 @@ graph LR
     F --> G[Update Run Store]
 ```
 
-**Trade-offs:**
 | Approach | Pros | Cons |
 |---|---|---|
 | JSON + git | Human-readable, git-native rollback, simple | Large checkpoints for big projects |
 | SQLite + binary blobs | Compact, queryable | Harder to inspect, git-unfriendly |
 | Content-addressed store (IPFS-style) | Deduplication, immutable | Overkill for local orchestration |
 
-**Consequences:**
 - Positive: Checkpoints can be inspected with `cat` or `jq`.
 - Positive: Rollback uses standard git commands.
 - Negative: Large projects may produce multi-MB checkpoint files.
 - Mitigation: File manifest stores hashes, not contents. Only changed files are diffed.
-
-**Depends on:** G4

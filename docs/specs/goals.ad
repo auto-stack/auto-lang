@@ -2,7 +2,6 @@
 
 > AutoForge Agents module enables spec-driven serial cooperation of profession-bearing AI agents, maximizing quality and token efficiency through relay orchestration.
 
----
 
 ## Goals
 
@@ -17,98 +16,73 @@
 
 ---
 
-### G1 Agent Identity System supports Soul, Profession, and Model configuration per agent
+## G1 Agent Identity System supports Soul, Profession, and Model configuration per agent
+**Status:** implemented
 
-**Status:** Implemented
-
-**Acceptance Criteria:**
 - [x] Agents can be defined with a Soul (markdown character definition)
 - [x] Agents can be assigned a Profession that determines spec ownership, tools, and handoff rules
 - [x] Agents can be configured with a Model (provider, model name, temperature, max_tokens)
 - [x] Built-in professions exist: Intaker, Planner, Architect, Coder, Tester, Reviewer, Documenter
 - [x] Custom professions can be added via `.autoforge/professions/` YAML files
 
-**Details:**
 The Agent Identity separates *who the agent is* (Soul), *what it can do* (Profession), and *what cognitive substrate it uses* (Model). This enables fine-grained control over agent behavior and cost optimization through model tiering.
 
-**Depends on:**
+## G2 Relay Orchestrator executes serial agent flows with baton passing and gate enforcement
+**Status:** implemented
+**Depends on:** G1
 
-### G2 Relay Orchestrator executes serial agent flows with baton passing and gate enforcement
-
-**Status:** Implemented
-
-**Acceptance Criteria:**
 - [x] Flow specs define ordered steps with professions, gates, loops, and branches
 - [x] Only one agent holds the baton at any time
 - [x] Orchestrator enforces tool availability per profession
 - [x] Orchestrator routes handoffs deterministically without LLM coordination cost
 - [x] Loop bounds and error routing prevent infinite cycles
 
-**Details:**
 The Orchestrator is pure deterministic code (Rust), not an LLM. It reads Flow specs, manages the Pipeline state machine, and routes batons. This eliminates token spend on coordination and makes routing predictable.
 
-**Depends on:** G1
+## G3 Handoff Protocol compresses context between agents, achieving ~5× token savings vs parallel multi-agent
+**Status:** implemented
+**Depends on:** G1, G2
 
-### G3 Handoff Protocol compresses context between agents, achieving ~5× token savings vs parallel multi-agent
-
-**Status:** Implemented
-
-**Acceptance Criteria:**
 - [x] Handoff documents exclude raw chat history
 - [x] Handoff documents include: summary, decisions, open questions, spec updates, work product, context pointers
 - [x] Context scoping filters specs to only those relevant to the receiving profession
 - [x] Each agent receives ≤9k tokens at spawn (Soul + relevant Specs + Handoff)
 - [x] Agents pull additional context on demand via tools, not via push
 
-**Details:**
 The Handoff Protocol is the core token-efficiency mechanism. By discarding chat history and summarizing work product, agents start each turn with minimal context. Parallel multi-agent systems suffer O(N×K) token overhead; relay reduces this to O(sum of scoped contexts).
 
-**Depends on:** G1, G2
+## G4 Checkpoint & Durability system enables long-running flows to survive crashes and resume without context loss
+**Status:** implemented
+**Depends on:** G2, G3
 
-### G4 Checkpoint & Durability system enables long-running flows to survive crashes and resume without context loss
-
-**Status:** Implemented
-
-**Acceptance Criteria:**
 - [x] Every handoff produces a checkpoint with: git state, ledger state, handoff document, file manifest, token usage
 - [x] Runs can resume from any checkpoint after process restart
 - [x] Resume rehydrates the next agent from checkpoint (no chat history restored)
 - [x] Rollback restores files, ledger, and state to a previous checkpoint
 - [x] Fork creates a new run from an existing checkpoint with different parameters
 
-**Details:**
 Since agents "work longer rather than quicker," flows may run for hours or days. Checkpointing makes this safe. On resume, the next agent starts fresh from the Handoff Document — token cost is identical to continuous execution.
 
-**Depends on:** G2, G3
+## G5 Token Budgeting tracks and enforces per-step spend with cost analytics visible in Agents view
+**Status:** implemented
+**Depends on:** G2
 
-### G5 Token Budgeting tracks and enforces per-step spend with cost analytics visible in Agents view
-
-**Status:** Implemented
-
-**Acceptance Criteria:**
 - [x] Per-step token budgets with configurable limit, warning threshold, and strategy
 - [x] Budget strategies: HardStop, EscalateModel, SummarizeContext, SkipOptional
 - [x] Agents view shows real-time token spend and "savings vs parallel" estimates
 - [x] Cumulative run budget prevents runaway costs
 - [x] Cost analytics persist across checkpoints
 
-**Details:**
 Token budgeting makes cost a first-class constraint. The Agents view compares actual relay cost against estimated parallel-swarm cost to demonstrate savings.
 
+## G6 Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval
+**Status:** implemented
 **Depends on:** G2
 
-### G6 Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval
-
-**Status:** Implemented
-
-**Acceptance Criteria:**
 - [x] Flow steps can specify `gate: human` or `gate: auto`
 - [x] Human gates pause the run and emit SSE notifications to frontend
 - [x] Human can Approve, Reject, or Edit specs before continuing
 - [x] Rejection routes back to the drafting profession with feedback
 - [x] Async gates support hours-long delays without losing state
 
-**Details:**
 Humans remain the final authority at key boundaries. Spec gates shift human review from "code review" (after generation) to "spec review" (before implementation), dramatically reducing rework.
-
-**Depends on:** G2

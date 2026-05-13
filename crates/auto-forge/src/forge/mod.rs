@@ -680,12 +680,77 @@ impl SpecsStore {
                 }
             }
         }
-        // Derive statuses for all loaded documents
-        for doc in self.projects.values_mut() {
-            Self::rebuild_relations(doc);
-            Self::derive_statuses(doc);
+        // Derive statuses for all loaded documents and persist if changed
+        let names: Vec<String> = self.projects.keys().cloned().collect();
+        for name in &names {
+            let original = self.projects.get(name).unwrap().clone();
+            let changed = {
+                let doc = self.projects.get_mut(name).unwrap();
+                Self::rebuild_relations(doc);
+                Self::derive_statuses(doc);
+                Self::doc_changed(&original, doc)
+            };
+            if changed {
+                tracing::info!("Derived statuses changed for '{}' on startup, persisting", name);
+                let doc = self.projects.get(name).unwrap();
+                self.save(doc);
+            }
         }
         tracing::info!("Loaded {} persistent specs documents", self.projects.len());
+    }
+
+    /// Compare two documents for meaningful changes (statuses, content, items).
+    fn doc_changed(a: &SpecsDocument, b: &SpecsDocument) -> bool {
+        if a.sections.len() != b.sections.len() {
+            return true;
+        }
+        for (sa, sb) in a.sections.iter().zip(b.sections.iter()) {
+            if sa.status != sb.status || sa.content != sb.content || sa.title != sb.title {
+                return true;
+            }
+            if sa.items.len() != sb.items.len() {
+                return true;
+            }
+            for (ia, ib) in sa.items.iter().zip(sb.items.iter()) {
+                if ia.status != ib.status
+                    || ia.content != ib.content
+                    || ia.title != ib.title
+                    || ia.depends_on != ib.depends_on
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Reload specs from disk for all projects, derive statuses, and persist if changed.
+    fn reload_changed(&mut self) {
+        let names: Vec<String> = self.projects.keys().cloned().collect();
+        for name in &names {
+            let project_dir = if self.flat_mode_project.as_deref() == Some(name) {
+                self.data_dir.clone()
+            } else {
+                self.data_dir.join(sanitize_filename(name))
+            };
+
+            // Try .ad + manifest.at format
+            if let Some(mut new_doc) = self.load_ad_format(&project_dir, name) {
+                Self::rebuild_relations(&mut new_doc);
+                Self::derive_statuses(&mut new_doc);
+
+                if let Some(old_doc) = self.projects.get(name) {
+                    if Self::doc_changed(old_doc, &new_doc) {
+                        tracing::info!(
+                            "Specs for '{}' changed on disk (or derived statuses drifted), reloading and persisting",
+                            name
+                        );
+                        self.save(&new_doc);
+                        self.projects.insert(name.clone(), new_doc);
+                    }
+                }
+            }
+        }
     }
 
     fn load_ad_format(&self, project_dir: &std::path::Path, project_name: &str) -> Option<SpecsDocument> {
@@ -1284,6 +1349,20 @@ fn sanitize_filename(name: &str) -> String {
 fn specs() -> &'static Mutex<SpecsStore> {
     static STORE: OnceLock<Mutex<SpecsStore>> = OnceLock::new();
     STORE.get_or_init(|| Mutex::new(SpecsStore::new()))
+}
+
+/// Start a background task that reloads specs from disk every 5 seconds
+/// and persists any derived status changes.
+pub fn start_periodic_reload() {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            if let Ok(mut store) = specs().lock() {
+                store.reload_changed();
+            }
+        }
+    });
 }
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
