@@ -82,3 +82,16 @@ auto/rust/
 graphify-out/
 graphify-out-crates/
 
+# a2r transpiler output
+*.a2r.rs
+
+# Backup files
+*.bak
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Temp config/test files
+config_test.txt
+test-deployed.js
+
