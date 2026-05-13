@@ -4179,8 +4179,25 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         }
 
         _ => {
+            // Fallback: check opaque dispatch table for native shim routing
+            if let Some(native_name) = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(&type_name, &method) {
+                let name_owned = native_name.to_string();
+                // Look up native ID from the global registry (includes lazy NATIVE_ID_MAP)
+                let native_id = {
+                    let mut reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+                    reg.resolve_qualified(&name_owned).or_else(|| {
+                        reg.resolve_qualified(&format!("auto.{}.{}", type_name.to_lowercase().replace("::", "."), method))
+                    })
+                };
+                if let Some(id) = native_id {
+                    if let Some(shim) = vm.native_interface.get(id).cloned() {
+                        shim(task, vm)?;
+                        return Ok(());
+                    }
+                }
+            }
             return Err(VMError::RuntimeError(format!(
-                "Unknown Rust stdlib call: {}.{}", type_name, method
+                "Unknown Rust stdlib call: {type_name}.{method}"
             )));
         }
     }

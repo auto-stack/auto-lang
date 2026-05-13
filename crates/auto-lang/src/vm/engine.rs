@@ -4357,6 +4357,38 @@ impl AutoVM {
                                 task.ram.push_i32(0);
                             }
                         }
+                    } else if type_name.starts_with("<unknown:") || type_name.starts_with("<invalid") {
+                        // Integer literal methods: 0x1234.to_be_bytes(), etc.
+                        #[cfg(feature = "nanbox")]
+                        let int_val = auto_val::decode_i32(receiver_nv);
+                        #[cfg(not(feature = "nanbox"))]
+                        let int_val = receiver;
+                        match method_name.as_str() {
+                            "to_be_bytes" | "to_le_bytes" => {
+                                let be = method_name == "to_be_bytes";
+                                let bytes: Vec<u8> = if be {
+                                    int_val.to_be_bytes().to_vec()
+                                } else {
+                                    int_val.to_le_bytes().to_vec()
+                                };
+                                use crate::vm::types::ListData;
+                                let mut list: ListData<i32> = ListData::new();
+                                for b in bytes {
+                                    list.push(b as i32);
+                                }
+                                let list_id = self.insert_heap_object(list);
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(list_id as i32); }
+                            }
+                            _ => {
+                                #[cfg(feature = "nanbox")]
+                                task.ram.push_nv(auto_val::encode_null());
+                                #[cfg(not(feature = "nanbox"))]
+                                task.ram.push_i32(0);
+                            }
+                        }
                     } else if type_name.contains("::") || type_name.contains("RustStdlib") {
                         // Generic fallback for external crate types (csv::ReaderBuilder, etc.)
                         // Route through shim_rust_stdlib_dispatch with type_name + method injected
