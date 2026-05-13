@@ -527,6 +527,27 @@ fn default_status() -> Status {
     Status::Empty
 }
 
+// ─── Manifest Types (for .ad + manifest.at format) ──────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ManifestAt {
+    project: String,
+    version: u32,
+    #[serde(rename = "section", default)]
+    sections: Vec<ManifestSection>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ManifestSection {
+    id: String,
+    #[serde(rename = "section_type")]
+    section_type: String,
+    title: String,
+    status: String,
+    last_modified: u64,
+    last_verified: Option<u64>,
+}
+
 // ─── Persistent Specs Store ─────────────────────────────────────────────────
 
 struct SpecsStore {
@@ -619,14 +640,320 @@ impl SpecsStore {
         let Ok(entries) = std::fs::read_dir(&self.data_dir) else { return };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension() != Some("json".as_ref()) {
-                continue;
+            if path.is_dir() {
+                // New format: directory with manifest.at + *.ad files
+                let project_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if let Some(doc) = self.load_ad_format(&path, &project_name) {
+                    self.projects.insert(project_name, doc);
+                }
+            } else if path.extension() == Some("json".as_ref()) {
+                // Legacy format: single JSON file — auto-migrate
+                let project_name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                if let Some(doc) = self.load_json_and_migrate(&path, &project_name) {
+                    self.projects.insert(project_name, doc);
+                }
             }
-            let Ok(content) = std::fs::read_to_string(&path) else { continue };
-            let Ok(doc) = serde_json::from_str::<SpecsDocument>(&content) else { continue };
-            self.projects.insert(doc.project.clone(), doc);
         }
         tracing::info!("Loaded {} persistent specs documents", self.projects.len());
+    }
+
+    fn load_ad_format(&self, project_dir: &std::path::Path, project_name: &str) -> Option<SpecsDocument> {
+        let manifest_path = project_dir.join("manifest.at");
+        let manifest_content = std::fs::read_to_string(&manifest_path).ok()?;
+        let manifest: ManifestAt = toml::from_str(&manifest_content).ok()?;
+
+        let mut sections = Vec::new();
+        for msec in &manifest.sections {
+            let ad_path = project_dir.join(format!("{}.ad", msec.id));
+            if let Ok(ad_content) = std::fs::read_to_string(&ad_path) {
+                if let Some(section) = Self::parse_ad_file(&msec.id, &msec.section_type, &msec.title, &ad_content) {
+                    sections.push(SpecsSection {
+                        id: msec.id.clone(),
+                        section_type: Self::parse_section_type(&msec.section_type),
+                        title: msec.title.clone(),
+                        items: section.items,
+                        status: Self::parse_status(&msec.status),
+                        content: section.content,
+                        depends_on: section.depends_on,
+                        last_modified: msec.last_modified,
+                        last_verified: msec.last_verified,
+                    });
+                }
+            }
+        }
+        Some(SpecsDocument {
+            project: manifest.project,
+            version: manifest.version as u64,
+            sections,
+        })
+    }
+
+    fn load_json_and_migrate(&self, path: &std::path::Path, project_name: &str) -> Option<SpecsDocument> {
+        let content = std::fs::read_to_string(path).ok()?;
+        let mut doc: SpecsDocument = serde_json::from_str(&content).ok()?;
+        // Migrate to .ad + manifest.at
+        tracing::info!("Migrating legacy JSON specs for '{}' to .ad + manifest.at", project_name);
+        self.save_ad_format(&doc, project_name);
+        // Rename old JSON to .json.bak instead of deleting
+        let bak_path = path.with_extension("json.bak");
+        let _ = std::fs::rename(path, bak_path);
+        Some(doc)
+    }
+
+    fn parse_section_type(s: &str) -> SectionType {
+        match s {
+            "goals" => SectionType::Goals,
+            "architecture" => SectionType::Architecture,
+            "designs" => SectionType::Designs,
+            "plans" => SectionType::Plans,
+            "tests" => SectionType::Tests,
+            "reviews" => SectionType::Reviews,
+            "reports" => SectionType::Reports,
+            "apis" => SectionType::Apis,
+            _ => SectionType::Goals,
+        }
+    }
+
+    fn parse_status(s: &str) -> Status {
+        match s {
+            "empty" => Status::Empty,
+            "proposed" => Status::Proposed,
+            "draft" => Status::Draft,
+            "under_review" => Status::UnderReview,
+            "approved" => Status::Approved,
+            "in_progress" => Status::InProgress,
+            "in_implementation" => Status::InImplementation,
+            "implemented" => Status::Implemented,
+            "verified" => Status::Verified,
+            "done" => Status::Done,
+            "archived" => Status::Archived,
+            "rejected" => Status::Rejected,
+            "backlog" => Status::Backlog,
+            "ready" => Status::Ready,
+            "in_review" => Status::InReview,
+            "blocked" => Status::Blocked,
+            "superseded" => Status::Superseded,
+            "outdated" => Status::Outdated,
+            "stable" => Status::Stable,
+            "deprecated" => Status::Deprecated,
+            "published" => Status::Published,
+            "analysed" => Status::Analysed,
+            "obsolete" => Status::Obsolete,
+            _ => Status::Draft,
+        }
+    }
+
+    fn serialize_status(status: &Status) -> String {
+        match status {
+            Status::Empty => "empty",
+            Status::Proposed => "proposed",
+            Status::Draft => "draft",
+            Status::UnderReview => "under_review",
+            Status::Approved => "approved",
+            Status::InProgress => "in_progress",
+            Status::InImplementation => "in_implementation",
+            Status::Implemented => "implemented",
+            Status::Verified => "verified",
+            Status::Done => "done",
+            Status::Archived => "archived",
+            Status::Rejected => "rejected",
+            Status::Backlog => "backlog",
+            Status::Ready => "ready",
+            Status::InReview => "in_review",
+            Status::Blocked => "blocked",
+            Status::Superseded => "superseded",
+            Status::Outdated => "outdated",
+            Status::Stable => "stable",
+            Status::Deprecated => "deprecated",
+            Status::Published => "published",
+            Status::Analysed => "analysed",
+            Status::Obsolete => "obsolete",
+        }.to_string()
+    }
+
+    fn parse_ad_file(section_id: &str, _section_type: &str, title: &str, content: &str) -> Option<SpecsSection> {
+        use regex::Regex;
+        let lines: Vec<&str> = content.lines().collect();
+        if lines.is_empty() { return None; }
+
+        // First line should be # Title
+        let title_re = Regex::new(r"^#\s+(.+)$").unwrap();
+        let first_line = lines[0];
+        let parsed_title = title_re.captures(first_line).map(|c| c[1].to_string()).unwrap_or_else(|| title.to_string());
+
+        let mut section_content_lines: Vec<&str> = Vec::new();
+        let mut items: Vec<SpecItem> = Vec::new();
+        let mut current_item: Option<SpecItem> = None;
+        let mut item_content_lines: Vec<&str> = Vec::new();
+        let mut in_section_content = true;
+        let mut passed_separator = false;
+
+        let item_heading_re = Regex::new(r"^##\s+([GADPSVXI]\d+(?:\.\d+)?)\s+(.+)$").unwrap();
+        let meta_re = Regex::new(r"^\*\*(.+?):\*\*\s*(.*)$").unwrap();
+
+        for line in lines.iter().skip(1) {
+            let trimmed = line.trim();
+
+            // Detect separator (--- or === or <!-- items -->)
+            if in_section_content && (trimmed == "---" || trimmed == "===" || trimmed == "<!-- items -->") {
+                passed_separator = true;
+                continue;
+            }
+
+            // Detect item heading
+            if let Some(caps) = item_heading_re.captures(line) {
+                // Flush previous item
+                if let Some(mut item) = current_item.take() {
+                    item.content = item_content_lines.join("\n").trim().to_string();
+                    items.push(item);
+                    item_content_lines.clear();
+                }
+                in_section_content = false;
+                let id = caps[1].to_string();
+                let item_title = caps[2].to_string();
+                current_item = Some(SpecItem {
+                    id,
+                    title: item_title,
+                    content: String::new(),
+                    status: Status::Draft,
+                    depends_on: Vec::new(),
+                    related: Vec::new(),
+                    priority: None,
+                    assignee: None,
+                    test_file: None,
+                    file: None,
+                    milestone: None,
+                    module: None,
+                    created_at: now_secs(),
+                    modified_at: now_secs(),
+                    completed_at: None,
+                });
+                continue;
+            }
+
+            // If we're inside an item, try parsing metadata
+            if let Some(ref mut item) = current_item {
+                if let Some(meta_caps) = meta_re.captures(line) {
+                    let key = meta_caps[1].trim().to_lowercase();
+                    let value = meta_caps[2].trim();
+                    match key.as_str() {
+                        "status" => item.status = Self::parse_status(value),
+                        "priority" => item.priority = Some(value.to_string()),
+                        "assignee" => item.assignee = Some(value.to_string()),
+                        "test file" => item.test_file = Some(value.to_string()),
+                        "file" => item.file = Some(value.to_string()),
+                        "milestone" => item.milestone = Some(value.to_string()),
+                        "module" => item.module = Some(value.to_string()),
+                        "depends on" => {
+                            item.depends_on = value.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+            }
+
+            if in_section_content {
+                section_content_lines.push(line);
+            } else if current_item.is_some() {
+                item_content_lines.push(line);
+            }
+        }
+
+        // Flush last item
+        if let Some(mut item) = current_item.take() {
+            item.content = item_content_lines.join("\n").trim().to_string();
+            items.push(item);
+        }
+
+        // If no items were found and no separator, treat everything as section content
+        let section_content = if items.is_empty() && !passed_separator {
+            content.lines().skip(1).collect::<Vec<_>>().join("\n").trim().to_string()
+        } else {
+            section_content_lines.join("\n").trim().to_string()
+        };
+
+        Some(SpecsSection {
+            id: section_id.to_string(),
+            section_type: Self::parse_section_type(section_id),
+            title: parsed_title,
+            items,
+            status: Status::Empty,
+            content: section_content,
+            depends_on: Vec::new(),
+            last_modified: now_secs(),
+            last_verified: None,
+        })
+    }
+
+    fn serialize_section_to_ad(section: &SpecsSection) -> String {
+        let mut lines: Vec<String> = Vec::new();
+        lines.push(format!("# {}", section.title));
+        lines.push(String::new());
+        if !section.content.trim().is_empty() {
+            lines.push(section.content.trim().to_string());
+            lines.push(String::new());
+        }
+        if !section.items.is_empty() {
+            lines.push("---".to_string());
+            lines.push(String::new());
+            for item in &section.items {
+                lines.push(format!("## {} {}", item.id, item.title));
+                lines.push(format!("**Status:** {}", Self::serialize_status(&item.status)));
+                if let Some(ref p) = item.priority { lines.push(format!("**Priority:** {}", p)); }
+                if let Some(ref a) = item.assignee { lines.push(format!("**Assignee:** {}", a)); }
+                if let Some(ref t) = item.test_file { lines.push(format!("**Test File:** {}", t)); }
+                if let Some(ref f) = item.file { lines.push(format!("**File:** {}", f)); }
+                if let Some(ref m) = item.milestone { lines.push(format!("**Milestone:** {}", m)); }
+                if let Some(ref m) = item.module { lines.push(format!("**Module:** {}", m)); }
+                if !item.depends_on.is_empty() { lines.push(format!("**Depends on:** {}", item.depends_on.join(", "))); }
+                if !item.content.trim().is_empty() {
+                    lines.push(String::new());
+                    lines.push(item.content.trim().to_string());
+                }
+                lines.push(String::new());
+            }
+        }
+        lines.join("\n")
+    }
+
+    fn save_ad_format(&self, doc: &SpecsDocument, project_name: &str) {
+        let project_dir = self.data_dir.join(sanitize_filename(project_name));
+        let _ = std::fs::create_dir_all(&project_dir);
+
+        // Save manifest.at
+        let manifest = ManifestAt {
+            project: doc.project.clone(),
+            version: doc.version as u32,
+            sections: doc.sections.iter().map(|s| ManifestSection {
+                id: s.id.clone(),
+                section_type: match s.section_type {
+                    SectionType::Goals => "goals",
+                    SectionType::Architecture => "architecture",
+                    SectionType::Designs => "designs",
+                    SectionType::Plans => "plans",
+                    SectionType::Tests => "tests",
+                    SectionType::Reviews => "reviews",
+                    SectionType::Reports => "reports",
+                    SectionType::Apis => "apis",
+                }.to_string(),
+                title: s.title.clone(),
+                status: Self::serialize_status(&s.status),
+                last_modified: s.last_modified,
+                last_verified: s.last_verified,
+            }).collect(),
+        };
+        let manifest_path = project_dir.join("manifest.at");
+        if let Ok(toml_str) = toml::to_string_pretty(&manifest) {
+            let _ = std::fs::write(&manifest_path, toml_str);
+        }
+
+        // Save each section as .ad file
+        for section in &doc.sections {
+            let ad_path = project_dir.join(format!("{}.ad", section.id));
+            let ad_content = Self::serialize_section_to_ad(section);
+            let _ = std::fs::write(&ad_path, ad_content);
+        }
     }
 
     fn get(&self, project: &str) -> Option<&SpecsDocument> {
@@ -636,7 +963,7 @@ impl SpecsStore {
     fn get_or_default(&mut self, project: &str) -> &mut SpecsDocument {
         if !self.projects.contains_key(project) {
             let doc = self.default_specs(project);
-            self.save(&doc);
+            self.save_ad_format(&doc, project);
             self.projects.insert(project.to_string(), doc);
         }
         // Ensure all default sections exist (backward compat: add missing sections)
@@ -731,11 +1058,7 @@ impl SpecsStore {
     }
 
     fn save(&self, doc: &SpecsDocument) {
-        let filename = sanitize_filename(&doc.project);
-        let path = self.data_dir.join(format!("{}.json", filename));
-        if let Ok(json) = serde_json::to_string_pretty(doc) {
-            let _ = std::fs::write(path, json);
-        }
+        self.save_ad_format(doc, &doc.project);
     }
 
     /// Rebuild bidirectional `related` links across all items.
