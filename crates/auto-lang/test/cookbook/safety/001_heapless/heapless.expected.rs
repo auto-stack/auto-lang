@@ -8,10 +8,10 @@ use auto_lang::a2r_std::*;
 use heapless::Vec;
 fn main() {
 
-    let mut buf = Vec::new();
+    let mut buf: heapless::Vec<u8, 64> = heapless::Vec::new();
     let data = "hello".as_bytes();
     for byte in data {
-        buf.push(byte).unwrap();
+        buf.push(*byte).unwrap();
     }
     println!("Buffer: {} bytes", (buf.len() as i32));
 }

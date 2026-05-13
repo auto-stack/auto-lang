@@ -6,6 +6,8 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use chrono::Local;
+use chrono::Timelike;
+use chrono::Datelike;
 fn main() {
     let now = Local::now();
     let year = now.year();

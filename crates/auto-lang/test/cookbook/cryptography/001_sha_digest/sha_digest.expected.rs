@@ -10,7 +10,7 @@ use sha2::Digest;
 
 fn main() {
     let mut hasher = Sha256::new();
-    hasher.update(b { content: "hello world".to_string() });
+    hasher.update(b"hello world");
     let result = hasher.finalize();
     println!("SHA256: {result:x}");
 }

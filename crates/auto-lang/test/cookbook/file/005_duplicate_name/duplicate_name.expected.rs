@@ -15,9 +15,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let name = entry.file_name();
         let name_str = name.to_str().unwrap();
         if seen.contains_key(name_str) {
-            println!("Duplicate: {}", name_str)
+            println!("Duplicate: {}", name_str);
         } else {
-            seen.insert(name_str.to_string().to_string(), true)
+            seen.insert(name_str.to_string(), true);
         }
 
     }

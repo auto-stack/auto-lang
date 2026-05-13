@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut reader = ReaderBuilder::new().delimiter(59).from_reader(data.as_bytes());
     for result in reader.records() {
         let record = result?;
-        println!("Name: {}, Age: {}", record.get(0)?, record.get(1)?);
+        println!("Name: {}, Age: {}", record.get(0).unwrap(), record.get(1).unwrap());
     }
     Ok(())
 }

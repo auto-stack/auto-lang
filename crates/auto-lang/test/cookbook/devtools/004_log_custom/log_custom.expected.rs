@@ -17,10 +17,13 @@ impl SimpleLogger {
     fn new() -> SimpleLogger {
         SimpleLogger {}
     }
-    fn enabled(&self, metadata: Metadata) -> bool {
-        metadata.level() <= log.Level::Debug
+}
+
+impl log::Log for SimpleLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= log::Level::Debug
     }
-    fn log(&self, record: Record) {
+    fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             println!("{} - {}", record.level(), record.args());
         }
@@ -30,7 +33,8 @@ impl SimpleLogger {
 }
 
 fn main() {
-    log::set_boxed_logger(Box::new(SimpleLogger::new())).unwrap();
+    static LOGGER: SimpleLogger = SimpleLogger {};
+    log::set_logger(&LOGGER).unwrap();
     log::set_max_level(LevelFilter::Debug);
     info!("custom logger active");
     println!("done");

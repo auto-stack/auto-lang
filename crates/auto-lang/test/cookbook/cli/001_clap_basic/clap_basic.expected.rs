@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use clap::Parser;
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Parser)]
 struct Args {
     name: String,
     count: i32,
@@ -14,7 +14,7 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    for _ in 0..args.count() {
+    for _ in 0..args.count {
         println!("Hello, {}!", args.name);
     }
 }
