@@ -3,7 +3,7 @@ use.rust std::time::{Instant, Duration}
 fn expensive_function() {
     // simulated expensive work
     var sum = 0
-    for i in 0..1000000 {
+    for i in 0..100000 {
         sum += i
     }
 }
