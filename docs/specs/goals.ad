@@ -89,8 +89,8 @@ Since agents "work longer rather than quicker," flows may run for hours or days.
 - [x] Per-step token budgets with configurable limit, warning threshold, and strategy
 - [x] Budget strategies: HardStop, EscalateModel, SummarizeContext, SkipOptional
 - [ ] Agents view shows real-time token spend and "savings vs parallel" estimates
-- [ ] Cumulative run budget prevents runaway costs
-- [ ] Cost analytics persist across checkpoints
+- [x] Cumulative run budget prevents runaway costs
+- [x] Cost analytics persist across checkpoints
 
 **Details:**
 Token budgeting makes cost a first-class constraint. The Agents view compares actual relay cost against estimated parallel-swarm cost to demonstrate savings.

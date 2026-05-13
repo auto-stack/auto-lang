@@ -6,6 +6,7 @@
 //! from the Handoff Document — token cost is identical to continuous execution.
 
 use crate::forge::SpecsDocument;
+use crate::relay::budget::BudgetTracker;
 use crate::relay::flow::FlowSpec;
 use crate::relay::handoff::{HandoffDocument, TokenUsage};
 use crate::relay::pipeline::{PipelineEngine, PipelineStatus, StepRecord};
@@ -42,6 +43,8 @@ pub struct Checkpoint {
     pub cumulative_tokens: u64,
     /// Gate feedback accumulated.
     pub gate_feedback: HashMap<String, Vec<String>>,
+    /// Budget tracker state for cost analytics persistence.
+    pub budget_tracker: BudgetTracker,
 }
 
 /// State of a single file at checkpoint time.
@@ -121,6 +124,7 @@ impl Checkpoint {
             loop_counters: engine.loop_counters.clone(),
             cumulative_tokens: engine.cumulative_tokens,
             gate_feedback: engine.gate_feedback.clone(),
+            budget_tracker: engine.budget_tracker.clone(),
         })
     }
 
@@ -198,6 +202,7 @@ impl PipelineEngine {
             gate_feedback: checkpoint.gate_feedback,
             cumulative_tokens: checkpoint.cumulative_tokens,
             gate_resolved_for_step: None,
+            budget_tracker: checkpoint.budget_tracker,
         })
     }
 }
@@ -393,6 +398,7 @@ mod tests {
             loop_counters: HashMap::new(),
             cumulative_tokens: 0,
             gate_feedback: HashMap::new(),
+            budget_tracker: BudgetTracker::default(),
         };
 
         // Mutate files before restore
@@ -425,6 +431,7 @@ mod tests {
             loop_counters: HashMap::new(),
             cumulative_tokens: 0,
             gate_feedback: HashMap::new(),
+            budget_tracker: BudgetTracker::default(),
         };
         let cp2 = cp1.clone();
         assert_eq!(cp1.integrity_hash(), cp2.integrity_hash());

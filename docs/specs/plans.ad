@@ -87,7 +87,7 @@
 ---
 
 ### P4 Agents Relay — Token Budgeting & Analytics
-**Status:** Draft
+**Status:** Done
 **Objective:** G5
 **Estimated Duration:** 2 weeks
 **Owner:** Tooling Team
@@ -96,13 +96,13 @@
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
-| P4.1 | TokenBudget and BudgetTracker data model | Tooling | 2 days | D5 | Empty |
-| P4.2 | Per-step and per-run token tracking | Tooling | 2 days | D5 | Empty |
-| P4.3 | Budget enforcement: warning, compression, hard-stop | Tooling | 2 days | P4.2 | Empty |
-| P4.4 | Model escalation fallback on budget exceed | Tooling | 2 days | P4.3 | Empty |
-| P4.5 | Cost analytics API (per run, per profession, cumulative) | Tooling | 2 days | P4.2 | Empty |
-| P4.6 | "Savings vs parallel" estimation heuristic | Tooling | 2 days | P4.5 | Empty |
-| P4.7 | Unit tests for budget enforcement | Tooling | 2 days | P4.3 | Empty |
+| P4.1 | TokenBudget and BudgetTracker data model | Tooling | 2 days | D5 | Done |
+| P4.2 | Per-step and per-run token tracking | Tooling | 2 days | D5 | Done |
+| P4.3 | Budget enforcement: warning, compression, hard-stop | Tooling | 2 days | P4.2 | Done |
+| P4.4 | Model escalation fallback on budget exceed | Tooling | 2 days | P4.3 | Done |
+| P4.5 | Cost analytics API (per run, per profession, cumulative) | Tooling | 2 days | P4.2 | Done |
+| P4.6 | "Savings vs parallel" estimation heuristic | Tooling | 2 days | P4.5 | Done |
+| P4.7 | Unit tests for budget enforcement | Tooling | 2 days | P4.3 | Done |
 
 **Risk:** Token counting may differ between API provider reporting and actual billing.  
 **Mitigation:** Use API-reported usage where available; warn users that tracked usage is an estimate.

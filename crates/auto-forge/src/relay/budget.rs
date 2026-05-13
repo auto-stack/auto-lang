@@ -3,10 +3,11 @@
 //! Tracks and enforces per-step and per-run token spend.
 //! Makes cost a first-class constraint, not a surprise bill.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Token budget with limit, warning threshold, and enforcement strategy.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenBudget {
     pub limit: u64,
     pub warning_at: u64,
@@ -37,7 +38,7 @@ impl TokenBudget {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BudgetStrategy {
     /// Halt step and request human decision.
     HardStop,
@@ -50,7 +51,7 @@ pub enum BudgetStrategy {
 }
 
 /// Tracks token usage across a run, per step and cumulatively.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BudgetTracker {
     pub run_budget: TokenBudget,
     pub step_budgets: HashMap<String, TokenBudget>,
@@ -128,12 +129,29 @@ impl BudgetTracker {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BudgetAction {
     None,
     Warning { remaining: u64 },
     Compress,
     HardStop,
+}
+
+/// Cost analytics report for a run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CostReport {
+    pub run_id: String,
+    pub total_tokens: u64,
+    pub total_input: u64,
+    pub total_output: u64,
+    pub per_profession: HashMap<String, u64>,
+    pub per_step: HashMap<String, u64>,
+    pub budget_limit: u64,
+    pub budget_remaining: u64,
+    pub parallel_estimate: u64,
+    pub savings: u64,
+    pub savings_ratio: f64,
+    pub checkpoints: u32,
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

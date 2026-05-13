@@ -3,7 +3,8 @@
 //! The deterministic state machine that executes Flow specs.
 //! Pure Rust code — zero LLM tokens spent on orchestration.
 
-use crate::relay::flow::{ExitRouting, FlowSpec, FlowStep, GateType};
+use crate::relay::budget::{BudgetTracker, TokenBudget};
+use crate::relay::flow::{ExitRouting, FlowSpec, GateType};
 use crate::relay::handoff::HandoffDocument;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -75,6 +76,8 @@ pub struct PipelineEngine {
     pub gate_resolved_for_step: Option<String>,
     /// Accumulated token usage across all steps.
     pub cumulative_tokens: u64,
+    /// Budget tracker for runaway cost prevention and analytics.
+    pub budget_tracker: BudgetTracker,
 }
 
 /// Current state of the pipeline.
@@ -117,6 +120,11 @@ pub struct PendingGate {
 impl PipelineEngine {
     /// Create a new pipeline from a flow spec.
     pub fn new(flow: FlowSpec, run_id: impl Into<String>) -> Self {
+        Self::with_budget(flow, run_id, TokenBudget::new(100_000))
+    }
+
+    /// Create a new pipeline with a custom run budget.
+    pub fn with_budget(flow: FlowSpec, run_id: impl Into<String>, run_budget: TokenBudget) -> Self {
         Self {
             flow,
             current_step: 0,
@@ -128,6 +136,7 @@ impl PipelineEngine {
             gate_feedback: HashMap::new(),
             gate_resolved_for_step: None,
             cumulative_tokens: 0,
+            budget_tracker: BudgetTracker::new(run_budget),
         }
     }
 
@@ -223,8 +232,27 @@ impl PipelineEngine {
         });
 
         // Update cumulative tokens
-        self.cumulative_tokens +=
-            handoff.token_usage.step_input + handoff.token_usage.step_output;
+        let step_tokens = handoff.token_usage.step_input + handoff.token_usage.step_output;
+        self.cumulative_tokens += step_tokens;
+
+        // Track in budget tracker
+        self.budget_tracker.record(&profession_id, handoff.token_usage.step_input, handoff.token_usage.step_output);
+
+        // Check budget enforcement
+        match self.budget_tracker.check(&profession_id) {
+            crate::relay::budget::BudgetAction::HardStop => {
+                self.status = PipelineStatus::Failed {
+                    error: format!("Budget exceeded: {} tokens spent vs {} limit", self.budget_tracker.cumulative, self.budget_tracker.run_budget.limit),
+                };
+                return AdvanceResult::Failed {
+                    error: match &self.status {
+                        PipelineStatus::Failed { error } => error.clone(),
+                        _ => unreachable!(),
+                    },
+                };
+            }
+            _ => {} // Warning and None are non-fatal at this point
+        }
 
         // Determine next step based on exit routing
         let step_id = self.flow.steps[self.current_step].id.clone();
@@ -566,6 +594,57 @@ mod tests {
 
         // Feedback stored
         assert_eq!(engine.gate_feedback.get("s1").unwrap().len(), 1);
+    }
+
+    // ── Budget enforcement ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_budget_hardstop_prevents_runaway() {
+        use crate::relay::budget::TokenBudget;
+        use crate::relay::handoff::TokenUsage;
+
+        let mut flow = FlowSpec::new("test-budget");
+        flow.add_step(FlowStep::new("s1", "planner"));
+        flow.add_step(FlowStep::new("s2", "architect"));
+
+        // Tight budget: 500 tokens
+        let mut engine = PipelineEngine::with_budget(flow, "run-budget", TokenBudget::new(500));
+
+        // Step 1: 300 tokens — under budget
+        let _ = engine.advance();
+        let mut h1 = make_handoff("planner", "architect");
+        h1.token_usage = TokenUsage { step_input: 200, step_output: 100, cumulative: 300, budget_remaining: 200 };
+        let r1 = engine.submit_handoff(h1);
+        assert!(matches!(r1, AdvanceResult::ExecuteStep { .. }));
+        assert_eq!(engine.budget_tracker.cumulative, 300);
+
+        // Step 2: 300 tokens — cumulative 600 > 500 limit → HardStop
+        let _ = engine.advance();
+        let mut h2 = make_handoff("architect", "coder");
+        h2.token_usage = TokenUsage { step_input: 200, step_output: 100, cumulative: 600, budget_remaining: 0 };
+        let r2 = engine.submit_handoff(h2);
+        assert!(matches!(r2, AdvanceResult::Failed { .. }), "Expected budget hard-stop");
+        assert!(matches!(engine.status, PipelineStatus::Failed { .. }));
+    }
+
+    #[test]
+    fn test_budget_warning_non_fatal() {
+        use crate::relay::budget::TokenBudget;
+        use crate::relay::handoff::TokenUsage;
+
+        let mut flow = FlowSpec::new("test-budget-warn");
+        flow.add_step(FlowStep::new("s1", "planner"));
+
+        // Budget 1000, warning at 700
+        let mut engine = PipelineEngine::with_budget(flow, "run-warn", TokenBudget::new(1000));
+
+        let _ = engine.advance();
+        let mut h = make_handoff("planner", "done");
+        // 800 tokens — above warning (700) but below limit (1000)
+        h.token_usage = TokenUsage { step_input: 500, step_output: 300, cumulative: 800, budget_remaining: 200 };
+        let r = engine.submit_handoff(h);
+        // Should complete normally; warning is advisory
+        assert_eq!(r, AdvanceResult::Completed);
     }
 
     // ── Loop routing ─────────────────────────────────────────────────────────
