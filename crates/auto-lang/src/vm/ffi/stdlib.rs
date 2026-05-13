@@ -3757,23 +3757,122 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             }
         }
         ("ReaderBuilder", "from_reader") => {
-            let _reader: String = String::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("ReaderBuilder.from_reader: {}", e)))?;
-            let handle = pop_rust_obj(task, vm, "ReaderBuilder.from_reader")?;
-            let obj = vm.get_heap_object(handle).unwrap();
+            let reader_handle = pop_rust_obj(task, vm, "ReaderBuilder.from_reader")?;
+            let bytes: Vec<u8> = {
+                let reader_obj = vm.get_heap_object(reader_handle).unwrap();
+                let reader_guard = reader_obj.read().unwrap();
+                if let Some(rust_obj) = reader_guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                    rust_obj.downcast_ref::<Vec<u8>>().cloned().unwrap_or_default()
+                } else {
+                    Vec::new()
+                }
+            };
+            let builder_handle = pop_rust_obj(task, vm, "ReaderBuilder.from_reader")?;
+            let obj = vm.get_heap_object(builder_handle).unwrap();
             let guard = obj.read().unwrap();
             if let Some(builder) = guard.as_any().downcast_ref::<csv::ReaderBuilder>() {
-                let reader = builder.from_reader(std::io::Cursor::new(Vec::<u8>::new()));
+                let reader = builder.from_reader(std::io::Cursor::new(bytes));
                 push_rust_obj(task, vm, "csv::Reader<std::io::Cursor<Vec<u8>>>", reader)?;
             } else {
                 return Err(VMError::RuntimeError("ReaderBuilder.from_reader: invalid object".into()));
             }
         }
         ("Reader", "from_reader") => {
-            let _reader: String = String::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("Reader.from_reader: {}", e)))?;
-            let reader = csv::Reader::from_reader(std::io::Cursor::new(Vec::<u8>::new()));
+            let reader_handle = pop_rust_obj(task, vm, "Reader.from_reader")?;
+            let bytes: Vec<u8> = {
+                let reader_obj = vm.get_heap_object(reader_handle).unwrap();
+                let reader_guard = reader_obj.read().unwrap();
+                if let Some(rust_obj) = reader_guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                    rust_obj.downcast_ref::<Vec<u8>>().cloned().unwrap_or_default()
+                } else {
+                    Vec::new()
+                }
+            };
+            let reader = csv::Reader::from_reader(std::io::Cursor::new(bytes));
             push_rust_obj(task, vm, "csv::Reader", reader)?;
+        }
+        ("Reader", "records") => {
+            let handle = pop_rust_obj(task, vm, "Reader.records")?;
+            let Some(obj) = vm.get_heap_object(handle) else {
+                return Err(VMError::RuntimeError("Reader.records: invalid reader handle".into()));
+            };
+            // Collect all records into a List of record heap objects
+            use crate::vm::types::ListData;
+            use std::sync::atomic::Ordering;
+            let mut outer_list: ListData<i32> = ListData::new();
+            {
+                let mut guard = obj.write().unwrap();
+                if let Some(rust_obj) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                    if let Some(reader) = rust_obj.downcast_mut::<csv::Reader<std::io::Cursor<Vec<u8>>>>() {
+                        for result in reader.records() {
+                            if let Ok(record) = result {
+                                // Each record becomes a ListData<i32> of string indices
+                                let mut record_list: ListData<i32> = ListData::new();
+                                for field in record.iter() {
+                                    let str_idx = vm.add_string(field.as_bytes().to_vec());
+                                    record_list.push(str_idx as i32);
+                                }
+                                let record_id = vm.insert_heap_object(record_list);
+                                outer_list.push(record_id as i32);
+                            }
+                        }
+                    }
+                }
+            }
+            let list_id = vm.insert_heap_object(outer_list);
+            // Create a List iterator for the for-loop
+            let iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+            let iterator = crate::vm::engine::Iterator::List(crate::vm::engine::ListIterator {
+                list_id,
+                current_index: 0,
+            });
+            vm.iterators.insert(iterator_id, iterator);
+            task.ram.push_i32(iterator_id as i32);
+        }
+        ("StringRecord", "get") | ("List", "get") => {
+            let index: i32 = i32::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("{}.get: {}", type_name, e)))?;
+            let handle = pop_rust_obj(task, vm, "List.get")?;
+            let Some(obj) = vm.get_heap_object(handle) else {
+                return Err(VMError::RuntimeError("List.get: invalid handle".into()));
+            };
+            let guard = obj.read().unwrap();
+            if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+                let idx = index as usize;
+                if let Some(val) = list.get(idx) {
+                    let val = *val;
+                    if let Some(bytes) = vm.get_string(val as u16) {
+                        let new_idx = vm.add_string(bytes.to_vec());
+                        task.ram.push_str_idx(new_idx as u32);
+                    } else {
+                        #[cfg(feature = "nanbox")]
+                        task.ram.push_nv(auto_val::encode_i32(val));
+                        #[cfg(not(feature = "nanbox"))]
+                        task.ram.push_i32(val);
+                    }
+                } else {
+                    // Out of bounds — push None (0)
+                    task.ram.push_i32(0);
+                }
+            } else {
+                return Err(VMError::RuntimeError("List.get: not a list".into()));
+            }
+        }
+        ("List", "count") | ("List", "len") => {
+            let handle = pop_rust_obj(task, vm, "List.count")?;
+            let Some(obj) = vm.get_heap_object(handle) else {
+                return Err(VMError::RuntimeError("List.count: invalid handle".into()));
+            };
+            let guard = obj.read().unwrap();
+            if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+                let len = list.len() as i32;
+                #[cfg(feature = "nanbox")]
+                task.ram.push_nv(auto_val::encode_i32(len));
+                #[cfg(not(feature = "nanbox"))]
+                task.ram.push_i32(len);
+            } else {
+                task.ram.push_i32(0);
+            }
         }
 
         // ---- ansi_term ----

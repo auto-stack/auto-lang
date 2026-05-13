@@ -4208,6 +4208,186 @@ impl AutoVM {
                         } else {
                             return Err(VMError::MissingNative(native_id));
                         }
+                    } else if type_name == "str" {
+                        // Inline str type method dispatch for CALL_SPEC
+                        // Stack: [..., receiver(str nanbox), arg0, ..., argN-1]
+                        match method_name.as_str() {
+                            "as_bytes" => {
+                                #[cfg(feature = "nanbox")]
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let str_idx = (-receiver - 1) as usize;
+                                let bytes: Vec<u8> = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| b.clone())
+                                    .unwrap_or_default();
+                                // Wrap as RustStdlibObject for FFI consumption
+                                let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("Vec<u8>", bytes);
+                                let handle = self.insert_heap_object(obj) as i32;
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(handle)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(handle); }
+                            }
+                            "to_uppercase" | "to_lower" | "to_lowercase" => {
+                                #[cfg(feature = "nanbox")]
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let str_idx = (-receiver - 1) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                let result = if method_name == "to_uppercase" { s.to_uppercase() } else { s.to_lowercase() };
+                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(-(idx as i32) - 1); }
+                            }
+                            "chars" => {
+                                #[cfg(feature = "nanbox")]
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let str_idx = (-receiver - 1) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                use crate::vm::types::ListData;
+                                let mut list: ListData<i32> = ListData::new();
+                                for ch in s.chars() { list.push(ch as i32); }
+                                let list_id = self.insert_heap_object(list);
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(list_id as i32); }
+                            }
+                            "graphemes" => {
+                                #[cfg(feature = "nanbox")]
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let str_idx = (-receiver - 1) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                use crate::vm::types::ListData;
+                                let mut list: ListData<i32> = ListData::new();
+                                for g in s.split(|c: char| c.is_whitespace() || !c.is_alphanumeric()) {
+                                    if !g.is_empty() { list.push(g.chars().next().unwrap() as i32); }
+                                }
+                                // Fallback: split by char boundaries
+                                if list.len() == 0 { for ch in s.chars() { list.push(ch as i32); } }
+                                let list_id = self.insert_heap_object(list);
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(list_id as i32); }
+                            }
+                            _ => {
+                                // Unknown str method — fall through to other handlers below
+                                #[cfg(feature = "nanbox")]
+                                task.ram.push_nv(auto_val::encode_null());
+                                #[cfg(not(feature = "nanbox"))]
+                                task.ram.push_i32(0);
+                            }
+                        }
+                    } else if type_name == "List" {
+                        match method_name.as_str() {
+                            "count" | "len" => {
+                                #[cfg(feature = "nanbox")]
+                                let list_id = auto_val::decode_object(receiver_nv) as u64;
+                                #[cfg(not(feature = "nanbox"))]
+                                let list_id = receiver as u64;
+                                let len = if let Some(obj) = self.heap_objects.get(&list_id) {
+                                    let guard = obj.read().unwrap();
+                                    if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+                                        list.len() as i32
+                                    } else { 0 }
+                                } else { 0 };
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(len)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(len); }
+                            }
+                            "get" => {
+                                // Pop index arg, then get element from list
+                                #[cfg(feature = "nanbox")]
+                                let index = auto_val::decode_i32(task.ram.pop_nv());
+                                #[cfg(not(feature = "nanbox"))]
+                                let index = task.ram.pop_i32();
+                                #[cfg(feature = "nanbox")]
+                                let list_id = auto_val::decode_object(receiver_nv) as u64;
+                                #[cfg(not(feature = "nanbox"))]
+                                let list_id = receiver as u64;
+                                if let Some(obj) = self.heap_objects.get(&list_id) {
+                                    let guard = obj.read().unwrap();
+                                    if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+                                        if let Some(val) = list.get(index as usize) {
+                                            let v = *val;
+                                            // Check if it's a string index
+                                            if let Some(bytes) = self.get_string(v as u16) {
+                                                let new_idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(bytes.to_vec()); i };
+                                                #[cfg(feature = "nanbox")]
+                                                { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(new_idx as u32)); }
+                                                #[cfg(not(feature = "nanbox"))]
+                                                { task.ram.pop_i32(); for _ in 1..arg_count { task.ram.pop_i32(); } task.ram.push_i32(-(new_idx as i32) - 1); }
+                                            } else {
+                                                #[cfg(feature = "nanbox")]
+                                                { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(v)); }
+                                                #[cfg(not(feature = "nanbox"))]
+                                                { task.ram.pop_i32(); for _ in 1..arg_count { task.ram.pop_i32(); } task.ram.push_i32(v); }
+                                            }
+                                        } else {
+                                            // Out of bounds — push 0 (None)
+                                            #[cfg(feature = "nanbox")]
+                                            { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_i32(0); }
+                                            #[cfg(not(feature = "nanbox"))]
+                                            { task.ram.pop_i32(); for _ in 1..arg_count { task.ram.pop_i32(); } task.ram.push_i32(0); }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {
+                                // Unknown List method — push nil, fall through
+                                #[cfg(feature = "nanbox")]
+                                task.ram.push_nv(auto_val::encode_null());
+                                #[cfg(not(feature = "nanbox"))]
+                                task.ram.push_i32(0);
+                            }
+                        }
+                    } else if type_name.contains("::") || type_name.contains("RustStdlib") {
+                        // Generic fallback for external crate types (csv::ReaderBuilder, etc.)
+                        // Route through shim_rust_stdlib_dispatch with type_name + method injected
+                        let dispatch_id: u16 = 3000; // NATIVE_RUST_STDLIB_DISPATCH
+                        // Extract short type name: "csv::ReaderBuilder" -> "ReaderBuilder"
+                        let short_type = type_name.rsplit("::").next().unwrap_or(&type_name);
+                        // Push method and type_name strings for the dispatch handler
+                        let method_bytes = method_name.as_bytes().to_vec();
+                        let type_bytes = short_type.as_bytes().to_vec();
+                        let method_idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(method_bytes); i };
+                        let type_idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(type_bytes); i };
+                        // shim_rust_stdlib_dispatch expects: type_name(str), method(str) on top
+                        // Stack is: [..., receiver, arg0..argN-1]
+                        // Push type_name and method on top (1 nanbox slot each, no null marker)
+                        #[cfg(feature = "nanbox")]
+                        {
+                            task.ram.push_nv(auto_val::encode_string(type_idx as u32));
+                            task.ram.push_nv(auto_val::encode_string(method_idx as u32));
+                        }
+                        #[cfg(not(feature = "nanbox"))]
+                        {
+                            task.ram.push_i32(-(type_idx as i32) - 1);
+                            task.ram.push_i32(-(method_idx as i32) - 1);
+                        }
+                        if let Some(shim) = self.native_interface.get(dispatch_id).cloned() {
+                            shim(task, self)?;
+                        } else {
+                            return Err(VMError::MissingNative(dispatch_id));
+                        }
+                        // Clean up: dispatch consumed type_name + method + receiver + args, pushed return
+                        // Stack should now be: [..., return_value] — correct
                     } else if method_name == "is_none" || method_name == "is_some" {
                         // Plan 240: Inline is_none/is_some for any type (Option semantics)
                         // In nanbox mode: check nanbox type tag to determine Some vs None
