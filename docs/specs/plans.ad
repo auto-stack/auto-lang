@@ -60,7 +60,7 @@
 ---
 
 ### P3 Agents Relay — Checkpoint & Durability
-**Status:** Draft
+**Status:** Done
 **Objective:** G4
 **Estimated Duration:** 3 weeks
 **Owner:** Tooling Team
@@ -69,15 +69,15 @@
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
-| P3.1 | Checkpoint data model and JSON serialization | Tooling | 2 days | D4 | Empty |
-| P3.2 | File manifest capture (hash, size) | Tooling | 2 days | D4 | Empty |
-| P3.3 | Git integration: auto-commit or diff capture | Tooling | 2 days | D4 | Empty |
-| P3.4 | Checkpoint save/load on disk | Tooling | 2 days | P3.1 | Empty |
-| P3.5 | Resume from checkpoint: restore files, ledger, state | Tooling | 3 days | P3.4 | Empty |
-| P3.6 | Rehydrate agent from checkpoint (no chat history) | Tooling | 2 days | P3.5 | Empty |
-| P3.7 | Rollback to previous checkpoint | Tooling | 2 days | P3.4 | Empty |
-| P3.8 | Fork run from checkpoint with different parameters | Tooling | 2 days | P3.7 | Empty |
-| P3.9 | Crash recovery integration tests | Tooling | 2 days | P3.5-P3.8 | Empty |
+| P3.1 | Checkpoint data model and JSON serialization | Tooling | 2 days | D4 | Done |
+| P3.2 | File manifest capture (hash, size) | Tooling | 2 days | D4 | Done |
+| P3.3 | Git integration: auto-commit or diff capture | Tooling | 2 days | D4 | Done |
+| P3.4 | Checkpoint save/load on disk | Tooling | 2 days | P3.1 | Done |
+| P3.5 | Resume from checkpoint: restore files, ledger, state | Tooling | 3 days | P3.4 | Done |
+| P3.6 | Rehydrate agent from checkpoint (no chat history) | Tooling | 2 days | P3.5 | Done |
+| P3.7 | Rollback to previous checkpoint | Tooling | 2 days | P3.4 | Done |
+| P3.8 | Fork run from checkpoint with different parameters | Tooling | 2 days | P3.7 | Done |
+| P3.9 | Crash recovery integration tests | Tooling | 2 days | P3.5-P3.8 | Done |
 
 **Risk:** Git auto-commit may pollute project history with checkpoint commits.  
 **Mitigation:** Use a separate `autoforge-checkpoints` branch, or store diffs in checkpoint JSON without committing.

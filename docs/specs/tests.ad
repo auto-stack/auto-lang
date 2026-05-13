@@ -186,7 +186,7 @@ let coder_profession = ProfessionRegistry::new().get("coder").unwrap();
 ---
 
 ### S4.1 [G4] Checkpoint restores after simulated crash
-**Status:** Draft
+**Status:** Done
 **Type:** Integration
 **Scope:** G4
 
@@ -217,7 +217,7 @@ let project_dir = temp_dir.path().join("project");
 ---
 
 ### S4.2 [G4] Resume rehydrates agent without chat history
-**Status:** Draft
+**Status:** Done
 **Type:** Unit
 **Scope:** G4
 

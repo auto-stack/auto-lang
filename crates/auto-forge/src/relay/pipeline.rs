@@ -237,6 +237,7 @@ impl PipelineEngine {
                 self.advance()
             }
             NextStep::Complete => {
+                self.current_step = self.flow.steps.len();
                 self.status = PipelineStatus::Completed;
                 AdvanceResult::Completed
             }

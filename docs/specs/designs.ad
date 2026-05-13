@@ -313,7 +313,7 @@ fn generate(agent, turn_history, specs):
 ---
 
 ### D4 Checkpoint Serialization
-**Status:** Draft
+**Status:** Implemented
 **Module:** `crates/auto-forge/src/relay/checkpoint.rs`
 **Scope:** A3, G4
 

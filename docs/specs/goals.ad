@@ -11,7 +11,7 @@
 | G1 | Agent Identity System supports Soul, Profession, and Model configuration per agent | P0 | Implemented | Tooling Team |
 | G2 | Relay Orchestrator executes serial agent flows with baton passing and gate enforcement | P0 | Implemented | Tooling Team |
 | G3 | Handoff Protocol compresses context between agents, achieving ~5× token savings vs parallel multi-agent | P0 | Implemented | Tooling Team |
-| G4 | Checkpoint & Durability system enables long-running flows to survive crashes and resume without context loss | P0 | Proposed | Tooling Team |
+| G4 | Checkpoint & Durability system enables long-running flows to survive crashes and resume without context loss | P0 | Implemented | Tooling Team |
 | G5 | Token Budgeting tracks and enforces per-step spend with cost analytics visible in Agents view | P1 | Implemented | Tooling Team |
 | G6 | Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval | P0 | Implemented | Tooling Team |
 
@@ -67,14 +67,14 @@ The Handoff Protocol is the core token-efficiency mechanism. By discarding chat 
 
 ### G4 Checkpoint & Durability system enables long-running flows to survive crashes and resume without context loss
 
-**Status:** Proposed
+**Status:** Implemented
 
 **Acceptance Criteria:**
-- [ ] Every handoff produces a checkpoint with: git state, ledger state, handoff document, file manifest, token usage
-- [ ] Runs can resume from any checkpoint after process restart
-- [ ] Resume rehydrates the next agent from checkpoint (no chat history restored)
-- [ ] Rollback restores files, ledger, and state to a previous checkpoint
-- [ ] Fork creates a new run from an existing checkpoint with different parameters
+- [x] Every handoff produces a checkpoint with: git state, ledger state, handoff document, file manifest, token usage
+- [x] Runs can resume from any checkpoint after process restart
+- [x] Resume rehydrates the next agent from checkpoint (no chat history restored)
+- [x] Rollback restores files, ledger, and state to a previous checkpoint
+- [x] Fork creates a new run from an existing checkpoint with different parameters
 
 **Details:**
 Since agents "work longer rather than quicker," flows may run for hours or days. Checkpointing makes this safe. On resume, the next agent starts fresh from the Handoff Document — token cost is identical to continuous execution.
