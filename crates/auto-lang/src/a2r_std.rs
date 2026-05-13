@@ -485,6 +485,14 @@ pub mod fs {
             format!("[{}]", entries.join(","))
         }
     }
+
+    pub fn append_text(path: &str, content: &str) {
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+            let _ = file.write_all(content.as_bytes());
+        }
+    }
 }
 
 /// Parse ~/.claude/settings.json into (api_key, base_url, vars HashMap)

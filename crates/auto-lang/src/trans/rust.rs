@@ -2663,6 +2663,16 @@ impl RustTrans {
                                 write!(out, ")")?;
                                 return Ok(());
                             }
+                            "append_text" => {
+                                write!(out, "a2r_std::fs::append_text(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if i == 1 { write!(out, "&")?; }
+                                    self.arg(arg, out)?;
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             "is_dir" => {
                                 write!(out, "a2r_std::fs::is_dir(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
@@ -3763,6 +3773,19 @@ impl RustTrans {
                     }
                     ("fs", "write_text") => {
                         write!(out, "a2r_std::fs::write_text(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("fs", "append_text") => {
+                        write!(out, "a2r_std::fs::append_text(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
