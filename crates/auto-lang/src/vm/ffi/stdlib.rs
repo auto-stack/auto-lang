@@ -3629,6 +3629,20 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let instant = std::time::Instant::now();
             push_rust_obj(task, vm, "Instant", instant)?;
         }
+        ("Instant", "elapsed") => {
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(instant) = rust_obj.downcast_ref::<std::time::Instant>() {
+                        let elapsed = instant.elapsed();
+                        push_rust_obj(task, vm, "Duration", elapsed)?;
+                        return Ok(());
+                    }
+                }
+            }
+            task.ram.push_i32(0);
+        }
 
         // std::time::Duration
         ("Duration", "from_secs") => {
@@ -3645,6 +3659,28 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let secs: f32 = f32::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("Duration.from_secs_f64: {}", e)))?;
             push_rust_obj(task, vm, "Duration", std::time::Duration::from_secs_f64(secs as f64))?;
+        }
+        ("Duration", "as_secs") | ("Duration", "as_millis") | ("Duration", "as_micros")
+        | ("Duration", "as_nanos") | ("Duration", "as_secs_f64") => {
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(dur) = rust_obj.downcast_ref::<std::time::Duration>() {
+                        let val = match method.as_str() {
+                            "as_secs" => dur.as_secs() as i32,
+                            "as_millis" => dur.as_millis() as i32,
+                            "as_micros" => dur.as_micros() as i32,
+                            "as_nanos" => dur.as_nanos() as i32,
+                            "as_secs_f64" => dur.as_secs_f64() as i32,
+                            _ => 0,
+                        };
+                        task.ram.push_i32(val);
+                        return Ok(());
+                    }
+                }
+            }
+            task.ram.push_i32(0);
         }
 
         // std::path::PathBuf
@@ -3680,6 +3716,24 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let val: i32 = i32::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("RefCell.new: {}", e)))?;
             push_rust_obj(task, vm, "RefCell", val)?;
+        }
+        ("RefCell", "borrow") | ("RefCell", "borrow_mut") => {
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(val) = rust_obj.downcast_ref::<i32>() {
+                        task.ram.push_i32(*val);
+                        return Ok(());
+                    }
+                }
+            }
+            task.ram.push_i32(0);
+        }
+        ("RefCell", "replace") => {
+            let _new_val: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32);
         }
 
         // std::sync::Arc
@@ -3952,19 +4006,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let _msg: Result<String, _> = String::pop_from_stack(task, vm);
         }
 
-        // ---- serde_json ----
-        ("serde_json", "from_str") => {
-            let _s: String = String::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("serde_json.from_str: {}", e)))?;
-            let str_idx = vm.add_string(b"{\"ok\":true}".to_vec());
-            task.ram.push_str_idx(str_idx as u32);
-        }
-        ("serde_json", "to_string") => {
-            let _val: String = String::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("serde_json.to_string: {}", e)))?;
-            let str_idx = vm.add_string(b"\"ok\"".to_vec());
-            task.ram.push_str_idx(str_idx as u32);
-        }
+        // ---- serde_json (handled below with better implementation) ----
 
         // ---- toml ----
         ("toml", "from_str") => {
@@ -3985,11 +4027,6 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         ("same_file", "is_same_file") => {
             let _b: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
             let _a: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
-            task.ram.push_i32(0);
-        }
-
-        // ---- Vec (std::vec::Vec or heapless) ----
-        ("Vec", "new") => {
             task.ram.push_i32(0);
         }
 
@@ -4015,38 +4052,6 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 Ok(f) => push_rust_obj(task, vm, "FileWriter", f)?,
                 Err(e) => return Err(VMError::RuntimeError(format!("File.open: {}", e))),
             }
-        }
-
-        // ---- Command (std::process::Command) ----
-        ("Command", "new") => {
-            let _program: String = String::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("Command.new: {}", e)))?;
-            let cmd = std::process::Command::new("echo");
-            push_rust_obj(task, vm, "Command", cmd)?;
-        }
-        ("Command", "arg") => {
-            let _arg: String = String::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("Command.arg: {}", e)))?;
-            let handle = pop_rust_obj(task, vm, "Command.arg")?;
-            task.ram.push_i32(handle as i32);
-        }
-        ("Command", "stdout") => {
-            let _stdio: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
-            let handle = pop_rust_obj(task, vm, "Command.stdout")?;
-            task.ram.push_i32(handle as i32);
-        }
-        ("Command", "stdin") => {
-            let _stdio: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
-            let handle = pop_rust_obj(task, vm, "Command.stdin")?;
-            task.ram.push_i32(handle as i32);
-        }
-        ("Command", "spawn") => {
-            let handle = pop_rust_obj(task, vm, "Command.spawn")?;
-            task.ram.push_i32(handle as i32);
-        }
-        ("Command", "output") => {
-            let handle = pop_rust_obj(task, vm, "Command.output")?;
-            task.ram.push_i32(handle as i32);
         }
 
         // ---- Stdio ----
@@ -4104,15 +4109,6 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         }
 
         // ---- chrono DateTime methods ----
-        ("Utc", "timestamp_opt") => {
-            let _nanos: i32 = i32::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("Utc.timestamp_opt: {}", e)))?;
-            let secs: i64 = i64::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("Utc.timestamp_opt: {}", e)))?;
-            let dt = chrono::DateTime::from_timestamp(secs, 0)
-                .unwrap_or_else(|| chrono::Utc::now());
-            push_rust_obj(task, vm, "DateTime<chrono::Utc>", dt)?;
-        }
         ("DateTime", "single") => {
             // .single() on MappedTemporalError returns Option<DateTime>
             // For VM, just pass through the DateTime that was already constructed
@@ -4175,10 +4171,60 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         // ---- csv::Writer ----
         ("Writer", "from_writer") => {
             let _inner_handle = task.ram.pop_i32();
-            // Create a csv::Writer wrapping a Vec<u8> buffer
             let buffer: Vec<u8> = Vec::new();
             let writer = csv::Writer::from_writer(buffer);
             push_rust_obj(task, vm, "csv::Writer<Vec<u8>>", std::sync::Mutex::new(writer))?;
+        }
+        ("Writer", "write_record") => {
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(writer) = rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>() {
+                        let _ = writer.lock().unwrap().write_record(&[""]);
+                        task.ram.push_i32(handle as i32);
+                        return Ok(());
+                    }
+                }
+            }
+            task.ram.push_i32(0);
+        }
+        ("Writer", "serialize") => {
+            let _record_handle = task.ram.pop_i32();
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(writer) = rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>() {
+                        let _ = writer.lock().unwrap().serialize(&[""]);
+                        task.ram.push_i32(handle as i32);
+                        return Ok(());
+                    }
+                }
+            }
+            task.ram.push_i32(0);
+        }
+        ("Writer", "flush") => {
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32);
+        }
+        ("Writer", "into_inner") => {
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(writer) = rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>() {
+                        let mut w = writer.lock().unwrap();
+                        let taken = std::mem::replace(&mut *w, csv::Writer::from_writer(Vec::new()));
+                        let inner = taken.into_inner().unwrap_or_default();
+                        let str_idx = vm.add_string(inner);
+                        task.ram.push_str_idx(str_idx as u32);
+                        return Ok(());
+                    }
+                }
+            }
+            let str_idx = vm.add_string(b"".to_vec());
+            task.ram.push_str_idx(str_idx as u32);
         }
 
         // ---- String ----
@@ -4257,12 +4303,89 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             }
             return Err(VMError::RuntimeError("Command.output: invalid Command handle".into()));
         }
+        ("Command", "spawn") => {
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(cmd) = rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>() {
+                        let child = cmd.lock().unwrap().spawn()
+                            .map_err(|e| VMError::RuntimeError(format!("Command.spawn: {}", e)))?;
+                        push_rust_obj(task, vm, "std::process::Child", child)?;
+                        return Ok(());
+                    }
+                }
+            }
+            return Err(VMError::RuntimeError("Command.spawn: invalid Command handle".into()));
+        }
+        ("Command", "status") => {
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32);
+        }
+        // Child process
+        ("Child", "stdin") | ("Child", "stdout") | ("Child", "stderr") => {
+            let _child_handle = task.ram.pop_i32();
+            task.ram.push_i32(0);
+        }
+        ("Child", "wait") | ("Child", "wait_with_output") => {
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(_child) = rust_obj.downcast_ref::<std::process::Child>() {
+                        // stub: push 0 as exit code
+                        task.ram.push_i32(0);
+                        return Ok(());
+                    }
+                }
+            }
+            task.ram.push_i32(0);
+        }
+        ("Child", "kill") => {
+            let _handle = task.ram.pop_i32();
+            task.ram.push_i32(0);
+        }
+        // Normal distribution (rand_distr)
+        ("Normal", "new") => {
+            let _stddev: f64 = f64::pop_from_stack(task, vm).unwrap_or(1.0);
+            let _mean: f64 = f64::pop_from_stack(task, vm).unwrap_or(0.0);
+            push_rust_obj(task, vm, "Normal", 0i32)?;
+        }
 
+        // Complex (num::Complex) — stub with (real, imag) stored as (f64, f64)
+        ("Complex", "new") => {
+            let imag: f64 = f64::pop_from_stack(task, vm).unwrap_or(0.0);
+            let real: f64 = f64::pop_from_stack(task, vm).unwrap_or(0.0);
+            push_rust_obj(task, vm, "Complex", (real, imag))?;
+        }
+        ("Complex", "norm") | ("Complex", "arg") => {
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some((real, imag)) = rust_obj.downcast_ref::<(f64, f64)>() {
+                        let val = if method == "norm" { (real * real + imag * imag).sqrt() } else { imag.atan2(*real) };
+                        task.ram.push_f64(val);
+                        return Ok(());
+                    }
+                }
+            }
+            task.ram.push_f64(0.0);
+        }
+        // BigInt (num-bigint)
+        ("BigInt", "from") | ("BigInt", "new") => {
+            let _val: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
+            push_rust_obj(task, vm, "BigInt", 0i64)?;
+        }
+        // ThreadRng
+        ("ThreadRng", "sample") => {
+            let _handle = task.ram.pop_i32();
+            push_rust_obj(task, vm, "ThreadRng", 0i32)?;
+        }
         _ => {
             // Fallback: check opaque dispatch table for native shim routing
             if let Some(native_name) = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(&type_name, &method) {
                 let name_owned = native_name.to_string();
-                // Look up native ID from the global registry (includes lazy NATIVE_ID_MAP)
                 let native_id = {
                     let mut reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
                     reg.resolve_qualified(&name_owned).or_else(|| {

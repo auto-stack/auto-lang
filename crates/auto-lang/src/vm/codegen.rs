@@ -6048,6 +6048,29 @@ impl Codegen {
                 // For instance methods, receiver is arg 0, so other args start from index 1
                 let arg_offset = if is_instance_method_call { 1 } else { 0 };
 
+                // Check is_unresolved_static early (needed before arg compilation for stack layout)
+                const KNOWN_STATIC_TYPES: &[&str] = &["HashMap", "Option", "Result"];
+                let is_unresolved_static = !is_instance_method_call && func_name.as_ref()
+                    .map(|name| {
+                        let type_part = name.split('.').next().unwrap_or("");
+                        type_part.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                            && !KNOWN_STATIC_TYPES.contains(&type_part)
+                    })
+                    .unwrap_or(false);
+
+                // For unresolved static calls (e.g., Normal.new(2.0, 3.0)),
+                // push type name as receiver BEFORE args so stack layout is [receiver, arg0, ...]
+                if is_unresolved_static {
+                    if let Some(name) = func_name.as_ref() {
+                        let type_part = name.split('.').next().unwrap_or("");
+                        let type_bytes = type_part.as_bytes().to_vec();
+                        let type_idx = self.strings.len() as u16;
+                        self.strings.push(type_bytes);
+                        self.emit(OpCode::LOAD_STR);
+                        self.code.extend_from_slice(&type_idx.to_le_bytes());
+                    }
+                }
+
                 if !call.args.is_empty() {
                     let func_name_for_params = func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
                     // Plan 230: Get field types for f32→f64 promotion
@@ -6164,41 +6187,22 @@ impl Codegen {
                 } else { false };
                 // Also use CALL_SPEC for unresolved static-like calls (e.g., Normal.new, Complex.new)
                 // where the type name starts with uppercase but isn't in exports/natives
-                // Exclude well-known Rust/stdlib types that should use CALL+reloc
-                const KNOWN_STATIC_TYPES: &[&str] = &["HashMap", "Option", "Result"];
-                let is_unresolved_static = !is_instance_method_call && func_name.as_ref()
-                    .map(|name| {
-                        let type_part = name.split('.').next().unwrap_or("");
-                        type_part.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                            && !KNOWN_STATIC_TYPES.contains(&type_part)
-                    })
-                    .unwrap_or(false);
+                // (is_unresolved_static was computed above before arg compilation)
                 if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static)) {
                     // Dynamic dispatch: emit CALL_SPEC with method name string index and arg count
-                    self.emit(OpCode::CALL_SPEC);
                     let method_str = if let Expr::Dot(_, method) = call.name.as_ref() {
                         method.to_string()
                     } else {
                         func_name.clone().unwrap_or_default()
                     };
+                    // Arg count (excluding receiver) so engine knows stack layout
+                    // Note: for is_unresolved_static, receiver was already pushed before args
+                    let arg_count = call.args.args.len() as u8;
+                    self.emit(OpCode::CALL_SPEC);
                     let method_bytes = method_str.as_bytes().to_vec();
                     let method_idx = self.strings.len() as u16;
                     self.strings.push(method_bytes);
                     self.code.extend_from_slice(&method_idx.to_le_bytes());
-                    // Arg count (excluding receiver) so engine knows stack layout
-                    let arg_count = call.args.args.len() as u8;
-                    // For static calls (e.g., Command.new, Complex.new), push type name
-                    // as a string receiver so CALL_SPEC can resolve the dispatch target
-                    if is_unresolved_static {
-                        if let Some(name) = func_name.as_ref() {
-                            let type_part = name.split('.').next().unwrap_or("");
-                            let type_bytes = type_part.as_bytes().to_vec();
-                            let type_idx = self.strings.len() as u16;
-                            self.strings.push(type_bytes);
-                            self.emit(OpCode::LOAD_STR);
-                            self.code.extend_from_slice(&type_idx.to_le_bytes());
-                        }
-                    }
                     self.code.push(arg_count);
 
                     // Infer return type for CALL_SPEC based on method name suffix

@@ -4058,7 +4058,14 @@ impl AutoVM {
 
                     // The receiver is at stack position sp - arg_count - 1
                     // (args are on top, receiver is below them)
-                    let receiver_pos = task.ram.sp - arg_count - 1;
+                    let sp = task.ram.sp;
+                    let receiver_pos = if sp >= arg_count + 1 {
+                        sp - arg_count - 1
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "CALL_SPEC '{}' stack underflow: sp={} arg_count={}", method_name, sp, arg_count
+                        )));
+                    };
 
                     #[cfg(feature = "nanbox")]
                     let (receiver_nv, receiver_pos) = {
@@ -4097,7 +4104,7 @@ impl AutoVM {
                             "Command", "Stdio", "Writer", "Reader", "ReaderBuilder",
                             "WriterBuilder", "StringRecord", "ThreadRng", "Complex",
                             "BigInt", "Normal", "Rng", "WalkDir", "Instant", "Duration",
-                            "OnceCell", "Regex", "Url", "Version",
+                            "OnceCell", "Regex", "Url", "Version", "RefCell", "Child",
                         ];
                         if STATIC_CALL_TYPES.contains(&s.as_str()) {
                             s
@@ -4526,7 +4533,9 @@ impl AutoVM {
                     } else if type_name.contains("::") || type_name.contains("RustStdlib")
                         || matches!(type_name.as_str(), "Command" | "Stdio" | "Writer" | "Reader"
                             | "ReaderBuilder" | "WriterBuilder" | "StringRecord" | "ThreadRng"
-                            | "Complex" | "BigInt" | "Normal" | "Rng") {
+                            | "Complex" | "BigInt" | "Normal" | "Rng"
+                            | "RefCell" | "Instant" | "Duration" | "Child"
+                            | "OnceCell" | "Backtrace" | "Args") {
                         // Generic fallback for external crate types (csv::ReaderBuilder, etc.)
                         // Also matches bare type names from static calls (e.g., "Command" from Command.arg)
                         // Route through shim_rust_stdlib_dispatch with type_name + method injected
