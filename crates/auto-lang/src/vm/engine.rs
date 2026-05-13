@@ -4386,8 +4386,21 @@ impl AutoVM {
                         } else {
                             return Err(VMError::MissingNative(dispatch_id));
                         }
-                        // Clean up: dispatch consumed type_name + method + receiver + args, pushed return
-                        // Stack should now be: [..., return_value] — correct
+                        // Clean up: dispatch consumed type_name + method from top.
+                        // Original receiver + args are still on stack below return value.
+                        // Pop return value, remove old receiver+args, push return back.
+                        #[cfg(feature = "nanbox")]
+                        {
+                            let top_nv = task.ram.pop_nv();
+                            for _ in 0..=arg_count { task.ram.pop_nv(); }
+                            task.ram.push_nv(top_nv);
+                        }
+                        #[cfg(not(feature = "nanbox"))]
+                        {
+                            let return_val = task.ram.pop_i32();
+                            for _ in 0..=arg_count { task.ram.pop_i32(); }
+                            task.ram.push_i32(return_val);
+                        }
                     } else if method_name == "is_none" || method_name == "is_some" {
                         // Plan 240: Inline is_none/is_some for any type (Option semantics)
                         // In nanbox mode: check nanbox type tag to determine Some vs None
