@@ -3111,6 +3111,9 @@ impl Codegen {
         } else if use_stmt.paths.len() > 1 {
             // use.rust regex::Regex → paths=["regex","Regex"] → register "Regex"
             vec![use_stmt.paths.last().unwrap().as_str()]
+        } else if use_stmt.paths.len() == 1 {
+            // use.rust walkdir → register "walkdir" as module-level import
+            vec![use_stmt.paths[0].as_str()]
         } else {
             vec![]
         };
@@ -3767,8 +3770,14 @@ impl Codegen {
                             }
                         }
                         vm_debug!("DEBUG: Variable {} NOT FOUND!", name_str);
-                        // Plan 080: Variable not found - return proper error
-                        return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
+                        // Plan 240: Check if this is a rust_native_map import (module prefix)
+                        if self.rust_native_map.contains_key(&name_str) {
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(0); // placeholder for module prefix
+                            self.last_expr_type = ObjectType::NestedObject;
+                        } else {
+                            return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
+                        }
                     }
                 }
             }
@@ -5553,17 +5562,27 @@ impl Codegen {
                     if let Some(&id) = self.intrinsics.get(name) {
                         Some(id)
                     }
-                    // Plan 212b: Check rust_native_map FIRST (before BIGVM_NATIVES lock)
-                    else if self.rust_native_map.contains_key(name) {
-                        let qualified = format!("rust.{}", name);
-                        let mut reg = BIGVM_NATIVES.lock().unwrap();
-                        if let Some(id) = reg.resolve_qualified(&qualified) {
-                            drop(reg);
-                            Some(id)
+                    // Plan 212b/240: Check rust_native_map FIRST (before BIGVM_NATIVES lock)
+                    // Matches both bare names (e.g., "encode") and Type.method (e.g., "Utc.now")
+                    // But only route to dispatch 3000 if no existing native is registered.
+                    else if self.rust_native_map.contains_key(name)
+                        || name.contains('.')
+                            && self.rust_native_map.contains_key(
+                                name.split('.').next().unwrap_or("")
+                            )
+                    {
+                        // Check if there's already a registered native for this name
+                        let has_existing = {
+                            let mut reg = BIGVM_NATIVES.lock().unwrap();
+                            reg.resolve_qualified(name).is_some()
+                        };
+                        if has_existing {
+                            // Use the existing native (e.g., toml.parse, json.parse)
+                            let mut reg = BIGVM_NATIVES.lock().unwrap();
+                            reg.resolve_qualified(name)
                         } else {
-                            drop(reg);
-                            let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
-                            Some(id)
+                            // Route to dispatch handler for external crate calls
+                            Some(NATIVE_RUST_STDLIB_DISPATCH)
                         }
                     }
                     // Plan 214: Check py_native_map for Python FFI functions
@@ -5826,27 +5845,34 @@ impl Codegen {
                         }
                     }
 
-                    // Plan 192: Inject implicit type_name and method for Rust stdlib dispatch
+                    // Plan 192/240: Inject implicit type_name and method for Rust stdlib dispatch
                     // Push AFTER user args so type_name/method are on top of stack.
                     // Handler pops method first (top), then type_name (next).
                     if id == NATIVE_RUST_STDLIB_DISPATCH {
-                        if let Expr::Dot(obj, method_name) = call.name.as_ref() {
-                            if let Expr::Ident(type_name_ident) = obj.as_ref() {
-                                let type_str = type_name_ident.to_string();
-                                let type_bytes = type_str.as_bytes().to_vec();
-                                let type_idx = self.strings.len() as u16;
-                                self.strings.push(type_bytes);
-                                self.emit(OpCode::LOAD_STR);
-                                self.code.extend_from_slice(&type_idx.to_le_bytes());
+                        let (type_str, method_str) = if let Expr::Dot(obj, method_name) = call.name.as_ref() {
+                            let t = if let Expr::Ident(type_name_ident) = obj.as_ref() {
+                                type_name_ident.to_string()
+                            } else {
+                                String::new()
+                            };
+                            (t, method_name.to_string())
+                        } else if let Expr::Ident(name) = call.name.as_ref() {
+                            (String::new(), name.to_string())
+                        } else {
+                            (String::new(), String::new())
+                        };
 
-                                let method_str = method_name.to_string();
-                                let method_bytes = method_str.as_bytes().to_vec();
-                                let method_idx = self.strings.len() as u16;
-                                self.strings.push(method_bytes);
-                                self.emit(OpCode::LOAD_STR);
-                                self.code.extend_from_slice(&method_idx.to_le_bytes());
-                            }
-                        }
+                        let type_bytes = type_str.as_bytes().to_vec();
+                        let type_idx = self.strings.len() as u16;
+                        self.strings.push(type_bytes);
+                        self.emit(OpCode::LOAD_STR);
+                        self.code.extend_from_slice(&type_idx.to_le_bytes());
+
+                        let method_bytes = method_str.as_bytes().to_vec();
+                        let method_idx = self.strings.len() as u16;
+                        self.strings.push(method_bytes);
+                        self.emit(OpCode::LOAD_STR);
+                        self.code.extend_from_slice(&method_idx.to_le_bytes());
                     }
 
                     // Plan 178: Select correct print intrinsic based on argument type

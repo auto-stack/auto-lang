@@ -578,6 +578,11 @@ impl Target {
             return Ok(());
         }
 
+        // Multi-file Rust project: use transpile_rust_project() for cross-module support
+        if self.lang.as_str() == "rust" && self.autos.len() > 1 {
+            return self.transpile_rust_project_multi();
+        }
+
         // Create progress bar for transpilation
         let pb = ProgressBar::new(self.autos.len() as u64);
         pb.set_message("Transpiling Auto files");
@@ -677,6 +682,56 @@ impl Target {
         // Recursively transpile dependencies
         for dep in self.deps.iter_mut() {
             dep.transpile_auto()?;
+        }
+
+        Ok(())
+    }
+
+    /// Transpile a multi-file Rust project using transpile_rust_project().
+    ///
+    /// This handles cross-file module discovery, shared TypeStore, and proper
+    /// mod declarations — unlike single-file transpile_rust().
+    fn transpile_rust_project_multi(&mut self) -> AutoResult<()> {
+        info!("Transpiling multi-file Rust project ({} files)", self.autos.len());
+
+        // Find entry file: prefer main.at, otherwise use first .at file
+        let entry = self.autos.iter()
+            .find(|p| p.as_str().ends_with("main.at"))
+            .cloned()
+            .unwrap_or_else(|| self.autos[0].clone());
+
+        info!("Entry file: {}", entry.as_str());
+
+        // Call transpile_rust_project() which discovers all modules
+        let files = auto_lang::trans::rust::transpile_rust_project(entry.as_str())
+            .map_err(|e| format!("transpile_rust_project failed: {}", e))?;
+
+        info!("Generated {} files", files.len());
+
+        // Write all generated files to rust/src/, skipping Cargo.toml
+        let rs_dir = "rust/src";
+        std::fs::create_dir_all(rs_dir)
+            .map_err(|e| format!("Failed to create dir '{}': {}", rs_dir, e))?;
+
+        for (name, content) in &files {
+            if name == "Cargo.toml" {
+                info!("Skipping Cargo.toml (CargoBuilder will generate it)");
+                continue;
+            }
+
+            // transpile_rust_project returns paths like "main.rs", "runtime/mod.rs", "api/anthropic.rs"
+            let full_path = format!("{}/{}", rs_dir, name);
+
+            // Create parent directories for subdirectory modules
+            if let Some(parent) = Path::new(&full_path).parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create dir '{}': {}", parent.display(), e))?;
+            }
+
+            std::fs::write(Path::new(&full_path), content)
+                .map_err(|e| format!("Failed to write Rust file '{}': {}", full_path, e))?;
+            self.srcs.insert(AutoStr::from(full_path.clone()));
+            info!("Generated {}", full_path);
         }
 
         Ok(())

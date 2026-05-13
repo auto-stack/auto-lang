@@ -3696,6 +3696,163 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             push_rust_obj(task, vm, "Mutex", val)?;
         }
 
+        // ---- chrono ----
+        ("Utc", "now") => {
+            let now = chrono::Utc::now();
+            push_rust_obj(task, vm, "chrono::DateTime<chrono::Utc>", now)?;
+        }
+        ("Local", "now") => {
+            let now = chrono::Local::now();
+            push_rust_obj(task, vm, "chrono::DateTime<chrono::Local>", now)?;
+        }
+        ("Duration", "days") => {
+            let days: i64 = i64::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Duration.days: {}", e)))?;
+            push_rust_obj(task, vm, "Duration", chrono::Duration::days(days))?;
+        }
+        ("Duration", "hours") => {
+            let hours: i64 = i64::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Duration.hours: {}", e)))?;
+            push_rust_obj(task, vm, "Duration", chrono::Duration::hours(hours))?;
+        }
+        ("Duration", "seconds") => {
+            let secs: i32 = i32::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Duration.seconds: {}", e)))?;
+            push_rust_obj(task, vm, "Duration", chrono::Duration::seconds(secs as i64))?;
+        }
+        ("NaiveDateTime", "parse_from_str") => {
+            let fmt: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("NaiveDateTime.parse_from_str: {}", e)))?;
+            let s: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("NaiveDateTime.parse_from_str: {}", e)))?;
+            match chrono::NaiveDateTime::parse_from_str(&s, &fmt) {
+                Ok(dt) => push_rust_obj(task, vm, "chrono::NaiveDateTime", dt)?,
+                Err(e) => return Err(VMError::RuntimeError(format!("NaiveDateTime::parse_from_str failed: {}", e))),
+            }
+        }
+        ("Utc", "timestamp_opt") | ("Local", "timestamp_opt") => {
+            let ts: i64 = i64::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("timestamp_opt: {}", e)))?;
+            let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0)
+                .ok_or_else(|| VMError::RuntimeError("timestamp_opt: invalid timestamp".to_string()))?;
+            push_rust_obj(task, vm, "chrono::DateTime<chrono::Utc>", dt)?;
+        }
+
+        // ---- csv ----
+        ("ReaderBuilder", "new") => {
+            let builder = csv::ReaderBuilder::new();
+            push_rust_obj(task, vm, "csv::ReaderBuilder", builder)?;
+        }
+        ("ReaderBuilder", "delimiter") => {
+            let delim: i32 = i32::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("ReaderBuilder.delimiter: {}", e)))?;
+            let handle = pop_rust_obj(task, vm, "ReaderBuilder.delimiter")?;
+            let obj = vm.get_heap_object(handle).unwrap();
+            let mut guard = obj.write().unwrap();
+            if let Some(builder) = guard.as_any_mut().downcast_mut::<csv::ReaderBuilder>() {
+                builder.delimiter(delim as u8);
+                task.ram.push_i32(handle as i32);
+            } else {
+                return Err(VMError::RuntimeError("ReaderBuilder.delimiter: invalid object".into()));
+            }
+        }
+        ("ReaderBuilder", "from_reader") => {
+            let _reader: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("ReaderBuilder.from_reader: {}", e)))?;
+            let handle = pop_rust_obj(task, vm, "ReaderBuilder.from_reader")?;
+            let obj = vm.get_heap_object(handle).unwrap();
+            let guard = obj.read().unwrap();
+            if let Some(builder) = guard.as_any().downcast_ref::<csv::ReaderBuilder>() {
+                let reader = builder.from_reader(std::io::Cursor::new(Vec::<u8>::new()));
+                push_rust_obj(task, vm, "csv::Reader<std::io::Cursor<Vec<u8>>>", reader)?;
+            } else {
+                return Err(VMError::RuntimeError("ReaderBuilder.from_reader: invalid object".into()));
+            }
+        }
+        ("Reader", "from_reader") => {
+            let _reader: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Reader.from_reader: {}", e)))?;
+            let reader = csv::Reader::from_reader(std::io::Cursor::new(Vec::<u8>::new()));
+            push_rust_obj(task, vm, "csv::Reader", reader)?;
+        }
+
+        // ---- ansi_term ----
+        ("Red", "paint") | ("Green", "paint") | ("Yellow", "paint")
+        | ("Blue", "paint") | ("Cyan", "paint") | ("White", "paint") | ("Purple", "paint") => {
+            let s: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("{}.paint: {}", type_name, e)))?;
+            let color = match type_name.as_str() {
+                "Red" => ansi_term::Colour::Red,
+                "Green" => ansi_term::Colour::Green,
+                "Yellow" => ansi_term::Colour::Yellow,
+                "Blue" => ansi_term::Colour::Blue,
+                "Cyan" => ansi_term::Colour::Cyan,
+                "White" => ansi_term::Colour::White,
+                "Purple" => ansi_term::Colour::Purple,
+                _ => ansi_term::Colour::Red,
+            };
+            let str_idx = vm.add_string(color.paint(s).to_string().into_bytes());
+            task.ram.push_str_idx(str_idx as u32);
+        }
+
+        // ---- std::collections ----
+        ("HashMap", "new") => {
+            let map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            push_rust_obj(task, vm, "HashMap", map)?;
+        }
+        ("HashSet", "new") => {
+            let set: std::collections::HashSet<String> = std::collections::HashSet::new();
+            push_rust_obj(task, vm, "HashSet", set)?;
+        }
+
+        // ---- std::fs (module calls) ----
+        ("fs", "read_dir") => {
+            let path: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("fs.read_dir: {}", e)))?;
+            match std::fs::read_dir(&path) {
+                Ok(entries) => push_rust_obj(task, vm, "ReadDir", entries)?,
+                Err(e) => return Err(VMError::RuntimeError(format!("fs.read_dir: {}", e))),
+            }
+        }
+
+        // ---- std::thread ----
+        ("thread", "available_parallelism") => {
+            match std::thread::available_parallelism() {
+                Ok(n) => task.ram.push_i32(n.get() as i32),
+                Err(_) => task.ram.push_i32(1),
+            }
+        }
+
+        // ---- std::cell::RefCell (instance methods) ----
+        ("cell", "borrow") => {
+            task.ram.push_i32(0);
+        }
+        ("cell", "replace") => {
+            let _val: i32 = i32::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("cell.replace: {}", e)))?;
+            let _handle = pop_rust_obj(task, vm, "cell.replace")?;
+            task.ram.push_i32(0);
+        }
+
+        // ---- heapless::Vec ----
+        ("Vec", "new") => {
+            task.ram.push_i32(0);
+        }
+
+        // ---- urlencoding ----
+        ("", "encode") => {
+            let s: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("urlencoding.encode: {}", e)))?;
+            let str_idx = vm.add_string(urlencoding::encode(&s).as_bytes().to_vec());
+            task.ram.push_str_idx(str_idx as u32);
+        }
+
+        // ---- log macros (no-op in VM) ----
+        ("", "info") | ("", "debug") | ("", "warn") | ("", "error")
+        | ("", "trace") => {
+            let _msg: Result<String, _> = String::pop_from_stack(task, vm);
+        }
+
         _ => {
             return Err(VMError::RuntimeError(format!(
                 "Unknown Rust stdlib call: {}.{}", type_name, method
