@@ -7,7 +7,7 @@
 ## Designs
 
 ### D1 AgentInstance & Soul Rendering
-**Status:** Draft
+**Status:** Implemented
 **Module:** `crates/auto-forge/src/relay/agent.rs`
 **Scope:** A2
 
@@ -98,7 +98,7 @@ stateDiagram-v2
 ---
 
 ### D2 PipelineEngine & Flow Execution
-**Status:** Draft
+**Status:** InProgress
 **Module:** `crates/auto-forge/src/relay/pipeline.rs`
 **Scope:** A1
 
@@ -210,7 +210,7 @@ fn execute_next():
 ---
 
 ### D3 HandoffDocument Generation
-**Status:** Draft
+**Status:** Implemented
 **Module:** `crates/auto-forge/src/relay/handoff.rs`
 **Scope:** A1, G3
 
@@ -380,7 +380,7 @@ stateDiagram-v2
 ---
 
 ### D5 TokenBudget Enforcement
-**Status:** Draft
+**Status:** Implemented
 **Module:** `crates/auto-forge/src/relay/budget.rs`
 **Scope:** G5
 

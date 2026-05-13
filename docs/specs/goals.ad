@@ -8,25 +8,25 @@
 
 | ID | Goal | Priority | Status | Stakeholder |
 |---|---|---|---|---|
-| G1 | Agent Identity System supports Soul, Profession, and Model configuration per agent | P0 | Proposed | Tooling Team |
-| G2 | Relay Orchestrator executes serial agent flows with baton passing and gate enforcement | P0 | Proposed | Tooling Team |
-| G3 | Handoff Protocol compresses context between agents, achieving ~5× token savings vs parallel multi-agent | P0 | Proposed | Tooling Team |
+| G1 | Agent Identity System supports Soul, Profession, and Model configuration per agent | P0 | Implemented | Tooling Team |
+| G2 | Relay Orchestrator executes serial agent flows with baton passing and gate enforcement | P0 | InProgress | Tooling Team |
+| G3 | Handoff Protocol compresses context between agents, achieving ~5× token savings vs parallel multi-agent | P0 | Implemented | Tooling Team |
 | G4 | Checkpoint & Durability system enables long-running flows to survive crashes and resume without context loss | P0 | Proposed | Tooling Team |
-| G5 | Token Budgeting tracks and enforces per-step spend with cost analytics visible in Agents view | P1 | Proposed | Tooling Team |
-| G6 | Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval | P0 | Proposed | Tooling Team |
+| G5 | Token Budgeting tracks and enforces per-step spend with cost analytics visible in Agents view | P1 | Implemented | Tooling Team |
+| G6 | Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval | P0 | InProgress | Tooling Team |
 
 ---
 
 ### G1 Agent Identity System supports Soul, Profession, and Model configuration per agent
 
-**Status:** Proposed
+**Status:** Implemented
 
 **Acceptance Criteria:**
-- [ ] Agents can be defined with a Soul (markdown character definition)
-- [ ] Agents can be assigned a Profession that determines spec ownership, tools, and handoff rules
-- [ ] Agents can be configured with a Model (provider, model name, temperature, max_tokens)
-- [ ] Built-in professions exist: Intaker, Planner, Architect, Coder, Tester, Reviewer, Documenter
-- [ ] Custom professions can be added via `.autoforge/professions/` YAML files
+- [x] Agents can be defined with a Soul (markdown character definition)
+- [x] Agents can be assigned a Profession that determines spec ownership, tools, and handoff rules
+- [x] Agents can be configured with a Model (provider, model name, temperature, max_tokens)
+- [x] Built-in professions exist: Intaker, Planner, Architect, Coder, Tester, Reviewer, Documenter
+- [x] Custom professions can be added via `.autoforge/professions/` YAML files
 
 **Details:**
 The Agent Identity separates *who the agent is* (Soul), *what it can do* (Profession), and *what cognitive substrate it uses* (Model). This enables fine-grained control over agent behavior and cost optimization through model tiering.
@@ -35,7 +35,7 @@ The Agent Identity separates *who the agent is* (Soul), *what it can do* (Profes
 
 ### G2 Relay Orchestrator executes serial agent flows with baton passing and gate enforcement
 
-**Status:** Proposed
+**Status:** InProgress
 
 **Acceptance Criteria:**
 - [ ] Flow specs define ordered steps with professions, gates, loops, and branches
@@ -51,14 +51,14 @@ The Orchestrator is pure deterministic code (Rust), not an LLM. It reads Flow sp
 
 ### G3 Handoff Protocol compresses context between agents, achieving ~5× token savings vs parallel multi-agent
 
-**Status:** Proposed
+**Status:** Implemented
 
 **Acceptance Criteria:**
-- [ ] Handoff documents exclude raw chat history
-- [ ] Handoff documents include: summary, decisions, open questions, spec updates, work product, context pointers
-- [ ] Context scoping filters specs to only those relevant to the receiving profession
-- [ ] Each agent receives ≤9k tokens at spawn (Soul + relevant Specs + Handoff)
-- [ ] Agents pull additional context on demand via tools, not via push
+- [x] Handoff documents exclude raw chat history
+- [x] Handoff documents include: summary, decisions, open questions, spec updates, work product, context pointers
+- [x] Context scoping filters specs to only those relevant to the receiving profession
+- [x] Each agent receives ≤9k tokens at spawn (Soul + relevant Specs + Handoff)
+- [x] Agents pull additional context on demand via tools, not via push
 
 **Details:**
 The Handoff Protocol is the core token-efficiency mechanism. By discarding chat history and summarizing work product, agents start each turn with minimal context. Parallel multi-agent systems suffer O(N×K) token overhead; relay reduces this to O(sum of scoped contexts).
@@ -83,11 +83,11 @@ Since agents "work longer rather than quicker," flows may run for hours or days.
 
 ### G5 Token Budgeting tracks and enforces per-step spend with cost analytics visible in Agents view
 
-**Status:** Proposed
+**Status:** Implemented
 
 **Acceptance Criteria:**
-- [ ] Per-step token budgets with configurable limit, warning threshold, and strategy
-- [ ] Budget strategies: HardStop, EscalateModel, SummarizeContext, SkipOptional
+- [x] Per-step token budgets with configurable limit, warning threshold, and strategy
+- [x] Budget strategies: HardStop, EscalateModel, SummarizeContext, SkipOptional
 - [ ] Agents view shows real-time token spend and "savings vs parallel" estimates
 - [ ] Cumulative run budget prevents runaway costs
 - [ ] Cost analytics persist across checkpoints
@@ -99,7 +99,7 @@ Token budgeting makes cost a first-class constraint. The Agents view compares ac
 
 ### G6 Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval
 
-**Status:** Proposed
+**Status:** InProgress
 
 **Acceptance Criteria:**
 - [ ] Flow steps can specify `gate: human` or `gate: auto`

@@ -7,7 +7,7 @@
 ## Tests
 
 ### S1.1 [G1] Agent profession registry loads built-in professions
-**Status:** Draft
+**Status:** Done
 **Type:** Unit
 **Scope:** G1
 
@@ -34,7 +34,7 @@ let registry = ProfessionRegistry::new();
 ---
 
 ### S1.2 [G1] Soul markdown renders into system prompt context
-**Status:** Draft
+**Status:** Done
 **Type:** Unit
 **Scope:** G1
 
@@ -127,7 +127,7 @@ let mut engine = PipelineEngine::new(flow, "test-run-2".into());
 ---
 
 ### S3.1 [G3] Handoff document excludes raw chat history
-**Status:** Draft
+**Status:** Done
 **Type:** Unit
 **Scope:** G3
 
@@ -159,7 +159,7 @@ let history = vec![
 ---
 
 ### S3.2 [G3] Context scope filters specs by profession
-**Status:** Draft
+**Status:** Done
 **Type:** Unit
 **Scope:** G3
 
@@ -243,7 +243,7 @@ let checkpoint = load_test_checkpoint("step-2-checkpoint.json");
 ---
 
 ### S5.1 [G5] Token budget hard-stops at limit
-**Status:** Draft
+**Status:** Done
 **Type:** Unit
 **Scope:** G5
 

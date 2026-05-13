@@ -7,7 +7,7 @@
 ## Plans
 
 ### P1 Agents Relay — Foundation
-**Status:** Draft
+**Status:** Done
 **Objective:** G1, G2, G3
 **Estimated Duration:** 6 weeks
 **Owner:** Tooling Team
@@ -16,15 +16,15 @@
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
-| P1.1 | Soul + Profession data model and registry | Tooling | 3 days | D1 | Empty |
-| P1.2 | Built-in professions (Intaker, Planner, Architect, Coder, Tester, Reviewer) | Tooling | 2 days | P1.1 | Empty |
-| P1.3 | Default Soul configs in `.autoforge/souls/` | Tooling | 2 days | P1.1 | Empty |
-| P1.4 | ModelConfig with provider abstraction and fallback chain | Tooling | 2 days | P1.1 | Empty |
-| P1.5 | Refactor existing Forge into reusable `AgentTurn` engine | Tooling | 3 days | P1.2 | Empty |
-| P1.6 | HandoffDocument schema and generation | Tooling | 3 days | D3 | Empty |
-| P1.7 | Context scoping: filter specs by profession | Tooling | 2 days | P1.6 | Empty |
-| P1.8 | Handoff compression (cheap model or rule-based) | Tooling | 2 days | P1.6 | Empty |
-| P1.9 | Unit tests for AgentInstance and Handoff generation | Tooling | 2 days | P1.5, P1.6 | Empty |
+| P1.1 | Soul + Profession data model and registry | Tooling | 3 days | D1 | Done |
+| P1.2 | Built-in professions (Intaker, Planner, Architect, Coder, Tester, Reviewer) | Tooling | 2 days | P1.1 | Done |
+| P1.3 | Default Soul configs in `.autoforge/souls/` | Tooling | 2 days | P1.1 | Done |
+| P1.4 | ModelConfig with provider abstraction and fallback chain | Tooling | 2 days | P1.1 | Done |
+| P1.5 | Refactor existing Forge into reusable `AgentTurn` engine | Tooling | 3 days | P1.2 | Done |
+| P1.6 | HandoffDocument schema and generation | Tooling | 3 days | D3 | Done |
+| P1.7 | Context scoping: filter specs by profession | Tooling | 2 days | P1.6 | Done |
+| P1.8 | Handoff compression (cheap model or rule-based) | Tooling | 2 days | P1.6 | Done |
+| P1.9 | Unit tests for AgentInstance and Handoff generation | Tooling | 2 days | P1.5, P1.6 | Done |
 
 **Risk:** Soul markdown format may need iteration once real agents use it.  
 **Mitigation:** Start with simple Souls; evolve format based on first 3 real flows.
@@ -34,7 +34,7 @@
 ---
 
 ### P2 Agents Relay — Flow Engine
-**Status:** Draft
+**Status:** InProgress
 **Objective:** G2, G6
 **Estimated Duration:** 4 weeks
 **Owner:** Tooling Team

@@ -1,47 +1,47 @@
 project = "auto-lang"
-version = 4
+version = 5
 
 [[section]]
 id = "goals"
 section_type = "goals"
 title = "🎯 Goals"
-status = "draft"
-last_modified = 1778670000
+status = "approved"
+last_modified = 1778683862
 
 [[section]]
 id = "architecture"
 section_type = "architecture"
 title = "🏗️ Architecture"
-status = "draft"
-last_modified = 1778670000
+status = "approved"
+last_modified = 1778683862
 
 [[section]]
 id = "designs"
 section_type = "designs"
 title = "🎨 Designs"
-status = "draft"
-last_modified = 1778670000
+status = "approved"
+last_modified = 1778683862
 
 [[section]]
 id = "plans"
 section_type = "plans"
 title = "📅 Plans"
-status = "draft"
-last_modified = 1778670000
+status = "approved"
+last_modified = 1778683862
 
 [[section]]
 id = "tests"
 section_type = "tests"
 title = "🧪 Tests"
-status = "draft"
-last_modified = 1778670000
+status = "approved"
+last_modified = 1778683862
 
 [[section]]
 id = "reviews"
 section_type = "reviews"
 title = "📝 Reviews"
 status = "empty"
-last_modified = 1778670000
+last_modified = 1778683862
 
 [[section]]
 id = "reports"
