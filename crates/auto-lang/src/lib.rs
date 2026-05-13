@@ -606,10 +606,10 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
         object_types,
     );
     let (mut vm, output_buffer) = if capture {
-        let (vm, buf) = AutoVM::new_with_capture(flash, 1024);
+        let (vm, buf) = AutoVM::new_with_capture(flash, 8192);
         (vm, Some(buf))
     } else {
-        let vm = AutoVM::new(flash, 1024);
+        let vm = AutoVM::new(flash, 8192);
         (vm, None)
     };
     vm.load_strings(strings);
@@ -1340,7 +1340,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
         object_types,
     );
 
-    let (mut vm, output_buffer) = AutoVM::new_with_capture(flash, 1024);
+    let (mut vm, output_buffer) = AutoVM::new_with_capture(flash, 8192);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
 
@@ -1390,7 +1390,7 @@ pub fn create_vm_from_abt(abt_text: &str) -> AutoResult<(
     crate::vm::native_registry::register_builtin_natives();
 
     // 5. Create VM with stdout capture
-    let (mut vm, output_buffer) = AutoVM::new_with_capture(flash, 1024);
+    let (mut vm, output_buffer) = AutoVM::new_with_capture(flash, 8192);
 
     // 6. Load string pool
     vm.load_strings(pkg.string_pool);

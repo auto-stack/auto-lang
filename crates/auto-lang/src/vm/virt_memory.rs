@@ -281,7 +281,11 @@ impl VirtualRAM {
     #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn push_i32(&mut self, val: i32) {
-        if self.sp >= self.raw_nv.len() { panic!("Stack Overflow"); }
+        if self.sp >= self.raw_nv.len() {
+            // Double the stack capacity
+            let new_size = (self.raw_nv.len() * 2).max(256);
+            self.raw_nv.resize(new_size, 0);
+        }
         self.raw_nv[self.sp] = encode_i32(val);
         self.sp += 1;
     }
@@ -352,7 +356,10 @@ impl VirtualRAM {
     #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn push_f64(&mut self, val: f64) {
-        if self.sp + 1 >= self.raw_nv.len() { panic!("Stack Overflow"); }
+        if self.sp + 1 >= self.raw_nv.len() {
+            let new_size = ((self.raw_nv.len() * 2).max(256)).max(self.sp + 2);
+            self.raw_nv.resize(new_size, 0);
+        }
         // Slot 1: raw f64 bits
         self.raw_nv[self.sp] = val.to_bits();
         self.sp += 1;
@@ -522,7 +529,8 @@ impl VirtualRAM {
     #[inline(always)]
     pub fn push_nv(&mut self, val: NanoValue) {
         if self.sp >= self.raw_nv.len() {
-            panic!("Stack Overflow (nanbox)");
+            let new_size = (self.raw_nv.len() * 2).max(256);
+            self.raw_nv.resize(new_size, 0);
         }
         self.raw_nv[self.sp] = val;
         self.sp += 1;
