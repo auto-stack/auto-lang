@@ -119,6 +119,7 @@ import {
 import { useSpecs } from '@/composables/useSpecs'
 import type { SpecsSection, SpecItem, SectionType, Status } from '@/types/specs'
 import StatusBadge from '@/components/StatusBadge.vue'
+import { ITEM_TEMPLATES, getDefaultStatus, getNextId } from '@/utils/itemTemplates'
 
 // Category components
 import GoalsTable from '@/components/category/GoalsTable.vue'
@@ -219,9 +220,17 @@ function handleStatusChange(payload: { id: string; status: Status }) {
 function handleSave(updated: SpecItem) {
   const section = currentSection.value
   if (!section) return
+
+  // Validation
+  const title = updated.title.trim()
+  if (!title) {
+    alert('Title cannot be empty.')
+    return
+  }
+
   const idx = section.items.findIndex((i) => i.id === updated.id)
   if (idx >= 0) {
-    section.items[idx] = updated
+    section.items[idx] = { ...updated, title }
     saveSection()
   }
 }
@@ -265,22 +274,20 @@ function cancelEdit() {
 function addItem() {
   if (!currentSection.value) return
   const section = currentSection.value
-  const prefixMap: Record<string, string> = {
-    goals: 'G', architecture: 'A', designs: 'D', plans: 'P',
-    tests: 'S', reviews: 'V', reports: 'X', apis: 'I'
-  }
-  const prefix = prefixMap[section.section_type] || section.id.charAt(0).toUpperCase()
-  const seq = section.items.length + 1
+  const existingIds = section.items.map((i) => i.id)
+  const newId = getNextId(section.section_type, existingIds)
+  const template = ITEM_TEMPLATES[section.section_type] || ''
   const newItem: SpecItem = {
-    id: `${prefix}${seq}`,
+    id: newId,
     title: `New ${sectionTypeLabel.value}`,
-    content: '',
-    status: 'draft',
+    content: template,
+    status: getDefaultStatus(section.section_type),
     created_at: Date.now(),
     modified_at: Date.now(),
   }
   section.items.push(newItem)
   activeItemId.value = newItem.id
+  editingItemId.value = newItem.id
   saveSection()
 }
 
