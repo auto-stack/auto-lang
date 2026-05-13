@@ -82,9 +82,9 @@
       </div>
     </nav>
     <main class="view-main">
-      <FurnaceView v-if="currentView === 'furnace'" />
-      <JadesView v-else-if="currentView === 'jades'" />
-      <OrderView v-else-if="currentView === 'order'" />
+      <ChatsView v-if="currentView === 'chats'" />
+      <SpecsView v-else-if="currentView === 'specs'" />
+      <AgentsView v-else-if="currentView === 'agents'" />
       <StreamingDemoView v-else-if="currentView === 'demo'" />
     </main>
   </div>
@@ -98,9 +98,9 @@ import {
 } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 import { useAccentColor, ACCENT_OPTIONS } from '@/composables/useAccentColor'
-import FurnaceView from './views/FurnaceView.vue'
-import JadesView from './views/JadesView.vue'
-import OrderView from './views/OrderView.vue'
+import ChatsView from './views/ChatsView.vue'
+import SpecsView from './views/SpecsView.vue'
+import AgentsView from './views/AgentsView.vue'
 import StreamingDemoView from './views/StreamingDemoView.vue'
 
 const { mode, setMode } = useTheme()
@@ -135,14 +135,14 @@ const themeOptions = [
   { value: 'auto' as const, label: 'System', icon: Monitor },
 ]
 
-const tabs: { id: 'furnace' | 'jades' | 'order' | 'demo'; label: string; icon: unknown }[] = [
-  { id: 'furnace', label: 'Chat', icon: MessageSquare },
-  { id: 'jades', label: 'Specs', icon: Scroll },
-  { id: 'order', label: 'Agents', icon: Orbit },
+const tabs: { id: 'chats' | 'specs' | 'agents' | 'demo'; label: string; icon: unknown }[] = [
+  { id: 'chats', label: 'Chat', icon: MessageSquare },
+  { id: 'specs', label: 'Specs', icon: Scroll },
+  { id: 'agents', label: 'Agents', icon: Orbit },
   { id: 'demo', label: 'Demo', icon: Sparkles },
 ]
 
-const currentView = ref<'furnace' | 'jades' | 'order' | 'demo'>('furnace')
+const currentView = ref<'chats' | 'specs' | 'agents' | 'demo'>('chats')
 </script>
 
 <style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="furnace-view">
+  <div class="chats-view">
     <!-- Session Sidebar -->
     <aside class="session-sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="sidebar-header">
@@ -58,8 +58,8 @@
     </aside>
 
     <!-- Main Chat Area -->
-    <div class="furnace-body">
-      <div class="furnace-header">
+    <div class="chats-body">
+      <div class="chats-header">
         <div class="header-title-row">
           <button v-if="sidebarCollapsed" class="sidebar-toggle-btn" @click="sidebarCollapsed = false" title="Show sessions">
             <PanelLeft :size="16" />
@@ -215,12 +215,12 @@
           </button>
         </div>
       </div>
-      <div v-else class="furnace-input-bar">
+      <div v-else class="chats-input-bar">
         <div class="input-inner">
           <div class="input-row">
             <textarea
               v-model="inputText"
-              class="furnace-input"
+              class="chats-input"
               placeholder="Describe what you want to build... (Shift+Enter to send)"
               :disabled="isLoading"
               @keydown.shift.enter.prevent="sendMessage"
@@ -452,7 +452,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.furnace-view {
+.chats-view {
   display: flex;
   flex-direction: row;
   height: 100%;
@@ -631,7 +631,7 @@ onMounted(async () => {
 
 .session-phase.intake { color: hsl(var(--af-info)); }
 .session-phase.spec_draft { color: hsl(var(--af-warning)); }
-.session-phase.spec_review { color: hsl(var(--af-furnace)); }
+.session-phase.spec_review { color: hsl(var(--af-chats)); }
 .session-phase.execution { color: hsl(var(--af-success)); }
 .session-phase.verification { color: hsl(var(--af-accent)); }
 
@@ -644,7 +644,7 @@ onMounted(async () => {
 
 /* ─── Chat Area ───────────────────────────────────────────────────────────── */
 
-.furnace-body {
+.chats-body {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -652,7 +652,7 @@ onMounted(async () => {
   min-height: 0;
 }
 
-.furnace-header {
+.chats-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -669,7 +669,7 @@ onMounted(async () => {
   width: 80px;
 }
 
-.furnace-header h2 {
+.chats-header h2 {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--af-muted);
@@ -1036,7 +1036,7 @@ onMounted(async () => {
 
 /* ─── Input Bar ───────────────────────────────────────────────────────────── */
 
-.furnace-input-bar {
+.chats-input-bar {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1058,7 +1058,7 @@ onMounted(async () => {
   gap: 0.5rem;
 }
 
-.furnace-input {
+.chats-input {
   flex: 1;
   background: hsl(var(--muted-foreground) / 0.04);
   border: 1px solid hsl(var(--primary) / 0.18);
@@ -1074,17 +1074,17 @@ onMounted(async () => {
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 
-.furnace-input:focus {
+.chats-input:focus {
   border-color: hsl(var(--primary) / 0.45);
   background: var(--af-bg);
   box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
 }
 
-.furnace-input::placeholder {
+.chats-input::placeholder {
   color: var(--af-muted);
 }
 
-.furnace-input:disabled {
+.chats-input:disabled {
   opacity: 0.5;
 }
 
@@ -1189,7 +1189,7 @@ onMounted(async () => {
 
 .session-badge.phase.intake { color: hsl(var(--af-info)); }
 .session-badge.phase.spec_draft { color: hsl(var(--af-warning)); }
-.session-badge.phase.spec_review { color: hsl(var(--af-furnace)); }
+.session-badge.phase.spec_review { color: hsl(var(--af-chats)); }
 .session-badge.phase.execution { color: hsl(var(--af-success)); }
 .session-badge.phase.verification { color: hsl(var(--af-accent)); }
 

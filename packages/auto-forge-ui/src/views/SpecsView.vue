@@ -1,6 +1,6 @@
 <template>
-  <div class="jades-view">
-    <div class="jades-body">
+  <div class="specs-view">
+    <div class="specs-body">
       <!-- Sidebar -->
       <div class="section-nav" :class="{ collapsed: sectionNavCollapsed }">
         <div class="section-nav-header">
@@ -50,12 +50,12 @@
               />
             </div>
           </div>
-          <div class="jades-actions">
-            <button class="jades-btn" @click="triggerDriftCheck">
+          <div class="specs-actions">
+            <button class="specs-btn" @click="triggerDriftCheck">
               <RefreshCw :size="14" />
               Drift Check
             </button>
-            <button class="jades-btn" @click="rebuildRelations">
+            <button class="specs-btn" @click="rebuildRelations">
               <Link2 :size="14" />
               Rebuild Links
             </button>
@@ -70,20 +70,11 @@
                 <div class="editor-badges">
                   <StatusBadge :status="currentSection.status" />
                 </div>
-                <button
-                  class="mode-toggle-btn"
-                  :title="editMode ? 'Preview' : 'Edit'"
-                  @click="editMode = !editMode"
-                >
-                  <Eye v-if="editMode" :size="14" />
-                  <FileEdit v-else :size="14" />
-                  <span>{{ editMode ? 'Preview' : 'Edit' }}</span>
-                </button>
               </div>
             </div>
 
             <!-- Add item button -->
-            <div v-if="!editMode" class="section-toolbar">
+            <div class="section-toolbar">
               <button class="add-btn" @click="addItem">
                 <Plus :size="14" />
                 Add {{ sectionTypeLabel }}
@@ -91,48 +82,17 @@
             </div>
 
             <!-- Category-specific renderer -->
-            <template v-if="!editMode">
-              <component
-                :is="categoryComponent"
-                :items="currentSection.items"
-                :project="project"
-                :expanded-id="activeItemId"
-                @toggle="toggleItem"
-                @jump="jumpToItem"
-                @edit="startEditItem"
-              />
-            </template>
-
-            <!-- Edit mode: structured editor or markdown -->
-            <template v-else>
-              <div v-if="currentSection.items?.length > 0" class="edit-items-list">
-                <div
-                  v-for="item in currentSection.items"
-                  :key="item.id"
-                  class="edit-item-row"
-                >
-                  <div class="edit-item-fields">
-                    <label>ID</label>
-                    <input v-model="item.id" class="edit-input monospace" disabled />
-                    <label>Title</label>
-                    <input v-model="item.title" class="edit-input" />
-                    <label>Status</label>
-                    <select v-model="item.status" class="edit-select">
-                      <option v-for="s in allowedStatuses" :key="s" :value="s">{{ s }}</option>
-                    </select>
-                    <label>Content</label>
-                    <textarea v-model="item.content" class="edit-textarea" rows="6" />
-                  </div>
-                </div>
-              </div>
-              <div v-else class="editor-viewer">
-                <MarkdownRender :content="currentSection.content" :final="true" />
-              </div>
-              <div class="editor-footer">
-                <button class="save-btn" @click="saveSection">Save</button>
-                <button class="cancel-btn" @click="editMode = false">Cancel</button>
-              </div>
-            </template>
+            <component
+              :is="categoryComponent"
+              :items="currentSection.items"
+              :project="project"
+              :expanded-id="activeItemId"
+              @toggle="toggleItem"
+              @jump="jumpToItem"
+              @edit="startEditItem"
+              @status-change="handleStatusChange"
+              @delete="handleDelete"
+            />
           </div>
 
           <div v-else-if="isLoading" class="editor-empty">
@@ -151,18 +111,21 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import {
-  RefreshCw, Search, PanelLeft, Eye, FileEdit, BookOpen, Plus, Link2
+  RefreshCw, Search, PanelLeft, BookOpen, Plus, Link2
 } from 'lucide-vue-next'
-import { MarkdownRender } from 'markstream-vue'
 import { useSpecs } from '@/composables/useSpecs'
 import type { SpecsSection, SpecItem, SectionType, Status } from '@/types/specs'
 import StatusBadge from '@/components/StatusBadge.vue'
 
 // Category components
 import GoalsTable from '@/components/category/GoalsTable.vue'
-import RequirementsCards from '@/components/category/RequirementsCards.vue'
+import ArchitectureCards from '@/components/category/ArchitectureCards.vue'
+import DesignCards from '@/components/category/DesignCards.vue'
+import PlanCards from '@/components/category/PlanCards.vue'
 import TestsCards from '@/components/category/TestsCards.vue'
-import GenericItems from '@/components/category/GenericItems.vue'
+import ReviewCards from '@/components/category/ReviewCards.vue'
+import ReportCards from '@/components/category/ReportCards.vue'
+import ApiCards from '@/components/category/ApiCards.vue'
 
 const { document, isLoading, error, loadDocument, saveDocument, findItemById, findSectionByItemId, rebuildRelations: apiRebuildRelations } = useSpecs()
 
@@ -173,7 +136,7 @@ const activeItemId = ref<string | null>(null)
 const project = ref('auto-lang')
 const specSearch = ref('')
 const sectionNavCollapsed = ref(localStorage.getItem(SPECS_SIDEBAR_KEY) === 'true')
-const editMode = ref(false)
+const flashItemId = ref<string | null>(null)
 
 watch(sectionNavCollapsed, (v) => {
   localStorage.setItem(SPECS_SIDEBAR_KEY, String(v))
@@ -188,11 +151,9 @@ const projectName = computed(() => {
 
 const DEFAULT_SECTIONS: SpecsSection[] = [
   { id: 'goals', section_type: 'goals', title: '🎯 Goals', items: [], content: '', status: 'empty', last_modified: Date.now() },
-  { id: 'requirements', section_type: 'requirements', title: '📐 Requirements', items: [], content: '', status: 'empty', last_modified: Date.now() },
   { id: 'architecture', section_type: 'architecture', title: '🏗️ Architecture', items: [], content: '', status: 'empty', last_modified: Date.now() },
   { id: 'designs', section_type: 'designs', title: '🎨 Designs', items: [], content: '', status: 'empty', last_modified: Date.now() },
   { id: 'plans', section_type: 'plans', title: '📅 Plans', items: [], content: '', status: 'empty', last_modified: Date.now() },
-  { id: 'todos', section_type: 'todos', title: '☑️ Todos', items: [], content: '', status: 'empty', last_modified: Date.now() },
   { id: 'tests', section_type: 'tests', title: '🧪 Tests', items: [], content: '', status: 'empty', last_modified: Date.now() },
   { id: 'reviews', section_type: 'reviews', title: '📝 Reviews', items: [], content: '', status: 'empty', last_modified: Date.now() },
   { id: 'reports', section_type: 'reports', title: '📊 Reports', items: [], content: '', status: 'empty', last_modified: Date.now() },
@@ -223,9 +184,14 @@ const categoryComponent = computed(() => {
   const type = currentSection.value?.section_type
   switch (type) {
     case 'goals': return GoalsTable
-    case 'requirements': return RequirementsCards
+    case 'architecture': return ArchitectureCards
+    case 'designs': return DesignCards
+    case 'plans': return PlanCards
     case 'tests': return TestsCards
-    default: return GenericItems
+    case 'reviews': return ReviewCards
+    case 'reports': return ReportCards
+    case 'apis': return ApiCards
+    default: return null
   }
 })
 
@@ -235,16 +201,27 @@ const sectionTypeLabel = computed(() => {
   return type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')
 })
 
-const allowedStatuses = computed((): Status[] => {
-  // Simple list of all statuses for the dropdown
-  return [
-    'empty', 'proposed', 'draft', 'under_review', 'approved',
-    'in_progress', 'in_implementation', 'implemented', 'verified',
-    'done', 'archived', 'rejected', 'backlog', 'ready', 'in_review',
-    'blocked', 'superseded', 'outdated', 'stable', 'deprecated',
-    'published', 'analysed', 'obsolete'
-  ]
-})
+function handleStatusChange(payload: { id: string; status: Status }) {
+  const section = currentSection.value
+  if (!section) return
+  const item = section.items.find((i) => i.id === payload.id)
+  if (item) {
+    item.status = payload.status
+    item.modified_at = Date.now()
+    saveSection()
+  }
+}
+
+function handleDelete(itemId: string) {
+  const section = currentSection.value
+  if (!section) return
+  const idx = section.items.findIndex((i) => i.id === itemId)
+  if (idx >= 0) {
+    section.items.splice(idx, 1)
+    if (activeItemId.value === itemId) activeItemId.value = null
+    saveSection()
+  }
+}
 
 function toggleItem(id: string) {
   activeItemId.value = activeItemId.value === id ? null : id
@@ -257,23 +234,24 @@ function jumpToItem(id: string) {
   if (section) {
     activeSection.value = section.id
     activeItemId.value = id
-    // Scroll to item after next tick
-    setTimeout(() => {
-      const el = document?.value ? null : null // placeholder
-      // In a real implementation, we'd querySelector and scrollIntoView
-    }, 50)
+    flashItemId.value = id
+    setTimeout(() => { flashItemId.value = null }, 2000)
   }
 }
 
 function startEditItem(item: SpecItem) {
   activeItemId.value = item.id
-  editMode.value = true
+  // TODO: Phase 3 — open per-item editor
 }
 
 function addItem() {
   if (!currentSection.value) return
   const section = currentSection.value
-  const prefix = section.id.charAt(0).toUpperCase()
+  const prefixMap: Record<string, string> = {
+    goals: 'G', architecture: 'A', designs: 'D', plans: 'P',
+    tests: 'S', reviews: 'V', reports: 'X', apis: 'I'
+  }
+  const prefix = prefixMap[section.section_type] || section.id.charAt(0).toUpperCase()
   const seq = section.items.length + 1
   const newItem: SpecItem = {
     id: `${prefix}${seq}`,
@@ -284,21 +262,18 @@ function addItem() {
     modified_at: Date.now(),
   }
   section.items.push(newItem)
-  editMode.value = true
   activeItemId.value = newItem.id
+  saveSection()
 }
 
 async function saveSection() {
   const section = currentSection.value
   if (!section) return
-  // Update section-level content from items for compatibility
-  // Serialize items into markdown content
   section.content = serializeItemsToMarkdown(section)
   section.last_modified = Date.now()
   const doc = document.value
   if (doc) {
     await saveDocument(project.value, doc)
-    editMode.value = false
   }
   if (error.value) {
     alert('Save failed: ' + error.value)
@@ -306,7 +281,6 @@ async function saveSection() {
 }
 
 function serializeItemsToMarkdown(section: SpecsSection): string {
-  // Simple serialization — category-specific serialization would be better
   const lines: string[] = [`## ${section.title.replace(/^[^\w]+\s*/, '')}`]
   for (const item of section.items) {
     lines.push(`### ${item.id} ${item.title}`)
@@ -314,6 +288,9 @@ function serializeItemsToMarkdown(section: SpecsSection): string {
     if (item.priority) lines.push(`**Priority:** ${item.priority}`)
     if (item.assignee) lines.push(`**Assignee:** ${item.assignee}`)
     if (item.test_file) lines.push(`**Test File:** ${item.test_file}`)
+    if (item.file) lines.push(`**File:** ${item.file}`)
+    if (item.milestone) lines.push(`**Milestone:** ${item.milestone}`)
+    if (item.module) lines.push(`**Module:** ${item.module}`)
     if (item.depends_on?.length) lines.push(`**Depends on:** ${item.depends_on.join(', ')}`)
     lines.push('')
     lines.push(item.content)
@@ -349,13 +326,13 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.jades-view {
+.specs-view {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-.jades-body {
+.specs-body {
   display: flex;
   flex: 1;
   overflow: hidden;
@@ -533,13 +510,13 @@ onMounted(() => {
   color: var(--af-muted);
 }
 
-.jades-actions {
+.specs-actions {
   display: flex;
   align-items: center;
   gap: 0.4rem;
 }
 
-.jades-btn {
+.specs-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -554,7 +531,7 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.jades-btn:hover {
+.specs-btn:hover {
   background: hsl(var(--muted-foreground) / 0.08);
   border-color: hsl(var(--primary) / 0.3);
 }
@@ -598,23 +575,6 @@ onMounted(() => {
   gap: 0.4rem;
 }
 
-.mode-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.35rem 0.6rem;
-  font-size: 0.75rem;
-  border-radius: 6px;
-  border: 1px solid var(--af-border);
-  background: hsl(var(--muted-foreground) / 0.04);
-  color: var(--af-fg);
-  cursor: pointer;
-}
-
-.mode-toggle-btn:hover {
-  background: hsl(var(--muted-foreground) / 0.08);
-}
-
 .section-toolbar {
   margin-bottom: 0.75rem;
 }
@@ -653,98 +613,14 @@ onMounted(() => {
   color: var(--af-muted);
 }
 
-/* ─── Edit Mode ───────────────────────────────────────────── */
-
-.edit-items-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+/* Flash animation for jump-to-item */
+@keyframes flash-highlight {
+  0% { background: hsl(48 100% 60% / 0.35); }
+  100% { background: transparent; }
 }
 
-.edit-item-row {
-  padding: 1rem;
-  border-radius: 8px;
-  background: hsl(var(--muted-foreground) / 0.03);
-  border: 1px solid var(--af-border);
+:deep(.spec-item-row.flash) {
+  animation: flash-highlight 1.5s ease-out;
 }
 
-.edit-item-fields {
-  display: grid;
-  grid-template-columns: 80px 1fr;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.edit-item-fields label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--af-muted);
-  text-align: right;
-}
-
-.edit-input,
-.edit-select,
-.edit-textarea {
-  padding: 0.4rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid var(--af-border);
-  background: hsl(var(--background));
-  color: var(--af-fg);
-  font-size: 0.85rem;
-  outline: none;
-}
-
-.edit-input:focus,
-.edit-select:focus,
-.edit-textarea:focus {
-  border-color: hsl(var(--primary) / 0.5);
-}
-
-.edit-input.monospace {
-  font-family: monospace;
-}
-
-.edit-textarea {
-  resize: vertical;
-  min-height: 120px;
-  grid-column: 2;
-}
-
-.editor-footer {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--af-border);
-}
-
-.save-btn {
-  padding: 0.45rem 1rem;
-  font-size: 0.8rem;
-  border-radius: 6px;
-  border: none;
-  background: hsl(var(--primary));
-  color: white;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.save-btn:hover {
-  opacity: 0.9;
-}
-
-.cancel-btn {
-  padding: 0.45rem 1rem;
-  font-size: 0.8rem;
-  border-radius: 6px;
-  border: 1px solid var(--af-border);
-  background: transparent;
-  color: var(--af-muted);
-  cursor: pointer;
-}
-
-.cancel-btn:hover {
-  color: var(--af-fg);
-  background: hsl(var(--muted-foreground) / 0.05);
-}
 </style>

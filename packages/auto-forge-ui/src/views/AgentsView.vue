@@ -23,14 +23,14 @@
         </div>
       </div>
 
-      <!-- Todo Progress (when in Execution) -->
+      <!-- Phase Progress (when in Execution) -->
       <div v-if="sessionPhase === 'execution'" class="progress-panel">
         <div class="progress-header">
-          <span class="progress-title">Executing Todos</span>
-          <span class="progress-count">{{ completedTodos }} / {{ totalTodos }}</span>
+          <span class="progress-title">Executing Phases</span>
+          <span class="progress-count">{{ completedPhases }} / {{ totalPhases }}</span>
         </div>
         <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: todoProgressPercent + '%' }"></div>
+          <div class="progress-fill" :style="{ width: phaseProgressPercent + '%' }"></div>
         </div>
       </div>
 
@@ -85,15 +85,15 @@ function phaseTime(phaseKey: string): string | null {
   return Math.round(entry.entered_at).toString()
 }
 
-// Mock todo progress until backend tracks real todo counts
-const totalTodos = computed(() => 7)
-const completedTodos = computed(() => {
-  const idx = session.value?.current_todo_index
+// Mock phase progress until backend tracks real phase counts
+const totalPhases = computed(() => 7)
+const completedPhases = computed(() => {
+  const idx = session.value?.current_phase_index
   return idx !== undefined && idx !== null ? idx + 1 : 0
 })
-const todoProgressPercent = computed(() => {
-  if (totalTodos.value === 0) return 0
-  return Math.round((completedTodos.value / totalTodos.value) * 100)
+const phaseProgressPercent = computed(() => {
+  if (totalPhases.value === 0) return 0
+  return Math.round((completedPhases.value / totalPhases.value) * 100)
 })
 
 function formatTime(ts: number): string {
@@ -169,8 +169,8 @@ function formatTime(ts: number): string {
 }
 
 .pipeline-node.active {
-  border-color: hsl(var(--af-order) / 0.3);
-  background: hsl(var(--af-order) / 0.04);
+  border-color: hsl(var(--af-agents) / 0.3);
+  background: hsl(var(--af-agents) / 0.04);
 }
 
 .pipeline-node.pending {

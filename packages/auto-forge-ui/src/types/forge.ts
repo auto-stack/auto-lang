@@ -29,7 +29,7 @@ export interface ForgeSession {
   phase: 'intake' | 'spec_draft' | 'spec_review' | 'execution' | 'verification'
   messages: ForgeMessage[]
   pending_spec_changes?: SpecChange[]
-  current_todo_index?: number | null
+  current_phase_index?: number | null
   phase_history?: PhaseHistoryEntry[]
 }
 

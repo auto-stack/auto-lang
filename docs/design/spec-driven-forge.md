@@ -51,14 +51,14 @@ Inspired by Superpowers (brainstorm → plan → execute → review) and GSD
 **What happens:** The AI reads current Jades, drafts updates.
 
 **Process (spec-driven, top-down):**
-1. **Read** current Goals, Requirements, Plans from Jades
+1. **Read** current Goals, Plans, Architecture, Designs, Tests from Specs
 2. **Analyze** impact — what sections need updating?
-3. **Draft** updates using `write_jade` tool:
+3. **Draft** updates using `write_spec` tool:
    - Goals — what is the high-level objective?
-   - Requirements — specific, testable acceptance criteria
-   - Analysis — technical approach, trade-offs, risks
+   - Architecture — structural decisions, component boundaries
+   - Designs — module-level interfaces and state machines
    - Plans — phased implementation strategy
-   - Todos — actionable tasks (2-5 minutes each, with exact file paths)
+   - Tests — executable verification criteria
 4. **Present** summary of proposed changes
 
 **Rule:** No `read_file` / `write_file` tools available in this gate. Only Jades tools.
@@ -84,14 +84,14 @@ Inspired by Superpowers (brainstorm → plan → execute → review) and GSD
 **What happens:** AI implements based on approved specs.
 
 **Process (plan-driven, bottom-up):**
-1. **Read** approved Plans and Todos from Jades
-2. **Execute** todos in order, marking each complete:
+1. **Read** approved Plans and related Tests from Specs
+2. **Execute** plan phases in order, marking each complete:
    - Read relevant files
    - Write failing test (TDD mode)
    - Implement minimal code
    - Verify test passes
-   - Update Jades todo status → `in_progress` → `verified`
-3. **Drift check** — compare implementation against Requirements
+   - Update Plan phase status → `in_progress` → `done`
+3. **Drift check** — compare implementation against Goals (acceptance criteria)
 4. **Update** Reports and Reviews sections
 5. **Done** — session returns to `Idle`
 
@@ -115,10 +115,10 @@ sections. This mirrors GSD's file-based state philosophy.
 │         "version": 3,           # optimistic concurrency
 │         "sections": [
 │           {"id": "goals", "title": "📋 Goals", "status": "approved", "content": "..."},
-│           {"id": "requirements", "title": "📐 Requirements", "status": "approved", "content": "..."},
-│           {"id": "analysis", "title": "🔍 Analysis", "status": "draft", "content": "..."},
+│           {"id": "architecture", "title": "🏗️ Architecture", "status": "draft", "content": "..."},
+│           {"id": "designs", "title": "🎨 Designs", "status": "draft", "content": "..."},
 │           {"id": "plans", "title": "📅 Plans", "status": "approved", "content": "..."},
-│           {"id": "todos", "title": "✅ Todos", "status": "in_progress", "content": "..."},
+│           {"id": "tests", "title": "🧪 Tests", "status": "draft", "content": "..."},
 │           {"id": "reports", "title": "📊 Reports", "status": "draft", "content": "..."},
 │           {"id": "reviews", "title": "📝 Reviews", "status": "draft", "content": "..."}
 │         ]
@@ -156,7 +156,7 @@ POST   /api/smith/ledger/{project}/drift-check   → compare code vs specs
 
 ```rust
 // read_jade — read one section
-{"name": "read_jade", "arguments": {"section_id": "requirements"}}
+{"name": "read_spec", "arguments": {"section_id": "goals"}}
 → Returns the content and status of the section
 
 // write_jade — update one section
@@ -202,7 +202,7 @@ pub struct ForgeSession {
     pub phase: ForgePhase,                    // NEW
     pub messages: Vec<ForgeMessage>,
     pub pending_spec_changes: Vec<SpecChange>, // NEW: queued during SpecReview
-    pub current_todo_index: Option<usize>,     // NEW: which todo we're executing
+    pub current_phase_index: Option<usize>,    // NEW: which plan phase we're executing
 }
 ```
 
@@ -250,9 +250,9 @@ When `phase === SpecReview`, the chat area shows:
 │  🔍 Proposed Jades Updates                  │
 │                                             │
 │  Goals        [modified]  ▼                 │
-│  Requirements [modified]  ▼                 │
+│  Architecture [modified]  ▼                 │
 │  Plans        [new]       ▼                 │
-│  Todos        [new]       ▼                 │
+│  Tests        [new]       ▼                 │
 │                                             │
 │  [Approve & Execute]  [Reject & Redraft]   │
 │  [Edit Specs Inline]                        │
@@ -261,11 +261,11 @@ When `phase === SpecReview`, the chat area shows:
 
 Each section is expandable showing a diff view (old → new).
 
-### 5.3 Todo Progress
+### 5.3 Phase Progress
 
 When `phase === Execution`, the chat shows a sticky progress bar:
 ```
-Executing: 3 / 7 todos completed
+Executing: 3 / 7 phases completed
 [████████░░░░░░░░░░] 43%
 ```
 
@@ -330,44 +330,44 @@ Rules:
 2. Read the current Jades first to understand existing specs.
 3. Follow top-down spec design:
    a. **Goals** — WHAT we are building (1-3 sentences)
-   b. **Requirements** — acceptance criteria (testable, specific)
-   c. **Analysis** — technical approach, trade-offs, risks
+   b. **Architecture** — structural decisions, component boundaries
+   c. **Designs** — module-level interfaces and state machines
    d. **Plans** — phased implementation (high-level)
-   e. **Todos** — actionable tasks (2-5 min each, include exact file paths)
-4. Each todo should follow TDD when possible:
+   e. **Tests** — executable verification criteria
+4. Each plan phase should follow TDD when possible:
    - Write failing test
    - Implement minimal code
    - Verify test passes
-5. Use `write_jade` to update sections. Set status to "draft" for new content.
+5. Use `write_spec` to update sections. Set status to "draft" for new content.
 6. When done, present a summary of changes and wait for approval.
 ```
 
 ### Phase: Execution
 
 ```markdown
-You are executing an approved plan from the Jades.
+You are executing an approved plan from the Specs.
 
 Rules:
-1. Read the Plans and Todos sections first.
-2. Work through todos in ORDER. Do not skip ahead.
-3. For each todo:
+1. Read the Plans and Tests sections first.
+2. Work through plan phases in ORDER. Do not skip ahead.
+3. For each phase:
    a. Read the relevant files
    b. Write failing test (if TDD mode is enabled)
    c. Implement the minimal code change
    d. Run tests / verify
-   e. Mark todo as complete by updating Jades
-4. If you discover a requirement conflict, STOP and ask for clarification.
+   e. Mark phase as complete by updating Specs
+4. If you discover a goal conflict, STOP and ask for clarification.
    Do NOT work around it silently.
-5. After all todos complete, run the full test suite.
+5. After all phases complete, run the full test suite.
 6. Update Reports section with what was done.
 ```
 
 ### Phase: Verification
 
 ```markdown
-You are verifying the implementation against the Jades requirements.
+You are verifying the implementation against the Specs goals.
 
-For each requirement:
+For each goal:
 - Was it implemented? (yes / no / partial)
 - Is there test coverage? (yes / no)
 - Any drift from the spec? (describe)
@@ -385,14 +385,14 @@ Update:
 ### 7.1 Automatic Drift Check
 
 After Execution completes:
-1. Read Requirements section
-2. Read implemented code (files mentioned in todos)
-3. Ask AI: "Does this code satisfy requirement R1.1? R1.2? ..."
-4. Flag mismatches as `drift` status on the requirement
+1. Read Goals section
+2. Read implemented code (files mentioned in plan phases)
+3. Ask AI: "Does this code satisfy goal G1? G1.1? ..."
+4. Flag mismatches as `drift` status on the goal
 
 ### 7.2 Manual Drift Check
 
-The "Drift Check" button in JadesView runs the same check on demand.
+The "Drift Check" button in SpecsView runs the same check on demand.
 
 ---
 
@@ -431,11 +431,11 @@ The "Drift Check" button in JadesView runs the same check on demand.
 1. **Direct implementation threshold:** What counts as "small enough" to skip spec drafting?
    - Proposal: <10 lines changed AND no new files AND no behavior changes
 
-2. **TDD enforcement:** Should todos always require tests first?
+2. **TDD enforcement:** Should plan phases always require tests first?
    - Proposal: Configurable per project. Default: enabled for new code, disabled for bug fixes.
 
-3. **Todo granularity:** How detailed should todos be?
-   - Proposal: 2-5 minutes each, with exact file paths and expected outcome.
+3. **Phase granularity:** How detailed should plan phases be?
+   - Proposal: Each phase should be completable in one focused session (1-4 hours), with clear deliverables.
 
 4. **Session recovery:** If a session dies mid-Execution, how does it resume?
-   - Proposal: Read Jades todos — any todo with status `in_progress` or `pending` is resumed.
+   - Proposal: Read current Plan — find the first non-Done phase and resume from there.

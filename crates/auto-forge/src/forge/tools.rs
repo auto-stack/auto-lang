@@ -492,7 +492,7 @@ impl Tool for ReadJadeTool {
             "properties": {
                 "section_id": {
                     "type": "string",
-                    "description": "The section ID to read (e.g., 'goals', 'requirements', 'plans', 'todos')"
+                    "description": "The section ID to read (e.g., 'goals', 'architecture', 'plans', 'tests')"
                 }
             },
             "required": ["section_id"]
@@ -621,7 +621,7 @@ impl Tool for WriteJadeTool {
     fn description(&self) -> &'static str {
         "Draft an update to a Jades (Specs) section. \
          The change is queued in pending_spec_changes and applied to the Specs only after human approval. \
-         Use this during SpecDraft phase to propose updates to goals, requirements, plans, or todos."
+         Use this during SpecDraft phase to propose updates to goals, architecture, designs, plans, or tests."
     }
 
     fn input_schema(&self) -> Value {
@@ -630,7 +630,7 @@ impl Tool for WriteJadeTool {
             "properties": {
                 "section_id": {
                     "type": "string",
-                    "description": "The section ID to update (e.g., 'goals', 'requirements', 'plans', 'todos')"
+                    "description": "The section ID to update (e.g., 'goals', 'architecture', 'plans', 'tests')"
                 },
                 "content": {
                     "type": "string",

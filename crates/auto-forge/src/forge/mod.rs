@@ -49,11 +49,9 @@ pub struct ForgeSession {
 #[serde(rename_all = "snake_case")]
 pub enum SectionType {
     Goals,
-    Requirements,
     Architecture,
     Designs,
     Plans,
-    Todos,
     Tests,
     Reviews,
     Reports,
@@ -64,11 +62,9 @@ impl SectionType {
     pub fn as_str(&self) -> &'static str {
         match self {
             SectionType::Goals => "goals",
-            SectionType::Requirements => "requirements",
             SectionType::Architecture => "architecture",
             SectionType::Designs => "designs",
             SectionType::Plans => "plans",
-            SectionType::Todos => "todos",
             SectionType::Tests => "tests",
             SectionType::Reviews => "reviews",
             SectionType::Reports => "reports",
@@ -138,7 +134,7 @@ impl Status {
 }
 
 /// A single item inside a SpecsSection.
-/// Goals, Requirements, Todos, etc. are all represented as items with their own lifecycle.
+/// Goals, Architecture, Designs, Plans, Tests, etc. are all represented as items with their own lifecycle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecItem {
     pub id: String,
@@ -156,6 +152,12 @@ pub struct SpecItem {
     pub assignee: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub test_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module: Option<String>,
     pub created_at: u64,
     pub modified_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -187,42 +189,6 @@ impl SectionConfig {
                     (Status::Implemented, Status::Done),
                     (Status::Done, Status::Archived),
                     (Status::InProgress, Status::Archived),
-                ],
-            },
-            SectionType::Requirements => Self {
-                section_type: SectionType::Requirements,
-                allowed_statuses: vec![
-                    Status::Empty, Status::Proposed, Status::Draft, Status::UnderReview,
-                    Status::Approved, Status::InImplementation, Status::Implemented,
-                    Status::Verified, Status::Rejected,
-                ],
-                allowed_transitions: vec![
-                    (Status::Empty, Status::Proposed),
-                    (Status::Proposed, Status::Draft),
-                    (Status::Draft, Status::UnderReview),
-                    (Status::UnderReview, Status::Approved),
-                    (Status::UnderReview, Status::Rejected),
-                    (Status::Approved, Status::InImplementation),
-                    (Status::InImplementation, Status::Implemented),
-                    (Status::Implemented, Status::Verified),
-                    (Status::Rejected, Status::Draft),
-                ],
-            },
-            SectionType::Todos => Self {
-                section_type: SectionType::Todos,
-                allowed_statuses: vec![
-                    Status::Empty, Status::Backlog, Status::Ready, Status::InProgress,
-                    Status::InReview, Status::Done, Status::Verified, Status::Blocked,
-                ],
-                allowed_transitions: vec![
-                    (Status::Empty, Status::Backlog),
-                    (Status::Backlog, Status::Ready),
-                    (Status::Ready, Status::InProgress),
-                    (Status::InProgress, Status::InReview),
-                    (Status::InProgress, Status::Blocked),
-                    (Status::Blocked, Status::Ready),
-                    (Status::InReview, Status::Done),
-                    (Status::Done, Status::Verified),
                 ],
             },
             SectionType::Architecture | SectionType::Designs => Self {
@@ -572,11 +538,9 @@ struct SpecsStore {
 // ─── Embedded Default Templates ──────────────────────────────────────────────
 
 const TMPL_GOALS: &str = include_str!("templates/goals.ad");
-const TMPL_REQUIREMENTS: &str = include_str!("templates/requirements.ad");
 const TMPL_ARCHITECTURE: &str = include_str!("templates/architecture.ad");
 const TMPL_DESIGNS: &str = include_str!("templates/designs.ad");
 const TMPL_PLANS: &str = include_str!("templates/plans.ad");
-const TMPL_TODOS: &str = include_str!("templates/todos.ad");
 const TMPL_TESTS: &str = include_str!("templates/tests.ad");
 const TMPL_REVIEWS: &str = include_str!("templates/reviews.ad");
 const TMPL_REPORTS: &str = include_str!("templates/reports.ad");
@@ -614,13 +578,11 @@ impl SpecsStore {
     }
 
     fn extract_embedded_templates(&self) {
-        let templates: [(&str, &str); 10] = [
+        let templates: [(&str, &str); 8] = [
             ("goals", TMPL_GOALS),
-            ("requirements", TMPL_REQUIREMENTS),
             ("architecture", TMPL_ARCHITECTURE),
             ("designs", TMPL_DESIGNS),
             ("plans", TMPL_PLANS),
-            ("todos", TMPL_TODOS),
             ("tests", TMPL_TESTS),
             ("reviews", TMPL_REVIEWS),
             ("reports", TMPL_REPORTS),
@@ -641,11 +603,9 @@ impl SpecsStore {
             tracing::warn!("Template file not found: {:?}, using embedded fallback", path);
             match name {
                 "goals" => TMPL_GOALS.to_string(),
-                "requirements" => TMPL_REQUIREMENTS.to_string(),
                 "architecture" => TMPL_ARCHITECTURE.to_string(),
                 "designs" => TMPL_DESIGNS.to_string(),
                 "plans" => TMPL_PLANS.to_string(),
-                "todos" => TMPL_TODOS.to_string(),
                 "tests" => TMPL_TESTS.to_string(),
                 "reviews" => TMPL_REVIEWS.to_string(),
                 "reports" => TMPL_REPORTS.to_string(),
@@ -705,11 +665,9 @@ impl SpecsStore {
             version: 1,
             sections: vec![
                 SpecsSection { id: String::from("goals"), section_type: SectionType::Goals, title: String::from("🎯 Goals"), status: Status::Empty, items: vec![], content: self.load_template("goals"), depends_on: vec![], last_modified: now, last_verified: None },
-                SpecsSection { id: String::from("requirements"), section_type: SectionType::Requirements, title: String::from("📐 Requirements"), status: Status::Empty, items: vec![], content: self.load_template("requirements"), depends_on: vec![], last_modified: now, last_verified: None },
                 SpecsSection { id: String::from("architecture"), section_type: SectionType::Architecture, title: String::from("🏗️ Architecture"), status: Status::Empty, items: vec![], content: self.load_template("architecture"), depends_on: vec![], last_modified: now, last_verified: None },
                 SpecsSection { id: String::from("designs"), section_type: SectionType::Designs, title: String::from("🎨 Designs"), status: Status::Empty, items: vec![], content: self.load_template("designs"), depends_on: vec![], last_modified: now, last_verified: None },
                 SpecsSection { id: String::from("plans"), section_type: SectionType::Plans, title: String::from("📅 Plans"), status: Status::Empty, items: vec![], content: self.load_template("plans"), depends_on: vec![], last_modified: now, last_verified: None },
-                SpecsSection { id: String::from("todos"), section_type: SectionType::Todos, title: String::from("☑️ Todos"), status: Status::Empty, items: vec![], content: self.load_template("todos"), depends_on: vec![], last_modified: now, last_verified: None },
                 SpecsSection { id: String::from("tests"), section_type: SectionType::Tests, title: String::from("🧪 Tests"), status: Status::Empty, items: vec![], content: self.load_template("tests"), depends_on: vec![], last_modified: now, last_verified: None },
                 SpecsSection { id: String::from("reviews"), section_type: SectionType::Reviews, title: String::from("📝 Reviews"), status: Status::Empty, items: vec![], content: self.load_template("reviews"), depends_on: vec![], last_modified: now, last_verified: None },
                 SpecsSection { id: String::from("reports"), section_type: SectionType::Reports, title: String::from("📊 Reports"), status: Status::Empty, items: vec![], content: self.load_template("reports"), depends_on: vec![], last_modified: now, last_verified: None },
@@ -784,7 +742,7 @@ impl SpecsStore {
     /// Scans `depends_on` and content text for ID references.
     fn rebuild_relations(doc: &mut SpecsDocument) {
         use regex::Regex;
-        let id_re = Regex::new(r"\b([GRAPTVXIS]\d+(?:\.\d+)?)\b").unwrap();
+        let id_re = Regex::new(r"\b([GADPSVXI]\d+(?:\.\d+)?)\b").unwrap();
 
         // Collect all item IDs for validation
         let mut all_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -872,7 +830,7 @@ mod handlers {
                 role: String::from("system"),
                 content: String::from(
                     "You are AutoSmith Forge, a spec-driven AI coding assistant. \
-                     Help the user build software by understanding requirements, \
+                     Help the user build software by understanding goals, \
                      proposing specs, and generating code.",
                 ),
                 timestamp: now_secs(),
@@ -1420,13 +1378,13 @@ mod handlers {
             }));
         };
 
-        // Find requirements and todos sections
-        let requirements = doc.sections.iter().find(|s| s.id == "requirements").map(|s| s.content.clone()).unwrap_or_default();
-        let todos = doc.sections.iter().find(|s| s.id == "todos").map(|s| s.content.clone()).unwrap_or_default();
+        // Find goals and plans sections
+        let goals = doc.sections.iter().find(|s| s.id == "goals").map(|s| s.content.clone()).unwrap_or_default();
+        let plans = doc.sections.iter().find(|s| s.id == "plans").map(|s| s.content.clone()).unwrap_or_default();
 
-        // Extract file paths from todos (simple heuristic: lines mentioning file paths)
+        // Extract file paths from plans (simple heuristic: lines mentioning file paths)
         let mut file_paths = Vec::new();
-        for line in todos.lines() {
+        for line in plans.lines() {
             // Look for patterns like `src/...`, `crates/...`, `.rs`, `.ts`, `.vue`
             for word in line.split_whitespace() {
                 if word.contains('/') && (word.ends_with(".rs") || word.ends_with(".ts") || word.ends_with(".vue") || word.ends_with(".js")) {
@@ -1446,38 +1404,38 @@ mod handlers {
             }
         }
 
-        if requirements.is_empty() || code_content.is_empty() {
+        if goals.is_empty() || code_content.is_empty() {
             return Json(serde_json::json!({
                 "status": "ok",
                 "drift_detected": false,
                 "sections_checked": 0,
-                "message": "No requirements or code files to compare",
+                "message": "No goals or code files to compare",
             }));
         }
 
-        // Call AI to verify requirements against code
+        // Call AI to verify goals against code
         let prompt = format!(
-            r#"You are a requirements verifier. Compare the following requirements against the implemented code.
+            r#"You are a goals verifier. Compare the following goals against the implemented code.
 
-Requirements:
+Goals:
 {}
 
 Implemented code:
 {}
 
-For each requirement, state whether it is:
+For each goal, state whether it is:
 - FULLY implemented
 - PARTIALLY implemented
 - NOT implemented
 - UNKNOWN (cannot determine from code)
 
 Format your response as:
-R1: <status> — <brief explanation>
-R2: <status> — <brief explanation>
+G1: <status> — <brief explanation>
+G2: <status> — <brief explanation>
 ...
 
-If no requirement IDs exist, number them sequentially."#,
-            requirements, code_content
+If no goal IDs exist, number them sequentially."#,
+            goals, code_content
         );
 
         let request = crate::ai::AIRequest {
@@ -1490,10 +1448,10 @@ If no requirement IDs exist, number them sequentially."#,
         let drift_detected = response.content.to_lowercase().contains("not implemented")
             || response.content.to_lowercase().contains("partially implemented");
 
-        // Update specs: mark requirements section as drift if detected
+        // Update specs: mark goals section as drift if detected
         if drift_detected {
             let mut store = specs().lock().unwrap();
-            let _ = store.update_section(&project, "requirements", requirements.clone(), "drift".to_string());
+            let _ = store.update_section(&project, "goals", goals.clone(), "drift".to_string());
         }
 
         Json(serde_json::json!({

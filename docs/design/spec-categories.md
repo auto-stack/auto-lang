@@ -10,7 +10,7 @@
 
 Specs are not flat documents — they form a **layered decision pyramid**. Each layer answers a distinct question, and each layer is consumed by the layer below it. This design ensures:
 
-- **Traceability**: Every Todo can be traced back to a Goal.
+- **Traceability**: Every Plan can be traced back to a Goal.
 - **Clarity**: Each category has exactly one job.
 - **Machine-readability**: AI agents can parse, generate, and validate specs reliably.
 - **Human-reviewability**: Humans only review what matters at their level.
@@ -20,10 +20,6 @@ Specs are not flat documents — they form a **layered decision pyramid**. Each 
          Why          │   Goals     │  ← 1 sentence, human owns
                       └──────┬──────┘
                              │ refines into
-                    ┌────────┴────────┐
-        What        │  Requirements   │  ← 1 sentence + ≤500 words
-                    └────────┬────────┘
-                             │ informs
             ┌────────────────┼────────────────┐
             ▼                ▼                ▼
      ┌────────────┐   ┌────────────┐   ┌────────────┐
@@ -34,10 +30,6 @@ How-high│Architecture│   │   APIs     │   │  Designs   │
                              │ drives
                       ┌──────┴──────┐
      When / Who       │    Plans    │  ← phases & milestones
-                      └──────┬──────┘
-                             │ breaks into
-                      ┌──────┴──────┐
-        Do            │    Todos    │  ← 2–5 min tasks
                       └──────┬──────┘
                              │ verify with
                       ┌──────┴──────┐
@@ -64,12 +56,10 @@ Every item in every category receives a typed, hierarchical ID:
 | Category | Prefix | Example | Semantics |
 |---|---|---|---|
 | Goals | `G` | `G1`, `G2` | Sequential within project |
-| Requirements | `R` | `R1.1`, `R1.2`, `R2.1` | `R<goal>.<seq>` |
 | Architecture | `A` | `A1`, `A2` | Sequential ADR / component |
 | Designs | `D` | `D1`, `D2` | Sequential module design |
 | Plans | `P` | `P1`, `P2` | Sequential plan phase |
-| Todos | `T` | `T1.1`, `T1.2` | `T<plan>.<seq>` |
-| Tests | `S` | `S1.1`, `S2.1` | `S<req>.<seq>` (S = Spec/Test) |
+| Tests | `S` | `S1.1`, `S2.1` | `S<goal>.<seq>` (S = Spec/Test) |
 | Reviews | `V` | `V1`, `V2` | Sequential review cycle |
 | Reports | `X` | `X2026-05`, `X2026-W20` | Date-based |
 | APIs | `I` | `I1`, `I2` | Sequential interface spec |
@@ -77,7 +67,7 @@ Every item in every category receives a typed, hierarchical ID:
 **Rules:**
 - IDs are immutable. Once assigned, they never change.
 - Deleting an item retires its ID (never reused).
-- IDs are referenced in `depends_on` using the full prefixed form: `"G1"`, `"R1.2"`.
+- IDs are referenced in `depends_on` using the full prefixed form: `"G1"`, `"G1.1"`, `"A1"`.
 
 ### 2.2 Typed References (`depends_on`)
 
@@ -85,19 +75,18 @@ The `depends_on` field on every `SpecItem` contains a list of upstream IDs. The 
 
 ```json
 {
-  "id": "R1.1",
+  "id": "G1",
   "title": "cdylib compilation pipeline",
-  "depends_on": ["G1"]
+  "depends_on": []
 }
 ```
 
 **Valid reference rules:**
-- `Requirements` may only depend on `Goals`.
-- `Architecture` / `Designs` / `APIs` may depend on `Requirements` or each other.
-- `Plans` may depend on `Requirements`, `Architecture`, `Designs`.
-- `Todos` may only depend on `Plans`.
-- `Tests` may depend on `Requirements` and `Designs`.
-- `Reviews` may depend on `Requirements`, `Tests`, and `Todos`.
+- `Goals` are root items — they may only reference other Goals.
+- `Architecture` / `Designs` / `APIs` may depend on `Goals` or each other.
+- `Plans` may depend on `Goals`, `Architecture`, `Designs`.
+- `Tests` may depend on `Goals` and `Designs`.
+- `Reviews` may depend on `Goals`, `Tests`, and `Plans`.
 - `Reports` may depend on anything (aggregator).
 
 ### 2.3 Status Lifecycle
@@ -108,24 +97,19 @@ All categories share a common `Status` enum, but each category exposes only a re
 |---|---|---|
 | `empty` | Section has no items yet | All |
 | `proposed` | Idea floated, not yet analysed | Goals |
-| `draft` | Content written, under internal review | Requirements, Architecture, Designs, Plans, APIs |
-| `under_review` | Under formal review / critique | Requirements, Architecture, Designs, APIs |
-| `approved` | Human has approved | Goals, Requirements, Architecture, Designs, Plans |
+| `draft` | Content written, under internal review | Architecture, Designs, Plans, APIs |
+| `under_review` | Under formal review / critique | Architecture, Designs, APIs |
+| `approved` | Human has approved | Goals, Architecture, Designs, Plans |
 | `in_progress` | Work has started | Goals, Plans |
-| `in_implementation` | Code being written against this spec | Requirements |
-| `implemented` | Code complete, not yet verified | Goals, Requirements |
-| `verified` | Verified against acceptance criteria | Requirements, Todos |
-| `done` | Fully complete | Goals, Plans, Todos |
+| `implemented` | Code complete, not yet verified | Goals |
+| `verified` | Verified against acceptance criteria | Goals, Plans |
+| `done` | Fully complete | Goals, Plans |
 | `stable` | Contract frozen, backward-compatible | APIs |
 | `published` | Report/review published | Reviews, Reports |
-| `backlog` | Queued for future sprint | Todos |
-| `ready` | Ready to be picked up | Todos |
-| `in_review` | PR / implementation under review | Todos |
-| `blocked` | Cannot proceed (dependency / external) | Todos |
 | `superseded` | Replaced by newer design | Architecture, Designs |
 | `outdated` | No longer reflects reality | Architecture, Designs |
 | `deprecated` | Scheduled for removal | APIs |
-| `rejected` | Explicitly rejected | Requirements |
+| `rejected` | Explicitly rejected | Goals |
 | `archived` | Retired, kept for history | Goals |
 | `obsolete` | Plan no longer relevant | Plans |
 
@@ -158,8 +142,8 @@ All categories share a common `Status` enum, but each category exposes only a re
 **Rules:**
 - One row = one Goal. No multi-row descriptions inside the table.
 - The `Goal` column must be a **single sentence** (≤140 characters).
-- If a Goal needs explanation, put it in a footnote or linked Requirement — never inline.
-- Maximum 10 Goals per project. If you need more, some are not Goals — they are Requirements.
+- If a Goal needs explanation, put it in a footnote or linked sub-goal — never inline.
+- Maximum 10 Goals per project. If you need more, some are not Goals — they are sub-goals.
 
 **Status Lifecycle:**
 ```
@@ -168,72 +152,11 @@ Empty → Proposed → Analysed → Approved → InProgress → Implemented → 
 
 **Ownership:** Human creates and approves. AI may propose (`Proposed`) but never approves.
 
-**Downstream:** Each Goal expands into one or more `Requirements` (R&lt;G&gt;.*).
+**Downstream:** Each Goal may have sub-goals (R&lt;G&gt;.*).
 
 ---
 
-### 3.2 Requirements 📐
-
-**Question:** *What does "done" look like?*  
-**Purpose:** Translate Goals into specific, testable acceptance criteria. A Requirement is a contract between human and AI.
-
-**Unit:** Acceptance criterion — one sentence summary + ≤500 words detail + checklist.
-
-**Format:** Structured Markdown items, each with a fixed template.
-
-```markdown
-## Requirements
-
-### R1.1 [G1] cdylib compilation pipeline
-**Status:** Verified  
-**Acceptance Criteria:**
-- [x] `Sandbox.compile_dep()` generates a wrapper crate in `~/.auto/sandbox/`
-- [x] `cargo build` produces a valid `.so`/`.dll` cdylib
-- [x] Compilation artifacts are cached and reused on subsequent runs
-- [ ] Cross-compilation target matrix is documented
-
-**Details:**
-When AutoVM encounters a `dep` statement at runtime, it must resolve the
-requested crate, generate a no-mangle wrapper, compile it as a cdylib,
-load it via `libloading`, and register the exported symbols into the
-`RustFfiBridge` registry. The entire pipeline must complete in <5s for
-cached crates and <30s for first-time compiles.
-
-**Depends on:** G1
-
----
-
-### R1.2 [G1] Primitive type marshaling
-**Status:** Implemented
-**Acceptance Criteria:**
-- [x] `i64`, `f64`, `bool` pass through FFI without boxing
-- [x] `String` ↔ `*const c_char` round-trip is lossless
-- [ ] `Vec<T>` marshaling is implemented for primitive T
-
-**Details:** ...
-```
-
-**Rules:**
-- Every Requirement must reference its parent Goal(s) in the header: `### R1.1 [G1]`.
-- The first line after the header is always `**Status:** <status>`.
-- `Acceptance Criteria` is a GitHub-style task list (`- [ ]`). Each item must be verifiable by a test or manual inspection.
-- `Details` is free text, ≤500 words. It explains *why* the criteria matter and *how* they will be verified.
-- `Depends on` is optional; it lists upstream Requirements or Goals that must be satisfied first.
-
-**Status Lifecycle:**
-```
-Empty → Proposed → Draft → UnderReview → Approved → InImplementation → Implemented → Verified
-                              ↓
-                           Rejected → Draft (rework)
-```
-
-**Ownership:** Human writes and approves. AI drafts `Proposed`/`Draft` items during Gate 2 (SpecDraft).
-
-**Downstream:** Requirements drive `Plans` and are verified by `Reviews`.
-
----
-
-### 3.3 Architecture 🏗️
+### 3.2 Architecture 🏗️
 
 **Question:** *What does the system skeleton look like?*  
 **Purpose:** Document high-level structure, component boundaries, data flow, and key architectural decisions (ADRs).
@@ -300,7 +223,7 @@ Empty → Draft → UnderReview → Approved → Superseded / Outdated
 
 ---
 
-### 3.4 Designs 🎨
+### 3.3 Designs 🎨
 
 **Question:** *How does each module work internally?*  
 **Purpose:** Specify module interfaces, state machines, algorithms, and data models at the implementation level.
@@ -383,10 +306,10 @@ Empty → Draft → UnderReview → Approved → Superseded / Outdated
 
 ---
 
-### 3.5 Plans 📅
+### 3.4 Plans 📅
 
 **Question:** *When and by whom will this be done?*  
-**Purpose:** Translate Requirements and Designs into a phased implementation roadmap with milestones, time estimates, and dependencies.
+**Purpose:** Translate Goals and Designs into a phased implementation roadmap with milestones, time estimates, and dependencies.
 
 **Unit:** Phase or Milestone.
 
@@ -397,7 +320,7 @@ Empty → Draft → UnderReview → Approved → Superseded / Outdated
 
 ### P1 FFI Pipeline Implementation
 **Status:** Done  
-**Objective:** Implement R1.1, R1.2, R1.3  
+**Objective:** Implement G1, G1.1, G1.2  
 **Estimated Duration:** 3 weeks  
 **Owner:** Runtime Team
 
@@ -414,11 +337,11 @@ Empty → Draft → UnderReview → Approved → Superseded / Outdated
 **Risk:** cargo build may exceed 30s on first compile for large crates.
 **Mitigation:** Pre-compile popular crates in CI; use sccache.
 
-**Depends on:** R1.1, R1.2, R1.3, D1
+**Depends on:** G1, G1.1, G1.2, D1
 ```
 
 **Rules:**
-- Every Plan must reference the Requirements it satisfies in `Objective`.
+- Every Plan must reference the Goals it satisfies in `Objective`.
 - Use a table for phase breakdown — this is machine-parseable.
 - Each phase row includes: ID, Task, Owner, Duration, Dependencies, Status.
 - `Risk` and `Mitigation` are mandatory — every plan has unknowns.
@@ -431,68 +354,14 @@ Empty → Draft → Approved → InProgress → Done → Obsolete
 
 **Ownership:** Human PM / tech lead approves. AI drafts the plan during Gate 2.
 
-**Downstream:** Plans decompose into `Todos`.
+**Downstream:** Plans drive `Tests` and are tracked in `Reports`.
 
 ---
 
-
-### 3.6 Todos ☑️
-
-**Question:** *What exact action should I take right now?*  
-**Purpose:** The atomic unit of work. A Todo is actionable, bounded (2–5 minutes), and has a clear completion criterion.
-
-**Unit:** Actionable task.
-
-**Format:** Checkbox list. Each Todo is a single line with metadata.
-
-```markdown
-## Todos
-
-- [x] T1.1 [P1.1] Add `compile_dep()` signature to `Sandbox` trait — `auto-cache/src/sandbox.rs:42`
-- [x] T1.2 [P1.1] Implement `generate_wrapper()` helper — `auto-cache/src/sandbox.rs:88`
-- [ ] T1.3 [P1.2] Wire `cargo build` call via `std::process::Command` — `auto-cache/src/sandbox.rs:120`
-- [ ] T1.4 [P1.2] Parse cargo JSON output for artifact path — `auto-cache/src/sandbox.rs:145`
-- [ ] T1.5 [P1.3] Register compiled symbols in `RustFfiBridge` — `auto-lang/src/ffi.rs:200`
-```
-
-**Extended view** (when expanded):
-```markdown
-### T1.3 [P1.2] Wire `cargo build` call
-**Status:** Ready  
-**Assignee:** Alice  
-**Files:** `auto-cache/src/sandbox.rs:120`
-**Expected outcome:** `compile_dep()` spawns `cargo build` and returns `Ok(path)` on success.
-**Details:**
-Use `std::process::Command::new("cargo")` with `--message-format=json`.
-Capture stdout and parse the compiler artifact message to extract the
-output `.so` path. On failure, parse stderr and return a structured
-`CompileError`.
-```
-
-**Rules:**
-- Every Todo must reference its parent Plan phase: `[P1.1]`.
-- Every Todo must include a **file path hint** — where the change happens.
-- Title is a single sentence, imperative mood: "Add X", "Implement Y", "Fix Z".
-- Todos are ordered. Execution proceeds top-to-bottom.
-- A Todo should take 2–5 minutes. If longer, split it.
-
-**Status Lifecycle:**
-```
-Empty → Backlog → Ready → InProgress → InReview → Done → Verified
-                ↑          │
-                └────── Blocked
-```
-
-**Ownership:** AI generates from Plans during Gate 2. Human may reorder or reassign. AI executes during Gate 4.
-
-**Downstream:** Todos feed into `Reviews` (verification) and `Reports` (progress).
-
----
-
-### 3.7 Reviews 📝
+### 3.5 Reviews 📝
 
 **Question:** *Did we build the right thing, and did we build it right?*  
-**Purpose:** Systematic verification that implementation matches Requirements. Reviews are quality gates.
+**Purpose:** Systematic verification that implementation matches Goals. Reviews are quality gates.
 
 **Unit:** Review finding.
 
@@ -501,14 +370,14 @@ Empty → Backlog → Ready → InProgress → InReview → Done → Verified
 ```markdown
 ## Reviews
 
-### V1 Post-Implementation Review — R1.1 (cdylib pipeline)
+### V1 Post-Implementation Review — G1 (cdylib pipeline)
 **Status:** Published  
 **Review Date:** 2026-05-12  
 **Reviewer:** Alice + AutoForge AI
 
 **Summary:** 4/4 acceptance criteria passed. 1 minor drift detected in error handling.
 
-| Criterion | Requirement | Result | Evidence | Issue |
+| Criterion | Goal | Result | Evidence | Issue |
 |---|---|---|---|---|
 | C1 | Wrapper crate generated | ✅ Pass | `test_wrapper_generation` passes | — |
 | C2 | cdylib compiled | ✅ Pass | `test_cdylib_compile` passes | — |
@@ -527,10 +396,10 @@ Empty → Backlog → Ready → InProgress → InReview → Done → Verified
 ```
 
 **Rules:**
-- Every Review must reference the Requirement(s) being reviewed.
+- Every Review must reference the Goal(s) being reviewed.
 - Use a table for criterion assessment — machine-parseable.
 - Each Issue gets an ID: `V<review>-I<seq>`.
-- Issues link back to `Todos` (fix tasks) and `Reports` (status updates).
+- Issues link back to `Plans` (fix tasks) and `Reports` (status updates).
 - Reviews are `Published` once complete; they are never `Draft` indefinitely.
 
 **Status Lifecycle:**
@@ -540,11 +409,11 @@ Empty → Draft → Published
 
 **Ownership:** AI generates draft during Gate 4 (Verification). Human reviewer approves and publishes.
 
-**Downstream:** Reviews feed `Reports` and spawn new `Todos` for fixes.
+**Downstream:** Reviews feed `Reports` and spawn new `Plans` for fixes.
 
 ---
 
-### 3.8 Reports 📊
+### 3.6 Reports 📊
 
 **Question:** *What is the current state of the project?*  
 **Purpose:** Provide a periodic snapshot of progress, risks, and blockers for stakeholders. Reports are read-only aggregations.
@@ -568,13 +437,13 @@ with Phase 1.2 (Lexer) 80% complete. No critical blockers.
 | Metric | Value | Trend |
 |---|---|---|
 | Goals Complete | 1/3 | ↑ |
-| Requirements Verified | 4/6 | ↑ |
+| Goals Verified | 2/3 | ↑ |
 | Plans Done | 1/2 | → |
-| Todos Done | 12/15 | ↑ |
+| Plans Done | 2/3 | ↑ |
 | Open Blockers | 1 | → |
 
 **Blockers:**
-- **B1** [Blocked] T2.5 — Windows CI runner unavailable for cdylib tests.
+- **B1** [Blocked] P1.5 — Windows CI runner unavailable for cdylib tests.
   - Impact: G1 cross-platform verification delayed.
   - ETA: 2026-05-20
 
@@ -591,7 +460,7 @@ with Phase 1.2 (Lexer) 80% complete. No critical blockers.
 - Reports are **aggregators** — they reference items from all other categories, never introduce new specs.
 - Published on a schedule: weekly (`XYYYY-WNN`) or per-milestone.
 - `Metrics` table is mandatory — quantifiable progress.
-- `Blockers` must link to specific `Todos`.
+- `Blockers` must link to specific `Plans`.
 - `Risks` must link to specific `Plans` or `Goals`.
 
 **Status Lifecycle:**
@@ -605,7 +474,7 @@ Empty → Draft → Published
 
 ---
 
-### 3.9 APIs 🔌
+### 3.7 APIs 🔌
 
 **Question:** *What contracts does the system expose to the outside world?*  
 **Purpose:** Define public interfaces — REST endpoints, function signatures, data schemas — that external consumers depend on.
@@ -691,10 +560,10 @@ Empty → Draft → UnderReview → Stable → Deprecated
 
 ---
 
-### 3.10 Tests 🧪
+### 3.8 Tests 🧪
 
 **Question:** *How do we prove this is correct?*  
-**Purpose:** Define concrete, executable verification methods for Requirements. Tests are the bridge between "what we want" and "how we know it works." Without Tests, AI cannot form a closed loop during execution.
+**Purpose:** Define concrete, executable verification methods for Goals. Tests are the bridge between "what we want" and "how we know it works." Without Tests, AI cannot form a closed loop during execution.
 
 **Unit:** Test case — a single verifiable assertion with input, expected output, and execution context.
 
@@ -703,10 +572,10 @@ Empty → Draft → UnderReview → Stable → Deprecated
 ```markdown
 ## Tests
 
-### S1.1 [R1.1] cdylib compilation pipeline — happy path
+### S1.1 [G1] cdylib compilation pipeline — happy path
 **Status:** Passing  
 **Type:** Integration  
-**Scope:** R1.1
+**Scope:** G1
 
 **Fixture:**
 ```rust
@@ -728,14 +597,14 @@ let dep = DepStmt::parse("dep serde_json").unwrap();
 
 **Test File:** `crates/auto-cache/tests/sandbox_compile_dep.rs`
 
-**Depends on:** R1.1, D1
+**Depends on:** G1, D1
 
 ---
 
-### S1.2 [R1.1] cdylib compilation — unknown crate fails gracefully
+### S1.2 [G1] cdylib compilation — unknown crate fails gracefully
 **Status:** Passing  
 **Type:** Integration  
-**Scope:** R1.1
+**Scope:** G1
 
 **Steps:**
 1. Call `sandbox.compile_dep(&DepStmt::parse("dep nonexistent_crate_12345").unwrap())`
@@ -748,8 +617,8 @@ let dep = DepStmt::parse("dep serde_json").unwrap();
 ```
 
 **Rules:**
-- Every Requirement must have **at least one** associated Test.
-- Every Test must reference its parent Requirement in the header: `### S1.1 [R1.1]`.
+- Every Goal must have **at least one** associated Test.
+- Every Test must reference its parent Goal in the header: `### S1.1 [G1]`.
 - `Type` is one of: `Unit`, `Integration`, `E2E`, `Contract`, `Performance`, `Fuzz`.
 - `Fixture` sets up the preconditions (data, mocks, environment).
 - `Steps` are numbered, imperative, and deterministic.
@@ -766,7 +635,7 @@ Empty → Draft → Implemented → Passing
                        Skipped (temporarily)
 ```
 
-**Ownership:** AI drafts Tests during Gate 2 (alongside Requirements). AI implements test code during Gate 4 (TDD mode: write failing test first, then implement). AI updates status after each run.
+**Ownership:** AI drafts Tests during Gate 2 (alongside Goals). AI implements test code during Gate 4 (TDD mode: write failing test first, then implement). AI updates status after each run.
 
 **Downstream:** Tests feed into `Reviews` (as objective evidence) and `Reports` (as health metrics).
 
@@ -779,9 +648,6 @@ graph TB
     subgraph Why
         G[Goals]
     end
-    subgraph What
-        R[Requirements]
-    end
     subgraph HowHigh
         A[Architecture]
         I[APIs]
@@ -791,7 +657,6 @@ graph TB
     end
     subgraph Execute
         P[Plans]
-        T[Todos]
     end
     subgraph Verify
         S[Tests]
@@ -801,21 +666,18 @@ graph TB
         X[Reports]
     end
 
-    G -->|refines into| R
-    R -->|informs| A
-    R -->|informs| I
-    R -->|drives| P
-    R -->|verified by| S
+    G -->|informs| A
+    G -->|contracts| I
+    G -->|drives| P
+    G -->|verified by| S
     A -->|guides| D
     A -->|contracts| I
     D -->|informs| P
     D -->|informs| S
-    P -->|breaks into| T
-    T -->|feeds| V
     S -->|feeds| V
+    P -->|feeds| V
     S -->|feeds| X
     V -->|feeds| X
-    T -->|feeds| X
     P -->|feeds| X
     G -->|feeds| X
     I -->|informs| D
@@ -825,22 +687,19 @@ graph TB
 
 | From | To | Relation | Cardinality |
 |---|---|---|---|
-| Goals | Requirements | refines into | 1:G → N:R |
-| Requirements | Architecture | informs | N:R → 1:A |
-| Requirements | APIs | contracts | N:R → N:I |
-| Requirements | Plans | drives | N:R → 1:P |
+| Goals | Architecture | informs | N:G → 1:A |
+| Goals | APIs | contracts | N:G → N:I |
+| Goals | Plans | drives | N:G → 1:P |
+| Goals | Tests | verified by | N:G → N:S |
 | Architecture | Designs | guides | 1:A → N:D |
 | Architecture | APIs | contracts | 1:A → N:I |
 | Designs | Plans | informs | N:D → 1:P |
-| Plans | Todos | breaks into | 1:P → N:T |
-| Requirements | Tests | verified by | N:R → N:S |
 | Designs | Tests | informs | N:D → N:S |
 | Tests | Reviews | feeds results | N:S → 1:V |
-| Todos | Reviews | feeds | N:T → 1:V |
-| Requirements | Reviews | verified by | N:R → 1:V |
+| Goals | Reviews | verified by | N:G → 1:V |
+| Plans | Reviews | feeds | 1:P → 1:V |
 | Tests | Reports | feeds | N:S → 1:X |
 | Reviews | Reports | feeds | 1:V → 1:X |
-| Todos | Reports | feeds | N:T → 1:X |
 | Plans | Reports | feeds | 1:P → 1:X |
 | Goals | Reports | feeds | N:G → 1:X |
 
@@ -850,12 +709,10 @@ graph TB
 
 | Category | Allowed Statuses | Key Transitions |
 |---|---|---|
-| Goals | Empty, Proposed, Analysed, Approved, InProgress, Implemented, Done, Archived | Approved→InProgress→Implemented→Done→Archived |
-| Requirements | Empty, Proposed, Draft, UnderReview, Approved, InImplementation, Implemented, Verified, Rejected | Draft→UnderReview→Approved→InImplementation→Implemented→Verified |
+| Goals | Empty, Proposed, Draft, UnderReview, Approved, InProgress, Implemented, Verified, Done, Archived, Rejected | Draft→UnderReview→Approved→InProgress→Implemented→Verified→Done→Archived |
 | Architecture | Empty, Draft, UnderReview, Approved, Superseded, Outdated | Draft→UnderReview→Approved→Superseded/Outdated |
 | Designs | Empty, Draft, UnderReview, Approved, Superseded, Outdated | Draft→UnderReview→Approved→Superseded/Outdated |
 | Plans | Empty, Draft, Approved, InProgress, Done, Obsolete | Draft→Approved→InProgress→Done→Obsolete |
-| Todos | Empty, Backlog, Ready, InProgress, InReview, Done, Verified, Blocked | Backlog→Ready→InProgress→InReview→Done→Verified |
 | Tests | Empty, Draft, Implemented, Passing, Failing, Skipped | Draft→Implemented→Passing; Failing→Fixed→Passing |
 | Reviews | Empty, Draft, Published | Draft→Published |
 | Reports | Empty, Draft, Published | Draft→Published |
@@ -867,21 +724,19 @@ graph TB
 
 | Category | AI Can Create | AI Can Modify | Human Must Approve | Typical Author |
 |---|---|---|---|---|
-| Goals | Propose (`Proposed`) | No | Yes (to `Approved`) | Product Owner / Tech Lead |
-| Requirements | Draft (`Draft`) | During rework | Yes (to `Approved`) | Product Owner / Tech Lead |
+| Goals | Draft sub-goals (`Draft`) | During rework | Yes (to `Approved`) | Product Owner / Tech Lead |
 | Architecture | Draft (`Draft`) | During rework | Yes (to `Approved`) | Staff Engineer / Architect |
 | Designs | Draft (`Draft`) | During rework | Yes (to `Approved`) | Senior Engineer |
 | Plans | Draft (`Draft`) | During execution | Yes (to `Approved`) | Tech Lead / PM |
-| Todos | Generate from Plans | Update status | May reorder | AI Agent (execution) |
-| Tests | Draft from Requirements | Implement + run + update status | May override | AI Agent (TDD) |
+| Tests | Draft from Goals | Implement + run + update status | May override | AI Agent (TDD) |
 | Reviews | Draft findings | No | Yes (to `Published`) | Human reviewer + AI |
 | Reports | Draft snapshot | No | Yes (to `Published`) | PM (review) / AI (draft) |
 | APIs | Draft (`Draft`) | During rework | Yes (to `Stable`) | API Designer |
 
 **Gate Mapping:**
-- **Gate 2 (SpecDraft):** AI drafts Requirements, Tests, Architecture, Designs, Plans, Todos, APIs.
+- **Gate 2 (SpecDraft):** AI drafts sub-goals, Tests, Architecture, Designs, Plans, APIs.
 - **Gate 3 (Approve):** Human reviews and approves.
-- **Gate 4 (Execute):** AI executes Todos (TDD: write Test first, implement, verify Test passes), updates Test and Todo statuses.
+- **Gate 4 (Execute):** AI executes approved Plans (TDD: write Test first, implement, verify Test passes), updates Test and Plan statuses.
 - **Gate 4 (Verify):** AI drafts Reviews using Test results as evidence; human publishes.
 
 ---
@@ -897,9 +752,9 @@ graph TB
 | G1 | <one sentence> | P0 | Approved | <team> |
 ```
 
-### Requirement
+### Goal (Leaf)
 ```markdown
-### R1.1 [G1] <title>
+### G1.1 <title>
 **Status:** Draft
 **Acceptance Criteria:**
 - [ ] <testable item>
@@ -964,7 +819,7 @@ graph TB
 ```markdown
 ### P1 <title>
 **Status:** Draft
-**Objective:** R1.1, R1.2
+**Objective:** G1, G1.1
 **Estimated Duration:** N weeks
 **Owner:** <team>
 
@@ -975,20 +830,17 @@ graph TB
 **Risk:** ...
 **Mitigation:** ...
 
-**Depends on:** R1.1, D1
+**Depends on:** G1, D1
 ```
 
-### Todo
-```markdown
-- [ ] T1.1 [P1.1] <imperative action> — `<file>:<line>`
-```
+
 
 ### Test
 ```markdown
-### S1.1 [R1.1] <title>
+### S1.1 [G1] <title>
 **Status:** Draft
 **Type:** Unit / Integration / E2E / Contract / Performance / Fuzz
-**Scope:** R1.1
+**Scope:** G1
 
 **Fixture:**
 ```<lang>
@@ -1012,7 +864,7 @@ graph TB
 **Review Date:** <date>
 **Reviewer:** <name>
 
-| Criterion | Requirement | Result | Evidence | Issue |
+| Criterion | Goal | Result | Evidence | Issue |
 |---|---|---|---|---|
 | C1 | ... | ✅/⚠️/❌ | ... | ... |
 
@@ -1087,12 +939,12 @@ graph TB
 | Aspect | Current | New |
 |---|---|---|
 | Goals format | Free text or card items | Single Markdown table |
-| Requirement detail | Mixed in `content` field | Structured: summary + criteria + details |
-| ID system | Ad-hoc (`G-plan-212`) | Typed, hierarchical (`G1`, `R1.2`, `T1.3`) |
+| Goal detail | Mixed in `content` field | Structured: summary + criteria + details |
+| ID system | Ad-hoc (`G-plan-212`) | Typed, hierarchical (`G1`, `G1.1`, `A1`, `D1`) |
 | References | `depends_on: ["G-plan-212"]` | `depends_on: ["G1"]` |
 | Architecture | Plain text | ADR with Mermaid + trade-off table |
 | Plans | Free text phases | Table with Gantt semantics |
-| Todos | Ad-hoc checklist | Line items with `[P<x>]` parent reference |
+
 | Tests | Not formalized | Structured test spec with fixture + steps + expected outcome |
 | Reviews | Not formalized | Structured criterion table + issue IDs |
 | Reports | Not formalized | Periodic snapshot with metrics |
@@ -1102,11 +954,11 @@ graph TB
 
 1. **Re-ID existing items**: Map old IDs to new typed IDs. Example: `G-plan-212` → `G1`.
 2. **Restructure Goals**: Convert current Goal items into a single Markdown table.
-3. **Restructure Requirements**: Split `content` into `Acceptance Criteria` (checklist) + `Details` (≤500 words).
+3. **Restructure Leaf Goals**: Split `content` into `Acceptance Criteria` (checklist) + `Details` (≤500 words).
 4. **Add Mermaid to Architecture**: Convert prose descriptions into diagrams + ADR format.
 5. **Restructure Plans**: Convert free-text phases into machine-parseable tables.
-6. **Re-parent Todos**: Ensure every Todo has a `[P<x>]` reference.
-7. **Create Tests from Requirements**: For each Requirement, draft at least one Test with fixture, steps, and expected outcome.
+
+7. **Create Tests from Goals**: For each Goal, draft at least one Test with fixture, steps, and expected outcome.
 8. **Create initial Reviews/Reports/APIs**: These may be empty (`Empty` status) until the project reaches the verification phase.
 
 ### 8.3 Backward Compatibility
@@ -1136,17 +988,16 @@ Examples of valid extensions:
 Use this checklist before approving any spec:
 
 - [ ] Every Goal is a single sentence (≤140 chars).
-- [ ] Every Requirement links to at least one Goal.
-- [ ] Every Requirement has ≥1 acceptance criterion (checkbox).
-- [ ] Every Requirement's `Details` is ≤500 words.
+- [ ] Every Goal (leaf) has ≥1 acceptance criterion (checkbox).
+- [ ] Every Goal (leaf)'s `Details` is ≤500 words.
 - [ ] Every Architecture item has a diagram.
 - [ ] Every Design has an interface definition.
 - [ ] Every Plan has a risk + mitigation.
-- [ ] Every Todo references a Plan phase and a file path.
+- [ ] Every Plan has a risk + mitigation.
 - [ ] Every Review uses the criterion table format.
 - [ ] Every Report has metrics and blockers.
 - [ ] Every API has request, response, error, and schema.
-- [ ] Every Requirement has at least one associated Test.
+- [ ] Every Goal has at least one associated Test.
 - [ ] Every Test has a `Test File` path hint.
 - [ ] All IDs follow the typed prefix convention.
 - [ ] All `depends_on` references are valid (target exists).

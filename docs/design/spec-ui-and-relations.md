@@ -7,11 +7,11 @@
 
 ## 1. Design Goals
 
-1. **Bidirectional Traceability**: Click any ID (`G1`, `R1.2`, `T3.4`) to jump to its definition and see all related items.
+1. **Bidirectional Traceability**: Click any ID (`G1`, `G1.1`, `A1`, `D1`) to jump to its definition and see all related items.
 2. **Structured Editing**: Each category has a purpose-built editor — not just a textarea.
 3. **Live Relations Panel**: Every item shows its upstream (parents) and downstream (children) in a sidebar.
 4. **Content-Aware Rendering**: The same `content: String` field renders differently per category (table, checklist, timeline, diagram).
-5. **Auto-Link Discovery**: Parse `content` for ID references (`[G1]`, `depends_on: ["R1.1"]`) and auto-generate bidirectional links.
+5. **Auto-Link Discovery**: Parse `content` for ID references (`[G1]`, `depends_on: ["G1.1"]`) and auto-generate bidirectional links.
 
 ---
 
@@ -22,7 +22,7 @@
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecItem {
-    pub id: String,           // typed: G1, R1.2, S1.1, T1.3
+    pub id: String,           // typed: G1, G1.1, A1, D1, S1.1
     pub title: String,        // one-line summary
     pub content: String,      // markdown body (category-specific template)
     pub status: Status,
@@ -35,11 +35,11 @@ pub struct SpecItem {
     
     // ─── Category-specific metadata ──────────────────────────
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub priority: Option<String>,  // P0, P1, P2 (Goals, Requirements)
+    pub priority: Option<String>,  // P0, P1, P2 (Goals)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub assignee: Option<String>,  // owner (Plans, Todos, Tests)
+    pub assignee: Option<String>,  // owner (Plans, Tests)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub test_file: Option<String>, // file path hint (Tests, Todos)
+    pub test_file: Option<String>, // file path hint (Tests)
     
     // ─── Timestamps ──────────────────────────────────────────
     pub created_at: u64,
@@ -92,8 +92,8 @@ fn rebuild_relations(doc: &mut SpecsDocument) {
 **ID Reference Regex:** `\b([GRAPTVXIS]\d+(?:\.\d+)?)\b`
 
 This means:
-- If `R1.1` has `depends_on: ["G1"]`, then `G1.related` will contain `"R1.1"`.
-- If `T1.3` content contains `[P1.1]`, then `P1.1.related` will contain `"T1.3"`.
+- If `A1` has `depends_on: ["G1"]`, then `G1.related` will contain `"A1"`.
+- If `S1.1` content contains `[G1]`, then `G1.related` will contain `"S1.1"`.
 
 ### 2.3 Frontend: TypeScript Types
 
@@ -154,7 +154,7 @@ export interface SpecsSection {
 │                             │  │ ┌─ Expanded Detail ────┐ │ │
 │                             │  │ │ Relations Panel      │ │ │
 │                             │  │ │ ├─ Parents: —        │ │ │
-│                             │  │ │ ├─ Children: R1.1    │ │ │
+│                             │  │ │ ├─ Children: A1, D1  │ │ │
 │                             │  │ │ ├─ Content (rendered)│ │ │
 │                             │  │ │ ├─ Status: [Done ▼]  │ │ │
 │                             │  │ │ └─ [Edit] [Delete]   │ │ │
@@ -171,53 +171,20 @@ export interface SpecsSection {
 ┌──────┬──────────────────────────────┬──────────┬──────────┬──────────┐
 │ ID   │ Goal                         │ Priority │ Status   │ Children │
 ├──────┼──────────────────────────────┼──────────┼──────────┼──────────┤
-│ G1   │ AutoVM can dynamically load… │ P0       │ Done     │ R1.1 (3) │
-│ G2   │ Self-hosted compiler front…  │ P0       │ Approved │ R2.1 (2) │
+│ G1   │ AutoVM can dynamically load… │ P0       │ Done     │ A1, D1 (3) │
+│ G2   │ Self-hosted compiler front…  │ P0       │ Approved │ A2, D2 (2) │
 │ G3   │ Spec-driven serial agent UI  │ P1       │ Draft    │ —        │
 └──────┴──────────────────────────────┴──────────┴──────────┴──────────┘
 ```
 
 **Detail View (expanded row):**
-- Relations Panel: Children list (Requirements that reference this Goal)
+- Relations Panel: Children list (Architecture / Designs that reference this Goal)
 - Content: Not shown (Goals have no body — the table row IS the content)
 - Actions: Status dropdown, Delete
 
 **Edit Mode:** Inline row editing. Click cell to edit. No separate editor pane.
 
-### 3.4 Requirements 📐 — Card + Checklist View
-
-**List View:** Cards with checklist preview.
-
-```
-┌─ R1.1 [G1] cdylib compilation pipeline ───────────────┐
-│ Status: Verified  │  Children: S1.1 (2)  T1.3 (4)      │
-│                                                        │
-│ Acceptance Criteria:                                   │
-│   ☑ wrapper crate generated                            │
-│   ☑ cdylib compiled                                    │
-│   ☑ cache hit on rerun                                 │
-│   ☐ cross-platform docs                                │
-│                                                        │
-│ Details: AutoVM runtime encounters a dep stmt… (120w)  │
-└────────────────────────────────────────────────────────┘
-```
-
-**Detail View:**
-- Relations Panel:
-  - Parents: `G1`
-  - Children: `S1.1`, `S1.2`, `T1.3`, `T1.4`
-- Content: Full rendered markdown (checklist interactive, but disabled)
-- Actions: Status dropdown, Edit
-
-**Edit Mode:** Structured form with 4 fields:
-1. Title (text input)
-2. Parent Goal IDs (tag input: `G1`, `G2`)
-3. Acceptance Criteria (dynamic list of checkboxes with text)
-4. Details (textarea, ≤500 words with character counter)
-
-The form serializes to the standard markdown template on save.
-
-### 3.5 Architecture 🏗️ — ADR View
+### 3.4 Architecture 🏗️ — ADR View
 
 **List View:** Cards with diagram preview (Mermaid rendering if available).
 
@@ -231,7 +198,7 @@ The form serializes to the standard markdown template on save.
 ```
 
 **Detail View:**
-- Relations Panel: Parents (Goals/Requirements), Children (Designs, APIs)
+- Relations Panel: Parents (Goals), Children (Designs, APIs)
 - Content: Full markdown with **live Mermaid rendering**
 - Actions: Status dropdown, Edit
 
@@ -239,7 +206,7 @@ The form serializes to the standard markdown template on save.
 - Left: Markdown textarea
 - Right: Live preview (Mermaid diagrams render in real-time)
 
-### 3.6 Designs 🎨 — Spec View
+### 3.5 Designs 🎨 — Spec View
 
 **List View:** Cards with interface signature preview.
 
@@ -264,13 +231,13 @@ The form serializes to the standard markdown template on save.
 - Tab 3: Data Model (table editor)
 - Tab 4: Pseudocode (textarea)
 
-### 3.7 Plans 📅 — Timeline View
+### 3.6 Plans 📅 — Timeline View
 
 **List View:** Gantt-like table.
 
 ```
 ┌─ P1 FFI Pipeline Implementation ───────────────────────┐
-│ Status: Done  │  Children: T1.1 … T1.8                │
+│ Status: Done  │  Children: S1.1, S1.2                 │
 │                                                        │
 │ Phase  │ Task                    │ Owner │ Dur │ Dep │ Status │
 │ P1.1   │ Sandbox wrapper gen     │ Alice │ 3d  │ D1  │ Done   │
@@ -280,36 +247,18 @@ The form serializes to the standard markdown template on save.
 ```
 
 **Detail View:**
-- Relations Panel: Parents (Requirements, Designs), Children (Todos)
+- Relations Panel: Parents (Goals, Designs), Children (Tests)
 - Content: Phase table + Risk/Mitigation text
 - Actions: Status dropdown, Edit
 
 **Edit Mode:** Table editor for phases. Each row is editable inline. Add/remove rows.
 
-### 3.8 Todos ☑️ — Kanban View
-
-**List View:** Kanban board with status columns.
-
-```
-┌─ Backlog ──────┐  ┌─ Ready ────────┐  ┌─ In Progress ──┐  ┌─ Done ─────────┐
-│ T1.5 [P1.3]    │  │ T1.3 [P1.2]    │  │ T1.4 [P1.3]    │  │ ☑ T1.1 [P1.1]  │
-│ T1.6 [P1.4]    │  │                │  │                │  │ ☑ T1.2 [P1.1]  │
-└────────────────┘  └────────────────┘  └────────────────┘  └────────────────┘
-```
-
-**Detail View:**
-- Relations Panel: Parents (Plan phases)
-- Content: Title + file path hint
-- Actions: Status dropdown (drag to change column), Edit
-
-**Edit Mode:** Simple form: Title + File Path + Status.
-
-### 3.9 Tests 🧪 — Test Runner View
+### 3.7 Tests 🧪 — Test Runner View
 
 **List View:** Cards with pass/fail indicator.
 
 ```
-┌─ S1.1 [R1.1] cdylib happy path ─────────┐  ┌─ S1.2 [R1.1] unknown crate ─────────┐
+┌─ S1.1 [G1] cdylib happy path ─────────┐  ┌─ S1.2 [G1] unknown crate ─────────┐
 │ ✓ Passing                                 │  │ ✗ Failing                             │
 │ Type: Integration                         │  │ Type: Integration                     │
 │ File: tests/sandbox_compile_dep.rs        │  │ File: tests/sandbox_compile_dep.rs    │
@@ -317,7 +266,7 @@ The form serializes to the standard markdown template on save.
 ```
 
 **Detail View:**
-- Relations Panel: Parents (Requirements, Designs), Children (Reviews)
+- Relations Panel: Parents (Goals, Designs), Children (Reviews)
 - Content: Fixture + Steps + Expected Outcome
 - Actions: Status dropdown, Run Test (shell button), Edit
 
@@ -328,12 +277,12 @@ The form serializes to the standard markdown template on save.
 4. Expected Outcome (textarea)
 5. Test File Path (text input with file picker)
 
-### 3.10 Reviews 📝 — Assessment View
+### 3.8 Reviews 📝 — Assessment View
 
 **List View:** Summary card with criterion counts.
 
 ```
-┌─ V1 Post-Implementation Review — R1.1 ─────────────────┐
+┌─ V1 Post-Implementation Review — G1 ─────────────────┐
 │ Status: Published  │  4/4 passed, 1 issue              │
 │                                                        │
 │ C1 ☑  C2 ☑  C3 ☑  C4 ⚠                                │
@@ -342,13 +291,13 @@ The form serializes to the standard markdown template on save.
 ```
 
 **Detail View:**
-- Relations Panel: Parents (Requirements, Tests), Children (Todos for fixes, Reports)
+- Relations Panel: Parents (Goals, Tests), Children (Plans for fixes, Reports)
 - Content: Criterion table + Issues
 - Actions: Status dropdown, Edit
 
 **Edit Mode:** Table editor for criteria. Issue sub-form with severity/select.
 
-### 3.11 Reports 📊 — Dashboard View
+### 3.9 Reports 📊 — Dashboard View
 
 **List View:** Single card with metric summary.
 
@@ -356,8 +305,8 @@ The form serializes to the standard markdown template on save.
 ┌─ X2026-W20 Weekly Status ──────────────────────────────┐
 │ Status: Published                                      │
 │                                                        │
-│ Goals: 1/3  ▓▓▓▓▓▓░░░   Req: 4/6  ▓▓▓▓▓▓▓▓░░        │
-│ Plans: 1/2  ▓▓▓▓▓▓▓▓░░   Todos: 12/15 ▓▓▓▓▓▓▓▓▓▓▓░  │
+│ Goals: 1/3  ▓▓▓▓▓▓░░░   Tests: 4/6  ▓▓▓▓▓▓▓▓░░        │
+│ Plans: 1/2  ▓▓▓▓▓▓▓▓░░   Reviews: 2/3 ▓▓▓▓▓▓▓▓▓▓▓░  │
 │ Blockers: 1  Risks: 1                                  │
 └────────────────────────────────────────────────────────┘
 ```
@@ -369,7 +318,7 @@ The form serializes to the standard markdown template on save.
 
 **Edit Mode:** Markdown textarea with metric auto-completion (typing `@` suggests metrics).
 
-### 3.12 APIs 🔌 — Schema View
+### 3.10 APIs 🔌 — Schema View
 
 **List View:** Cards with endpoint summary.
 
@@ -403,9 +352,9 @@ Every expanded item shows a **Relations Panel**:
 │  └── A1  Architecture desc... [Jump] │
 │                                      │
 │  ▼ Children (related)                │
-│  ├── R1.1  Req text...       [Jump] │
+│  ├── A1   Arch text...       [Jump] │
 │  ├── S1.1  Test text...      [Jump] │
-│  └── T1.3  Todo text...      [Jump] │
+│  └── D1   Design text...     [Jump] │
 │                                      │
 └──────────────────────────────────────┘
 ```
@@ -421,14 +370,14 @@ Every expanded item shows a **Relations Panel**:
 When rendering any item's content, scan for ID references and turn them into clickable links:
 
 ```markdown
-This plan implements [G1] via [R1.1] and [R1.2].
+This plan implements [G1] via [G1.1] and [A1].
 ```
 
 Rendered as:
 ```html
 This plan implements <a class="spec-link" data-id="G1">G1</a> 
-via <a class="spec-link" data-id="R1.1">R1.1</a> and 
-<a class="spec-link" data-id="R1.2">R1.2</a>.
+via <a class="spec-link" data-id="G1.1">G1.1</a> and 
+<a class="spec-link" data-id="A1">A1</a>.
 ```
 
 Clicking a link:
@@ -466,7 +415,7 @@ Each section header has an **Edit** button. Clicking enters edit mode for the en
 
 | Mode | When Used | UI |
 |---|---|---|
-| **Structured** | Goals, Requirements, Todos, Tests | Form fields per category template |
+| **Structured** | Goals, Tests | Form fields per category template |
 | **Free Markdown** | Architecture, Designs, Plans, Reviews, Reports, APIs | Markdown textarea + live preview |
 
 The backend always stores Markdown. Structured editors serialize to Markdown on save.
@@ -476,7 +425,7 @@ The backend always stores Markdown. Structured editors serialize to Markdown on 
 - **Inline**: Edit one item at a time within the list. Fast for small tweaks.
 - **Full**: Open a modal/pane with the complete section editor. For bulk edits.
 
-Default: Inline for Todos/Goals, Full for Architecture/Reports.
+Default: Inline for Goals, Full for Architecture/Reports.
 
 ---
 
@@ -509,7 +458,7 @@ The search box in the header supports:
 | Query | Matches |
 |---|---|
 | `G1` | Item with ID G1 |
-| `R1.*` | All Requirements under Goal 1 |
+| `G1.*` | All sub-goals under Goal 1 |
 | `status:done` | All done items across all sections |
 | `assignee:alice` | All items assigned to Alice |
 | `priority:P0` | All P0 items |
@@ -548,8 +497,8 @@ PUT  /api/forge/specs/{project}/{section_id}
 | P3 | Frontend: Relations Panel component | 3h |
 | P4 | Frontend: Auto-link discovery in Markdown render | 2h |
 | P5 | Frontend: Category-specific renderers (Goals table, Tests cards, etc.) | 6h |
-| P6 | Frontend: Structured editors (Requirements form, Tests form, etc.) | 6h |
-| P7 | Frontend: Kanban board for Todos | 3h |
+| P6 | Frontend: Structured editors (Goals form, Tests form, etc.) | 6h |
+| P7 | Frontend: Phase progress visualization | 3h |
 | P8 | Frontend: Mermaid live rendering in Architecture/Designs | 2h |
 | P9 | Frontend: Search enhancements | 2h |
 | P10 | Integration: End-to-end test | 2h |

@@ -7,9 +7,6 @@ export type SectionType =
   | 'reviews'
   | 'reports'
   | 'apis'
-  | 'requirements'
-  | 'analysis'
-  | 'todos'
 
 export type Status =
   | 'empty'
@@ -47,6 +44,9 @@ export interface SpecItem {
   priority?: string
   assignee?: string
   test_file?: string
+  file?: string
+  milestone?: string
+  module?: string
   created_at: number
   modified_at: number
   completed_at?: number

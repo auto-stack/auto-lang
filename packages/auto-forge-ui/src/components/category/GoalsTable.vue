@@ -1,6 +1,11 @@
 <template>
   <div class="goals-table-wrapper">
-    <table class="goals-table">
+    <div v-if="items.length === 0" class="empty-state">
+      <Inbox :size="28" />
+      <span>No goals yet</span>
+      <span class="empty-hint">Click "Add" above to create one</span>
+    </div>
+    <table v-else class="goals-table">
       <thead>
         <tr>
           <th>ID</th>
@@ -11,45 +16,50 @@
         </tr>
       </thead>
       <tbody>
-        <tr
-          v-for="item in items"
-          :key="item.id"
-          :class="{ expanded: expandedId === item.id }"
-          @click="toggle(item.id)"
-        >
-          <td class="col-id">{{ item.id }}</td>
-          <td class="col-goal">{{ item.title }}</td>
-          <td class="col-priority">
-            <span class="priority-badge" :class="item.priority">{{ item.priority || '-' }}</span>
-          </td>
-          <td class="col-status">
-            <StatusBadge :status="item.status" size="sm" />
-          </td>
-          <td class="col-children">
-            <span v-if="item.related?.length" class="children-count">
-              {{ item.related.length }}
-            </span>
-            <span v-else class="children-empty">—</span>
-          </td>
-        </tr>
-        <tr v-if="expandedItem" class="detail-row">
-          <td :colspan="5">
-            <RelationsPanel :item="expandedItem" :project="project" @jump="$emit('jump', $event)" />
-            <div class="detail-actions">
-              <button class="btn-sm" @click.stop="$emit('edit', expandedItem)">Edit</button>
-            </div>
-          </td>
-        </tr>
+        <template v-for="item in items" :key="item.id">
+          <tr
+            :class="{ expanded: expandedId === item.id }"
+            @click="toggle(item.id)"
+          >
+            <td class="col-id">{{ item.id }}</td>
+            <td class="col-goal">{{ item.title }}</td>
+            <td class="col-priority">
+              <span class="priority-badge" :class="item.priority">{{ item.priority || '-' }}</span>
+            </td>
+            <td class="col-status">
+              <StatusBadge :status="item.status" size="sm" />
+            </td>
+            <td class="col-children">
+              <span v-if="item.related?.length" class="children-count">
+                {{ item.related.length }}
+              </span>
+              <span v-else class="children-empty">—</span>
+            </td>
+          </tr>
+          <tr v-if="expandedId === item.id" class="detail-row">
+            <td :colspan="5">
+              <SpecItemDetail
+                :item="item"
+                section-type="goals"
+                :project="project"
+                @jump="$emit('jump', $event)"
+                @edit="$emit('edit', item)"
+                @status-change="$emit('status-change', $event)"
+                @delete="$emit('delete', item.id)"
+              />
+            </td>
+          </tr>
+        </template>
       </tbody>
     </table>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import type { SpecItem } from '@/types/specs'
 import StatusBadge from '@/components/StatusBadge.vue'
-import RelationsPanel from '@/components/RelationsPanel.vue'
+import SpecItemDetail from '@/components/SpecItemDetail.vue'
+import { Inbox } from 'lucide-vue-next'
 
 const props = defineProps<{
   items: SpecItem[]
@@ -61,11 +71,9 @@ const emit = defineEmits<{
   toggle: [id: string]
   jump: [id: string]
   edit: [item: SpecItem]
+  'status-change': [payload: { id: string; status: string }]
+  delete: [id: string]
 }>()
-
-const expandedItem = computed(() =>
-  props.expandedId ? props.items.find((i) => i.id === props.expandedId) ?? null : null
-)
 
 function toggle(id: string) {
   emit('toggle', id)
@@ -103,42 +111,44 @@ function toggle(id: string) {
   background: hsl(var(--primary) / 0.04);
 }
 .col-id {
-  font-family: monospace;
-  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-weight: 600;
   color: var(--af-muted);
-  white-space: nowrap;
+  font-size: 0.75rem;
 }
 .col-goal {
   color: var(--af-fg);
-  line-height: 1.4;
+  font-weight: 500;
 }
 .priority-badge {
-  font-size: 0.7rem;
-  font-weight: 700;
+  display: inline-flex;
   padding: 0.1rem 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 700;
   border-radius: 4px;
   background: hsl(var(--muted-foreground) / 0.08);
+  color: var(--af-muted);
 }
 .priority-badge.P0 {
+  background: hsl(0 72% 51% / 0.12);
   color: #ef4444;
-  background: hsl(0 84% 60% / 0.12);
 }
 .priority-badge.P1 {
-  color: #f59e0b;
   background: hsl(38 92% 50% / 0.12);
+  color: #f59e0b;
 }
 .priority-badge.P2 {
-  color: #3b82f6;
   background: hsl(217 91% 60% / 0.12);
+  color: #3b82f6;
 }
 .children-count {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: hsl(var(--primary));
-  background: hsl(var(--primary) / 0.08);
+  display: inline-flex;
   padding: 0.1rem 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 600;
   border-radius: 999px;
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
 }
 .children-empty {
   color: var(--af-muted);
@@ -148,21 +158,22 @@ function toggle(id: string) {
   padding: 0.75rem;
   background: hsl(var(--muted-foreground) / 0.02);
 }
-.detail-actions {
-  margin-top: 0.5rem;
+
+.empty-state {
   display: flex;
-  gap: 0.5rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 2.5rem 1rem;
+  color: var(--af-muted);
+  font-size: 0.85rem;
 }
-.btn-sm {
-  padding: 0.3rem 0.7rem;
+.empty-state svg {
+  color: hsl(var(--muted-foreground) / 0.3);
+  margin-bottom: 0.3rem;
+}
+.empty-hint {
   font-size: 0.75rem;
-  border-radius: 6px;
-  border: 1px solid var(--af-border);
-  background: hsl(var(--primary) / 0.08);
-  color: hsl(var(--primary));
-  cursor: pointer;
-}
-.btn-sm:hover {
-  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--muted-foreground) / 0.6);
 }
 </style>

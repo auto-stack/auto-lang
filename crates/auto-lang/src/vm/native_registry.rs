@@ -460,19 +460,10 @@ pub const RUST_STDLIB_METHODS: &[(&str, &[&str])] = &[
 ];
 
 impl AutoVMNativeRegistry {
-    /// Plan 192: Register all known methods for a Rust stdlib type in the native registry.
-    /// All methods point to NATIVE_RUST_STDLIB_DISPATCH for dynamic dispatch.
+    /// Plan 192/240: Register all known methods for a Rust stdlib type in the native registry.
+    /// All methods point to NATIVE_RUST_STDLIB_DISPATCH (3000) for dynamic dispatch.
     pub fn register_rust_type_methods(&mut self, type_name: &str) {
-        let dispatch_id = match type_name {
-            "Instant" => 3000,
-            "Duration" => 3000,
-            "PathBuf" => 3000,
-            "Arc" => 3000,
-            "Mutex" => 3000,
-            "Box" => 3000,
-            "RefCell" => 3000,
-            _ => return,
-        };
+        let dispatch_id: u16 = 3000; // NATIVE_RUST_STDLIB_DISPATCH
         if let Some((_, methods)) = RUST_STDLIB_METHODS.iter().find(|(name, _)| *name == type_name) {
             for method in *methods {
                 let full_name = format!("{}.{}", type_name, method);

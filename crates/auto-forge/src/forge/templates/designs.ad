@@ -24,7 +24,7 @@
 +----------+-------------------------------+
 ```
 
-## Functional Requirements
+## Functional Goals
 
 - [ ] Collapsible sidebars with independent state
 - [ ] Real-time streaming chat with markdown
