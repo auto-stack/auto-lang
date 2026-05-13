@@ -103,7 +103,7 @@ Token budgeting makes cost a first-class constraint. The Agents view compares ac
 
 **Acceptance Criteria:**
 - [x] Flow steps can specify `gate: human` or `gate: auto`
-- [ ] Human gates pause the run and emit SSE notifications to frontend
+- [x] Human gates pause the run and emit SSE notifications to frontend
 - [x] Human can Approve, Reject, or Edit specs before continuing
 - [x] Rejection routes back to the drafting profession with feedback
 - [x] Async gates support hours-long delays without losing state

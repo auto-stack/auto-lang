@@ -43,14 +43,14 @@
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
-| P2.1 | FlowSpec parser (AutoDown-based DSL) | Tooling | 3 days | D2 | Empty |
-| P2.2 | PipelineEngine state machine | Tooling | 3 days | D2 | Empty |
-| P2.3 | Step execution: spawn agent, run turn, collect result | Tooling | 2 days | P1.5, P2.2 | Empty |
-| P2.4 | Flow branching: Intaker → DIRECT vs full pipeline | Tooling | 2 days | P2.2 | Empty |
-| P2.5 | Flow looping: Coder ↔ Tester with max iteration bound | Tooling | 2 days | P2.2 | Empty |
-| P2.6 | Human gates: pause, notify, approve/reject/edit | Tooling | 3 days | D2 | Empty |
-| P2.7 | Gate rejection routing back to drafting profession | Tooling | 2 days | P2.6 | Empty |
-| P2.8 | Deterministic orchestrator unit tests | Tooling | 2 days | P2.1-P2.7 | Empty |
+| P2.1 | FlowSpec parser (AutoDown-based DSL) | Tooling | 3 days | D2 | Done |
+| P2.2 | PipelineEngine state machine | Tooling | 3 days | D2 | Done |
+| P2.3 | Step execution: spawn agent, run turn, collect result | Tooling | 2 days | P1.5, P2.2 | Done |
+| P2.4 | Flow branching: Intaker → DIRECT vs full pipeline | Tooling | 2 days | P2.2 | Done |
+| P2.5 | Flow looping: Coder ↔ Tester with max iteration bound | Tooling | 2 days | P2.2 | Done |
+| P2.6 | Human gates: pause, notify, approve/reject/edit | Tooling | 3 days | D2 | Done |
+| P2.7 | Gate rejection routing back to drafting profession | Tooling | 2 days | P2.6 | Done |
+| P2.8 | Deterministic orchestrator unit tests | Tooling | 2 days | P2.1-P2.7 | Done |
 
 **Risk:** Human gate UI may add friction and slow down development.  
 **Mitigation:** Allow auto-approve mode for internal dogfooding; gates mandatory for external users.

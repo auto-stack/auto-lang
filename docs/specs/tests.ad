@@ -304,3 +304,88 @@ let mut engine = PipelineEngine::new(flow, "test-run-gate".into());
 **Test File:** `crates/auto-forge/tests/human_gate.rs`
 
 **Depends on:** G6, D2
+
+---
+
+### S6.2 [G6] End-to-end standard flow with human gates and budget tracking
+**Status:** Done
+**Type:** Integration
+**Scope:** G1-G6
+
+**Fixture:**
+```rust
+let flow = standard_spec_flow(); // 6 steps: Intaker → Planner → Architect → Coder → Tester → Reviewer
+let store = new_run_store();
+```
+
+**Steps:**
+1. Start run with standard flow.
+2. Execute Intaker step, submit handoff.
+3. Approve Planner gate, execute Planner, submit handoff.
+4. Approve Architect gate, execute Architect, submit handoff.
+5. Execute Coder, Tester, Reviewer steps with handoffs.
+6. Verify final status is Completed.
+
+**Expected Outcome:**
+- All 6 steps complete in order.
+- Budget tracks cumulative tokens across all steps.
+- Savings vs parallel estimate is positive.
+
+**Test File:** `crates/auto-forge/tests/relay_integration.rs`
+
+**Depends on:** G1-G6, P6
+
+---
+
+### S6.3 [G6] Gate rejection routes back to same profession with feedback
+**Status:** Done
+**Type:** Integration
+**Scope:** G6
+
+**Fixture:**
+```rust
+let flow = standard_spec_flow();
+let store = new_run_store();
+```
+
+**Steps:**
+1. Execute Intaker step, submit handoff.
+2. Reject Planner gate with feedback.
+3. Verify engine re-enters Planner step.
+
+**Expected Outcome:**
+- After rejection, current_step remains on Planner.
+- Feedback is stored in engine.gate_feedback.
+
+**Test File:** `crates/auto-forge/tests/relay_integration.rs`
+
+**Depends on:** G6, D2
+
+---
+
+### S4.3 [G4] Checkpoint created during flow and resumed
+**Status:** Done
+**Type:** Integration
+**Scope:** G4
+
+**Fixture:**
+```rust
+let flow = standard_spec_flow();
+let store = new_run_store();
+```
+
+**Steps:**
+1. Run through 3 steps of standard flow.
+2. Create Checkpoint from engine state.
+3. Drop original engine.
+4. Resume from checkpoint with PipelineEngine::from_checkpoint().
+5. Continue execution from step 4.
+
+**Expected Outcome:**
+- Checkpoint captures current_step = 3, step_history len = 3.
+- Resumed engine has Idle status, no chat history.
+- Can advance to Coder step.
+
+**Test File:** `crates/auto-forge/tests/relay_integration.rs`
+
+**Depends on:** G4, D4
