@@ -4868,6 +4868,62 @@ pub fn shim_semver_opaque_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
+/// VersionReq.parse(">=1.0") → opaque VersionReq handle
+/// Stack: [spec_str] -> [handle_i32]
+pub fn shim_semver_opaque_versionreq_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let spec_str = pop_vm_string(task, vm);
+    match semver::VersionReq::parse(&spec_str) {
+        Ok(req) => {
+            let obj = RustStdlibObject::new("semver::VersionReq", std::sync::Mutex::new(req));
+            let id = vm.insert_heap_object(obj);
+            task.ram.push_i32(id as i32);
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!("VersionReq::parse failed: {}", e)));
+        }
+    }
+    Ok(())
+}
+
+/// req.matches(version_handle) → 1 if true, 0 if false
+/// Stack: [req_handle, version_handle] -> [result_i32]
+pub fn shim_semver_opaque_versionreq_matches(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = task.ram.pop_i32() as u64;
+    let req_id = task.ram.pop_i32() as u64;
+
+    let version: Option<semver::Version> = (|| {
+        let obj = vm.get_heap_object(ver_id)?;
+        let guard = obj.read().ok()?;
+        let rso = guard.as_any().downcast_ref::<RustStdlibObject>()?;
+        let mutex = rso.downcast_ref::<std::sync::Mutex<semver::Version>>()?;
+        let locked = mutex.lock().ok()?;
+        Some(locked.clone())
+    })();
+
+    let req: Option<semver::VersionReq> = (|| {
+        let obj = vm.get_heap_object(req_id)?;
+        let guard = obj.read().ok()?;
+        let rso = guard.as_any().downcast_ref::<RustStdlibObject>()?;
+        let mutex = rso.downcast_ref::<std::sync::Mutex<semver::VersionReq>>()?;
+        let locked = mutex.lock().ok()?;
+        Some(locked.clone())
+    })();
+
+    match (version, req) {
+        (Some(ver), Some(req)) => {
+            task.ram.push_i32(if req.matches(&ver) { 1 } else { 0 });
+        }
+        _ => {
+            task.ram.push_i32(0);
+        }
+    }
+    Ok(())
+}
+
 // ============================================================================
 // Plan 212 Phase 2.3: Chrono Opaque Struct Shims
 // ============================================================================
@@ -5328,7 +5384,7 @@ pub fn shim_file_write_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 
 /// handle.try_clone() → clone the handle (returns same content for read handles)
 /// Stack: handle_id -> handle_id (clone)
-pub fn shim_file_try_clone(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_file_try_clone(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     // For simplicity, just push a copy of the handle ID
     let handle = task.ram.pop_i32();
     task.ram.push_i32(handle);

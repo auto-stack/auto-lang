@@ -221,6 +221,8 @@ macro_rules! for_each_native {
             (2605, NATIVE_SEMVER_OPAQUE_TO_STRING, shim_semver_opaque_to_string, "auto.semver_opaque.to_string"),
             (2606, NATIVE_SEMVER_OPAQUE_CMP_GT, shim_semver_opaque_cmp_gt, "auto.semver_opaque.cmp_gt"),
             (2609, NATIVE_SEMVER_OPAQUE_DROP, shim_semver_opaque_drop, "auto.semver_opaque.drop"),
+            (2610, NATIVE_SEMVER_OPAQUE_VERSIONREQ_PARSE, shim_semver_opaque_versionreq_parse, "auto.semver_opaque_versionreq.parse"),
+            (2611, NATIVE_SEMVER_OPAQUE_VERSIONREQ_MATCHES, shim_semver_opaque_versionreq_matches, "auto.semver_opaque_versionreq.matches"),
 
             // === Chrono Opaque (2700-2709) — Plan 212 ===
             (2700, NATIVE_CHRONO_LOCAL_NOW, shim_chrono_local_now, "auto.chrono_opaque.local_now"),
@@ -352,7 +354,8 @@ pub fn lookup_opaque_dispatch_by_type(type_name: &str, method: &str) -> Option<&
     let entries: &[(&[&str], &[(&str, &str)])] = &[
         (&["regex::Regex", "Regex"], &OPAQUE_DISPATCH_REGEX_METHODS),
         (&["url::Url", "Url"], &OPAQUE_DISPATCH_URL_METHODS),
-        (&["semver::Version"], &OPAQUE_DISPATCH_SEMVER_METHODS),
+        (&["semver::Version", "Version"], &OPAQUE_DISPATCH_SEMVER_METHODS),
+        (&["semver::VersionReq", "VersionReq"], &OPAQUE_DISPATCH_VERSIONREQ_METHODS),
         (&["Instant", "std::time::Instant"], &[("elapsed", "auto.time.instant_elapsed")]),
         (&["OnceCell", "std::cell::OnceCell"], &[("get", "auto.cell.once_get"), ("set", "auto.cell.once_set")]),
         (&["std::fs::File", "FileWriter"], &[("write", "auto.file.write_handle"), ("try_clone", "auto.file.try_clone")]),
@@ -431,6 +434,7 @@ const OPAQUE_DISPATCH_SEMVER: &[(&str, &str)] = &[
     ("patch", "auto.semver_opaque.patch"),
     ("pre", "auto.semver_opaque.pre"),
     ("to_string", "auto.semver_opaque.to_string"),
+    ("matches", "auto.semver_opaque_versionreq.matches"),
 ];
 
 /// Semver instance methods only — for runtime dispatch.
@@ -440,6 +444,12 @@ const OPAQUE_DISPATCH_SEMVER_METHODS: &[(&str, &str)] = &[
     ("patch", "auto.semver_opaque.patch"),
     ("pre", "auto.semver_opaque.pre"),
     ("to_string", "auto.semver_opaque.to_string"),
+];
+
+/// VersionReq methods — for runtime dispatch.
+const OPAQUE_DISPATCH_VERSIONREQ_METHODS: &[(&str, &str)] = &[
+    ("parse", "auto.semver_opaque_versionreq.parse"),
+    ("matches", "auto.semver_opaque_versionreq.matches"),
 ];
 
 const OPAQUE_DISPATCH_CHRONO: &[(&str, &str)] = &[
@@ -1522,6 +1532,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.semver_opaque.to_string", 2605),
     ("auto.semver_opaque.cmp_gt", 2606),
     ("auto.semver_opaque.drop", 2609),
+    ("auto.semver_opaque_versionreq.parse", 2610),
+    ("auto.semver_opaque_versionreq.matches", 2611),
     ("auto.chrono_opaque.local_now", 2700),
     ("auto.chrono_opaque.year", 2701),
     ("auto.chrono_opaque.month", 2702),

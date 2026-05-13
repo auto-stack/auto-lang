@@ -3147,6 +3147,8 @@ impl Codegen {
                 (crate_name.clone(), full_path),
             );
             // Phase 2.1: Infer return type from known signature
+            // Opaque constructors (parse, new, now, etc.) return heap object handles (Int),
+            // not strings. Default to Int for functions without known signatures.
             let ret_type = crate::ffi::known_signature(&crate_name, local_name)
                 .map(|sig| match sig.returns {
                     crate::ffi::RustType::Void => Type::Void,
@@ -3157,7 +3159,15 @@ impl Codegen {
                     crate::ffi::RustType::Double => Type::Double,
                     _ => Type::StrFixed(0),
                 })
-                .unwrap_or(Type::StrFixed(0));
+                .unwrap_or_else(|| {
+                    // Opaque constructor detection: methods that return heap handles
+                    let name = *local_name;
+                    let is_opaque_ctor = matches!(name, "parse" | "new" | "now"
+                        | "from_str" | "from_reader" | "from_writer" | "open"
+                        | "connect" | "bind" | "listen" | "build"
+                        | "from_path" | "from_secs" | "from_millis");
+                    if is_opaque_ctor { Type::Int } else { Type::StrFixed(0) }
+                });
             self.fn_return_types.insert(local_name.to_string(), ret_type);
         }
     }
@@ -5099,6 +5109,7 @@ impl Codegen {
                         // Plan 087 Phase 3: Support generic instance method calls
                         match obj.as_ref() {
                             Expr::Ident(obj_name) => {
+                                vm_debug!("DEBUG: Dot Ident: obj_name={}, method={}, var_type={:?}", obj_name, method, self.var_types.get(obj_name.as_str()));
                                 // Check if it's a static method call (Type.method with capital T)
                                 // Also treat stdlib singleton module names (env, fs) as static
                                 let is_stdlib_module = matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex");
@@ -5382,7 +5393,6 @@ impl Codegen {
                         let new_name = format!("auto.math.{}", method);
                         let mut reg = BIGVM_NATIVES.lock().unwrap();
                         if reg.resolve_qualified(&new_name).is_some() {
-                            vm_debug!("DEBUG: Routing float method {} -> {}", fname, new_name);
                             func_name = Some(new_name);
                         }
                     }
@@ -5487,17 +5497,39 @@ impl Codegen {
                     // Extract owned values to avoid borrow conflicts with func_name assignment
                     let fname_owned = func_name.clone();
                     if let Some(ref fname) = fname_owned {
+                        use crate::vm::native_catalog::lookup_opaque_dispatch;
+                        // When func_name is "str.matches" but receiver is an opaque crate var,
+
+                        // the type was wrongly inferred as str (from StrFixed(0) return type).
+                        // Use opaque_var_crates to route to the correct native.
+                        if let Expr::Dot(obj_expr, method_name) = call.name.as_ref() {
+                            if let Expr::Ident(receiver_name) = obj_expr.as_ref() {
+                                if let Some(crate_name) = self.opaque_var_crates.get(receiver_name.as_str()) {
+                                    if let Some(native) = lookup_opaque_dispatch(crate_name, method_name.as_str()) {
+                                        func_name = Some(native.to_string());
+                                    }
+                                }
+                            }
+                        }
                         let method = fname.rsplit('.').next().unwrap_or("").to_string();
                         let receiver = fname.rsplit('.').nth(1).unwrap_or("");
                         // Module-level calls (Url.scheme, Regex.new, Version.parse) use native
                         // dispatch via TYPE_CANONICAL_MAP. Only route to opaque when receiver
                         // is a variable name (lowercase start) or an opaque-tracked var.
-                        let is_module_call = receiver == "Url" || receiver == "Regex" || receiver == "Version";
+                        let is_module_call = receiver == "Url" || receiver == "Regex" || receiver == "Version" || receiver == "VersionReq";
                         let has_regex = !is_module_call && (fname.contains("Regex") || fname.contains("regex"));
                         let has_url = !is_module_call && (fname.contains("Url") || fname.contains("url"));
                         let has_version = !is_module_call && fname.contains("Version") && !fname.contains("VersionReq");
+                        // Route VersionReq module calls to dedicated opaque natives
+                        let mut versionreq_routed = false;
+                        if receiver == "VersionReq" {
+                            match method.as_str() {
+                                "parse" => { func_name = Some("auto.semver_opaque_versionreq.parse".to_string()); versionreq_routed = true; }
+                                "matches" => { func_name = Some("auto.semver_opaque_versionreq.matches".to_string()); versionreq_routed = true; }
+                                _ => {}
+                            }
+                        }
                         // Plan 249 Phase 4: Unified opaque dispatch via native_catalog
-                        use crate::vm::native_catalog::lookup_opaque_dispatch;
                         if has_regex {
                             if let Some(native) = lookup_opaque_dispatch("regex", method.as_str()) {
                                 func_name = Some(native.to_string());
@@ -5515,7 +5547,7 @@ impl Codegen {
                         }
                         // Fallback: var.method where var was assigned from an opaque constructor
                         // Check rust_native_map and opaque_var_crates for the receiver type
-                        if !has_regex && !has_url && !has_version {
+                        if !has_regex && !has_url && !has_version && !versionreq_routed {
                             let obj_part = fname.rsplit('.').nth(1).unwrap_or("");
                             let crate_name = self.opaque_var_crates.get(obj_part)
                                 .map(|s| s.as_str())
@@ -6070,13 +6102,6 @@ impl Codegen {
 
                 // Compile Arguments (pushes them to stack)
                 // Plan 088 Phase 4: Smart parameter passing based on type and mode
-                let call_display = format!("{:?}", call.name);
-                vm_debug!("DEBUG: ===== Compiling call: {} =====", call_display);
-                vm_debug!("DEBUG: Before compiling args, code.len()={:04x} ({})",
-                    self.code.len(),
-                    self.code.len()
-                );
-
                 // For instance methods, receiver is arg 0, so other args start from index 1
                 let arg_offset = if is_instance_method_call { 1 } else { 0 };
 
@@ -6221,6 +6246,29 @@ impl Codegen {
                 // where the type name starts with uppercase but isn't in exports/natives
                 // (is_unresolved_static was computed above before arg compilation)
                 if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static)) {
+                    // Plan 249: Transparent unwrap for opaque handle values.
+                    // If this is .unwrap()/.expect() on an opaque Rust crate value,
+                    // skip CALL_SPEC — the receiver (inner call result) is already a valid handle.
+                    let callee_method = if let Expr::Dot(_, m) = call.name.as_ref() { m.as_str() } else { "" };
+                    let is_opaque_unwrap = (callee_method == "unwrap" || callee_method == "expect")
+                        && if let Expr::Dot(obj, _) = call.name.as_ref() {
+                            match obj.as_ref() {
+                                Expr::Ident(recv) => self.opaque_var_crates.contains_key(recv.as_str()),
+                                Expr::Call(inner_call) => {
+                                    if let Expr::Dot(inner_obj, _) = inner_call.name.as_ref() {
+                                        if let Expr::Ident(type_name) = inner_obj.as_ref() {
+                                            self.opaque_var_crates.contains_key(type_name.as_str())
+                                                || self.rust_native_map.contains_key(type_name.as_str())
+                                        } else { false }
+                                    } else { false }
+                                }
+                                _ => false
+                            }
+                        } else { false };
+
+                    if is_opaque_unwrap {
+                        // Receiver already on stack from inner call, just leave it
+                    } else {
                     // Dynamic dispatch: emit CALL_SPEC with method name string index and arg count
                     let method_str = if let Expr::Dot(_, method) = call.name.as_ref() {
                         method.to_string()
@@ -6239,6 +6287,7 @@ impl Codegen {
 
                     // Infer return type for CALL_SPEC based on method name suffix
                     self.last_expr_type = self.infer_call_spec_return_type(&method_str);
+                    } // close opaque_unwrap else
                 } else {
                     self.emit(OpCode::CALL);
 
