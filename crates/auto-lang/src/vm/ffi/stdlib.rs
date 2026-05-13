@@ -4178,6 +4178,92 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             }
         }
 
+        // ---- csv::Writer ----
+        ("Writer", "from_writer") => {
+            let _inner_handle = task.ram.pop_i32();
+            // Create a csv::Writer wrapping a Vec<u8> buffer
+            let buffer: Vec<u8> = Vec::new();
+            let writer = csv::Writer::from_writer(buffer);
+            push_rust_obj(task, vm, "csv::Writer<Vec<u8>>", std::sync::Mutex::new(writer))?;
+        }
+
+        // ---- String ----
+        ("String", "from_utf8") => {
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(bytes) = rust_obj.downcast_ref::<Vec<u8>>() {
+                        match String::from_utf8(bytes.clone()) {
+                            Ok(s) => {
+                                let str_idx = vm.add_string(s.into_bytes());
+                                task.ram.push_str_idx(str_idx as u32);
+                                return Ok(());
+                            }
+                            Err(_) => {
+                                return Err(VMError::RuntimeError("String.from_utf8: invalid utf8".into()));
+                            }
+                        }
+                    }
+                }
+            }
+            task.ram.push_i32(0);
+        }
+
+        // ---- std::process::Command ----
+        ("Command", "new") => {
+            let program: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Command.new: {}", e)))?;
+            let cmd = std::process::Command::new(&program);
+            push_rust_obj(task, vm, "std::process::Command", std::sync::Mutex::new(cmd))?;
+        }
+        ("Command", "arg") => {
+            let arg: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Command.arg: {}", e)))?;
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(cmd) = rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>() {
+                        cmd.lock().unwrap().arg(&arg);
+                        task.ram.push_i32(handle as i32);
+                        return Ok(());
+                    }
+                }
+            }
+            return Err(VMError::RuntimeError("Command.arg: invalid Command handle".into()));
+        }
+        ("Command", "args") => {
+            let _args_handle = task.ram.pop_i32();
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32);
+        }
+        ("Command", "stdout") => {
+            let _stdio_val = task.ram.pop_i32();
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32);
+        }
+        ("Command", "stdin") => {
+            let _stdio_val = task.ram.pop_i32();
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32);
+        }
+        ("Command", "output") => {
+            let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(cmd) = rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>() {
+                        let output = cmd.lock().unwrap().output()
+                            .map_err(|e| VMError::RuntimeError(format!("Command.output: {}", e)))?;
+                        push_rust_obj(task, vm, "std::process::Output", output)?;
+                        return Ok(());
+                    }
+                }
+            }
+            return Err(VMError::RuntimeError("Command.output: invalid Command handle".into()));
+        }
+
         _ => {
             // Fallback: check opaque dispatch table for native shim routing
             if let Some(native_name) = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(&type_name, &method) {
