@@ -10,6 +10,7 @@
 //! 5. **Spec-driven** — Agents cooperate via the Ledger, not via chat.
 
 pub mod agent;
+pub mod api;
 pub mod budget;
 pub mod checkpoint;
 pub mod flow;
@@ -17,16 +18,18 @@ pub mod handoff;
 pub mod pipeline;
 pub mod profession;
 pub mod soul;
+pub mod store;
 pub mod turn;
 
 pub use agent::{AgentContext, AgentInstance, ModelConfig, Provider};
-pub use budget::{BudgetAction, BudgetStrategy, BudgetTracker, TokenBudget};
+pub use budget::{BudgetAction, BudgetStrategy, BudgetTracker, CostReport, TokenBudget};
 pub use checkpoint::{Checkpoint, CheckpointError, FileState};
 pub use flow::{ExitRouting, FlowSpec, FlowStep, GateType};
 pub use handoff::{ContextPointers, Decision, HandoffDocument, Question, SpecUpdate, TokenUsage, WorkProduct};
 pub use pipeline::{AdvanceResult, GateDecision, PipelineEngine, PipelineStatus, StepRecord};
 pub use profession::{ForgePhase, Profession, ProfessionError, ProfessionRegistry};
 pub use soul::{SoulConfig, SoulError};
+pub use store::{RunStore, new_run_store, start_run, get_run, list_runs, advance_run, submit_handoff, resolve_gate, RunEntry, RunEvent, RunSummary, RunState, StepState, GateState};
 
 use std::collections::HashMap;
 

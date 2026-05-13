@@ -88,7 +88,7 @@ Since agents "work longer rather than quicker," flows may run for hours or days.
 **Acceptance Criteria:**
 - [x] Per-step token budgets with configurable limit, warning threshold, and strategy
 - [x] Budget strategies: HardStop, EscalateModel, SummarizeContext, SkipOptional
-- [ ] Agents view shows real-time token spend and "savings vs parallel" estimates
+- [x] Agents view shows real-time token spend and "savings vs parallel" estimates
 - [x] Cumulative run budget prevents runaway costs
 - [x] Cost analytics persist across checkpoints
 

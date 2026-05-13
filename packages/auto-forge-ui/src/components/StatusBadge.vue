@@ -5,10 +5,8 @@
 </template>
 
 <script setup lang="ts">
-import type { Status } from '@/types/specs'
-
 defineProps<{
-  status: Status
+  status: string
   size?: 'sm' | 'md'
 }>()
 </script>
@@ -117,5 +115,31 @@ defineProps<{
 .status-badge.analysed {
   color: #8b5cf6;
   background: hsl(258 90% 66% / 0.12);
+}
+
+/* Relay statuses */
+.status-badge.idle,
+.status-badge.completed {
+  color: #10b981;
+  background: hsl(160 84% 39% / 0.12);
+}
+.status-badge.running,
+.status-badge.in_progress {
+  color: #3b82f6;
+  background: hsl(217 91% 60% / 0.12);
+}
+.status-badge.failed,
+.status-badge.error {
+  color: #ef4444;
+  background: hsl(0 84% 60% / 0.12);
+}
+.status-badge.waitingforhuman,
+.status-badge.waiting_approval {
+  color: #f59e0b;
+  background: hsl(38 92% 50% / 0.12);
+}
+.status-badge.paused {
+  color: #94a3b8;
+  background: hsl(215 16% 62% / 0.12);
 }
 </style>

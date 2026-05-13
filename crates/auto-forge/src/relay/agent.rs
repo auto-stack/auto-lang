@@ -219,7 +219,7 @@ impl AgentInstance {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::relay::profession::{ForgePhase, ProfessionRegistry};
+    use crate::relay::profession::ProfessionRegistry;
     use crate::relay::soul::SoulConfig;
 
     #[test]

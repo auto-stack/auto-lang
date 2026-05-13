@@ -112,7 +112,7 @@
 ---
 
 ### P5 Agents Relay — Frontend Agents View
-**Status:** Draft
+**Status:** Done
 **Objective:** G5, G6
 **Estimated Duration:** 3 weeks
 **Owner:** UI Team
@@ -121,14 +121,14 @@
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
-| P5.1 | Pipeline visualization component (horizontal flow) | UI | 3 days | P2.2 | Empty |
-| P5.2 | Run cards with live status and token spend | UI | 2 days | P4.5 | Empty |
-| P5.3 | Checkpoint timeline viewer | UI | 2 days | P3.4 | Empty |
-| P5.4 | Cost charts (per run, per profession, cumulative) | UI | 2 days | P4.5 | Empty |
-| P5.5 | Role/Profession config panel | UI | 2 days | P1.2 | Empty |
-| P5.6 | Human gate approval UI (diff view, approve/reject/edit) | UI | 3 days | P2.6 | Empty |
-| P5.7 | Run control buttons: pause, resume, rollback, fork | UI | 2 days | P3.5, P3.7, P3.8 | Empty |
-| P5.8 | Frontend integration tests | UI | 2 days | P5.1-P5.7 | Empty |
+| P5.1 | Pipeline visualization component (horizontal flow) | UI | 3 days | P2.2 | Done |
+| P5.2 | Run cards with live status and token spend | UI | 2 days | P4.5 | Done |
+| P5.3 | Checkpoint timeline viewer | UI | 2 days | P3.4 | Done |
+| P5.4 | Cost charts (per run, per profession, cumulative) | UI | 2 days | P4.5 | Done |
+| P5.5 | Role/Profession config panel | UI | 2 days | P1.2 | Done |
+| P5.6 | Human gate approval UI (diff view, approve/reject/edit) | UI | 3 days | P2.6 | Done |
+| P5.7 | Run control buttons: pause, resume, rollback, fork | UI | 2 days | P3.5, P3.7, P3.8 | Done |
+| P5.8 | Frontend integration tests | UI | 2 days | P5.1-P5.7 | Done |
 
 **Risk:** Real-time SSE updates for long-running flows may be unreliable over weak connections.  
 **Mitigation:** Use resilient SSE with automatic reconnect; show "last updated at" timestamp.

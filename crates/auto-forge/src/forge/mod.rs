@@ -1960,6 +1960,5 @@ where
         .route("/api/forge/specs/{project}/{section_id}", get(handlers::get_specs_section).put(handlers::update_specs_section))
         .route("/api/forge/specs/{project}", get(handlers::get_specs).put(handlers::update_specs))
         // Relay
-        .route("/api/forge/agents/run", post(handlers::start_run))
-        .route("/api/forge/agents/runs", get(handlers::list_runs))
+        .merge(crate::relay::api::relay_routes())
 }
