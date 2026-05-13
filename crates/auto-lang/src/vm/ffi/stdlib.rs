@@ -3695,12 +3695,15 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let self_handle = pop_rust_obj(task, vm, "PathBuf.join")?;
             let obj = vm.get_heap_object(self_handle).unwrap();
             let mut guard = obj.write().unwrap();
-            if let Some(path) = guard.as_any_mut().downcast_mut::<StdPathBuf>() {
-                path.push(&other);
-                // Return same handle
-                task.ram.push_i32(self_handle as i32);
+            if let Some(rust_obj) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                if let Some(path) = rust_obj.downcast_mut::<StdPathBuf>() {
+                    path.push(&other);
+                    task.ram.push_i32(self_handle as i32);
+                } else {
+                    return Err(VMError::RuntimeError(format!("PathBuf.join: invalid object at handle {}", self_handle)));
+                }
             } else {
-                return Err(VMError::RuntimeError(format!("PathBuf.join: invalid object at handle {}", self_handle)));
+                return Err(VMError::RuntimeError(format!("PathBuf.join: not a RustStdlibObject at handle {}", self_handle)));
             }
         }
 
@@ -3803,9 +3806,13 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let handle = pop_rust_obj(task, vm, "ReaderBuilder.delimiter")?;
             let obj = vm.get_heap_object(handle).unwrap();
             let mut guard = obj.write().unwrap();
-            if let Some(builder) = guard.as_any_mut().downcast_mut::<csv::ReaderBuilder>() {
-                builder.delimiter(delim as u8);
-                task.ram.push_i32(handle as i32);
+            if let Some(rust_obj) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                if let Some(builder) = rust_obj.downcast_mut::<csv::ReaderBuilder>() {
+                    builder.delimiter(delim as u8);
+                    task.ram.push_i32(handle as i32);
+                } else {
+                    return Err(VMError::RuntimeError("ReaderBuilder.delimiter: invalid inner object".into()));
+                }
             } else {
                 return Err(VMError::RuntimeError("ReaderBuilder.delimiter: invalid object".into()));
             }
@@ -3824,9 +3831,13 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let builder_handle = pop_rust_obj(task, vm, "ReaderBuilder.from_reader")?;
             let obj = vm.get_heap_object(builder_handle).unwrap();
             let guard = obj.read().unwrap();
-            if let Some(builder) = guard.as_any().downcast_ref::<csv::ReaderBuilder>() {
-                let reader = builder.from_reader(std::io::Cursor::new(bytes));
-                push_rust_obj(task, vm, "csv::Reader<std::io::Cursor<Vec<u8>>>", reader)?;
+            if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                if let Some(builder) = rust_obj.downcast_ref::<csv::ReaderBuilder>() {
+                    let reader = builder.from_reader(std::io::Cursor::new(bytes));
+                    push_rust_obj(task, vm, "csv::Reader<std::io::Cursor<Vec<u8>>>", reader)?;
+                } else {
+                    return Err(VMError::RuntimeError("ReaderBuilder.from_reader: invalid inner object".into()));
+                }
             } else {
                 return Err(VMError::RuntimeError("ReaderBuilder.from_reader: invalid object".into()));
             }
