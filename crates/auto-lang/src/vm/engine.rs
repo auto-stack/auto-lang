@@ -4105,6 +4105,7 @@ impl AutoVM {
                             "WriterBuilder", "StringRecord", "ThreadRng", "Complex",
                             "BigInt", "Normal", "Rng", "WalkDir", "Instant", "Duration",
                             "OnceCell", "Regex", "Url", "Version", "RefCell", "Child",
+                            "File", "FileWriter", "PathBuf",
                         ];
                         if STATIC_CALL_TYPES.contains(&s.as_str()) {
                             s
@@ -4533,9 +4534,10 @@ impl AutoVM {
                     } else if type_name.contains("::") || type_name.contains("RustStdlib")
                         || matches!(type_name.as_str(), "Command" | "Stdio" | "Writer" | "Reader"
                             | "ReaderBuilder" | "WriterBuilder" | "StringRecord" | "ThreadRng"
-                            | "Complex" | "BigInt" | "Normal" | "Rng"
+                            | "Complex" | "BigInt" | "Normal" | "Rng" | "WalkDir"
                             | "RefCell" | "Instant" | "Duration" | "Child"
-                            | "OnceCell" | "Backtrace" | "Args") {
+                            | "OnceCell" | "Backtrace" | "Args"
+                            | "File" | "FileWriter" | "PathBuf") {
                         // Generic fallback for external crate types (csv::ReaderBuilder, etc.)
                         // Also matches bare type names from static calls (e.g., "Command" from Command.arg)
                         // Route through shim_rust_stdlib_dispatch with type_name + method injected
@@ -4544,8 +4546,12 @@ impl AutoVM {
                         let short_type = type_name.rsplit("::").next().unwrap_or(&type_name);
 
                         // Detect if receiver is a type-name string from a static call
-                        // (i.e., type_name has no "::" — came from the STATIC_CALL_TYPES heuristic)
-                        let receiver_is_type_string = !type_name.contains("::");
+                        // Static calls have a string receiver (e.g., "WalkDir" from WalkDir.new)
+                        // Instance calls have a heap handle receiver (i32 > 0 or object)
+                        #[cfg(feature = "nanbox")]
+                        let receiver_is_type_string = auto_val::is_string(receiver_nv);
+                        #[cfg(not(feature = "nanbox"))]
+                        let receiver_is_type_string = receiver < 0 && receiver > i32::MIN + 1;
 
                         // Push method and type_name strings for the dispatch handler
                         let method_bytes = method_name.as_bytes().to_vec();

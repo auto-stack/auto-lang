@@ -4412,6 +4412,15 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let _handle = task.ram.pop_i32();
             push_rust_obj(task, vm, "ThreadRng", 0i32)?;
         }
+        // WalkDir (walkdir crate)
+        ("WalkDir", "new") => {
+            let _root = task.ram.pop_i32();
+            push_rust_obj(task, vm, "WalkDir", 0i32)?;
+        }
+        ("WalkDir", "into_iter") => {
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32);
+        }
 
         // ---- std::sync::Arc clone stub ----
         ("Arc", "clone") => {

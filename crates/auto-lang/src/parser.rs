@@ -3567,15 +3567,37 @@ impl<'a> Parser<'a> {
             // Impl statement (Plan 059: synonym for ext, Rust-compatible syntax)
             TokenKind::Impl => self.parse_ext_stmt()?,
             // mod name { ... } — flatten inner statements into current scope
+            // pub fn names get prefixed with "mod_name." so they are accessible
+            // via module_name.method() calls (e.g., network.connect())
             TokenKind::Mod => {
                 self.next(); // skip 'mod'
-                let _mod_name = self.cur.text.clone();
+                let mod_name = self.cur.text.clone();
                 self.next(); // skip module name
                 self.skip_empty_lines();
                 self.expect(TokenKind::LBrace)?;
-                let inner_body = self.body()?;
-                // Flatten inner statements into current scope
-                Stmt::Block(inner_body)
+                // Don't use self.body() — it would try expect(LBrace) again.
+                // Manually collect statements until RBrace.
+                let mut stmts = Vec::new();
+                let mut source_lines = Vec::new();
+                while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+                    self.skip_empty_lines();
+                    if self.is_kind(TokenKind::RBrace) { break; }
+                    let stmt_line = self.cur.pos.line;
+                    stmts.push(self.parse_stmt()?);
+                    source_lines.push(stmt_line);
+                }
+                self.expect(TokenKind::RBrace)?;
+                let inner_body = Body { stmts, source_lines, ..Default::default() };
+                // Prefix pub fn names with mod_name.
+                let prefixed_stmts: Vec<Stmt> = inner_body.stmts.into_iter().map(|mut stmt| {
+                    if let Stmt::Fn(ref mut fn_decl) = stmt {
+                        if fn_decl.is_pub {
+                            fn_decl.name = auto_val::AutoStr::from(format!("{}.{}", mod_name, fn_decl.name));
+                        }
+                    }
+                    stmt
+                }).collect();
+                Stmt::Block(Body { stmts: prefixed_stmts, ..inner_body })
             }
             // Otherwise, try to parse as an expression
             _ => self.expr_stmt()?,

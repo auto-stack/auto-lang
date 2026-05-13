@@ -3825,6 +3825,11 @@ impl Codegen {
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
+                        } else if self.exports.keys().any(|k| k.starts_with(&format!("{}.", name_str))) {
+                            // Module prefix from a `mod` block (e.g., `network.connect`)
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(0);
+                            self.last_expr_type = ObjectType::NestedObject;
                         } else {
                             return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
                         }
@@ -5569,7 +5574,10 @@ impl Codegen {
                                 })
                                 .unwrap_or("");
                             // Plan 249 Phase 4: Unified opaque dispatch
-                            if crate_name == "std" {
+                            // Only route instance methods (lowercase receiver) for file/stdio ops;
+                            // static calls like File.create() should go through CALL_SPEC dispatch.
+                            let is_static_receiver = obj_part.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                            if crate_name == "std" && !is_static_receiver {
                                 match method.as_str() {
                                     "now" => func_name = Some("auto.time.instant_now".to_string()),
                                     "elapsed" => func_name = Some("auto.time.instant_elapsed".to_string()),
@@ -6103,7 +6111,44 @@ impl Codegen {
                                 // Receiver (arg 0) is always an object ID (i32 value),
                                 // so always use direct compile_expr instead of smart param passing
                                 // (LOAD_REF would push var_index instead of the actual object ID)
-                                self.compile_expr(obj)?;
+                                // Exception: crate_module.Type.method calls (e.g., walkdir.WalkDir.new)
+                                // need the type name pushed as string receiver for CALL_SPEC dispatch
+                                let is_crate_static = if let Expr::Call(inner_call) = obj.as_ref() {
+                                    if let Expr::Dot(inner_obj, _inner_method) = inner_call.name.as_ref() {
+                                        if let Expr::Dot(module_obj, type_field) = inner_obj.as_ref() {
+                                            if let Expr::Ident(mn) = module_obj.as_ref() {
+                                                const CM: &[&str] = &[
+                                                    "env","fs","json","http","url","shell","regex","chrono",
+                                                    "serde_json","csv","walkdir","clap","simplelog","crossbeam",
+                                                    "rayon","num","percent_encoding","urlencoding","sha2","hmac",
+                                                    "flate2","tar","semver","once_cell","rand_distr","log",
+                                                    "time","math","rand","base64","hex","env_logger","process","path",
+                                                ];
+                                                CM.contains(&mn.as_ref())
+                                                    && type_field.as_ref().chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                                            } else { false }
+                                        } else { false }
+                                    } else { false }
+                                } else { false };
+
+                                if is_crate_static {
+                                    if let Expr::Call(inner_call) = obj.as_ref() {
+                                        if let Expr::Dot(_, type_field) = inner_call.name.as_ref() {
+                                            let type_bytes = type_field.as_ref().as_bytes().to_vec();
+                                            let type_idx = self.strings.len() as u16;
+                                            self.strings.push(type_bytes);
+                                            self.emit(OpCode::LOAD_STR);
+                                            self.code.extend_from_slice(&type_idx.to_le_bytes());
+                                            for arg in &inner_call.args.args {
+                                                if let crate::ast::Arg::Pos(expr) = arg {
+                                                    self.compile_call_arg(expr, "", 0)?;
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    self.compile_expr(obj)?;
+                                }
                             }
                         }
                     } else {

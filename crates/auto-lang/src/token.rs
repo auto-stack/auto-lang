@@ -398,6 +398,7 @@ impl Token {
             "reply" => Some(TokenKind::Reply),
             // Plan 126: Phase 4 - Micro-concurrency
             "go" => Some(TokenKind::Go),
+            "mod" => Some(TokenKind::Mod), // mod name { ... } module declaration
             _ => None,
         }
     }
