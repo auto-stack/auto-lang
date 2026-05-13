@@ -20,7 +20,22 @@
       @delete="$emit('delete', $event)"
     >
       <template #detail="{ item: rowItem }">
-        <slot name="detail" :item="rowItem" :project="project">
+        <template v-if="props.editingId === rowItem.id">
+          <TestEditor
+            v-if="sectionType === 'tests'"
+            :item="rowItem"
+            @save="onTestSave(rowItem, $event)"
+            @cancel="$emit('cancel-edit')"
+          />
+          <MarkdownEditor
+            v-else
+            :content="rowItem.content"
+            @save="onMarkdownSave(rowItem, $event)"
+            @cancel="$emit('cancel-edit')"
+            @link-click="$emit('jump', $event)"
+          />
+        </template>
+        <slot v-else name="detail" :item="rowItem" :project="project">
           <SpecItemDetail
             :item="rowItem"
             :section-type="sectionType"
@@ -40,23 +55,38 @@
 import type { SpecItem, SectionType } from '@/types/specs'
 import SpecItemRow from '@/components/SpecItemRow.vue'
 import SpecItemDetail from '@/components/SpecItemDetail.vue'
+import MarkdownEditor from '@/components/editors/MarkdownEditor.vue'
+import TestEditor from '@/components/editors/TestEditor.vue'
 import { Inbox } from 'lucide-vue-next'
 
-defineProps<{
+const props = defineProps<{
   items: SpecItem[]
   project: string
   expandedId: string | null
+  editingId: string | null
   sectionType: SectionType
   summaryFn: (item: SpecItem) => string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   toggle: [id: string]
   jump: [id: string]
   edit: [item: SpecItem]
   'status-change': [payload: { id: string; status: string }]
   delete: [id: string]
+  save: [item: SpecItem]
+  'cancel-edit': []
 }>()
+
+function onMarkdownSave(item: SpecItem, content: string) {
+  emit('save', { ...item, content, modified_at: Date.now() })
+  emit('cancel-edit')
+}
+
+function onTestSave(item: SpecItem, payload: { title: string; content: string; test_file: string }) {
+  emit('save', { ...item, title: payload.title, content: payload.content, test_file: payload.test_file, modified_at: Date.now() })
+  emit('cancel-edit')
+}
 </script>
 
 <style scoped>

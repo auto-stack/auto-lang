@@ -87,11 +87,14 @@
               :items="currentSection.items"
               :project="project"
               :expanded-id="activeItemId"
+              :editing-id="editingItemId"
               @toggle="toggleItem"
               @jump="jumpToItem"
               @edit="startEditItem"
               @status-change="handleStatusChange"
               @delete="handleDelete"
+              @save="handleSave"
+              @cancel-edit="cancelEdit"
             />
           </div>
 
@@ -133,6 +136,7 @@ const SPECS_SIDEBAR_KEY = 'autoforge-specs-sidebar-collapsed'
 
 const activeSection = ref<string>('goals')
 const activeItemId = ref<string | null>(null)
+const editingItemId = ref<string | null>(null)
 const project = ref('auto-lang')
 const specSearch = ref('')
 const sectionNavCollapsed = ref(localStorage.getItem(SPECS_SIDEBAR_KEY) === 'true')
@@ -212,6 +216,16 @@ function handleStatusChange(payload: { id: string; status: Status }) {
   }
 }
 
+function handleSave(updated: SpecItem) {
+  const section = currentSection.value
+  if (!section) return
+  const idx = section.items.findIndex((i) => i.id === updated.id)
+  if (idx >= 0) {
+    section.items[idx] = updated
+    saveSection()
+  }
+}
+
 function handleDelete(itemId: string) {
   const section = currentSection.value
   if (!section) return
@@ -241,7 +255,11 @@ function jumpToItem(id: string) {
 
 function startEditItem(item: SpecItem) {
   activeItemId.value = item.id
-  // TODO: Phase 3 — open per-item editor
+  editingItemId.value = item.id
+}
+
+function cancelEdit() {
+  editingItemId.value = null
 }
 
 function addItem() {

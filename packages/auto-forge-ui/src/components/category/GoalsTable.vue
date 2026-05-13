@@ -38,7 +38,14 @@
           </tr>
           <tr v-if="expandedId === item.id" class="detail-row">
             <td :colspan="5">
+              <GoalEditor
+                v-if="editingId === item.id"
+                :item="item"
+                @save="onGoalSave(item, $event)"
+                @cancel="$emit('cancel-edit')"
+              />
               <SpecItemDetail
+                v-else
                 :item="item"
                 section-type="goals"
                 :project="project"
@@ -59,12 +66,14 @@
 import type { SpecItem } from '@/types/specs'
 import StatusBadge from '@/components/StatusBadge.vue'
 import SpecItemDetail from '@/components/SpecItemDetail.vue'
+import GoalEditor from '@/components/editors/GoalEditor.vue'
 import { Inbox } from 'lucide-vue-next'
 
 const props = defineProps<{
   items: SpecItem[]
   project: string
   expandedId: string | null
+  editingId: string | null
 }>()
 
 const emit = defineEmits<{
@@ -73,7 +82,14 @@ const emit = defineEmits<{
   edit: [item: SpecItem]
   'status-change': [payload: { id: string; status: string }]
   delete: [id: string]
+  save: [item: SpecItem]
+  'cancel-edit': []
 }>()
+
+function onGoalSave(item: SpecItem, payload: { title: string; content: string; priority: string; depends_on: string[] }) {
+  emit('save', { ...item, title: payload.title, content: payload.content, priority: payload.priority, depends_on: payload.depends_on, modified_at: Date.now() })
+  emit('cancel-edit')
+}
 
 function toggle(id: string) {
   emit('toggle', id)

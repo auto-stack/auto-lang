@@ -3,6 +3,7 @@
     :items="items"
     :project="project"
     :expanded-id="expandedId"
+    :editing-id="editingId"
     section-type="designs"
     :summary-fn="extractDesignSummary"
     @toggle="$emit('toggle', $event)"
@@ -10,6 +11,7 @@
     @edit="$emit('edit', $event)"
     @status-change="$emit('status-change', $event)"
     @delete="$emit('delete', $event)"
+    @save="$emit('save', $event)"
   />
 </template>
 
@@ -22,6 +24,7 @@ defineProps<{
   items: SpecItem[]
   project: string
   expandedId: string | null
+  editingId: string | null
 }>()
 
 defineEmits<{
@@ -30,5 +33,7 @@ defineEmits<{
   edit: [item: SpecItem]
   'status-change': [payload: { id: string; status: string }]
   delete: [id: string]
+  save: [item: SpecItem]
+  'cancel-edit': []
 }>()
 </script>

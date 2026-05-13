@@ -72,7 +72,7 @@ const props = defineProps<{
   project: string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   jump: [id: string]
   edit: [item: SpecItem]
   'status-change': [payload: { id: string; status: string }]
