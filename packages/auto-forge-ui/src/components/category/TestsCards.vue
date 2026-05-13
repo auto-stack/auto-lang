@@ -31,7 +31,11 @@
           @edit="$emit('edit', rowItem)"
           @status-change="$emit('status-change', $event)"
           @delete="$emit('delete', rowItem.id)"
-        />
+        >
+          <template #content="{ item }">
+            <TestDetail :content="item.content" :test-file="item.test_file" @link-click="$emit('jump', $event)" />
+          </template>
+        </SpecItemDetail>
       </template>
     </SpecItemRow>
   </div>
@@ -42,6 +46,7 @@ import type { SpecItem } from '@/types/specs'
 import SpecItemRow from '@/components/SpecItemRow.vue'
 import SpecItemDetail from '@/components/SpecItemDetail.vue'
 import TestEditor from '@/components/editors/TestEditor.vue'
+import TestDetail from '@/components/detail/TestDetail.vue'
 import { extractTestSummary } from '@/utils/categorySummary'
 
 const props = defineProps<{

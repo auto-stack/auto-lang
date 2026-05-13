@@ -53,7 +53,11 @@
                 @edit="$emit('edit', item)"
                 @status-change="$emit('status-change', $event)"
                 @delete="$emit('delete', item.id)"
-              />
+              >
+                <template #content="{ item: detailItem }">
+                  <GoalDetail :content="detailItem.content" @link-click="$emit('jump', $event)" />
+                </template>
+              </SpecItemDetail>
             </td>
           </tr>
         </template>
@@ -67,6 +71,7 @@ import type { SpecItem } from '@/types/specs'
 import StatusBadge from '@/components/StatusBadge.vue'
 import SpecItemDetail from '@/components/SpecItemDetail.vue'
 import GoalEditor from '@/components/editors/GoalEditor.vue'
+import GoalDetail from '@/components/detail/GoalDetail.vue'
 import { Inbox } from 'lucide-vue-next'
 
 const props = defineProps<{
