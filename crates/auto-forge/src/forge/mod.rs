@@ -554,6 +554,9 @@ struct SpecsStore {
     projects: std::collections::HashMap<String, SpecsDocument>,
     data_dir: PathBuf,
     templates_dir: PathBuf,
+    /// If `data_dir/manifest.at` exists, this holds the project name from that manifest.
+    /// In flat mode, specs live directly in `data_dir` instead of a subdirectory.
+    flat_mode_project: Option<String>,
 }
 
 // ─── Embedded Default Templates ──────────────────────────────────────────────
@@ -592,8 +595,18 @@ impl SpecsStore {
             projects: std::collections::HashMap::new(),
             data_dir,
             templates_dir,
+            flat_mode_project: None,
         };
         store.extract_embedded_templates();
+        // Detect flat mode before loading: manifest.at directly in data_dir
+        let flat_manifest = store.data_dir.join("manifest.at");
+        if flat_manifest.exists() {
+            if let Ok(content) = std::fs::read_to_string(&flat_manifest) {
+                if let Ok(manifest) = toml::from_str::<ManifestAt>(&content) {
+                    store.flat_mode_project = Some(manifest.project);
+                }
+            }
+        }
         store.load_all();
         store
     }
@@ -637,18 +650,31 @@ impl SpecsStore {
     }
 
     fn load_all(&mut self) {
+        // Flat mode: manifest.at lives directly in data_dir
+        if let Some(ref flat_project) = self.flat_mode_project {
+            if let Some(doc) = self.load_ad_format(&self.data_dir, flat_project) {
+                self.projects.insert(flat_project.clone(), doc);
+            }
+        }
+
+        // Nested mode: scan subdirectories for additional projects
         let Ok(entries) = std::fs::read_dir(&self.data_dir) else { return };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                // New format: directory with manifest.at + *.ad files
                 let project_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                // Skip if already loaded in flat mode
+                if self.projects.contains_key(&project_name) {
+                    continue;
+                }
                 if let Some(doc) = self.load_ad_format(&path, &project_name) {
                     self.projects.insert(project_name, doc);
                 }
             } else if path.extension() == Some("json".as_ref()) {
-                // Legacy format: single JSON file — auto-migrate
                 let project_name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                if self.projects.contains_key(&project_name) {
+                    continue;
+                }
                 if let Some(doc) = self.load_json_and_migrate(&path, &project_name) {
                     self.projects.insert(project_name, doc);
                 }
@@ -788,7 +814,7 @@ impl SpecsStore {
         let mut in_section_content = true;
         let mut passed_separator = false;
 
-        let item_heading_re = Regex::new(r"^##\s+([GADPSVXI]\d+(?:\.\d+)?)\s+(.+)$").unwrap();
+        let item_heading_re = Regex::new(r"^(?:##|###)\s+([GADPSVXI]\d+(?:\.\d+)?)\s+(.+)$").unwrap();
         let meta_re = Regex::new(r"^\*\*(.+?):\*\*\s*(.*)$").unwrap();
 
         for line in lines.iter().skip(1) {
@@ -918,7 +944,12 @@ impl SpecsStore {
     }
 
     fn save_ad_format(&self, doc: &SpecsDocument, project_name: &str) {
-        let project_dir = self.data_dir.join(sanitize_filename(project_name));
+        // In flat mode, save directly to data_dir if the project matches
+        let project_dir = if self.flat_mode_project.as_deref() == Some(project_name) {
+            self.data_dir.clone()
+        } else {
+            self.data_dir.join(sanitize_filename(project_name))
+        };
         let _ = std::fs::create_dir_all(&project_dir);
 
         // Save manifest.at

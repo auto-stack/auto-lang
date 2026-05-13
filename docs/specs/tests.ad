@@ -1,0 +1,306 @@
+# 🧪 Tests
+
+> Executable verification criteria for the Agents Relay module.
+
+---
+
+## Tests
+
+### S1.1 [G1] Agent profession registry loads built-in professions
+**Status:** Draft
+**Type:** Unit
+**Scope:** G1
+
+**Fixture:**
+```rust
+let registry = ProfessionRegistry::new();
+```
+
+**Steps:**
+1. Call `registry.load_builtin()`
+2. Query `registry.get("architect")`
+3. Query `registry.get("coder")`
+4. Query `registry.get("nonexistent")`
+
+**Expected Outcome:**
+- Architect profession exists with `owned_sections: [Architecture, Designs, APIs]`.
+- Coder profession exists with `tools: [read_file, write_file, edit_file, shell, search]`.
+- Nonexistent returns `None`.
+
+**Test File:** `crates/auto-forge/src/relay/profession.rs` (inline `#[cfg(test)]`)
+
+**Depends on:** G1, D1
+
+---
+
+### S1.2 [G1] Soul markdown renders into system prompt context
+**Status:** Draft
+**Type:** Unit
+**Scope:** G1
+
+**Fixture:**
+```rust
+let soul = SoulConfig::load("test-souls/planner.md").unwrap();
+let profession = ProfessionRegistry::new().get("planner").unwrap();
+```
+
+**Steps:**
+1. Call `AgentInstance::spawn(profession, &soul.id, ...)`
+2. Call `agent.render_system_prompt()`
+3. Assert prompt contains Soul values
+4. Assert prompt contains Profession constraints
+
+**Expected Outcome:**
+- System prompt includes "Core Values" section from Soul.
+- System prompt includes "You may ONLY use read_jade, write_jade tools" from Profession.
+- Prompt is ≤2000 tokens.
+
+**Test File:** `crates/auto-forge/src/relay/agent.rs` (inline `#[cfg(test)]`)
+
+**Depends on:** G1, D1
+
+---
+
+### S2.1 [G2] PipelineEngine executes flow steps in order
+**Status:** Draft
+**Type:** Integration
+**Scope:** G2
+
+**Fixture:**
+```rust
+let flow = FlowSpec::parse(r#"
+    $Step(profession: "planner", gate: "auto")
+    $Step(profession: "architect", gate: "auto")
+    $Step(profession: "coder", gate: "auto")
+"#).unwrap();
+let mut engine = PipelineEngine::new(flow, "test-run-1".into());
+```
+
+**Steps:**
+1. Mock all agent turns to return immediate handoff.
+2. Call `engine.execute_next()` three times.
+3. Record profession of each spawned agent.
+
+**Expected Outcome:**
+- Step 1 spawns Planner.
+- Step 2 spawns Architect.
+- Step 3 spawns Coder.
+- No step is skipped or reordered.
+
+**Test File:** `crates/auto-forge/src/relay/pipeline.rs` (inline `#[cfg(test)]`)
+
+**Depends on:** G2, D2
+
+---
+
+### S2.2 [G2] Flow branching routes DIRECT intent to single Coder step
+**Status:** Draft
+**Type:** Integration
+**Scope:** G2
+
+**Fixture:**
+```rust
+let flow = FlowSpec::parse(r#"
+    $Step(profession: "intaker", gate: "auto") {
+      exit: "branch(intent)"
+    }
+    $Step(profession: "planner", gate: "auto")
+    $Step(profession: "coder", gate: "auto")
+"#).unwrap();
+let mut engine = PipelineEngine::new(flow, "test-run-2".into());
+```
+
+**Steps:**
+1. Mock Intaker to classify intent as `DIRECT`.
+2. Call `engine.execute_next()`.
+3. Observe which profession runs next.
+
+**Expected Outcome:**
+- Intaker classifies `DIRECT`.
+- Flow branches to Coder step, skipping Planner.
+- Total steps executed: 2 (Intaker + Coder).
+
+**Test File:** `crates/auto-forge/src/relay/pipeline.rs` (inline `#[cfg(test)]`)
+
+**Depends on:** G2, D2
+
+---
+
+### S3.1 [G3] Handoff document excludes raw chat history
+**Status:** Draft
+**Type:** Unit
+**Scope:** G3
+
+**Fixture:**
+```rust
+let agent = create_test_agent("coder");
+let history = vec![
+    TurnRecord::user("Implement auth"),
+    TurnRecord::assistant("I'll start by..."),
+    TurnRecord::tool_call("read_file", json!({"path": "src/main.rs"})),
+    TurnRecord::tool_result("file contents..."),
+];
+```
+
+**Steps:**
+1. Call `HandoffDocument::generate(&agent, &history, &specs)`.
+2. Inspect rendered handoff markdown.
+3. Search for raw chat phrases.
+
+**Expected Outcome:**
+- Handoff contains summary like "Coder implemented auth module."
+- Handoff does NOT contain "I'll start by..." or raw file contents.
+- Handoff lists `work_product: ["src/auth.rs"]` instead of inlining code.
+
+**Test File:** `crates/auto-forge/src/relay/handoff.rs` (inline `#[cfg(test)]`)
+
+**Depends on:** G3, D3
+
+---
+
+### S3.2 [G3] Context scope filters specs by profession
+**Status:** Draft
+**Type:** Unit
+**Scope:** G3
+
+**Fixture:**
+```rust
+let specs = load_test_specs(); // Contains Goals, Architecture, Designs, Plans, Tests
+let coder_profession = ProfessionRegistry::new().get("coder").unwrap();
+```
+
+**Steps:**
+1. Call `ContextPointers::build(&coder_profession, &specs)`.
+2. Count sections included in rendered context.
+
+**Expected Outcome:**
+- Context includes Plans and Designs (readable by Coder).
+- Context includes Tests (readable by Coder).
+- Context excludes Architecture (not in Coder's readable_sections).
+- Context excludes Reviews (not in Coder's readable_sections).
+
+**Test File:** `crates/auto-forge/src/relay/handoff.rs` (inline `#[cfg(test)]`)
+
+**Depends on:** G3, D3
+
+---
+
+### S4.1 [G4] Checkpoint restores after simulated crash
+**Status:** Draft
+**Type:** Integration
+**Scope:** G4
+
+**Fixture:**
+```rust
+let temp_dir = TempDir::new().unwrap();
+let project_dir = temp_dir.path().join("project");
+// Create test files and ledger
+```
+
+**Steps:**
+1. Run PipelineEngine through 3 steps.
+2. Capture checkpoint after step 2.
+3. Simulate crash: drop engine, delete in-memory state.
+4. Create new engine from checkpoint.
+5. Resume execution.
+
+**Expected Outcome:**
+- New engine resumes at step 3 (Architect handoff).
+- File system state matches checkpoint (files at step 2 state).
+- Ledger state matches checkpoint.
+- No chat history from step 1 or 2 is present.
+
+**Test File:** `crates/auto-forge/tests/checkpoint_recovery.rs`
+
+**Depends on:** G4, D4
+
+---
+
+### S4.2 [G4] Resume rehydrates agent without chat history
+**Status:** Draft
+**Type:** Unit
+**Scope:** G4
+
+**Fixture:**
+```rust
+let checkpoint = load_test_checkpoint("step-2-checkpoint.json");
+```
+
+**Steps:**
+1. Call `PipelineEngine::resume(&checkpoint)`.
+2. Inspect the spawned agent's context.
+3. Check `agent.context.messages`.
+
+**Expected Outcome:**
+- Agent context contains Soul + relevant Specs + Handoff Document.
+- Agent context does NOT contain raw messages from Planner or Architect turns.
+- `agent.context.turns_taken` is 0 (fresh start).
+
+**Test File:** `crates/auto-forge/src/relay/checkpoint.rs` (inline `#[cfg(test)]`)
+
+**Depends on:** G4, D4
+
+---
+
+### S5.1 [G5] Token budget hard-stops at limit
+**Status:** Draft
+**Type:** Unit
+**Scope:** G5
+
+**Fixture:**
+```rust
+let budget = TokenBudget {
+    limit: 1000,
+    warning_at: 700,
+    strategy: BudgetStrategy::HardStop,
+};
+let mut tracker = BudgetTracker::new(budget);
+```
+
+**Steps:**
+1. Record 600 tokens → check action.
+2. Record 300 more tokens (total 900) → check action.
+3. Record 200 more tokens (total 1100) → check action.
+
+**Expected Outcome:**
+- At 600: `BudgetAction::None`.
+- At 900: `BudgetAction::Warning { remaining: 100 }`.
+- At 1100: `BudgetAction::HardStop`.
+
+**Test File:** `crates/auto-forge/src/relay/budget.rs` (inline `#[cfg(test)]`)
+
+**Depends on:** G5, D5
+
+---
+
+### S6.1 [G6] Human gate pauses until approval received
+**Status:** Draft
+**Type:** Integration
+**Scope:** G6
+
+**Fixture:**
+```rust
+let flow = FlowSpec::parse(r#"
+    $Step(profession: "planner", gate: "human")
+    $Step(profession: "architect", gate: "auto")
+"#).unwrap();
+let mut engine = PipelineEngine::new(flow, "test-run-gate".into());
+```
+
+**Steps:**
+1. Mock Planner turn to return handoff.
+2. Call `engine.execute_next()`.
+3. Assert status is `WaitingForHuman`.
+4. Wait 100ms (simulate human delay).
+5. Call `engine.resolve_gate(GateDecision::Approve)`.
+6. Assert status transitions to `Running` with Architect.
+
+**Expected Outcome:**
+- After Planner step: `PipelineStatus::WaitingForHuman`.
+- Before approval: no Architect spawned.
+- After approval: Architect step begins.
+- After rejection: Planner step restarts with feedback.
+
+**Test File:** `crates/auto-forge/tests/human_gate.rs`
+
+**Depends on:** G6, D2

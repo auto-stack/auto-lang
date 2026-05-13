@@ -1,0 +1,370 @@
+# 🔌 APIs
+
+> Public interfaces exposed by the Agents Relay module.
+
+---
+
+## APIs
+
+### I1 Relay Run API
+**Status:** Draft
+**Version:** v1
+**Base URL:** `/api/smith/relay`
+
+**Endpoints:**
+
+#### POST /run
+**Description:** Start a new agent pipeline run from a FlowSpec.
+
+**Request:**
+```http
+POST /api/smith/relay/run HTTP/1.1
+Content-Type: application/json
+
+{
+  "flow_id": "feature_impl",
+  "project": "auto-lang",
+  "initial_message": "Add OAuth2 authentication",
+  "options": {
+    "auto_approve": false,
+    "token_budget": 150000
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "run_id": "run-550e8400-e29b-41d4-a716-446655440000",
+  "status": "running",
+  "current_step": 0,
+  "flow_id": "feature_impl",
+  "started_at": 1778666457,
+  "checkpoint_id": 1
+}
+```
+
+**Errors:**
+| Code | Meaning |
+|---|---|
+| 400 | Invalid flow_id or missing project |
+| 404 | Flow spec not found |
+| 409 | Project already has an active run |
+| 422 | Flow spec validation failed |
+
+**Schema:**
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `flow_id` | `string` | yes | Identifier of the FlowSpec to execute |
+| `project` | `string` | yes | Project path/context |
+| `initial_message` | `string` | no | User request that triggered the run |
+| `options.auto_approve` | `boolean` | no | Skip human gates (default: false) |
+| `options.token_budget` | `integer` | no | Max tokens for this run |
+
+---
+
+#### GET /runs
+**Description:** List all agent pipeline runs with optional filters.
+
+**Request:**
+```http
+GET /api/smith/relay/runs?project=auto-lang&status=active HTTP/1.1
+```
+
+**Response:**
+```json
+{
+  "runs": [
+    {
+      "run_id": "run-550e8400...",
+      "project": "auto-lang",
+      "flow_id": "feature_impl",
+      "status": "running",
+      "current_step": 2,
+      "current_profession": "architect",
+      "started_at": 1778666457,
+      "token_usage": { "input": 8234, "output": 6102, "cumulative": 14336 }
+    }
+  ],
+  "total": 1
+}
+```
+
+**Query Parameters:**
+| Param | Type | Description |
+|---|---|---|
+| `project` | `string` | Filter by project |
+| `status` | `string` | Filter by status: idle, running, waiting_for_human, completed, failed, paused |
+| `limit` | `integer` | Max results (default: 20) |
+| `offset` | `integer` | Pagination offset |
+
+---
+
+#### GET /run/{rid}
+**Description:** Get detailed status of a single run.
+
+**Request:**
+```http
+GET /api/smith/relay/run/run-550e8400 HTTP/1.1
+```
+
+**Response:**
+```json
+{
+  "run_id": "run-550e8400",
+  "project": "auto-lang",
+  "flow_id": "feature_impl",
+  "status": "running",
+  "current_step": 2,
+  "current_profession": "architect",
+  "started_at": 1778666457,
+  "phase_history": [
+    { "phase": "intake", "entered_at": 1778666457 },
+    { "phase": "planner", "entered_at": 1778666460 }
+  ],
+  "token_usage": { "input": 8234, "output": 6102, "cumulative": 14336, "budget": 150000 },
+  "checkpoints": [1, 2],
+  "latest_handoff": { "from": "planner", "to": "architect", "summary": "..." }
+}
+```
+
+**Errors:**
+| Code | Meaning |
+|---|---|
+| 404 | Run not found |
+
+---
+
+#### POST /run/{rid}/pause
+**Description:** Pause a running pipeline.
+
+**Request:**
+```http
+POST /api/smith/relay/run/run-550e8400/pause HTTP/1.1
+```
+
+**Response:** `200 OK` with updated run state (status: paused).
+
+**Errors:**
+| Code | Meaning |
+|---|---|
+| 409 | Run is not in running state |
+
+---
+
+#### POST /run/{rid}/resume
+**Description:** Resume a paused pipeline.
+
+**Request:**
+```http
+POST /api/smith/relay/run/run-550e8400/resume HTTP/1.1
+```
+
+**Response:** `200 OK` with updated run state (status: running).
+
+**Errors:**
+| Code | Meaning |
+|---|---|
+| 409 | Run is not in paused state |
+
+---
+
+#### POST /run/{rid}/rollback
+**Description:** Rollback to a previous checkpoint.
+
+**Request:**
+```http
+POST /api/smith/relay/run/run-550e8400/rollback HTTP/1.1
+Content-Type: application/json
+
+{ "checkpoint_id": 2 }
+```
+
+**Response:** `200 OK` with updated run state.
+
+**Errors:**
+| Code | Meaning |
+|---|---|
+| 400 | checkpoint_id not found |
+| 409 | Run is active; pause first |
+
+---
+
+#### GET /run/{rid}/checkpoints
+**Description:** List checkpoints for a run.
+
+**Request:**
+```http
+GET /api/smith/relay/run/run-550e8400/checkpoints HTTP/1.1
+```
+
+**Response:**
+```json
+{
+  "checkpoints": [
+    { "id": 1, "timestamp": 1778666457, "profession": "planner", "token_usage": 5240 },
+    { "id": 2, "timestamp": 1778666465, "profession": "architect", "token_usage": 18100 }
+  ]
+}
+```
+
+---
+
+#### POST /run/{rid}/approve
+**Description:** Approve a pending human gate.
+
+**Request:**
+```http
+POST /api/smith/relay/run/run-550e8400/approve HTTP/1.1
+Content-Type: application/json
+
+{
+  "edited_specs": {
+    "goals": "...optional override..."
+  }
+}
+```
+
+**Response:** `200 OK` with updated run state.
+
+**Errors:**
+| Code | Meaning |
+|---|---|
+| 409 | No human gate is pending |
+
+---
+
+#### POST /run/{rid}/reject
+**Description:** Reject a pending human gate and request redraft.
+
+**Request:**
+```http
+POST /api/smith/relay/run/run-550e8400/reject HTTP/1.1
+Content-Type: application/json
+
+{ "feedback": "Use session cookies instead of JWT" }
+```
+
+**Response:** `200 OK` with updated run state.
+
+**Depends on:** A1, D2
+
+---
+
+### I2 Agent Registry API
+**Status:** Draft
+**Version:** v1
+**Base URL:** `/api/smith/relay`
+
+**Endpoints:**
+
+#### GET /professions
+**Description:** List all built-in and custom professions.
+
+**Response:**
+```json
+{
+  "professions": [
+    {
+      "id": "architect",
+      "name": "Architect",
+      "phase": "spec_draft",
+      "owned_sections": ["architecture", "designs", "apis"],
+      "readable_sections": ["goals", "plans", "architecture", "designs", "apis"],
+      "max_turns": 10,
+      "default_model": "claude-3-5-sonnet-20241022"
+    }
+  ]
+}
+```
+
+---
+
+#### GET /professions/{id}
+**Description:** Get a single profession definition.
+
+**Response:** Full profession JSON.
+
+---
+
+#### PUT /professions/{id}
+**Description:** Create or update a custom profession.
+
+**Request:** Profession JSON body.
+
+**Response:** `200 OK` with saved profession.
+
+**Errors:**
+| Code | Meaning |
+|---|---|
+| 400 | Invalid profession definition |
+| 403 | Cannot modify built-in professions |
+
+---
+
+#### GET /souls
+**Description:** List available Soul configurations.
+
+**Response:**
+```json
+{
+  "souls": [
+    { "id": "architect", "name": "Soul of the Architect", "path": ".autoforge/souls/architect.md" }
+  ]
+}
+```
+
+---
+
+#### GET /souls/{id}
+**Description:** Get Soul markdown content.
+
+**Response:** `text/markdown` body.
+
+**Depends on:** G1, D1
+
+---
+
+### I3 Flow Management API
+**Status:** Draft
+**Version:** v1
+**Base URL:** `/api/smith/relay`
+
+**Endpoints:**
+
+#### GET /flows
+**Description:** List available flow specifications.
+
+**Response:**
+```json
+{
+  "flows": [
+    { "id": "feature_impl", "name": "Feature Implementation", "steps": 6 },
+    { "id": "bug_fix", "name": "Bug Fix", "steps": 3 }
+  ]
+}
+```
+
+---
+
+#### GET /flows/{id}
+**Description:** Get a flow definition.
+
+**Response:** Parsed FlowSpec JSON.
+
+---
+
+#### PUT /flows/{id}
+**Description:** Create or update a flow specification.
+
+**Request:** FlowSpec JSON or AutoDown body.
+
+**Response:** `200 OK` with validated flow.
+
+**Errors:**
+| Code | Meaning |
+|---|---|
+| 400 | Invalid flow spec (e.g., undefined profession) |
+| 422 | Circular loop detected |
+
+**Depends on:** G2, D2

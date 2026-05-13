@@ -1,0 +1,437 @@
+# 🎨 Designs
+
+> Module-level interfaces, state machines, and data models for the Agents Relay module.
+
+---
+
+## Designs
+
+### D1 AgentInstance & Soul Rendering
+**Status:** Draft
+**Module:** `crates/auto-forge/src/relay/agent.rs`
+**Scope:** A2
+
+**Interface:**
+```rust
+pub struct AgentInstance {
+    pub id: String,
+    pub profession: Profession,
+    pub soul: SoulConfig,
+    pub model: ModelConfig,
+    pub context: AgentContext,
+}
+
+impl AgentInstance {
+    /// Spawn a new agent for a pipeline step.
+    /// Loads Soul from disk, resolves model config (with fallback chain).
+    pub fn spawn(
+        profession: &Profession,
+        soul_id: &str,
+        handoff: &HandoffDocument,
+        specs: &SpecsDocument,
+    ) -> Result<Self, AgentError>;
+
+    /// Render the system prompt from Soul + Profession + context.
+    pub fn render_system_prompt(&self) -> String;
+
+    /// Render the user message from Handoff + relevant Specs.
+    pub fn render_user_message(&self) -> Vec<ChatMessage>;
+
+    /// Execute one turn of the ReAct loop.
+    pub async fn turn(&mut self, tools: &[Box<dyn Tool>]) -> TurnResult;
+}
+
+pub struct SoulConfig {
+    pub id: String,
+    pub name: String,
+    pub markdown: String,
+    pub values: Vec<String>,
+    pub handoff_ritual: String,
+}
+
+pub struct ModelConfig {
+    pub provider: Provider,
+    pub model: String,
+    pub temperature: f32,
+    pub max_tokens: u32,
+    pub reasoning_budget: Option<u32>,
+    pub fallback_chain: Vec<String>,
+}
+
+pub enum Provider {
+    Anthropic,
+    OpenAI,
+    Local { url: String },
+}
+```
+
+**State Machine:**
+```mermaid
+stateDiagram-v2
+    [*] --> Unresolved: Soul ID provided
+    Unresolved --> Resolved: Soul loaded from disk
+    Resolved --> Ready: Model config validated
+    Ready --> Thinking: Turn started
+    Thinking --> ToolCall: LLM requests tool
+    ToolCall --> Thinking: Tool result returned
+    Thinking --> Complete: LLM finishes
+    Thinking --> Error: API failure
+    Error --> Ready: Fallback model activated
+    Error --> Failed: Fallback exhausted
+    Complete --> [*]
+    Failed --> [*]
+```
+
+**Data Model:**
+| Field | Type | Description |
+|---|---|---|
+| `id` | `String` | UUID for this agent instance |
+| `profession.id` | `String` | Reference to Profession registry |
+| `soul.id` | `String` | Reference to Soul config file |
+| `model.provider` | `Provider` | API provider enum |
+| `model.fallback_chain` | `Vec<String>` | Ordered list of alternative models |
+| `context.budget_used` | `u64` | Tokens consumed this step |
+| `context.turns_taken` | `u32` | Number of LLM turns this step |
+
+**Depends on:** A2
+
+---
+
+### D2 PipelineEngine & Flow Execution
+**Status:** Draft
+**Module:** `crates/auto-forge/src/relay/pipeline.rs`
+**Scope:** A1
+
+**Interface:**
+```rust
+pub struct PipelineEngine {
+    pub flow: FlowSpec,
+    pub current_step: usize,
+    pub current_agent: Option<AgentInstance>,
+    pub checkpoints: Vec<Checkpoint>,
+    pub status: PipelineStatus,
+    pub run_id: String,
+}
+
+impl PipelineEngine {
+    /// Load a flow spec and initialize the pipeline.
+    pub fn new(flow: FlowSpec, run_id: String) -> Self;
+
+    /// Execute the next step in the flow.
+    pub async fn execute_next(&mut self) -> StepResult;
+
+    /// Pause the current run, saving checkpoint.
+    pub async fn pause(&mut self) -> Result<Checkpoint, PipelineError>;
+
+    /// Resume from a checkpoint.
+    pub async fn resume(checkpoint: &Checkpoint) -> Result<Self, PipelineError>;
+
+    /// Rollback to a previous checkpoint.
+    pub async fn rollback(target: u64) -> Result<(), PipelineError>;
+
+    /// Handle human approval/rejection at a gate.
+    pub async fn resolve_gate(&mut self, decision: GateDecision) -> Result<(), PipelineError>;
+}
+
+pub enum PipelineStatus {
+    Idle,
+    Running { agent_id: String, started_at: u64 },
+    WaitingForHuman { gate: Gate, since: u64 },
+    Completed { result: CompletionResult },
+    Failed { error: String, checkpoint: u64 },
+    Paused { at_checkpoint: u64 },
+}
+
+pub enum StepResult {
+    Handoff { to: String, checkpoint: Checkpoint },
+    GateTriggered { gate: Gate },
+    LoopBack { to: String, iteration: u32 },
+    Complete,
+    Error { message: String },
+}
+```
+
+**State Machine:**
+```mermaid
+stateDiagram-v2
+    [*] --> Idle: Flow loaded
+    Idle --> Running: execute_next() called
+    Running --> Running: Loop iteration
+    Running --> WaitingForHuman: Gate triggered
+    WaitingForHuman --> Running: Approved
+    WaitingForHuman --> Running: Rejected (redraft)
+    Running --> Paused: pause() called
+    Paused --> Running: resume() called
+    Running --> Completed: Final step done
+    Running --> Failed: Unrecoverable error
+    Failed --> Idle: reset
+    Completed --> [*]
+```
+
+**Data Model:**
+| Field | Type | Description |
+|---|---|---|
+| `flow.id` | `String` | Flow specification identifier |
+| `current_step` | `usize` | Index into flow.steps vector |
+| `status` | `PipelineStatus` | Current state machine state |
+| `checkpoints` | `Vec<Checkpoint>` | Ordered list of saved states |
+| `run_id` | `String` | Unique run identifier |
+
+**Algorithm (pseudocode):**
+```
+fn execute_next():
+    step = flow.steps[current_step]
+    profession = registry.get(&step.profession_id)
+    
+    // Gate check
+    if step.gate == Human:
+        status = WaitingForHuman { gate: step.gate }
+        return StepResult::GateTriggered { gate }
+    
+    // Spawn agent
+    agent = AgentInstance::spawn(profession, ...)
+    status = Running { agent_id: agent.id, started_at: now() }
+    
+    // Run agent turn loop
+    loop:
+        result = agent.turn(filtered_tools)
+        if result.is_handoff():
+            checkpoint = create_checkpoint(agent, result)
+            advance_step_or_loop()
+            return StepResult::Handoff { to: next_profession, checkpoint }
+        if result.is_budget_exceeded():
+            return StepResult::Error { message: "Budget exceeded" }
+        if agent.turns_taken >= step.max_turns:
+            return StepResult::Error { message: "Max turns exceeded" }
+```
+
+**Depends on:** A1, D1
+
+---
+
+### D3 HandoffDocument Generation
+**Status:** Draft
+**Module:** `crates/auto-forge/src/relay/handoff.rs`
+**Scope:** A1, G3
+
+**Interface:**
+```rust
+pub struct HandoffDocument {
+    pub from: String,
+    pub to: String,
+    pub run_id: String,
+    pub checkpoint_id: u64,
+    pub summary: String,
+    pub decisions: Vec<Decision>,
+    pub open_questions: Vec<Question>,
+    pub spec_updates: Vec<SpecUpdate>,
+    pub work_product: Vec<WorkProduct>,
+    pub context_for_next: ContextPointers,
+    pub token_usage: TokenUsage,
+}
+
+impl HandoffDocument {
+    /// Generate from agent turn history and current state.
+    pub fn generate(
+        agent: &AgentInstance,
+        turn_history: &[TurnRecord],
+        specs: &SpecsDocument,
+    ) -> Result<Self, HandoffError>;
+
+    /// Render as markdown for the next agent's consumption.
+    pub fn render(&self) -> String;
+
+    /// Compress raw turn history into summary using cheap model or rules.
+    pub async fn compress_history(
+        history: &[TurnRecord],
+        model: &ModelConfig,
+    ) -> Result<String, CompressionError>;
+}
+
+pub struct ContextPointers {
+    pub files_to_read: Vec<String>,
+    pub specs_to_follow: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+pub struct TokenUsage {
+    pub step_input: u64,
+    pub step_output: u64,
+    pub cumulative: u64,
+    pub budget_remaining: u64,
+}
+```
+
+**State Machine:**
+```mermaid
+stateDiagram-v2
+    [*] --> Collecting: Agent turn complete
+    Collecting --> Summarizing: Raw history gathered
+    Summarizing --> Structured: Decisions extracted
+    Structured --> Validated: Open questions identified
+    Validated --> Rendered: Work product catalogued
+    Rendered --> [*]
+```
+
+**Data Model:**
+| Field | Type | Description |
+|---|---|---|
+| `summary` | `String` | ≤200 words executive summary |
+| `decisions.id` | `String` | Decision identifier |
+| `decisions.status` | `String` | made / deferred / rejected |
+| `open_questions.id` | `String` | Question identifier |
+| `spec_updates.section_id` | `String` | Which spec section was modified |
+| `work_product.path` | `String` | File path or artifact location |
+| `work_product.lines` | `u32` | Size indicator for context sizing |
+
+**Algorithm (pseudocode):**
+```
+fn generate(agent, turn_history, specs):
+    // Phase 1: Summarize (cheap model or rules)
+    summary = compress_history(turn_history, cheap_model)
+    
+    // Phase 2: Extract decisions from agent's explicit handoff tool calls
+    decisions = extract_decisions(turn_history)
+    
+    // Phase 3: Identify open questions from handoff tool calls
+    questions = extract_open_questions(turn_history)
+    
+    // Phase 4: Catalog spec changes made by agent
+    spec_updates = diff_specs(original_specs, current_specs)
+    
+    // Phase 5: List files touched
+    work_product = agent.context.files_touched
+    
+    // Phase 6: Build context pointers for next agent
+    pointers = build_context_pointers(agent.profession, next_profession, specs)
+    
+    return HandoffDocument { ... }
+```
+
+**Depends on:** G3, D1
+
+---
+
+### D4 Checkpoint Serialization
+**Status:** Draft
+**Module:** `crates/auto-forge/src/relay/checkpoint.rs`
+**Scope:** A3, G4
+
+**Interface:**
+```rust
+pub struct Checkpoint {
+    pub id: u64,
+    pub run_id: String,
+    pub timestamp: u64,
+    pub git_commit: Option<String>,
+    pub git_diff: Option<String>,
+    pub ledger_state: SpecsDocument,
+    pub handoff: HandoffDocument,
+    pub file_manifest: Vec<FileState>,
+    pub token_usage: TokenUsage,
+}
+
+pub struct FileState {
+    pub path: String,
+    pub hash: String,  // SHA-256
+    pub size: u64,
+}
+
+impl Checkpoint {
+    /// Create checkpoint from current pipeline state.
+    pub async fn create(engine: &PipelineEngine) -> Result<Self, CheckpointError>;
+
+    /// Serialize to disk.
+    pub fn save(&self, dir: &Path) -> Result<(), CheckpointError>;
+
+    /// Load from disk.
+    pub fn load(dir: &Path, checkpoint_id: u64) -> Result<Self, CheckpointError>;
+
+    /// Restore file system state from checkpoint.
+    pub async fn restore_files(&self, project_dir: &Path) -> Result<(), CheckpointError>;
+
+    /// Restore git state.
+    pub async fn restore_git(&self) -> Result<(), CheckpointError>;
+}
+```
+
+**State Machine:**
+```mermaid
+stateDiagram-v2
+    [*] --> Capturing: Handoff triggered
+    Capturing --> GitSnapshot: File manifest built
+    GitSnapshot --> LedgerSnapshot: Git commit or diff captured
+    LedgerSnapshot --> Serializing: Ledger embedded
+    Serializing --> Persisted: JSON written to disk
+    Persisted --> [*]
+```
+
+**Data Model:**
+| Field | Type | Description |
+|---|---|---|
+| `id` | `u64` | Monotonic within run |
+| `git_commit` | `Option<String>` | Full SHA if auto-commit succeeded |
+| `git_diff` | `Option<String>` | Patch if working tree was dirty |
+| `ledger_state` | `SpecsDocument` | Deep copy of specs at this point |
+| `file_manifest` | `Vec<FileState>` | Hash of every touched file |
+
+**Depends on:** A3
+
+---
+
+### D5 TokenBudget Enforcement
+**Status:** Draft
+**Module:** `crates/auto-forge/src/relay/budget.rs`
+**Scope:** G5
+
+**Interface:**
+```rust
+pub struct TokenBudget {
+    pub limit: u64,
+    pub warning_at: u64,
+    pub strategy: BudgetStrategy,
+}
+
+pub enum BudgetStrategy {
+    HardStop,
+    EscalateModel,
+    SummarizeContext,
+    SkipOptional,
+}
+
+pub struct BudgetTracker {
+    pub run_budget: TokenBudget,
+    pub step_budgets: HashMap<String, TokenBudget>,
+    pub cumulative: u64,
+    pub per_step: HashMap<String, u64>,
+}
+
+impl BudgetTracker {
+    /// Record token usage from an API response.
+    pub fn record(&mut self, step: &str, input: u64, output: u64);
+
+    /// Check if current spend triggers any budget action.
+    pub fn check(&self, step: &str) -> BudgetAction;
+
+    /// Estimate "parallel cost" for analytics.
+    pub fn estimate_parallel_cost(&self, num_agents: u32, avg_context: u64) -> u64;
+}
+
+pub enum BudgetAction {
+    None,
+    Warning { remaining: u64 },
+    Compress,
+    HardStop,
+}
+```
+
+**Data Model:**
+| Field | Type | Description |
+|---|---|---|
+| `limit` | `u64` | Hard token limit |
+| `warning_at` | `u64` | Percentage (0-1) of limit where warning fires |
+| `strategy` | `BudgetStrategy` | Action when limit reached |
+| `cumulative` | `u64` | Total tokens this run |
+| `per_step` | `HashMap` | Tokens per profession/step |
+
+**Depends on:** G5
