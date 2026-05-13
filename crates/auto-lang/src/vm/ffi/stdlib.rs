@@ -3994,12 +3994,6 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         }
 
         // ---- String ----
-        ("String", "from_utf8") => {
-            let _bytes: i32 = i32::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("String.from_utf8: {}", e)))?;
-            let str_idx = vm.add_string(b"".to_vec());
-            task.ram.push_str_idx(str_idx as u32);
-        }
         ("String", "new") => {
             let str_idx = vm.add_string(b"".to_vec());
             task.ram.push_str_idx(str_idx as u32);

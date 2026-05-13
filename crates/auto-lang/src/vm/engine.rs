@@ -3779,24 +3779,44 @@ impl AutoVM {
                         } else if let Some(rust_obj) = heap_obj.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
                             // Opaque external crate type — try opaque dispatch for field access
                             let type_name = &rust_obj.type_name;
-                            let native_name = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(type_name, &field_name);
-                            if let Some(native_name) = native_name {
-                                drop(heap_obj); // release read lock before calling shim
-                                // Push receiver (obj_id) and call the native shim
-                                task.ram.push_i32(obj_id as i32);
-                                if let Some(&native_id) = crate::vm::native_registry::NATIVE_ID_MAP.get(native_name) {
-                                    if let Some(shim) = self.native_interface.get(native_id).cloned() {
-                                        shim(task, self)?;
+                            if type_name == "std::process::Output" && (field_name == "stdout" || field_name == "stderr") {
+                                drop(heap_obj);
+                                if let Some(obj) = self.heap_objects.get(&obj_id) {
+                                    let guard = obj.read().unwrap();
+                                    if let Some(rust_obj2) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                                        if let Some(output) = rust_obj2.downcast_ref::<std::process::Output>() {
+                                            let bytes = if field_name == "stdout" { &output.stdout } else { &output.stderr };
+                                            let vec_obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("Vec<u8>", bytes.to_vec());
+                                            let handle = self.insert_heap_object(vec_obj) as i32;
+                                            task.ram.push_i32(handle);
+                                        } else {
+                                            task.ram.push_i32(0);
+                                        }
+                                    } else {
+                                        task.ram.push_i32(0);
+                                    }
+                                } else {
+                                    task.ram.push_i32(0);
+                                }
+                            } else {
+                                let native_name = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(type_name, &field_name);
+                                if let Some(native_name) = native_name {
+                                    drop(heap_obj);
+                                    task.ram.push_i32(obj_id as i32);
+                                    if let Some(&native_id) = crate::vm::native_registry::NATIVE_ID_MAP.get(native_name) {
+                                        if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                                            shim(task, self)?;
+                                        } else {
+                                            task.ram.pop_i32();
+                                            task.ram.push_i32(0);
+                                        }
                                     } else {
                                         task.ram.pop_i32();
                                         task.ram.push_i32(0);
                                     }
                                 } else {
-                                    task.ram.pop_i32();
                                     task.ram.push_i32(0);
                                 }
-                            } else {
-                                task.ram.push_i32(0);
                             }
                         } else {
                             task.ram.push_i32(0);
@@ -4041,14 +4061,49 @@ impl AutoVM {
                     let receiver_pos = task.ram.sp - arg_count - 1;
 
                     #[cfg(feature = "nanbox")]
-                    let receiver_nv = task.ram.read_nv(receiver_pos);
+                    let (receiver_nv, receiver_pos) = {
+                        let nv = task.ram.read_nv(receiver_pos);
+                        // In nanbox mode, if receiver_pos landed on a null marker
+                        // (2nd slot of a 2-slot string arg), the actual receiver
+                        // is one position earlier.
+                        if auto_val::is_null(nv) && receiver_pos > 0 {
+                            let prev_nv = task.ram.read_nv(receiver_pos - 1);
+                            if auto_val::is_string(prev_nv) || auto_val::is_i32(prev_nv) {
+                                (prev_nv, receiver_pos - 1)
+                            } else {
+                                (nv, receiver_pos)
+                            }
+                        } else {
+                            (nv, receiver_pos)
+                        }
+                    };
+                    #[cfg(feature = "nanbox")]
+                    let receiver_nv = receiver_nv;
                     #[cfg(not(feature = "nanbox"))]
                     let receiver = task.ram.read_i32(receiver_pos);
 
                     // Look up the object's type name from all registries
                     #[cfg(feature = "nanbox")]
                     let type_name = if auto_val::is_string(receiver_nv) {
-                        "str".to_string()
+                        let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                        let s = self.strings.read().unwrap()
+                            .get(str_idx)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .unwrap_or_default();
+                        // If string matches a known crate type name pushed by codegen
+                        // for static calls (e.g., "Command", "Writer"), use it as type_name.
+                        // Regular strings like "HELLO" must NOT be treated as types.
+                        const STATIC_CALL_TYPES: &[&str] = &[
+                            "Command", "Stdio", "Writer", "Reader", "ReaderBuilder",
+                            "WriterBuilder", "StringRecord", "ThreadRng", "Complex",
+                            "BigInt", "Normal", "Rng", "WalkDir", "Instant", "Duration",
+                            "OnceCell", "Regex", "Url", "Version",
+                        ];
+                        if STATIC_CALL_TYPES.contains(&s.as_str()) {
+                            s
+                        } else {
+                            "str".to_string()
+                        }
                     } else if auto_val::is_i32(receiver_nv) {
                         let receiver = auto_val::decode_i32(receiver_nv);
                         if receiver > 0 {
@@ -4102,8 +4157,23 @@ impl AutoVM {
 
                     #[cfg(not(feature = "nanbox"))]
                     let type_name = if receiver < 0 && receiver > i32::MIN + 1 {
-                        // Tagged string index — treat as str type
-                        "str".to_string()
+                        let str_idx = (-receiver - 1) as usize;
+                        if let Some(bytes) = self.strings.read().unwrap().get(str_idx) {
+                            let s = String::from_utf8_lossy(bytes).to_string();
+                            const STATIC_CALL_TYPES: &[&str] = &[
+                                "Command", "Stdio", "Writer", "Reader", "ReaderBuilder",
+                                "WriterBuilder", "StringRecord", "ThreadRng", "Complex",
+                                "BigInt", "Normal", "Rng", "WalkDir", "Instant", "Duration",
+                                "OnceCell", "Regex", "Url", "Version",
+                            ];
+                            if STATIC_CALL_TYPES.contains(&s.as_str()) {
+                                s
+                            } else {
+                                "str".to_string()
+                            }
+                        } else {
+                            "str".to_string()
+                        }
                     } else if receiver > 0 {
                         let obj_key = receiver as u64;
                         // heap_objects (4000000+): ListData, HashMapData, GenericInstanceData, etc.
@@ -4405,11 +4475,20 @@ impl AutoVM {
                                 }
                             }
                             _ => {
-                                // Unknown List method — push nil, fall through
-                                #[cfg(feature = "nanbox")]
-                                task.ram.push_nv(auto_val::encode_null());
-                                #[cfg(not(feature = "nanbox"))]
-                                task.ram.push_i32(0);
+                                // Identity operations: return receiver unchanged, only pop args
+                                if matches!(method_name.as_str(), "collect" | "rev" | "filter_map" | "sort" | "sort_by_key" | "dedup" | "flatten" | "into_iter" | "iter" | "iter_mut" | "par_iter") {
+                                    // Pop args only (not receiver) — receiver stays as return value
+                                    #[cfg(feature = "nanbox")]
+                                    { for _ in 0..arg_count { task.ram.pop_nv(); } }
+                                    #[cfg(not(feature = "nanbox"))]
+                                    { for _ in 0..arg_count { task.ram.pop_i32(); } }
+                                } else {
+                                    // Unknown List method — push nil, fall through
+                                    #[cfg(feature = "nanbox")]
+                                    task.ram.push_nv(auto_val::encode_null());
+                                    #[cfg(not(feature = "nanbox"))]
+                                    task.ram.push_i32(0);
+                                }
                             }
                         }
                     } else if type_name.starts_with("<unknown:") || type_name.starts_with("<invalid") {
@@ -4444,12 +4523,21 @@ impl AutoVM {
                                 task.ram.push_i32(0);
                             }
                         }
-                    } else if type_name.contains("::") || type_name.contains("RustStdlib") {
+                    } else if type_name.contains("::") || type_name.contains("RustStdlib")
+                        || matches!(type_name.as_str(), "Command" | "Stdio" | "Writer" | "Reader"
+                            | "ReaderBuilder" | "WriterBuilder" | "StringRecord" | "ThreadRng"
+                            | "Complex" | "BigInt" | "Normal" | "Rng") {
                         // Generic fallback for external crate types (csv::ReaderBuilder, etc.)
+                        // Also matches bare type names from static calls (e.g., "Command" from Command.arg)
                         // Route through shim_rust_stdlib_dispatch with type_name + method injected
                         let dispatch_id: u16 = 3000; // NATIVE_RUST_STDLIB_DISPATCH
                         // Extract short type name: "csv::ReaderBuilder" -> "ReaderBuilder"
                         let short_type = type_name.rsplit("::").next().unwrap_or(&type_name);
+
+                        // Detect if receiver is a type-name string from a static call
+                        // (i.e., type_name has no "::" — came from the STATIC_CALL_TYPES heuristic)
+                        let receiver_is_type_string = !type_name.contains("::");
+
                         // Push method and type_name strings for the dispatch handler
                         let method_bytes = method_name.as_bytes().to_vec();
                         let type_bytes = short_type.as_bytes().to_vec();
@@ -4473,20 +4561,20 @@ impl AutoVM {
                         } else {
                             return Err(VMError::MissingNative(dispatch_id));
                         }
-                        // Clean up: dispatch consumed type_name + method from top.
-                        // Original receiver + args are still on stack below return value.
-                        // Pop return value, remove old receiver+args, push return back.
+                        // Dispatch handler consumed type_name + method + args.
+                        // For instance methods, receiver was consumed by handler too.
+                        // For static calls, receiver type-name string is still on stack below return.
                         #[cfg(feature = "nanbox")]
-                        {
-                            let top_nv = task.ram.pop_nv();
-                            for _ in 0..=arg_count { task.ram.pop_nv(); }
-                            task.ram.push_nv(top_nv);
+                        if receiver_is_type_string {
+                            let ret_nv = task.ram.pop_nv();
+                            task.ram.pop_nv(); // remove the type-name receiver leftover
+                            task.ram.push_nv(ret_nv);
                         }
                         #[cfg(not(feature = "nanbox"))]
-                        {
-                            let return_val = task.ram.pop_i32();
-                            for _ in 0..=arg_count { task.ram.pop_i32(); }
-                            task.ram.push_i32(return_val);
+                        if receiver_is_type_string {
+                            let ret_val = task.ram.pop_i32();
+                            task.ram.pop_i32(); // remove the type-name receiver leftover
+                            task.ram.push_i32(ret_val);
                         }
                     } else if method_name == "is_none" || method_name == "is_some" {
                         // Plan 240: Inline is_none/is_some for any type (Option semantics)

@@ -5851,7 +5851,14 @@ impl Codegen {
                     // Handler pops method first (top), then type_name (next).
                     if id == NATIVE_RUST_STDLIB_DISPATCH {
                         let (type_str, method_str) = if let Expr::Dot(obj, method_name) = call.name.as_ref() {
-                            let t = if let Expr::Ident(type_name_ident) = obj.as_ref() {
+                            // Use resolved type name from func_name (e.g., "Command" from "Command.arg")
+                            // instead of raw source identifier (e.g., "cmd" from cmd.arg)
+                            let resolved_type = func_name.as_ref()
+                                .and_then(|fn_name| fn_name.split('.').next().map(String::from))
+                                .unwrap_or_default();
+                            let t = if resolved_type.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                                resolved_type
+                            } else if let Expr::Ident(type_name_ident) = obj.as_ref() {
                                 type_name_ident.to_string()
                             } else {
                                 String::new()
@@ -6180,6 +6187,18 @@ impl Codegen {
                     self.code.extend_from_slice(&method_idx.to_le_bytes());
                     // Arg count (excluding receiver) so engine knows stack layout
                     let arg_count = call.args.args.len() as u8;
+                    // For static calls (e.g., Command.new, Complex.new), push type name
+                    // as a string receiver so CALL_SPEC can resolve the dispatch target
+                    if is_unresolved_static {
+                        if let Some(name) = func_name.as_ref() {
+                            let type_part = name.split('.').next().unwrap_or("");
+                            let type_bytes = type_part.as_bytes().to_vec();
+                            let type_idx = self.strings.len() as u16;
+                            self.strings.push(type_bytes);
+                            self.emit(OpCode::LOAD_STR);
+                            self.code.extend_from_slice(&type_idx.to_le_bytes());
+                        }
+                    }
                     self.code.push(arg_count);
 
                     // Infer return type for CALL_SPEC based on method name suffix
