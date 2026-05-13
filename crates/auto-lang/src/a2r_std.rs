@@ -762,7 +762,7 @@ pub mod shell {
 // =============================================================================
 
 #[allow(non_snake_case)]
-pub mod regex {
+pub mod re {
     pub fn r#match(pattern: &str, text: &str) -> i32 {
         match ::regex::Regex::new(pattern) {
             Ok(re) => if re.is_match(text) { 1 } else { 0 },

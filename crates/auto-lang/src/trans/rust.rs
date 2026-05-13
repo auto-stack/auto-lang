@@ -2967,7 +2967,7 @@ impl RustTrans {
                         },
                         "regex" => match method.as_str() {
                             "match" => {
-                                write!(out, "a2r_std::regex::r#match(")?;
+                                write!(out, "a2r_std::re::r#match(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     if let Arg::Pos(expr) = arg {
@@ -3708,7 +3708,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("regex", "match") => {
-                        write!(out, "a2r_std::regex::r#match(")?;
+                        write!(out, "a2r_std::re::r#match(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
@@ -3721,7 +3721,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("regex", "find_all") => {
-                        write!(out, "a2r_std::regex::find_all(")?;
+                        write!(out, "a2r_std::re::find_all(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
