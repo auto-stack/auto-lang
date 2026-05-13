@@ -3753,6 +3753,20 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             push_rust_obj(task, vm, "Mutex", val)?;
         }
 
+        // std::sync::Arc — single-threaded stub
+        ("Arc", "load") => {
+            let _ordering = task.ram.pop_i32();
+            let handle = task.ram.pop_i32() as u64;
+            // Stub: return the inner value (same handle for single-threaded)
+            task.ram.push_i32(handle as i32);
+        }
+        ("Arc", "fetch_add") => {
+            let _ordering = task.ram.pop_i32();
+            let _delta = task.ram.pop_i32();
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32);
+        }
+
         // ---- chrono ----
         ("Utc", "now") => {
             let now = chrono::Utc::now();
@@ -4473,6 +4487,18 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         ("Builder", "new") => {
             push_rust_obj(task, vm, "env_logger::Builder", 0i32)?;
         }
+        // Builder.format(closure) — noop, accepts closure arg, returns self
+        ("Builder", "format") => {
+            let _closure = task.ram.pop_i32();
+            let handle = task.ram.pop_i32() as u64;
+            // Return same builder handle (chainable)
+            task.ram.push_i32(handle as i32);
+        }
+        // Builder.init() — noop, consumes builder, pushes unit
+        ("Builder", "init") => {
+            let _handle = task.ram.pop_i32();
+            // env_logger::init returns (), push nothing meaningful
+        }
         // ---- log stubs ----
         ("log", "set_boxed_logger") => {
             let _logger = task.ram.pop_i32();
@@ -4564,6 +4590,11 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 }
             }
             task.ram.push_i32(0);
+        }
+        // ---- flate2::GzDecoder stub ----
+        ("GzDecoder", "new") => {
+            let _file_handle = task.ram.pop_i32();
+            push_rust_obj(task, vm, "flate2::GzDecoder", 0i32)?;
         }
         // ---- tar::Archive stub ----
         ("Archive", "new") => {

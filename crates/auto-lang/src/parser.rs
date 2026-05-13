@@ -3566,6 +3566,17 @@ impl<'a> Parser<'a> {
             TokenKind::Ext => self.parse_ext_stmt()?,
             // Impl statement (Plan 059: synonym for ext, Rust-compatible syntax)
             TokenKind::Impl => self.parse_ext_stmt()?,
+            // mod name { ... } — flatten inner statements into current scope
+            TokenKind::Mod => {
+                self.next(); // skip 'mod'
+                let _mod_name = self.cur.text.clone();
+                self.next(); // skip module name
+                self.skip_empty_lines();
+                self.expect(TokenKind::LBrace)?;
+                let inner_body = self.body()?;
+                // Flatten inner statements into current scope
+                Stmt::Block(inner_body)
+            }
             // Otherwise, try to parse as an expression
             _ => self.expr_stmt()?,
         };
