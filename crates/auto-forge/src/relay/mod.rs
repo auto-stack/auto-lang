@@ -11,14 +11,18 @@
 
 pub mod agent;
 pub mod budget;
+pub mod flow;
 pub mod handoff;
+pub mod pipeline;
 pub mod profession;
 pub mod soul;
 pub mod turn;
 
 pub use agent::{AgentContext, AgentInstance, ModelConfig, Provider};
 pub use budget::{BudgetAction, BudgetStrategy, BudgetTracker, TokenBudget};
+pub use flow::{ExitRouting, FlowSpec, FlowStep, GateType};
 pub use handoff::{ContextPointers, Decision, HandoffDocument, Question, SpecUpdate, TokenUsage, WorkProduct};
+pub use pipeline::{AdvanceResult, GateDecision, PipelineEngine, PipelineStatus, StepRecord};
 pub use profession::{ForgePhase, Profession, ProfessionError, ProfessionRegistry};
 pub use soul::{SoulConfig, SoulError};
 

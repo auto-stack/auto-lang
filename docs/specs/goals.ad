@@ -9,11 +9,11 @@
 | ID | Goal | Priority | Status | Stakeholder |
 |---|---|---|---|---|
 | G1 | Agent Identity System supports Soul, Profession, and Model configuration per agent | P0 | Implemented | Tooling Team |
-| G2 | Relay Orchestrator executes serial agent flows with baton passing and gate enforcement | P0 | InProgress | Tooling Team |
+| G2 | Relay Orchestrator executes serial agent flows with baton passing and gate enforcement | P0 | Implemented | Tooling Team |
 | G3 | Handoff Protocol compresses context between agents, achieving ~5× token savings vs parallel multi-agent | P0 | Implemented | Tooling Team |
 | G4 | Checkpoint & Durability system enables long-running flows to survive crashes and resume without context loss | P0 | Proposed | Tooling Team |
 | G5 | Token Budgeting tracks and enforces per-step spend with cost analytics visible in Agents view | P1 | Implemented | Tooling Team |
-| G6 | Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval | P0 | InProgress | Tooling Team |
+| G6 | Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval | P0 | Implemented | Tooling Team |
 
 ---
 
@@ -35,14 +35,14 @@ The Agent Identity separates *who the agent is* (Soul), *what it can do* (Profes
 
 ### G2 Relay Orchestrator executes serial agent flows with baton passing and gate enforcement
 
-**Status:** InProgress
+**Status:** Implemented
 
 **Acceptance Criteria:**
-- [ ] Flow specs define ordered steps with professions, gates, loops, and branches
-- [ ] Only one agent holds the baton at any time
-- [ ] Orchestrator enforces tool availability per profession
-- [ ] Orchestrator routes handoffs deterministically without LLM coordination cost
-- [ ] Loop bounds and error routing prevent infinite cycles
+- [x] Flow specs define ordered steps with professions, gates, loops, and branches
+- [x] Only one agent holds the baton at any time
+- [x] Orchestrator enforces tool availability per profession
+- [x] Orchestrator routes handoffs deterministically without LLM coordination cost
+- [x] Loop bounds and error routing prevent infinite cycles
 
 **Details:**
 The Orchestrator is pure deterministic code (Rust), not an LLM. It reads Flow specs, manages the Pipeline state machine, and routes batons. This eliminates token spend on coordination and makes routing predictable.
@@ -99,14 +99,14 @@ Token budgeting makes cost a first-class constraint. The Agents view compares ac
 
 ### G6 Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval
 
-**Status:** InProgress
+**Status:** Implemented
 
 **Acceptance Criteria:**
-- [ ] Flow steps can specify `gate: human` or `gate: auto`
+- [x] Flow steps can specify `gate: human` or `gate: auto`
 - [ ] Human gates pause the run and emit SSE notifications to frontend
-- [ ] Human can Approve, Reject, or Edit specs before continuing
-- [ ] Rejection routes back to the drafting profession with feedback
-- [ ] Async gates support hours-long delays without losing state
+- [x] Human can Approve, Reject, or Edit specs before continuing
+- [x] Rejection routes back to the drafting profession with feedback
+- [x] Async gates support hours-long delays without losing state
 
 **Details:**
 Humans remain the final authority at key boundaries. Spec gates shift human review from "code review" (after generation) to "spec review" (before implementation), dramatically reducing rework.

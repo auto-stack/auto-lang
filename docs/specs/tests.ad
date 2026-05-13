@@ -62,7 +62,7 @@ let profession = ProfessionRegistry::new().get("planner").unwrap();
 ---
 
 ### S2.1 [G2] PipelineEngine executes flow steps in order
-**Status:** Draft
+**Status:** Done
 **Type:** Integration
 **Scope:** G2
 
@@ -94,7 +94,7 @@ let mut engine = PipelineEngine::new(flow, "test-run-1".into());
 ---
 
 ### S2.2 [G2] Flow branching routes DIRECT intent to single Coder step
-**Status:** Draft
+**Status:** Done
 **Type:** Integration
 **Scope:** G2
 
@@ -274,7 +274,7 @@ let mut tracker = BudgetTracker::new(budget);
 ---
 
 ### S6.1 [G6] Human gate pauses until approval received
-**Status:** Draft
+**Status:** Done
 **Type:** Integration
 **Scope:** G6
 
