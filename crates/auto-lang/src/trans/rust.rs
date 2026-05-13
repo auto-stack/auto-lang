@@ -2675,6 +2675,12 @@ impl RustTrans {
                                 write!(out, ")")?;
                                 return Ok(());
                             }
+                            "file_size" => {
+                                write!(out, "a2r_std::fs::file_size(")?;
+                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             "walk" => {
                                 write!(out, "a2r_std::fs::walk(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
@@ -3780,6 +3786,12 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
+                    ("fs", "file_size") => {
+                        write!(out, "a2r_std::fs::file_size(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     ("fs", "walk") => {
                         write!(out, "a2r_std::fs::walk(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
@@ -3967,11 +3979,12 @@ impl RustTrans {
                         let source_crate = self.uses.iter()
                             .filter(|u| {
                                 let u_str = u.as_str();
-                                !u_str.contains("::") && u_str != "a2r_std"
+                                !u_str.contains("::") && !u_str.contains('.') && u_str != "a2r_std"
                                     && !u_str.starts_with("std")
                                     && !u_str.starts_with("auto_lang")
                                     && !Self::auto_type_to_rust(u_str).is_some()
                                     && !self.glob_imported_modules.contains(u_str)
+                                    && u_str.chars().next().map_or(true, |c| c.is_lowercase())
                             })
                             .max_by_key(|u| u.as_str().len())
                             .map(|u| u.as_str())
@@ -6263,7 +6276,11 @@ impl RustTrans {
                 {
                     let mod_name = use_stmt.paths[0].as_str();
                     if self.local_modules.contains(mod_name) {
-                        write!(out, "{}mod {};", pub_kw, mod_name)?;
+                        // Module already declared via mod X; at file header.
+                        // use X (bare, no items) means "import all from this module"
+                        // → generate use crate::X::*;
+                        self.glob_imported_modules.insert(mod_name.to_string());
+                        write!(out, "{}use crate::{}::*;", pub_kw, mod_name)?;
                         return Ok(());
                     }
                 }
@@ -8486,6 +8503,40 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
             submodules.sort();
             for sub in &submodules {
                 let _ = write!(sink.body, "pub mod {};\n", sub);
+            }
+        }
+
+        // Plan 167b: For entry file, emit mod X; declarations before transpilation
+        // For dir modules (mod.at), the effective directory is the parent of mod.at's dir
+        if is_entry {
+            let entry_dir = module.source_path.parent().unwrap();
+            let mut mod_names: Vec<String> = Vec::new();
+            for other in &modules {
+                if other.source_path == module.source_path {
+                    continue;
+                }
+                let effective_dir = if other.is_dir_module {
+                    // Dir module: mod.at is in runtime/, so effective dir is auto/
+                    other.source_path.parent().unwrap().parent().unwrap()
+                } else {
+                    // File module: file is in auto/ or auto/tools/
+                    other.source_path.parent().unwrap()
+                };
+                if effective_dir != entry_dir {
+                    continue;
+                }
+                let other_name = if other.is_dir_module {
+                    other.source_path.parent().unwrap()
+                        .file_name().unwrap().to_string_lossy().to_string()
+                } else {
+                    other.source_path.file_stem()
+                        .unwrap().to_string_lossy().to_string()
+                };
+                mod_names.push(other_name);
+            }
+            mod_names.sort();
+            for mn in &mod_names {
+                let _ = write!(sink.body, "mod {};\n", mn);
             }
         }
 

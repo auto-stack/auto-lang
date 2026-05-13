@@ -457,6 +457,13 @@ pub mod fs {
         }
     }
 
+    pub fn file_size(path: &str) -> i64 {
+        match std::fs::metadata(path) {
+            Ok(meta) => meta.len() as i64,
+            Err(_) => -1,
+        }
+    }
+
     pub fn walk(dir: &str) -> String {
         fn do_walk(dir: &str, entries: &mut Vec<String>) {
             if let Ok(rd) = std::fs::read_dir(dir) {
