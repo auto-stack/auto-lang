@@ -3897,7 +3897,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                                 let mut record_list: ListData<i32> = ListData::new();
                                 for field in record.iter() {
                                     let str_idx = vm.add_string(field.as_bytes().to_vec());
-                                    record_list.push(str_idx as i32);
+                                    record_list.push(-(str_idx as i32) - 1); // string encoding convention
                                 }
                                 let record_id = vm.insert_heap_object(record_list);
                                 outer_list.push(record_id as i32);
@@ -3928,7 +3928,13 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 let idx = index as usize;
                 if let Some(val) = list.get(idx) {
                     let val = *val;
-                    if let Some(bytes) = vm.get_string(val as u16) {
+                    if val >= 4000000 {
+                        // Heap object ID — push as object reference
+                        #[cfg(feature = "nanbox")]
+                        task.ram.push_nv(auto_val::encode_object(val as u32));
+                        #[cfg(not(feature = "nanbox"))]
+                        task.ram.push_i32(val);
+                    } else if let Some(bytes) = vm.get_string(val as u16) {
                         let new_idx = vm.add_string(bytes.to_vec());
                         task.ram.push_str_idx(new_idx as u32);
                     } else {
@@ -4160,17 +4166,31 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 
         // ---- regex extra methods ----
         ("Regex", "captures_iter") => {
-            let _text: String = String::pop_from_stack(task, vm)
+            let text: String = String::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("Regex.captures_iter: {}", e)))?;
             let handle = pop_rust_obj(task, vm, "Regex.captures_iter")?;
             let obj = vm.get_heap_object(handle);
             if obj.is_none() {
                 return Err(VMError::RuntimeError("Regex.captures_iter: invalid handle".into()));
             }
-            // For MVP, return empty list (captures_iter requires complex iterator bridging)
+            // Collect all matches into a List<List<str>>
             use crate::vm::types::ListData;
-            let empty_list: ListData<i32> = ListData::new();
-            let list_id = vm.insert_heap_object(empty_list);
+            let mut outer_list: ListData<i32> = ListData::new();
+            if let Some(obj) = obj {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(re) = rust_obj.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                        for mat in re.lock().unwrap().find_iter(&text) {
+                            let mut match_list: ListData<i32> = ListData::new();
+                            let str_idx = vm.add_string(mat.as_str().as_bytes().to_vec());
+                            match_list.push(-(str_idx as i32) - 1); // string encoding convention
+                            let match_id = vm.insert_heap_object(match_list);
+                            outer_list.push(match_id as i32);
+                        }
+                    }
+                }
+            }
+            let list_id = vm.insert_heap_object(outer_list);
             #[cfg(feature = "nanbox")]
             task.ram.push_nv(auto_val::encode_object(list_id as u32));
             #[cfg(not(feature = "nanbox"))]

@@ -7624,7 +7624,8 @@ impl Codegen {
             | "graphemes" | "as_bytes" | "bytes" | "par_iter" | "par_iter_mut"
             | "into_iter" | "iter" | "iter_mut"
             | "sample" | "gen" | "gen_range"
-            | "into_inner" => ObjectType::NestedObject,
+            | "into_inner" | "captures_iter" | "find_iter"
+            | "matches" => ObjectType::NestedObject,
             // Methods returning void
             "push" | "insert" | "insert_int" | "insert_str" | "remove" | "clear"
             | "sort" | "reverse" | "print" | "println" | "write" => ObjectType::Void,

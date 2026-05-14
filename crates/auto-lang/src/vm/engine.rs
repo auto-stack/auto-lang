@@ -3355,7 +3355,11 @@ impl AutoVM {
                         #[cfg(not(feature = "nanbox"))]
                         let obj_id = obj_or_str_bits as u64;
                         #[cfg(feature = "nanbox")]
-                        let obj_id = auto_val::decode_i32(obj_or_str_nv) as u64;
+                        let obj_id = if auto_val::is_object(obj_or_str_nv) {
+                            auto_val::decode_object(obj_or_str_nv) as u64
+                        } else {
+                            auto_val::decode_i32(obj_or_str_nv) as u64
+                        };
 
                         // First, try heap_objects registry (Plan 077 unified registry)
                         if let Some(obj) = self.get_heap_object(obj_id) {
@@ -3376,6 +3380,9 @@ impl AutoVM {
                                         if elem < 0 {
                                             let str_idx = (-(elem) - 1) as u32;
                                             task.ram.push_nv(auto_val::encode_string(str_idx));
+                                        } else if elem >= 4000000 {
+                                            // Heap object ID
+                                            task.ram.push_nv(auto_val::encode_object(elem as u32));
                                         } else {
                                             task.ram.push_i32(elem);
                                         }
@@ -4475,8 +4482,13 @@ impl AutoVM {
                                     if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
                                         if let Some(val) = list.get(index as usize) {
                                             let v = *val;
-                                            // Check if it's a string index
-                                            if let Some(bytes) = self.get_string(v as u16) {
+                                            if v >= 4000000 {
+                                                // Heap object ID — push as object reference
+                                                #[cfg(feature = "nanbox")]
+                                                { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(v as u32)); }
+                                                #[cfg(not(feature = "nanbox"))]
+                                                { task.ram.pop_i32(); for _ in 1..arg_count { task.ram.pop_i32(); } task.ram.push_i32(v); }
+                                            } else if let Some(bytes) = self.get_string(v as u16) {
                                                 let new_idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(bytes.to_vec()); i };
                                                 #[cfg(feature = "nanbox")]
                                                 { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(new_idx as u32)); }

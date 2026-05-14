@@ -590,6 +590,36 @@ pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let str_index = auto_val::decode_string(nv) as u16;
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_print(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_print(vm, &format!("<invalid string index: {}>", str_index));
+            }
+        } else if auto_val::is_object(nv) {
+            let handle = auto_val::decode_object(nv) as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                } else {
+                    vm_print(vm, &format!("<obj:{}>", handle));
+                }
+            } else {
+                vm_print(vm, &format!("<invalid object: {}>", handle));
+            }
+        } else {
+            let val = auto_val::decode_i32(nv);
+            vm_print(vm, &val.to_string());
+        }
+        Ok(())
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
     let val = task.ram.pop_i32();
     // Boolean sentinel values: i32::MIN = true, i32::MIN+1 = false
     if val == -2147483648 {
@@ -609,7 +639,8 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
     }
     vm_print(vm, &val.to_string());
-    Ok(())
+    Ok(());
+    }
 }
 
 pub fn shim_print_f32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
@@ -724,19 +755,21 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             } else {
                 vm_print(vm, &format!("<invalid string index: {}>", str_index));
             }
-        } else {
-            let val = auto_val::decode_i32(nv);
-            let handle = val as u64;
+        } else if auto_val::is_object(nv) {
+            let handle = auto_val::decode_object(nv) as u64;
             if let Some(obj) = vm.get_heap_object(handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     vm_print(vm, &format_rust_stdlib_obj(rust_obj));
                 } else {
-                    vm_print(vm, &val.to_string());
+                    vm_print(vm, &format!("<obj:{}>", handle));
                 }
             } else {
-                vm_print(vm, &val.to_string());
+                vm_print(vm, &format!("<invalid object: {}>", handle));
             }
+        } else {
+            let val = auto_val::decode_i32(nv);
+            vm_print(vm, &val.to_string());
         }
     }
     Ok(())
@@ -783,19 +816,21 @@ pub fn shim_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             } else {
                 vm_write(vm, &format!("<invalid string index: {}>", str_index));
             }
-        } else {
-            let val = auto_val::decode_i32(nv);
-            let handle = val as u64;
+        } else if auto_val::is_object(nv) {
+            let handle = auto_val::decode_object(nv) as u64;
             if let Some(obj) = vm.get_heap_object(handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     vm_write(vm, &format_rust_stdlib_obj(rust_obj));
                 } else {
-                    vm_write(vm, &val.to_string());
+                    vm_write(vm, &format!("<obj:{}>", handle));
                 }
             } else {
-                vm_write(vm, &val.to_string());
+                vm_write(vm, &format!("<invalid object: {}>", handle));
             }
+        } else {
+            let val = auto_val::decode_i32(nv);
+            vm_write(vm, &val.to_string());
         }
     }
     Ok(())

@@ -5,7 +5,9 @@ fn main() {
     // r"..." raw string literal approximation — AutoLang uses regular strings
     let re = Regex.new("#\\w+").unwrap()
     let text = "Love #rust and #programming!"
-    for cap in re.captures_iter(text) {
+    let matches = re.captures_iter(text)
+    for i in 0..matches.len() {
+        let cap = matches[i]
         print(f"Hashtag: ${cap[0]}")
     }
 }
