@@ -1952,7 +1952,38 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
             }
         }
     } else {
-        // Invalid iterator - return -1 (nil)
+        // Fallback: if iterator_id is actually a heap list object, auto-create iterator
+        if let Some(obj) = vm.get_heap_object(iterator_id as u64) {
+            let guard = obj.read().unwrap();
+            if guard.type_tag() == crate::vm::heap_object::TypeTag::ListInt {
+                if let Some(_list_data) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                    // Create an iterator for this list on the fly
+                    let list_iter = crate::vm::engine::ListIterator {
+                        list_id: iterator_id as u64,
+                        current_index: 0,
+                    };
+                    // Use iterator_id (the list's heap ID) as key so subsequent
+                    // iterator_next calls find it with the same ID the loop passes
+                    vm.iterators.insert(iterator_id, Iterator::List(list_iter));
+                    drop(guard);
+                    if let Some(mut iter_mut) = vm.iterators.get_mut(&iterator_id) {
+                        if let Iterator::List(ref mut li) = *iter_mut {
+                            if let Some(obj2) = vm.get_heap_object(li.list_id) {
+                                let list = obj2.read().unwrap();
+                                if let Some(list_data) = list.as_any().downcast_ref::<ListData<i32>>() {
+                                    if li.current_index < list_data.len() as u32 {
+                                        let elem = list_data.get(li.current_index as usize).copied().unwrap_or(0);
+                                        li.current_index += 1;
+                                        task.ram.push_i32(elem);
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         -1
     };
 
@@ -4471,8 +4502,7 @@ pub fn shim_re_opaque_find_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 
     let mut list = ListData::<i32>::new();
     list.elems = matches;
-    let obj = RustStdlibObject::new("List<i32>", std::sync::Mutex::new(list));
-    let id = vm.insert_heap_object(obj);
+    let id = vm.insert_heap_object(list);
     task.ram.push_i32(id as i32);
     Ok(())
 }
@@ -4686,8 +4716,7 @@ pub fn shim_url_opaque_query_pairs(task: &mut AutoTask, vm: &AutoVM) -> Result<(
 
     let mut list = ListData::<i32>::new();
     list.elems = pairs;
-    let obj = RustStdlibObject::new("List<i32>", std::sync::Mutex::new(list));
-    let id = vm.insert_heap_object(obj);
+    let id = vm.insert_heap_object(list);
     task.ram.push_i32(id as i32);
     Ok(())
 }

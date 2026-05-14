@@ -612,6 +612,26 @@ impl AutoVM {
         }
     }
 
+    /// Compare two opaque heap objects by value.
+    /// Returns Some(true/false) if comparison is supported, None to fall back to integer comparison.
+    fn compare_opaque_objects(&self, a_id: u64, b_id: u64) -> Option<bool> {
+        use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+        let a_obj = self.get_heap_object(a_id)?;
+        let b_obj = self.get_heap_object(b_id)?;
+        let a_guard = a_obj.read().ok()?;
+        let b_guard = b_obj.read().ok()?;
+        let a_rso = a_guard.as_any().downcast_ref::<RustStdlibObject>()?;
+        let b_rso = b_guard.as_any().downcast_ref::<RustStdlibObject>()?;
+        // semver::Version comparison
+        if a_rso.type_name == "semver::Version" && b_rso.type_name == "semver::Version" {
+            let a_ver = a_rso.downcast_ref::<std::sync::Mutex<semver::Version>>()?;
+            let b_ver = b_rso.downcast_ref::<std::sync::Mutex<semver::Version>>()?;
+            Some(*a_ver.lock().unwrap() > *b_ver.lock().unwrap())
+        } else {
+            None
+        }
+    }
+
     pub fn struct_eq(&self, a: i32, b: i32) -> bool {
         use crate::vm::generic_registry::GenericInstanceData;
         use crate::vm::heap_object::TypeTag;
@@ -4353,9 +4373,12 @@ impl AutoVM {
                     // Construct function name: TypeName.method
                     let func_name = format!("{}.{}", type_name, method_name);
 
-                    // Plan 212 Phase 2.2: .unwrap() on opaque handles is identity
+                    // Plan 212 Phase 2.2: .unwrap() and similar on opaque handles is identity
                     // (constructors already handle errors by raising VMError)
-                    let is_identity_unwrap = method_name == "unwrap" || method_name == "expect";
+                    // first_or_octet_stream: mime shim already resolves the value
+                    let is_identity_unwrap = matches!(method_name.as_str(),
+                        "unwrap" | "expect" | "first_or_octet_stream" | "first"
+                    );
 
                     // Plan 249 Phase 4: Unified opaque dispatch via native_catalog
                     let opaque_native_name = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(type_name.as_str(), method_name.as_str());
@@ -5898,7 +5921,7 @@ impl AutoVM {
                                 let sb = String::from_utf8_lossy(&sb);
                                 sa > sb
                             }
-                            _ => a > b,
+                            _ => false,
                         }
                     } else {
                         a > b
@@ -5909,7 +5932,34 @@ impl AutoVM {
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
-                    let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                    let a_is_obj = auto_val::is_object(a_nv);
+                    let b_is_obj = auto_val::is_object(b_nv);
+                    let result = if a_is_obj && b_is_obj {
+                        let a_id = auto_val::decode_object(a_nv) as u64;
+                        let b_id = auto_val::decode_object(b_nv) as u64;
+                        if let Some(cmp_result) = self.compare_opaque_objects(a_id, b_id) {
+                            cmp_result
+                        } else {
+                            a_id > b_id
+                        }
+                    } else if auto_val::is_i32(a_nv) && auto_val::is_i32(b_nv) {
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        // Opaque object comparison: check if both are heap objects
+                        if a > 0 && b > 0 {
+                            let cmp = self.compare_opaque_objects(a as u64, b as u64);
+                            if let Some(cmp_result) = cmp {
+                                cmp_result
+                            } else {
+                                a > b
+                            }
+                        } else if auto_val::is_string(a_nv) || auto_val::is_string(b_nv) {
+                            // shouldn't reach here for i32 check, but be safe
+                            a > b
+                        } else {
+                            a > b
+                        }
+                    } else if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
                         let a_idx = auto_val::decode_string(a_nv) as u16;
                         let b_idx = auto_val::decode_string(b_nv) as u16;
                         let a_str = self.get_string(a_idx);
@@ -5923,9 +5973,7 @@ impl AutoVM {
                             _ => false,
                         }
                     } else {
-                        let a = auto_val::decode_i32(a_nv);
-                        let b = auto_val::decode_i32(b_nv);
-                        a > b
+                        false
                     };
                     task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
                     }

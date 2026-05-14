@@ -5799,10 +5799,16 @@ impl Codegen {
                         // Also treat stdlib module names (env, fs, etc.) as static
                         let is_static_method = match obj.as_ref() {
                             Expr::Ident(obj_name) => {
-                                let lower = obj_name.as_ref();
-                                matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex")
-                                    || self.is_type_name_heuristic(obj_name)
-                                    || self.is_type(obj_name)
+                                // If the identifier resolves to a local variable, it's an
+                                // instance method call on that value — not a static call.
+                                if self.lookup_var(obj_name.as_str()).is_some() {
+                                    false
+                                } else {
+                                    let lower = obj_name.as_ref();
+                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex")
+                                        || self.is_type_name_heuristic(obj_name)
+                                        || self.is_type(obj_name)
+                                }
                             }
                             _ => false,
                         };
