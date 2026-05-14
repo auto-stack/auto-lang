@@ -201,6 +201,12 @@ impl<'a> AuraViewBuilder<'a> {
             // Image placeholder (no native Image variant yet)
             "img" | "image" => self.convert_image(props),
 
+            // Utility widgets
+            "progress" => self.convert_progress(props),
+            "spacer" => self.convert_spacer(props),
+            "divider" | "hr" => self.convert_divider(props),
+            "avatar" => self.convert_avatar(props),
+
             // Fallback: wrap children in a column
             _ => {
                 let views: Vec<View<DynamicMessage>> = children
@@ -380,6 +386,83 @@ impl<'a> AuraViewBuilder<'a> {
             builder = builder.with_style(s);
         } else {
             // Default placeholder style: gray circle
+            builder = builder.with_style(
+                Style::parse("bg-gray-300 rounded-full").unwrap()
+            );
+        }
+        builder.build()
+    }
+
+    /// Convert a progress element: shows a progress bar from 0.0 to 1.0.
+    fn convert_progress(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> View<DynamicMessage> {
+        let style = self.extract_style(props);
+
+        // Extract value and max, compute progress ratio
+        let value = self.extract_f64(props, "value").unwrap_or(0.0);
+        let max = self.extract_f64(props, "max").unwrap_or(100.0);
+        let progress = if max > 0.0 {
+            (value / max).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+
+        View::ProgressBar {
+            progress: progress as f32,
+            style,
+        }
+    }
+
+    /// Convert a spacer element: fills remaining space in a flex layout.
+    fn convert_spacer(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> View<DynamicMessage> {
+        let style = self.extract_style(props);
+
+        let child = View::Empty;
+        let mut builder = View::container(child);
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        } else {
+            builder = builder.with_style(
+                Style::parse("w-full").unwrap()
+            );
+        }
+        builder.build()
+    }
+
+    /// Convert a divider element: renders a horizontal line separator.
+    fn convert_divider(
+        &self,
+        _props: &HashMap<String, AuraPropValue>,
+    ) -> View<DynamicMessage> {
+        let child = View::Empty;
+        let mut builder = View::container(child);
+        builder = builder.with_style(
+            Style::parse("w-full h-1 bg-gray-200").unwrap()
+        );
+        builder.build()
+    }
+
+    /// Convert an avatar element: colored circle placeholder.
+    fn convert_avatar(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> View<DynamicMessage> {
+        let style = self.extract_style(props);
+
+        let child = View::Text {
+            content: "".to_string(),
+            style: None,
+        };
+        let mut builder = View::container(child);
+        builder = builder.center_x().center_y();
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        } else {
             builder = builder.with_style(
                 Style::parse("bg-gray-300 rounded-full").unwrap()
             );
@@ -710,6 +793,33 @@ impl<'a> AuraViewBuilder<'a> {
         match props.get(key)? {
             AuraPropValue::Expr(AuraExpr::Bool(b)) => Some(*b),
             _ => None,
+        }
+    }
+
+    /// Extract a float property from AuraNode props (supports StateRef resolution).
+    fn extract_f64(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+    ) -> Option<f64> {
+        match props.get(key)? {
+            AuraPropValue::Expr(expr) => match expr {
+                AuraExpr::Int(i) => Some(*i as f64),
+                AuraExpr::Float(f) => Some(*f),
+                AuraExpr::StateRef(name) => {
+                    match self.bridge.read_state(name) {
+                        Ok(value) => match value {
+                            Value::Int(i) => Some(i as f64),
+                            Value::Float(f) => Some(f as f64),
+                            Value::Double(f) => Some(f),
+                            _ => None,
+                        },
+                        Err(_) => None,
+                    }
+                }
+                _ => None,
+            },
+            AuraPropValue::StyleBinding(_) => None,
         }
     }
 

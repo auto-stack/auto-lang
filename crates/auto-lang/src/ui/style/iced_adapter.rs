@@ -323,7 +323,6 @@ impl IcedStyle {
                 self.border_width = Some(*width);
             }
             StyleClass::BorderColor(color) => {
-                self.border = true;
                 self.border_color = Some(convert_color(color));
             }
 
@@ -469,8 +468,14 @@ impl IcedStyle {
             }
 
             // ========== Layout styles ==========
-            StyleClass::Flex | StyleClass::Flex1 | StyleClass::FlexRow | StyleClass::FlexCol => {
+            StyleClass::Flex | StyleClass::FlexRow | StyleClass::FlexCol => {
                 // Flex is implicit in Iced's Column/Row — no extra action needed
+            }
+            StyleClass::Flex1 => {
+                // flex-1: expand to fill available space
+                if self.width.is_none() {
+                    self.width = Some(IcedSize::Full);
+                }
             }
             StyleClass::ItemsCenter => {
                 self.align_items = Some(IcedAlign::Center);

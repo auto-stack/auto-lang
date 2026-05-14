@@ -11,7 +11,7 @@ use crate::ui::app::AppResult;
 use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedShadowSize};
 use crate::ui::style::Style;
 use std::fmt::Debug;
-use iced::widget::{button, checkbox, column, container, pick_list, row, text, text_input};
+use iced::widget::{button, checkbox, column, container, pick_list, row, scrollable, text, text_input};
 
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::interpreter::DynamicMessage;
@@ -694,9 +694,22 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 slider_widget.into()
             }
 
-            AbstractView::ProgressBar { progress, style: _ } => {
+            AbstractView::ProgressBar { progress, style } => {
                 use iced::widget::progress_bar;
-                progress_bar(0.0..=1.0, progress).into()
+                let pb = progress_bar(0.0..=1.0, progress);
+                if let Some(ref s) = style {
+                    let is = IcedStyle::from_style(s);
+                    let mut cont = container(pb);
+                    if let Some(ref w) = is.width {
+                        cont = cont.width(iced_length(w));
+                    }
+                    if let Some(ref h) = is.height {
+                        cont = cont.height(iced_length(h));
+                    }
+                    cont.into()
+                } else {
+                    pb.into()
+                }
             }
 
             // Plan 010: Unified Navigation Components
@@ -1161,7 +1174,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
 
     iced::application(boot, update, dynamic_view)
         .title(title_fn)
-        .window_size(iced::Size::new(800.0, 600.0))
+        .window_size(iced::Size::new(1024.0, 768.0))
         .subscription(|state: &DynamicState| {
             if state.component.source_path().is_some() {
                 hot_reload_tick()
@@ -1189,8 +1202,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     let converted = convert_view_messages(view);
     let rendered = render_dynamic_view(converted);
-    // Wrap root in a fill container so center containers can vertically center
-    container(rendered)
+    // Wrap root in scrollable so content keeps its natural height.
+    // When window is short: scrollbar appears. When tall: whitespace below.
+    scrollable(rendered)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
         .into()
@@ -1265,6 +1279,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
                     let px_y = is.padding_y.unwrap_or(4.0);
                     btn = btn.padding([px_y, px_x]);
                 }
+                if let Some(ref w) = is.width { btn = btn.width(iced_length(w)); }
+                if let Some(ref h) = is.height { btn = btn.height(iced_length(h)); }
             }
             btn.into()
         }
@@ -1284,12 +1300,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
             col_widget = col_widget.spacing(eff_spacing);
             col_widget = col_widget.padding(pad);
 
+            // Track whether Fill height was skipped for centering,
+            // so center_y(Fill) is only applied when it was.
+            let mut height_skipped_for_center = false;
+
             if let Some(ref is) = iced_style {
                 if let Some(ref w) = is.width { col_widget = col_widget.width(iced_length(w)); }
-                // When justify-center, don't set height so column shrinks and container can center it
                 if let Some(ref h) = is.height {
-                    if !justify_is_center {
+                    let skip = justify_is_center && matches!(h, IcedSize::Full);
+                    if !skip {
                         col_widget = col_widget.height(iced_length(h));
+                    } else {
+                        height_skipped_for_center = true;
                     }
                 }
                 if let Some(align) = is.align_items {
@@ -1303,12 +1325,11 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
 
             if needs_justify || has_visual {
                 let mut cont = container(col_widget);
-                if let Some(ref is) = iced_style {
-                    if let Some(justify) = is.justify_content {
-                        if matches!(justify, IcedJustify::Center) {
-                            cont = cont.center_y(iced::Length::Fill);
-                        }
-                    }
+                // Only apply center_y(Fill) when Fill height was skipped.
+                // center_y(Fill) in an unbounded parent (scrollable) collapses,
+                // which breaks Fixed-height columns like icon placeholders.
+                if height_skipped_for_center {
+                    cont = cont.center_y(iced::Length::Fill);
                 }
                 if let Some(ref is) = iced_style {
                     if has_visual {
@@ -1332,9 +1353,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
             let pad = iced_padding(padding, style.as_ref());
             let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
+            let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
+            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
+            let wraps_in_container = needs_justify || has_visual;
+
             let mut row_widget = row([]);
             row_widget = row_widget.spacing(eff_spacing);
-            row_widget = row_widget.padding(pad);
 
             if let Some(ref is) = iced_style {
                 if let Some(ref w) = is.width { row_widget = row_widget.width(iced_length(w)); }
@@ -1348,11 +1372,11 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
                 row_widget = row_widget.push(render_dynamic_view(child));
             }
 
-            let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
-            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
-
-            if needs_justify || has_visual {
+            if wraps_in_container {
                 let mut cont = container(row_widget);
+                // Apply padding on the container so it shows between the
+                // border (visual style) and the row content.
+                cont = cont.padding(pad);
                 if let Some(ref is) = iced_style {
                     if let Some(justify) = is.justify_content {
                         if matches!(justify, IcedJustify::Center) {
@@ -1374,6 +1398,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
                 return cont.into();
             }
 
+            // No container wrapper — apply padding directly on the row
+            row_widget = row_widget.padding(pad);
             row_widget.into()
         }
 
@@ -1427,14 +1453,23 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
                 .or_else(|| iced_style.as_ref().and_then(|is| is.width.map(|w| iced_length(&w))));
             let eff_h = height.map(|h| iced::Length::Fixed(h as f32))
                 .or_else(|| iced_style.as_ref().and_then(|is| is.height.map(|h| iced_length(&h))));
-            // Centering uses the effective dimensions so it doesn't override Fixed sizes
+            // Centering: only apply center_x/y when there's an explicit dimension
+            // or the parent provides bounded space. Using Fill inside a scrollable
+            // (unbounded) causes stack overflow / layout collapse.
             if center_x {
-                container_widget = container_widget.center_x(eff_w.unwrap_or(iced::Length::Fill));
+                if let Some(w) = eff_w {
+                    container_widget = container_widget.center_x(w);
+                } else {
+                    container_widget = container_widget.center_x(iced::Length::Fill);
+                }
             } else if let Some(w) = eff_w {
                 container_widget = container_widget.width(w);
             }
             if center_y {
-                container_widget = container_widget.center_y(eff_h.unwrap_or(iced::Length::Fill));
+                if let Some(h) = eff_h {
+                    container_widget = container_widget.center_y(h);
+                }
+                // Without explicit height, skip center_y to avoid Fill in unbounded context
             } else if let Some(h) = eff_h {
                 container_widget = container_widget.height(h);
             }
