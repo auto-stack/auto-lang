@@ -146,28 +146,28 @@ widget App {
                         // Form group
                         text (text: "Form", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/button", icon: "mouse-pointer-click", label: "Button") {}
-                        nav-link (to: "/input", icon: "type", label: "Input") {}
-                        nav-link (to: "/textarea", icon: "type", label: "Textarea") {}
-                        nav-link (to: "/checkbox", icon: "square-stack", label: "Checkbox") {}
-                        nav-link (to: "/switch", icon: "square-stack", label: "Switch") {}
-                        nav-link (to: "/select", icon: "layout-grid", label: "Select") {}
-                        nav-link (to: "/combobox", icon: "command", label: "Combobox") {}
-                        nav-link (to: "/label", icon: "type", label: "Label") {}
-                        nav-link (to: "/form", icon: "layout-grid", label: "Form") {}
-                        nav-link (to: "/slider", icon: "layout-grid", label: "Slider") {}
                         nav-link (to: "/calendar", icon: "layout-grid", label: "Calendar") {}
+                        nav-link (to: "/checkbox", icon: "square-stack", label: "Checkbox") {}
+                        nav-link (to: "/combobox", icon: "command", label: "Combobox") {}
                         nav-link (to: "/datepicker", icon: "layout-grid", label: "DatePicker") {}
+                        nav-link (to: "/form", icon: "layout-grid", label: "Form") {}
+                        nav-link (to: "/input", icon: "type", label: "Input") {}
+                        nav-link (to: "/label", icon: "type", label: "Label") {}
+                        nav-link (to: "/select", icon: "layout-grid", label: "Select") {}
+                        nav-link (to: "/slider", icon: "layout-grid", label: "Slider") {}
+                        nav-link (to: "/switch", icon: "square-stack", label: "Switch") {}
+                        nav-link (to: "/textarea", icon: "type", label: "Textarea") {}
 
                         // Display group
                         text (text: "Display", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/card", icon: "square-stack", label: "Card") {}
-                        nav-link (to: "/badge", icon: "bell", label: "Badge") {}
-                        nav-link (to: "/avatar", icon: "image", label: "Avatar") {}
-                        nav-link (to: "/skeleton", icon: "layout-grid", label: "Skeleton") {}
                         nav-link (to: "/aspectratio", icon: "image", label: "AspectRatio") {}
+                        nav-link (to: "/avatar", icon: "image", label: "Avatar") {}
+                        nav-link (to: "/badge", icon: "bell", label: "Badge") {}
+                        nav-link (to: "/card", icon: "square-stack", label: "Card") {}
                         nav-link (to: "/carousel", icon: "layout-grid", label: "Carousel") {}
-                        nav-link (to: "/table", icon: "layout-grid", label: "Table") {}
                         nav-link (to: "/datatable", icon: "layout-grid", label: "DataTable") {}
+                        nav-link (to: "/skeleton", icon: "layout-grid", label: "Skeleton") {}
+                        nav-link (to: "/table", icon: "layout-grid", label: "Table") {}
 
                         // Feedback group
                         text (text: "Feedback", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
@@ -180,26 +180,26 @@ widget App {
                         // Navigation group
                         text (text: "Navigation", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/breadcrumb", icon: "navigation", label: "Breadcrumb") {}
-                        nav-link (to: "/tabs", icon: "layout-grid", label: "Tabs") {}
-                        nav-link (to: "/menubar", icon: "layout-grid", label: "Menubar") {}
-                        nav-link (to: "/pagination", icon: "layout-grid", label: "Pagination") {}
-                        nav-link (to: "/navigationmenu", icon: "navigation", label: "NavigationMenu") {}
-                        nav-link (to: "/sidebar", icon: "layout-grid", label: "Sidebar") {}
                         nav-link (to: "/command", icon: "command", label: "Command") {}
+                        nav-link (to: "/menubar", icon: "layout-grid", label: "Menubar") {}
+                        nav-link (to: "/navigationmenu", icon: "navigation", label: "NavigationMenu") {}
+                        nav-link (to: "/pagination", icon: "layout-grid", label: "Pagination") {}
                         nav-link (to: "/scrollarea", icon: "layout-grid", label: "ScrollArea") {}
                         nav-link (to: "/separator", icon: "layout-grid", label: "Separator") {}
+                        nav-link (to: "/sidebar", icon: "layout-grid", label: "Sidebar") {}
+                        nav-link (to: "/tabs", icon: "layout-grid", label: "Tabs") {}
 
                         // Overlay group
                         text (text: "Overlay", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/dialog", icon: "square-stack", label: "Dialog") {}
-                        nav-link (to: "/alertdialog", icon: "bell", label: "AlertDialog") {}
-                        nav-link (to: "/drawer", icon: "layout-grid", label: "Drawer") {}
-                        nav-link (to: "/sheet", icon: "square-stack", label: "Sheet") {}
-                        nav-link (to: "/popover", icon: "layout-grid", label: "Popover") {}
-                        nav-link (to: "/dropdownmenu", icon: "layout-grid", label: "DropdownMenu") {}
-                        nav-link (to: "/contextmenu", icon: "layout-grid", label: "ContextMenu") {}
-                        nav-link (to: "/collapsible", icon: "layout-grid", label: "Collapsible") {}
                         nav-link (to: "/accordion", icon: "layout-grid", label: "Accordion") {}
+                        nav-link (to: "/alertdialog", icon: "bell", label: "AlertDialog") {}
+                        nav-link (to: "/collapsible", icon: "layout-grid", label: "Collapsible") {}
+                        nav-link (to: "/contextmenu", icon: "layout-grid", label: "ContextMenu") {}
+                        nav-link (to: "/dialog", icon: "square-stack", label: "Dialog") {}
+                        nav-link (to: "/drawer", icon: "layout-grid", label: "Drawer") {}
+                        nav-link (to: "/dropdownmenu", icon: "layout-grid", label: "DropdownMenu") {}
+                        nav-link (to: "/popover", icon: "layout-grid", label: "Popover") {}
+                        nav-link (to: "/sheet", icon: "square-stack", label: "Sheet") {}
 
                         // Blocks group
                         text (text: "Blocks", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
@@ -219,7 +219,7 @@ widget App {
                 // Main content
                 main (style: "flex-1 overflow-hidden") {
                     scroll (style: "h-full") {
-                        div (style: "p-4 md:p-8 lg:p-10 max-w-5xl mx-auto pb-24 md:pb-10") {
+                        div (style: "p-4 md:p-8 lg:p-10 max-w-5xl mx-auto pb-32 md:pb-20") {
                             outlet
                         }
                     }

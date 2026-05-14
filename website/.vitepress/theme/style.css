@@ -124,6 +124,31 @@
   border-radius: var(--radius);
 }
 
+/* On this Page - larger and more prominent */
+.VPDocAsideOutline .outline-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+}
+
+.VPDocAsideOutline .outline-link {
+  color: var(--vp-c-text-2);
+  transition: color 0.2s;
+  line-height: 28px;
+}
+
+.VPDocAsideOutline .outline-link:hover {
+  color: var(--vp-c-brand-1);
+}
+
+.VPDocAsideOutline .outline-link.active {
+  color: var(--vp-c-brand-1);
+}
+
+.VPDocAsideOutline .outline-marker {
+  transform: translateY(-3px);
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

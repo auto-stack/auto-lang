@@ -927,6 +927,7 @@ function generateBookIndex(bookDir, summaryPath, lang = 'en') {
 }
 
 function generateDocsIndex(docsDir, lang) {
+  ensureDir(docsDir)
   const indexPath = path.join(docsDir, 'index.md')
   if (fs.existsSync(indexPath)) return
 
@@ -938,6 +939,7 @@ function generateDocsIndex(docsDir, lang) {
 }
 
 function generateBooksIndex(booksDir, lang) {
+  ensureDir(booksDir)
   const indexPath = path.join(booksDir, 'index.md')
   if (fs.existsSync(indexPath)) return
 

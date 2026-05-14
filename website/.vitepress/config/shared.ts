@@ -9,6 +9,13 @@ export const shared = defineConfig({
   ignoreDeadLinks: true,
   appearance: 'dark',
 
+  themeConfig: {
+    outline: {
+      level: [2, 3],
+      label: 'On this Page',
+    },
+  },
+
   markdown: {
     codeCopyButtonTitle: 'Copy Code',
     theme: {

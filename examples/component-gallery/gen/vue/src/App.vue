@@ -80,45 +80,45 @@ function openSidebar(): void {
             <span class="mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Form</span>
             <router-link to="/button">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><MousePointerClick class="h-4 w-4 shrink-0" /><span>Button</span></div>            </router-link>
-            <router-link to="/input">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Type class="h-4 w-4 shrink-0" /><span>Input</span></div>            </router-link>
-            <router-link to="/textarea">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Type class="h-4 w-4 shrink-0" /><span>Textarea</span></div>            </router-link>
-            <router-link to="/checkbox">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Checkbox</span></div>            </router-link>
-            <router-link to="/switch">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Switch</span></div>            </router-link>
-            <router-link to="/select">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Select</span></div>            </router-link>
-            <router-link to="/combobox">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Command class="h-4 w-4 shrink-0" /><span>Combobox</span></div>            </router-link>
-            <router-link to="/label">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Type class="h-4 w-4 shrink-0" /><span>Label</span></div>            </router-link>
-            <router-link to="/form">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Form</span></div>            </router-link>
-            <router-link to="/slider">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Slider</span></div>            </router-link>
             <router-link to="/calendar">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Calendar</span></div>            </router-link>
+            <router-link to="/checkbox">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Checkbox</span></div>            </router-link>
+            <router-link to="/combobox">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Command class="h-4 w-4 shrink-0" /><span>Combobox</span></div>            </router-link>
             <router-link to="/datepicker">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>DatePicker</span></div>            </router-link>
+            <router-link to="/form">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Form</span></div>            </router-link>
+            <router-link to="/input">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Type class="h-4 w-4 shrink-0" /><span>Input</span></div>            </router-link>
+            <router-link to="/label">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Type class="h-4 w-4 shrink-0" /><span>Label</span></div>            </router-link>
+            <router-link to="/select">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Select</span></div>            </router-link>
+            <router-link to="/slider">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Slider</span></div>            </router-link>
+            <router-link to="/switch">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Switch</span></div>            </router-link>
+            <router-link to="/textarea">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Type class="h-4 w-4 shrink-0" /><span>Textarea</span></div>            </router-link>
             <span class="mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Display</span>
-            <router-link to="/card">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Card</span></div>            </router-link>
-            <router-link to="/badge">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Bell class="h-4 w-4 shrink-0" /><span>Badge</span></div>            </router-link>
-            <router-link to="/avatar">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Image class="h-4 w-4 shrink-0" /><span>Avatar</span></div>            </router-link>
-            <router-link to="/skeleton">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Skeleton</span></div>            </router-link>
             <router-link to="/aspectratio">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Image class="h-4 w-4 shrink-0" /><span>AspectRatio</span></div>            </router-link>
+            <router-link to="/avatar">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Image class="h-4 w-4 shrink-0" /><span>Avatar</span></div>            </router-link>
+            <router-link to="/badge">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Bell class="h-4 w-4 shrink-0" /><span>Badge</span></div>            </router-link>
+            <router-link to="/card">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Card</span></div>            </router-link>
             <router-link to="/carousel">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Carousel</span></div>            </router-link>
-            <router-link to="/table">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Table</span></div>            </router-link>
             <router-link to="/datatable">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>DataTable</span></div>            </router-link>
+            <router-link to="/skeleton">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Skeleton</span></div>            </router-link>
+            <router-link to="/table">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Table</span></div>            </router-link>
             <span class="mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Feedback</span>
             <router-link to="/alert">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Bell class="h-4 w-4 shrink-0" /><span>Alert</span></div>            </router-link>
@@ -133,47 +133,47 @@ function openSidebar(): void {
             <span class="mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Navigation</span>
             <router-link to="/breadcrumb">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Navigation class="h-4 w-4 shrink-0" /><span>Breadcrumb</span></div>            </router-link>
-            <router-link to="/tabs">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Tabs</span></div>            </router-link>
-            <router-link to="/menubar">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Menubar</span></div>            </router-link>
-            <router-link to="/pagination">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Pagination</span></div>            </router-link>
-            <router-link to="/navigationmenu">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Navigation class="h-4 w-4 shrink-0" /><span>NavigationMenu</span></div>            </router-link>
-            <router-link to="/sidebar">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Sidebar</span></div>            </router-link>
             <router-link to="/command">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Command class="h-4 w-4 shrink-0" /><span>Command</span></div>            </router-link>
+            <router-link to="/menubar">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Menubar</span></div>            </router-link>
+            <router-link to="/navigationmenu">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Navigation class="h-4 w-4 shrink-0" /><span>NavigationMenu</span></div>            </router-link>
+            <router-link to="/pagination">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Pagination</span></div>            </router-link>
             <router-link to="/scrollarea">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>ScrollArea</span></div>            </router-link>
             <router-link to="/separator">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Separator</span></div>            </router-link>
+            <router-link to="/sidebar">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Sidebar</span></div>            </router-link>
+            <router-link to="/tabs">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Tabs</span></div>            </router-link>
             <span class="mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Overlay</span>
-            <router-link to="/dialog">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Dialog</span></div>            </router-link>
-            <router-link to="/alertdialog">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Bell class="h-4 w-4 shrink-0" /><span>AlertDialog</span></div>            </router-link>
-            <router-link to="/drawer">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Drawer</span></div>            </router-link>
-            <router-link to="/sheet">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Sheet</span></div>            </router-link>
-            <router-link to="/popover">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Popover</span></div>            </router-link>
-            <router-link to="/dropdownmenu">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>DropdownMenu</span></div>            </router-link>
-            <router-link to="/contextmenu">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>ContextMenu</span></div>            </router-link>
-            <router-link to="/collapsible">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Collapsible</span></div>            </router-link>
             <router-link to="/accordion">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Accordion</span></div>            </router-link>
+            <router-link to="/alertdialog">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Bell class="h-4 w-4 shrink-0" /><span>AlertDialog</span></div>            </router-link>
+            <router-link to="/collapsible">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Collapsible</span></div>            </router-link>
+            <router-link to="/contextmenu">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>ContextMenu</span></div>            </router-link>
+            <router-link to="/dialog">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Dialog</span></div>            </router-link>
+            <router-link to="/drawer">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Drawer</span></div>            </router-link>
+            <router-link to="/dropdownmenu">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>DropdownMenu</span></div>            </router-link>
+            <router-link to="/popover">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Popover</span></div>            </router-link>
+            <router-link to="/sheet">
+              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Sheet</span></div>            </router-link>
           </ScrollArea>
         </aside>
         <Drawer v-model:open="sidebarOpen" @Close="closeSidebar" />
         <main class="flex-1 overflow-hidden">
           <ScrollArea class="h-full">
-            <div class="p-4 md:p-8 lg:p-10 max-w-5xl mx-auto pb-24 md:pb-10">
+            <div class="p-4 md:p-8 lg:p-10 max-w-5xl mx-auto pb-32 md:pb-20">
               <router-view />
             </div>
           </ScrollArea>
