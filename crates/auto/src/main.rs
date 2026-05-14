@@ -396,7 +396,7 @@ fn main() -> Result<()> {
                         println!("Running Auto {} ", path);
                         println!("----------------------");
                     }
-                    let result = auto_lang::run_file_dynamic_ui(&code);
+                    let result = auto_lang::run_file_dynamic_ui(&code, Some(path.as_str()));
                     match result {
                         Ok(msg) => {
                             if !ai_mode {

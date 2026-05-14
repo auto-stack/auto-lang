@@ -15,6 +15,8 @@ use iced::widget::{button, checkbox, column, container, pick_list, row, text, te
 
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::interpreter::DynamicMessage;
+use crate::session::CompilerSession;
+use crate::parser::Parser;
 
 /// Trait for converting abstract View<M> into Iced Element
 ///
@@ -661,6 +663,9 @@ fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) ->
 // Plan 227: Send-safe IcedMessage wrapper for DynamicComponent
 // ============================================================================
 
+/// Sentinel event name for hot-reload tick messages.
+const HOT_RELOAD_EVENT: &str = "__hot_reload";
+
 /// Send-safe message type for the iced boundary.
 ///
 /// `DynamicMessage` contains `Vec<Value>` where `Value` uses `Rc<RefCell<T>>`
@@ -869,6 +874,18 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
     }
 }
 
+/// Periodic tick subscription for hot-reload file watching.
+///
+/// Emits an `IcedMessage` with the `HOT_RELOAD_EVENT` sentinel every 500ms.
+/// The update handler checks `check_file_changed()` and reloads if the
+/// source file was modified.
+fn hot_reload_tick() -> iced::Subscription<IcedMessage> {
+    iced::time::every(std::time::Duration::from_millis(500)).map(|_| IcedMessage {
+        widget: String::new(),
+        event: HOT_RELOAD_EVENT.to_string(),
+    })
+}
+
 /// Wrapper holding `DynamicComponent` as iced's application state.
 struct DynamicState {
     component: DynamicComponent,
@@ -904,6 +921,28 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
     };
 
     let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+        if msg.event == HOT_RELOAD_EVENT {
+            if let Ok(Some(_)) = state.component.check_file_changed() {
+                if let Some(path) = state.component.source_path() {
+                    if let Ok(code) = std::fs::read_to_string(path) {
+                        let session = CompilerSession::ui();
+                        let mut parser = Parser::from(&code).with_session(session);
+                        if let Ok(ast) = parser.parse() {
+                            for stmt in &ast.stmts {
+                                if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                                    if let Ok(widget) = crate::aura::extract_widget_from_decl(decl) {
+                                        let _ = state.component.reload(&widget);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return iced::Task::none();
+        }
+
         let dyn_msg = msg.to_dynamic();
         state.component.on(dyn_msg);
         iced::Task::none()
@@ -916,6 +955,13 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
     iced::application(boot, update, dynamic_view)
         .title(title_fn)
         .window_size(iced::Size::new(800.0, 600.0))
+        .subscription(|state: &DynamicState| {
+            if state.component.source_path().is_some() {
+                hot_reload_tick()
+            } else {
+                iced::Subscription::none()
+            }
+        })
         .run()?;
 
     Ok("UI closed".to_string())

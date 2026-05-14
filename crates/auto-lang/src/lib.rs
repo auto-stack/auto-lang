@@ -972,7 +972,7 @@ pub fn has_ui_keywords(code: &str) -> bool {
 /// Run a .at file as dynamic UI with iced backend.
 /// MUST be called from the OS main thread (iced requirement).
 #[cfg(feature = "ui-iced")]
-pub fn run_file_dynamic_ui(code: &str) -> AutoResult<String> {
+pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String> {
     use crate::session::CompilerSession;
     use crate::ui::dynamic::DynamicComponent;
     use crate::ui::iced::run_dynamic_iced;
@@ -997,8 +997,13 @@ pub fn run_file_dynamic_ui(code: &str) -> AutoResult<String> {
     let widget = widget.ok_or("No widget declaration found")?;
 
     // 3. Create DynamicComponent
-    let comp = DynamicComponent::new(&widget)
+    let mut comp = DynamicComponent::new(&widget)
         .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
+
+    // 3b. Set source path for hot-reload tracking
+    if let Some(p) = path {
+        comp.set_source_path(p);
+    }
 
     // 4. Run iced (blocks until window closes)
     run_dynamic_iced(comp)
@@ -1011,7 +1016,7 @@ pub fn run_file(path: &str) -> AutoResult<String> {
     // Plan 227: Detect UI keywords and run with iced backend
     #[cfg(feature = "ui-iced")]
     if has_ui_keywords(&code) {
-        return run_file_dynamic_ui(&code);
+        return run_file_dynamic_ui(&code, Some(path));
     }
 
     // Plan 088 Phase 4: Use AutoVM instead of deprecated Interpreter
