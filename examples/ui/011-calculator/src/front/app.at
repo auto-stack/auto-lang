@@ -14,7 +14,7 @@ widget App {
                 // Display
                 col {
                     text .display {
-                        class: "text-5xl font-light text-gray-800 text-right w-full"
+                        class: "text-5xl font-light text-white text-right w-full"
                     }
                     text .operator {
                         class: "text-sm text-gray-400 text-right w-full"
@@ -26,40 +26,40 @@ widget App {
                 col {
                     // Row 1: C, %, /, *
                     row {
-                        button "C" { onclick: .Clear, class: "calc-btn-func" }
-                        button "%" { onclick: .Percent, class: "calc-btn-func" }
-                        button "/" { onclick: .Div, class: "calc-btn-op" }
-                        button "*" { onclick: .Mul, class: "calc-btn-op" }
+                        button "C" { onclick: .Clear, class: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
+                        button "%" { onclick: .Percent, class: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
+                        button "/" { onclick: .Div, class: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
+                        button "*" { onclick: .Mul, class: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
                         class: "w-full"
                     }
                     // Row 2: 7, 8, 9, -
                     row {
-                        button "7" { onclick: .Digit7, class: "calc-btn-num" }
-                        button "8" { onclick: .Digit8, class: "calc-btn-num" }
-                        button "9" { onclick: .Digit9, class: "calc-btn-num" }
-                        button "-" { onclick: .Sub, class: "calc-btn-op" }
+                        button "7" { onclick: .Digit7, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "8" { onclick: .Digit8, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "9" { onclick: .Digit9, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "-" { onclick: .Sub, class: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
                         class: "w-full"
                     }
                     // Row 3: 4, 5, 6, +
                     row {
-                        button "4" { onclick: .Digit4, class: "calc-btn-num" }
-                        button "5" { onclick: .Digit5, class: "calc-btn-num" }
-                        button "6" { onclick: .Digit6, class: "calc-btn-num" }
-                        button "+" { onclick: .Add, class: "calc-btn-op" }
+                        button "4" { onclick: .Digit4, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "5" { onclick: .Digit5, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "6" { onclick: .Digit6, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "+" { onclick: .Add, class: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
                         class: "w-full"
                     }
                     // Row 4: 1, 2, 3, =
                     row {
-                        button "1" { onclick: .Digit1, class: "calc-btn-num" }
-                        button "2" { onclick: .Digit2, class: "calc-btn-num" }
-                        button "3" { onclick: .Digit3, class: "calc-btn-num" }
-                        button "=" { onclick: .Equals, class: "calc-btn-eq" }
+                        button "1" { onclick: .Digit1, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "2" { onclick: .Digit2, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "3" { onclick: .Digit3, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "=" { onclick: .Equals, class: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
                         class: "w-full"
                     }
-                    // Row 5: 0 (wide), ., =
+                    // Row 5: 0 (wide), .
                     row {
-                        button "0" { onclick: .Digit0, class: "calc-btn-num calc-btn-wide" }
-                        button "." { onclick: .Dot, class: "calc-btn-num" }
+                        button "0" { onclick: .Digit0, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "." { onclick: .Dot, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
                         class: "w-full"
                     }
                     class: "w-full p-2 bg-gray-800 rounded-b-2xl gap-1"
