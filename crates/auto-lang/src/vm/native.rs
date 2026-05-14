@@ -516,9 +516,9 @@ pub fn shim_math_atan2(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError>
 
 // === Manual constants (registered via register_shim_by_name, not in catalog) ===
 
-// String methods (codegens uses "str.contains" = 1502, "str.starts_with" = 1504, "str.ends_with" = 1506)
-pub const NATIVE_STR_CONTAINS: u16 = 1502;
-pub const NATIVE_STR_STARTS_WITH: u16 = 1504;
+// String methods (canonical IDs: auto.str.contains=1504, auto.str.starts_with=1505, auto.str.ends_with=1506)
+pub const NATIVE_STR_CONTAINS: u16 = 1504;
+pub const NATIVE_STR_STARTS_WITH: u16 = 1505;
 pub const NATIVE_STR_ENDS_WITH: u16 = 1506;
 pub const NATIVE_STR_TO_INT: u16 = 1516;
 
@@ -5152,12 +5152,17 @@ pub fn shim_chrono_timestamp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
             if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
                 let ts = dt.lock().unwrap().and_utc().timestamp();
-                task.ram.push_i64(ts);
+                // Push as i32 if fits, otherwise as f64 for numeric comparison
+                if ts >= i32::MIN as i64 && ts <= i32::MAX as i64 {
+                    task.ram.push_i32(ts as i32);
+                } else {
+                    task.ram.push_i64(ts);
+                }
                 return Ok(());
             }
         }
     }
-    task.ram.push_i64(0);
+    task.ram.push_i32(0);
     Ok(())
 }
 

@@ -1056,8 +1056,8 @@ macro_rules! for_each_bigvm_native {
 
             // === Runtime aliases (CALL_SPEC lowercase type) ===
             ("str.len", 1500, Void),
-            ("str.contains", 1502, Void),
-            ("str.starts_with", 1504, Void),
+            ("str.contains", 1504, Void),
+            ("str.starts_with", 1505, Void),
             ("str.ends_with", 1506, Void),
             ("str.trim", 1507, Void),
             ("str.split", 1508, Void),
@@ -1603,8 +1603,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("Str.match_count", 1519),
     ("Str.replace_first", 1520),
     ("str.len", 1500),
-    ("str.contains", 1502),
-    ("str.starts_with", 1504),
+    ("str.contains", 1504),
+    ("str.starts_with", 1505),
     ("str.ends_with", 1506),
     ("str.trim", 1507),
     ("str.split", 1508),

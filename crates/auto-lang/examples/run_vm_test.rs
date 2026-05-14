@@ -1,4 +1,5 @@
 use auto_lang::run_file;
+use std::path::Path;
 
 fn main() {
     // If a file path is passed as arg, run just that file
@@ -18,27 +19,16 @@ fn main() {
         return;
     }
 
-    // Default: run all A-tier files
-    let tier_a = [
-        "crates/auto-lang/test/cookbook/algorithms/001_sort_int/sort_int.at",
-        "crates/auto-lang/test/cookbook/algorithms/002_sort_float/sort_float.at",
-        "crates/auto-lang/test/cookbook/algorithms/003_sort_struct/sort_struct.at",
-        "crates/auto-lang/test/cookbook/file/001_read_lines/read_lines.at",
-        "crates/auto-lang/test/cookbook/os/001_env_variable/env_variable.at",
-        "crates/auto-lang/test/cookbook/os/002_process_continuous/process_continuous.at",
-        "crates/auto-lang/test/cookbook/os/003_error_file/error_file.at",
-        "crates/auto-lang/test/cookbook/datetime/001_elapsed_time/elapsed_time.at",
-        "crates/auto-lang/test/cookbook/science/mathematics/statistics/001_central_tendency/central_tendency.at",
-        "crates/auto-lang/test/cookbook/science/mathematics/statistics/002_standard_deviation/standard_deviation.at",
-        "crates/auto-lang/test/cookbook/science/mathematics/trigonometry/001_tan_sin_cos/tan_sin_cos.at",
-        "crates/auto-lang/test/cookbook/science/mathematics/trigonometry/002_side_length/side_length.at",
-        "crates/auto-lang/test/cookbook/science/mathematics/trigonometry/003_latitude_longitude/latitude_longitude.at",
-        "crates/auto-lang/test/cookbook/mem/001_lazy_cell/lazy_cell.at",
-        "crates/auto-lang/test/cookbook/errors/001_boxed_error/boxed_error.at",
-    ];
+    // Default: scan all cookbook test files
+    let base = Path::new("crates/auto-lang/test/cookbook");
+    let mut files: Vec<String> = Vec::new();
+    collect_at_files(base, &mut files);
+    files.sort();
+
     let mut ok = 0;
     let mut fail = 0;
-    for path in &tier_a {
+    let mut fails: Vec<String> = Vec::new();
+    for path in &files {
         print!("{} ... ", path);
         std::io::Write::flush(&mut std::io::stdout()).ok();
         match run_file(path) {
@@ -47,10 +37,33 @@ fn main() {
                 ok += 1;
             }
             Err(e) => {
-                println!("FAIL: {}", e);
+                let msg = format!("FAIL: {}", e);
+                println!("{}", msg);
                 fail += 1;
+                fails.push(path.clone());
             }
         }
     }
-    println!("\n{} OK, {} FAIL out of {}", ok, fail, tier_a.len());
+    println!("\n{} OK, {} FAIL out of {}", ok, fail, files.len());
+    if !fails.is_empty() {
+        println!("\nFailing tests:");
+        for f in &fails {
+            println!("  {}", f);
+        }
+    }
+}
+
+fn collect_at_files(dir: &Path, out: &mut Vec<String>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_at_files(&path, out);
+            } else if path.extension().map_or(false, |e| e == "at") {
+                if let Some(s) = path.to_str() {
+                    out.push(s.replace('\\', "/"));
+                }
+            }
+        }
+    }
 }
