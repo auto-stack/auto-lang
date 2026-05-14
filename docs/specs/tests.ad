@@ -349,7 +349,7 @@ let registry = ProfessionRegistry::new();
 ---
 
 ## S7.2 [G6] GSD mode auto-approves all gates except GoalGate
-**Status:** draft
+**Status:** done
 **Test File:** `crates/auto-forge/src/relay/pipeline.rs` (inline `#[cfg(test)]`)
 **Depends on:** G6, D6, P7.3, P7.5
 
@@ -417,3 +417,167 @@ let store = new_run_store();
 - Step 8: Reviewer.
 - Step 9: Documenter.
 - Total 9 steps in order.
+
+
+---
+
+## S8.1 [G8] GateCard approval flow — approve triggers pipeline advance
+**Status:** done
+**Test File:** `packages/auto-forge-ui/tests/integration/GateCard.spec.ts`
+**Depends on:** G8, D8
+
+```typescript
+const gate = createPendingGate({ gateType: 'goal', profession: 'advisor' })
+render(<GateCard gate={gate} mode="inline" />)
+```
+
+1. Click "Approve & Execute" button
+2. Assert `approveSpec()` API is called
+3. Assert gate card transitions to `approved` state
+4. Assert `streamResponse()` resumes
+
+
+
+
+---
+
+## S8.2 [G8] SecretaryMessage queue — multiple gates enqueue and dequeue correctly
+**Status:** done
+**Test File:** `packages/auto-forge-ui/tests/integration/SecretaryMessage.spec.ts`
+**Depends on:** G8, D9
+
+```typescript
+const inbox = useGateInbox()
+inbox.registerGate(gateA)  // becomes active
+inbox.registerGate(gateB)  // queued
+inbox.registerGate(gateC)  // queued
+```
+
+1. Render `<SecretaryMessage gate={inbox.active} />`
+2. Assert "+2 more" pill is visible
+3. Click pill; assert mini-list shows gateB and gateC
+4. Resolve gateA; assert gateB becomes active
+
+
+
+
+---
+
+## S8.3 [G8] useGateInbox snooze — snoozed gate reappears after timeout
+**Status:** done
+**Test File:** `packages/auto-forge-ui/tests/unit/useGateInbox.spec.ts`
+**Depends on:** G8, D9
+
+```typescript
+const inbox = useGateInbox()
+inbox.registerGate(gateA)
+```
+
+1. Call `inbox.snoozeGate(gateA.id, 0.1)` (100ms for test)
+2. Assert active secretary is null
+3. Wait 150ms
+4. Assert gateA is back as active
+
+
+
+
+---
+
+## S9.1 [G9] Category renderers switch correctly per section_type
+**Status:** done
+**Test File:** `packages/auto-forge-ui/tests/integration/CategoryRenderers.spec.ts`
+**Depends on:** G9, D10
+
+1. Render `<SpecsView />`
+2. Click each sidebar section
+3. Assert correct renderer component mounts
+4. Assert `GoalsTable` renders table; `ArchitectureCards` renders cards
+
+
+
+
+---
+
+## S9.2 [G9] RelationsPanel resolves parents and children across sections
+**Status:** done
+**Test File:** `packages/auto-forge-ui/tests/integration/RelationsPanel.spec.ts`
+**Depends on:** G9, D11
+
+1. Select G1 in GoalsTable
+2. Assert RelationsPanel shows "Children: A1, D1, S1.1"
+3. Click A1; assert section switches to Architecture, A1 expands
+4. Assert A1 RelationsPanel shows "Parents: G1"
+
+
+
+
+---
+
+## S9.3 [G9] AutoLinkContent parses IDs and emits jump events
+**Status:** done
+**Test File:** `packages/auto-forge-ui/tests/unit/AutoLinkContent.spec.ts`
+**Depends on:** G9, D11
+
+1. Render `<AutoLinkContent content={content} />`
+2. Assert 3 `<a class="spec-link">` elements rendered
+3. Click G1 link; assert `jump(id)` event emitted with `"G1"`
+
+
+
+
+---
+
+## S10.1 [G10] Node graph renders 9-step linear pipeline correctly
+**Status:** done
+**Test File:** `packages/auto-forge-ui/tests/integration/PipelinePanel.spec.ts`
+**Depends on:** G10, D12
+
+1. Render `<PipelinePanel nodes={nodes} edges={edges} />`
+2. Assert 9 dots are visible
+3. Assert 3 green, 1 amber pulse, 5 gray
+4. Assert 8 connecting lines between dots
+
+
+
+
+---
+
+## S10.2 [G10] Expanded node card shows correct token burn and specs touched
+**Status:** done
+**Test File:** `packages/auto-forge-ui/tests/integration/NodeCard.spec.ts`
+**Depends on:** G10, D13
+
+1. Click Architect dot in PipelinePanel
+2. Assert expanded card shows "8,100 tokens"
+3. Assert card shows "architecture, designs (2 writes)"
+4. Click "View written specs →"; assert Specs drawer opens
+
+
+
+
+---
+
+## S10.3 [G10] Retry loop backward edge renders and pulses on test failure
+**Status:** done
+**Test File:** `packages/auto-forge-ui/tests/integration/PipelinePanel.retry.spec.ts`
+**Depends on:** G10, D12
+
+1. Render PipelinePanel with retry edge
+2. Assert backward arrow is visible between Tester and Coder
+3. Assert arrow pulses amber
+4. Assert Coder node shows "Retry 2/3" badge
+
+
+
+
+---
+
+## S10.4 [G11] Mobile layout collapses Zone C to bottom sheet
+**Status:** done
+**Test File:** `packages/auto-forge-ui/tests/e2e/mobile-layout.spec.ts`
+**Depends on:** G10, D14
+
+1. Open Specs view
+2. Select an item with relations
+3. Assert RelationsPanel renders as bottom sheet, not sidebar
+4. Swipe down; assert sheet dismisses

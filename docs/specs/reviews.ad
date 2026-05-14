@@ -1,1 +1,51 @@
 # 📝 Reviews
+
+> Quality assessment records for the Agents Relay Frontend module.
+
+---
+
+## V1 Post-Implementation Review — Chat-First Gates & Smart Secretary
+**Status:** draft
+
+| Criterion | Goal | Result | Evidence | Issue |
+|---|---|---|---|---|
+| C1 | Inline gate approval works | ✅ Pass | `GateCard.vue` renders diff, emits approve/reject | — |
+| C2 | Secretary queue enforces one-at-a-time | ✅ Pass | `useGateInbox` promotes next on resolve | — |
+| C3 | Input bar is never blocked | ✅ Pass | `SecretaryMessage` is non-blocking overlay | — |
+| C4 | Chat history contains no status noise | ✅ Pass | `step_advanced` → NO chat message (D18 rule) | — |
+
+---
+
+## V2 Post-Implementation Review — Relay Node-Graph Pipeline
+**Status:** draft
+
+| Criterion | Goal | Result | Evidence | Issue |
+|---|---|---|---|---|
+| C1 | Node graph renders 9-step chain | ✅ Pass | `AgentsView.vue` pipeline-flow with 9 steps | — |
+| C2 | Expanded cards show token burn | ✅ Pass | `expanded-step-card` shows tokens from `professionTokens` | — |
+| C3 | Retry loop visualized correctly | ✅ Pass | `step-retry` badge shows iteration count | — |
+| C4 | Layout engine is v3-DAG-ready | ⚠️ Partial | Linear flexbox; dagre upgrade path reserved per P9 risk | Future: dagre if v3 parallelism confirmed |
+
+---
+
+## V3 Post-Implementation Review — Specs Workspace & Traceability
+**Status:** draft
+
+| Criterion | Goal | Result | Evidence | Issue |
+|---|---|---|---|---|
+| C1 | All 7 categories render correctly | ✅ Pass | `categoryComponent` switch in `SpecsView.vue` | — |
+| C2 | Bidirectional jumping works across sections | ✅ Pass | `jumpToItem` + `findItemById` + flash animation | — |
+| C3 | GSD/Check mode toggle functions | ✅ Pass | `useForgeMode` composable + `showGatePanel` computed | — |
+| C4 | Responsive layout works on mobile | ✅ Pass | `@media (max-width: 768px)` in App + all views | — |
+
+---
+
+## V4 Post-Implementation Review — Accessibility & SSE Integration
+**Status:** draft
+
+| Criterion | Goal | Result | Evidence | Issue |
+|---|---|---|---|---|
+| C1 | Keyboard shortcuts work | ✅ Pass | `Ctrl+1/2/3` in `App.vue` | — |
+| C2 | Focus management on gates | ✅ Pass | `approveBtnRef` + `onMounted` focus in `GateCard.vue` | — |
+| C3 | Screen reader announcements | ✅ Pass | `aria-live="polite"` region + `role="alert"` on SecretaryMessage | — |
+| C4 | SSE event router wired end-to-end | ✅ Pass | `useEventRouter` in `useForge.ts` and `useRelay.ts` | — |

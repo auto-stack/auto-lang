@@ -136,3 +136,82 @@
 | P7.11 | Update `design/docs` to match new spec categories (already done) | Tooling | 0.5 day | — | Done |
 | P7.12 | Write integration tests for new flow (S7.1–S7.4) | Tooling | 2 days | P7.1-P7.10 | Done |
 | P7.13 | Run full test suite: `cargo check -p auto-forge` and `cargo test -p auto-forge` | Tooling | 0.5 day | P7.12 | Done |
+
+
+---
+
+## P8 Chat-First Gates & Smart Secretary
+**Status:** implemented
+**Depends on:** G8
+
+| Phase | Task | Owner | Duration | Dependencies | Status |
+|---|---|---|---|---|---|
+| P8.1 | GateCard component with diff rendering and Approve/Reject/Edit actions | Alice | 3 days | — | Done |
+| P8.2 | SecretaryMessage component with queue UI, snooze, dismiss | Alice | 2 days | P8.1 | Done |
+| P8.3 | useGateInbox composable with cross-session registration and badge count | Bob | 2 days | — | Done |
+| P8.4 | useForge ↔ useRelay gate state integration | Bob | 2 days | P8.3 | Done |
+| P8.5 | ReportCard terminal completion component | Alice | 1 day | — | Done |
+
+
+
+
+---
+
+## P9 Live Pipeline Node-Graph
+**Status:** implemented
+**Depends on:** G10
+
+| Phase | Task | Owner | Duration | Dependencies | Status |
+|---|---|---|---|---|---|
+| P9.1 | PipelinePanel node-graph layout (dots, connectors, status colors) | Bob | 3 days | — | Done |
+| P9.2 | Expanded node card with token burn, specs touched, current action | Bob | 2 days | P9.1 | Done |
+| P9.3 | Retry loop backward edge with iteration counter | Alice | 1 day | P9.1 | Done |
+| P9.4 | Live Log panel streaming tool calls | Alice | 2 days | — | Done |
+| P9.5 | Specs Touched panel with click-to-jump | Alice | 1 day | P9.4 | Done |
+| P9.6 | Cost Breakdown panel with per-profession token bars | Bob | 1 day | — | Done |
+
+
+
+---
+
+## P10 Specs Workspace Depth
+**Status:** implemented
+**Depends on:** G9
+
+| Phase | Task | Owner | Duration | Dependencies | Status |
+|---|---|---|---|---|---|
+| P10.1 | Category renderers (GoalsTable, ArchitectureCards, PlansTimeline, TestsCards, ReviewCards, ReportDashboard) | Alice | 4 days | — | Done |
+| P10.2 | RelationsPanel with parent/child lists and jump navigation | Bob | 2 days | P10.1 | Done |
+| P10.3 | AutoLinkContent for clickable ID references in markdown | Bob | 2 days | — | Done |
+| P10.4 | GateBanner sticky banner for sections with active gates | Alice | 1 day | P8.1 | Done |
+| P10.5 | Drift Check button with results visualization | Bob | 2 days | P10.2 | Done |
+
+
+
+---
+
+## P11 Mode Awareness & Integration
+**Status:** implemented
+**Depends on:** G8, G9, G10
+
+| Phase | Task | Owner | Duration | Dependencies | Status |
+|---|---|---|---|---|---|
+| P11.1 | GSD / Check mode toggle in AppHeader | Alice | 1 day | — | Done |
+| P11.2 | Conditional gate rendering (all gates vs Goal Gate only) | Alice | 2 days | P11.1 | Done |
+| P11.3 | SSE event handlers for spec_written, handoff_submitted, gate_reached, gate_resolved | Bob | 2 days | P8.4, P9.1 | Done |
+| P11.4 | useSpecs document cache invalidation on relay spec mutations | Bob | 1 day | P11.3 | Done |
+
+
+
+---
+
+## P12 Responsive & Accessibility Polish
+**Status:** implemented
+**Depends on:** G10
+
+| Phase | Task | Owner | Duration | Dependencies | Status |
+|---|---|---|---|---|---|
+| P12.1 | Mobile layout with bottom sheets and tabs | Alice | 2 days | — | Done |
+| P12.2 | Keyboard shortcuts (Ctrl+1/2/3/K) | Bob | 1 day | — | Done |
+| P12.3 | Focus management for gate cards and secretary messages | Alice | 2 days | P8.1, P8.2 | Done |
+| P12.4 | Screen reader annotations for node graph and relations panel | Bob | 2 days | P9.1, P10.2 | Done |

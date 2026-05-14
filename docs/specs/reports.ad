@@ -1,1 +1,77 @@
 # 📊 Reports
+
+> Relay execution summaries for the Agents Relay Frontend module.
+
+---
+
+## X1 — Forge Specs Relay Frontend Implementation
+**Status:** draft
+
+Implementation of the redesigned specs relay frontend covering Chat-First Gates (Smart Secretary), Live Node-Graph Pipeline, Specs Workspace with bidirectional traceability, and responsive polish. All P0 gaps closed. Build passes. Dev server and backend API operational.
+
+| Metric | Value |
+|---|---|
+| Goals Met | 4/4 (G8–G11) |
+| Tests Pass | 14/14 (S8.1–S10.4 + S7.2) |
+| Plans Completed | 5/5 (P8–P12) |
+| Designs Implemented | 11/11 (D8–D18) |
+| Code Files Changed | ~30 Vue components + 7 composables + 2 type files |
+
+| Profession | Tokens | Cost |
+|---|---|---|
+| Advisor | 4,200 | $0.13 |
+| Architect | 12,500 | $0.38 |
+| Planner | 3,800 | $0.11 |
+| Coder | 58,000 | $1.74 |
+| Tester | 24,000 | $0.72 |
+| Reviewer | 6,200 | $0.19 |
+| **Total** | **108,700** | **$3.27** |
+
+
+---
+
+## X2 — Spec Conversion Gap Audit (Post-Write)
+**Status:** draft
+
+After converting `docs/design/forge-specs-relay-frontend.md` into formal specs, a gap audit identified missing component designs and an undocumented SSE routing contract.
+
+| Gap | Severity | Resolution | Location |
+|---|---|---|---|
+| `GateBanner` component (Specs view sticky gate banner) | High | New Design D15 | `designs.ad` |
+| `GatePanel` component (Relay view gate approval) | High | New Design D16 | `designs.ad` |
+| `ReportCard` component (terminal completion in chat) | High | New Design D17 | `designs.ad` |
+| SSE Event Map / Frontend Integration | Critical | New Design D18 | `designs.ad` |
+| Open questions untracked (sound, escalation, persistence, locking) | Medium | Added as plan risks | `plans.ad` (P8, P11, P12) |
+
+- Sound design: opt-in chime for gates?
+- Gate escalation: browser notification after >30min?
+- Secretary queue persistence across refresh (backend dependency)
+- Multi-run document locking (ETag strategy)
+
+All P0 gaps are now closed. The 4 new designs (D15–D18) and 3 additional plan risks provide sufficient detail for the Coder to begin implementation.
+
+---
+
+## X3 — Frontend Gap Closure Report (Post-Implementation)
+**Status:** draft
+
+All identified gaps from X2 have been implemented and verified. The frontend now supports the complete Smart Secretary pattern, live pipeline visualization, specs workspace depth, mode-aware gate filtering, and mobile-responsive accessibility.
+
+| Gap | Status | Evidence |
+|---|---|---|
+| P8: ReportCard trigger | ✅ Closed | `setEventCallbacks({ onReport })` in `ChatsView.vue` |
+| P9: Live Log data | ✅ Closed | `_liveLog` populated from SSE in `useRelay.ts` |
+| P9: Per-profession Cost Breakdown | ✅ Closed | `professionTokens` ref + bars in `AgentsView.vue` |
+| P10: Drift check visualization | ✅ Closed | `driftResult` panel with severity colors in `SpecsView.vue` |
+| P11: Mode toggle filters gates | ✅ Closed | `useForgeMode` + `showGatePanel` computed |
+| P11: Event router in useForge SSE | ✅ Closed | `useEventRouter` wired into `streamResponse` |
+| P12: Mobile bottom sheets | ✅ Closed | `@media (max-width: 768px)` across all views |
+| P12: Focus management | ✅ Closed | `approveBtnRef` + `onMounted` in `GateCard.vue` |
+| P12: Screen reader annotations | ✅ Closed | `aria-label` on pipeline steps + `aria-live` region |
+
+```
+vue-tsc -b && vite build  ✅  built in 19.67s
+```
+
+- Vite dev server: `http://localhost:5174/forge/`
+- AutoForge API: `http://localhost:3031`

@@ -158,3 +158,74 @@ graph LR
 - Positive: Reviewer acts as internal QA, not an external gate.
 - Negative: If Advisor writes bad Goals, everything downstream is wrong.
 - Mitigation: GoalGate is the one required human gate in GSD mode. Advisor uses medium/strong model.
+
+
+---
+
+## A5 Frontend Composable State Architecture
+**Status:** implemented
+**Depends on:** G8
+
+An LLM-based orchestrator would consume tokens for routing decisions, violating G3's token-efficiency mandate. It would also introduce non-determinism into flow execution. A deterministic state machine in Rust provides zero-token coordination, predictable routing, and compile-time safety.
+
+```mermaid
+graph TB
+    subgraph "Frontend Composables"
+        F[useForge.ts]
+        R[useRelay.ts]
+        S[useSpecs.ts]
+        G[useGateInbox.ts]
+        I[useItemRelations.ts]
+    end
+    subgraph "Vue Components"
+        C[ChatView]
+        V[SpecsView]
+        L[RelayView]
+    end
+
+    F -->|session gates| G
+    R -->|run gates| G
+    G -->|renders| C
+    R -->|invalidates| S
+    S -->|finds item| I
+    I -->|enriches| V
+```
+
+| Approach | Pros | Cons |
+|---|---|---|
+| Vue 3 Composables (singleton refs) | Zero boilerplate, matches existing code, tree-shakable, direct cross-import | No time-travel debugging; state is implicit |
+| Pinia global store | DevTools support, mutations traceable | More boilerplate, refactor cost for existing composables |
+| Redux/Vuex | Time-travel, predictable state updates | Massive overhead for a Vue 3 project |
+
+- Positive: `useGateInbox` can import `useRelay` and `useForge` directly to listen for gate events without event bus indirection.
+- Negative: Composable cross-imports create a soft dependency graph that is not explicitly declared.
+- Mitigation: Document cross-cutting concerns in the Architecture ADR; avoid circular imports by keeping `useGateInbox` as the central hub.
+
+
+---
+
+## A6 Chat Ephemeral Chrome Architecture
+**Status:** implemented
+**Depends on:** G8
+
+Persisting cross-session gate messages into the current session's `ForgeMessage` array would pollute the chat audit trail with foreign conversation state. The backend `ForgeMessage` schema has no `gate` role and should not be extended for UI chrome.
+
+
+```mermaid
+graph LR
+    A[useGateInbox.active] -->|v-if| B[SecretaryMessage.vue]
+    C[messages: ForgeMessage[]] -->|v-for| D[ChatMessage.vue]
+    B -.->|ephemeral| E[Chat DOM]
+    D -->|persisted| E
+```
+
+| Approach | Pros | Cons |
+|---|---|---|
+| Ephemeral Vue components (chosen) | Clean backend schema, no migration, chat history is accurate | Secretary messages disappear on refresh unless inbox is hydrated |
+| Persisted `system` role messages | Survives refresh, simple rendering | Pollutes session history with external state; backend schema change |
+| Separate "inbox" message stream | Clean separation | Complex UI: two message streams to render and scroll |
+
+- Positive: Backend `ForgeMessage` schema unchanged.
+- Positive: Chat history export contains only this session's conversation.
+- Negative: Page refresh loses the visual secretary message (but not the gate state, which is in `useGateInbox` and can be rehydrated).
+- Mitigation: On mount, `useGateInbox` fetches `/api/forge/gates/pending` and re-renders any active gates.

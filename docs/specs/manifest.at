@@ -1,5 +1,5 @@
 project = "auto-lang"
-version = 12
+version = 13
 
 [[section]]
 id = "goals"
@@ -26,8 +26,8 @@ last_modified = 1778693194
 id = "plans"
 section_type = "plans"
 title = "📅 Plans"
-status = "done"
-last_modified = 1778720667
+status = "in_progress"
+last_modified = 1778737332
 
 [[section]]
 id = "tests"
@@ -49,3 +49,10 @@ section_type = "reports"
 title = "📊 Reports"
 status = "empty"
 last_modified = 1778693194
+
+[[section]]
+id = "apis"
+section_type = "goals"
+title = "🔌 APIs"
+status = "empty"
+last_modified = 1778733576

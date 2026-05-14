@@ -513,3 +513,365 @@ pub struct Profession {
 | `owned_sections` | `Vec<SectionType>` | specs this profession can write |
 | `readable_sections` | `Vec<SectionType>` | specs this profession can read |
 | `approval_gates` | `Vec<String>` | handoff targets that require approval |
+
+
+---
+
+## D8 GateCard & SecretaryMessage Components
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/components/`
+**Depends on:** A5, A6
+
+```typescript
+// GateCard.vue
+interface GateCardProps {
+  gate: PendingGate
+  mode: 'inline' | 'secretary'
+}
+
+// SecretaryMessage.vue
+interface SecretaryMessageProps {
+  gate: PendingGate
+  queuePosition?: number
+}
+```
+
+```mermaid
+stateDiagram-v2
+    [*] --> Proposed
+    Proposed --> Approved : boss clicks Approve
+    Proposed --> Rejected : boss clicks Reject
+    Proposed --> Snoozed : boss clicks Snooze
+    Proposed --> Reviewing : boss clicks Review →
+    Reviewing --> Proposed : drawer closed
+    Snoozed --> Proposed : timer expires
+    Approved --> Resolved : auto-collapse 3s
+    Rejected --> Resolved : advisor reworks
+    Resolved --> [*]
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `gate.id` | `string` | session_id or run_id |
+| `gate.type` | `'session' \| 'run'` | source composable |
+| `gate.gateType` | `'goal' \| 'spec' \| 'review'` | approval type |
+| `gate.profession` | `string` | who is waiting |
+| `gate.since` | `number` | timestamp |
+
+
+---
+
+## D9 useGateInbox State Machine
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/composables/useGateInbox.ts`
+**Depends on:** A5
+
+```typescript
+interface PendingGate {
+  id: string
+  type: 'session' | 'run'
+  gateType: 'goal' | 'spec' | 'review'
+  title: string
+  profession: string
+  since: number
+  context: {
+    sessionId?: string
+    runId?: string
+    sectionId?: string
+    itemId?: string
+  }
+}
+
+interface GateInboxState {
+  pending: PendingGate[]
+  active: PendingGate | null
+  resolved: PendingGate[]
+}
+
+function registerGate(gate: PendingGate): void
+function resolveGate(id: string): void
+function dismissSecretary(): void
+function snoozeGate(id: string, minutes: number): void
+```
+
+```
+fn registerGate(gate):
+    if active is null:
+        active = gate
+    else:
+        pending.push(gate)
+
+fn resolveGate(id):
+    if active?.id == id:
+        resolved.push(active)
+        active = pending.shift() ?? null
+    else:
+        pending.remove(where g.id == id)
+        resolved.push(g)
+
+fn snoozeGate(id, minutes):
+    if active?.id == id:
+        pending.push(active)
+        active = null
+        setTimeout(() => registerGate(active), minutes * 60000)
+```
+
+
+---
+
+## D10 Category Renderer Polymorphism
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/views/SpecsView.vue`
+**Depends on:** A5
+
+```typescript
+const categoryComponents: Record<SectionType, Component> = {
+  goals: GoalsTable,
+  architecture: ArchitectureCards,
+  designs: DesignCards,
+  plans: PlansTimeline,
+  tests: TestsCards,
+  reviews: ReviewCards,
+  reports: ReportDashboard,
+}
+```
+
+| Event | Payload | Description |
+|---|---|---|
+| `toggle` | `{ id: string }` | Expand/collapse item detail |
+| `jump` | `{ id: string }` | Navigate to linked spec ID |
+| `edit` | `{ item: SpecItem }` | Enter edit mode for item |
+| `status-change` | `{ id: string; status: Status }` | Update item status |
+| `save` | `{ item: SpecItem }` | Persist edited item |
+| `delete` | `{ id: string }` | Remove item from section |
+
+
+---
+
+## D11 RelationsPanel & AutoLinkContent
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/components/`
+**Depends on:** A5
+
+```typescript
+// RelationsPanel.vue
+interface RelationsPanelProps {
+  item: SpecItem
+}
+
+// AutoLinkContent.vue
+interface AutoLinkContentProps {
+  content: string
+}
+// Regex: /\b([GRAPTVXIS]\d+(?:\.\d+)?)\b/
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `parents` | `{ id, title, section_type, status }[]` | Upstream depends_on |
+| `children` | `{ id, title, section_type, status }[]` | Downstream related |
+
+```
+fn render(content):
+    parts = splitByRegex(content, ID_REF_REGEX)
+    for part in parts:
+        if part.matches(ID_REF_REGEX):
+            render(<SpecLink id={part} />)
+        else:
+            render(<span>{part}</span>)
+```
+
+
+---
+
+## D12 Relay PipelinePanel Node-Graph
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/views/RelayView.vue`
+**Depends on:** A5
+
+```typescript
+interface PipelineNode {
+  id: string
+  profession: string
+  status: 'pending' | 'working' | 'done' | 'error' | 'waiting_gate'
+  tokens: number
+  cost: number
+  elapsedMs: number
+  outputs: string[]
+  currentAction?: string
+}
+
+interface PipelineEdge {
+  from: string
+  to: string
+  type: 'forward' | 'retry' | 'handoff'
+}
+```
+
+- Desktop (`≥1024px`): horizontal flexbox with absolute-positioned SVG connectors
+- Mobile (`<1024px`): vertical timeline with CSS border-left connectors
+
+
+---
+
+## D13 Expanded Node Card
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/components/NodeCard.vue`
+**Depends on:** D12
+
+```typescript
+interface NodeCardProps {
+  node: PipelineNode
+}
+```
+
+1. **Overview**: tokens, elapsed time, status, profession icon
+2. **Actions**: chronological tool call history (read_jade, write_file, etc.)
+3. **Output**: specs touched with click-to-jump links
+
+
+---
+
+## D14 Responsive 3-Zone Layout System
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/App.vue`
+**Depends on:** —
+
+| Breakpoint | Zone A | Zone B | Zone C |
+|---|---|---|---|
+| `≥1280px` | 220px sidebar | flex main | 280–320px context |
+| `1024–1279px` | 220px sidebar | flex main | hidden, toggle drawer |
+| `<1024px` | tab nav | full main | bottom sheet |
+
+```css
+.autoforge-app {
+  display: flex;
+  height: 100vh;
+}
+.view-rail { width: 180px; flex-shrink: 0; }
+.view-main { flex: 1; display: flex; min-width: 0; }
+```
+
+
+
+---
+
+## D15 GateBanner (Specs View)
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/components/GateBanner.vue`
+**Depends on:** A5, D9
+
+```typescript
+interface GateBannerProps {
+  sectionId: string
+  gate: PendingGate
+}
+
+// Events
+emit('approve', gateId: string)
+emit('reject', gateId: string)
+emit('openInChat', gateId: string)
+```
+
+```mermaid
+stateDiagram-v2
+    [*] --> Hidden: no active gate for section
+    Hidden --> Visible: gate_reached for this section
+    Visible --> Hidden: gate_resolved or approved
+    Visible --> Expanded: user clicks View Diff
+    Expanded --> Visible: user collapses diff
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `sectionId` | `string` | Which spec section this banner guards |
+| `gate.profession` | `string` | Who is waiting (e.g., "architect") |
+| `gate.title` | `string` | One-line summary of what needs approval |
+| `gate.since` | `number` | Timestamp when gate was reached |
+
+
+---
+
+## D16 GatePanel (Relay View)
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/components/GatePanel.vue`
+**Depends on:** A5, D9
+
+```typescript
+interface GatePanelProps {
+  runId: string
+  gate: PendingGate
+  professionIcon: string
+}
+
+// Events
+emit('approve', runId: string)
+emit('reject', runId: string)
+emit('reviewInSpecs', sectionId: string)
+```
+
+- Renders inside `PipelinePanel` when `currentRun.waiting_for_gate` is non-null
+- Shows profession icon, gate title, and elapsed waiting time
+- Provides Approve / Reject / Review in Specs actions
+- Non-blocking: pipeline animation continues in background
+
+
+---
+
+## D17 ReportCard (Chat Terminal)
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/components/ReportCard.vue`
+**Depends on:** A5
+
+```typescript
+interface ReportCardProps {
+  report: {
+    runId: string
+    goalsMet: string
+    testsPass: string
+    driftDetected: string
+    cost: string
+    confidence: 'High' | 'Medium' | 'Low'
+    deliverables: string[]
+  }
+}
+```
+
+- `collapsed` (default): Shows summary line only — "✅ Relay Complete — Report X42"
+- `expanded`: Shows full metrics table, cost breakdown, deliverables list, drift notes
+
+- [View Full Report] → opens Reports section in Specs drawer
+- [Download Markdown] → triggers download of report markdown
+- [Open Changed Files] → opens file diff viewer
+
+
+---
+
+## D18 SSE Frontend Event Router
+**Status:** implemented
+**Module:** `packages/auto-forge-ui/src/composables/useEventRouter.ts`
+**Depends on:** A5, D9
+
+```typescript
+interface SSEEvent {
+  type: 'run_started' | 'step_advanced' | 'spec_written'
+       | 'gate_reached' | 'gate_resolved'
+       | 'handoff_submitted' | 'run_completed'
+  runId: string
+  payload: Record<string, unknown>
+}
+
+function useEventRouter() {
+  function handleEvent(event: SSEEvent, currentView: 'chat' | 'specs' | 'relay')
+}
+```
+
+| Event | Chat View | Specs View | Relay View |
+|---|---|---|---|
+| `run_started` | System message | — | Highlight run |
+| `step_advanced` | **NO action** (ambient only) | — | Animate node |
+| `spec_written` | — | Flash changed section | — |
+| `gate_reached` | SecretaryMessage | GateBanner | GatePanel |
+| `gate_resolved` | Collapse message | Hide banner | Hide panel |
+| `handoff_submitted` | — | — | Append to Live Log |
+| `run_completed` | ReportCard | Update Reports | Mark run done |

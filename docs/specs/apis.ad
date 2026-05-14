@@ -1,0 +1,70 @@
+# 🔌 APIs
+
+# APIs
+
+## Authentication
+
+All endpoints require a session cookie or API key header:
+```
+Authorization: Bearer <api_key>
+```
+
+## Endpoints
+
+### Sessions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/forge/chats/session` | List all sessions |
+| POST | `/api/forge/chats/session` | Create new session |
+| GET | `/api/forge/chats/session/{sid}` | Get session details |
+| PATCH | `/api/forge/chats/session/{sid}` | Rename session |
+| DELETE | `/api/forge/chats/session/{sid}` | Delete session |
+| POST | `/api/forge/chats/session/{sid}/chat` | Send chat message |
+| GET | `/api/forge/chats/session/{sid}/chat/stream` | Stream chat response |
+
+### Specs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/forge/specs/{project}` | Get specs document |
+| POST | `/api/forge/specs/{project}/{section}` | Update section |
+| POST | `/api/forge/specs/{project}` | Update full specs |
+
+## Schemas
+
+### ForgeSession
+
+```json
+{
+  "id": "uuid-string",
+  "name": "optional-session-name",
+  "project_path": "/path/to/project",
+  "status": "Idle | Active | Streaming",
+  "phase": "Discovery | Spec | Code | Verify",
+  "messages": [...],
+  "created_at": 1715500000,
+  "phase_history": [...]
+}
+```
+
+### SpecsDocument
+
+```json
+{
+  "project": "project-name",
+  "version": 1,
+  "sections": [
+    {
+      "id": "goals",
+      "section_type": "goals",
+      "title": "🎯 Goals",
+      "status": "draft",
+      "content": "# markdown content...",
+      "depends_on": [],
+      "last_modified": 1715500000,
+      "last_verified": null
+    }
+  ]
+}
+```

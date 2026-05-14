@@ -14,6 +14,10 @@
 | G5 | Token Budgeting tracks and enforces per-step spend with cost analytics visible in Agents view | P1 | Implemented | Tooling Team |
 | G6 | Boss-first execution: GSD mode runs autonomously with optional Check mode for gate review | P0 | Done | Tooling Team |
 | G7 | Spec pyramid supports Goals → Architecture → Designs → Plans → Tests → Reviews → Reports with no APIs category | P0 | Done | Tooling Team |
+| G8 | Chat-First Gate Approval with Smart Secretary | P0 | Implemented | UI Team |
+| G9 | Specs Workspace with Bidirectional Traceability | P0 | Implemented | UI Team |
+| G10 | Live Relay Pipeline Visualization | P0 | Implemented | UI Team |
+| G11 | Responsive and Accessible Frontend | P1 | Implemented | UI Team |
 
 ---
 
@@ -113,3 +117,228 @@ The human is the boss, not a coworker. The default behavior is autonomous execut
 - [x] Reports are relay execution summaries (cost, confidence, deliverables)
 
 Specs are internal decision records (how to build). Products are shipped artifacts (code + public docs). Interface contracts are design specs; public API docs are generated products.
+
+## G8 Chat-First Gate Approval with Smart Secretary
+**Status:** implemented
+**Depends on:** G6, G7
+
+The chat is the boss's office. All gates, regardless of origin, are delivered here. The secretary only enters when a signature is needed or the job is done.
+
+---
+
+## G8.1 Inline GateCard renders diff view with Approve/Reject/Edit
+**Status:** implemented
+**Depends on:** G8
+
+- [x] GateCard appears at the bottom of chat for current-session gates
+- [x] Diff view shows what changed vs previous version with inline highlighting
+- [x] Approve button advances pipeline; Reject button prompts for reason and routes back to Advisor
+- [x] Edit escape hatch opens Specs drawer without losing gate state
+
+
+---
+
+## G8.2 SecretaryMessage delivers cross-session gates without blocking input
+**Status:** implemented
+**Depends on:** G8
+
+- [x] Ephemeral messenger renders above input bar for gates from other sessions/runs
+- [x] Input bar remains usable; secretary waits without interrupting
+- [x] Message shows profession, session ID, and summary of proposed items
+- [x] Resolved messages collapse to compact audit line after 3 seconds
+
+
+---
+
+## G8.3 Gate queue enforces one-at-a-time delivery with snooze and dismiss
+**Status:** implemented
+**Depends on:** G8
+
+- [x] Only one secretary message is active at a time; additional gates enqueue
+- [x] Queue pill shows "+N more" with expandable mini-list
+- [x] Snooze moves gate to back of queue with configurable timer
+- [x] Dismiss removes gate from active view but does not resolve it
+
+
+---
+
+## G8.4 Ambient progress indicators keep chat history free of status spam
+**Status:** implemented
+**Depends on:** G8
+
+- [x] Session list shows pulsing dot + phase label for active relays
+- [x] Chat history never contains interim "Architect done" messages
+- [x] Errors are the only exception: single secretary message on unrecoverable failure
+- [x] ReportCard renders terminal completion with metrics, cost, and deliverables
+
+
+---
+
+## G9 Specs Workspace with Bidirectional Traceability
+**Status:** implemented
+**Depends on:** G7, G8
+
+Specs are not flat documents — they form a live decision pyramid. Every Plan traces back to a Goal, every Test verifies a Design. The frontend makes this traceability the primary navigation model.
+
+---
+
+## G9.1 Seven spec categories render with structured per-category editors
+**Status:** implemented
+**Depends on:** G9
+
+- [x] Goals table with inline row editing
+- [x] Architecture cards with Mermaid diagram rendering
+- [x] Designs cards with interface signature preview
+- [x] Plans timeline with Gantt-like phase table
+- [x] Tests cards with pass/fail indicators
+- [x] Reviews cards with criterion counts
+- [x] Reports dashboard with metric bars
+
+
+---
+
+## G9.2 RelationsPanel shows upstream parents and downstream children
+**Status:** implemented
+**Depends on:** G9
+
+- [x] Every expanded item shows Parents (depends_on) and Children (related) lists
+- [x] Each relation entry shows ID, title, section type, and status badge
+- [x] Clicking a relation jumps to target section, expands item, and flashes highlight
+- [x] Backend auto-rebuilds related field on every document save
+
+
+---
+
+## G9.3 AutoLinkContent parses typed IDs into clickable hyperlinks
+**Status:** implemented
+**Depends on:** G9
+
+- [x] Regex scans markdown content for typed ID references (`G1`, `A1`, `P1.3`)
+- [x] Matching IDs render as clickable SpecLink components
+- [x] Clicking a link triggers jumpToItem with section switch + scroll + flash
+- [x] Non-ID text renders as normal markdown
+
+
+---
+
+## G9.4 Drift Check button compares code against specs on demand
+**Status:** implemented
+**Depends on:** G9
+
+- [x] Drift Check button visible in Specs header
+- [x] Runs comparison between Goals and implemented code
+- [x] Flags mismatches with drift status on affected goals
+- [x] Results render in a summary panel with severity indicators
+
+
+---
+
+## G10 Live Relay Pipeline Visualization
+**Status:** implemented
+**Depends on:** G6, G8
+
+The Relay view is the factory floor CCTV. The boss glances at the session sidebar to know work is happening; engineers open Relay to diagnose handoffs, token burn, and tool call history.
+
+---
+
+## G10.1 Node-graph renders connected dots with animated handoff lines
+**Status:** implemented
+**Depends on:** G10
+
+- [x] 9 pipeline steps render as horizontally connected dots on desktop
+- [x] Dots are colored by status: pending=gray, working=amber pulse, done=green, error=red
+- [x] Connectors animate with traveling dot during handoff
+- [x] Mobile collapses to vertical timeline with CSS border-left connectors
+
+
+---
+
+## G10.2 Expanded node cards show real-time token burn and current action
+**Status:** implemented
+**Depends on:** G10
+
+- [x] Clicking a node expands a card below with Overview/Actions/Output tabs
+- [x] Overview tab shows tokens consumed, elapsed time, status, profession icon
+- [x] Actions tab shows chronological tool call history
+- [x] Output tab lists specs touched with click-to-jump links
+
+
+---
+
+## G10.3 Tester→Coder retry loop visualizes as backward edge with counter
+**Status:** implemented
+**Depends on:** G10
+
+- [x] Backward arrow renders between Tester(verify) and Coder nodes
+- [x] Arrow pulses amber when retry is active
+- [x] Coder node shows "Retry N/3" badge during loop
+- [x] After max iterations, error routes to Reviewer instead
+
+
+---
+
+## G10.4 Live Log and Cost Breakdown panels stream relay diagnostics
+**Status:** implemented
+**Depends on:** G10
+
+- [x] Live Log streams tool calls in real time with timestamp, profession, action
+- [x] Specs Touched panel shows mutated sections with click-to-jump
+- [x] Cost Breakdown shows per-profession token bars and cumulative spend
+- [x] All panels update via SSE without page refresh
+
+
+---
+
+## G11 Responsive and Accessible Frontend
+**Status:** implemented
+**Depends on:** G8, G9, G10
+
+The frontend must work for the boss on a laptop, the engineer on a tablet, and the contributor with a keyboard or screen reader.
+
+---
+
+## G11.1 Layout adapts to desktop, tablet, and mobile breakpoints
+**Status:** implemented
+**Depends on:** G11
+
+- [x] Desktop (≥1280px): full 3-zone layout with sidebar + main + context panel
+- [x] Tablet (1024–1279px): Zone C collapses to toggle drawer
+- [x] Mobile (<1024px): single column with tab nav and bottom sheets
+- [x] No horizontal scroll on any breakpoint
+
+
+---
+
+## G11.2 Keyboard shortcuts navigate between views without mouse
+**Status:** implemented
+**Depends on:** G11
+
+- [x] Ctrl+1 switches to Chat view
+- [x] Ctrl+2 switches to Specs view
+- [x] Ctrl+3 switches to Relay view
+- [x] Ctrl+K opens jump-to-ID dialog
+- [x] Shortcuts work from any focused element
+
+
+---
+
+## G11.3 Focus management guides users through gate approval flows
+**Status:** implemented
+**Depends on:** G11
+
+- [x] GateCard auto-focuses Approve button when it appears
+- [x] Secretary message receives focus on arrival; Escape dismisses
+- [x] Tab order is logical within diff views and expanded cards
+- [x] Focus traps do not prevent reaching browser chrome
+
+
+---
+
+## G11.4 Screen reader annotations describe node graph and relations
+**Status:** implemented
+**Depends on:** G11
+
+- [x] Pipeline nodes have aria-label with profession + status + elapsed time
+- [x] RelationsPanel announces "X parents, Y children" on expand
+- [x] Live Log announces new entries with polite live region
+- [x] All interactive elements have accessible names
