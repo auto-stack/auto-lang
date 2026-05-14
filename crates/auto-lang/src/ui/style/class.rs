@@ -50,6 +50,18 @@ pub enum StyleClass {
     /// Padding Y: py-{0-12} (L2)
     PaddingY(SizeValue),
 
+    /// Padding Top: pt-{0-12}
+    PaddingTop(SizeValue),
+
+    /// Padding Bottom: pb-{0-12}
+    PaddingBottom(SizeValue),
+
+    /// Padding Left: pl-{0-12}
+    PaddingLeft(SizeValue),
+
+    /// Padding Right: pr-{0-12}
+    PaddingRight(SizeValue),
+
     /// Margin: m-{0-12} (L2) - Note: Iced doesn't support margin
     Margin(SizeValue),
 
@@ -65,6 +77,15 @@ pub enum StyleClass {
     // ========== Colors (L1 Core) ==========
     /// Background color: bg-{color}
     BackgroundColor(Color),
+
+    /// Gradient direction marker: bg-gradient-to-r (etc.)
+    BgGradientToR,
+
+    /// Gradient start color: from-{color}
+    GradientFrom(Color),
+
+    /// Gradient end color: to-{color}
+    GradientTo(Color),
 
     /// Text color: text-{color}
     TextColor(Color),
@@ -141,6 +162,9 @@ pub enum StyleClass {
 
     /// Border: 0 (no border) - L2
     Border0,
+
+    /// Border width: border-N (numeric pixels) - L2
+    BorderWidth(f32),
 
     /// Border color: border-{color} - L2
     BorderColor(Color),
@@ -292,6 +316,24 @@ impl StyleClass {
             return Ok(StyleClass::PaddingY(size));
         }
 
+        // Parse per-side padding: pt/pb/pl/pr
+        if let Some(rest) = class.strip_prefix("pt-") {
+            let size = parse_size_value(rest)?;
+            return Ok(StyleClass::PaddingTop(size));
+        }
+        if let Some(rest) = class.strip_prefix("pb-") {
+            let size = parse_size_value(rest)?;
+            return Ok(StyleClass::PaddingBottom(size));
+        }
+        if let Some(rest) = class.strip_prefix("pl-") {
+            let size = parse_size_value(rest)?;
+            return Ok(StyleClass::PaddingLeft(size));
+        }
+        if let Some(rest) = class.strip_prefix("pr-") {
+            let size = parse_size_value(rest)?;
+            return Ok(StyleClass::PaddingRight(size));
+        }
+
         // Parse margin: m-{0-12}
         if let Some(rest) = class.strip_prefix("m-") {
             let size = parse_size_value(rest)?;
@@ -320,9 +362,31 @@ impl StyleClass {
 
         // Parse background: bg-{color}
         if let Some(color_name) = class.strip_prefix("bg-") {
+            // Handle gradient markers
+            if color_name == "gradient-to-r" || color_name == "gradient-to-l"
+                || color_name == "gradient-to-t" || color_name == "gradient-to-b"
+                || color_name == "gradient-to-br" || color_name == "gradient-to-bl"
+                || color_name == "gradient-to-tr" || color_name == "gradient-to-tl"
+            {
+                return Ok(StyleClass::BgGradientToR);
+            }
             let color = Color::from_tailwind(color_name)
                 .or_else(|_| Color::from_hex(color_name))?;
             return Ok(StyleClass::BackgroundColor(color));
+        }
+
+        // Parse gradient start: from-{color}
+        if let Some(color_name) = class.strip_prefix("from-") {
+            if let Ok(color) = Color::from_tailwind(color_name).or_else(|_| Color::from_hex(color_name)) {
+                return Ok(StyleClass::GradientFrom(color));
+            }
+        }
+
+        // Parse gradient end: to-{color}
+        if let Some(color_name) = class.strip_prefix("to-") {
+            if let Ok(color) = Color::from_tailwind(color_name).or_else(|_| Color::from_hex(color_name)) {
+                return Ok(StyleClass::GradientTo(color));
+            }
         }
 
         // ========== Typography (L2) ==========
@@ -440,6 +504,13 @@ impl StyleClass {
         // Parse border-0
         if class == "border-0" {
             return Ok(StyleClass::Border0);
+        }
+
+        // Parse border-N (numeric width, e.g. border-2, border-4)
+        if let Some(rest) = class.strip_prefix("border-") {
+            if let Ok(width) = rest.parse::<f32>() {
+                return Ok(StyleClass::BorderWidth(width));
+            }
         }
 
         // Parse border color: border-{color}

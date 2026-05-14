@@ -8,7 +8,7 @@
 use crate::ui::view::View as AbstractView;
 use crate::ui::component::Component;
 use crate::ui::app::AppResult;
-use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize};
+use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedShadowSize};
 use crate::ui::style::Style;
 use std::fmt::Debug;
 use iced::widget::{button, checkbox, column, container, pick_list, row, text, text_input};
@@ -49,6 +49,133 @@ fn effective_padding(legacy: u16, style: Option<&Style>) -> f32 {
     legacy as f32
 }
 
+/// Compute iced Padding (per-axis) from style, falling back to legacy u16.
+/// Handles px/py separately from uniform padding.
+fn iced_padding(legacy: u16, style: Option<&Style>) -> iced::Padding {
+    if let Some(s) = style {
+        let is = IcedStyle::from_style(s);
+        // Uniform padding
+        if let Some(p) = is.padding {
+            return iced::Padding::new(p);
+        }
+        // Per-axis or per-side padding
+        let has_per_side = is.padding_top.is_some() || is.padding_bottom.is_some()
+            || is.padding_left.is_some() || is.padding_right.is_some();
+        if has_per_side || is.padding_x.is_some() || is.padding_y.is_some() {
+            let px = is.padding_x.unwrap_or(0.0);
+            let py = is.padding_y.unwrap_or(0.0);
+            let top = is.padding_top.or(if py > 0.0 { Some(py) } else { None }).unwrap_or(0.0);
+            let bottom = is.padding_bottom.or(if py > 0.0 { Some(py) } else { None }).unwrap_or(0.0);
+            let left = is.padding_left.or(if px > 0.0 { Some(px) } else { None }).unwrap_or(0.0);
+            let right = is.padding_right.or(if px > 0.0 { Some(px) } else { None }).unwrap_or(0.0);
+            return iced::Padding {
+                top,
+                bottom,
+                left,
+                right,
+            };
+        }
+    }
+    iced::Padding::new(legacy as f32)
+}
+
+/// Build an Iced container::Style from IcedStyle, covering background, border, shadow, text_color.
+fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
+    use iced::Background;
+    let radius = is.border_radius.unwrap_or(0.0);
+    let border = if is.rounded || is.border || radius > 0.0 {
+        iced::Border {
+            color: is.border_color.unwrap_or(iced::Color::TRANSPARENT),
+            width: is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 }),
+            radius: radius.into(),
+        }
+    } else {
+        iced::Border::default()
+    };
+    let shadow = if is.shadow {
+        let (offset_y, blur) = match is.shadow_size {
+            Some(IcedShadowSize::Sm) => (1.0, 2.0),
+            Some(IcedShadowSize::Md) => (2.0, 4.0),
+            Some(IcedShadowSize::Lg) => (4.0, 8.0),
+            Some(IcedShadowSize::Xl) => (8.0, 16.0),
+            Some(IcedShadowSize::Xxl) => (12.0, 24.0),
+            _ => (2.0, 4.0),
+        };
+        iced::Shadow {
+            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.15),
+            offset: iced::Vector::new(0.0, offset_y),
+            blur_radius: blur,
+        }
+    } else {
+        iced::Shadow::default()
+    };
+    iced::widget::container::Style {
+        background: is.background_color.map(Background::Color),
+        text_color: is.text_color,
+        border,
+        shadow,
+        ..Default::default()
+    }
+}
+
+/// Build an Iced button::Style from IcedStyle.
+fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
+    use iced::Background;
+    let radius = is.border_radius.unwrap_or(0.0);
+    let border = if is.rounded || is.border || radius > 0.0 {
+        iced::Border {
+            color: is.border_color.unwrap_or(iced::Color::TRANSPARENT),
+            width: is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 }),
+            radius: radius.into(),
+        }
+    } else {
+        iced::Border::default()
+    };
+    let shadow = if is.shadow {
+        let (offset_y, blur) = match is.shadow_size {
+            Some(IcedShadowSize::Sm) => (1.0, 2.0),
+            Some(IcedShadowSize::Md) => (2.0, 4.0),
+            Some(IcedShadowSize::Lg) => (4.0, 8.0),
+            Some(IcedShadowSize::Xl) => (8.0, 16.0),
+            Some(IcedShadowSize::Xxl) => (12.0, 24.0),
+            _ => (2.0, 4.0),
+        };
+        iced::Shadow {
+            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.15),
+            offset: iced::Vector::new(0.0, offset_y),
+            blur_radius: blur,
+        }
+    } else {
+        iced::Shadow::default()
+    };
+    iced::widget::button::Style {
+        background: is.background_color.map(Background::Color),
+        text_color: is.text_color.unwrap_or(iced::Color::BLACK),
+        border,
+        shadow,
+        ..Default::default()
+    }
+}
+
+/// Check if an IcedStyle has visual properties that need container wrapping.
+fn needs_visual_wrap(is: &IcedStyle) -> bool {
+    is.background_color.is_some()
+        || is.border
+        || is.rounded
+        || is.border_radius.is_some()
+        || is.shadow
+        || is.text_color.is_some()
+}
+
+/// Convert IcedFontWeight to iced::Font.
+fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
+    match weight {
+        IcedFontWeight::Bold => iced::Font { weight: iced::font::Weight::Bold, ..Default::default() },
+        IcedFontWeight::Medium => iced::Font { weight: iced::font::Weight::Semibold, ..Default::default() },
+        IcedFontWeight::Normal => iced::Font::default(),
+    }
+}
+
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -62,14 +189,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 if let Some(ref s) = style {
                     let iced_style = IcedStyle::from_style(s);
 
-                    // Apply font size
                     if let Some(ref font_size) = iced_style.font_size {
                         text_widget = text_widget.size(font_size_to_f32(font_size));
                     }
-
-                    // Apply text color
                     if let Some(color) = iced_style.text_color {
                         text_widget = text_widget.color(color);
+                    }
+                    if let Some(ref weight) = iced_style.font_weight {
+                        text_widget = text_widget.font(font_weight_to_iced(weight));
                     }
                 }
 
@@ -78,21 +205,42 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             AbstractView::Button { label, onclick, style } => {
                 let mut text_widget = text(label.clone());
+                let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
-                // Apply text styles if present
-                if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    if let Some(ref font_size) = iced_style.font_size {
+                // Apply text styles to label
+                if let Some(ref is) = iced_style {
+                    if let Some(ref font_size) = is.font_size {
                         text_widget = text_widget.size(font_size_to_f32(font_size));
                     }
-                    if let Some(color) = iced_style.text_color {
+                    if let Some(color) = is.text_color {
                         text_widget = text_widget.color(color);
+                    }
+                    if let Some(ref weight) = is.font_weight {
+                        text_widget = text_widget.font(font_weight_to_iced(weight));
                     }
                 }
 
-                button(text_widget)
-                    .on_press(onclick)
-                    .into()
+                let mut btn = button(text_widget).on_press(onclick);
+
+                // Apply visual styling to button
+                if let Some(ref is) = iced_style {
+                    let has_visual = is.background_color.is_some()
+                        || is.border || is.rounded || is.border_radius.is_some()
+                        || is.shadow;
+                    if has_visual {
+                        let bs = build_button_style(is);
+                        btn = btn.style(move |_, _| bs);
+                    }
+                    if let Some(px) = is.padding {
+                        btn = btn.padding(px);
+                    } else if is.padding_x.is_some() || is.padding_y.is_some() {
+                        let px_x = is.padding_x.unwrap_or(8.0);
+                        let px_y = is.padding_y.unwrap_or(4.0);
+                        btn = btn.padding([px_y, px_x]);
+                    }
+                }
+
+                btn.into()
             }
 
             AbstractView::Row { children, spacing, padding, style } => {
@@ -122,28 +270,32 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     row_widget = row_widget.push(child.into_iced());
                 }
 
-                // Check if we need to wrap in a container for justify/background
+                // Check if we need to wrap in a container for visual styling
                 let needs_justify = iced_style.as_ref()
                     .and_then(|is| is.justify_content)
                     .is_some();
-                let bg_color = iced_style.as_ref()
-                    .and_then(|is| is.background_color);
+                let has_visual = iced_style.as_ref()
+                    .map_or(false, |is| needs_visual_wrap(is));
 
-                if needs_justify || bg_color.is_some() {
+                if needs_justify || has_visual {
                     let mut cont = container(row_widget);
                     if let Some(ref is) = iced_style {
-                        // Row: justify_center → center_x (main axis = horizontal)
                         if let Some(justify) = is.justify_content {
                             if matches!(justify, IcedJustify::Center) {
                                 cont = cont.center_x(iced::Length::Fill);
                             }
                         }
                     }
-                    if let Some(bg) = bg_color {
-                        cont = cont.style(move |_| container::Style {
-                            background: Some(iced::Background::Color(bg)),
-                            ..Default::default()
-                        });
+                    if let Some(ref is) = iced_style {
+                        if has_visual {
+                            let cs = build_container_style(is);
+                            cont = cont.style(move |_| cs);
+                        } else if let Some(bg) = is.background_color {
+                            cont = cont.style(move |_| container::Style {
+                                background: Some(iced::Background::Color(bg)),
+                                ..Default::default()
+                            });
+                        }
                     }
                     return cont.into();
                 }
@@ -178,28 +330,32 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     col_widget = col_widget.push(child.into_iced());
                 }
 
-                // Check if we need to wrap in a container for justify/background
+                // Check if we need to wrap in a container for visual styling
                 let needs_justify = iced_style.as_ref()
                     .and_then(|is| is.justify_content)
                     .is_some();
-                let bg_color = iced_style.as_ref()
-                    .and_then(|is| is.background_color);
+                let has_visual = iced_style.as_ref()
+                    .map_or(false, |is| needs_visual_wrap(is));
 
-                if needs_justify || bg_color.is_some() {
+                if needs_justify || has_visual {
                     let mut cont = container(col_widget);
                     if let Some(ref is) = iced_style {
-                        // Column: justify_center → center_y (main axis = vertical)
                         if let Some(justify) = is.justify_content {
                             if matches!(justify, IcedJustify::Center) {
                                 cont = cont.center_y(iced::Length::Fill);
                             }
                         }
                     }
-                    if let Some(bg) = bg_color {
-                        cont = cont.style(move |_| container::Style {
-                            background: Some(iced::Background::Color(bg)),
-                            ..Default::default()
-                        });
+                    if let Some(ref is) = iced_style {
+                        if has_visual {
+                            let cs = build_container_style(is);
+                            cont = cont.style(move |_| cs);
+                        } else if let Some(bg) = is.background_color {
+                            cont = cont.style(move |_| container::Style {
+                                background: Some(iced::Background::Color(bg)),
+                                ..Default::default()
+                            });
+                        }
                     }
                     return cont.into();
                 }
@@ -337,6 +493,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
                 if center_y {
                     container_widget = container_widget.center_y(iced::Length::Fill);
+                }
+
+                // Apply visual styling (background, border, rounded, shadow)
+                if let Some(ref s) = style {
+                    let is = IcedStyle::from_style(s);
+                    if needs_visual_wrap(&is) {
+                        let cs = build_container_style(&is);
+                        container_widget = container_widget.style(move |_| cs);
+                    }
                 }
 
                 container_widget.into()
@@ -999,7 +1164,12 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     }
 
     let converted = convert_view_messages(view);
-    render_dynamic_view(converted)
+    let rendered = render_dynamic_view(converted);
+    // Wrap root in a fill container so center containers can vertically center
+    container(rendered)
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .into()
 }
 
 /// Render a `View<IcedMessage>` tree into Iced elements, with input text capture.
@@ -1020,34 +1190,69 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
                 if let Some(color) = iced_style.text_color {
                     text_widget = text_widget.color(color);
                 }
+                if let Some(ref weight) = iced_style.font_weight {
+                    text_widget = text_widget.font(font_weight_to_iced(weight));
+                }
+                // text-center: fill width so text wraps and centers within parent
+                if let Some(ref align) = iced_style.text_align {
+                    use crate::ui::style::iced_adapter::IcedTextAlign;
+                    text_widget = text_widget.width(iced::Length::Fill);
+                    match align {
+                        IcedTextAlign::Center => {
+                            text_widget = text_widget.align_x(iced::alignment::Horizontal::Center);
+                        }
+                        IcedTextAlign::Right => {
+                            text_widget = text_widget.align_x(iced::alignment::Horizontal::Right);
+                        }
+                        IcedTextAlign::Left => {}
+                    }
+                }
             }
             text_widget.into()
         }
 
         AbstractView::Button { label, onclick, style } => {
             let mut text_widget = text(label);
-            if let Some(ref s) = style {
-                let iced_style = IcedStyle::from_style(s);
-                if let Some(ref font_size) = iced_style.font_size {
+            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
+            if let Some(ref is) = iced_style {
+                if let Some(ref font_size) = is.font_size {
                     text_widget = text_widget.size(font_size_to_f32(font_size));
                 }
-                if let Some(color) = iced_style.text_color {
+                if let Some(color) = is.text_color {
                     text_widget = text_widget.color(color);
                 }
+                if let Some(ref weight) = is.font_weight {
+                    text_widget = text_widget.font(font_weight_to_iced(weight));
+                }
             }
-            button(text_widget)
-                .on_press(onclick)
-                .into()
+            let mut btn = button(text_widget).on_press(onclick);
+            if let Some(ref is) = iced_style {
+                let has_visual = is.background_color.is_some()
+                    || is.border || is.rounded || is.border_radius.is_some()
+                    || is.shadow;
+                if has_visual {
+                    let bs = build_button_style(is);
+                    btn = btn.style(move |_, _| bs);
+                }
+                if let Some(px) = is.padding {
+                    btn = btn.padding(px);
+                } else if is.padding_x.is_some() || is.padding_y.is_some() {
+                    let px_x = is.padding_x.unwrap_or(8.0);
+                    let px_y = is.padding_y.unwrap_or(4.0);
+                    btn = btn.padding([px_y, px_x]);
+                }
+            }
+            btn.into()
         }
 
         AbstractView::Column { children, spacing, padding, style } => {
             let eff_spacing = effective_spacing(spacing, style.as_ref());
-            let eff_padding = effective_padding(padding, style.as_ref());
+            let pad = iced_padding(padding, style.as_ref());
             let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
             let mut col_widget = column([]);
             col_widget = col_widget.spacing(eff_spacing);
-            col_widget = col_widget.padding(eff_padding);
+            col_widget = col_widget.padding(pad);
 
             if let Some(ref is) = iced_style {
                 if let Some(ref w) = is.width { col_widget = col_widget.width(iced_length(w)); }
@@ -1062,9 +1267,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
             }
 
             let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
-            let bg_color = iced_style.as_ref().and_then(|is| is.background_color);
+            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
 
-            if needs_justify || bg_color.is_some() {
+            if needs_justify || has_visual {
                 let mut cont = container(col_widget);
                 if let Some(ref is) = iced_style {
                     if let Some(justify) = is.justify_content {
@@ -1073,11 +1278,16 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
                         }
                     }
                 }
-                if let Some(bg) = bg_color {
-                    cont = cont.style(move |_| container::Style {
-                        background: Some(iced::Background::Color(bg)),
-                        ..Default::default()
-                    });
+                if let Some(ref is) = iced_style {
+                    if has_visual {
+                        let cs = build_container_style(is);
+                        cont = cont.style(move |_| cs);
+                    } else if let Some(bg) = is.background_color {
+                        cont = cont.style(move |_| container::Style {
+                            background: Some(iced::Background::Color(bg)),
+                            ..Default::default()
+                        });
+                    }
                 }
                 return cont.into();
             }
@@ -1087,12 +1297,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
 
         AbstractView::Row { children, spacing, padding, style } => {
             let eff_spacing = effective_spacing(spacing, style.as_ref());
-            let eff_padding = effective_padding(padding, style.as_ref());
+            let pad = iced_padding(padding, style.as_ref());
             let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
             let mut row_widget = row([]);
             row_widget = row_widget.spacing(eff_spacing);
-            row_widget = row_widget.padding(eff_padding);
+            row_widget = row_widget.padding(pad);
 
             if let Some(ref is) = iced_style {
                 if let Some(ref w) = is.width { row_widget = row_widget.width(iced_length(w)); }
@@ -1107,9 +1317,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
             }
 
             let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
-            let bg_color = iced_style.as_ref().and_then(|is| is.background_color);
+            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
 
-            if needs_justify || bg_color.is_some() {
+            if needs_justify || has_visual {
                 let mut cont = container(row_widget);
                 if let Some(ref is) = iced_style {
                     if let Some(justify) = is.justify_content {
@@ -1118,11 +1328,16 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
                         }
                     }
                 }
-                if let Some(bg) = bg_color {
-                    cont = cont.style(move |_| container::Style {
-                        background: Some(iced::Background::Color(bg)),
-                        ..Default::default()
-                    });
+                if let Some(ref is) = iced_style {
+                    if has_visual {
+                        let cs = build_container_style(is);
+                        cont = cont.style(move |_| cs);
+                    } else if let Some(bg) = is.background_color {
+                        cont = cont.style(move |_| container::Style {
+                            background: Some(iced::Background::Color(bg)),
+                            ..Default::default()
+                        });
+                    }
                 }
                 return cont.into();
             }
@@ -1170,15 +1385,34 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
         AbstractView::Container { child, padding, width, height, center_x, center_y, style } => {
             use iced::widget::container;
             let mut container_widget = container(render_dynamic_view(*child));
-            let eff_padding = if let Some(ref s) = style {
-                let iced_style = IcedStyle::from_style(s);
-                iced_style.padding.or(if padding > 0 { Some(padding as f32) } else { None })
+            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
+            let eff_padding = if let Some(ref is) = iced_style {
+                is.padding.or(if padding > 0 { Some(padding as f32) } else { None })
             } else if padding > 0 { Some(padding as f32) } else { None };
             if let Some(p) = eff_padding { container_widget = container_widget.padding(p); }
-            if let Some(w) = width { container_widget = container_widget.width(iced::Length::Fixed(w as f32)); }
-            if let Some(h) = height { container_widget = container_widget.height(iced::Length::Fixed(h as f32)); }
-            if center_x { container_widget = container_widget.center_x(iced::Length::Fill); }
-            if center_y { container_widget = container_widget.center_y(iced::Length::Fill); }
+            // Determine effective width/height from explicit fields or style
+            let eff_w = width.map(|w| iced::Length::Fixed(w as f32))
+                .or_else(|| iced_style.as_ref().and_then(|is| is.width.map(|w| iced_length(&w))));
+            let eff_h = height.map(|h| iced::Length::Fixed(h as f32))
+                .or_else(|| iced_style.as_ref().and_then(|is| is.height.map(|h| iced_length(&h))));
+            // Centering uses the effective dimensions so it doesn't override Fixed sizes
+            if center_x {
+                container_widget = container_widget.center_x(eff_w.unwrap_or(iced::Length::Fill));
+            } else if let Some(w) = eff_w {
+                container_widget = container_widget.width(w);
+            }
+            if center_y {
+                container_widget = container_widget.center_y(eff_h.unwrap_or(iced::Length::Fill));
+            } else if let Some(h) = eff_h {
+                container_widget = container_widget.height(h);
+            }
+            // Apply visual styling
+            if let Some(ref is) = iced_style {
+                if needs_visual_wrap(is) {
+                    let cs = build_container_style(is);
+                    container_widget = container_widget.style(move |_| cs);
+                }
+            }
             container_widget.into()
         }
 

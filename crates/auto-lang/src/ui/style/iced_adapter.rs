@@ -16,6 +16,10 @@ pub struct IcedStyle {
     pub padding: Option<f32>,
     pub padding_x: Option<f32>,
     pub padding_y: Option<f32>,
+    pub padding_top: Option<f32>,
+    pub padding_bottom: Option<f32>,
+    pub padding_left: Option<f32>,
+    pub padding_right: Option<f32>,
     // NOTE: Iced doesn't support margin - these fields are ignored
     pub margin: Option<f32>,        // Not supported by Iced
     pub margin_x: Option<f32>,       // Not supported by Iced
@@ -150,6 +154,10 @@ impl IcedStyle {
             padding: None,
             padding_x: None,
             padding_y: None,
+            padding_top: None,
+            padding_bottom: None,
+            padding_left: None,
+            padding_right: None,
             margin: None,      // Not supported by Iced
             margin_x: None,    // Not supported by Iced
             margin_y: None,    // Not supported by Iced
@@ -205,6 +213,18 @@ impl IcedStyle {
             StyleClass::PaddingY(size) => {
                 self.padding_y = Some(size.to_pixels() as f32);
             }
+            StyleClass::PaddingTop(size) => {
+                self.padding_top = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingBottom(size) => {
+                self.padding_bottom = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingLeft(size) => {
+                self.padding_left = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingRight(size) => {
+                self.padding_right = Some(size.to_pixels() as f32);
+            }
             StyleClass::Margin(size) => {
                 // Iced doesn't support margin - store but will be ignored
                 self.margin = Some(size.to_pixels() as f32);
@@ -227,6 +247,19 @@ impl IcedStyle {
             }
             StyleClass::TextColor(color) => {
                 self.text_color = Some(convert_color(color));
+            }
+            StyleClass::BgGradientToR => {
+                // Gradient direction marker — Iced doesn't support gradients,
+                // so this is a no-op; the from- color sets the solid fallback.
+            }
+            StyleClass::GradientFrom(color) => {
+                // Use gradient start color as solid background fallback
+                if self.background_color.is_none() {
+                    self.background_color = Some(convert_color(color));
+                }
+            }
+            StyleClass::GradientTo(_color) => {
+                // Gradient end color — not used in solid fallback
             }
 
             // ========== Sizing (L1) ==========
@@ -279,6 +312,10 @@ impl IcedStyle {
             StyleClass::Border0 => {
                 self.border = false;
                 self.border_width = Some(0.0);
+            }
+            StyleClass::BorderWidth(width) => {
+                self.border = true;
+                self.border_width = Some(*width);
             }
             StyleClass::BorderColor(color) => {
                 self.border = true;
@@ -462,45 +499,15 @@ impl IcedStyle {
 fn convert_size(size: &SizeValue) -> IcedSize {
     match size {
         SizeValue::Full => IcedSize::Full,
-        SizeValue::Fixed(units) => IcedSize::Fixed(*units as f32),
-        _ => IcedSize::Full, // Default to full for other variants
+        SizeValue::Fixed(_) => IcedSize::Fixed(size.to_pixels() as f32),
+        _ => IcedSize::Full,
     }
 }
 
 /// Convert a Color to iced::Color
 fn convert_color(color: &Color) -> iced::Color {
-    match color {
-        Color::Rgb { r, g, b } => {
-            iced::Color::from_rgb(*r as f32 / 255.0, *g as f32 / 255.0, *b as f32 / 255.0)
-        }
-        Color::Rgba { r, g, b, a } => {
-            iced::Color::from_rgba(*r as f32 / 255.0, *g as f32 / 255.0, *b as f32 / 255.0, *a as f32 / 255.0)
-        }
-        Color::White => iced::Color::WHITE,
-        Color::Black => iced::Color::BLACK,
-        Color::Slate(shade) | Color::Gray(shade) | Color::Zinc(shade) | Color::Neutral(shade) => {
-            // Grayscale colors
-            let value = 1.0 - (*shade as f32 / 900.0);
-            iced::Color::from_rgb(value, value, value)
-        }
-        Color::Red(shade) => {
-            let intensity = 1.0 - (*shade as f32 / 900.0);
-            iced::Color::from_rgb(intensity, 0.0, 0.0)
-        }
-        Color::Blue(shade) => {
-            let intensity = 1.0 - (*shade as f32 / 900.0);
-            iced::Color::from_rgb(0.0, 0.0, intensity)
-        }
-        Color::Green(shade) => {
-            let intensity = 1.0 - (*shade as f32 / 900.0);
-            iced::Color::from_rgb(0.0, intensity, 0.0)
-        }
-        Color::Yellow(shade) => {
-            let intensity = 1.0 - (*shade as f32 / 900.0);
-            iced::Color::from_rgb(intensity, intensity, 0.0)
-        }
-        _ => iced::Color::from_rgb(0.5, 0.5, 0.5), // Default gray (semantic colors)
-    }
+    let (r, g, b) = color.to_rgb8();
+    iced::Color::from_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
 }
 
 #[cfg(test)]

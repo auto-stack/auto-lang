@@ -226,6 +226,19 @@ impl GpuiStyle {
             StyleClass::PaddingY(size) => {
                 self.padding_y = Some(size.to_pixels() as f32);
             }
+            StyleClass::PaddingTop(size) => {
+                // Per-side padding stored as padding_y top component
+                self.padding_y = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingBottom(size) => {
+                self.padding_y = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingLeft(size) => {
+                self.padding_x = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingRight(size) => {
+                self.padding_x = Some(size.to_pixels() as f32);
+            }
             StyleClass::Margin(size) => {
                 self.margin = Some(size.to_pixels() as f32);
             }
@@ -246,6 +259,13 @@ impl GpuiStyle {
             StyleClass::TextColor(color) => {
                 self.text_color = Some(convert_color(color));
             }
+            StyleClass::BgGradientToR => {}
+            StyleClass::GradientFrom(color) => {
+                if self.background_color.is_none() {
+                    self.background_color = Some(convert_color(color));
+                }
+            }
+            StyleClass::GradientTo(_) => {}
 
             // ========== Layout (L1 + L2) ==========
             StyleClass::Flex => {
@@ -489,38 +509,8 @@ fn convert_size(size: &SizeValue) -> GpuiSize {
 
 /// Convert a Color to gpui::Rgba
 fn convert_color(color: &Color) -> gpui::Rgba {
-    match color {
-        Color::Rgb { r, g, b } => {
-            gpui::Rgba { r: *r as f32 / 255.0, g: *g as f32 / 255.0, b: *b as f32 / 255.0, a: 1.0 }
-        }
-        Color::Rgba { r, g, b, a } => {
-            gpui::Rgba { r: *r as f32 / 255.0, g: *g as f32 / 255.0, b: *b as f32 / 255.0, a: *a as f32 / 255.0 }
-        }
-        Color::White => gpui::Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 },
-        Color::Black => gpui::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-        Color::Slate(shade) | Color::Gray(shade) | Color::Zinc(shade) | Color::Neutral(shade) => {
-            // Grayscale colors
-            let value = 1.0 - (*shade as f32 / 900.0);
-            gpui::Rgba { r: value, g: value, b: value, a: 1.0 }
-        }
-        Color::Red(shade) => {
-            let intensity = 1.0 - (*shade as f32 / 900.0);
-            gpui::Rgba { r: intensity, g: 0.0, b: 0.0, a: 1.0 }
-        }
-        Color::Blue(shade) => {
-            let intensity = 1.0 - (*shade as f32 / 900.0);
-            gpui::Rgba { r: 0.0, g: 0.0, b: intensity, a: 1.0 }
-        }
-        Color::Green(shade) => {
-            let intensity = 1.0 - (*shade as f32 / 900.0);
-            gpui::Rgba { r: 0.0, g: intensity, b: 0.0, a: 1.0 }
-        }
-        Color::Yellow(shade) => {
-            let intensity = 1.0 - (*shade as f32 / 900.0);
-            gpui::Rgba { r: intensity, g: intensity, b: 0.0, a: 1.0 }
-        }
-        _ => gpui::Rgba { r: 0.5, g: 0.5, b: 0.5, a: 1.0 }, // Default gray (semantic colors)
-    }
+    let (r, g, b) = color.to_rgb8();
+    gpui::Rgba { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 }
 }
 
 #[cfg(test)]

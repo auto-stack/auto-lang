@@ -99,52 +99,32 @@ impl Color {
 
     /// Convert to normalized RGB (0.0-1.0)
     pub fn to_rgb_normalized(&self) -> (f32, f32, f32) {
+        let (r, g, b) = self.to_rgb8();
+        (r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
+    }
+
+    /// Convert to (r, g, b) u8 values using Tailwind CSS palette.
+    pub fn to_rgb8(&self) -> (u8, u8, u8) {
         match self {
-            Color::Rgb { r, g, b } => (
-                *r as f32 / 255.0,
-                *g as f32 / 255.0,
-                *b as f32 / 255.0,
-            ),
-            Color::Rgba { r, g, b, .. } => (
-                *r as f32 / 255.0,
-                *g as f32 / 255.0,
-                *b as f32 / 255.0,
-            ),
+            Color::Rgb { r, g, b } => (*r, *g, *b),
+            Color::Rgba { r, g, b, .. } => (*r, *g, *b),
             Color::Hex(value) => {
-                let r = ((value >> 16) & 0xFF) as f32 / 255.0;
-                let g = ((value >> 8) & 0xFF) as f32 / 255.0;
-                let b = (value & 0xFF) as f32 / 255.0;
+                let r = ((value >> 16) & 0xFF) as u8;
+                let g = ((value >> 8) & 0xFF) as u8;
+                let b = (value & 0xFF) as u8;
                 (r, g, b)
             }
-            _ => {
-                // For semantic colors and Tailwind colors, compute simplified values
-                // In a real implementation, these would look up values from a theme
-                match self {
-                    Color::Slate(s) | Color::Gray(s) | Color::Zinc(s) | Color::Neutral(s) => {
-                        let v = 1.0 - (*s as f32 / 900.0);
-                        (v, v, v)
-                    }
-                    Color::Red(s) => {
-                        let v = 1.0 - (*s as f32 / 900.0);
-                        (v, 0.0, 0.0)
-                    }
-                    Color::Blue(s) => {
-                        let v = 1.0 - (*s as f32 / 900.0);
-                        (0.0, 0.0, v)
-                    }
-                    Color::Green(s) => {
-                        let v = 1.0 - (*s as f32 / 900.0);
-                        (0.0, v, 0.0)
-                    }
-                    Color::Yellow(s) => {
-                        let v = 1.0 - (*s as f32 / 900.0);
-                        (v, v, 0.0)
-                    }
-                    Color::White => (1.0, 1.0, 1.0),
-                    Color::Black => (0.0, 0.0, 0.0),
-                    _ => (0.5, 0.5, 0.5),
-                }
-            }
+            Color::White => (255, 255, 255),
+            Color::Black => (0, 0, 0),
+            Color::Gray(s) => tailwind_gray(*s),
+            Color::Slate(s) => tailwind_slate(*s),
+            Color::Zinc(s) => tailwind_zinc(*s),
+            Color::Neutral(s) => tailwind_neutral(*s),
+            Color::Red(s) => tailwind_red(*s),
+            Color::Blue(s) => tailwind_blue(*s),
+            Color::Green(s) => tailwind_green(*s),
+            Color::Yellow(s) => tailwind_yellow(*s),
+            _ => (128, 128, 128),
         }
     }
 }
@@ -180,3 +160,130 @@ mod tests {
         assert_eq!(b, 0.0);
     }
 }
+
+// ============================================================================
+// Tailwind CSS v3 palette — exact RGB values
+// ============================================================================
+
+macro_rules! palette {
+    ($name:ident, [$($shade:expr => ($r:expr, $g:expr, $b:expr)),+ $(,)?]) => {
+        fn $name(shade: u16) -> (u8, u8, u8) {
+            match shade {
+                $($shade => ($r, $g, $b),)+
+                _ => (128, 128, 128),
+            }
+        }
+    };
+}
+
+// Tailwind Gray (gray-50 through gray-900)
+palette!(tailwind_gray, [
+    50  => (249, 250, 251),
+    100 => (243, 244, 246),
+    200 => (229, 231, 235),
+    300 => (209, 213, 219),
+    400 => (156, 163, 175),
+    500 => (107, 114, 128),
+    600 => (75, 85, 99),
+    700 => (55, 65, 81),
+    800 => (31, 41, 55),
+    900 => (17, 24, 39),
+]);
+
+// Tailwind Blue (blue-50 through blue-900)
+palette!(tailwind_blue, [
+    50  => (239, 246, 255),
+    100 => (219, 234, 254),
+    200 => (191, 219, 254),
+    300 => (147, 197, 253),
+    400 => (96, 165, 250),
+    500 => (59, 130, 246),
+    600 => (37, 99, 235),
+    700 => (29, 78, 216),
+    800 => (30, 64, 175),
+    900 => (30, 58, 138),
+]);
+
+// Tailwind Red (red-50 through red-900)
+palette!(tailwind_red, [
+    50  => (254, 242, 242),
+    100 => (254, 226, 226),
+    200 => (254, 202, 202),
+    300 => (252, 165, 165),
+    400 => (248, 113, 113),
+    500 => (239, 68, 68),
+    600 => (220, 38, 38),
+    700 => (185, 28, 28),
+    800 => (153, 27, 27),
+    900 => (127, 29, 29),
+]);
+
+// Tailwind Green (green-50 through green-900)
+palette!(tailwind_green, [
+    50  => (240, 253, 244),
+    100 => (220, 252, 231),
+    200 => (187, 247, 208),
+    300 => (134, 239, 172),
+    400 => (74, 222, 128),
+    500 => (34, 197, 94),
+    600 => (22, 163, 74),
+    700 => (21, 128, 61),
+    800 => (22, 101, 52),
+    900 => (20, 83, 45),
+]);
+
+// Tailwind Yellow (yellow-50 through yellow-900)
+palette!(tailwind_yellow, [
+    50  => (254, 252, 232),
+    100 => (254, 249, 195),
+    200 => (254, 240, 138),
+    300 => (253, 224, 71),
+    400 => (250, 204, 21),
+    500 => (234, 179, 8),
+    600 => (202, 138, 4),
+    700 => (161, 98, 7),
+    800 => (133, 77, 14),
+    900 => (113, 63, 18),
+]);
+
+// Tailwind Slate (slate-50 through slate-900)
+palette!(tailwind_slate, [
+    50  => (248, 250, 252),
+    100 => (241, 245, 249),
+    200 => (226, 232, 240),
+    300 => (203, 213, 225),
+    400 => (148, 163, 184),
+    500 => (100, 116, 139),
+    600 => (71, 85, 105),
+    700 => (51, 65, 85),
+    800 => (30, 41, 59),
+    900 => (15, 23, 42),
+]);
+
+// Tailwind Zinc (zinc-50 through zinc-900)
+palette!(tailwind_zinc, [
+    50  => (250, 250, 250),
+    100 => (244, 244, 245),
+    200 => (228, 228, 231),
+    300 => (212, 212, 216),
+    400 => (161, 161, 170),
+    500 => (113, 113, 122),
+    600 => (82, 82, 91),
+    700 => (63, 63, 70),
+    800 => (39, 39, 42),
+    900 => (24, 24, 27),
+]);
+
+// Tailwind Neutral (neutral-50 through neutral-900)
+palette!(tailwind_neutral, [
+    50  => (250, 250, 250),
+    100 => (245, 245, 245),
+    200 => (229, 229, 229),
+    300 => (212, 212, 212),
+    400 => (163, 163, 163),
+    500 => (115, 115, 115),
+    600 => (82, 82, 82),
+    700 => (64, 64, 64),
+    800 => (38, 38, 38),
+    900 => (23, 23, 23),
+]);

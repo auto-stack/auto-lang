@@ -190,10 +190,16 @@ impl<'a> AuraViewBuilder<'a> {
             }
             "button" | "btn" => self.convert_button(props, events),
 
+            // Layout wrappers
+            "center" => self.convert_center(props, children),
+
             // Input widgets (Phase 2 basic support)
             "input" => self.convert_input(props, events),
             "checkbox" | "check" => self.convert_checkbox(props),
             "container" | "div" => self.convert_container(props, children),
+
+            // Image placeholder (no native Image variant yet)
+            "img" | "image" => self.convert_image(props),
 
             // Fallback: wrap children in a column
             _ => {
@@ -320,6 +326,64 @@ impl<'a> AuraViewBuilder<'a> {
             builder = builder.with_style(s);
         }
 
+        builder.build()
+    }
+
+    /// Convert a center element: wraps child in a centered container.
+    fn convert_center(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+    ) -> View<DynamicMessage> {
+        let style = self.extract_style(props);
+
+        let child_view = if children.is_empty() {
+            View::Empty
+        } else if children.len() == 1 {
+            self.convert_node(&children[0])
+        } else {
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .map(|n| self.convert_node(n))
+                .collect();
+            View::Column {
+                children: views,
+                spacing: 0,
+                padding: 0,
+                style: None,
+            }
+        };
+
+        let mut builder = View::container(child_view).center_x().center_y();
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        }
+
+        builder.build()
+    }
+
+    /// Convert an image element: show a placeholder container (no Image variant in View).
+    fn convert_image(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> View<DynamicMessage> {
+        let style = self.extract_style(props);
+
+        // Placeholder: show a colored circle as avatar fallback
+        let child = View::Text {
+            content: "".to_string(),
+            style: None,
+        };
+        let mut builder = View::container(child);
+        builder = builder.center_x().center_y();
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        } else {
+            // Default placeholder style: gray circle
+            builder = builder.with_style(
+                Style::parse("bg-gray-300 rounded-full").unwrap()
+            );
+        }
         builder.build()
     }
 

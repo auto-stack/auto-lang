@@ -16,14 +16,16 @@ impl StyleParser {
         Self {}
     }
 
-    /// Parse a space-separated string of style classes
+    /// Parse a space-separated string of style classes.
+    /// Unknown classes (e.g. hover:, max-w-*, leading-*) are silently skipped.
     ///
     /// Example: "p-4 gap-2 bg-white flex items-center"
     pub fn parse(&self, input: &str) -> Result<Vec<StyleClass>, String> {
-        input
+        let classes: Vec<StyleClass> = input
             .split_whitespace()
-            .map(|class| StyleClass::parse_single(class))
-            .collect()
+            .filter_map(|class| StyleClass::parse_single(class).ok())
+            .collect();
+        Ok(classes)
     }
 
     /// Parse and create a Style object directly
@@ -70,8 +72,10 @@ mod tests {
     #[test]
     fn test_parse_invalid_class() {
         let parser = StyleParser::new();
-        let result = parser.parse("p-4 invalid-class");
-        assert!(result.is_err());
+        // Unknown classes are silently skipped
+        let classes = parser.parse("p-4 invalid-class").unwrap();
+        assert_eq!(classes.len(), 1);
+        assert_eq!(classes[0], StyleClass::Padding(SizeValue::Fixed(4)));
     }
 
     #[test]
