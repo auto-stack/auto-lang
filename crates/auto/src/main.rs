@@ -373,69 +373,10 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // iced/winit requires running on the OS main thread.
-    // Detect UI mode before spawning the helper thread so iced
-    // gets the main thread it needs (especially on Windows).
-    #[cfg(feature = "ui-iced")]
-    {
-        if let Some(ref path) = cli.file {
-            if let Ok(code) = std::fs::read_to_string(path) {
-                if auto_lang::has_ui_keywords(&code) {
-                    let ai_mode = cli.ai || matches!(cli.format, Some(OutputFormat::Json));
-                    miette::set_hook(Box::new(move |_| {
-                        Box::new(MietteHandlerOpts::new().terminal_links(true).build())
-                    })).ok();
-                    if let Some(limit) = cli.error_limit {
-                        auto_lang::set_error_limit(limit);
-                    }
-                    if cli.debug {
-                        auto_lang::set_vm_debug(true);
-                    }
-                    if !ai_mode {
-                        println!("----------------------");
-                        println!("Running Auto {} ", path);
-                        println!("----------------------");
-                    }
-                    let result = auto_lang::run_file_dynamic_ui(&code, Some(path.as_str()));
-                    match result {
-                        Ok(msg) => {
-                            if !ai_mode {
-                                println!("{}", msg);
-                                println!();
-                            }
-                            return Ok(());
-                        }
-                        Err(e) => {
-                            if ai_mode {
-                                eprintln!("{}", format_error_json(&e));
-                                std::process::exit(1);
-                            }
-                            return Err(to_miette_err(e));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Non-UI path: spawn thread with larger stack for heavy compilation
-    // Use a dedicated thread with 4MB stack to avoid stack overflow on Windows
-    // (default main thread stack is only 1MB on Windows).
-    // In debug builds, unoptimized stack frames are large enough that the
-    // normal call chain (Automan::run → VueProject → Parser::parse → AURA)
-    // exceeds 1MB by ~424 bytes. Release builds fit within 1MB, but we use
-    // 4MB to leave comfortable headroom for all build profiles.
-    // Set AUTO_STACK_SIZE env var to override (e.g. for debugging).
-    let stack_size = std::env::var("AUTO_STACK_SIZE")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(4 * 1024 * 1024);
-    let builder = std::thread::Builder::new().stack_size(stack_size);
-    let handle = builder.spawn(|| real_main(cli)).expect("Failed to spawn main thread");
-    match handle.join() {
-        Ok(result) => result,
-        Err(_) => std::process::exit(101),
-    }
+    // The binary is linked with a 4MB stack (see build.rs) so the main thread
+    // has enough headroom for both UI (iced needs the main thread) and the
+    // parser's deep recursion on complex UI files.
+    real_main(cli)
 }
 
 fn real_main(cli: Cli) -> Result<()> {
