@@ -4302,14 +4302,31 @@ pub fn shim_rand_thread_rng(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     Ok(())
 }
 
-/// rng.gen_range(lo, hi) -> i32
-/// Stack: [hi, lo, rng_id] -> [result]
+/// rng.gen_range(range) -> i32
+/// Stack: [range_or_hi, lo_or_rng_id, maybe_rng_id] -> [result]
+/// Supports both range expression (single marker) and explicit (hi, lo) args.
 pub fn shim_rng_gen_range(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let hi = task.ram.pop_i32();
-    let lo = task.ram.pop_i32();
-    let rng_id = task.ram.pop_i32() as u64;
+    let top = task.ram.pop_i32();
+
+    // Check if top is a range marker (-1000000 + idx)
+    let (lo, hi, rng_id) = if top <= -1000000 && top > -2000000 {
+        let range_idx = (top + 1000000) as usize;
+        if let Some(&(start, end, _eq)) = task.ram.ranges.get(range_idx) {
+            let rng_id = task.ram.pop_i32() as u64;
+            (start, end, rng_id)
+        } else {
+            let rng_id = task.ram.pop_i32() as u64;
+            (0, 1, rng_id)
+        }
+    } else {
+        // Legacy: hi, lo, rng_id layout
+        let hi = top;
+        let lo = task.ram.pop_i32();
+        let rng_id = task.ram.pop_i32() as u64;
+        (lo, hi, rng_id)
+    };
 
     if let Some(obj) = vm.get_heap_object(rng_id) {
         let mut guard = obj.write().unwrap();

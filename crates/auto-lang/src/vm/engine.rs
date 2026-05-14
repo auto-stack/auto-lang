@@ -5973,7 +5973,11 @@ impl AutoVM {
                             _ => false,
                         }
                     } else {
-                        false
+                        // Fallback: decode as i32 (covers f64 values that land in GT
+                        // instead of GT_D when type inference misses the double type)
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        a > b
                     };
                     task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
                     }
