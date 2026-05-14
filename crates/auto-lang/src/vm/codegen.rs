@@ -5414,6 +5414,18 @@ impl Codegen {
                         }
                     }
                 }
+                // Route bitwise methods (x.or(), x.and(), x.not()) to auto.int.*
+                if let Some(ref fname) = func_name {
+                    let method = fname.rsplit('.').next().unwrap_or("");
+                    const BITWISE_METHODS: &[&str] = &["or", "and", "not", "xor", "shl", "shr"];
+                    if BITWISE_METHODS.contains(&method) && !fname.starts_with("auto.int.") {
+                        let new_name = format!("auto.int.{}", method);
+                        let mut reg = BIGVM_NATIVES.lock().unwrap();
+                        if reg.resolve_qualified(&new_name).is_some() {
+                            func_name = Some(new_name);
+                        }
+                    }
+                }
 
                 // Plan 212 Phase 2: Route rand/Rng methods to built-in shims
                 if let Some(ref fname) = func_name {

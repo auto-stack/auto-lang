@@ -381,9 +381,18 @@ impl AutoVMNativeRegistry {
                         // Only register if not already registered (hardcoded IDs take precedence)
                         if !self.registry.contains_key(&canonical)
                         {
-                            let id = self.next_id;
-                            self.next_id += 1;
+                            // Check NATIVE_ID_MAP for fixed ID before assigning dynamic ID
+                            let id = if let Some(&fixed_id) = NATIVE_ID_MAP.get(canonical.as_str()) {
+                                fixed_id
+                            } else {
+                                let id = self.next_id;
+                                self.next_id += 1;
+                                id
+                            };
                             self.registry.insert(canonical.clone(), id);
+                            if id >= self.next_id {
+                                self.next_id = id + 1;
+                            }
 
                             // Also register return type if derivable
                             if let Some(ret_type) = Self::type_to_native_ret(&fn_decl.ret) {
@@ -400,9 +409,17 @@ impl AutoVMNativeRegistry {
 
                                 if !self.registry.contains_key(&canonical)
                                 {
-                                    let id = self.next_id;
-                                    self.next_id += 1;
+                                    let id = if let Some(&fixed_id) = NATIVE_ID_MAP.get(canonical.as_str()) {
+                                        fixed_id
+                                    } else {
+                                        let id = self.next_id;
+                                        self.next_id += 1;
+                                        id
+                                    };
                                     self.registry.insert(canonical.clone(), id);
+                                    if id >= self.next_id {
+                                        self.next_id = id + 1;
+                                    }
 
                                     if let Some(ret_type) = Self::type_to_native_ret(&method.ret) {
                                         self.return_types.insert(canonical.clone(), ret_type);

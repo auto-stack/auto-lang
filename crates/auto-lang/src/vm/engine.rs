@@ -601,6 +601,17 @@ impl AutoVM {
     ///
     /// Compares two heap objects by their structural content rather than by ID.
     /// Both operands are expected to be >= 4000000 (heap object IDs).
+    /// Normalize boolean comparison: literal 1/0 vs comparison sentinel i32::MIN/i32::MIN+1.
+    fn bool_eq(a: i32, b: i32) -> bool {
+        if a == b { return true; }
+        let a_bool = match a { 1 | -2147483648 => Some(true), 0 | -2147483647 => Some(false), _ => None };
+        let b_bool = match b { 1 | -2147483648 => Some(true), 0 | -2147483647 => Some(false), _ => None };
+        match (a_bool, b_bool) {
+            (Some(ab), Some(bb)) => ab == bb,
+            _ => false,
+        }
+    }
+
     pub fn struct_eq(&self, a: i32, b: i32) -> bool {
         use crate::vm::generic_registry::GenericInstanceData;
         use crate::vm::heap_object::TypeTag;
@@ -5754,7 +5765,7 @@ impl AutoVM {
                         if a_val >= 4000000 && b_val >= 4000000 {
                             self.struct_eq(a_val, b_val)
                         } else {
-                            a_val == b_val
+                            Self::bool_eq(a_val, b_val)
                         }
                     } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
                         auto_val::decode_f64(a_nv) == auto_val::decode_f64(b_nv)
@@ -5815,7 +5826,7 @@ impl AutoVM {
                         if a_val >= 4000000 && b_val >= 4000000 {
                             !self.struct_eq(a_val, b_val)
                         } else {
-                            a_val != b_val
+                            !Self::bool_eq(a_val, b_val)
                         }
                     } else {
                         true
