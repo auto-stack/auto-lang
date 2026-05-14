@@ -1381,18 +1381,12 @@ impl AutoVM {
                     let elem_count = self.flash.read_u8(task.ip);
                     task.ip += 1;
 
-                    // Pop elements from stack (in reverse order since last element is on top)
-                    // Plan 118: Filter out nil marker values for if-in-array support
-                    // When if expression has no else branch, it pushes nil (i32::MIN + 1 = -2147483647)
-                    // which should be excluded from the array
                     let mut elems = Vec::with_capacity(elem_count as usize);
                     for _ in 0..elem_count {
-                        // Pop element and convert to Value
+                        #[cfg(not(feature = "nanbox"))]
+                        {
                         let bits = task.ram.pop_i32();
-                        // Filter out nil marker (special value: i32::MIN + 1 = -2147483647)
-                        // Note: We do NOT filter 0 because 0 is a valid false value, not nil
                         if bits != -2147483647 {
-                            // Plan 197 Bug E: detect heap object references like CONSTRUCT_INSTANCE does
                             let value = if bits >= 4000000 {
                                 auto_val::Value::VmRef(auto_val::VmRef { id: bits as usize })
                             } else {
@@ -1400,16 +1394,37 @@ impl AutoVM {
                             };
                             elems.push(value);
                         }
+                        }
+                        #[cfg(feature = "nanbox")]
+                        {
+                        let nv = task.ram.pop_nv();
+                        let is_nil = nv == auto_val::encode_i32(-2147483647);
+                        if !is_nil {
+                            let value = if auto_val::is_string(nv) {
+                                auto_val::Value::Int(auto_val::decode_i32(nv))
+                            } else if auto_val::is_object(nv) {
+                                auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
+                            } else if auto_val::is_null(nv) {
+                                auto_val::Value::Nil
+                            } else if auto_val::is_bool(nv) {
+                                auto_val::Value::Bool(auto_val::decode_bool(nv))
+                            } else if auto_val::is_f64(nv) {
+                                auto_val::Value::Double(auto_val::decode_f64(nv))
+                            } else if auto_val::is_f32(nv) {
+                                auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
+                            } else {
+                                auto_val::Value::Int(auto_val::decode_i32(nv))
+                            };
+                            elems.push(value);
+                        }
+                        }
                     }
 
-                    // Reverse to get correct order (elements were popped LIFO)
                     elems.reverse();
 
-                    // Store array in arrays registry and get ID
                     let array_id = self.array_id_gen.fetch_add(1, Ordering::SeqCst);
                     self.arrays.insert(array_id, Arc::new(RwLock::new(elems)));
 
-                    // Push array ID onto stack
                     task.ram.push_i32(array_id as i32);
                 }
                 // Plan 073: Range expression support (0..10, 0..=10)
@@ -3432,6 +3447,10 @@ impl AutoVM {
                                         }
                                         auto_val::Value::Int(i) => { task.ram.push_i32(*i); }
                                         auto_val::Value::Bool(b) => { task.ram.push_i32(if *b { 1 } else { 0 }); }
+                                        auto_val::Value::Float(f) => { task.ram.push_f32(*f as f32); }
+                                        auto_val::Value::Double(d) => { task.ram.push_f64(*d); }
+                                        auto_val::Value::VmRef(r) => { task.ram.push_i32(r.id as i32); }
+                                        auto_val::Value::Nil => { task.ram.push_i32(0); }
                                         _ => { task.ram.push_i32(0); }
                                     }
                                 } else {
