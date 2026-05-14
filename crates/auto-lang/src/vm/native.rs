@@ -516,9 +516,9 @@ pub fn shim_math_atan2(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError>
 
 // === Manual constants (registered via register_shim_by_name, not in catalog) ===
 
-// String methods (registered in stdlib.rs via register_shim_by_name)
-pub const NATIVE_STR_CONTAINS: u16 = 1504;
-pub const NATIVE_STR_STARTS_WITH: u16 = 1505;
+// String methods (codegens uses "str.contains" = 1502, "str.starts_with" = 1504, "str.ends_with" = 1506)
+pub const NATIVE_STR_CONTAINS: u16 = 1502;
+pub const NATIVE_STR_STARTS_WITH: u16 = 1504;
 pub const NATIVE_STR_ENDS_WITH: u16 = 1506;
 pub const NATIVE_STR_TO_INT: u16 = 1516;
 
