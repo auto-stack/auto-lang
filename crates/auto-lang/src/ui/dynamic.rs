@@ -34,6 +34,8 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use std::collections::HashMap;
+
 use crate::aura::AuraWidget;
 use crate::ui::aura_view_builder::AuraViewBuilder;
 use crate::ui::component::Component;
@@ -99,6 +101,10 @@ pub struct DynamicComponent {
 
     /// Last known modification time of the source file.
     last_modified: Option<SystemTime>,
+
+    /// Handler AST bodies: event_name -> AST statements.
+    /// Used by call_handler_ast() for direct AST interpretation.
+    handler_asts: HashMap<String, Vec<crate::ast::Stmt>>,
 }
 
 impl fmt::Debug for DynamicComponent {
@@ -136,6 +142,9 @@ impl DynamicComponent {
         let view_template = widget.view_tree.clone();
         let widget_name = widget.name.clone();
 
+        // 3. Extract handler AST bodies for direct interpretation
+        let handler_asts = extract_handler_asts(widget);
+
         Ok(Self {
             bridge,
             view_template,
@@ -143,6 +152,7 @@ impl DynamicComponent {
             dirty: true, // Initially dirty so first view() builds the tree
             source_path: None,
             last_modified: None,
+            handler_asts,
         })
     }
 
@@ -163,6 +173,7 @@ impl DynamicComponent {
 
         let view_template = widget.view_tree.clone();
         let widget_name = widget.name.clone();
+        let handler_asts = extract_handler_asts(widget);
 
         Ok(Self {
             bridge,
@@ -171,6 +182,7 @@ impl DynamicComponent {
             dirty: true,
             source_path: None,
             last_modified: None,
+            handler_asts,
         })
     }
 
@@ -314,6 +326,7 @@ impl DynamicComponent {
         self.bridge = new_bridge;
         self.view_template = new_widget.view_tree.clone();
         self.widget_name = new_widget.name.clone();
+        self.handler_asts = extract_handler_asts(new_widget);
         self.dirty = true;
 
         Ok(report)
@@ -374,16 +387,19 @@ impl Component for DynamicComponent {
     /// After processing, the component is marked as dirty so the next `view()`
     /// call will reflect any state changes.
     fn on(&mut self, msg: Self::Msg) {
-        match msg {
-            DynamicMessage::Typed { event_name, args, .. } => {
-                let _ = self.bridge.call_handler(&event_name, &args);
-                self.dirty = true;
-            }
-            DynamicMessage::String(event_name) => {
-                let _ = self.bridge.call_handler(&event_name, &[]);
-                self.dirty = true;
-            }
+        let event_name = match &msg {
+            DynamicMessage::Typed { event_name, .. } => event_name.clone(),
+            DynamicMessage::String(name) => name.clone(),
+        };
+
+        // Try AST-based handler first (dynamic UI path)
+        if let Some(stmts) = self.handler_asts.get(&event_name) {
+            let _ = self.bridge.call_handler_ast(&event_name, stmts);
+        } else {
+            // Fall back to VM bytecode handler
+            let _ = self.bridge.call_handler(&event_name, &[]);
         }
+        self.dirty = true;
     }
 
     /// Render the view by building from the AuraNode template.
@@ -399,6 +415,35 @@ impl Component for DynamicComponent {
         // The dirty flag is a hint for external consumers; the actual view
         // is always freshly built from current state.
         view
+    }
+}
+
+// ============================================================================
+// Handler AST extraction
+// ============================================================================
+
+/// Extract handler AST bodies from an AuraWidget for direct interpretation.
+///
+/// Converts the handler patterns (e.g., ".Inc", "Msg::Inc") to clean names
+/// and stores the AST statement bodies.
+fn extract_handler_asts(widget: &AuraWidget) -> HashMap<String, Vec<crate::ast::Stmt>> {
+    let mut asts = HashMap::new();
+    for (pattern, payload) in &widget.handlers {
+        let name = clean_handler_name(pattern);
+        if let crate::aura::LogicPayload::AstStmts(stmts) = payload {
+            asts.insert(name, stmts.clone());
+        }
+    }
+    asts
+}
+
+/// Clean a handler pattern to a simple name.
+fn clean_handler_name(pattern: &str) -> String {
+    let name = pattern.trim_start_matches('.');
+    if let Some(pos) = name.rfind("::") {
+        name[pos + 2..].to_string()
+    } else {
+        name.to_string()
     }
 }
 

@@ -34,7 +34,7 @@ use crate::vm::generic_registry::GenericInstanceData;
 use crate::vm::task::AutoTask;
 use crate::vm::virt_memory::VirtualFlash;
 use crate::aura::{AuraExpr, AuraWidget, AuraStateDef, AuraNode, LogicPayload};
-use auto_val::Value;
+use auto_val::{Op, Value};
 
 // ============================================================================
 // Error Types
@@ -333,23 +333,24 @@ impl VmBridge {
 
         // Try address-based handler
         if let Some(&_addr) = self.handler_addrs.get(event_name) {
-            // Phase 1: Direct function call via address
-            // This requires setting up a task and executing from the address.
-            // For now, we create a task and run from the address.
-            //
-            // Full implementation (spawning task, pushing args, executing,
-            // reading back state mutations) is deferred to Phase 2 when
-            // VMLoader integration is complete.
             return Err(VmBridgeError::VmError(
-                format!(
-                    "handler '{}' found at address but direct address-based execution \
-                     is not yet implemented (requires VMLoader integration, Phase 2)",
-                     event_name
-                )
+                format!("handler '{}' found at address but direct address-based execution is not yet implemented", event_name)
             ));
         }
 
         Err(VmBridgeError::HandlerNotFound(event_name.to_string()))
+    }
+
+    /// Call a handler by interpreting its AST statements directly against state.
+    ///
+    /// This is the primary execution path for dynamic UI handlers. It parses the
+    /// handler's AST body and evaluates assignments/expressions against the
+    /// state heap object without requiring bytecode compilation.
+    pub fn call_handler_ast(&mut self, event_name: &str, stmts: &[crate::ast::Stmt]) -> Result<()> {
+        for stmt in stmts {
+            self.exec_stmt(stmt)?;
+        }
+        Ok(())
     }
 
     /// Register a handler closure for a given event name.
@@ -408,11 +409,182 @@ impl VmBridge {
         names.dedup();
         names
     }
-}
 
-// ============================================================================
-// Helpers
-// ============================================================================
+    // ========================================================================
+    // AST interpreter for handler bodies
+    // ========================================================================
+
+    /// Execute a single AST statement against the widget state.
+    fn exec_stmt(&mut self, stmt: &crate::ast::Stmt) -> Result<()> {
+        match stmt {
+            crate::ast::Stmt::Expr(expr) => {
+                self.eval_assign(expr)?;
+                Ok(())
+            }
+            crate::ast::Stmt::Store(store) => {
+                let value = self.eval_expr(&store.expr)?;
+                self.write_state(store.name.as_str(), value)
+            }
+            crate::ast::Stmt::If(if_stmt) => {
+                // Check first branch condition
+                if let Some(branch) = if_stmt.branches.first() {
+                    let cond = self.eval_expr(&branch.cond)?;
+                    if cond.as_bool() {
+                        for s in &branch.body.stmts {
+                            self.exec_stmt(s)?;
+                        }
+                    } else if let Some(else_body) = &if_stmt.else_ {
+                        for s in &else_body.stmts {
+                            self.exec_stmt(s)?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Evaluate an assignment expression (e.g., `count = count + 1`).
+    fn eval_assign(&mut self, expr: &crate::ast::Expr) -> Result<()> {
+        match expr {
+            crate::ast::Expr::Bina(lhs, op, rhs) if matches!(op, Op::Asn) => {
+                let value = self.eval_expr(rhs)?;
+                let target = self.resolve_assign_target(lhs)?;
+                self.write_state(&target, value)
+            }
+            crate::ast::Expr::Bina(lhs, op, rhs) if matches!(op, Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq) => {
+                let target = self.resolve_assign_target(lhs)?;
+                let current = self.read_state(&target)?;
+                let rhs_val = self.eval_expr(rhs)?;
+                let new_val = self.apply_compound_op(&current, op, &rhs_val);
+                self.write_state(&target, new_val)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Resolve the target name for an assignment (e.g., `count` or `.count` -> "count").
+    fn resolve_assign_target(&self, expr: &crate::ast::Expr) -> Result<String> {
+        match expr {
+            crate::ast::Expr::Ident(name) => Ok(name.as_str().to_string()),
+            crate::ast::Expr::Dot(obj, field) => {
+                if let crate::ast::Expr::Ident(obj_name) = obj.as_ref() {
+                    if obj_name.as_str() == "self" || obj_name.as_str() == "." {
+                        return Ok(field.as_str().to_string());
+                    }
+                }
+                Ok(field.as_str().to_string())
+            }
+            _ => Err(VmBridgeError::InvalidState(
+                format!("cannot assign to expression: {:?}", expr)
+            )),
+        }
+    }
+
+    /// Evaluate an expression against the current state.
+    fn eval_expr(&self, expr: &crate::ast::Expr) -> Result<Value> {
+        match expr {
+            crate::ast::Expr::Int(i) => Ok(Value::Int(*i)),
+            crate::ast::Expr::Bool(b) => Ok(Value::Bool(*b)),
+            crate::ast::Expr::Str(s) => Ok(Value::str(s.as_str())),
+            crate::ast::Expr::Ident(name) => self.read_state(name.as_str()),
+            crate::ast::Expr::Dot(obj, field) => {
+                if let crate::ast::Expr::Ident(obj_name) = obj.as_ref() {
+                    if obj_name.as_str() == "self" || obj_name.as_str() == "." {
+                        return self.read_state(field.as_str());
+                    }
+                }
+                Ok(Value::Nil)
+            }
+            crate::ast::Expr::Unary(op, operand) => {
+                let val = self.eval_expr(operand)?;
+                match op {
+                    Op::Not => Ok(Value::Bool(!val.as_bool())),
+                    Op::Sub => match val {
+                        Value::Int(i) => Ok(Value::Int(-i)),
+                        Value::Float(f) => Ok(Value::Float(-f)),
+                        _ => Ok(Value::Nil),
+                    },
+                    _ => Ok(val),
+                }
+            }
+            crate::ast::Expr::Bina(lhs, op, rhs) => {
+                let l = self.eval_expr(lhs)?;
+                let r = self.eval_expr(rhs)?;
+                Ok(self.apply_binop(&l, op, &r))
+            }
+            _ => Ok(Value::Nil),
+        }
+    }
+
+    /// Apply a binary operation to two values.
+    fn apply_binop(&self, lhs: &Value, op: &Op, rhs: &Value) -> Value {
+        match (lhs, rhs) {
+            (Value::Int(a), Value::Int(b)) => match op {
+                Op::Add => Value::Int(a + b),
+                Op::Sub => Value::Int(a - b),
+                Op::Mul => Value::Int(a * b),
+                Op::Div if *b != 0 => Value::Int(a / b),
+                Op::Mod if *b != 0 => Value::Int(a % b),
+                Op::Eq => Value::Bool(a == b),
+                Op::Neq => Value::Bool(a != b),
+                Op::Lt => Value::Bool(a < b),
+                Op::Gt => Value::Bool(a > b),
+                Op::Le => Value::Bool(a <= b),
+                Op::Ge => Value::Bool(a >= b),
+                _ => Value::Nil,
+            },
+            (Value::Float(a), Value::Float(b)) => match op {
+                Op::Add => Value::Float(a + b),
+                Op::Sub => Value::Float(a - b),
+                Op::Mul => Value::Float(a * b),
+                Op::Div => Value::Float(a / b),
+                Op::Eq => Value::Bool((a - b).abs() < f64::EPSILON),
+                Op::Neq => Value::Bool((a - b).abs() >= f64::EPSILON),
+                Op::Lt => Value::Bool(a < b),
+                Op::Gt => Value::Bool(a > b),
+                Op::Le => Value::Bool(a <= b),
+                Op::Ge => Value::Bool(a >= b),
+                _ => Value::Nil,
+            },
+            (Value::Int(a), Value::Float(b)) => match op {
+                Op::Add => Value::Float(*a as f64 + b),
+                Op::Sub => Value::Float(*a as f64 - b),
+                Op::Mul => Value::Float(*a as f64 * b),
+                Op::Div => Value::Float(*a as f64 / b),
+                _ => Value::Nil,
+            },
+            (Value::Float(a), Value::Int(b)) => match op {
+                Op::Add => Value::Float(a + *b as f64),
+                Op::Sub => Value::Float(a - *b as f64),
+                Op::Mul => Value::Float(a * *b as f64),
+                Op::Div => Value::Float(a / *b as f64),
+                _ => Value::Nil,
+            },
+            (Value::Bool(a), Value::Bool(b)) => match op {
+                Op::Eq => Value::Bool(a == b),
+                Op::Neq => Value::Bool(a != b),
+                Op::And => Value::Bool(*a && *b),
+                Op::Or => Value::Bool(*a || *b),
+                _ => Value::Nil,
+            },
+            _ => Value::Nil,
+        }
+    }
+
+    /// Apply a compound assignment operator (+=, -=, etc.).
+    fn apply_compound_op(&self, current: &Value, op: &Op, rhs: &Value) -> Value {
+        let synthetic_op = match op {
+            Op::AddEq => &Op::Add,
+            Op::SubEq => &Op::Sub,
+            Op::MulEq => &Op::Mul,
+            Op::DivEq => &Op::Div,
+            _ => return Value::Nil,
+        };
+        self.apply_binop(current, synthetic_op, rhs)
+    }
+}
 
 /// Convert an AuraExpr initial value to a runtime Value.
 ///

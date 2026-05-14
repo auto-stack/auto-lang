@@ -3,11 +3,17 @@ widget Counter {
     msg Msg { Inc, Dec }
 
     model {
-        count int = 0
+        var count int = 0
     }
 
     view {
-        col {} {}
+        col {
+            text f"Count: ${.count}"
+            row {
+                button (text: "-", onclick: .Dec) {}
+                button (text: "+", onclick: .Inc) {}
+            }
+        }
     }
 
     on {

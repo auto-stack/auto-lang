@@ -515,17 +515,63 @@ impl<'a> AuraViewBuilder<'a> {
 
     /// Resolve an AuraExpr to a display string.
     ///
-    /// For state references, reads from VmBridge. For literals, returns the
-    /// literal value directly.
+    /// For state references, reads from VmBridge. For literals that contain
+    /// `${.field}` interpolation patterns, resolves them from state.
     fn resolve_expr_to_string(&self, expr: &AuraExpr) -> String {
         match expr {
-            AuraExpr::Literal(s) => s.clone(),
+            AuraExpr::Literal(s) => self.resolve_literal_interpolation(s),
             AuraExpr::Int(i) => i.to_string(),
             AuraExpr::Float(f) => f.to_string(),
             AuraExpr::Bool(b) => b.to_string(),
             AuraExpr::StateRef(name) => self.read_state_as_string(name),
             _ => String::new(),
         }
+    }
+
+    /// Resolve `${.field}` interpolation patterns in a literal string.
+    ///
+    /// F-strings like `f"Count: ${.count}"` are extracted as `AuraExpr::Literal`
+    /// with the template preserved. This method scans for `${.name}` patterns
+    /// and substitutes current state values.
+    fn resolve_literal_interpolation(&self, s: &str) -> String {
+        if !s.contains("${.") {
+            return s.to_string();
+        }
+
+        let mut result = s.to_string();
+        // Scan for ${.fieldname} patterns and resolve from state
+        let bytes = s.as_bytes();
+        let len = bytes.len();
+        let mut i = 0;
+        let mut replacements: Vec<(String, String)> = Vec::new();
+
+        while i + 4 < len {
+            if &bytes[i..i+3] == b"${." {
+                // Found start of interpolation: ${.
+                let start = i;
+                let mut end = i + 3;
+                while end < len && bytes[end] != b'}' {
+                    end += 1;
+                }
+                if end < len && bytes[end] == b'}' {
+                    let field_name = &s[start + 3..end];
+                    // Validate field name is alphanumeric/underscore
+                    if !field_name.is_empty() && field_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        let full_pattern = s[start..end + 1].to_string();
+                        let value = self.read_state_as_string(field_name);
+                        replacements.push((full_pattern, value));
+                    }
+                }
+                i = end + 1;
+            } else {
+                i += 1;
+            }
+        }
+
+        for (pattern, value) in replacements {
+            result = result.replace(&pattern, &value);
+        }
+        result
     }
 
     // ========================================================================
