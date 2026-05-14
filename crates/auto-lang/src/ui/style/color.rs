@@ -30,6 +30,12 @@ pub enum Color {
     Blue(u16),     // blue-50 to blue-900
     Green(u16),    // green-50 to green-900
     Yellow(u16),   // yellow-50 to yellow-900
+    Purple(u16),   // purple-50 to purple-900
+    Pink(u16),     // pink-50 to pink-900
+    Indigo(u16),   // indigo-50 to indigo-900
+    Orange(u16),   // orange-50 to orange-900
+    Cyan(u16),     // cyan-50 to cyan-900
+    Teal(u16),     // teal-50 to teal-900
     White,
     Black,
 
@@ -88,6 +94,12 @@ impl Color {
                         "blue" => Ok(Color::Blue(shade)),
                         "green" => Ok(Color::Green(shade)),
                         "yellow" => Ok(Color::Yellow(shade)),
+                        "purple" => Ok(Color::Purple(shade)),
+                        "pink" => Ok(Color::Pink(shade)),
+                        "indigo" => Ok(Color::Indigo(shade)),
+                        "orange" => Ok(Color::Orange(shade)),
+                        "cyan" => Ok(Color::Cyan(shade)),
+                        "teal" => Ok(Color::Teal(shade)),
                         _ => Err(format!("Unknown color name: {}", color_name)),
                     }
                 } else {
@@ -124,6 +136,12 @@ impl Color {
             Color::Blue(s) => tailwind_blue(*s),
             Color::Green(s) => tailwind_green(*s),
             Color::Yellow(s) => tailwind_yellow(*s),
+            Color::Purple(s) => tailwind_purple(*s),
+            Color::Pink(s) => tailwind_pink(*s),
+            Color::Indigo(s) => tailwind_indigo(*s),
+            Color::Orange(s) => tailwind_orange(*s),
+            Color::Cyan(s) => tailwind_cyan(*s),
+            Color::Teal(s) => tailwind_teal(*s),
             _ => (128, 128, 128),
         }
     }
@@ -286,4 +304,88 @@ palette!(tailwind_neutral, [
     700 => (64, 64, 64),
     800 => (38, 38, 38),
     900 => (23, 23, 23),
+]);
+
+// Tailwind Purple (purple-50 through purple-900)
+palette!(tailwind_purple, [
+    50  => (250, 245, 255),
+    100 => (243, 232, 255),
+    200 => (233, 213, 255),
+    300 => (216, 180, 254),
+    400 => (192, 132, 252),
+    500 => (168, 85, 247),
+    600 => (147, 51, 234),
+    700 => (126, 34, 206),
+    800 => (107, 33, 168),
+    900 => (88, 28, 135),
+]);
+
+// Tailwind Pink (pink-50 through pink-900)
+palette!(tailwind_pink, [
+    50  => (253, 242, 248),
+    100 => (252, 231, 243),
+    200 => (251, 207, 232),
+    300 => (249, 168, 212),
+    400 => (244, 114, 182),
+    500 => (236, 72, 153),
+    600 => (219, 39, 119),
+    700 => (190, 24, 93),
+    800 => (157, 23, 77),
+    900 => (131, 24, 67),
+]);
+
+// Tailwind Indigo (indigo-50 through indigo-900)
+palette!(tailwind_indigo, [
+    50  => (238, 242, 255),
+    100 => (224, 231, 255),
+    200 => (199, 210, 254),
+    300 => (165, 180, 252),
+    400 => (129, 140, 248),
+    500 => (99, 102, 241),
+    600 => (79, 70, 229),
+    700 => (67, 56, 202),
+    800 => (55, 48, 163),
+    900 => (49, 46, 129),
+]);
+
+// Tailwind Orange (orange-50 through orange-900)
+palette!(tailwind_orange, [
+    50  => (255, 247, 237),
+    100 => (255, 237, 213),
+    200 => (254, 215, 170),
+    300 => (253, 186, 116),
+    400 => (251, 146, 60),
+    500 => (249, 115, 22),
+    600 => (234, 88, 12),
+    700 => (194, 65, 12),
+    800 => (154, 52, 18),
+    900 => (124, 45, 18),
+]);
+
+// Tailwind Cyan (cyan-50 through cyan-900)
+palette!(tailwind_cyan, [
+    50  => (236, 254, 255),
+    100 => (207, 250, 254),
+    200 => (165, 243, 252),
+    300 => (103, 232, 249),
+    400 => (34, 211, 238),
+    500 => (6, 182, 212),
+    600 => (8, 145, 178),
+    700 => (14, 116, 144),
+    800 => (21, 94, 117),
+    900 => (22, 78, 99),
+]);
+
+// Tailwind Teal (teal-50 through teal-900)
+palette!(tailwind_teal, [
+    50  => (240, 253, 250),
+    100 => (204, 251, 241),
+    200 => (153, 246, 228),
+    300 => (94, 234, 212),
+    400 => (45, 212, 191),
+    500 => (20, 184, 166),
+    600 => (13, 148, 136),
+    700 => (15, 118, 110),
+    800 => (17, 94, 89),
+    900 => (19, 78, 74),
 ]);

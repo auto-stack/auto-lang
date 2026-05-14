@@ -259,13 +259,16 @@ impl GpuiStyle {
             StyleClass::TextColor(color) => {
                 self.text_color = Some(convert_color(color));
             }
-            StyleClass::BgGradientToR => {}
+            StyleClass::BgGradient(_) => {}
             StyleClass::GradientFrom(color) => {
                 if self.background_color.is_none() {
                     self.background_color = Some(convert_color(color));
                 }
             }
-            StyleClass::GradientTo(_) => {}
+            StyleClass::GradientTo(color) => {
+                // Store end color for future gradient support
+                let _ = convert_color(color);
+            }
 
             // ========== Layout (L1 + L2) ==========
             StyleClass::Flex => {

@@ -29,6 +29,9 @@ pub struct IcedStyle {
     // Colors (L1)
     pub background_color: Option<iced::Color>,
     pub text_color: Option<iced::Color>,
+    pub gradient_dir: Option<crate::ui::style::class::GradientDir>,
+    pub gradient_from: Option<iced::Color>,
+    pub gradient_to: Option<iced::Color>,
 
     // Sizing (L1)
     pub width: Option<IcedSize>,
@@ -164,6 +167,9 @@ impl IcedStyle {
             gap: None,
             background_color: None,
             text_color: None,
+            gradient_dir: None,
+            gradient_from: None,
+            gradient_to: None,
             width: None,
             height: None,
             rounded: false,
@@ -248,18 +254,17 @@ impl IcedStyle {
             StyleClass::TextColor(color) => {
                 self.text_color = Some(convert_color(color));
             }
-            StyleClass::BgGradientToR => {
-                // Gradient direction marker — Iced doesn't support gradients,
-                // so this is a no-op; the from- color sets the solid fallback.
+            StyleClass::BgGradient(dir) => {
+                self.gradient_dir = Some(*dir);
             }
             StyleClass::GradientFrom(color) => {
-                // Use gradient start color as solid background fallback
+                self.gradient_from = Some(convert_color(color));
                 if self.background_color.is_none() {
                     self.background_color = Some(convert_color(color));
                 }
             }
-            StyleClass::GradientTo(_color) => {
-                // Gradient end color — not used in solid fallback
+            StyleClass::GradientTo(color) => {
+                self.gradient_to = Some(convert_color(color));
             }
 
             // ========== Sizing (L1) ==========

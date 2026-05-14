@@ -28,6 +28,19 @@ impl SizeValue {
     }
 }
 
+/// Gradient direction for bg-gradient-to-{dir}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GradientDir {
+    ToR,
+    ToL,
+    ToT,
+    ToB,
+    ToBR,
+    ToBL,
+    ToTR,
+    ToTL,
+}
+
 /// Style class IR - represents a single parsed style property
 ///
 /// This enum contains L1 Core + L2 Important features:
@@ -78,8 +91,8 @@ pub enum StyleClass {
     /// Background color: bg-{color}
     BackgroundColor(Color),
 
-    /// Gradient direction marker: bg-gradient-to-r (etc.)
-    BgGradientToR,
+    /// Gradient direction marker: bg-gradient-to-{dir}
+    BgGradient(GradientDir),
 
     /// Gradient start color: from-{color}
     GradientFrom(Color),
@@ -363,12 +376,19 @@ impl StyleClass {
         // Parse background: bg-{color}
         if let Some(color_name) = class.strip_prefix("bg-") {
             // Handle gradient markers
-            if color_name == "gradient-to-r" || color_name == "gradient-to-l"
-                || color_name == "gradient-to-t" || color_name == "gradient-to-b"
-                || color_name == "gradient-to-br" || color_name == "gradient-to-bl"
-                || color_name == "gradient-to-tr" || color_name == "gradient-to-tl"
-            {
-                return Ok(StyleClass::BgGradientToR);
+            let dir = match color_name {
+                "gradient-to-r" => Some(GradientDir::ToR),
+                "gradient-to-l" => Some(GradientDir::ToL),
+                "gradient-to-t" => Some(GradientDir::ToT),
+                "gradient-to-b" => Some(GradientDir::ToB),
+                "gradient-to-br" => Some(GradientDir::ToBR),
+                "gradient-to-bl" => Some(GradientDir::ToBL),
+                "gradient-to-tr" => Some(GradientDir::ToTR),
+                "gradient-to-tl" => Some(GradientDir::ToTL),
+                _ => None,
+            };
+            if let Some(d) = dir {
+                return Ok(StyleClass::BgGradient(d));
             }
             let color = Color::from_tailwind(color_name)
                 .or_else(|_| Color::from_hex(color_name))?;

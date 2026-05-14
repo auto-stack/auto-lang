@@ -7,7 +7,7 @@ mod class;
 mod color;
 mod parser;
 
-pub use class::{StyleClass, SizeValue};
+pub use class::{StyleClass, SizeValue, GradientDir};
 pub use color::Color;
 pub use parser::StyleParser;
 

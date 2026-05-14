@@ -109,8 +109,32 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
     } else {
         iced::Shadow::default()
     };
+    // Build background: use gradient if both from/to colors present, else solid
+    let background = if is.gradient_from.is_some() && is.gradient_to.is_some() {
+        let from = is.gradient_from.unwrap();
+        let to = is.gradient_to.unwrap();
+        let angle = match is.gradient_dir {
+            Some(crate::ui::style::GradientDir::ToB) | None => 180.0_f32.to_radians(),
+            Some(crate::ui::style::GradientDir::ToT) => 0.0,
+            Some(crate::ui::style::GradientDir::ToR) => 90.0_f32.to_radians(),
+            Some(crate::ui::style::GradientDir::ToL) => 270.0_f32.to_radians(),
+            Some(crate::ui::style::GradientDir::ToBR) => 135.0_f32.to_radians(),
+            Some(crate::ui::style::GradientDir::ToBL) => 225.0_f32.to_radians(),
+            Some(crate::ui::style::GradientDir::ToTR) => 45.0_f32.to_radians(),
+            Some(crate::ui::style::GradientDir::ToTL) => 315.0_f32.to_radians(),
+        };
+        use iced::gradient::Linear;
+        Some(Background::Gradient(
+            Linear::new(angle)
+                .add_stop(0.0, from)
+                .add_stop(1.0, to)
+                .into()
+        ))
+    } else {
+        is.background_color.map(Background::Color)
+    };
     iced::widget::container::Style {
-        background: is.background_color.map(Background::Color),
+        background,
         text_color: is.text_color,
         border,
         shadow,
@@ -1250,13 +1274,24 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
             let pad = iced_padding(padding, style.as_ref());
             let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
+            let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
+            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
+            let justify_is_center = iced_style.as_ref()
+                .and_then(|is| is.justify_content)
+                .map_or(false, |j| matches!(j, IcedJustify::Center));
+
             let mut col_widget = column([]);
             col_widget = col_widget.spacing(eff_spacing);
             col_widget = col_widget.padding(pad);
 
             if let Some(ref is) = iced_style {
                 if let Some(ref w) = is.width { col_widget = col_widget.width(iced_length(w)); }
-                if let Some(ref h) = is.height { col_widget = col_widget.height(iced_length(h)); }
+                // When justify-center, don't set height so column shrinks and container can center it
+                if let Some(ref h) = is.height {
+                    if !justify_is_center {
+                        col_widget = col_widget.height(iced_length(h));
+                    }
+                }
                 if let Some(align) = is.align_items {
                     col_widget = col_widget.align_x(iced_alignment_horizontal(align));
                 }
@@ -1265,9 +1300,6 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
             for child in children {
                 col_widget = col_widget.push(render_dynamic_view(child));
             }
-
-            let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
-            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
 
             if needs_justify || has_visual {
                 let mut cont = container(col_widget);
