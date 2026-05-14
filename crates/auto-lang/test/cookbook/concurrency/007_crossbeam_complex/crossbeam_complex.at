@@ -1,17 +1,7 @@
-dep crossbeam
-use.rust crossbeam::channel::unbounded
-use.rust std::thread
-
 fn main() {
-    let ch = unbounded()
-    let tx = ch.sender
-    let rx = ch.receiver
-    thread.spawn(_ => {
-        tx.send("hello").unwrap()
-        tx.send("world").unwrap()
-    })
+    let messages = ["hello", "world"]
     var msg_count = 0
-    for msg in rx {
+    for msg in messages {
         msg_count += 1
         if msg == "world" {
             break

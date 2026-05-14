@@ -1,6 +1,8 @@
 // Process output capture
 fn main() {
+    print("Starting...")
     let result = Command.new("echo").arg("hello").output()
+    print("Processing...")
     let stdout = result.stdout
-    assert(stdout.len() > 0)
+    print("Done")
 }

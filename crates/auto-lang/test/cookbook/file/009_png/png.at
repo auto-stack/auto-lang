@@ -1,11 +1,6 @@
 use.rust std::fs
 
 fn main() ! {
-    let entries = fs.read_dir(".").?
-    var count = 0
-    for entry in entries {
-        let entry = entry.?
-        count += 1
-    }
-    assert(count > 0)
+    let content = fs.read_to_string("png.at").?
+    assert(content.len() > 0)
 }

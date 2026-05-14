@@ -4173,24 +4173,21 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             if obj.is_none() {
                 return Err(VMError::RuntimeError("Regex.captures_iter: invalid handle".into()));
             }
-            // Collect all matches into a List<List<str>>
+            // Collect all matches as string pool indices in a flat list
             use crate::vm::types::ListData;
-            let mut outer_list: ListData<i32> = ListData::new();
+            let mut match_list: ListData<i32> = ListData::new();
             if let Some(obj) = obj {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     if let Some(re) = rust_obj.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
                         for mat in re.lock().unwrap().find_iter(&text) {
-                            let mut match_list: ListData<i32> = ListData::new();
                             let str_idx = vm.add_string(mat.as_str().as_bytes().to_vec());
                             match_list.push(-(str_idx as i32) - 1); // string encoding convention
-                            let match_id = vm.insert_heap_object(match_list);
-                            outer_list.push(match_id as i32);
                         }
                     }
                 }
             }
-            let list_id = vm.insert_heap_object(outer_list);
+            let list_id = vm.insert_heap_object(match_list);
             #[cfg(feature = "nanbox")]
             task.ram.push_nv(auto_val::encode_object(list_id as u32));
             #[cfg(not(feature = "nanbox"))]

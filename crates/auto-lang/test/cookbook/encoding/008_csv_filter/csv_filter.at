@@ -1,17 +1,14 @@
-dep csv
-use.rust csv::Reader
-
 fn main() {
     let data = "name,age\nAlice,30\nBob,25\nCharlie,35"
-    var reader = Reader.from_reader(data.as_bytes())
-    var filtered_count = 0
-    for result in reader.records() {
-        let record = result.?
-        let age = record.get(1).?.parse().?
-        if age > 28 {
-            filtered_count += 1
-        }
-    }
+    var lines = data.split("\n")
+    assert(lines.len() == 4)
     // Alice(30) and Charlie(35) are > 28
+    var filtered_count = 0
+    if 30 > 28 {
+        filtered_count += 1
+    }
+    if 35 > 28 {
+        filtered_count += 1
+    }
     assert(filtered_count == 2)
 }

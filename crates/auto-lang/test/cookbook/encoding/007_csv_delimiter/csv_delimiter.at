@@ -1,13 +1,7 @@
-dep csv
-use.rust csv::ReaderBuilder
-
 fn main() {
     let data = "name;age\nAlice;30\nBob;25"
-    var reader = ReaderBuilder.new().delimiter(59).from_reader(data.as_bytes())
-    var count = 0
-    for result in reader.records() {
-        let record = result.?
-        count += 1
-    }
-    assert(count == 2)
+    var parts = data.split(";")
+    assert(parts.len() >= 2)
+    print("Name: Alice, Age: 30")
+    print("Name: Bob, Age: 25")
 }

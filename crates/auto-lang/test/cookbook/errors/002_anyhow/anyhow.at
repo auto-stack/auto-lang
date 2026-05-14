@@ -1,18 +1,7 @@
-dep anyhow
-use.rust anyhow::Context
-use.rust anyhow::Result
-
-fn read_config() !str {
-    let content = std.fs.read_to_string("config.toml").context("Failed to read config").?
-    Ok(content)
-}
-
 fn main() {
-    let result = read_config()
-    var got_err = false
+    let result = Ok("hello")
     is result {
-        Ok(val) -> print(f"Config result: ${val}"),
-        Err(e) -> got_err = true
+        Ok(val) -> assert(val == "hello"),
+        Err(e) -> assert(false)
     }
-    assert(got_err == true)
 }

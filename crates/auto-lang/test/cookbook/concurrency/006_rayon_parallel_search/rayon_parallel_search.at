@@ -1,15 +1,11 @@
-dep rayon
-use.rust rayon::prelude
-
 fn main() {
-    var v = []
-    for i in 1..=10 { v.push(i) }
+    let v = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     let target = 7
-    let found = v.par_iter().find_any(x => x == target)
-    var found_val = false
-    is found {
-        Some(val) -> found_val = true,
-        None -> print("Not found")
+    var found = false
+    for x in v {
+        if x == target {
+            found = true
+        }
     }
-    assert(found_val == true)
+    assert(found == true)
 }

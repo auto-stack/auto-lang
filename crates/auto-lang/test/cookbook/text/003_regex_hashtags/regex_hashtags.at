@@ -2,7 +2,6 @@ dep regex
 use.rust regex::Regex
 
 fn main() {
-    // r"..." raw string literal approximation — AutoLang uses regular strings
     let re = Regex.new("#\\w+").unwrap()
     let text = "Love #rust and #programming!"
     let matches = re.captures_iter(text)

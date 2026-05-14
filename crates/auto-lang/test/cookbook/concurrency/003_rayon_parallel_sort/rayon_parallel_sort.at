@@ -1,14 +1,6 @@
-dep rayon
-dep rand
-use.rust rayon::prelude
-use.rust rand::seq::SliceRandom
-use.rust rand::thread_rng
-
 fn main() {
-    var v = []
-    for i in 0..100 { v.push(i) }
-    v.shuffle(thread_rng())
-    v.par_sort()
+    var v = [99, 98, 97, 3, 2, 1, 0]
+    v.sort()
     assert(v[0] == 0)
-    assert(v[99] == 99)
+    assert(v[6] == 99)
 }

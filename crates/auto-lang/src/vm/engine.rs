@@ -4147,7 +4147,7 @@ impl AutoVM {
 
                 OpCode::NOT => {
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(!a);
+                    task.ram.push_i32(if a == 0 { 1 } else { 0 });
                 }
                 OpCode::CALL => {
                     vm_debug!("DEBUG CALL: Stack depth before = {}", task.ram.sp);
@@ -4577,6 +4577,166 @@ impl AutoVM {
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
                                 #[cfg(not(feature = "nanbox"))]
                                 { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(list_id as i32); }
+                            }
+                            "split" => {
+                                #[cfg(feature = "nanbox")]
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let str_idx = (-receiver - 1) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                // Pop the separator argument
+                                #[cfg(feature = "nanbox")]
+                                let sep_nv = task.ram.pop_nv();
+                                #[cfg(not(feature = "nanbox"))]
+                                let sep = task.ram.pop_i32();
+                                #[cfg(feature = "nanbox")]
+                                let sep = if auto_val::is_string(sep_nv) {
+                                    let sep_idx = auto_val::decode_string(sep_nv) as usize;
+                                    self.strings.read().unwrap()
+                                        .get(sep_idx)
+                                        .map(|b| String::from_utf8_lossy(b).to_string())
+                                        .unwrap_or_default()
+                                } else {
+                                    ",".to_string()
+                                };
+                                let parts: Vec<&str> = s.split(&sep).collect();
+                                let mut strings = self.strings.write().unwrap();
+                                use crate::vm::types::ListData;
+                                let mut list: ListData<i32> = ListData::new();
+                                for part in &parts {
+                                    let idx = strings.len();
+                                    strings.push(part.to_string().into_bytes());
+                                    list.push(idx as i32);
+                                }
+                                drop(strings);
+                                let list_id = self.insert_heap_object(list);
+                                // Remove receiver from CALL_SPEC layout, push result
+                                #[cfg(feature = "nanbox")]
+                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { task.ram.pop_i32(); task.ram.push_i32(list_id as i32); }
+                            }
+                            "is_empty" => {
+                                #[cfg(feature = "nanbox")]
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let str_idx = (-receiver - 1) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| b.is_empty())
+                                    .unwrap_or(true);
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(if s { auto_val::encode_i32(1) } else { auto_val::encode_i32(0) }); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(if s { 1 } else { 0 }); }
+                            }
+                            "starts_with" | "ends_with" | "contains" => {
+                                #[cfg(feature = "nanbox")]
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let str_idx = (-receiver - 1) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                #[cfg(feature = "nanbox")]
+                                let arg_nv = task.ram.pop_nv();
+                                #[cfg(not(feature = "nanbox"))]
+                                let arg_val = task.ram.pop_i32();
+                                #[cfg(feature = "nanbox")]
+                                let pat = if auto_val::is_string(arg_nv) {
+                                    let pat_idx = auto_val::decode_string(arg_nv) as usize;
+                                    self.strings.read().unwrap().get(pat_idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                                } else { String::new() };
+                                #[cfg(not(feature = "nanbox"))]
+                                let pat = if arg_val < 0 && arg_val > i32::MIN + 1 {
+                                    let pat_idx = (-arg_val - 1) as usize;
+                                    self.strings.read().unwrap().get(pat_idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                                } else { String::new() };
+                                let result = if method_name == "starts_with" { s.starts_with(&pat) }
+                                    else if method_name == "ends_with" { s.ends_with(&pat) }
+                                    else { s.contains(&pat) };
+                                #[cfg(feature = "nanbox")]
+                                { task.ram.pop_nv(); task.ram.push_nv(if result { auto_val::encode_i32(1) } else { auto_val::encode_i32(0) }); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { task.ram.pop_i32(); task.ram.push_i32(if result { 1 } else { 0 }); }
+                            }
+                            "len" => {
+                                #[cfg(feature = "nanbox")]
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let str_idx = (-receiver - 1) as usize;
+                                let len = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).len() as i32)
+                                    .unwrap_or(0);
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(len)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(len); }
+                            }
+                            "trim" => {
+                                #[cfg(feature = "nanbox")]
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let str_idx = (-receiver - 1) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                                    .unwrap_or_default();
+                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.into_bytes()); i };
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(-(idx as i32) - 1); }
+                            }
+                            "replace" => {
+                                #[cfg(feature = "nanbox")]
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let str_idx = (-receiver - 1) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                // Pop replacement arg first (top), then pattern arg
+                                #[cfg(feature = "nanbox")]
+                                let repl_nv = task.ram.pop_nv();
+                                #[cfg(not(feature = "nanbox"))]
+                                let repl_val = task.ram.pop_i32();
+                                #[cfg(feature = "nanbox")]
+                                let pat_nv = task.ram.pop_nv();
+                                #[cfg(not(feature = "nanbox"))]
+                                let pat_val = task.ram.pop_i32();
+                                #[cfg(feature = "nanbox")]
+                                let pat = if auto_val::is_string(pat_nv) {
+                                    let i = auto_val::decode_string(pat_nv) as usize;
+                                    self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                                } else { String::new() };
+                                #[cfg(not(feature = "nanbox"))]
+                                let pat = if pat_val < 0 && pat_val > i32::MIN + 1 {
+                                    let i = (-pat_val - 1) as usize;
+                                    self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                                } else { String::new() };
+                                #[cfg(feature = "nanbox")]
+                                let repl = if auto_val::is_string(repl_nv) {
+                                    let i = auto_val::decode_string(repl_nv) as usize;
+                                    self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                                } else { String::new() };
+                                #[cfg(not(feature = "nanbox"))]
+                                let repl = if repl_val < 0 && repl_val > i32::MIN + 1 {
+                                    let i = (-repl_val - 1) as usize;
+                                    self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                                } else { String::new() };
+                                let result = s.replace(&pat, &repl);
+                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
+                                #[cfg(feature = "nanbox")]
+                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { task.ram.pop_i32(); task.ram.push_i32(-(idx as i32) - 1); }
                             }
                             "to_string" | "to_str" | "clone" => {
                                 // str.to_string() / str.to_str() / str.clone() — return self

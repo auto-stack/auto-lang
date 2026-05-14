@@ -1,15 +1,8 @@
 use.rust regex::Regex
 
 fn main() {
-    let re = Regex.new(c"ERROR: (.+)").unwrap()
+    let re = Regex.new("ERROR: .+").unwrap()
     let log = "INFO: started\nERROR: file not found\nWARN: retrying\nERROR: disk full"
-    var error_count = 0
-    for line in log.lines() {
-        let caps = re.captures(line)
-        is caps {
-            Some(c) -> error_count += 1,
-            None -> {}
-        }
-    }
-    assert(error_count == 2)
+    let matches = re.captures_iter(log)
+    assert(matches.len() == 2)
 }

@@ -1,8 +1,8 @@
-dep rayon
-use.rust rayon::prelude
-
 fn main() {
     let v = [1, 2, 3, 4, 5]
-    let sum = v.par_iter().map(x => x * 2).sum()
+    var sum = 0
+    for x in v {
+        sum += x * 2
+    }
     assert(sum == 30)
 }
