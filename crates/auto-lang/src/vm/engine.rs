@@ -2691,6 +2691,8 @@ impl AutoVM {
                                         Value::Bool(auto_val::decode_bool(nv))
                                     } else if auto_val::is_f64(nv) {
                                         Value::Double(auto_val::decode_f64(nv))
+                                    } else if auto_val::is_f32(nv) {
+                                        Value::Float(auto_val::decode_f32(nv) as f64)
                                     } else {
                                         Value::Int(auto_val::decode_i32(nv))
                                     }
@@ -3846,33 +3848,120 @@ impl AutoVM {
                 }
                 // === Arithmetic ===
                 OpCode::ADD => {
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
+                        task.ram.push_f32(auto_val::decode_f32(a_nv) + auto_val::decode_f32(b_nv));
+                    } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
+                        task.ram.push_f64(auto_val::decode_f64(a_nv) + auto_val::decode_f64(b_nv));
+                    } else {
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        task.ram.push_i32(a.wrapping_add(b));
+                    }
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     task.ram.push_i32(a.wrapping_add(b));
+                    }
                 }
                 OpCode::SUB => {
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
+                        task.ram.push_f32(auto_val::decode_f32(a_nv) - auto_val::decode_f32(b_nv));
+                    } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
+                        task.ram.push_f64(auto_val::decode_f64(a_nv) - auto_val::decode_f64(b_nv));
+                    } else {
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        task.ram.push_i32(a.wrapping_sub(b));
+                    }
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     task.ram.push_i32(a.wrapping_sub(b));
+                    }
                 }
                 OpCode::MUL => {
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
+                        task.ram.push_f32(auto_val::decode_f32(a_nv) * auto_val::decode_f32(b_nv));
+                    } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
+                        task.ram.push_f64(auto_val::decode_f64(a_nv) * auto_val::decode_f64(b_nv));
+                    } else {
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        task.ram.push_i32(a.wrapping_mul(b));
+                    }
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     task.ram.push_i32(a.wrapping_mul(b));
+                    }
                 }
                 OpCode::DIV => {
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
+                        let b = auto_val::decode_f32(b_nv);
+                        if b == 0.0 { return Err(VMError::DivisionByZero); }
+                        task.ram.push_f32(auto_val::decode_f32(a_nv) / b);
+                    } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
+                        let b = auto_val::decode_f64(b_nv);
+                        if b == 0.0 { return Err(VMError::DivisionByZero); }
+                        task.ram.push_f64(auto_val::decode_f64(a_nv) / b);
+                    } else {
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        if b == 0 { return Err(VMError::DivisionByZero); }
+                        task.ram.push_i32(a.wrapping_div(b));
+                    }
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     if b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
                     task.ram.push_i32(a.wrapping_div(b));
+                    }
                 }
 
                 // === Control Flow ===
                 OpCode::NEG => {
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let a_nv = task.ram.pop_nv();
+                    if auto_val::is_f32(a_nv) {
+                        task.ram.push_f32(-auto_val::decode_f32(a_nv));
+                    } else if auto_val::is_f64(a_nv) {
+                        task.ram.push_f64(-auto_val::decode_f64(a_nv));
+                    } else {
+                        task.ram.push_i32(auto_val::decode_i32(a_nv).wrapping_neg());
+                    }
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let a = task.ram.pop_i32();
                     task.ram.push_i32(a.wrapping_neg());
+                    }
                 }
 
                 // Plan 073 Stage A: Floating-point arithmetic (f32)

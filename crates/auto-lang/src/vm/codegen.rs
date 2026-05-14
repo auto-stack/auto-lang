@@ -7296,6 +7296,9 @@ impl Codegen {
             Expr::Block(body) => {
                 body.stmts.iter().any(|s| self.stmt_contains_float(s))
             }
+            Expr::Dot(obj, field) => {
+                self.contains_float(obj) || self.field_is_float(obj, field)
+            }
             _ => false,
         }
     }
@@ -7331,6 +7334,9 @@ impl Codegen {
             Expr::Block(body) => {
                 body.stmts.iter().any(|s| self.stmt_contains_double(s))
             }
+            Expr::Dot(obj, field) => {
+                self.contains_double(obj) || self.field_is_double(obj, field)
+            }
             _ => false,
         }
     }
@@ -7342,6 +7348,46 @@ impl Codegen {
             Stmt::Store(s) => self.contains_double(&s.expr),
             _ => false,
         }
+    }
+
+    fn field_is_float(&self, obj: &Expr, field: &crate::ast::Name) -> bool {
+        if let Expr::Ident(type_name) = obj {
+            let type_name_str = type_name.as_ref();
+            if let Some(vt) = self.var_types.get(type_name_str) {
+                let type_name_for_lookup = match vt {
+                    Type::User(td) => td.name.as_ref(),
+                    _ => type_name_str,
+                };
+                if let Some(template) = self.generic_registry.get_template(type_name_for_lookup) {
+                    for f in &template.fields {
+                        if f.name == field.as_ref() {
+                            return matches!(f.field_type, Type::Float | Type::Double);
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn field_is_double(&self, obj: &Expr, field: &crate::ast::Name) -> bool {
+        if let Expr::Ident(type_name) = obj {
+            let type_name_str = type_name.as_ref();
+            if let Some(vt) = self.var_types.get(type_name_str) {
+                let type_name_for_lookup = match vt {
+                    Type::User(td) => td.name.as_ref(),
+                    _ => type_name_str,
+                };
+                if let Some(template) = self.generic_registry.get_template(type_name_for_lookup) {
+                    for f in &template.fields {
+                        if f.name == field.as_ref() {
+                            return matches!(f.field_type, Type::Double);
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     // Plan 117: Check if expression is an integer type that needs coercion to float
