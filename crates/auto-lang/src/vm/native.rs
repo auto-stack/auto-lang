@@ -681,7 +681,7 @@ pub fn shim_print_f64(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// Format a RustStdlibObject for display.
-fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
+pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
     match obj.type_name.as_str() {
         "Instant" => "<Instant>".to_string(),
         "Duration" => {
@@ -707,6 +707,20 @@ fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
                 s.clone()
             } else {
                 "<OnceCell::Value>".to_string()
+            }
+        }
+        "semver::Version" => {
+            if let Some(mutex) = obj.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                format!("{}", mutex.lock().unwrap())
+            } else {
+                "<semver::Version>".to_string()
+            }
+        }
+        "semver::VersionReq" => {
+            if let Some(mutex) = obj.downcast_ref::<std::sync::Mutex<semver::VersionReq>>() {
+                format!("{}", mutex.lock().unwrap())
+            } else {
+                "<semver::VersionReq>".to_string()
             }
         }
         other => format!("<{}>", other),
@@ -4760,6 +4774,9 @@ pub fn shim_semver_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         Ok(ver) => {
             let obj = RustStdlibObject::new("semver::Version", std::sync::Mutex::new(ver));
             let id = vm.insert_heap_object(obj);
+            #[cfg(feature = "nanbox")]
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+            #[cfg(not(feature = "nanbox"))]
             task.ram.push_i32(id as i32);
         }
         Err(e) => {
@@ -4768,8 +4785,6 @@ pub fn shim_semver_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     }
     Ok(())
 }
-
-/// v.major → u64
 /// Stack: [handle_i32] -> [major_i32]
 pub fn shim_semver_opaque_major(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
@@ -4913,6 +4928,9 @@ pub fn shim_semver_opaque_versionreq_parse(task: &mut AutoTask, vm: &AutoVM) -> 
         Ok(req) => {
             let obj = RustStdlibObject::new("semver::VersionReq", std::sync::Mutex::new(req));
             let id = vm.insert_heap_object(obj);
+            #[cfg(feature = "nanbox")]
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+            #[cfg(not(feature = "nanbox"))]
             task.ram.push_i32(id as i32);
         }
         Err(e) => {

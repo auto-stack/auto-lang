@@ -95,3 +95,9 @@ graphify-out-crates/
 config_test.txt
 test-deployed.js
 
+# Cookbook test run artifacts
+data.txt
+lines.txt
+out.txt
+test_temp.txt
+

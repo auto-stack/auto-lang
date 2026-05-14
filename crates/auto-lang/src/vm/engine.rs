@@ -1550,11 +1550,7 @@ impl AutoVM {
                                                     if let TypeTag::RustStdlib(ref name) = guard.type_tag() {
                                                         // RustStdlibObject — check for string-like values
                                                         if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
-                                                            if let Some(s) = rust_obj.downcast_ref::<String>() {
-                                                                s.clone()
-                                                            } else {
-                                                                format!("<{}>", name)
-                                                            }
+                                                            crate::vm::native::format_rust_stdlib_obj(rust_obj)
                                                         } else {
                                                             format!("<{}>", name)
                                                         }
@@ -1961,7 +1957,10 @@ impl AutoVM {
                         let string_value = match self.get_heap_object(obj_id) {
                             Some(obj) => {
                                 let guard = obj.read().unwrap();
-                                if let TypeTag::GenericInstance(_) = guard.type_tag() {
+                                // Check for RustStdlibObject (e.g. semver::Version, Duration, etc.)
+                                if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                                    crate::vm::native::format_rust_stdlib_obj(rust_obj)
+                                } else if let TypeTag::GenericInstance(_) = guard.type_tag() {
                                     if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
                                         let type_name = self.generic_registry
                                             .get_type(&inst.mono_name)
@@ -5504,7 +5503,7 @@ impl AutoVM {
                         task.ram.push_i32(0);
                     }
 
-                    vm_debug!("DEBUG RESERVE_STACK: sp after={}", task.ram.sp);
+                    vm_debug!("RESERVE_STACK: n_locals={} sp={}", n_locals, task.ram.sp);
 
                     // Track num_locals for native shims
                     task.num_locals = n_locals;

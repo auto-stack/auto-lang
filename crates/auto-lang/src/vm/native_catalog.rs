@@ -817,9 +817,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.serde_json.to_string", 1900, Void),
             ("auto.serde_json.from_str", 1902, Void),
 
-            // === TOML (2610-2611) ===
-            ("auto.toml.from_str", 2610, Void),
-            ("auto.toml.to_string", 2611, Void),
+            // === TOML (2750-2751) ===
+            ("auto.toml.from_str", 2750, Void),
+            ("auto.toml.to_string", 2751, Void),
 
             // === URL (2000-2015) ===
             ("auto.url.encode", 2000, Void),
@@ -1415,8 +1415,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.json.has_key", 1917),
     ("auto.serde_json.to_string", 1900),
     ("auto.serde_json.from_str", 1902),
-    ("auto.toml.from_str", 2610),
-    ("auto.toml.to_string", 2611),
+    ("auto.toml.from_str", 2750),
+    ("auto.toml.to_string", 2751),
     ("auto.url.encode", 2000),
     ("auto.url.decode", 2001),
     ("auto.url.encode_query", 2002),
