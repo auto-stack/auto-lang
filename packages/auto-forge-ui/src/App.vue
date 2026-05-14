@@ -16,9 +16,32 @@
         >
           <component :is="tab.icon" :size="16" class="tab-icon" />
           <span class="tab-label">{{ tab.label }}</span>
+          <span v-if="tab.id === 'chats' && gateBadgeCount > 0" class="tab-badge">
+            {{ gateBadgeCount }}
+          </span>
         </button>
       </div>
       <div class="rail-footer">
+        <!-- Mode toggle -->
+        <div class="mode-toggle">
+          <button
+            class="mode-btn"
+            :class="{ active: forgeMode === 'gsd' }"
+            @click="setForgeMode('gsd')"
+            title="GSD mode: only Goal Gate pauses"
+          >
+            GSD
+          </button>
+          <button
+            class="mode-btn"
+            :class="{ active: forgeMode === 'check' }"
+            @click="setForgeMode('check')"
+            title="Check mode: every gate pauses"
+          >
+            Check
+          </button>
+        </div>
+
         <!-- Accent color picker -->
         <div ref="accentPickerRef" class="accent-picker">
           <button
@@ -87,6 +110,11 @@
       <AgentsView v-else-if="currentView === 'agents'" />
       <StreamingDemoView v-else-if="currentView === 'demo'" />
     </main>
+
+    <!-- Screen reader announcements -->
+    <div class="sr-only" aria-live="polite" aria-atomic="true">
+      {{ gateAnnouncement }}
+    </div>
   </div>
 </template>
 
@@ -98,6 +126,8 @@ import {
 } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 import { useAccentColor, ACCENT_OPTIONS } from '@/composables/useAccentColor'
+import { useGateInbox } from '@/composables/useGateInbox'
+import { useForgeMode } from '@/composables/useForgeMode'
 import ChatsView from './views/ChatsView.vue'
 import SpecsView from './views/SpecsView.vue'
 import AgentsView from './views/AgentsView.vue'
@@ -105,6 +135,19 @@ import StreamingDemoView from './views/StreamingDemoView.vue'
 
 const { mode, setMode } = useTheme()
 const { current: accentCurrent, setAccent, options: accentOptions } = useAccentColor()
+const { badgeCount: gateBadgeCount, currentSecretary } = useGateInbox()
+const { mode: forgeMode } = useForgeMode()
+
+function setForgeMode(val: 'gsd' | 'check') {
+  forgeMode.value = val
+}
+
+const gateAnnouncement = computed(() => {
+  if (currentSecretary.value) {
+    return `Gate reached: ${currentSecretary.value.profession} — ${currentSecretary.value.title}`
+  }
+  return ''
+})
 
 const themeOpen = ref(false)
 const accentOpen = ref(false)
@@ -126,8 +169,37 @@ function onDocClick(e: MouseEvent) {
   }
 }
 
-onMounted(() => document.addEventListener('click', onDocClick))
-onUnmounted(() => document.removeEventListener('click', onDocClick))
+onMounted(() => {
+  document.addEventListener('click', onDocClick)
+  document.addEventListener('keydown', onKeyDown)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onKeyDown)
+})
+
+function onKeyDown(e: KeyboardEvent) {
+  if (!e.ctrlKey) return
+  switch (e.key) {
+    case '1':
+      e.preventDefault()
+      currentView.value = 'chats'
+      break
+    case '2':
+      e.preventDefault()
+      currentView.value = 'specs'
+      break
+    case '3':
+      e.preventDefault()
+      currentView.value = 'agents'
+      break
+    case 'k':
+    case 'K':
+      e.preventDefault()
+      // Focus search in current view — handled by view components
+      break
+  }
+}
 
 const themeOptions = [
   { value: 'light' as const, label: 'Light', icon: Sun },
@@ -138,7 +210,7 @@ const themeOptions = [
 const tabs: { id: 'chats' | 'specs' | 'agents' | 'demo'; label: string; icon: unknown }[] = [
   { id: 'chats', label: 'Chat', icon: MessageSquare },
   { id: 'specs', label: 'Specs', icon: Scroll },
-  { id: 'agents', label: 'Agents', icon: Orbit },
+  { id: 'agents', label: 'Relay', icon: Orbit },
   { id: 'demo', label: 'Demo', icon: Sparkles },
 ]
 
@@ -411,5 +483,66 @@ html, body, #app {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─── Tab Badge ───────────────────────────────────────────────────────────── */
+
+.tab-badge {
+  font-size: 0.6rem;
+  font-weight: 600;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: hsl(var(--af-error));
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+}
+
+/* ─── Mode Toggle ─────────────────────────────────────────────────────────── */
+
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  background: hsl(var(--muted-foreground) / 0.08);
+  border-radius: 5px;
+  padding: 2px;
+  margin-right: 0.25rem;
+}
+
+.mode-btn {
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 0.2rem 0.4rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--af-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.mode-btn.active {
+  background: var(--af-card);
+  color: var(--af-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 </style>

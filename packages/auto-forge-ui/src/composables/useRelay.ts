@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue'
+import { useEventRouter, type SSEEvent } from './useEventRouter'
 
 const API_BASE = '/api/forge/relay'
 
@@ -9,6 +10,8 @@ const _professions = ref<ProfessionDto[]>([])
 const _souls = ref<SoulDto[]>([])
 const _loading = ref(false)
 const _error = ref<string | null>(null)
+const _liveLog = ref<Array<{ time: string; profession: string; action: string }>>([])
+const _professionTokens = ref<Record<string, number>>({})
 
 // ─── Types (mirroring Rust structs) ─────────────────────────────────────────
 
@@ -99,6 +102,8 @@ export function useRelay() {
     const used = currentRun.value.budget_limit - currentRun.value.budget_remaining
     return Math.round((used / currentRun.value.budget_limit) * 100)
   })
+  const liveLog = _liveLog
+  const professionTokens = _professionTokens
 
   async function loadProfessions() {
     try {
@@ -208,11 +213,39 @@ export function useRelay() {
 
   // SSE for live updates
   function subscribeToRun(runId: string, onEvent?: (event: any) => void) {
+    const eventRouter = useEventRouter()
     const es = new EventSource(`${API_BASE}/runs/${runId}/events`)
     es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
         if (onEvent) onEvent(data)
+        // Route through event router for cross-view coordination
+        const sseEvent: SSEEvent = {
+          type: data.event_type || data.type,
+          runId,
+          payload: data,
+        }
+        eventRouter.handleEvent(sseEvent, 'relay')
+        // Append to live log
+        if (data.event_type === 'handoff_submitted') {
+          _liveLog.value.push({
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            profession: data.profession_id || data.from_profession || 'unknown',
+            action: `Handoff to ${data.to_profession || 'next'}`,
+          })
+        }
+        if (data.event_type === 'step_advanced') {
+          _liveLog.value.push({
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            profession: data.profession_id || 'system',
+            action: `Step advanced: ${data.step_id || ''}`,
+          })
+        }
+        // Track per-profession tokens (best-effort from event data)
+        if (data.tokens_used && data.profession_id) {
+          const prev = _professionTokens.value[data.profession_id] || 0
+          _professionTokens.value[data.profession_id] = prev + (data.tokens_used as number)
+        }
         // Auto-refresh run state on relevant events
         if (['run_started', 'step_advanced', 'handoff_submitted', 'gate_resolved'].includes(data.event_type)) {
           loadRun(runId)
@@ -237,6 +270,8 @@ export function useRelay() {
     hasActiveGate,
     runProgress,
     budgetUsedPercent,
+    liveLog,
+    professionTokens,
     loadProfessions,
     loadSouls,
     loadRuns,

@@ -86,41 +86,116 @@
             <template v-for="(step, idx) in currentRun.steps" :key="step.id">
               <div
                 class="pipeline-step"
-                :class="step.status"
+                :class="[step.status, { expanded: expandedStepId === step.id }]"
                 :title="`${step.profession_id} (${step.gate})`"
+                :aria-label="`${step.profession_id} step, status ${step.status}${step.gate === 'human' ? ', human gate required' : ''}`"
+                role="button"
+                tabindex="0"
+                @click="toggleStep(step.id)"
+                @keydown.enter="toggleStep(step.id)"
               >
-                <div class="step-icon">{{ professionIcon(step.profession_id) }}</div>
+                <div class="step-icon" aria-hidden="true">{{ professionIcon(step.profession_id) }}</div>
                 <div class="step-name">{{ step.profession_id }}</div>
-                <div v-if="step.gate === 'human'" class="step-gate">🔒</div>
-                <div v-if="step.status === 'running'" class="step-pulse" />
+                <div v-if="step.gate === 'human'" class="step-gate" aria-hidden="true">🔒</div>
+                <div v-if="step.status === 'running'" class="step-pulse" aria-hidden="true" />
+                <div v-if="stepIteration(step.id) > 1" class="step-retry" aria-label="Retry iteration {{ stepIteration(step.id) }}">
+                  ×{{ stepIteration(step.id) }}
+                </div>
               </div>
+
+              <!-- Expanded node card -->
+              <div
+                v-if="expandedStepId === step.id"
+                class="expanded-step-card"
+              >
+                <div class="expanded-header">
+                  <span class="expanded-icon">{{ professionIcon(step.profession_id) }}</span>
+                  <span class="expanded-name">{{ step.profession_id }}</span>
+                  <StatusBadge :status="step.status" size="sm" />
+                </div>
+                <div class="expanded-metrics">
+                  <div class="metric">
+                    <span class="metric-label">Gate</span>
+                    <span class="metric-value">{{ step.gate }}</span>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-label">Iterations</span>
+                    <span class="metric-value">{{ stepIteration(step.id) }}</span>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-label">Tokens</span>
+                    <span class="metric-value">{{ formatTokens(stepTokens(step.id)) }}</span>
+                  </div>
+                </div>
+                <div class="expanded-actions">
+                  <span class="expanded-hint">Click step to collapse</span>
+                </div>
+              </div>
+
               <div v-if="idx < currentRun.steps.length - 1" class="step-connector">
                 <ChevronRight :size="14" />
               </div>
             </template>
           </div>
 
-          <!-- Gate approval panel -->
-          <div v-if="hasActiveGate && currentRun.waiting_for_gate" class="gate-panel">
-            <div class="gate-header">
-              <AlertCircle :size="16" />
-              <span>Human gate at {{ currentRun.waiting_for_gate.profession_id }}</span>
-            </div>
-            <div class="gate-actions">
-              <button class="btn-approve" @click="onApprove">
-                <Check :size="14" />
-                Approve
-              </button>
-              <button class="btn-reject" @click="onReject">
-                <X :size="14" />
-                Reject
-              </button>
-              <button class="btn-edit" @click="onEdit">
-                <Edit3 :size="14" />
-                Edit &amp; Approve
-              </button>
+          <!-- Live Log -->
+          <div class="live-log-panel">
+            <div class="panel-title">Live Log</div>
+            <div v-if="liveLog.length === 0" class="empty-state">No handoffs yet</div>
+            <div v-else class="log-list">
+              <div v-for="(entry, i) in liveLog" :key="i" class="log-row">
+                <span class="log-time">{{ entry.time }}</span>
+                <span class="log-profession">{{ entry.profession }}</span>
+                <span class="log-action">{{ entry.action }}</span>
+              </div>
             </div>
           </div>
+
+          <!-- Cost Breakdown -->
+          <div class="cost-panel">
+            <div class="panel-title">Cost Breakdown</div>
+            <div v-if="!currentRun" class="empty-state">—</div>
+            <div v-else class="cost-bars">
+              <div class="cost-bar-row">
+                <span class="cost-label">Total</span>
+                <div class="cost-bar-bg">
+                  <div
+                    class="cost-bar-fill"
+                    :style="{ width: '100%' }"
+                  />
+                </div>
+                <span class="cost-value">{{ formatTokens(currentRun.cumulative_tokens) }}</span>
+              </div>
+              <div
+                v-for="(tokens, prof) in professionTokens"
+                :key="prof"
+                class="cost-bar-row"
+              >
+                <span class="cost-label">{{ prof }}</span>
+                <div class="cost-bar-bg">
+                  <div
+                    class="cost-bar-fill profession"
+                    :style="{ width: Math.min(100, (tokens / Math.max(currentRun.cumulative_tokens, 1)) * 100) + '%' }"
+                  />
+                </div>
+                <span class="cost-value">{{ formatTokens(tokens) }}</span>
+              </div>
+              <div v-if="Object.keys(professionTokens).length === 0" class="empty-state">
+                Per-profession data will appear as steps run
+              </div>
+            </div>
+          </div>
+
+          <!-- Gate approval panel -->
+          <GatePanel
+            v-if="showGatePanel && currentRun.waiting_for_gate"
+            :run-id="currentRun.run_id"
+            :gate="currentGate!"
+            :profession-icon="professionIcon(currentRun.waiting_for_gate.profession_id)"
+            @approve="onApprove"
+            @reject="onReject"
+            @review-in-specs="onReviewInSpecs"
+          />
 
           <!-- Step history -->
           <div class="history-panel">
@@ -200,22 +275,63 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   Play, RefreshCw, Coins, Zap, ChevronRight,
-  AlertCircle, Check, X, Edit3, Trash2, Plus,
+  Trash2, Plus,
 } from 'lucide-vue-next'
 import { useRelay } from '@/composables/useRelay'
+import { useGateInbox } from '@/composables/useGateInbox'
+import { useForgeMode } from '@/composables/useForgeMode'
 import StatusBadge from '@/components/StatusBadge.vue'
+import GatePanel from '@/components/GatePanel.vue'
 
 const {
   runs, currentRun, professions, souls, loading, error,
-  hasActiveGate, budgetUsedPercent,
+  hasActiveGate, budgetUsedPercent, liveLog, professionTokens,
   loadProfessions, loadSouls, loadRuns, loadRun, startRun,
   resolveGate, subscribeToRun,
 } = useRelay()
 
+const gateInbox = useGateInbox()
+const { shouldPauseGate } = useForgeMode()
+
 const showStartModal = ref(false)
+const expandedStepId = ref<string | null>(null)
+
+function toggleStep(stepId: string) {
+  expandedStepId.value = expandedStepId.value === stepId ? null : stepId
+}
+
+function stepIteration(stepId: string): number {
+  if (!currentRun.value) return 0
+  return currentRun.value.step_history.filter((h) => h.step_id === stepId).length
+}
+
+function stepTokens(stepId: string): number {
+  // Derive from profession tokens if available, else estimate from history
+  const step = currentRun.value?.steps.find((s) => s.id === stepId)
+  if (!step) return 0
+  return professionTokens.value[step.profession_id] || 0
+}
+
+const showGatePanel = computed(() => {
+  if (!hasActiveGate.value || !currentRun.value?.waiting_for_gate) return false
+  // In GSD mode, only show gates that are goal-level
+  return shouldPauseGate(currentRun.value.waiting_for_gate.profession_id)
+})
+
+const currentGate = computed(() => {
+  if (!currentRun.value?.waiting_for_gate) return null
+  return {
+    gateId: `${currentRun.value.run_id}-${currentRun.value.waiting_for_gate.step_id}`,
+    runId: currentRun.value.run_id,
+    profession: currentRun.value.waiting_for_gate.profession_id,
+    title: `${currentRun.value.waiting_for_gate.profession_id} needs approval`,
+    since: currentRun.value.waiting_for_gate.since,
+    status: 'pending' as const,
+  }
+})
 const newFlowId = ref('demo-flow')
 const newSteps = ref<{ id: string; profession_id: string; gate: string }[]>([
   { id: 'intake', profession_id: 'assistant', gate: 'auto' },
@@ -273,19 +389,16 @@ async function onStartRun() {
   }
 }
 
-async function onApprove() {
-  if (!currentRun.value) return
-  await resolveGate(currentRun.value.run_id, 'approve')
+async function onApprove(runId: string) {
+  await resolveGate(runId, 'approve')
 }
 
-async function onReject() {
-  if (!currentRun.value) return
-  await resolveGate(currentRun.value.run_id, 'reject', 'Needs revision')
+async function onReject(runId: string) {
+  await resolveGate(runId, 'reject', 'Needs revision')
 }
 
-async function onEdit() {
-  if (!currentRun.value) return
-  await resolveGate(currentRun.value.run_id, 'edit', 'Approved with minor edits')
+function onReviewInSpecs(sectionId: string) {
+  alert(`Navigate to specs section: ${sectionId}`)
 }
 
 function formatTokens(n: number): string {
@@ -553,6 +666,7 @@ function professionIcon(id: string): string {
   border: 1px solid transparent;
   transition: all 0.2s;
   position: relative;
+  cursor: pointer;
 }
 
 .pipeline-step.completed {
@@ -642,6 +756,174 @@ function professionIcon(id: string): string {
 .history-profession { font-weight: 500; color: var(--af-fg); }
 .history-time { color: var(--af-muted); font-family: monospace; font-size: 0.75rem; }
 
+/* Expanded step card */
+.expanded-step-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  background: var(--af-card);
+  border: 1px solid var(--af-border);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  z-index: 20;
+}
+
+.expanded-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.expanded-icon { font-size: 1rem; }
+.expanded-name {
+  flex: 1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--af-fg);
+}
+
+.expanded-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.4rem;
+}
+
+.metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+}
+
+.metric-label { color: var(--af-muted); }
+.metric-value { color: var(--af-fg); font-weight: 500; }
+
+.expanded-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.expanded-hint {
+  font-size: 0.65rem;
+  color: var(--af-muted);
+}
+
+/* Step retry badge */
+.step-retry {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: hsl(var(--af-error));
+  background: hsl(var(--af-error) / 0.1);
+  padding: 0 0.2rem;
+  border-radius: 3px;
+}
+
+/* Live Log */
+.live-log-panel {
+  border: 1px solid var(--af-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.log-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.log-time {
+  color: var(--af-muted);
+  font-family: monospace;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+.log-profession {
+  font-weight: 500;
+  color: var(--af-fg);
+  flex-shrink: 0;
+}
+
+.log-action {
+  color: var(--af-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Cost Breakdown */
+.cost-panel {
+  border: 1px solid var(--af-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.cost-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cost-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.cost-label {
+  width: 50px;
+  color: var(--af-muted);
+  flex-shrink: 0;
+}
+
+.cost-bar-bg {
+  flex: 1;
+  height: 6px;
+  background: hsl(var(--muted-foreground) / 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cost-bar-fill {
+  height: 100%;
+  background: var(--af-primary);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.cost-bar-fill.budget {
+  background: hsl(var(--af-success));
+}
+
+.cost-value {
+  width: 40px;
+  text-align: right;
+  color: var(--af-fg);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
 /* Config sidebar */
 .profession-list, .soul-list {
   display: flex;
@@ -658,6 +940,37 @@ function professionIcon(id: string): string {
 
 .profession-name { font-weight: 500; color: var(--af-fg); }
 .profession-phase { font-size: 0.65rem; color: var(--af-muted); text-transform: capitalize; }
+
+/* ─── Mobile Responsive ───────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .agents-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    overflow-y: auto;
+  }
+
+  .runs-sidebar {
+    max-height: 180px;
+    border-bottom: 1px solid var(--af-border);
+  }
+
+  .config-sidebar {
+    max-height: 180px;
+    border-top: 1px solid var(--af-border);
+  }
+
+  .pipeline-flow {
+    padding: 0.5rem;
+  }
+
+  .expanded-step-card {
+    position: static;
+    transform: none;
+    width: 100%;
+    margin: 0.5rem 0;
+  }
+}
 
 /* Modal */
 .modal-overlay {

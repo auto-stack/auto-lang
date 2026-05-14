@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import type { ForgeMessage, ForgeSession, ForgeSessionSummary, ForgeStreamEvent } from '@/types/forge'
 import type { ToolCallInfo } from '@/types/tool'
+import { useEventRouter, type SSEEvent } from './useEventRouter'
 
 const API_BASE = '/api/forge/chats'
 const STORAGE_KEY = 'autoforge_session_id'
@@ -174,9 +175,21 @@ export function useForge() {
     try {
       const eventSource = new EventSource(`${API_BASE}/${sessionId.value}/stream`)
 
+      const eventRouter = useEventRouter()
+
       eventSource.onmessage = (event) => {
         try {
           const data: ForgeStreamEvent = JSON.parse(event.data)
+
+          // Route cross-cutting events through event router
+          if (data.type === 'gate_reached' || data.type === 'run_completed') {
+            const sseEvent: SSEEvent = {
+              type: data.type,
+              runId: data.run_id || sessionId.value || 'unknown',
+              payload: data as unknown as Record<string, unknown>,
+            }
+            eventRouter.handleEvent(sseEvent, 'chat')
+          }
 
           if (data.type === 'delta' && data.text) {
             assistantMsg.content += data.text

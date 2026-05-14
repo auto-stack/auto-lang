@@ -88,6 +88,26 @@
         </div>
       </div>
       <div class="chat-canvas" ref="chatRef">
+        <!-- Cross-session secretary gate -->
+        <SecretaryMessage
+          v-if="currentSecretary"
+          :gate="currentSecretary"
+          :queue-position="Math.max(0, gateBadgeCount - 1)"
+          @approve="onSecretaryApprove"
+          @reject="onSecretaryReject"
+          @snooze="onSecretarySnooze"
+          @review-in-specs="onReviewInSpecs"
+        />
+
+        <!-- Terminal report card -->
+        <ReportCard
+          v-if="reportData"
+          :report="reportData"
+          @view-full="onViewFullReport"
+          @download="onDownloadReport"
+          @open-files="onOpenChangedFiles"
+        />
+
         <div class="chat-inner">
           <div
             v-for="msg in filteredMessages"
@@ -168,53 +188,14 @@
           </div>
         </div>
       </div>
-      <!-- Approval Gate -->
-      <div v-if="needsApproval" class="approval-gate">
-        <div class="approval-message">
-          <span class="approval-icon">📋</span>
-          <span>Spec drafted. Review the proposed Specs changes below.</span>
-        </div>
-        <div v-if="pendingSpecChanges.length > 0" class="approval-diff-list">
-          <div
-            v-for="change in pendingSpecChanges"
-            :key="change.section_id"
-            class="diff-card"
-          >
-            <div class="diff-header" @click="toggleDiff(change.section_id)">
-              <span class="diff-title">{{ change.section_id }}</span>
-              <span class="diff-status" :class="change.new_status">
-                {{ change.old_status }} → {{ change.new_status }}
-              </span>
-              <ChevronDown v-if="!expandedDiffs.has(change.section_id)" :size="14" class="diff-chevron" />
-              <ChevronUp v-else :size="14" class="diff-chevron" />
-            </div>
-            <div v-if="expandedDiffs.has(change.section_id)" class="diff-body">
-              <div class="diff-side">
-                <div class="diff-label">Before</div>
-                <pre class="diff-content old">{{ change.old_content }}</pre>
-              </div>
-              <div class="diff-side">
-                <div class="diff-label">After</div>
-                <textarea
-                  v-model="editedSpecs[change.section_id]"
-                  class="diff-editor"
-                  rows="6"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="approval-actions">
-          <button class="approve-btn" @click="handleApprove">
-            <Check :size="14" />
-            Approve & Execute
-          </button>
-          <button class="reject-btn" @click="handleReject">
-            <X :size="14" />
-            Reject & Redraft
-          </button>
-        </div>
-      </div>
+      <!-- Current-session GateCard -->
+      <GateCard
+        v-if="needsApproval"
+        title="Spec drafted. Review the proposed changes below."
+        :changes="pendingSpecChanges"
+        @approve="handleApprove"
+        @reject="handleReject"
+      />
       <div v-else class="chats-input-bar">
         <div class="input-inner">
           <div class="input-row">
@@ -263,7 +244,13 @@ import {
   Check, X, Clipboard, RefreshCw, Lightbulb, Cpu, Search, Trash2, Pencil,
 } from 'lucide-vue-next'
 import { useForge } from '@/composables/useForge'
+import { useGateInbox } from '@/composables/useGateInbox'
+import { setEventCallbacks } from '@/composables/useEventRouter'
 import StreamingRenderer from '@/components/StreamingRenderer.vue'
+import GateCard from '@/components/GateCard.vue'
+import SecretaryMessage from '@/components/SecretaryMessage.vue'
+import ReportCard from '@/components/ReportCard.vue'
+import type { ReportData } from '@/components/ReportCard.vue'
 
 const {
   session,
@@ -287,6 +274,9 @@ const {
   renameSession,
   deleteSession,
 } = useForge()
+
+const { currentSecretary, badgeCount: gateBadgeCount, resolveGate: resolveGateInbox, snoozeGate } = useGateInbox()
+const reportData = ref<ReportData | null>(null)
 
 const expandedDiffs = ref<Set<string>>(new Set())
 const editedSpecs = ref<Record<string, string>>({})
@@ -380,13 +370,53 @@ async function sendMessage() {
   await forgeSendMessage(text)
 }
 
-async function handleApprove() {
-  await approveSpec(editedSpecs.value)
+async function handleApprove(editedSpecs?: Record<string, string>) {
+  await approveSpec(editedSpecs)
   await streamResponse()
 }
 
 async function handleReject() {
   await rejectSpec()
+}
+
+// ─── Secretary handlers ─────────────────────────────────────────────────────
+
+async function onSecretaryApprove(gateId: string) {
+  resolveGateInbox(gateId, 'approved')
+}
+
+async function onSecretaryReject(gateId: string) {
+  resolveGateInbox(gateId, 'rejected')
+}
+
+function onSecretarySnooze(gateId: string) {
+  snoozeGate(gateId)
+}
+
+function onReviewInSpecs(sectionId: string) {
+  // Emit or navigate to specs view with section active
+  alert(`Navigate to specs section: ${sectionId}`)
+}
+
+// ─── Report handlers ────────────────────────────────────────────────────────
+
+function onViewFullReport() {
+  alert('View full report in specs')
+}
+
+function onDownloadReport() {
+  if (!reportData.value) return
+  const blob = new Blob([`# Report ${reportData.value.runId}\n\n`], { type: 'text/markdown' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `report-${reportData.value.runId}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function onOpenChangedFiles() {
+  alert('Open changed files')
 }
 
 const editingSessionId = ref<string | null>(null)
@@ -444,6 +474,20 @@ function regenerate(_msg: typeof messages.value[number]) {
 }
 
 onMounted(async () => {
+  // Wire report callback from event router
+  setEventCallbacks({
+    onReport: (payload) => {
+      reportData.value = {
+        runId: (payload.run_id as string) || 'unknown',
+        goalsMet: (payload.goals_met as string) || '—',
+        testsPass: (payload.tests_pass as string) || '—',
+        driftDetected: (payload.drift_detected as string) || 'None',
+        cost: (payload.cost as string) || '—',
+        confidence: (payload.confidence as 'High' | 'Medium' | 'Low') || 'Medium',
+        deliverables: (payload.deliverables as string[]) || [],
+      }
+    },
+  })
   if (!session.value) {
     await resume()
   }
@@ -1032,6 +1076,42 @@ onMounted(async () => {
 @keyframes blink {
   0%, 80%, 100% { opacity: 0; }
   40% { opacity: 1; }
+}
+
+/* ─── Mobile Responsive ───────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .session-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 50;
+    background: var(--af-bg);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .session-sidebar.collapsed {
+    width: 0;
+    margin-left: 0;
+    overflow: hidden;
+  }
+
+  .sidebar-collapse-btn {
+    display: none;
+  }
+
+  .chats-header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .header-search {
+    min-width: 120px;
+  }
+
+  .message.user {
+    max-width: 92%;
+  }
 }
 
 /* ─── Input Bar ───────────────────────────────────────────────────────────── */

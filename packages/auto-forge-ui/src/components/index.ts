@@ -1,2 +1,8 @@
 export { default as StreamingRenderer } from './StreamingRenderer.vue'
 export { default as StreamingTable } from './StreamingTable.vue'
+export { default as GateCard } from './GateCard.vue'
+export { default as SecretaryMessage } from './SecretaryMessage.vue'
+export { default as ReportCard } from './ReportCard.vue'
+export { default as GateBanner } from './GateBanner.vue'
+export { default as GatePanel } from './GatePanel.vue'
+export { default as AutoLinkContent } from './AutoLinkContent.vue'

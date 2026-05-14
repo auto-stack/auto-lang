@@ -64,6 +64,15 @@
 
         <div class="editor-scroll">
           <div v-if="currentSection" class="editor-pane">
+            <!-- Active gate banner for this section -->
+            <GateBanner
+              v-if="sectionGate"
+              :gate="sectionGate"
+              @approve="onGateApprove"
+              @reject="onGateReject"
+              @open-in-chat="onGateOpenInChat"
+            />
+
             <div class="editor-header">
               <h3>{{ currentSection.title }}</h3>
               <div class="editor-header-right">
@@ -117,8 +126,10 @@ import {
   RefreshCw, Search, PanelLeft, BookOpen, Plus, Link2
 } from 'lucide-vue-next'
 import { useSpecs } from '@/composables/useSpecs'
+import { useGateInbox } from '@/composables/useGateInbox'
 import type { SpecsSection, SpecItem, SectionType, Status } from '@/types/specs'
 import StatusBadge from '@/components/StatusBadge.vue'
+import GateBanner from '@/components/GateBanner.vue'
 import { ITEM_TEMPLATES, getDefaultStatus, getNextId } from '@/utils/itemTemplates'
 
 // Category components
@@ -131,6 +142,7 @@ import ReviewCards from '@/components/category/ReviewCards.vue'
 import ReportCards from '@/components/category/ReportCards.vue'
 
 const { document, isLoading, error, loadDocument, saveDocument, findItemById, findSectionByItemId, rebuildRelations: apiRebuildRelations } = useSpecs()
+const { gates: pendingGates, resolveGate: resolveGateInbox } = useGateInbox()
 
 const SPECS_SIDEBAR_KEY = 'autoforge-specs-sidebar-collapsed'
 
@@ -182,6 +194,25 @@ const filteredSections = computed(() => {
 const currentSection = computed(() =>
   document.value?.sections.find((s) => s.id === activeSection.value) ?? null
 )
+
+const sectionGate = computed(() => {
+  if (!currentSection.value) return null
+  return pendingGates.value.find(
+    (g: { sectionId?: string; status: string }) => g.sectionId === currentSection.value!.id && g.status === 'pending'
+  ) ?? null
+})
+
+function onGateApprove(gateId: string) {
+  resolveGateInbox(gateId, 'approved')
+}
+
+function onGateReject(gateId: string) {
+  resolveGateInbox(gateId, 'rejected')
+}
+
+function onGateOpenInChat(gateId: string) {
+  alert(`Open gate ${gateId} in chat view`)
+}
 
 const categoryComponent = computed(() => {
   const type = currentSection.value?.section_type
@@ -633,6 +664,39 @@ onMounted(() => {
 .loading {
   font-size: 0.9rem;
   color: var(--af-muted);
+}
+
+/* ─── Mobile Responsive ───────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .section-nav {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 50;
+    background: var(--af-bg);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .section-nav.collapsed {
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .content-header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .header-search {
+    min-width: 120px;
+  }
+
+  .editor-pane {
+    padding: 0 0.5rem;
+  }
 }
 
 /* Flash animation for jump-to-item */
