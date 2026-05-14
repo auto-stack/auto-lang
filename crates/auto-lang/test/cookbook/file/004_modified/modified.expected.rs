@@ -12,7 +12,7 @@ fn main() {
         if entry.file_type().is_file() {
             let meta = fs::metadata(entry.path()).unwrap();
             let modified = meta.modified().unwrap();
-            println!("{:?}: {:?}", entry.path().display(), modified);
+            println!("{:?}: {}", entry.path().display(), modified);
         }
     }
 }

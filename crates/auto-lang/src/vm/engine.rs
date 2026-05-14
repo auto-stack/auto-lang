@@ -4509,9 +4509,93 @@ impl AutoVM {
                                     }
                                 }
                             }
+                            "sort" | "dedup" | "reverse" => {
+                                // In-place sort/dedup/reverse of List
+                                #[cfg(feature = "nanbox")]
+                                let arr_key = if auto_val::is_object(receiver_nv) {
+                                    auto_val::decode_object(receiver_nv) as u64
+                                } else if auto_val::is_i32(receiver_nv) {
+                                    auto_val::decode_i32(receiver_nv) as u64
+                                } else {
+                                    0u64
+                                };
+                                #[cfg(not(feature = "nanbox"))]
+                                let arr_key = receiver as u64;
+                                // Try arrays registry first (most common for List)
+                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
+                                    let mut arr = arr_ref.write().unwrap();
+                                    match method_name.as_str() {
+                                        "sort" => {
+                                            arr.sort_by(|a, b| {
+                                                match (a, b) {
+                                                    (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
+                                                    (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
+                                                    (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                                    (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                                    (auto_val::Value::Bool(x), auto_val::Value::Bool(y)) => x.cmp(y),
+                                                    (auto_val::Value::Str(x), auto_val::Value::Str(y)) => x.to_string().cmp(&y.to_string()),
+                                                    (auto_val::Value::String(x), auto_val::Value::String(y)) => x.as_str().cmp(y.as_str()),
+                                                    _ => std::cmp::Ordering::Equal,
+                                                }
+                                            });
+                                        }
+                                        "dedup" => { arr.dedup(); }
+                                        "reverse" => { arr.reverse(); }
+                                        _ => {}
+                                    }
+                                } else if let Some(obj) = self.heap_objects.get(&arr_key) {
+                                    let mut guard = obj.write().unwrap();
+                                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<i32>>() {
+                                        match method_name.as_str() {
+                                            "sort" => { list.elems.sort(); }
+                                            "dedup" => { list.elems.dedup(); }
+                                            "reverse" => { list.elems.reverse(); }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                                // Pop args, leave receiver on stack as return value
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..arg_count { task.ram.pop_nv(); } }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..arg_count { task.ram.pop_i32(); } }
+                            }
+                            "sort_by" | "sort_by_key" => {
+                                // In-place sort with comparator — pop closure arg, use default sort for now
+                                #[cfg(feature = "nanbox")]
+                                let arr_key = if auto_val::is_object(receiver_nv) {
+                                    auto_val::decode_object(receiver_nv) as u64
+                                } else {
+                                    auto_val::decode_i32(receiver_nv) as u64
+                                };
+                                #[cfg(not(feature = "nanbox"))]
+                                let arr_key = receiver as u64;
+                                // Pop args (closure)
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..arg_count { task.ram.pop_nv(); } }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..arg_count { task.ram.pop_i32(); } }
+                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
+                                    let mut arr = arr_ref.write().unwrap();
+                                    arr.sort_by(|a, b| {
+                                        match (a, b) {
+                                            (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
+                                            (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
+                                            (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                            (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                            _ => std::cmp::Ordering::Equal,
+                                        }
+                                    });
+                                } else if let Some(obj) = self.heap_objects.get(&arr_key) {
+                                    let mut guard = obj.write().unwrap();
+                                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<i32>>() {
+                                        list.elems.sort();
+                                    }
+                                }
+                            }
                             _ => {
                                 // Identity operations: return receiver unchanged, only pop args
-                                if matches!(method_name.as_str(), "collect" | "rev" | "filter_map" | "sort" | "sort_by_key" | "dedup" | "flatten" | "into_iter" | "iter" | "iter_mut" | "par_iter" | "par_iter_mut" | "for_each" | "map" | "filter" | "find" | "any" | "all" | "reduce" | "fold") {
+                                if matches!(method_name.as_str(), "collect" | "rev" | "filter_map" | "flatten" | "into_iter" | "iter" | "iter_mut" | "par_iter" | "par_iter_mut" | "for_each" | "map" | "filter" | "find" | "any" | "all" | "reduce" | "fold") {
                                     // Pop args only (not receiver) — receiver stays as return value
                                     #[cfg(feature = "nanbox")]
                                     { for _ in 0..arg_count { task.ram.pop_nv(); } }
@@ -5564,6 +5648,10 @@ impl AutoVM {
                         } else {
                             a_val == b_val
                         }
+                    } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
+                        auto_val::decode_f64(a_nv) == auto_val::decode_f64(b_nv)
+                    } else if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
+                        auto_val::decode_f32(a_nv) == auto_val::decode_f32(b_nv)
                     } else {
                         false
                     };

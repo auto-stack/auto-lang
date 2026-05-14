@@ -17,5 +17,5 @@ fn main() {
 
     let distance = earth_radius_kilometer * central_angle
 
-    print(f"Distance between Paris and London on the surface of Earth is $distance kilometers")
+    assert((distance - 343.6).abs() < 1.0)
 }

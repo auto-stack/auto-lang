@@ -14,10 +14,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     writer.write_record(vec!["name", "age", "decade"])?;
     for result in reader.records() {
         let record = result?;
-        let name = record.get(0).unwrap().to_string();
-        let age: u32 = record.get(1).unwrap().parse().unwrap();
-        let decade: i32 = (age / 10 * 10) as i32;
-        writer.write_record(&[name.as_str(), age.to_string().as_str(), decade.to_string().as_str()])?;
+        let name = record.get(0)?;
+        let age = record.get(1)?.parse()?;
+        let decade: i32 = age / 10 * 10;
+        writer.write_record(vec![name, age.to_string(), decade.to_string()])?;
     }
     let output = String::from_utf8(writer.into_inner()?)?;
     println!("{}", output);

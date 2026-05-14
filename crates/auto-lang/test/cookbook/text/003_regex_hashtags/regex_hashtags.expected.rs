@@ -10,7 +10,9 @@ fn main() {
 
     let re = Regex::new("#\\w+").unwrap();
     let text: String = "Love #rust and #programming!".to_string();
-    for cap in re.captures_iter(&text) {
-        println!("Hashtag: {}", &cap[0]);
+    let matches = re.captures_iter(text);
+    for i in 0..(matches.len() as i32) {
+        let cap = matches[(i) as usize].clone();
+        println!("Hashtag: {}", cap[0].clone());
     }
 }

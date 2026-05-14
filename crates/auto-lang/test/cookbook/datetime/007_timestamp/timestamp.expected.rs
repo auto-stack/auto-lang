@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 use chrono::Utc;
 fn main() {
-    let dt = chrono::DateTime::from_timestamp(1700000000, 0).unwrap();
+    let dt = Utc::timestamp_opt(1700000000, 0).single().unwrap();
     println!("From timestamp: {}", dt);
     let now = Utc::now();
     let ts = now.timestamp();

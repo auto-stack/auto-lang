@@ -1,8 +1,6 @@
-// Process monitoring demo
+// Process output capture
 fn main() {
-    var output = List.new()
-    output.push("Starting...")
-    output.push("Processing...")
-    output.push("Done")
-    for line in output { print(line) }
+    let result = Command.new("echo").arg("hello").output()
+    let stdout = result.stdout
+    assert(stdout.len() > 0)
 }

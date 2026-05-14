@@ -13,7 +13,7 @@ fn main() {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
             let meta = fs::metadata(entry.path()).unwrap();
-            total_size = total_size + (meta.len() as u32);
+            total_size = total_size + (meta.len() as i32)
         }
     }
     println!("Total size: {} bytes", total_size);

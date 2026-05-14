@@ -6,11 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let mut output = Vec::new();
-    output.push("Starting...");
-    output.push("Processing...");
-    output.push("Done");
-    for line in output {
-        println!("{}", line);
-    }
+    let result = Command::new("echo").arg("hello").output();
+    let stdout = result.stdout;
+    assert!((stdout.len() as i32) > 0);
 }

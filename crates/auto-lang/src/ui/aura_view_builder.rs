@@ -416,6 +416,8 @@ impl<'a> AuraViewBuilder<'a> {
 
         let on_change = events.get("onchange")
             .or_else(|| events.get("change"))
+            .or_else(|| events.get("oninput"))
+            .or_else(|| events.get("input"))
             .map(|event| self.event_to_message(&event.handler));
 
         let mut builder = View::<DynamicMessage>::input(placeholder).value(value);
@@ -684,7 +686,8 @@ fn extract_handler_name(pattern: &str) -> &str {
 fn value_to_display_string(value: &Value) -> String {
     match value {
         Value::Int(i) => i.to_string(),
-        Value::Float(f) => format!("{:.2}", f),
+        Value::Float(f) => format!("{}", f),
+        Value::Double(f) => format!("{}", f),
         Value::Bool(b) => b.to_string(),
         Value::Str(s) => s.to_string(),
         Value::String(s) => s.as_str().to_string(),

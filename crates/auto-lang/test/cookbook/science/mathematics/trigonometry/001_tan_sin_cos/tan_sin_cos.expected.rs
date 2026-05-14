@@ -11,6 +11,9 @@ fn main() {
     let a = x.tan();
     let b = x.sin() / x.cos();
 
-    println!("tan({}) = {}", x, a);
-    println!("sin({})/cos({}) = {}", x, x, b);
+
+    assert!(a != 0.0);
+    assert!(b != 0.0);
+
+
 }

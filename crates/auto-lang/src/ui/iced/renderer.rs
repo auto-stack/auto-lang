@@ -678,6 +678,8 @@ const HOT_RELOAD_EVENT: &str = "__hot_reload";
 pub struct IcedMessage {
     pub widget: String,
     pub event: String,
+    /// Carries the text value from input `on_input` callbacks.
+    pub input_value: Option<String>,
 }
 
 impl IcedMessage {
@@ -692,10 +694,12 @@ impl IcedMessage {
             } => IcedMessage {
                 widget: widget_name.clone(),
                 event: event_name.clone(),
+                input_value: None,
             },
             DynamicMessage::String(name) => IcedMessage {
                 widget: String::new(),
                 event: name.clone(),
+                input_value: None,
             },
         }
     }
@@ -883,12 +887,16 @@ fn hot_reload_tick() -> iced::Subscription<IcedMessage> {
     iced::time::every(std::time::Duration::from_millis(500)).map(|_| IcedMessage {
         widget: String::new(),
         event: HOT_RELOAD_EVENT.to_string(),
+        input_value: None,
     })
 }
 
 /// Wrapper holding `DynamicComponent` as iced's application state.
 struct DynamicState {
     component: DynamicComponent,
+    /// Tracks current input text values: event_name -> current_text.
+    /// Used to keep text inputs editable between re-renders.
+    input_values: std::collections::HashMap<String, String>,
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -917,7 +925,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
     let boot = move || -> DynamicState {
         let comp = init.borrow_mut().take()
             .expect("boot should only be called once");
-        DynamicState { component: comp }
+        DynamicState { component: comp, input_values: std::collections::HashMap::new() }
     };
 
     let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
@@ -943,8 +951,18 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             return iced::Task::none();
         }
 
-        let dyn_msg = msg.to_dynamic();
-        state.component.on(dyn_msg);
+        let event_name = {
+            let name = msg.event.trim_start_matches('.');
+            if let Some(pos) = name.rfind("::") { &name[pos + 2..] } else { name }
+        }.to_string();
+
+        // If this message carries input text, track it and update state
+        if let Some(text) = &msg.input_value {
+            state.input_values.insert(event_name.clone(), text.clone());
+            state.component.on_with_input(&event_name, msg.input_value);
+        } else {
+            state.component.on_with_input(&event_name, None);
+        }
         iced::Task::none()
     };
 
@@ -972,9 +990,269 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
 /// This is a standalone function (not a closure) so that Rust can correctly
 /// infer the higher-ranked lifetime bound `for<'a> ViewFn<'a, ...>`.
 fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
-    let view = state.component.view();
+    let mut view = state.component.view();
+
+    // Patch input values: for inputs with tracked text, replace the value
+    // with the user-typed text so the input stays editable.
+    if !state.input_values.is_empty() {
+        patch_input_values(&mut view, &state.input_values);
+    }
+
     let converted = convert_view_messages(view);
-    converted.into_iced()
+    render_dynamic_view(converted)
+}
+
+/// Render a `View<IcedMessage>` tree into Iced elements, with input text capture.
+///
+/// This is similar to `IntoIcedElement` but handles the `Input` variant specially:
+/// the `on_input` callback captures the typed text and includes it in the `IcedMessage`.
+fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static, IcedMessage> {
+    match view {
+        AbstractView::Empty => text("").into(),
+
+        AbstractView::Text { content, style } => {
+            let mut text_widget = text(content);
+            if let Some(ref s) = style {
+                let iced_style = IcedStyle::from_style(s);
+                if let Some(ref font_size) = iced_style.font_size {
+                    text_widget = text_widget.size(font_size_to_f32(font_size));
+                }
+                if let Some(color) = iced_style.text_color {
+                    text_widget = text_widget.color(color);
+                }
+            }
+            text_widget.into()
+        }
+
+        AbstractView::Button { label, onclick, style } => {
+            let mut text_widget = text(label);
+            if let Some(ref s) = style {
+                let iced_style = IcedStyle::from_style(s);
+                if let Some(ref font_size) = iced_style.font_size {
+                    text_widget = text_widget.size(font_size_to_f32(font_size));
+                }
+                if let Some(color) = iced_style.text_color {
+                    text_widget = text_widget.color(color);
+                }
+            }
+            button(text_widget)
+                .on_press(onclick)
+                .into()
+        }
+
+        AbstractView::Column { children, spacing, padding, style } => {
+            let eff_spacing = effective_spacing(spacing, style.as_ref());
+            let eff_padding = effective_padding(padding, style.as_ref());
+            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
+
+            let mut col_widget = column([]);
+            col_widget = col_widget.spacing(eff_spacing);
+            col_widget = col_widget.padding(eff_padding);
+
+            if let Some(ref is) = iced_style {
+                if let Some(ref w) = is.width { col_widget = col_widget.width(iced_length(w)); }
+                if let Some(ref h) = is.height { col_widget = col_widget.height(iced_length(h)); }
+                if let Some(align) = is.align_items {
+                    col_widget = col_widget.align_x(iced_alignment_horizontal(align));
+                }
+            }
+
+            for child in children {
+                col_widget = col_widget.push(render_dynamic_view(child));
+            }
+
+            let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
+            let bg_color = iced_style.as_ref().and_then(|is| is.background_color);
+
+            if needs_justify || bg_color.is_some() {
+                let mut cont = container(col_widget);
+                if let Some(ref is) = iced_style {
+                    if let Some(justify) = is.justify_content {
+                        if matches!(justify, IcedJustify::Center) {
+                            cont = cont.center_y(iced::Length::Fill);
+                        }
+                    }
+                }
+                if let Some(bg) = bg_color {
+                    cont = cont.style(move |_| container::Style {
+                        background: Some(iced::Background::Color(bg)),
+                        ..Default::default()
+                    });
+                }
+                return cont.into();
+            }
+
+            col_widget.into()
+        }
+
+        AbstractView::Row { children, spacing, padding, style } => {
+            let eff_spacing = effective_spacing(spacing, style.as_ref());
+            let eff_padding = effective_padding(padding, style.as_ref());
+            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
+
+            let mut row_widget = row([]);
+            row_widget = row_widget.spacing(eff_spacing);
+            row_widget = row_widget.padding(eff_padding);
+
+            if let Some(ref is) = iced_style {
+                if let Some(ref w) = is.width { row_widget = row_widget.width(iced_length(w)); }
+                if let Some(ref h) = is.height { row_widget = row_widget.height(iced_length(h)); }
+                if let Some(align) = is.align_items {
+                    row_widget = row_widget.align_y(iced_alignment_vertical(align));
+                }
+            }
+
+            for child in children {
+                row_widget = row_widget.push(render_dynamic_view(child));
+            }
+
+            let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
+            let bg_color = iced_style.as_ref().and_then(|is| is.background_color);
+
+            if needs_justify || bg_color.is_some() {
+                let mut cont = container(row_widget);
+                if let Some(ref is) = iced_style {
+                    if let Some(justify) = is.justify_content {
+                        if matches!(justify, IcedJustify::Center) {
+                            cont = cont.center_x(iced::Length::Fill);
+                        }
+                    }
+                }
+                if let Some(bg) = bg_color {
+                    cont = cont.style(move |_| container::Style {
+                        background: Some(iced::Background::Color(bg)),
+                        ..Default::default()
+                    });
+                }
+                return cont.into();
+            }
+
+            row_widget.into()
+        }
+
+        // KEY: Input with text capture — on_input carries the typed text
+        AbstractView::Input { placeholder, value, on_change, width, password: _, style } => {
+            let mut input_widget = text_input(&placeholder, &value);
+
+            if let Some(ref s) = style {
+                let iced_style = IcedStyle::from_style(s);
+                let effective_width = iced_style.width.map(|w| match w {
+                    crate::ui::style::iced_adapter::IcedSize::Fixed(f) => Some(f as u16),
+                    crate::ui::style::iced_adapter::IcedSize::Full => None,
+                }).unwrap_or(width);
+                if let Some(w) = effective_width {
+                    if w > 0 { input_widget = input_widget.width(iced::Length::Fixed(w as f32)); }
+                }
+                if let Some(ref w) = iced_style.width {
+                    if matches!(w, crate::ui::style::iced_adapter::IcedSize::Full) && width.is_none() {
+                        input_widget = input_widget.width(iced::Length::Fill);
+                    }
+                }
+            } else if let Some(w) = width {
+                if w > 0 { input_widget = input_widget.width(iced::Length::Fixed(w as f32)); }
+            }
+
+            if let Some(msg) = on_change {
+                // Capture the typed text and include it in the message
+                let msg_clone = msg.clone();
+                input_widget.on_input(move |text| {
+                    IcedMessage {
+                        widget: msg_clone.widget.clone(),
+                        event: msg_clone.event.clone(),
+                        input_value: Some(text),
+                    }
+                }).into()
+            } else {
+                input_widget.into()
+            }
+        }
+
+        AbstractView::Container { child, padding, width, height, center_x, center_y, style } => {
+            use iced::widget::container;
+            let mut container_widget = container(render_dynamic_view(*child));
+            let eff_padding = if let Some(ref s) = style {
+                let iced_style = IcedStyle::from_style(s);
+                iced_style.padding.or(if padding > 0 { Some(padding as f32) } else { None })
+            } else if padding > 0 { Some(padding as f32) } else { None };
+            if let Some(p) = eff_padding { container_widget = container_widget.padding(p); }
+            if let Some(w) = width { container_widget = container_widget.width(iced::Length::Fixed(w as f32)); }
+            if let Some(h) = height { container_widget = container_widget.height(iced::Length::Fixed(h as f32)); }
+            if center_x { container_widget = container_widget.center_x(iced::Length::Fill); }
+            if center_y { container_widget = container_widget.center_y(iced::Length::Fill); }
+            container_widget.into()
+        }
+
+        AbstractView::Scrollable { child, width, height, style: _ } => {
+            use iced::widget::scrollable;
+            let mut scrollable_widget = scrollable(render_dynamic_view(*child));
+            if let Some(w) = width { scrollable_widget = scrollable_widget.width(iced::Length::Fixed(w as f32)); }
+            if let Some(h) = height { scrollable_widget = scrollable_widget.height(iced::Length::Fixed(h as f32)); }
+            scrollable_widget.into()
+        }
+
+        AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
+            let checkbox_widget = checkbox(is_checked);
+            let checkbox_with_handler = if let Some(msg) = on_toggle {
+                let msg = msg.clone();
+                checkbox_widget.on_toggle(move |_| msg.clone())
+            } else { checkbox_widget };
+            let mut label_widget = text(label);
+            if let Some(ref s) = style {
+                let iced_style = IcedStyle::from_style(s);
+                if let Some(ref fs) = iced_style.font_size { label_widget = label_widget.size(font_size_to_f32(fs)); }
+                if let Some(c) = iced_style.text_color { label_widget = label_widget.color(c); }
+            }
+            row![checkbox_with_handler, label_widget].spacing(4).into()
+        }
+
+        // Fall back to the generic renderer for other variants
+        _ => {
+            // For variants not handled above (Radio, Select, Slider, etc.),
+            // use the generic renderer
+            view.into_iced()
+        }
+    }
+}
+
+/// Recursively patch input View values with tracked user-typed text.
+fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &std::collections::HashMap<String, String>) {
+    match view {
+        AbstractView::Input { value, on_change, .. } => {
+            if let Some(msg) = on_change {
+                let event_name = match msg {
+                    DynamicMessage::Typed { event_name, .. } => event_name.clone(),
+                    DynamicMessage::String(name) => name.clone(),
+                };
+                let clean_name = {
+                    let n = event_name.trim_start_matches('.');
+                    if let Some(pos) = n.rfind("::") { n[pos + 2..].to_string() } else { n.to_string() }
+                };
+                if let Some(text) = input_values.get(&clean_name) {
+                    *value = text.clone();
+                }
+            }
+        }
+        AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => {
+            for child in children.iter_mut() {
+                patch_input_values(child, input_values);
+            }
+        }
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
+            patch_input_values(child, input_values);
+        }
+        AbstractView::List { items, .. } => {
+            for item in items.iter_mut() {
+                patch_input_values(item, input_values);
+            }
+        }
+        AbstractView::Table { headers, rows, .. } => {
+            for h in headers.iter_mut() { patch_input_values(h, input_values); }
+            for row in rows.iter_mut() {
+                for cell in row.iter_mut() { patch_input_values(cell, input_values); }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Convert IcedSize to iced::Length

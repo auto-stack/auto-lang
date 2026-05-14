@@ -14,8 +14,7 @@ fn main() {
     for i in 0..100 {
         v.push(i);
     }
-    let mut rng = thread_rng();
-    v.shuffle(&mut rng);
+    v.shuffle(thread_rng());
     v.par_sort();
-    println!("Sorted first: {}, last: {}", v[0], v[99]);
+    println!("Sorted first: {}, last: {}", v[0].clone(), v[99].clone());
 }

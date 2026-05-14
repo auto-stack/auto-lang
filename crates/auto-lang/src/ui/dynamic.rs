@@ -105,6 +105,11 @@ pub struct DynamicComponent {
     /// Handler AST bodies: event_name -> AST statements.
     /// Used by call_handler_ast() for direct AST interpretation.
     handler_asts: HashMap<String, Vec<crate::ast::Stmt>>,
+
+    /// Input-to-state mapping: event_name -> state_field_name.
+    /// When an input fires its oninput/onchange event, the typed text
+    /// is written to the mapped state field before the handler runs.
+    input_state_map: HashMap<String, String>,
 }
 
 impl fmt::Debug for DynamicComponent {
@@ -145,6 +150,9 @@ impl DynamicComponent {
         // 3. Extract handler AST bodies for direct interpretation
         let handler_asts = extract_handler_asts(widget);
 
+        // 4. Extract input-to-state mapping for text input handling
+        let input_state_map = extract_input_state_map(&widget.view_tree);
+
         Ok(Self {
             bridge,
             view_template,
@@ -153,6 +161,7 @@ impl DynamicComponent {
             source_path: None,
             last_modified: None,
             handler_asts,
+            input_state_map,
         })
     }
 
@@ -174,6 +183,7 @@ impl DynamicComponent {
         let view_template = widget.view_tree.clone();
         let widget_name = widget.name.clone();
         let handler_asts = extract_handler_asts(widget);
+        let input_state_map = extract_input_state_map(&widget.view_tree);
 
         Ok(Self {
             bridge,
@@ -183,6 +193,7 @@ impl DynamicComponent {
             source_path: None,
             last_modified: None,
             handler_asts,
+            input_state_map,
         })
     }
 
@@ -327,6 +338,7 @@ impl DynamicComponent {
         self.view_template = new_widget.view_tree.clone();
         self.widget_name = new_widget.name.clone();
         self.handler_asts = extract_handler_asts(new_widget);
+        self.input_state_map = extract_input_state_map(&new_widget.view_tree);
         self.dirty = true;
 
         Ok(report)
@@ -418,6 +430,48 @@ impl Component for DynamicComponent {
     }
 }
 
+impl DynamicComponent {
+    /// Handle an event with an optional input text value.
+    ///
+    /// When `input_value` is `Some(text)`, looks up the associated state field
+    /// from `input_state_map` and writes the text as the field's value before
+    /// running the handler. This enables two-way binding for text inputs.
+    pub fn on_with_input(&mut self, event_name: &str, input_value: Option<String>) {
+        // If this event comes from an input, update the bound state field first
+        if let Some(text) = &input_value {
+            if let Some(state_field) = self.input_state_map.get(event_name) {
+                let value = parse_input_value(text);
+                let _ = self.bridge.write_state(state_field, value);
+            }
+        }
+
+        // Run the handler
+        if let Some(stmts) = self.handler_asts.get(event_name) {
+            let _ = self.bridge.call_handler_ast(event_name, stmts);
+        } else {
+            let _ = self.bridge.call_handler(event_name, &[]);
+        }
+        self.dirty = true;
+    }
+}
+
+/// Parse a string input value into the best-matching Value type.
+fn parse_input_value(text: &str) -> auto_val::Value {
+    if text.is_empty() {
+        return auto_val::Value::str("");
+    }
+    if let Ok(i) = text.parse::<i32>() {
+        return auto_val::Value::Int(i);
+    }
+    if let Ok(f) = text.parse::<f64>() {
+        return auto_val::Value::Float(f);
+    }
+    if text == "true" || text == "false" {
+        return auto_val::Value::Bool(text == "true");
+    }
+    auto_val::Value::str(text)
+}
+
 // ============================================================================
 // Handler AST extraction
 // ============================================================================
@@ -444,6 +498,58 @@ fn clean_handler_name(pattern: &str) -> String {
         name[pos + 2..].to_string()
     } else {
         name.to_string()
+    }
+}
+
+/// Scan the view tree for `input` elements with `value` from StateRef and an
+/// `oninput`/`onchange` event. Returns a map of event_name -> state_field_name.
+fn extract_input_state_map(view_tree: &crate::aura::AuraNode) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    scan_node_for_inputs(view_tree, &mut map);
+    map
+}
+
+fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, String>) {
+    use crate::aura::{AuraNode, AuraPropValue, AuraExpr};
+    match node {
+        AuraNode::Element { tag, props, events, children } => {
+            if tag == "input" {
+                // Find value prop that is a StateRef
+                let state_field = props.get("value").and_then(|v| match v {
+                    AuraPropValue::Expr(AuraExpr::StateRef(name)) => Some(name.clone()),
+                    _ => None,
+                });
+                // Find oninput/onchange event
+                let event_name = events.get("oninput")
+                    .or_else(|| events.get("onchange"))
+                    .or_else(|| events.get("input"))
+                    .or_else(|| events.get("change"))
+                    .map(|e| clean_handler_name(&e.handler));
+
+                if let (Some(field), Some(event)) = (state_field, event_name) {
+                    map.insert(event, field);
+                }
+            }
+            for child in children {
+                scan_node_for_inputs(child, map);
+            }
+        }
+        AuraNode::ForLoop { body, .. } => {
+            for child in body {
+                scan_node_for_inputs(child, map);
+            }
+        }
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            for child in then_body {
+                scan_node_for_inputs(child, map);
+            }
+            if let Some(else_children) = else_body {
+                for child in else_children {
+                    scan_node_for_inputs(child, map);
+                }
+            }
+        }
+        _ => {}
     }
 }
 

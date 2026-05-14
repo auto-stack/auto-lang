@@ -12,7 +12,7 @@ fn main() {
         v.push(i);
     }
     let target: i32 = 7;
-    let found = v.par_iter().find_any(|&&x| x == target);
+    let found = v.par_iter().find_any(|x| x == target);
     match found {
         Some(val) => println!("Found: {}", val),
         None => println!("Not found"),

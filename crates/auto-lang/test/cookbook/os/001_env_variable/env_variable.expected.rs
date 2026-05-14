@@ -6,7 +6,10 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let config_path = a2r_std::env::get_or("CONFIG", "/etc/myapp/config");
-    let config = File::read_text(config_path);
-    println!("Config: {}", config);
+    env.insert("AUTO_TEST_240", "hello");
+    let val = a2r_std::env::get_or("AUTO_TEST_240", "default");
+    assert!(val == "hello");
+
+    let missing = a2r_std::env::get_or("AUTO_NONEXISTENT_240", "fallback");
+    assert!(missing == "fallback");
 }

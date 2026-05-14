@@ -8,8 +8,7 @@ use auto_lang::a2r_std::*;
 use std::error::Error;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let msg: String = "hello".to_string();
-    let result: Result<String, &str> = Ok(msg);
+    let result = Ok(msg.to_string());
     let val = result?;
-    println!("{:?}", val);
-    Ok(())
+    assert!(val == "hello")
 }

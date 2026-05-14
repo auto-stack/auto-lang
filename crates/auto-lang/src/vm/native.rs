@@ -1607,14 +1607,30 @@ pub fn shim_list_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     Ok(())
 }
 
-/// Sort a list of i32 values in-place.
+/// Sort a list in-place.
 /// Stack: list_id -> void
 pub fn shim_list_sort(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(obj) = vm.get_heap_object(list_id) {
+    // Try arrays registry first (most common path for List created by CREATE_ARRAY)
+    if let Some(arr_ref) = vm.arrays.get(&list_id) {
+        let mut arr = arr_ref.write().unwrap();
+        arr.sort_by(|a, b| {
+            match (a, b) {
+                (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
+                (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
+                (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                (auto_val::Value::Bool(x), auto_val::Value::Bool(y)) => x.cmp(y),
+                (auto_val::Value::Str(x), auto_val::Value::Str(y)) => x.to_string().cmp(&y.to_string()),
+                (auto_val::Value::String(x), auto_val::Value::String(y)) => x.as_str().cmp(y.as_str()),
+                (auto_val::Value::VmRef(x), auto_val::Value::VmRef(y)) => x.id.cmp(&y.id),
+                _ => std::cmp::Ordering::Equal,
+            }
+        });
+    } else if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             list.elems.sort();
@@ -1634,7 +1650,19 @@ pub fn shim_list_sort_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     let _closure_id = task.ram.pop_i32();
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(obj) = vm.get_heap_object(list_id) {
+    if let Some(arr_ref) = vm.arrays.get(&list_id) {
+        let mut arr = arr_ref.write().unwrap();
+        arr.sort_by(|a, b| {
+            match (a, b) {
+                (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
+                (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
+                (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                (auto_val::Value::VmRef(x), auto_val::Value::VmRef(y)) => x.id.cmp(&y.id),
+                _ => std::cmp::Ordering::Equal,
+            }
+        });
+    } else if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             list.elems.sort();

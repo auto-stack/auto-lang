@@ -5,9 +5,11 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use ansi_term::Colour;
+use ansi_term::Colour::Red;
+use ansi_term::Colour::Green;
+use ansi_term::Colour::Yellow;
 fn main() {
-    println!("{}", Colour::Red.paint("Error: something went wrong"));
-    println!("{}", Colour::Green.paint("Success: operation completed"));
-    println!("{}", Colour::Yellow.paint("Warning: check your input"));
+    println!("{}", Red::paint("Error: something went wrong"));
+    println!("{}", Green::paint("Success: operation completed"));
+    println!("{}", Yellow::paint("Warning: check your input"));
 }

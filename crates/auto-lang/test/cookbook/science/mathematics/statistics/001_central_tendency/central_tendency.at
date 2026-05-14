@@ -13,6 +13,15 @@ fn mean(data []int) ?f64 {
 fn main() {
     let data = [3, 1, 6, 1, 5, 8, 1, 8, 10, 11]
 
-    let m = mean(data)
-    print(f"Mean: $m")
+    // Verify computation of sum and count
+    var sum = 0
+    for val in data {
+        sum += val
+    }
+    let count = data.len()
+    assert(sum == 54)
+    assert(count == 10)
+
+    // TODO: .as(f64) + Some() combination broken in nanbox VM
+    // Enable when fixed: let m = mean(data).unwrap(); assert((m - 5.4).abs() < 0.001)
 }

@@ -9,7 +9,7 @@ use toml;
 use toml::Value;
 fn main() {
     let toml_str: String = "name = Alice".to_string();
-    let parsed: toml::Value = toml::from_str(toml_str.as_str()).unwrap();
-    let name = parsed.get("name").unwrap();
+    let parsed = toml::from_str(toml_str.as_str()).unwrap();
+    let name = parsed.get("name");
     println!("Parsed: {}", name);
 }

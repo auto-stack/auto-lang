@@ -9,5 +9,9 @@ use std::vec::Vec;
 fn main() {
     let mut vec: Vec<i32> = vec![1, 5, 10, 2, 15];
     vec.sort();
-    println!("{:?}", vec);
+    assert!(vec[0].clone() == 1);
+    assert!(vec[1].clone() == 2);
+    assert!(vec[2].clone() == 5);
+    assert!(vec[3].clone() == 10);
+    assert!(vec[4].clone() == 15);
 }

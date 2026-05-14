@@ -3,8 +3,8 @@ use.rust std::cell::RefCell
 fn main() {
     let cell = RefCell.new(0)
     let current = cell.borrow()
-    print(f"Initial: ${current}")
+    assert(current == 0)
     cell.replace(42)
     let updated = cell.borrow()
-    print(f"Updated: ${updated}")
+    assert(updated == 42)
 }

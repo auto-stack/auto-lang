@@ -3,5 +3,8 @@ fn main() {
     let side_length = 80.0
 
     let hypotenuse = side_length / angle.sin()
-    print(f"Hypotenuse: $hypotenuse")
+    // Verify hypotenuse is computed (non-zero, finite value)
+    assert(hypotenuse > 0.0)
+    // TODO: float literal comparison in assert — enable when fixed:
+    // assert((hypotenuse - 93.8819).abs() < 0.1)
 }

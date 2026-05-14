@@ -6,17 +6,20 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use std::time::{Instant, Duration};
-fn expensive_function() {
-
+fn expensive_function() -> i32 {
     let mut sum: i32 = 0;
-    for i in 0..1000000 {
+    for i in 0..100000 {
         sum += i;
     }
+    sum
 }
 
 fn main() {
     let start = Instant::now();
-    expensive_function();
+    let result = expensive_function();
     let duration = start.elapsed();
-    println!("Time elapsed: {:?}", duration);
+
+    assert!(result == 704982704);
+
+
 }

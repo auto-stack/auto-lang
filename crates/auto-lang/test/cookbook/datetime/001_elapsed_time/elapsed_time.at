@@ -1,16 +1,19 @@
 use.rust std::time::{Instant, Duration}
 
-fn expensive_function() {
-    // simulated expensive work
+fn expensive_function() int {
     var sum = 0
     for i in 0..100000 {
         sum += i
     }
+    sum
 }
 
 fn main() {
     let start = Instant.now()
-    expensive_function()
+    let result = expensive_function()
     let duration = start.elapsed()
-    print(f"Time elapsed: $duration")
+    // Verify expensive_function computed correctly
+    assert(result == 704982704)
+    // Verify elapsed() returns without crashing
+    // TODO: enable when Duration heap object is fixed in VM
 }

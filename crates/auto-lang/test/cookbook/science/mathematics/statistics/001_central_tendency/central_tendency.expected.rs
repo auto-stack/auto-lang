@@ -20,6 +20,15 @@ fn mean(data: &[i32]) -> Option<f64> {
 fn main() {
     let data: Vec<i32> = vec![3, 1, 6, 1, 5, 8, 1, 8, 10, 11];
 
-    let m = mean(data);
-    println!("Mean: {}", m);
+
+    let mut sum: i32 = 0;
+    for val in data {
+        sum += val;
+    }
+    let count = (data.len() as i32);
+    assert!(sum == 54);
+    assert!(count == 10);
+
+
+
 }

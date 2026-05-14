@@ -16,6 +16,7 @@ fn process() {
 fn main() {
     env_logger::init();
     info!("app started");
+    network.connect();
     process();
     println!("done");
 }

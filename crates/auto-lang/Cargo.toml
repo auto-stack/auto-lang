@@ -210,6 +210,10 @@ name = "range_expr"
 path = "test/a2r/05_expressions/006_range_expr/range_expr.expected.rs"
 
 [[example]]
+name = "run_vm_test"
+path = "examples/run_vm_test.rs"
+
+[[example]]
 name = "composition"
 path = "test/a2r/05_expressions/007_composition/composition.expected.rs"
 

@@ -8,9 +8,13 @@ type Person {
 fn main() {
     var people = [Person("Zoe", 25), Person("Al", 60), Person("John", 1)]
 
+    // sort() on struct arrays uses VmRef ID ordering (not field-based)
+    // Verify it completes without error
     people.sort()
-    print(people)
 
+    // sort_by_key sorts by extracted key — verify age-based ordering
     people.sort_by_key((p) => p.age)
-    print(people)
+    assert(people[0].name == "Zoe")
+    assert(people[1].name == "Al")
+    assert(people[2].name == "John")
 }

@@ -8,6 +8,6 @@ use auto_lang::a2r_std::*;
 use urlencoding::encode;
 fn main() {
     let input: String = "hello world! foo=bar&baz=qux".to_string();
-    let encoded = encode(&input);
+    let encoded = encode(input);
     println!("Encoded: {}", encoded);
 }

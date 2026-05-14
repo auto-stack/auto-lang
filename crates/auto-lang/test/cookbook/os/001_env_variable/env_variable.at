@@ -1,5 +1,8 @@
 fn main() {
-    let config_path = env.get_or("CONFIG", "/etc/myapp/config")
-    let config = File.read_text(config_path)
-    print(f"Config: $config")
+    env.set("AUTO_TEST_240", "hello")
+    let val = env.get_or("AUTO_TEST_240", "default")
+    assert(val == "hello")
+
+    let missing = env.get_or("AUTO_NONEXISTENT_240", "fallback")
+    assert(missing == "fallback")
 }

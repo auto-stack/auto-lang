@@ -486,6 +486,8 @@ impl VmBridge {
     fn eval_expr(&self, expr: &crate::ast::Expr) -> Result<Value> {
         match expr {
             crate::ast::Expr::Int(i) => Ok(Value::Int(*i)),
+            crate::ast::Expr::Float(f, _) => Ok(Value::Float(*f)),
+            crate::ast::Expr::Double(f, _) => Ok(Value::Double(*f)),
             crate::ast::Expr::Bool(b) => Ok(Value::Bool(*b)),
             crate::ast::Expr::Str(s) => Ok(Value::str(s.as_str())),
             crate::ast::Expr::Ident(name) => self.read_state(name.as_str()),

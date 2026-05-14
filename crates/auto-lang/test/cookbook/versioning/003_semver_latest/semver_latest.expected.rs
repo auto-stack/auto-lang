@@ -8,9 +8,9 @@ use auto_lang::a2r_std::*;
 use semver::Version;
 fn main() {
     let versions: Vec<String> = vec!["1.0.0".to_string(), "2.1.0".to_string(), "1.5.0".to_string(), "2.0.1".to_string()];
-    let mut max = Version::parse(&versions[0]).unwrap();
-    for v in &versions {
-        let parsed = Version::parse(&v).unwrap();
+    let mut max = Version::parse(versions[0].clone()).unwrap();
+    for v in versions {
+        let parsed = Version::parse(v).unwrap();
         if parsed > max {
             max = parsed
         }

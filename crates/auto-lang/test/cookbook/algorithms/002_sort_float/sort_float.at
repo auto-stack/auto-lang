@@ -3,5 +3,17 @@ use.rust std::vec::Vec
 fn main() {
     var vec = [1.1, 1.15, 5.5, 1.123, 2.0]
     vec.sort_by((a, b) => a.total_cmp(b))
-    print(vec)
+    // Verify sort order by checking adjacent pairs are non-decreasing
+    let v0 = vec[0]
+    let v1 = vec[1]
+    let v2 = vec[2]
+    let v3 = vec[3]
+    let v4 = vec[4]
+    assert(v0 <= v1)
+    assert(v1 <= v2)
+    assert(v2 <= v3)
+    assert(v3 <= v4)
+    // Verify specific values (workaround: float from array index returns raw bits)
+    assert((v0 - 1.1).abs() < 0.01)
+    assert((v4 - 5.5).abs() < 0.01)
 }

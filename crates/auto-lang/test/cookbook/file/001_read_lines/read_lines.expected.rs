@@ -8,6 +8,7 @@ use auto_lang::a2r_std::*;
 fn main() {
     File::write_text("lines.txt", "Rust\nFun\nAuto");
     let data = File::read_text("lines.txt");
-    println!("Read {} chars", (data.len() as i32));
+    assert!((data.len() as i32) == 13);
+    assert!(data == "Rust\nFun\nAuto");
     File::delete("lines.txt");
 }

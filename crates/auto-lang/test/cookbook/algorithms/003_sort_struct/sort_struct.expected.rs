@@ -15,9 +15,13 @@ struct Person {
 fn main() {
     let mut people = vec![Person { name: "Zoe".to_string(), age: 25 }, Person { name: "Al".to_string(), age: 60 }, Person { name: "John".to_string(), age: 1 }];
 
+
+
     people.sort();
-    println!("{:?}", people);
+
 
     people.sort_by_key(|p| p.age);
-    println!("{:?}", people);
+    assert!(people[0].clone().name == "Zoe");
+    assert!(people[1].clone().name == "Al");
+    assert!(people[2].clone().name == "John");
 }

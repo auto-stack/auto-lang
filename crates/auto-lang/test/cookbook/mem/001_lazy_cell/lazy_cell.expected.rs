@@ -9,8 +9,8 @@ use std::cell::RefCell;
 fn main() {
     let cell = RefCell::new(0);
     let current = cell.borrow();
-    println!("Initial: {}", current);
+    assert!(current == 0);
     cell.replace(42);
     let updated = cell.borrow();
-    println!("Updated: {}", updated);
+    assert!(updated == 42);
 }

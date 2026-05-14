@@ -6,15 +6,16 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use std::collections::HashSet;
-fn visit(path: &str, visited: &mut HashSet<String>) {
-    if !(visited.contains(path)) {
-        visited.insert(path.to_string());
+fn visit(path: &str, visited: HashSet<String>) {
+    if !(visited.contains(&path)) {
+        visited.insert(path.to_string())
     } else {
-        println!("Loop detected: {}", path);
+        println!("Loop detected: {}", path)
     }
+
 }
 
 fn main() {
     let mut visited: HashSet<String> = HashSet::new();
-    visit(".", &mut visited);
+    visit(".", visited);
 }

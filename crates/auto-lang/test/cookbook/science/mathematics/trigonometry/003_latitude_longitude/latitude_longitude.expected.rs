@@ -24,5 +24,5 @@ fn main() {
 
     let distance: f64 = earth_radius_kilometer * central_angle;
 
-    println!("Distance between Paris and London on the surface of Earth is {} kilometers", distance);
+    assert!((distance - 343.6).abs() < 1.0);
 }

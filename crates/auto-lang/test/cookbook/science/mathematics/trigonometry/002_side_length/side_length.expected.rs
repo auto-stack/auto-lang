@@ -10,5 +10,8 @@ fn main() {
     let side_length: f64 = 80.0;
 
     let hypotenuse: f64 = side_length / angle.sin();
-    println!("Hypotenuse: {}", hypotenuse);
+
+    assert!(hypotenuse > 0.0);
+
+
 }

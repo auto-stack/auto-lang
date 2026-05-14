@@ -8,8 +8,8 @@ use auto_lang::a2r_std::*;
 use unicode_segmentation::UnicodeSegmentation;
 fn main() {
     let text: String = "hello world".to_string();
-    let graphemes: Vec<&str> = text.graphemes(true).collect();
-    println!("Graphemes: {:?}", graphemes);
-    let reversed: String = text.graphemes(true).rev().collect();
+    let graphemes = text.graphemes(true).collect();
+    println!("Graphemes: {}", graphemes);
+    let reversed = text.graphemes(true).rev().collect();
     println!("Reversed: {}", reversed);
 }

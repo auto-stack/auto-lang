@@ -9,5 +9,17 @@ use std::vec::Vec;
 fn main() {
     let mut vec: Vec<f64> = vec![1.1, 1.15, 5.5, 1.123, 2.0];
     vec.sort_by(|a, b| a.total_cmp(b));
-    println!("{:?}", vec);
+
+    let v0: f64 = vec[0].clone();
+    let v1: f64 = vec[1].clone();
+    let v2: f64 = vec[2].clone();
+    let v3: f64 = vec[3].clone();
+    let v4: f64 = vec[4].clone();
+    assert!(v0 <= v1);
+    assert!(v1 <= v2);
+    assert!(v2 <= v3);
+    assert!(v3 <= v4);
+
+    assert!((v0 - 1.1).abs() < 0.01);
+    assert!((v4 - 5.5).abs() < 0.01);
 }

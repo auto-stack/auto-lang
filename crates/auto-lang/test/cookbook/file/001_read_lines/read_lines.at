@@ -2,6 +2,7 @@
 fn main() {
     File.write_text("lines.txt", "Rust\nFun\nAuto")
     let data = File.read_text("lines.txt")
-    print(f"Read ${data.len()} chars")
+    assert(data.len() == 13)
+    assert(data == "Rust\nFun\nAuto")
     File.delete("lines.txt")
 }

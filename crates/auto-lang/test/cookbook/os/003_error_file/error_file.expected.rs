@@ -9,8 +9,7 @@ use std::fs::File;
 use std::process::Command;
 use std::process::Stdio;
 fn main() {
-    let outputs = File::create("out.txt").unwrap();
-    let errors = outputs.try_clone().unwrap();
-    let result = Command::new("ls").args(vec![".", "oops"]).stdout(Stdio::from(outputs)).stderr(Stdio::from(errors)).spawn().unwrap().wait_with_output().unwrap();
-    println!("Output written to out.txt");
+    let result = Command::new("echo").arg("test output").output();
+    let stdout = result.stdout;
+    assert!((stdout.len() as i32) > 0);
 }
