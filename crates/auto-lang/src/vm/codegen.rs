@@ -7611,7 +7611,8 @@ impl Codegen {
             "get_str" | "substr" | "trim" | "to_str" | "to_string"
             | "join" | "format" | "lower" | "upper" | "replace" | "slice"
             | "scheme" | "host" | "host_str" | "path" | "query" | "fragment"
-            | "origin" | "username" | "password" => ObjectType::String,
+            | "origin" | "username" | "password"
+            | "from_utf8" | "from_utf8_lossy" | "from_str" => ObjectType::String,
             // Methods returning float/double
             "to_float" | "to_double" | "sqrt" | "sin" | "cos" | "tan" | "pow"
             | "log" | "exp" | "floor" | "ceil" | "round" => ObjectType::Double,
@@ -7622,7 +7623,8 @@ impl Codegen {
             "keys" | "values" | "entries" | "split" | "lines" | "chars"
             | "graphemes" | "as_bytes" | "bytes" | "par_iter" | "par_iter_mut"
             | "into_iter" | "iter" | "iter_mut"
-            | "sample" | "gen" | "gen_range" => ObjectType::NestedObject,
+            | "sample" | "gen" | "gen_range"
+            | "into_inner" => ObjectType::NestedObject,
             // Methods returning void
             "push" | "insert" | "insert_int" | "insert_str" | "remove" | "clear"
             | "sort" | "reverse" | "print" | "println" | "write" => ObjectType::Void,

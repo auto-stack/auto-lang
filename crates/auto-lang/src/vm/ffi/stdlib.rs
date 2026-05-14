@@ -3734,8 +3734,16 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             task.ram.push_i32(0);
         }
         ("RefCell", "replace") => {
-            let _new_val: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
+            let new_val: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
             let handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let mut guard = obj.write().unwrap();
+                if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+                    if let Some(val) = rso.downcast_mut::<i32>() {
+                        *val = new_val;
+                    }
+                }
+            }
             task.ram.push_i32(handle as i32);
         }
 
@@ -4104,12 +4112,17 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 
         // ---- Backtrace ----
         ("Backtrace", "capture") => {
-            task.ram.push_i32(0);
+            let bt = std::backtrace::Backtrace::capture();
+            let handle = vm.insert_heap_object(
+                RustStdlibObject::new("Backtrace", bt)
+            ) as i32;
+            task.ram.push_i32(handle);
         }
 
         // ---- percent_encoding ----
         ("percent_encoding", "NON_ALPHANUMERIC") => {
-            task.ram.push_i32(0);
+            // Sentinel value indicating non-alphanumeric encoding
+            push_rust_obj(task, vm, "EncodeSet", "NON_ALPHANUMERIC")?;
         }
 
         // ---- clap Args ----
@@ -4166,11 +4179,34 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 
         // ---- percent_encoding ----
         ("", "percent_encode") => {
-            let _s: String = String::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!(".percent_encode: {}", e)))?;
-            // For MVP, return the original string (percent encoding needs FFI bridge)
-            let s = "percent_encoded_placeholder".to_string();
-            let str_idx = vm.add_string(s.into_bytes());
+            let _encode_set_handle = task.ram.pop_i32();
+            let bytes_handle = pop_rust_obj(task, vm, "percent_encode")?;
+            let Some(obj) = vm.get_heap_object(bytes_handle) else {
+                let str_idx = vm.add_string(Vec::new());
+                task.ram.push_str_idx(str_idx as u32);
+                return Ok(());
+            };
+            let guard = obj.read().unwrap();
+            let bytes = if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                rust_obj.downcast_ref::<Vec<u8>>().cloned().unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            drop(guard);
+
+            // Percent-encode non-alphanumeric bytes
+            let encoded: String = bytes.iter()
+                .flat_map(|&b| {
+                    if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+                        vec![b]
+                    } else {
+                        format!("%{:02X}", b).into_bytes()
+                    }
+                })
+                .map(|b| b as char)
+                .collect();
+
+            let str_idx = vm.add_string(encoded.into_bytes());
             task.ram.push_str_idx(str_idx as u32);
         }
 
@@ -4201,13 +4237,15 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             push_rust_obj(task, vm, "csv::Writer<Vec<u8>>", std::sync::Mutex::new(writer))?;
         }
         ("Writer", "write_record") => {
-            let handle = task.ram.pop_i32() as u64;
-            if let Some(obj) = vm.get_heap_object(handle) {
+            let record: Vec<String> = Vec::<String>::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Writer.write_record: {}", e)))?;
+            let writer_handle = task.ram.pop_i32() as u64;
+            if let Some(obj) = vm.get_heap_object(writer_handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     if let Some(writer) = rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>() {
-                        let _ = writer.lock().unwrap().write_record(&[""]);
-                        task.ram.push_i32(handle as i32);
+                        let _ = writer.lock().unwrap().write_record(&record);
+                        task.ram.push_i32(writer_handle as i32);
                         return Ok(());
                     }
                 }
@@ -4215,14 +4253,37 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             task.ram.push_i32(0);
         }
         ("Writer", "serialize") => {
-            let _record_handle = task.ram.pop_i32();
-            let handle = task.ram.pop_i32() as u64;
-            if let Some(obj) = vm.get_heap_object(handle) {
+            // Pop object handle (from vm.objects, ID >= 1_000_000)
+            let obj_nv = task.ram.pop_nv();
+            let obj_id = if auto_val::is_object(obj_nv) {
+                auto_val::decode_object(obj_nv) as u64
+            } else {
+                auto_val::decode_i32(obj_nv) as u64
+            };
+            let writer_handle = task.ram.pop_i32() as u64;
+            // Extract fields from ObjectData and serialize as CSV record
+            let mut record_map: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+            if let Some(obj_arc) = vm.objects.get(&obj_id) {
+                let obj_guard = obj_arc.read().unwrap();
+                for (key, val) in &obj_guard.fields {
+                    let key_str = format!("{:?}", key);
+                    let val_str = match val {
+                        auto_val::Value::Str(s) => s.to_string(),
+                        auto_val::Value::Int(n) => n.to_string(),
+                        auto_val::Value::Float(f) => f.to_string(),
+                        auto_val::Value::Bool(b) => b.to_string(),
+                        _ => format!("{:?}", val),
+                    };
+                    record_map.insert(key_str, val_str);
+                }
+            }
+            let record: Vec<String> = record_map.into_values().collect();
+            if let Some(obj) = vm.get_heap_object(writer_handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     if let Some(writer) = rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>() {
-                        let _ = writer.lock().unwrap().serialize(&[""]);
-                        task.ram.push_i32(handle as i32);
+                        let _ = writer.lock().unwrap().write_record(&record);
+                        task.ram.push_i32(writer_handle as i32);
                         return Ok(());
                     }
                 }
@@ -4242,14 +4303,12 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                         let mut w = writer.lock().unwrap();
                         let taken = std::mem::replace(&mut *w, csv::Writer::from_writer(Vec::new()));
                         let inner = taken.into_inner().unwrap_or_default();
-                        let str_idx = vm.add_string(inner);
-                        task.ram.push_str_idx(str_idx as u32);
+                        push_rust_obj(task, vm, "Vec<u8>", inner)?;
                         return Ok(());
                     }
                 }
             }
-            let str_idx = vm.add_string(b"".to_vec());
-            task.ram.push_str_idx(str_idx as u32);
+            push_rust_obj(task, vm, "Vec<u8>", Vec::<u8>::new())?;
         }
 
         // ---- String ----

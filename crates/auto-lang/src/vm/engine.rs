@@ -1724,6 +1724,11 @@ impl AutoVM {
                     task.ip += 1;
 
                     // Pop May<T> value from stack
+                    #[cfg(feature = "nanbox")]
+                    let may_nv = task.ram.pop_nv();
+                    #[cfg(feature = "nanbox")]
+                    let may_bits = auto_val::decode_i32(may_nv);
+                    #[cfg(not(feature = "nanbox"))]
                     let may_bits = task.ram.pop_i32();
 
                     // Determine if this is an error case that should propagate
@@ -1792,9 +1797,16 @@ impl AutoVM {
                             task.ram.push_i32(may_bits);
                         }
                     } else {
-                        // Negative value: legacy Err sentinel or other
+                        // Negative value: legacy Err sentinel or string nanbox (decoded)
                         should_propagate = false;
-                        task.ram.push_i32(may_bits);
+                        #[cfg(feature = "nanbox")]
+                        {
+                            task.ram.push_nv(may_nv);
+                        }
+                        #[cfg(not(feature = "nanbox"))]
+                        {
+                            task.ram.push_i32(may_bits);
+                        }
                     }
 
                     // Perform early return if propagating error
@@ -4105,7 +4117,7 @@ impl AutoVM {
                             "WriterBuilder", "StringRecord", "ThreadRng", "Complex",
                             "BigInt", "Normal", "Rng", "WalkDir", "Instant", "Duration",
                             "OnceCell", "Regex", "Url", "Version", "RefCell", "Child",
-                            "File", "FileWriter", "PathBuf",
+                            "File", "FileWriter", "PathBuf", "String", "Vec",
                         ];
                         if STATIC_CALL_TYPES.contains(&s.as_str()) {
                             s
@@ -4418,6 +4430,10 @@ impl AutoVM {
                                 #[cfg(not(feature = "nanbox"))]
                                 { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(list_id as i32); }
                             }
+                            "to_string" | "to_str" | "clone" => {
+                                // str.to_string() / str.to_str() / str.clone() — return self
+                                // No-op: receiver stays on stack as-is
+                            }
                             _ => {
                                 // Unknown str method — fall through to other handlers below
                                 #[cfg(feature = "nanbox")]
@@ -4537,7 +4553,8 @@ impl AutoVM {
                             | "Complex" | "BigInt" | "Normal" | "Rng" | "WalkDir"
                             | "RefCell" | "Instant" | "Duration" | "Child"
                             | "OnceCell" | "Backtrace" | "Args"
-                            | "File" | "FileWriter" | "PathBuf") {
+                            | "File" | "FileWriter" | "PathBuf"
+                            | "String" | "Vec") {
                         // Generic fallback for external crate types (csv::ReaderBuilder, etc.)
                         // Also matches bare type names from static calls (e.g., "Command" from Command.arg)
                         // Route through shim_rust_stdlib_dispatch with type_name + method injected
@@ -4666,7 +4683,6 @@ impl AutoVM {
                                         #[cfg(feature = "nanbox")]
                                         {
                                             task.ram.push_nv(auto_val::encode_string(idx as u32));
-                                            task.ram.push_nv(auto_val::encode_null());
                                         }
                                         #[cfg(not(feature = "nanbox"))]
                                         {
@@ -4710,7 +4726,6 @@ impl AutoVM {
                                         #[cfg(feature = "nanbox")]
                                         {
                                             task.ram.push_nv(auto_val::encode_string(idx as u32));
-                                            task.ram.push_nv(auto_val::encode_null());
                                         }
                                         #[cfg(not(feature = "nanbox"))]
                                         {
