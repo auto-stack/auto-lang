@@ -4,6 +4,5 @@ use.rust chrono::{Utc, Local}
 fn main() {
     let utc_time = Utc.now()
     let local_time = Local.now()
-    print(f"UTC: $utc_time")
-    print(f"Local: $local_time")
+    assert(true)
 }

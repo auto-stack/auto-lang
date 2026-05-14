@@ -20,6 +20,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         writer.write_record(vec![name, age.to_string(), decade.to_string()])?;
     }
     let output = String::from_utf8(writer.into_inner()?)?;
-    println!("{}", output);
-    Ok(())
+    assert!(output.contains(&"Alice"));
+    assert!(output.contains(&"decade"))
 }

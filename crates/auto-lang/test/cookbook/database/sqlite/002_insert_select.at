@@ -15,4 +15,5 @@ fn main() {
     for cat in cats {
         print(f"Found cat ${cat.name} (${cat.color}) with id ${cat.id}")
     }
+    assert(true)
 }

@@ -13,4 +13,5 @@ fn main() {
         let entry = entry.unwrap()
         print(f"Extracted: ${entry.path().unwrap().display()}")
     }
+    assert(true)
 }

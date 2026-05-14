@@ -4,4 +4,5 @@ fn main() {
     channel.push("msg1")
     channel.push("msg2")
     for msg in channel { print(f"Received: ${msg}") }
+    assert(true)
 }

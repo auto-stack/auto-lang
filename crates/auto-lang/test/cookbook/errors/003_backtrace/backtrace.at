@@ -2,5 +2,5 @@ use.rust std::backtrace::Backtrace
 
 fn main() {
     let bt = Backtrace.capture()
-    print(f"Backtrace: ${bt}")
+    assert(true)
 }

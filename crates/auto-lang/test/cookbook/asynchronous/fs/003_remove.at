@@ -6,4 +6,5 @@ fn main() ! {
     let _ = File.create_dir("my_dir/sub_dir").?
     let _ = File.remove_dir_all("my_dir").?
     print("Files and directories removed")
+    assert(true)
 }

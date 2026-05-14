@@ -9,5 +9,7 @@ fn main() ! {
         if name_str.ends_with(".txt") {
             print(f"Text file: $name_str")
         }
+        // Verify to_lowercase works
+        assert(name_str == name_str.to_lowercase())
     }
 }

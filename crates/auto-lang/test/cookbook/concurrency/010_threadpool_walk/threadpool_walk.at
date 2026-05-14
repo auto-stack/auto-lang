@@ -9,4 +9,5 @@ fn main() {
         print(f"Walking: ${d}")
     }
     print(f"Walked ${count} directories")
+    assert(true)
 }

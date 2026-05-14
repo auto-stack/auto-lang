@@ -7,6 +7,8 @@ fn main() {
             c[i][j] = a[i][j] + b[i][j]
         }
     }
-    print(f"${c[0][0]} ${c[0][1]}")
-    print(f"${c[1][0]} ${c[1][1]}")
+    assert(c[0][0] == 6)
+    assert(c[0][1] == 8)
+    assert(c[1][0] == 10)
+    assert(c[1][1] == 12)
 }

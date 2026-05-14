@@ -9,5 +9,6 @@ fn main() {
             max = parsed
         }
     }
-    print(f"Latest: $max")
+    assert(max.major == 2)
+    assert(max.minor == 1)
 }

@@ -4,5 +4,5 @@ use.rust urlencoding::encode
 fn main() {
     let input = "hello world! foo=bar&baz=qux"
     let encoded = encode(input)
-    print(f"Encoded: ${encoded}")
+    assert(encoded.contains("hello"))
 }

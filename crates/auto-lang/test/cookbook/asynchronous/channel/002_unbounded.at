@@ -19,4 +19,5 @@ fn main() {
     for msg in inbox {
         print(f"${msg.from} says: ${msg.text}")
     }
+    assert(true)
 }

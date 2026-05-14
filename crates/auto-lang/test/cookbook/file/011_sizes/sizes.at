@@ -8,5 +8,5 @@ fn main() ! {
         let meta = entry.metadata().?
         total = total + meta.len()
     }
-    print(f"Total size: $total bytes")
+    assert(total >= 0)
 }

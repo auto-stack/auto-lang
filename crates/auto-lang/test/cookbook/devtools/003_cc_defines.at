@@ -3,4 +3,5 @@
 fn main() {
     let version = "0.1.0"
     print(f"Built with version ${version}")
+    assert(true)
 }

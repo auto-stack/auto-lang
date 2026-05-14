@@ -2,5 +2,7 @@ use.rust semver::Version
 
 fn main() {
     let v = Version.parse("1.2.3").unwrap()
-    print(f"Major: ${v.major}, Minor: ${v.minor}, Patch: ${v.patch}")
+    assert(v.major == 1)
+    assert(v.minor == 2)
+    assert(v.patch == 3)
 }

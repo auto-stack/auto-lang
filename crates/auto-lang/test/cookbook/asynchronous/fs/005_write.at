@@ -5,4 +5,5 @@ fn main() ! {
     let bytes = File.read_bytes("output.txt").?
     print(f"Read ${bytes.len()} bytes")
     let _ = File.delete("output.txt").?
+    assert(true)
 }

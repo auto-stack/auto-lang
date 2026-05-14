@@ -7,9 +7,11 @@ fn main() {
     var flags = 0
     flags = flags.or(flag_a)
     flags = flags.or(flag_b)
-    print(f"Flags: ${flags}")
-    print(f"Has A: ${flags.and(flag_a) != 0}")
-    print(f"Has C: ${flags.and(flag_c) != 0}")
+    assert(flags == 3)
+    var has_a = flags.and(flag_a) != 0
+    var has_c = flags.and(flag_c) != 0
+    assert(has_a == true)
+    assert(has_c == false)
     flags = flags.and(flag_a.not())
-    print(f"After clear A: ${flags}")
+    assert(flags == 2)
 }

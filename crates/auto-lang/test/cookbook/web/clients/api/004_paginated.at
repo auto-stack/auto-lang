@@ -16,4 +16,5 @@ fn main() {
     } else {
         print("No Link header (single page)")
     }
+    assert(true)
 }

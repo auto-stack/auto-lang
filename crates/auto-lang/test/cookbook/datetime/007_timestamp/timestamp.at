@@ -6,5 +6,5 @@ fn main() {
     print(f"From timestamp: $dt")
     let now = Utc.now()
     let ts = now.timestamp()
-    print(f"Current timestamp: $ts")
+    assert(ts > 1700000000)
 }

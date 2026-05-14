@@ -5,5 +5,5 @@ use.rust percent_encoding
 fn main() {
     let input = "hello world! foo@bar.com"
     let encoded = percent_encode(input.as_bytes(), percent_encoding.NON_ALPHANUMERIC).to_string()
-    print(f"Encoded: ${encoded}")
+    assert(encoded.contains("hello"))
 }

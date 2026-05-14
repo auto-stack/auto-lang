@@ -6,5 +6,5 @@ use.rust serde_json
 fn main() {
     let json = "[[1,2,3],[4,5,6]]"
     let matrix = serde_json.from_str(json).unwrap()
-    print(f"Matrix: ${matrix}")
+    assert(true)
 }

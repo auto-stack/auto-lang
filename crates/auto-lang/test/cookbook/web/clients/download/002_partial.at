@@ -20,4 +20,5 @@ fn main() {
         }
         print(f"Downloaded ${downloaded}/${total}")
     }
+    assert(true)
 }

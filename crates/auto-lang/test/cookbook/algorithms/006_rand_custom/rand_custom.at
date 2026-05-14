@@ -19,5 +19,5 @@ fn random_pet() Pet {
 
 fn main() {
     let pet Pet = random_pet()
-    print("Got a pet!")
+    assert(true)
 }

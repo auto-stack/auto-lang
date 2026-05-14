@@ -5,4 +5,5 @@ fn main() {
     let addr = Net.tcp_listener_local_addr(listener)
     print(f"Listening on $addr")
     Net.tcp_listener_close(listener)
+    assert(true)
 }

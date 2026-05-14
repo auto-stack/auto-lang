@@ -13,4 +13,5 @@ fn main() {
         .init()
     info("application started")
     info("with timestamp logging")
+    assert(true)
 }

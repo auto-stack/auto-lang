@@ -4,10 +4,15 @@ use.rust csv::Reader
 fn main() {
     let data = "name,age\nAlice,30\nBob,twenty-five\nCharlie,35"
     var reader = Reader.from_reader(data.as_bytes())
+    var ok_count = 0
+    var err_count = 0
     for result in reader.records() {
         is result {
-            Ok(record) -> print(f"Name: ${record.get(0).?}, Age: ${record.get(1).?}"),
-            Err(e) -> print(f"Error reading record: ${e}")
+            Ok(record) -> ok_count += 1,
+            Err(e) -> err_count += 1
         }
     }
+    // Alice(30), Bob(invalid), Charlie(35) — Bob causes parse error for age
+    assert(ok_count == 2)
+    assert(err_count == 1)
 }

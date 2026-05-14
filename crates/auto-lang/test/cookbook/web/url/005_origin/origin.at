@@ -3,8 +3,8 @@ use.rust url::Url
 
 fn main() {
     let url = Url.parse("https://user:pass@example.com:8080/path?query=1#frag").unwrap()
-    print(f"Scheme: ${url.scheme()}")
-    print(f"Host: ${url.host_str()}")
-    print(f"Port: ${url.port()}")
-    print(f"Origin: ${url.origin()}")
+    let scheme = url.scheme()
+    let host = url.host_str()
+    assert(scheme == "https")
+    assert(host == "example.com")
 }

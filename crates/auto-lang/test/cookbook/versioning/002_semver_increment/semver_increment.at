@@ -4,8 +4,8 @@ use.rust semver::Version
 fn main() {
     var v = Version.parse("1.2.3").unwrap()
     v.patch = v.patch + 1
-    print(f"Next patch: ${v}")
+    assert(v.patch == 4)
     v.minor = v.minor + 1
     v.patch = 0
-    print(f"Next minor: ${v}")
+    assert(v.minor == 3)
 }

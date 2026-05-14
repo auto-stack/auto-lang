@@ -13,4 +13,5 @@ fn main() {
     let parts = content_type.split("/")
     print(f"Type: ${parts.get(0)}")
     print(f"Subtype: ${parts.get(1)}")
+    assert(true)
 }

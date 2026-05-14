@@ -9,5 +9,5 @@ fn main() {
         let idx = rng.gen_range(0..charset.len())
         password = password + charset.char_at(idx)
     }
-    print(f"Password: $password")
+    assert(password.len() == 16)
 }

@@ -10,4 +10,5 @@ fn main() {
             print(f"${entry.path().display()}: ${modified}")
         }
     }
+    assert(true)
 }

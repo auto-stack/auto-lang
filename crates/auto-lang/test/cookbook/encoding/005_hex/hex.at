@@ -3,7 +3,6 @@ fn main() {
     let text = "hello"
     let chars = text.chars()
     let count = chars.count()
-    print(f"String: ${text}")
-    print(f"Character count: ${count}")
-    print(f"Byte length: ${text.len()}")
+    assert(count == 5)
+    assert(text.len() == 5)
 }

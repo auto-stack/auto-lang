@@ -5,5 +5,7 @@ fn main() {
     for i in 0..3 {
         result[i] = scalar * v[i]
     }
-    print(f"Scaled vector: ${result[0]}, ${result[1]}, ${result[2]}")
+    assert(result[0] == 2)
+    assert(result[1] == 4)
+    assert(result[2] == 6)
 }

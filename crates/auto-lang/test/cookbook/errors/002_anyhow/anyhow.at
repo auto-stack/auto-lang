@@ -9,8 +9,10 @@ fn read_config() !str {
 
 fn main() {
     let result = read_config()
+    var got_err = false
     is result {
         Ok(val) -> print(f"Config result: ${val}"),
-        Err(e) -> print(f"Config result: Err(${e})")
+        Err(e) -> got_err = true
     }
+    assert(got_err == true)
 }

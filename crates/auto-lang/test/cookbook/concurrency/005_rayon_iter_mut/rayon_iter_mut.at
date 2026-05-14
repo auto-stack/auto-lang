@@ -6,5 +6,6 @@ fn main() {
     v.par_iter_mut().for_each(x => {
         x = x * 2
     })
-    print(f"Doubled: $v")
+    assert(v[0] == 2)
+    assert(v[9] == 20)
 }

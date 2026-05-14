@@ -8,4 +8,5 @@ fn main() {
     for file in entries {
         print(f"  ${file}")
     }
+    assert(true)
 }

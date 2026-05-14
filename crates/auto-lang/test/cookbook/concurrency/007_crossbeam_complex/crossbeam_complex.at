@@ -10,10 +10,12 @@ fn main() {
         tx.send("hello").unwrap()
         tx.send("world").unwrap()
     })
+    var msg_count = 0
     for msg in rx {
-        print(f"Received: $msg")
+        msg_count += 1
         if msg == "world" {
             break
         }
     }
+    assert(msg_count == 2)
 }

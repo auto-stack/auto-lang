@@ -4,8 +4,10 @@ use.rust csv::ReaderBuilder
 fn main() {
     let data = "name;age\nAlice;30\nBob;25"
     var reader = ReaderBuilder.new().delimiter(59).from_reader(data.as_bytes())
+    var count = 0
     for result in reader.records() {
         let record = result.?
-        print(f"Name: ${record.get(0).?}, Age: ${record.get(1).?}")
+        count += 1
     }
+    assert(count == 2)
 }

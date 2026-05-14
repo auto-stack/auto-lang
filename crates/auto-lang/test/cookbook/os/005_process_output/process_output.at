@@ -2,7 +2,7 @@ use.rust std::process::Command
 
 fn main() {
     let output = Command.new("ls").args(["-la"]).output().unwrap()
-    print(f"Exit code: ${output.status}")
     let stdout = String.from_utf8(output.stdout).unwrap()
-    print(f"Stdout: ${stdout}")
+    // Verify ls command produces output
+    assert(stdout.len() > 0)
 }

@@ -6,6 +6,7 @@ fn main() {
     urls.push("https://httpbin.org/status/404")
     urls.push("https://httpbin.org/status/500")
 
+    assert(urls.len() == 3)
     for url in urls {
         let handle = http.get(url)
         let status = Response.status_code(handle)

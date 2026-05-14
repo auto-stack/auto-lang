@@ -6,5 +6,6 @@ fn main() {
     let choices = ["a", "b", "c", "d", "e"]
     let idx = rng.gen_range(0..choices.len())
     let choice = choices[idx]
-    print(f"Chose: $choice")
+    let valid = idx >= 0
+    assert(valid)
 }

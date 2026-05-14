@@ -5,5 +5,5 @@ fn main() {
     let toml_str = "name = Alice"
     let parsed = toml.from_str(toml_str).unwrap()
     let name = parsed.get("name")
-    print(f"Parsed: ${name}")
+    assert(name == "Alice")
 }

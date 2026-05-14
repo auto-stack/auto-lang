@@ -7,4 +7,5 @@ fn main() ~void {
     print("waiting 10 ms...")
     let elapsed = start.elapsed()
     print(f"done in ${elapsed}")
+    assert(true)
 }

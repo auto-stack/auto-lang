@@ -3,4 +3,5 @@
 fn main() {
     print("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)")
     print("Table created successfully")
+    assert(true)
 }

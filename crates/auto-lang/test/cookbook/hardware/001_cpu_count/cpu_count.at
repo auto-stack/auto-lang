@@ -4,5 +4,6 @@ fn main() {
     let cores = thread.available_parallelism()
         .map(n => n.get())
         .unwrap_or(1)
-    print(f"CPU cores: ${cores}")
+    let has_cores = cores >= 1
+    assert(has_cores)
 }

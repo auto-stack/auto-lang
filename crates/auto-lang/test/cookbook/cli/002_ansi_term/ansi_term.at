@@ -4,7 +4,10 @@ use.rust ansi_term::Colour::Green
 use.rust ansi_term::Colour::Yellow
 
 fn main() {
-    print(Red.paint("Error: something went wrong"))
-    print(Green.paint("Success: operation completed"))
-    print(Yellow.paint("Warning: check your input"))
+    let err = Red.paint("Error: something went wrong")
+    let ok = Green.paint("Success: operation completed")
+    let warn = Yellow.paint("Warning: check your input")
+    assert(err.contains("Error"))
+    assert(ok.contains("Success"))
+    assert(warn.contains("Warning"))
 }

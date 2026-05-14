@@ -7,5 +7,5 @@ type Complex {
 fn main() {
     let c = Complex(3.0, 4.0)
     let norm = c.real * c.real + c.imag * c.imag
-    print(f"Norm squared: ${norm}")
+    assert(norm == 25.0)
 }

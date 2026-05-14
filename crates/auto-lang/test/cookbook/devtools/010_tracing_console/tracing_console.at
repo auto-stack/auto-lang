@@ -5,5 +5,5 @@ fn main() {
     #info("application started")
     let count = 10
     #debug("processing $count items")
-    #info("application finished")
+    assert(count == 10)
 }

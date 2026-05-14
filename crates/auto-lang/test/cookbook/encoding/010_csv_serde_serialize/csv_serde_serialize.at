@@ -6,5 +6,6 @@ fn main() {
     writer.serialize({"name": "Alice", "age": 30}).?
     writer.serialize({"name": "Bob", "age": 25}).?
     let output = String.from_utf8(writer.into_inner().?).?
-    print(output)
+    assert(output.contains("Alice"))
+    assert(output.contains("Bob"))
 }

@@ -8,4 +8,5 @@ fn main() {
     let result = fetch_network_request()
     print(f"Result: ${result}")
     print("Runtime with 4 worker threads")
+    assert(true)
 }

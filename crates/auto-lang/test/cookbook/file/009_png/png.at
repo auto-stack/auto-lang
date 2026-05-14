@@ -2,10 +2,10 @@ use.rust std::fs
 
 fn main() ! {
     let entries = fs.read_dir(".").?
+    var count = 0
     for entry in entries {
         let entry = entry.?
-        let name = entry.file_name()
-        let name_str = name.to_str().unwrap()
-        print(f"File: $name_str")
+        count += 1
     }
+    assert(count > 0)
 }

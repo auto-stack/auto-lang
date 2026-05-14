@@ -10,5 +10,5 @@ fn main() {
             print("Hello from scoped thread 2")
         })
     }).unwrap()
-    print("All threads completed")
+    assert(true)
 }

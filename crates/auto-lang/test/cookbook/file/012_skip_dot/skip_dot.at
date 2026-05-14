@@ -2,12 +2,14 @@ use.rust std::fs
 
 fn main() ! {
     let entries = fs.read_dir(".").?
+    var non_dot = 0
     for entry in entries {
         let entry = entry.?
         let name = entry.file_name()
         let name_str = name.to_str().unwrap()
         if !name_str.starts_with(".") {
-            print(name_str)
+            non_dot += 1
         }
     }
+    assert(non_dot > 0)
 }

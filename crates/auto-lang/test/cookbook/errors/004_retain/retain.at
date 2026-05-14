@@ -11,8 +11,10 @@ fn outer() !str {
 
 fn main() {
     let result = outer()
+    var got_err = false
     is result {
         Ok(val) -> print(f"Success: ${val}"),
-        Err(e) -> print(f"Error: ${e}")
+        Err(e) -> got_err = true
     }
+    assert(got_err == true)
 }

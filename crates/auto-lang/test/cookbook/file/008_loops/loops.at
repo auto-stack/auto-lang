@@ -11,4 +11,5 @@ fn visit(path str, visited HashSet<str>) {
 fn main() {
     var visited HashSet<str> = HashSet.new()
     visit(".", visited)
+    assert(visited.contains("."))
 }

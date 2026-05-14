@@ -2,8 +2,10 @@ dep walkdir
 use.rust walkdir
 
 fn main() {
+    var count = 0
     for entry in walkdir.WalkDir.new("src") {
         let entry = entry.unwrap()
-        print(f"Found: ${entry.path().display()}")
+        count += 1
     }
+    assert(count > 0)
 }

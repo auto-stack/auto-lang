@@ -19,5 +19,6 @@ fn main() {
     })
     t1.join().unwrap()
     t2.join().unwrap()
-    print(f"Final count: ${counter.load(Ordering.SeqCst)}")
+    let final_count = counter.load(Ordering.SeqCst)
+    assert(final_count == 200)
 }

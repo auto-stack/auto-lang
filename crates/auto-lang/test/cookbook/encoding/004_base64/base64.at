@@ -3,7 +3,7 @@ fn main() {
     let text = "hello"
     print(f"Original: ${text}")
     let upper = text.to_uppercase()
-    print(f"Uppercase: ${upper}")
+    assert(upper == "HELLO")
     let lower = upper.to_lowercase()
-    print(f"Lowercase: ${lower}")
+    assert(lower == "hello")
 }

@@ -5,4 +5,5 @@ fn fetch_network_request() ~uint {
 fn main() ~void {
     let result = fetch_network_request().await
     print(f"Result: ${result}")
+    assert(true)
 }

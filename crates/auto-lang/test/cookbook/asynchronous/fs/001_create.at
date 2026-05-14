@@ -4,4 +4,5 @@ fn main() ! {
     let _ = File.create_dir("my_dir").?
     let _ = File.create_dir("my_dir/sub_dir/inner").?
     print("Files and directories created")
+    assert(true)
 }

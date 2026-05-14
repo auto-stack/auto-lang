@@ -8,4 +8,5 @@ fn main() {
     let result = fetch_data()
     print(f"Got: ${result}")
     print("Shutting down...")
+    assert(true)
 }

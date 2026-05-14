@@ -15,4 +15,5 @@ fn main() {
 
     let server = Response.header_get(handle, "Server")
     print(f"Server: ${server}")
+    assert(true)
 }

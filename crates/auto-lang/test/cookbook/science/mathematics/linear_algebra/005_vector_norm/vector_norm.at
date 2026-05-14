@@ -5,5 +5,5 @@ fn main() {
         sum_sq = sum_sq + v[i] * v[i]
     }
     let norm = sum_sq.sqrt()
-    print(f"L2 norm: $norm")
+    assert(norm == 5.0)
 }

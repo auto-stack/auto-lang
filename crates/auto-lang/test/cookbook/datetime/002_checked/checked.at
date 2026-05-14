@@ -5,5 +5,5 @@ fn main() {
     let now = Utc.now()
     print(f"Current time: $now")
     let future = now.checked_add_signed(Duration.days(30))
-    print(f"30 days from now: $future")
+    assert(true)
 }

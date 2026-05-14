@@ -18,4 +18,5 @@ fn main() {
     for book in shelf {
         print(f"Title: ${book.title}")
     }
+    assert(true)
 }

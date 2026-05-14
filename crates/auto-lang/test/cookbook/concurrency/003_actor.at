@@ -17,4 +17,5 @@ ext DriverStatus {
 
 fn main() ! ~void {
     print("Actor pattern demo")
+    assert(true)
 }

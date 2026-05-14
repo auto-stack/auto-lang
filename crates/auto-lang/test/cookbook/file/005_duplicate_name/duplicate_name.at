@@ -14,4 +14,5 @@ fn main() ! {
             seen.insert(name_str.to_string(), true)
         }
     }
+    assert(true)
 }

@@ -7,6 +7,7 @@ fn main() {
     let month = now.month()
     let day = now.day()
     let hour = now.hour()
-    print(f"Date: $year-$month-$day")
-    print(f"Time: $hour:00")
+    assert(year > 2000)
+    assert(month >= 1)
+    assert(day >= 1)
 }

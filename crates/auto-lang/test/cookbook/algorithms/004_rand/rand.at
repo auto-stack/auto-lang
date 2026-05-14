@@ -4,5 +4,6 @@ use.rust rand
 fn main() {
     var rng = rand.thread_rng()
     let n int = rng.gen_range(0..100)
-    print(f"Random number: $n")
+    let in_range = n >= 0
+    assert(in_range)
 }

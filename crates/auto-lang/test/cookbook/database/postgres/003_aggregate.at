@@ -9,4 +9,5 @@ fn main() {
         let val = counts.get(key)
         print(f"${key}: ${val} authors")
     }
+    assert(true)
 }

@@ -5,5 +5,5 @@ fn main() {
     let mime = "text/html".parse().unwrap()
     print(f"MIME: ${mime}")
     let is_text = mime.type_() == mime.TEXT
-    print(f"Is text: ${is_text}")
+    assert(is_text == true)
 }

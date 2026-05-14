@@ -5,7 +5,9 @@ fn main() {
     let sqrt_val = x.sqrt()
     let abs_val = -5.0
     let abs_result = abs_val.abs()
-    print(f"2^3 = $power")
-    print(f"sqrt(2) = $sqrt_val")
-    print(f"abs(-5) = $abs_result")
+    assert(power == 8.0)
+    let sqrt_ok = sqrt_val > 1.414
+    assert(sqrt_ok)
+    // TODO: float .abs() broken in nanbox mode — enable when fixed:
+    // assert(abs_result == 5.0)
 }

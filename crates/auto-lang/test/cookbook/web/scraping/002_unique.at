@@ -16,4 +16,5 @@ fn main() {
         visited = visited + 1
     }
     print(f"Visited ${visited} URLs")
+    assert(visited == 3)
 }

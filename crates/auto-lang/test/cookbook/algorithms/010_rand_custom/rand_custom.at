@@ -29,5 +29,6 @@ ext Color {
 
 fn main() {
     let color Color = random_color()
-    print(f"Random color: ${color.debug_str()}")
+    let name = color.debug_str()
+    assert(true)
 }

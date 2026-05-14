@@ -4,5 +4,5 @@ fn main() {
     let re = Regex.new(c"\d+").unwrap()
     let text = "abc 123 def 456"
     let replaced = re.replace_all(text, "NUM")
-    print(f"Replaced: $replaced")
+    assert(replaced == "abc NUM def NUM")
 }

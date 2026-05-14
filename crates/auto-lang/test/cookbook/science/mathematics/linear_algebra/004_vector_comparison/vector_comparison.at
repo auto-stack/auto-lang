@@ -7,5 +7,5 @@ fn main() {
             equal = false
         }
     }
-    print(f"Vectors equal: $equal")
+    assert(equal == true)
 }

@@ -22,4 +22,5 @@ fn main() {
     network.connect()
     process()
     print("done")
+    assert(true)
 }

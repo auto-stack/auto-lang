@@ -1,6 +1,7 @@
 fn main() {
     let u = url.parse("https://example.com/path?query=1")
-    print(f"Scheme: ${u.scheme()}")
-    print(f"Host: ${u.host()}")
-    print(f"Path: ${u.path()}")
+    let scheme = u.scheme()
+    assert(scheme == "https")
+    let path = u.path()
+    assert(path == "/path")
 }

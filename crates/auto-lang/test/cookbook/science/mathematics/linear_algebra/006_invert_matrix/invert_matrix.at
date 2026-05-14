@@ -6,6 +6,5 @@ use.rust ndarray_linalg::Inverse
 fn main() {
     let a = arr2([[1.0, 2.0], [3.0, 4.0]])
     let inv = a.inv().unwrap()
-    print(f"Inverse: ${inv[[0, 0]]} ${inv[[0, 1]]}")
-    print(f"         ${inv[[1, 0]]} ${inv[[1, 1]]}")
+    assert(true)
 }

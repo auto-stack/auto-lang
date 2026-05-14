@@ -2,8 +2,8 @@ fn parse_parts(s str) {
     var parts = s.split(",")
     let first = parts.next().unwrap()
     let second = parts.next().unwrap()
-    print(f"First: ${first}")
-    print(f"Second: ${second}")
+    assert(first == "hello")
+    assert(second == "world")
 }
 
 fn main() {

@@ -6,8 +6,10 @@ fn main() {
     for i in 1..=10 { v.push(i) }
     let target = 7
     let found = v.par_iter().find_any(x => x == target)
+    var found_val = false
     is found {
-        Some(val) -> print(f"Found: ${val}"),
+        Some(val) -> found_val = true,
         None -> print("Not found")
     }
+    assert(found_val == true)
 }

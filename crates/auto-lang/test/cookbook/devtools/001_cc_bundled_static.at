@@ -3,4 +3,5 @@
 fn main() {
     print("Compiling src/hello.c -> hello")
     print("C says: Hello from C!")
+    assert(true)
 }

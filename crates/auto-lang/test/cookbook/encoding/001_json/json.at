@@ -6,5 +6,5 @@ fn main() {
     let parsed = serde_json.from_str(json_str)
     print(f"Parsed: ${parsed}")
     let encoded = serde_json.to_string("hello world")
-    print(f"Encoded: ${encoded}")
+    assert(encoded.contains("hello"))
 }

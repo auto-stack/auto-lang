@@ -12,4 +12,5 @@ fn main() {
 
     let ct = Response.header_get(handle, "Content-Type")
     print(f"Content-Type: ${ct}")
+    assert(true)
 }

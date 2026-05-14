@@ -8,5 +8,5 @@ fn main() {
     for byte in data {
         buf.push(byte).unwrap()
     }
-    print(f"Buffer: ${buf.len()} bytes")
+    assert(buf.len() == 5)
 }

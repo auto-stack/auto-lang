@@ -6,5 +6,5 @@ fn main() {
     print(f"Major: ${v.major}")
     print(f"Pre: ${v.pre}")
     let is_pre = !v.pre.is_empty()
-    print(f"Is prerelease: ${is_pre}")
+    assert(is_pre == true)
 }

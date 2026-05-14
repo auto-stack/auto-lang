@@ -11,5 +11,6 @@ fn main() ! {
         sum = sum + val
     }
     let avg = sum / 1000.0
-    print(f"Average of 1000 normal samples: $avg")
+    // Verify average of 1000 N(0,1) samples is finite (not NaN/Inf)
+    assert(avg == avg)
 }

@@ -5,8 +5,10 @@ fn main() {
     let path = "test_temp.txt"
     File.write_text(path, content)
     let lines = File.read_text(path)
+    var line_count = 0
     for line in lines.lines() {
-        print(f"Line: $line")
+        line_count += 1
     }
+    assert(line_count == 3)
     File.delete(path)
 }

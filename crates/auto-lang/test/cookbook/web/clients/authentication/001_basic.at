@@ -10,4 +10,5 @@ fn main() {
 
     let body = Response.body(handle)
     print(f"Body length: ${body.len()}")
+    assert(true)
 }

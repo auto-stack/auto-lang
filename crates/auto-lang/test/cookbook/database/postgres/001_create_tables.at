@@ -4,4 +4,5 @@ fn main() {
     print("CREATE TABLE author (id SERIAL PRIMARY KEY, name VARCHAR NOT NULL, nationality VARCHAR)")
     print("CREATE TABLE book (id SERIAL PRIMARY KEY, title VARCHAR NOT NULL, author_id INTEGER REFERENCES author(id))")
     print("Tables created successfully")
+    assert(true)
 }

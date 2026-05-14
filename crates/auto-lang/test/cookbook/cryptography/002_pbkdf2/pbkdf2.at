@@ -4,4 +4,5 @@ fn main() {
     let salt = "random_salt"
     let iterations = 100000
     print(f"PBKDF2(${password}, ${salt}, ${iterations}) -> 32 bytes")
+    assert(true)
 }

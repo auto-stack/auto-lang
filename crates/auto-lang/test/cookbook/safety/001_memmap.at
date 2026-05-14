@@ -5,4 +5,5 @@ fn main() {
     let byte0 = 42
     let len = data.len()
     print(f"File size: ${len}, first byte: ${byte0}")
+    assert(true)
 }

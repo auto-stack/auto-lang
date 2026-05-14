@@ -7,5 +7,5 @@ fn main() {
     debug("starting operation")
     let value = 42
     debug(f"value = ${value}")
-    print("done")
+    assert(value == 42)
 }

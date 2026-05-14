@@ -5,5 +5,8 @@ fn main() {
     var rng = rand.thread_rng()
     let x int = rng.gen_range(0..5)
     let y int = rng.gen_range(10..20)
-    print(f"x = $x, y = $y")
+    let x_ok = x >= 0
+    let y_ok = y >= 10
+    assert(x_ok)
+    assert(y_ok)
 }

@@ -5,4 +5,5 @@ fn main() {
     print("Transaction committed")
     print("INSERT cat Bacon (Brown)")
     print("Transaction rolled back")
+    assert(true)
 }

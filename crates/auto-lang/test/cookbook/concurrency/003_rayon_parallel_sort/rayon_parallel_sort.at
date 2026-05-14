@@ -9,5 +9,6 @@ fn main() {
     for i in 0..100 { v.push(i) }
     v.shuffle(thread_rng())
     v.par_sort()
-    print(f"Sorted first: ${v[0]}, last: ${v[99]}")
+    assert(v[0] == 0)
+    assert(v[99] == 99)
 }

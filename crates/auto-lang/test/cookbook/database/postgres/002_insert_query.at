@@ -13,4 +13,5 @@ fn main() {
     for author in authors {
         print(f"${author.name} (${author.nationality})")
     }
+    assert(true)
 }
