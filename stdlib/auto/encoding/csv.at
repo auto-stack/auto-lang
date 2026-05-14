@@ -1,0 +1,25 @@
+/// CSV Encoding Module — Plan 250
+///
+/// Parse and encode CSV (Comma-Separated Values) data.
+/// Inspired by Python's csv, Go's encoding/csv.
+///
+/// Usage:
+///   let data = csv_parse("a,b,c\n1,2,3")
+///   let text = csv_encode(data)
+
+/// Parse CSV text into a JSON array of arrays.
+/// Returns a JSON string that can be decoded with json.decode().
+#[vm]
+fn csv_parse(text str) str
+
+/// Parse CSV with custom delimiter.
+#[vm]
+fn csv_parse_with_delimiter(text str, delim str) str
+
+/// Encode data (JSON array of arrays) to CSV text.
+#[vm]
+fn csv_encode(data str) str
+
+/// Encode data with custom delimiter.
+#[vm]
+fn csv_encode_with_delimiter(data str, delim str) str

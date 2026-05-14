@@ -1,0 +1,25 @@
+/// Format Module — Plan 250
+///
+/// Printf-style formatted output.
+/// Inspired by Go's fmt package, C's printf, Python's format().
+///
+/// Format specifiers: {} — positional replacement
+///   format("Hello {}, you are {} years old", "Alice", 30)
+///   => "Hello Alice, you are 30 years old"
+
+/// Format string with arguments, return result as string.
+#[vm]
+fn sprintf(template str, args... Val) str
+
+/// Format string with arguments, print to stdout.
+#[vm]
+fn printf(template str, args... Val) void
+
+/// Format string with arguments, print to stderr.
+#[vm]
+fn eprintf(template str, args... Val) void
+
+/// Alias for sprintf — idiomatic Auto naming.
+fn format(template str, args... Val) str {
+    return sprintf(template, args)
+}

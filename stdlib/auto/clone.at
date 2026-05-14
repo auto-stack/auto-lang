@@ -1,0 +1,9 @@
+/// Clone Module
+///
+/// Provides the Clone spec for types that can be duplicated.
+/// Inspired by Rust's Clone trait.
+
+/// Clone spec — types that can create a copy of themselves.
+spec Clone {
+    fn clone() Self
+}

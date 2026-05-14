@@ -1,0 +1,59 @@
+/// Duration Module — Plan 250
+///
+/// Represents a span of time. Inspired by Rust's std::time::Duration,
+/// Go's time.Duration, Python's datetime.timedelta.
+
+/// Duration — represents a span of time in milliseconds internally.
+type Duration {
+    _ms int
+
+    /// Create from milliseconds
+    static fn from_millis(ms int) Duration {
+        return Duration(_ms: ms)
+    }
+
+    /// Create from seconds
+    static fn from_secs(secs int) Duration {
+        return Duration(_ms: secs * 1000)
+    }
+
+    /// Create from minutes
+    static fn from_mins(mins int) Duration {
+        return Duration(_ms: mins * 60000)
+    }
+
+    /// Create from hours
+    static fn from_hours(hours int) Duration {
+        return Duration(_ms: hours * 3600000)
+    }
+
+    /// Get total seconds
+    fn secs() int {
+        return ._ms / 1000
+    }
+
+    /// Get total milliseconds
+    fn millis() int {
+        return ._ms
+    }
+}
+
+// Arithmetic on durations
+ext Duration {
+    fn add(other Duration) Duration {
+        return Duration(_ms: ._ms + other._ms)
+    }
+
+    fn sub(other Duration) Duration {
+        return Duration(_ms: ._ms - other._ms)
+    }
+
+    fn mul(factor int) Duration {
+        return Duration(_ms: ._ms * factor)
+    }
+}
+
+/// Convenience constructor — create Duration from seconds
+fn dur(secs int) Duration {
+    return Duration.from_secs(secs)
+}

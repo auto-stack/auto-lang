@@ -1,0 +1,12 @@
+/// Base64 Encoding Module — Plan 250
+///
+/// Encode and decode data using Base64.
+/// Inspired by Python's base64, Go's encoding/base64.
+
+/// Encode a string to Base64
+#[vm]
+fn encode(data str) str
+
+/// Decode a Base64 string. Returns nil on invalid input.
+#[vm]
+fn decode(data str) str

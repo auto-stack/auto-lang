@@ -1,5 +1,50 @@
-// test module - placeholder for testing functionality
+/// Test Module — Plan 250
+///
+/// Assertion functions for testing.
+/// Inspired by Python's unittest, Go's testing, Rust's built-in assert_eq!.
+///
+/// Usage:
+///   test_assert_true(condition, "should be true")
+///   test_assert_contains("hello world", "world", "should contain")
 
-// Forward declaration of test function
-// Implementation is in test.vm.at
-pub fn test() int;
+/// Assert that a condition is true. Panics with message if false.
+#[vm]
+fn test_assert_true(condition bool, message str) void
+
+/// Assert that a condition is false. Panics with message if true.
+#[vm]
+fn test_assert_false(condition bool, message str) void
+
+/// Assert that a string contains a substring.
+#[vm]
+fn test_assert_contains(haystack str, needle str, message str) void
+
+/// Assert that a list has a specific length.
+#[vm]
+fn test_assert_len(collection List, expected int, message str) void
+
+/// Assert that a result value is Ok (success).
+#[vm]
+fn test_assert_ok(result Result, message str) void
+
+/// Assert that a result value is Err (failure).
+#[vm]
+fn test_assert_err(result Result, message str) void
+
+// Short-form assertions (no message parameter)
+
+fn assert_eq(actual Val, expected Val) void {
+    test_assert_true(actual == expected, f"assert_eq: expected $expected got $actual")
+}
+
+fn assert_ne(actual Val, expected Val) void {
+    test_assert_true(actual != expected, "assert_ne: values should differ")
+}
+
+fn assert_true(condition bool) void {
+    test_assert_true(condition, "assertion failed")
+}
+
+fn assert_false(condition bool) void {
+    test_assert_false(condition, "assertion failed")
+}

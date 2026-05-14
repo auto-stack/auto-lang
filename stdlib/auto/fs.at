@@ -1,0 +1,36 @@
+/// Filesystem Module — Plan 250
+///
+/// Enhanced filesystem operations beyond basic file.at.
+/// Inspired by Python's pathlib/os, Go's os package, Rust's std::fs.
+
+/// Get system temporary directory path.
+#[vm]
+fn temp_dir() str
+
+/// Create a temporary file and return its path.
+#[vm]
+fn temp_file() str
+
+/// Rename a file or directory.
+#[vm]
+fn rename(old str, new str) void
+
+/// Read directory entries (non-recursive). Returns JSON array of filenames.
+#[vm]
+fn read_dir(dir str) str
+
+/// Get canonical (absolute, resolved) path.
+#[vm]
+fn canonical(path str) str
+
+/// Get file extension (e.g., "txt" from "doc.txt").
+#[vm]
+fn ext(path str) str
+
+/// Get filename stem (e.g., "doc" from "doc.txt").
+#[vm]
+fn stem(path str) str
+
+/// Walk directory recursively returning only files. Returns JSON array of paths.
+#[vm]
+fn walk_files(dir str) str

@@ -52,17 +52,37 @@ use auto.iter.adapters.filter: FilterIter
 // ============================================================================
 // NOTE: The ?T syntax sugar (?int, ?str, etc.) is built into the parser
 // (Plan 049). It creates May<T> types automatically without needing imports.
-// When tag generic syntax and pattern matching are implemented, we can add:
-//
-// use auto.may: May
 
 // ============================================================================
-// Future Additions (when trait system exists)
+// Core Specs (Plan 250)
 // ============================================================================
-// Traits that will be added to prelude:
-//
-// use auto.traits: From, Into, TryFrom, AsRef, AsMut
-// use auto.traits: FromStr, Display, Debug
-// use auto.traits: Collect
-// use auto.traits: Add, Sub, Mul, Div, Rem
-// use auto.traits: PartialEq, Eq, PartialOrd, Ord
+// Rationale: These specs are the foundation for type behaviors. Ordering for
+// comparisons, Display/Debug for string representation, Clone for copying.
+
+use auto.cmp: Ordering, Cmp
+use auto.clone: Clone
+use auto.default: Default
+use auto.fmt: Display, Debug
+
+// ============================================================================
+// Error Handling (Plan 250)
+// ============================================================================
+// Result<T,E> for structured error handling (Rust/Go style).
+// Error type for simple error values.
+
+use auto.result: Result
+use auto.error: Error
+
+// ============================================================================
+// Sorting (Plan 250)
+// ============================================================================
+// Sorting operations are commonly needed for data processing.
+
+use auto.sort: sort, sorted, reverse
+
+// ============================================================================
+// Random (Plan 250)
+// ============================================================================
+// Random number generation — frequently used in games, simulations, testing.
+
+use auto.random: rand_int, rand_float, rand_bool

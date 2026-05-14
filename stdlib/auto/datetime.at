@@ -1,0 +1,74 @@
+/// DateTime Module — Plan 250
+///
+/// Calendar date and time operations.
+/// Inspired by Python's datetime, Go's time package, Rust's chrono crate.
+
+/// DateTime — represents a point in calendar time.
+/// Opaque #[vm]-backed type.
+type DateTime {
+    _handle int
+
+    /// Get current local date/time
+    static fn now() DateTime {
+        return DateTime._vm_now()
+    }
+
+    /// Create from Unix timestamp (seconds since epoch)
+    static fn from_timestamp(ts int) DateTime {
+        return DateTime._vm_from_timestamp(ts)
+    }
+
+    /// Create from year/month/day (time is midnight)
+    static fn from_ymd(year int, month int, day int) DateTime {
+        return DateTime._vm_from_ymd(year, month, day)
+    }
+
+    // Internal VM methods
+    #[vm]
+    static fn _vm_now() DateTime
+    #[vm]
+    static fn _vm_from_timestamp(ts int) DateTime
+    #[vm]
+    static fn _vm_from_ymd(year int, month int, day int) DateTime
+
+    /// Get year component
+    #[vm]
+    fn year() int
+
+    /// Get month component (1-12)
+    #[vm]
+    fn month() int
+
+    /// Get day component (1-31)
+    #[vm]
+    fn day() int
+
+    /// Get hour component (0-23)
+    #[vm]
+    fn hour() int
+
+    /// Get minute component (0-59)
+    #[vm]
+    fn minute() int
+
+    /// Get second component (0-59)
+    #[vm]
+    fn second() int
+
+    /// Get weekday (0=Monday, 6=Sunday)
+    #[vm]
+    fn weekday() int
+
+    /// Get Unix timestamp
+    #[vm]
+    fn timestamp() int
+
+    /// Format using strftime-style layout
+    #[vm]
+    fn format(layout str) str
+
+    /// Human-readable string
+    fn to_str() str {
+        return .format("%Y-%m-%d %H:%M:%S")
+    }
+}

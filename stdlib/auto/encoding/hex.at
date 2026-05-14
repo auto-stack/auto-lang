@@ -1,0 +1,12 @@
+/// Hex Encoding Module — Plan 250
+///
+/// Encode and decode data using hexadecimal.
+/// Inspired by Python's binascii, Go's encoding/hex.
+
+/// Encode bytes to hex string
+#[vm]
+fn encode(data str) str
+
+/// Decode hex string to bytes. Returns empty string on invalid input.
+#[vm]
+fn decode(data str) str

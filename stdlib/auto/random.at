@@ -1,0 +1,27 @@
+/// Random Module — Plan 250
+///
+/// Random number generation utilities.
+/// Inspired by Python's random, Go's math/rand, Rust's rand crate.
+///
+/// Usage:
+///   let n = rand_int(100)    // random int in [0, 100)
+///   let f = rand_float()     // random float in [0.0, 1.0)
+///   let b = rand_bool()      // random boolean
+
+/// Thread-local random integer in [0, max).
+/// Equivalent to Python's random.randint(0, max-1).
+#[vm]
+fn rand_int(max int) int
+
+/// Thread-local random float in [0.0, 1.0).
+/// Equivalent to Python's random.random().
+#[vm]
+fn rand_float() float
+
+/// Thread-local random boolean.
+#[vm]
+fn rand_bool() bool
+
+/// Shuffle a list in-place using Fisher-Yates algorithm.
+#[vm]
+fn shuffle(list List) void

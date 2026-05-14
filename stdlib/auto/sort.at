@@ -1,0 +1,29 @@
+/// Sort Module — Plan 250
+///
+/// Sorting functions for List types.
+/// Inspired by Rust's .sort(), Python's sorted(), Go's sort package.
+
+/// Sort a list in-place (ascending order for numbers, lexicographic for strings).
+/// The list is modified directly.
+#[vm]
+fn sort(list List) void
+
+/// Sort a list using a custom comparator function.
+/// The comparator returns: negative if a < b, 0 if a == b, positive if a > b.
+#[vm]
+fn sort_by(list List, cmp_fn fn(a Val, b Val) int) void
+
+/// Return a new sorted list (original is not modified).
+#[vm]
+fn sorted(list List) List
+
+/// Reverse a list in-place.
+#[vm]
+fn reverse(list List) void
+
+/// Return a new reversed list.
+fn reversed(list List) List {
+    let result = list
+    reverse(result)
+    return result
+}

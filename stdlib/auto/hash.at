@@ -1,0 +1,20 @@
+/// Hash Module — Plan 250
+///
+/// Cryptographic hashing functions.
+/// Inspired by Python's hashlib, Go's crypto/sha256, etc.
+
+/// Compute MD5 hash of a string. Returns hex digest.
+#[vm]
+fn md5(data str) str
+
+/// Compute SHA1 hash of a string. Returns hex digest.
+#[vm]
+fn sha1(data str) str
+
+/// Compute SHA256 hash of a string. Returns hex digest.
+#[vm]
+fn sha256(data str) str
+
+/// Compute SHA512 hash of a string. Returns hex digest.
+#[vm]
+fn sha512(data str) str

@@ -1,0 +1,9 @@
+/// Default Module
+///
+/// Provides the Default spec for types that have a natural "zero" or empty value.
+/// Inspired by Rust's Default trait, Go's zero values.
+
+/// Default spec — types that have a sensible default/empty value.
+spec Default {
+    fn default() Self
+}

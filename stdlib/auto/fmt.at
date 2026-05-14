@@ -1,0 +1,52 @@
+/// Format Module — Plan 250
+///
+/// Provides Display and Debug specs for string representation.
+/// Inspired by Rust's std::fmt (Display/Debug), Python's __str__/__repr__,
+/// Go's fmt.Stringer.
+
+/// Display spec — human-readable string representation.
+/// Like Python's __str__() or Go's String() method.
+spec Display {
+    fn fmt() str
+}
+
+/// Debug spec — developer-oriented string representation.
+/// Like Python's __repr__() — shows internal structure.
+spec Debug {
+    fn debug() str
+}
+
+// Built-in type extensions for Display
+ext str for Display {
+    fn fmt() str { return self }
+}
+
+ext int for Display {
+    #[vm]
+    fn fmt() str
+}
+
+ext float for Display {
+    #[vm]
+    fn fmt() str
+}
+
+ext bool for Display {
+    #[vm]
+    fn fmt() str
+}
+
+// Built-in type extensions for Debug (same as Display for primitives)
+ext str for Debug {
+    fn debug() str { return f"\"$self\"" }
+}
+
+ext int for Debug {
+    #[vm]
+    fn debug() str
+}
+
+ext bool for Debug {
+    #[vm]
+    fn debug() str
+}

@@ -289,7 +289,71 @@ macro_rules! for_each_native {
             (1010, NATIVE_FILE_CREATE_HANDLE, shim_file_create_handle, "auto.file.create_handle"),
             (1011, NATIVE_FILE_OPEN_HANDLE, shim_file_open_handle, "auto.file.open_handle"),
             (1012, NATIVE_FILE_WRITE_HANDLE, shim_file_write_handle, "auto.file.write_handle"),
-            (1013, NATIVE_FILE_TRY_CLONE, shim_file_try_clone, "auto.file.try_clone")
+            (1013, NATIVE_FILE_TRY_CLONE, shim_file_try_clone, "auto.file.try_clone"),
+
+            // === Bool to String (2750) — Plan 250 ===
+            (2750, NATIVE_BOOL_TO_STR, shim_bool_to_str, "auto.bool.to_str"),
+
+            // === Float to String (2751) — Plan 250 ===
+            (2751, NATIVE_F64_TO_STR, shim_f64_to_str, "auto.f64.to_str"),
+
+            // === Result (2760-2769) — Plan 250 ===
+            (2760, NATIVE_RESULT_IS_OK, shim_result_is_ok, "auto.result.is_ok"),
+            (2761, NATIVE_RESULT_IS_ERR, shim_result_is_err, "auto.result.is_err"),
+            (2762, NATIVE_RESULT_UNWRAP, shim_result_unwrap, "auto.result.unwrap"),
+            (2763, NATIVE_RESULT_UNWRAP_OR, shim_result_unwrap_or, "auto.result.unwrap_or"),
+            (2764, NATIVE_RESULT_UNWRAP_ERR, shim_result_unwrap_err, "auto.result.unwrap_err"),
+            (2765, NATIVE_RESULT_OK, shim_result_ok, "auto.result.ok"),
+            (2766, NATIVE_RESULT_ERR, shim_result_err, "auto.result.err"),
+
+            // === List Reverse (2770) — Plan 250 ===
+            (2770, NATIVE_LIST_REVERSE, shim_list_reverse, "auto.list.reverse"),
+
+            // === Random convenience (2780-2783) — Plan 250 ===
+            (2780, NATIVE_RAND_INT, shim_rand_int, "auto.rand.int"),
+            (2781, NATIVE_RAND_FLOAT, shim_rand_float, "auto.rand.float"),
+            (2782, NATIVE_RAND_BOOL, shim_rand_bool, "auto.rand.bool"),
+            (2783, NATIVE_RAND_SHUFFLE, shim_rand_shuffle, "auto.rand.shuffle"),
+
+            // === DateTime extended (2790-2793) — Plan 250 ===
+            (2790, NATIVE_CHRONO_FROM_TIMESTAMP, shim_chrono_from_timestamp, "auto.chrono_opaque.from_timestamp"),
+            (2791, NATIVE_CHRONO_FROM_YMD, shim_chrono_from_ymd, "auto.chrono_opaque.from_ymd"),
+            (2792, NATIVE_CHRONO_WEEKDAY, shim_chrono_weekday, "auto.chrono_opaque.weekday"),
+
+            // === CSV (2800-2803) — Plan 250 ===
+            (2800, NATIVE_CSV_PARSE, shim_csv_parse, "auto.csv.parse"),
+            (2801, NATIVE_CSV_PARSE_DELIM, shim_csv_parse_delim, "auto.csv.parse_delim"),
+            (2802, NATIVE_CSV_ENCODE, shim_csv_encode, "auto.csv.encode"),
+            (2803, NATIVE_CSV_ENCODE_DELIM, shim_csv_encode_delim, "auto.csv.encode_delim"),
+
+            // === Hashing (2810-2815) — Plan 250 ===
+            (2810, NATIVE_HASH_MD5, shim_hash_md5, "auto.hash.md5"),
+            (2811, NATIVE_HASH_SHA1, shim_hash_sha1, "auto.hash.sha1"),
+            (2812, NATIVE_HASH_SHA256, shim_hash_sha256, "auto.hash.sha256"),
+            (2813, NATIVE_HASH_SHA512, shim_hash_sha512, "auto.hash.sha512"),
+
+            // === Test assertions (2820-2827) — Plan 250 ===
+            (2820, NATIVE_TEST_ASSERT_TRUE, shim_test_assert_true, "auto.test.assert_true"),
+            (2821, NATIVE_TEST_ASSERT_FALSE, shim_test_assert_false, "auto.test.assert_false"),
+            (2822, NATIVE_TEST_ASSERT_CONTAINS, shim_test_assert_contains, "auto.test.assert_contains"),
+            (2823, NATIVE_TEST_ASSERT_LEN, shim_test_assert_len, "auto.test.assert_len"),
+            (2824, NATIVE_TEST_ASSERT_OK, shim_test_assert_ok, "auto.test.assert_ok"),
+            (2825, NATIVE_TEST_ASSERT_ERR, shim_test_assert_err, "auto.test.assert_err"),
+
+            // === Format (2830-2832) — Plan 250 ===
+            (2830, NATIVE_FMT_SPRINTF, shim_fmt_sprintf, "auto.fmt.sprintf"),
+            (2831, NATIVE_FMT_PRINTF, shim_fmt_printf, "auto.fmt.printf"),
+            (2832, NATIVE_FMT_EPRINTF, shim_fmt_eprintf, "auto.fmt.eprintf"),
+
+            // === FS extended (2840-2847) — Plan 250 ===
+            (2840, NATIVE_FS_TEMP_DIR, shim_fs_temp_dir, "auto.fs.temp_dir"),
+            (2841, NATIVE_FS_TEMP_FILE, shim_fs_temp_file, "auto.fs.temp_file"),
+            (2842, NATIVE_FS_RENAME, shim_fs_rename, "auto.fs.rename"),
+            (2843, NATIVE_FS_READ_DIR, shim_fs_read_dir, "auto.fs.read_dir"),
+            (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
+            (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
+            (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
+            (2847, NATIVE_FS_WALK_FILES, shim_fs_walk_files, "auto.fs.walk_files")
         }
     };
 }

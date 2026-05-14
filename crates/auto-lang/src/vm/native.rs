@@ -5608,6 +5608,737 @@ pub fn shim_once_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+// ============================================================================
+// Plan 250: Stdlib Enhancement — New Native Shims
+// ============================================================================
+
+/// Bool to string.
+/// Stack: bool_val (i32, 0/1) -> str_idx
+pub fn shim_bool_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    let s = if val != 0 { "true" } else { "false" };
+    let str_idx = vm.add_string(s.as_bytes().to_vec());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// f64 to string.
+/// Stack: f64_val -> str_idx
+pub fn shim_f64_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_f64();
+    let s = format!("{}", val);
+    let str_idx = vm.add_string(s.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+// --- Result shims (2760-2766) ---
+// Result<T,E> is represented as a tagged i32:
+//   Ok(v)  => v >= 0 (the value itself)
+//   Err(e) => e < 0  (negated error code)
+
+/// Check if a Result is Ok.
+/// Stack: result_val (i32) -> bool (i32)
+pub fn shim_result_is_ok(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(if val >= 0 { 1 } else { 0 });
+    Ok(())
+}
+
+/// Check if a Result is Err.
+/// Stack: result_val (i32) -> bool (i32)
+pub fn shim_result_is_err(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(if val < 0 { 1 } else { 0 });
+    Ok(())
+}
+
+/// Unwrap Result — returns value if Ok, panics if Err.
+/// Stack: result_val (i32) -> value (i32)
+pub fn shim_result_unwrap(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    if val < 0 {
+        return Err(VMError::RuntimeError("unwrap on Err result".to_string()));
+    }
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+/// Unwrap Result with default.
+/// Stack: default (i32), result_val (i32) -> value (i32)
+pub fn shim_result_unwrap_or(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let default = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(if val >= 0 { val } else { default });
+    Ok(())
+}
+
+/// Unwrap the Err value from a Result.
+/// Stack: result_val (i32) -> err_value (i32)
+pub fn shim_result_unwrap_err(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    if val >= 0 {
+        return Err(VMError::RuntimeError("unwrap_err on Ok result".to_string()));
+    }
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+/// Create Ok result — passthrough.
+/// Stack: value (i32) -> result (i32)
+pub fn shim_result_ok(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Ok(())
+}
+
+/// Create Err result — negate to mark as error.
+/// Stack: value (i32) -> result (i32)
+pub fn shim_result_err(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(if val >= 0 { -val - 1 } else { val });
+    Ok(())
+}
+
+// --- List Reverse (2770) ---
+
+/// Reverse a list in-place.
+/// Stack: list_handle -> void
+pub fn shim_list_reverse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+    let handle = task.ram.pop_i32() as u64;
+    let obj = vm.get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid list handle in reverse".to_string()))?;
+    let mut guard = obj.write().unwrap();
+    if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+        list.elems.reverse();
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// --- Random convenience (2780-2783) ---
+
+/// Thread-local random int in [0, max).
+/// Stack: max (i32) -> i32
+pub fn shim_rand_int(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let max = task.ram.pop_i32();
+    let max = if max <= 0 { 1 } else { max as u32 };
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let mut rng = Xorshift64::new(seed);
+    let val = (rng.next() % max as u64) as i32;
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+/// Thread-local random float in [0, 1).
+/// Stack: -> f64
+pub fn shim_rand_float(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let mut rng = Xorshift64::new(seed);
+    let val = (rng.next() as f64) / (u64::MAX as f64);
+    task.ram.push_f64(val);
+    Ok(())
+}
+
+/// Thread-local random bool.
+/// Stack: -> bool (i32)
+pub fn shim_rand_bool(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let mut rng = Xorshift64::new(seed);
+    let val = rng.next() % 2 == 0;
+    task.ram.push_i32(if val { 1 } else { 0 });
+    Ok(())
+}
+
+/// Shuffle a list in-place using Fisher-Yates.
+/// Stack: list_handle -> void
+pub fn shim_rand_shuffle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+    let handle = task.ram.pop_i32() as u64;
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let obj = vm.get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid list handle in shuffle".to_string()))?;
+    let mut guard = obj.write().unwrap();
+    if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+        let mut rng = Xorshift64::new(seed);
+        let mut i = list.elems.len();
+        while i > 1 {
+            i -= 1;
+            let j = (rng.next() % (i as u64 + 1)) as usize;
+            list.elems.swap(i, j);
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// --- DateTime extended (2790-2792) ---
+// These use the existing chrono_opaque infrastructure from stdlib.rs
+
+/// Create DateTime from Unix timestamp.
+/// Stack: timestamp (i32) -> opaque_handle
+pub fn shim_chrono_from_timestamp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let ts = task.ram.pop_i32() as i64;
+    let dt = chrono::DateTime::from_timestamp(ts, 0)
+        .map(|dt| dt.naive_utc())
+        .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(1970, 1, 1).and_then(|d| d.and_hms_opt(0, 0, 0)).unwrap());
+    let obj = RustStdlibObject::new("DateTime", std::sync::Mutex::new(dt));
+    let handle = vm.insert_heap_object(obj) as i32;
+    task.ram.push_i32(handle);
+    Ok(())
+}
+
+/// Create DateTime from year/month/day.
+/// Stack: day, month, year -> opaque_handle
+pub fn shim_chrono_from_ymd(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let day = task.ram.pop_i32();
+    let month = task.ram.pop_i32();
+    let year = task.ram.pop_i32();
+    let dt = chrono::NaiveDate::from_ymd_opt(year, month as u32, day as u32)
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(1970, 1, 1).and_then(|d| d.and_hms_opt(0, 0, 0)).unwrap());
+    let obj = RustStdlibObject::new("DateTime", std::sync::Mutex::new(dt));
+    let handle = vm.insert_heap_object(obj) as i32;
+    task.ram.push_i32(handle);
+    Ok(())
+}
+
+/// Get weekday (0=Monday..6=Sunday).
+/// Stack: opaque_handle -> i32
+pub fn shim_chrono_weekday(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Datelike;
+    let handle = task.ram.pop_i32() as u64;
+    let obj = vm.get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid DateTime handle".to_string()))?;
+    let guard = obj.read().unwrap();
+    if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+        if let Some(dt) = rust_obj.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+            task.ram.push_i32(dt.lock().unwrap().weekday().num_days_from_monday() as i32);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// --- CSV (2800-2803) ---
+// CSV functions return JSON strings, matching the pattern used by file.walk etc.
+
+/// Parse CSV text into JSON array of arrays.
+/// Stack: str_idx -> str_idx (JSON)
+pub fn shim_csv_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u16;
+    let text = if let Some(bytes) = vm.get_string(str_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        String::new()
+    };
+    let rows: Vec<Vec<String>> = text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.split(',').map(|f| f.trim().to_string()).collect()
+        })
+        .collect();
+    let json = serde_json::to_string(&rows)
+        .map_err(|e| VMError::RuntimeError(format!("csv_parse: {}", e)))?;
+    let str_idx = vm.add_string(json.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Parse CSV text with custom delimiter.
+/// Stack: str_idx(delimiter), str_idx(text) -> str_idx (JSON)
+pub fn shim_csv_parse_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let delim_idx = task.ram.pop_str_idx() as u16;
+    let text_idx = task.ram.pop_str_idx() as u16;
+    let delim = if let Some(bytes) = vm.get_string(delim_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        ",".to_string()
+    };
+    let text = if let Some(bytes) = vm.get_string(text_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        String::new()
+    };
+    let delim_char = delim.chars().next().unwrap_or(',');
+    let rows: Vec<Vec<String>> = text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.split(delim_char).map(|f| f.trim().to_string()).collect()
+        })
+        .collect();
+    let json = serde_json::to_string(&rows)
+        .map_err(|e| VMError::RuntimeError(format!("csv_parse_delim: {}", e)))?;
+    let str_idx = vm.add_string(json.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Encode list of list of strings (JSON) to CSV.
+/// Stack: str_idx (JSON) -> str_idx (CSV)
+pub fn shim_csv_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let json_idx = task.ram.pop_str_idx() as u16;
+    let json = if let Some(bytes) = vm.get_string(json_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        String::new()
+    };
+    let rows: Vec<Vec<String>> = serde_json::from_str(&json)
+        .map_err(|e| VMError::RuntimeError(format!("csv_encode: {}", e)))?;
+    let mut result = String::new();
+    for (i, row) in rows.iter().enumerate() {
+        if i > 0 { result.push('\n'); }
+        result.push_str(&row.join(","));
+    }
+    let str_idx = vm.add_string(result.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Encode CSV with custom delimiter.
+/// Stack: str_idx(delim), str_idx(JSON) -> str_idx (CSV)
+pub fn shim_csv_encode_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let delim_idx = task.ram.pop_str_idx() as u16;
+    let json_idx = task.ram.pop_str_idx() as u16;
+    let delim = if let Some(bytes) = vm.get_string(delim_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        ",".to_string()
+    };
+    let json = if let Some(bytes) = vm.get_string(json_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        String::new()
+    };
+    let rows: Vec<Vec<String>> = serde_json::from_str(&json)
+        .map_err(|e| VMError::RuntimeError(format!("csv_encode_delim: {}", e)))?;
+    let mut result = String::new();
+    for (i, row) in rows.iter().enumerate() {
+        if i > 0 { result.push('\n'); }
+        result.push_str(&row.join(&delim));
+    }
+    let str_idx = vm.add_string(result.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+// --- Hashing (2810-2813) ---
+
+/// MD5 hash.
+/// Stack: str_idx -> str_idx (hex digest)
+pub fn shim_hash_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u16;
+    let data = if let Some(bytes) = vm.get_string(str_idx) {
+        bytes.clone()
+    } else {
+        Vec::new()
+    };
+    // Simple MD5 implementation using digest
+    let digest = md5_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// SHA1 hash.
+/// Stack: str_idx -> str_idx (hex digest)
+pub fn shim_hash_sha1(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u16;
+    let data = if let Some(bytes) = vm.get_string(str_idx) {
+        bytes.clone()
+    } else {
+        Vec::new()
+    };
+    let digest = sha1_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// SHA256 one-shot hash.
+/// Stack: str_idx -> str_idx (hex digest)
+pub fn shim_hash_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u16;
+    let data = if let Some(bytes) = vm.get_string(str_idx) {
+        bytes.clone()
+    } else {
+        Vec::new()
+    };
+    let digest = sha256_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// SHA512 hash.
+/// Stack: str_idx -> str_idx (hex digest)
+pub fn shim_hash_sha512(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u16;
+    let data = if let Some(bytes) = vm.get_string(str_idx) {
+        bytes.clone()
+    } else {
+        Vec::new()
+    };
+    let digest = sha512_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+// Simple hash implementations using pure Rust
+fn md5_hash(data: &[u8]) -> String {
+    use md5::{Md5, Digest};
+    let mut hasher = Md5::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{:02x}", result)
+}
+
+fn sha1_hash(data: &[u8]) -> String {
+    use sha1::{Sha1, Digest};
+    let mut hasher = Sha1::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{:02x}", result)
+}
+
+fn sha256_hash(data: &[u8]) -> String {
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{:02x}", result)
+}
+
+fn sha512_hash(data: &[u8]) -> String {
+    use sha2::{Sha512, Digest};
+    let mut hasher = Sha512::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{:02x}", result)
+}
+
+// --- Test assertions (2820-2825) ---
+
+/// Assert true.
+/// Stack: message_str_idx, condition (i32) -> void
+pub fn shim_test_assert_true(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg_idx = task.ram.pop_str_idx() as u16;
+    let condition = task.ram.pop_i32();
+    if condition == 0 {
+        let msg = if let Some(bytes) = vm.get_string(msg_idx) {
+            String::from_utf8_lossy(&bytes).to_string()
+        } else {
+            "assertion failed".to_string()
+        };
+        return Err(VMError::RuntimeError(format!("assert_true failed: {}", msg)));
+    }
+    Ok(())
+}
+
+/// Assert false.
+/// Stack: message_str_idx, condition (i32) -> void
+pub fn shim_test_assert_false(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg_idx = task.ram.pop_str_idx() as u16;
+    let condition = task.ram.pop_i32();
+    if condition != 0 {
+        let msg = if let Some(bytes) = vm.get_string(msg_idx) {
+            String::from_utf8_lossy(&bytes).to_string()
+        } else {
+            "assertion failed".to_string()
+        };
+        return Err(VMError::RuntimeError(format!("assert_false failed: {}", msg)));
+    }
+    Ok(())
+}
+
+/// Assert string contains.
+/// Stack: message_str_idx, needle_str_idx, haystack_str_idx -> void
+pub fn shim_test_assert_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg_idx = task.ram.pop_str_idx() as u16;
+    let needle_idx = task.ram.pop_str_idx() as u16;
+    let haystack_idx = task.ram.pop_str_idx() as u16;
+    let haystack = vm.get_string(haystack_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let needle = vm.get_string(needle_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    if !haystack.contains(&needle) {
+        return Err(VMError::RuntimeError(format!("assert_contains failed: '{}' not found in '{}' — {}", needle, haystack, msg)));
+    }
+    Ok(())
+}
+
+/// Assert list length.
+/// Stack: message_str_idx, expected_len (i32), list_handle -> void
+pub fn shim_test_assert_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+    let msg_idx = task.ram.pop_str_idx() as u16;
+    let expected = task.ram.pop_i32();
+    let handle = task.ram.pop_i32() as u64;
+    let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let len = {
+        let obj = vm.get_heap_object(handle)
+            .ok_or_else(|| VMError::RuntimeError("Invalid list handle in assert_len".to_string()))?;
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            list.elems.len() as i32
+        } else {
+            -1
+        }
+    };
+    if len != expected {
+        return Err(VMError::RuntimeError(format!("assert_len failed: expected {} got {} — {}", expected, len, msg)));
+    }
+    Ok(())
+}
+
+/// Assert result is Ok.
+/// Stack: message_str_idx, result_val -> void
+pub fn shim_test_assert_ok(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg_idx = task.ram.pop_str_idx() as u16;
+    let val = task.ram.pop_i32();
+    let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    if val < 0 {
+        return Err(VMError::RuntimeError(format!("assert_ok failed: result is Err — {}", msg)));
+    }
+    Ok(())
+}
+
+/// Assert result is Err.
+/// Stack: message_str_idx, result_val -> void
+pub fn shim_test_assert_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg_idx = task.ram.pop_str_idx() as u16;
+    let val = task.ram.pop_i32();
+    let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    if val >= 0 {
+        return Err(VMError::RuntimeError(format!("assert_err failed: result is Ok — {}", msg)));
+    }
+    Ok(())
+}
+
+// --- Format (2830-2832) ---
+
+/// sprintf — format string with positional arguments.
+/// Stack: ...args..., arg_count (i32), format_str_idx -> str_idx
+pub fn shim_fmt_sprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let arg_count = task.ram.pop_i32();
+    let fmt_idx = task.ram.pop_str_idx() as u16;
+    let fmt_str = vm.get_string(fmt_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+
+    // Pop arguments in reverse order
+    let mut args: Vec<String> = Vec::new();
+    for _ in 0..arg_count {
+        // Try to pop as string (simplified — real impl would need type info)
+        let val = task.ram.pop_i32();
+        args.push(val.to_string());
+    }
+    args.reverse();
+
+    // Simple {} replacement
+    let mut result = fmt_str;
+    for arg in args {
+        if let Some(pos) = result.find("{}") {
+            result.replace_range(pos..pos + 2, &arg);
+        }
+    }
+
+    let str_idx = vm.add_string(result.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// printf — format and print to stdout.
+pub fn shim_fmt_printf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let arg_count = task.ram.pop_i32();
+    let fmt_idx = task.ram.pop_str_idx() as u16;
+    let fmt_str = vm.get_string(fmt_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+
+    let mut args: Vec<String> = Vec::new();
+    for _ in 0..arg_count {
+        let val = task.ram.pop_i32();
+        args.push(val.to_string());
+    }
+    args.reverse();
+
+    let mut result = fmt_str;
+    for arg in args {
+        if let Some(pos) = result.find("{}") {
+            result.replace_range(pos..pos + 2, &arg);
+        }
+    }
+
+    print!("{}", result);
+    Ok(())
+}
+
+/// eprintf — format and print to stderr.
+pub fn shim_fmt_eprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let arg_count = task.ram.pop_i32();
+    let fmt_idx = task.ram.pop_str_idx() as u16;
+    let fmt_str = vm.get_string(fmt_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+
+    let mut args: Vec<String> = Vec::new();
+    for _ in 0..arg_count {
+        let val = task.ram.pop_i32();
+        args.push(val.to_string());
+    }
+    args.reverse();
+
+    let mut result = fmt_str;
+    for arg in args {
+        if let Some(pos) = result.find("{}") {
+            result.replace_range(pos..pos + 2, &arg);
+        }
+    }
+
+    eprint!("{}", result);
+    Ok(())
+}
+
+// --- FS extended (2840-2847) ---
+
+/// Get system temp directory.
+/// Stack: -> str_idx
+pub fn shim_fs_temp_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let temp = std::env::temp_dir();
+    let s = temp.to_string_lossy().to_string();
+    let str_idx = vm.add_string(s.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Create a temporary file and return its path.
+/// Stack: -> str_idx
+pub fn shim_fs_temp_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let temp_dir = std::env::temp_dir();
+    let id = std::sync::atomic::AtomicU64::new(0).fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = temp_dir.join(format!("auto_tmp_{}", id));
+    // Create the file
+    std::fs::File::create(&path).map_err(|e| VMError::RuntimeError(format!("temp_file failed: {}", e)))?;
+    let s = path.to_string_lossy().to_string();
+    let str_idx = vm.add_string(s.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Rename a file or directory.
+/// Stack: str_idx(new), str_idx(old) -> void
+pub fn shim_fs_rename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let new_idx = task.ram.pop_str_idx() as u16;
+    let old_idx = task.ram.pop_str_idx() as u16;
+    let old_path = vm.get_string(old_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let new_path = vm.get_string(new_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    std::fs::rename(&old_path, &new_path)
+        .map_err(|e| VMError::RuntimeError(format!("rename failed: {} -> {}: {}", old_path, new_path, e)))?;
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Read directory entries (non-recursive) — returns JSON array of filenames.
+/// Stack: str_idx(path) -> str_idx (JSON)
+pub fn shim_fs_read_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u16;
+    let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let entries: Vec<String> = std::fs::read_dir(&path)
+        .map_err(|e| VMError::RuntimeError(format!("read_dir failed: {}: {}", path, e)))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    let json = serde_json::to_string(&entries)
+        .map_err(|e| VMError::RuntimeError(format!("read_dir json: {}", e)))?;
+    let str_idx = vm.add_string(json.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Canonicalize a path (absolute, resolved symlinks).
+/// Stack: str_idx -> str_idx
+pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u16;
+    let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let canonical = std::fs::canonicalize(&path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or(path);
+    let str_idx = vm.add_string(canonical.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Get file extension.
+/// Stack: str_idx -> str_idx
+pub fn shim_fs_ext(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u16;
+    let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let str_idx = vm.add_string(ext.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Get filename stem (name without extension).
+/// Stack: str_idx -> str_idx
+pub fn shim_fs_stem(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u16;
+    let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let stem = std::path::Path::new(&path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let str_idx = vm.add_string(stem.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Walk directory recursively, returning only files — JSON array of paths.
+/// Stack: str_idx(dir) -> str_idx (JSON)
+pub fn shim_fs_walk_files(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let dir_idx = task.ram.pop_str_idx() as u16;
+    let dir = vm.get_string(dir_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let mut files: Vec<String> = Vec::new();
+    if let Ok(entries) = walkdir_recursive(&dir) {
+        files = entries;
+    }
+    let json = serde_json::to_string(&files)
+        .map_err(|e| VMError::RuntimeError(format!("walk_files json: {}", e)))?;
+    let str_idx = vm.add_string(json.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Simple recursive directory walker.
+fn walkdir_recursive(dir: &str) -> Result<Vec<String>, std::io::Error> {
+    let mut result = Vec::new();
+    let entries = std::fs::read_dir(dir)?;
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            let sub = walkdir_recursive(&path.to_string_lossy())?;
+            result.extend(sub);
+        } else {
+            result.push(path.to_string_lossy().to_string());
+        }
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

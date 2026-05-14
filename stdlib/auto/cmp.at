@@ -1,0 +1,49 @@
+/// Comparison Module
+///
+/// Provides ordering and comparison specs for types.
+/// Inspired by Rust's std::cmp, Go's cmp, Python's __lt__/__eq__.
+
+/// Three-way comparison result
+enum Ordering {
+    Less = -1
+    Equal = 0
+    Greater = 1
+}
+
+/// Comparison spec — types that support total ordering.
+/// Implement this to enable sorting, min/max, and range comparisons.
+spec Cmp {
+    fn cmp(other Self) Ordering
+}
+
+/// Extension methods on Ordering for chaining
+ext Ordering {
+    fn is_eq() bool {
+        is self {
+            Equal -> true
+            _ -> false
+        }
+    }
+
+    fn is_lt() bool {
+        is self {
+            Less -> true
+            _ -> false
+        }
+    }
+
+    fn is_gt() bool {
+        is self {
+            Greater -> true
+            _ -> false
+        }
+    }
+
+    fn reverse() Ordering {
+        is self {
+            Less -> Greater
+            Equal -> Equal
+            Greater -> Less
+        }
+    }
+}
