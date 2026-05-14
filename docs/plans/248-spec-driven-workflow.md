@@ -22,9 +22,12 @@ The Furnace (AI chat) and Jades (specs) are disconnected:
 Integrate Furnace and Jades so every user request flows through structured gates:
 
 ```
-User Request → Intake → SpecDraft → SpecReview → Execution → Verification
-                    ↑___________________________________|
-                          (rejection loops back)
+User Request → Assistant → Advisor → Architect → Planner → Coder ↔ Tester → Reviewer → Documenter
+                                  ↑                    (loop on fail)
+                                  └ Goal Gate (human approval in GSD mode)
+
+GSD Mode (default):  Only Goal Gate is human. Everything else auto.
+Check Mode (opt-in): Human reviews every stage.
 ```
 
 The Jades are the **source of truth**. The AI reads them before acting, updates
@@ -41,11 +44,11 @@ them after analysis, and executes only against approved specs.
 
 | Decision | Choice |
 |---|---|
-| Gates | 4 hard gates: Intake → SpecDraft → SpecReview → Execute/Verify |
-| Small-change bypass | **Yes** — `DIRECT` intent (<10 lines) skips SpecDraft/Review |
+| Gates | Goal Gate (human) → Design/Plan/Test (auto) → Execute/Verify (auto) |
+| Small-change bypass | **Yes** — `DIRECT` intent (<10 lines) skips to Coder |
 | TDD enforcement | Configurable per project. Default: on for new features |
-| Todo granularity | 2-5 min tasks with exact file paths |
-| Session recovery | Jades-driven — resume from `in_progress` todos |
+| Relay mode | Serial relay, one profession holds baton at a time |
+| Session recovery | Checkpoint-driven — resume from last handoff |
 | Tool gating | Hard errors if AI uses wrong-phase tools |
 | Spec format | Markdown sections (JSON persistence, plain-text for AI) |
 
@@ -77,15 +80,17 @@ them after analysis, and executes only against approved specs.
 ### Phase B: Phase-Aware Agent (2–3 days) ✅ COMPLETE
 
 **Backend:**
-- [x] Add `ForgePhase` enum: `Intake | SpecDraft | SpecReview | Execution | Verification`
+- [x] Add `ForgePhase` enum: `Intake | Discovery | Design | Planning | Execution | Verification | Report`
 - [x] Add `phase: ForgePhase` and `pending_spec_changes: Vec<SpecChange>` to `ForgeSession`
 - [x] Implement phase transitions in `forge_stream`:
-  - Intake: classify intent (QUESTION / DIRECT / NEW_GOAL / REQ_UPDATE)
-  - SpecDraft: AI drafts Jades updates (no code tools!)
-  - SpecReview: pause streaming, wait for human signal
-  - Execution: implement approved plan
-  - Verification: check against requirements
-- [x] Add per-phase system prompts (5 prompts)
+  - Intake: Assistant classifies intent (QUESTION / DIRECT / NEW_GOAL / REQ_UPDATE)
+  - Discovery: Advisor brainstorms, clarifies, drafts Goals
+  - Design: Architect writes Architecture and Designs
+  - Planning: Planner writes Plans; Tester drafts Tests
+  - Execution: Coder implements; Tester verifies
+  - Verification: Reviewer audits; Documenter compiles Report
+  - GoalGate: human approval of Goals (only required gate in GSD mode)
+- [x] Add per-profession system prompts (8 prompts)
 - [x] Add `read_jade`, `write_jade`, `list_jades` tools (registered in ToolRegistry with context injection)
 - [x] Tool gating: filter tool definitions by phase (AI cannot invoke forbidden tools)
 
@@ -110,7 +115,7 @@ them after analysis, and executes only against approved specs.
 - [x] Apply pending changes to Ledger on approve (applies via `LedgerStore::update_section`)
 
 **Frontend:**
-- [x] SpecReview UI panel in FurnaceView:
+- [x] GoalGate UI panel in FurnaceView:
   - Buttons: **[Approve & Execute]**, **[Reject & Redraft]**
 - [x] Collapsible diff view for each modified Jades section (toggle expand/collapse)
 - [x] Inline editing of proposed specs before approval (`editedSpecs` textarea)
@@ -126,15 +131,15 @@ them after analysis, and executes only against approved specs.
 ### Phase D: Order Pipeline Visualization (1 day) ✅ COMPLETE
 
 **Backend:**
-- [x] Add `current_todo_index` to session struct (populated by AI during Execution — currently `None` until AI todo tracking is wired)
+- [x] Add `current_phase_index` to session struct (populated by Orchestrator during relay)
 - [x] Expose phase in SSE events (`phase_change`) and REST API (`/session/{sid}`)
 
 **Frontend:**
 - [x] Live pipeline in `OrderView.vue`:
-  - Horizontal flow: Intake → SpecDraft → SpecReview → Execution → Verification
+  - Horizontal flow: Assistant → Advisor → Architect → Planner → Coder → Tester → Reviewer → Documenter
   - Current phase highlighted with pulse animation, completed phases green, pending gray
   - Phase history timestamps from `session.phase_history`
-- [x] Todo progress bar when in Execution phase (computes from `current_todo_index` / mock total)
+- [x] Phase progress bar when in Execution (computes from `current_phase_index` / total phases)
 
 **Acceptance:**
 - Open Order view during SpecDraft → see SpecDraft node active
@@ -171,12 +176,12 @@ pub struct ForgeSession {
     pub project_path: String,
     pub status: ForgeStatus,
     pub phase: ForgePhase,                        // NEW
+    pub mode: RelayMode,                          // NEW: GSD or Check
     pub messages: Vec<ForgeMessage>,
     pub pending_spec_changes: Vec<SpecChange>,    // NEW
-    pub current_todo_index: Option<usize>,        // NEW
+    pub current_phase_index: Option<usize>,       // NEW
     pub phase_history: Vec<PhaseHistoryEntry>,    // NEW (tracks phase transitions with timestamps)
 }
-```
 
 ### LedgerDocument (extended)
 
@@ -193,10 +198,18 @@ pub struct LedgerDocument {
 ```rust
 pub enum ForgePhase {
     Intake,
-    SpecDraft,
-    SpecReview,
+    Discovery,
+    GoalGate,
+    Design,
+    Planning,
     Execution,
     Verification,
+    Report,
+}
+
+pub enum RelayMode {
+    GSD,      // Get Shit Done — autonomous, only GoalGate is human
+    Check,    // Human reviews every gate
 }
 
 pub struct SpecChange {
@@ -268,7 +281,7 @@ GET    /api/smith/forge/{sid}/stream      → emits phase-change events
 
 ### Unit Tests (Backend)
 - LedgerStore: load, save, version check, concurrent write detection
-- Phase transitions: Intake→SpecDraft→SpecReview→Execution→Verification
+- Phase transitions: Intake→Discovery→GoalGate→Design→Planning→Execution→Verification→Report
 - Tool gating: forbidden tool returns error in wrong phase
 - Approval: apply/reject pending changes correctly
 
@@ -288,8 +301,8 @@ GET    /api/smith/forge/{sid}/stream      → emits phase-change events
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| AI refuses to follow phase constraints | Medium | High | Tool gating + clear error messages + fallback to human |
-| SpecReview adds too much friction | Medium | Medium | Allow DIRECT bypass for small changes; auto-approve config |
+| AI refuses to follow phase constraints | Medium | High | Tool gating + clear error messages + fallback to boss |
+| SpecReview adds too much friction | Medium | Medium | GSD mode: only Goal Gate is human; auto-approve everything else |
 | Context window fills with Jades content | Medium | Medium | Summarize Jades before sending to AI; paginate sections |
 | Phase transitions are buggy | Medium | High | Extensive unit tests for every transition |
 | Ledger JSON gets corrupted | Low | High | Backup on write; validation schema; version field |
@@ -298,12 +311,13 @@ GET    /api/smith/forge/{sid}/stream      → emits phase-change events
 
 ## 11. Success Criteria
 
-1. ✅ User asks "Add OAuth2" → AI proposes Jades updates → user approves → AI implements
-2. ✅ User asks "How does auth work?" → AI answers without modifying files or Jades
-3. ✅ User asks "Fix typo" → AI fixes directly without spec drafting
+1. ✅ User asks "Add OAuth2" → Advisor drafts Goals → boss approves → AI executes autonomously → Report delivered
+2. ✅ User asks "How does auth work?" → Assistant answers without modifying files or Jades
+3. ✅ User asks "Fix typo" → Assistant routes to Coder directly without spec drafting
 4. ✅ Jades persist across server restarts and page refreshes
-5. ✅ Order view shows live phase progression
+5. ✅ Order view shows live relay progression
 6. ✅ Drift check detects code/spec mismatches
+7. ✅ GSD mode: boss gives one order, receives Report, never reads specs
 
 ---
 

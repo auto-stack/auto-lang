@@ -9,6 +9,22 @@ use crate::relay::handoff::HandoffDocument;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Execution mode controlling human gate behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RelayMode {
+    /// Get Shit Done — autonomous execution. Only GoalGate requires human approval.
+    GSD,
+    /// Human reviews every configured gate.
+    Check,
+}
+
+impl Default for RelayMode {
+    fn default() -> Self {
+        RelayMode::GSD
+    }
+}
+
 /// Result of advancing the pipeline — tells the caller what to do next.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AdvanceResult {
@@ -78,6 +94,8 @@ pub struct PipelineEngine {
     pub cumulative_tokens: u64,
     /// Budget tracker for runaway cost prevention and analytics.
     pub budget_tracker: BudgetTracker,
+    /// Execution mode: GSD (autonomous, default) or Check (human reviews all gates).
+    pub mode: RelayMode,
 }
 
 /// Current state of the pipeline.
@@ -137,6 +155,7 @@ impl PipelineEngine {
             gate_resolved_for_step: None,
             cumulative_tokens: 0,
             budget_tracker: BudgetTracker::new(run_budget),
+            mode: RelayMode::GSD,
         }
     }
 
@@ -169,8 +188,34 @@ impl PipelineEngine {
         let step = &self.flow.steps[self.current_step];
         let now = now_secs();
 
-        // Check gate
-        if step.gate == GateType::Human && self.gate_resolved_for_step.as_ref() != Some(&step.id) {
+        // Check gate — GSD mode only pauses at Advisor→Architect (GoalGate)
+        if step.gate == GateType::Human
+            && self.gate_resolved_for_step.as_ref() != Some(&step.id)
+            && self.mode == RelayMode::Check
+        {
+            // Check mode: pause at every human gate
+            self.status = PipelineStatus::WaitingForHuman {
+                gate: GateType::Human,
+                step_id: step.id.clone(),
+                since: now,
+            };
+            self.pending_gate = Some(PendingGate {
+                step_id: step.id.clone(),
+                gate: GateType::Human,
+                since: now,
+            });
+            return AdvanceResult::WaitForHuman {
+                gate: GateType::Human,
+                step_id: step.id.clone(),
+            };
+        }
+
+        // GSD mode: only Advisor→Architect handoff requires human approval (GoalGate)
+        if step.gate == GateType::Human
+            && self.gate_resolved_for_step.as_ref() != Some(&step.id)
+            && self.mode == RelayMode::GSD
+            && step.profession_id == "advisor"
+        {
             self.status = PipelineStatus::WaitingForHuman {
                 gate: GateType::Human,
                 step_id: step.id.clone(),
@@ -471,31 +516,31 @@ mod tests {
     // ── S2.2: Branching routes DIRECT intent ─────────────────────────────────
 
     #[test]
-    fn test_pipeline_branch_direct_skips_planner() {
+    fn test_pipeline_branch_direct_skips_advisor() {
         let mut flow = FlowSpec::new("test-branch");
 
         let mut arms = HashMap::new();
         arms.insert("coder".to_string(), "coder-step".to_string());
-        arms.insert("planner".to_string(), "planner-step".to_string());
+        arms.insert("advisor".to_string(), "advisor-step".to_string());
 
         flow.add_step(
-            FlowStep::new("intaker-step", "intaker").with_exit(ExitRouting::Branch {
+            FlowStep::new("assistant-step", "assistant").with_exit(ExitRouting::Branch {
                 on: "intent".to_string(),
                 arms,
-                default: "planner-step".to_string(),
+                default: "advisor-step".to_string(),
             }),
         );
-        flow.add_step(FlowStep::new("planner-step", "planner"));
+        flow.add_step(FlowStep::new("advisor-step", "advisor"));
         flow.add_step(FlowStep::new("coder-step", "coder"));
 
         let mut engine = PipelineEngine::new(flow, "run-2");
 
-        // Intaker runs
+        // Assistant runs
         let r1 = engine.advance();
-        assert_eq!(r1, AdvanceResult::ExecuteStep { step_id: "intaker-step".into(), profession_id: "intaker".into() });
+        assert_eq!(r1, AdvanceResult::ExecuteStep { step_id: "assistant-step".into(), profession_id: "assistant".into() });
 
-        // Intaker classifies as DIRECT → handoff to coder
-        let mut h = make_handoff("intaker", "coder");
+        // Assistant classifies as DIRECT → handoff to coder
+        let mut h = make_handoff("assistant", "coder");
         h.to = "coder".to_string();
         let r2 = engine.submit_handoff(h);
         assert_eq!(
@@ -506,13 +551,13 @@ mod tests {
             }
         );
 
-        // Verify planner was skipped
+        // Verify advisor was skipped
         let professions_run: Vec<&str> = engine
             .step_history
             .iter()
             .map(|r| r.profession_id.as_str())
             .collect();
-        assert_eq!(professions_run, vec!["intaker"]);
+        assert_eq!(professions_run, vec!["assistant"]);
 
         // Finish coder
         let h2 = make_handoff("coder", "tester");
@@ -525,12 +570,12 @@ mod tests {
     #[test]
     fn test_human_gate_pauses_and_approves() {
         let mut flow = FlowSpec::new("test-gate");
-        flow.add_step(FlowStep::new("s1", "planner").with_gate(GateType::Human));
+        flow.add_step(FlowStep::new("s1", "advisor").with_gate(GateType::Human));
         flow.add_step(FlowStep::new("s2", "architect"));
 
         let mut engine = PipelineEngine::new(flow, "run-gate");
 
-        // First advance hits the gate
+        // First advance hits the gate (advisor in GSD mode)
         let r1 = engine.advance();
         assert_eq!(
             r1,
@@ -551,12 +596,12 @@ mod tests {
             r2,
             AdvanceResult::ExecuteStep {
                 step_id: "s1".into(),
-                profession_id: "planner".into(),
+                profession_id: "advisor".into(),
             }
         );
 
         // Submit handoff → architect
-        let h = make_handoff("planner", "architect");
+        let h = make_handoff("advisor", "architect");
         let r3 = engine.submit_handoff(h);
         assert_eq!(
             r3,
@@ -570,7 +615,7 @@ mod tests {
     #[test]
     fn test_human_gate_reject_redrafts() {
         let mut flow = FlowSpec::new("test-reject");
-        flow.add_step(FlowStep::new("s1", "planner").with_gate(GateType::Human));
+        flow.add_step(FlowStep::new("s1", "advisor").with_gate(GateType::Human));
 
         let mut engine = PipelineEngine::new(flow, "run-reject");
 
@@ -588,12 +633,76 @@ mod tests {
             r,
             AdvanceResult::ExecuteStep {
                 step_id: "s1".into(),
-                profession_id: "planner".into(),
+                profession_id: "advisor".into(),
             }
         );
 
         // Feedback stored
         assert_eq!(engine.gate_feedback.get("s1").unwrap().len(), 1);
+    }
+
+    // ── S7.2: GSD mode auto-approves all gates except Advisor ──────────────────
+
+    #[test]
+    fn test_gsd_mode_only_pauses_at_advisor_gate() {
+        let mut flow = FlowSpec::new("test-gsd");
+        flow.add_step(FlowStep::new("s1", "advisor").with_gate(GateType::Human));
+        flow.add_step(FlowStep::new("s2", "architect").with_gate(GateType::Human));
+        flow.add_step(FlowStep::new("s3", "planner").with_gate(GateType::Human));
+
+        let mut engine = PipelineEngine::new(flow, "run-gsd");
+        engine.mode = RelayMode::GSD;
+
+        // Advisor gate → pause
+        let r1 = engine.advance();
+        assert!(
+            matches!(r1, AdvanceResult::WaitForHuman { step_id, .. } if step_id == "s1")
+        );
+
+        // Approve
+        let _ = engine.resolve_gate(GateDecision::Approve);
+        let h1 = make_handoff("advisor", "architect");
+        let r2 = engine.submit_handoff(h1);
+
+        // Architect gate → auto in GSD
+        assert!(
+            matches!(r2, AdvanceResult::ExecuteStep { step_id, .. } if step_id == "s2")
+        );
+
+        let h2 = make_handoff("architect", "planner");
+        let r3 = engine.submit_handoff(h2);
+
+        // Planner gate → auto in GSD
+        assert!(
+            matches!(r3, AdvanceResult::ExecuteStep { step_id, .. } if step_id == "s3")
+        );
+    }
+
+    // ── S7.3: Check mode pauses at every human-configured gate ─────────────────
+
+    #[test]
+    fn test_check_mode_pauses_at_all_gates() {
+        let mut flow = FlowSpec::new("test-check");
+        flow.add_step(FlowStep::new("s1", "advisor").with_gate(GateType::Human));
+        flow.add_step(FlowStep::new("s2", "architect").with_gate(GateType::Human));
+        flow.add_step(FlowStep::new("s3", "planner").with_gate(GateType::Human));
+
+        let mut engine = PipelineEngine::new(flow, "run-check");
+        engine.mode = RelayMode::Check;
+
+        // Advisor gate → pause
+        let r1 = engine.advance();
+        assert!(matches!(r1, AdvanceResult::WaitForHuman { .. }));
+        let _ = engine.resolve_gate(GateDecision::Approve);
+        let r2 = engine.submit_handoff(make_handoff("advisor", "architect"));
+
+        // Architect gate → pause (submit_handoff already advanced and hit the gate)
+        assert!(matches!(r2, AdvanceResult::WaitForHuman { .. }));
+        let _ = engine.resolve_gate(GateDecision::Approve);
+        let r3 = engine.submit_handoff(make_handoff("architect", "planner"));
+
+        // Planner gate → pause
+        assert!(matches!(r3, AdvanceResult::WaitForHuman { .. }));
     }
 
     // ── Budget enforcement ───────────────────────────────────────────────────
@@ -707,11 +816,11 @@ mod tests {
     #[test]
     fn test_completed_engine_stays_completed() {
         let mut flow = FlowSpec::new("tiny");
-        flow.add_step(FlowStep::new("s1", "intaker"));
+        flow.add_step(FlowStep::new("s1", "assistant"));
         let mut engine = PipelineEngine::new(flow, "run");
 
         let _ = engine.advance();
-        let _ = engine.submit_handoff(make_handoff("intaker", "done"));
+        let _ = engine.submit_handoff(make_handoff("assistant", "done"));
         assert_eq!(engine.status, PipelineStatus::Completed);
 
         let r = engine.advance();

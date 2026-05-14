@@ -84,7 +84,7 @@ function sectionIcon(type: string): string {
     tests: '🧪',
     reviews: '📝',
     reports: '📊',
-    apis: '🔌',
+
   }
   return map[type] || '📄'
 }

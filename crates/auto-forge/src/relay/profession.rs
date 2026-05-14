@@ -36,20 +36,26 @@ pub struct Profession {
 #[serde(rename_all = "snake_case")]
 pub enum ForgePhase {
     Intake,
-    SpecDraft,
-    SpecReview,
+    Discovery,
+    GoalGate,
+    Design,
+    Planning,
     Execution,
     Verification,
+    Report,
 }
 
 impl ForgePhase {
     pub fn as_str(&self) -> &'static str {
         match self {
             ForgePhase::Intake => "intake",
-            ForgePhase::SpecDraft => "spec_draft",
-            ForgePhase::SpecReview => "spec_review",
+            ForgePhase::Discovery => "discovery",
+            ForgePhase::GoalGate => "goal_gate",
+            ForgePhase::Design => "design",
+            ForgePhase::Planning => "planning",
             ForgePhase::Execution => "execution",
             ForgePhase::Verification => "verification",
+            ForgePhase::Report => "report",
         }
     }
 }
@@ -69,16 +75,16 @@ impl ProfessionRegistry {
     }
 
     fn register_builtin(&mut self) {
-        // ─── Intaker ─────────────────────────────────────────────────────────
+        // ─── Assistant ─────────────────────────────────────────────────────────
         self.register(Profession {
-            id: String::from("intaker"),
-            name: String::from("Intaker"),
+            id: String::from("assistant"),
+            name: String::from("Assistant"),
             phase: ForgePhase::Intake,
             owned_sections: vec![],
             readable_sections: vec![],
             allowed_tools: vec![],
             handoff_to: vec![
-                String::from("planner"),
+                String::from("advisor"),
                 String::from("coder"),
             ],
             approval_gates: vec![],
@@ -86,18 +92,15 @@ impl ProfessionRegistry {
             token_budget: 2_000,
         });
 
-        // ─── Planner ─────────────────────────────────────────────────────────
+        // ─── Advisor ─────────────────────────────────────────────────────────
         self.register(Profession {
-            id: String::from("planner"),
-            name: String::from("Planner"),
-            phase: ForgePhase::SpecDraft,
-            owned_sections: vec![SectionType::Goals, SectionType::Plans],
+            id: String::from("advisor"),
+            name: String::from("Advisor"),
+            phase: ForgePhase::Discovery,
+            owned_sections: vec![SectionType::Goals],
             readable_sections: vec![
                 SectionType::Goals,
                 SectionType::Architecture,
-                SectionType::Designs,
-                SectionType::Plans,
-                SectionType::Apis,
             ],
             allowed_tools: vec![
                 String::from("read_jade"),
@@ -105,10 +108,7 @@ impl ProfessionRegistry {
                 String::from("list_jades"),
                 String::from("read_file"),
             ],
-            handoff_to: vec![
-                String::from("architect"),
-                String::from("coder"),
-            ],
+            handoff_to: vec![String::from("architect")],
             approval_gates: vec![String::from("architect")],
             max_turns: 10,
             token_budget: 8_000,
@@ -118,18 +118,64 @@ impl ProfessionRegistry {
         self.register(Profession {
             id: String::from("architect"),
             name: String::from("Architect"),
-            phase: ForgePhase::SpecDraft,
+            phase: ForgePhase::Design,
             owned_sections: vec![
                 SectionType::Architecture,
                 SectionType::Designs,
-                SectionType::Apis,
             ],
             readable_sections: vec![
                 SectionType::Goals,
-                SectionType::Plans,
                 SectionType::Architecture,
                 SectionType::Designs,
-                SectionType::Apis,
+            ],
+            allowed_tools: vec![
+                String::from("read_jade"),
+                String::from("write_jade"),
+                String::from("list_jades"),
+                String::from("read_file"),
+            ],
+            handoff_to: vec![String::from("planner")],
+            approval_gates: vec![],
+            max_turns: 10,
+            token_budget: 12_000,
+        });
+
+        // ─── Planner ─────────────────────────────────────────────────────────
+        self.register(Profession {
+            id: String::from("planner"),
+            name: String::from("Planner"),
+            phase: ForgePhase::Planning,
+            owned_sections: vec![SectionType::Plans],
+            readable_sections: vec![
+                SectionType::Goals,
+                SectionType::Architecture,
+                SectionType::Designs,
+                SectionType::Plans,
+                SectionType::Tests,
+            ],
+            allowed_tools: vec![
+                String::from("read_jade"),
+                String::from("write_jade"),
+                String::from("list_jades"),
+                String::from("read_file"),
+            ],
+            handoff_to: vec![String::from("tester")],
+            approval_gates: vec![],
+            max_turns: 10,
+            token_budget: 8_000,
+        });
+
+        // ─── Tester (SpecDraft) ──────────────────────────────────────────────
+        self.register(Profession {
+            id: String::from("tester"),
+            name: String::from("Tester"),
+            phase: ForgePhase::Planning,
+            owned_sections: vec![SectionType::Tests],
+            readable_sections: vec![
+                SectionType::Goals,
+                SectionType::Designs,
+                SectionType::Plans,
+                SectionType::Tests,
             ],
             allowed_tools: vec![
                 String::from("read_jade"),
@@ -138,9 +184,9 @@ impl ProfessionRegistry {
                 String::from("read_file"),
             ],
             handoff_to: vec![String::from("coder")],
-            approval_gates: vec![String::from("coder")],
+            approval_gates: vec![],
             max_turns: 10,
-            token_budget: 12_000,
+            token_budget: 8_000,
         });
 
         // ─── Coder ───────────────────────────────────────────────────────────
@@ -152,7 +198,6 @@ impl ProfessionRegistry {
             readable_sections: vec![
                 SectionType::Plans,
                 SectionType::Designs,
-                SectionType::Apis,
                 SectionType::Tests,
             ],
             allowed_tools: vec![
@@ -173,42 +218,12 @@ impl ProfessionRegistry {
             token_budget: 20_000,
         });
 
-        // ─── Tester ──────────────────────────────────────────────────────────
-        self.register(Profession {
-            id: String::from("tester"),
-            name: String::from("Tester"),
-            phase: ForgePhase::Execution,
-            owned_sections: vec![SectionType::Tests],
-            readable_sections: vec![
-                SectionType::Plans,
-                SectionType::Designs,
-                SectionType::Tests,
-            ],
-            allowed_tools: vec![
-                String::from("read_file"),
-                String::from("write_file"),
-                String::from("edit_file"),
-                String::from("shell"),
-                String::from("search"),
-                String::from("read_jade"),
-                String::from("write_jade"),
-                String::from("list_jades"),
-            ],
-            handoff_to: vec![
-                String::from("reviewer"),
-                String::from("coder"),
-            ],
-            approval_gates: vec![],
-            max_turns: 10,
-            token_budget: 12_000,
-        });
-
         // ─── Reviewer ────────────────────────────────────────────────────────
         self.register(Profession {
             id: String::from("reviewer"),
             name: String::from("Reviewer"),
             phase: ForgePhase::Verification,
-            owned_sections: vec![SectionType::Reviews, SectionType::Reports],
+            owned_sections: vec![SectionType::Reviews],
             readable_sections: vec![
                 SectionType::Goals,
                 SectionType::Architecture,
@@ -217,17 +232,15 @@ impl ProfessionRegistry {
                 SectionType::Tests,
                 SectionType::Reviews,
                 SectionType::Reports,
-                SectionType::Apis,
             ],
             allowed_tools: vec![
                 String::from("read_file"),
                 String::from("shell"),
                 String::from("search"),
                 String::from("read_jade"),
-                String::from("write_jade"),
                 String::from("list_jades"),
             ],
-            handoff_to: vec![],
+            handoff_to: vec![String::from("documenter")],
             approval_gates: vec![],
             max_turns: 10,
             token_budget: 15_000,
@@ -237,7 +250,7 @@ impl ProfessionRegistry {
         self.register(Profession {
             id: String::from("documenter"),
             name: String::from("Documenter"),
-            phase: ForgePhase::Verification,
+            phase: ForgePhase::Report,
             owned_sections: vec![SectionType::Reports],
             readable_sections: vec![
                 SectionType::Goals,
@@ -247,7 +260,6 @@ impl ProfessionRegistry {
                 SectionType::Tests,
                 SectionType::Reviews,
                 SectionType::Reports,
-                SectionType::Apis,
             ],
             allowed_tools: vec![
                 String::from("read_file"),
@@ -322,13 +334,15 @@ mod tests {
     #[test]
     fn test_builtin_professions_loaded() {
         let registry = ProfessionRegistry::new();
-        assert!(registry.get("planner").is_some());
+        assert!(registry.get("assistant").is_some());
+        assert!(registry.get("advisor").is_some());
         assert!(registry.get("architect").is_some());
+        assert!(registry.get("planner").is_some());
         assert!(registry.get("coder").is_some());
         assert!(registry.get("tester").is_some());
         assert!(registry.get("reviewer").is_some());
         assert!(registry.get("documenter").is_some());
-        assert!(registry.get("intaker").is_some());
+        assert!(registry.get("intaker").is_none());
     }
 
     #[test]
@@ -337,7 +351,6 @@ mod tests {
         let arch = registry.get("architect").unwrap();
         assert!(arch.owned_sections.contains(&SectionType::Architecture));
         assert!(arch.owned_sections.contains(&SectionType::Designs));
-        assert!(arch.owned_sections.contains(&SectionType::Apis));
         assert!(!arch.owned_sections.contains(&SectionType::Goals));
     }
 
@@ -349,16 +362,16 @@ mod tests {
     }
 
     #[test]
-    fn test_planner_has_approval_gate_for_architect() {
+    fn test_advisor_has_approval_gate_for_architect() {
         let registry = ProfessionRegistry::new();
-        let planner = registry.get("planner").unwrap();
-        assert!(planner.approval_gates.contains(&"architect".to_string()));
+        let advisor = registry.get("advisor").unwrap();
+        assert!(advisor.approval_gates.contains(&"architect".to_string()));
     }
 
     #[test]
     fn test_list_returns_all_builtin() {
         let registry = ProfessionRegistry::new();
         let list = registry.list();
-        assert_eq!(list.len(), 7);
+        assert_eq!(list.len(), 8);
     }
 }

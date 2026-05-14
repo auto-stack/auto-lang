@@ -7,25 +7,29 @@
 
 | ID | Goal | Priority | Status | Stakeholder |
 |---|---|---|---|---|
-| G1 | Agent Identity System supports Soul, Profession, and Model configuration per agent | P0 | Implemented | Tooling Team |
+| G1 | Agent Identity System supports Soul, Profession, and Model configuration per agent | P0 | Done | Tooling Team |
 | G2 | Relay Orchestrator executes serial agent flows with baton passing and gate enforcement | P0 | Implemented | Tooling Team |
 | G3 | Handoff Protocol compresses context between agents, achieving ~5× token savings vs parallel multi-agent | P0 | Implemented | Tooling Team |
 | G4 | Checkpoint & Durability system enables long-running flows to survive crashes and resume without context loss | P0 | Implemented | Tooling Team |
 | G5 | Token Budgeting tracks and enforces per-step spend with cost analytics visible in Agents view | P1 | Implemented | Tooling Team |
-| G6 | Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval | P0 | Implemented | Tooling Team |
+| G6 | Boss-first execution: GSD mode runs autonomously with optional Check mode for gate review | P0 | Done | Tooling Team |
+| G7 | Spec pyramid supports Goals → Architecture → Designs → Plans → Tests → Reviews → Reports with no APIs category | P0 | Done | Tooling Team |
 
 ---
 
 ## G1 Agent Identity System supports Soul, Profession, and Model configuration per agent
 **Status:** implemented
+**Depends on:** G7
 
 - [x] Agents can be defined with a Soul (markdown character definition)
 - [x] Agents can be assigned a Profession that determines spec ownership, tools, and handoff rules
 - [x] Agents can be configured with a Model (provider, model name, temperature, max_tokens)
-- [x] Built-in professions exist: Intaker, Planner, Architect, Coder, Tester, Reviewer, Documenter
+- [x] Built-in professions exist: Assistant, Advisor, Architect, Planner, Coder, Tester, Reviewer, Documenter
 - [x] Custom professions can be added via `.autoforge/professions/` YAML files
 
 The Agent Identity separates *who the agent is* (Soul), *what it can do* (Profession), and *what cognitive substrate it uses* (Model). This enables fine-grained control over agent behavior and cost optimization through model tiering.
+
+---
 
 ## G2 Relay Orchestrator executes serial agent flows with baton passing and gate enforcement
 **Status:** implemented
@@ -39,6 +43,8 @@ The Agent Identity separates *who the agent is* (Soul), *what it can do* (Profes
 
 The Orchestrator is pure deterministic code (Rust), not an LLM. It reads Flow specs, manages the Pipeline state machine, and routes batons. This eliminates token spend on coordination and makes routing predictable.
 
+---
+
 ## G3 Handoff Protocol compresses context between agents, achieving ~5× token savings vs parallel multi-agent
 **Status:** implemented
 **Depends on:** G1, G2
@@ -50,6 +56,8 @@ The Orchestrator is pure deterministic code (Rust), not an LLM. It reads Flow sp
 - [x] Agents pull additional context on demand via tools, not via push
 
 The Handoff Protocol is the core token-efficiency mechanism. By discarding chat history and summarizing work product, agents start each turn with minimal context. Parallel multi-agent systems suffer O(N×K) token overhead; relay reduces this to O(sum of scoped contexts).
+
+---
 
 ## G4 Checkpoint & Durability system enables long-running flows to survive crashes and resume without context loss
 **Status:** implemented
@@ -63,6 +71,8 @@ The Handoff Protocol is the core token-efficiency mechanism. By discarding chat 
 
 Since agents "work longer rather than quicker," flows may run for hours or days. Checkpointing makes this safe. On resume, the next agent starts fresh from the Handoff Document — token cost is identical to continuous execution.
 
+---
+
 ## G5 Token Budgeting tracks and enforces per-step spend with cost analytics visible in Agents view
 **Status:** implemented
 **Depends on:** G2
@@ -75,14 +85,31 @@ Since agents "work longer rather than quicker," flows may run for hours or days.
 
 Token budgeting makes cost a first-class constraint. The Agents view compares actual relay cost against estimated parallel-swarm cost to demonstrate savings.
 
-## G6 Human-in-the-Loop Approval Gates pause flows at spec boundaries for human review and approval
+---
+
+## G6 Boss-first execution: GSD mode runs autonomously with optional Check mode for gate review
 **Status:** implemented
 **Depends on:** G2
 
-- [x] Flow steps can specify `gate: human` or `gate: auto`
-- [x] Human gates pause the run and emit SSE notifications to frontend
-- [x] Human can Approve, Reject, or Edit specs before continuing
-- [x] Rejection routes back to the drafting profession with feedback
-- [x] Async gates support hours-long delays without losing state
+- [x] RelayMode enum exists: `GSD` (default) and `Check`
+- [x] GSD mode: only GoalGate requires human approval; Design, Plan, Execution gates are auto
+- [x] Check mode: every gate pauses for human review
+- [x] Reviewer acts as internal quality auditor in GSD mode (no human gate)
+- [x] Documenter compiles and delivers final Report as boss-facing product
+- [x] Boss is interrupted only on ambiguity, blockage, budget exceed, or explicit Check mode
 
-Humans remain the final authority at key boundaries. Spec gates shift human review from "code review" (after generation) to "spec review" (before implementation), dramatically reducing rework.
+The human is the boss, not a coworker. The default behavior is autonomous execution. The boss gives one order and receives a Report. Human gates are opt-in, not mandatory.
+
+---
+
+## G7 Spec pyramid supports Goals → Architecture → Designs → Plans → Tests → Reviews → Reports with no APIs category
+**Status:** implemented
+**Depends on:** G1
+
+- [x] APIs category removed from spec system
+- [x] Interface specs (REST endpoints, schemas) live in Designs under `Interface` section
+- [x] Architect owns Designs (including interfaces), not a separate APIs category
+- [x] Documenter generates public API docs as product, not spec
+- [x] Reports are relay execution summaries (cost, confidence, deliverables)
+
+Specs are internal decision records (how to build). Products are shipped artifacts (code + public docs). Interface contracts are design specs; public API docs are generated products.

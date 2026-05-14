@@ -120,3 +120,41 @@ graph LR
 - Positive: Rollback uses standard git commands.
 - Negative: Large projects may produce multi-MB checkpoint files.
 - Mitigation: File manifest stores hashes, not contents. Only changed files are diffed.
+
+---
+
+## A4 Boss-First Execution Architecture
+**Status:** approved
+**Depends on:** G6
+
+The default workflow for AI assistants requires human approval at every step. This treats the human as a peer reviewer. AutoForge treats the human as a boss who delegates and expects results. GSD mode shifts the default from "ask for permission" to "ask for forgiveness" — the AI executes autonomously and only interrupts the boss when blocked.
+
+```mermaid
+graph LR
+    A[Boss Request] --> B{Assistant classify}
+    B -->|QUESTION| C[Answer & Stop]
+    B -->|DIRECT| D[Coder]
+    B -->|NEW_GOAL| E[Advisor]
+    E -->|GSD| F{GoalGate}
+    F -->|Auto| G[Architect]
+    G --> H[Planner]
+    H --> I[Coder]
+    I --> J{Tests pass?}
+    J -->|No| I
+    J -->|Yes| K[Reviewer]
+    K --> L[Documenter]
+    L --> M[Report to Boss]
+    F -->|Check mode| N[Human Review]
+    N --> G
+```
+
+| Approach | Pros | Cons |
+|---|---|---|
+| GSD default, Check opt-in | Boss is productive; AI does the work | AI may build wrong thing confidently |
+| Check default, GSD opt-in | Boss reviews every step | Boss is a bottleneck; loses async value |
+| Hybrid (GSD with auto-drifts) | Balance of speed and safety | More complex routing logic |
+
+- Positive: Boss gives one order, receives one report.
+- Positive: Reviewer acts as internal QA, not an external gate.
+- Negative: If Advisor writes bad Goals, everything downstream is wrong.
+- Mitigation: GoalGate is the one required human gate in GSD mode. Advisor uses medium/strong model.

@@ -92,7 +92,7 @@ defineEmits<{
 .spec-item-row.cat-tests { border-left: 3px solid #06b6d4; }
 .spec-item-row.cat-reviews { border-left: 3px solid #6366f1; }
 .spec-item-row.cat-reports { border-left: 3px solid #14b8a6; }
-.spec-item-row.cat-apis { border-left: 3px solid #f97316; }
+
 
 .row-main {
   display: flex;

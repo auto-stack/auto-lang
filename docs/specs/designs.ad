@@ -414,3 +414,102 @@ pub enum BudgetAction {
 | `strategy` | `BudgetStrategy` | Action when limit reached |
 | `cumulative` | `u64` | Total tokens this run |
 | `per_step` | `HashMap` | Tokens per profession/step |
+
+---
+
+## D6 RelayMode & GSD Flow Control
+**Status:** implemented
+**Module:** `crates/auto-forge/src/relay/pipeline.rs`
+**Depends on:** G6, D2
+
+```rust
+pub enum RelayMode {
+    GSD,      // Get Shit Done — autonomous, only GoalGate is human
+    Check,    // Human reviews every gate
+}
+
+pub enum ForgePhase {
+    Intake,
+    Discovery,
+    GoalGate,
+    Design,
+    Planning,
+    Execution,
+    Verification,
+    Report,
+}
+
+pub struct PipelineEngine {
+    pub flow: FlowSpec,
+    pub current_step: usize,
+    pub current_agent: Option<AgentInstance>,
+    pub checkpoints: Vec<Checkpoint>,
+    pub status: PipelineStatus,
+    pub run_id: String,
+    pub mode: RelayMode,  // NEW
+}
+
+impl PipelineEngine {
+    /// Evaluate gate based on RelayMode.
+    /// GSD: only GoalGate triggers human pause.
+    /// Check: every gate triggers human pause.
+    pub fn evaluate_gate(&self, step: &FlowStep) -> GateDecision;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `mode` | `RelayMode` | GSD (default) or Check |
+| `phase` | `ForgePhase` | Extended to 8 phases including Discovery, GoalGate, Design, Planning, Report |
+
+```
+fn evaluate_gate(step, mode):
+    if mode == Check:
+        return HumanGate
+    if mode == GSD:
+        if step.profession == "advisor" and step.exit == "handoff_to_architect":
+            return HumanGate  // Goal approval required
+        return AutoGate  // Everything else autonomous
+```
+
+---
+
+## D7 Profession Registry (v2)
+**Status:** implemented
+**Module:** `crates/auto-forge/src/relay/profession.rs`
+**Depends on:** G1, G7
+
+```rust
+pub struct Profession {
+    pub id: String,
+    pub name: String,
+    pub phase: ForgePhase,
+    pub owned_sections: Vec<SectionType>,
+    pub readable_sections: Vec<SectionType>,
+    pub allowed_tools: Vec<String>,
+    pub handoff_to: Vec<String>,
+    pub approval_gates: Vec<String>,
+    pub max_turns: u32,
+    pub token_budget: u64,
+}
+```
+
+
+| Profession | Phase | Owned Specs | Model Tier | Gate |
+|---|---|---|---|---|
+| Assistant | Intake | None | Cheap | Auto |
+| Advisor | Discovery | Goals | Medium | Human (GSD) / Human (Check) |
+| Architect | Design | Architecture, Designs | Strong | Auto (GSD) / Human (Check) |
+| Planner | Planning | Plans | Medium | Auto |
+| Coder | Execution | None (code) | Strong | Auto |
+| Tester | Execution | Tests | Medium | Auto |
+| Reviewer | Verification | Reviews | Strong | Auto |
+| Documenter | Report | Reports | Cheap | Auto |
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `String` | profession identifier |
+| `phase` | `ForgePhase` | which phase this profession runs in |
+| `owned_sections` | `Vec<SectionType>` | specs this profession can write |
+| `readable_sections` | `Vec<SectionType>` | specs this profession can read |
+| `approval_gates` | `Vec<String>` | handoff targets that require approval |

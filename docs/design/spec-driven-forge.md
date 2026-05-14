@@ -10,90 +10,97 @@ Inspired by Superpowers (brainstorm → plan → execute → review) and GSD
 
 ---
 
-## 1. The Four Hard Gates
+## 1. The Relay Phases
+
+The boss gives one order. The AI workforce executes autonomously.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  User Request                                                               │
+│  User Request (Boss)                                                        │
 │       │                                                                     │
 │       ▼                                                                     │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐ │
-│  │  GATE 1     │───►│  GATE 2     │───►│  GATE 3     │───►│  GATE 4     │ │
-│  │  Intake     │    │  SpecDraft  │    │  Approve    │    │  Execute    │ │
-│  │  & Classify │    │  & Analyze  │    │  & Review   │    │  & Verify   │ │
+│  │  PHASE 1    │───►│  PHASE 2    │───►│  PHASE 3    │───►│  PHASE 4    │ │
+│  │  Assistant  │    │  Advisor    │    │  SpecDraft  │    │  Execution  │ │
+│  │  & Classify │    │  & Discover │    │  Architect  │    │  & Verify   │ │
+│  │             │    │  & Goals    │    │  + Planner  │    │             │ │
 │  └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘ │
 │       │                   │                   │                   │        │
-│       │ classify          │ draft jades       │ human approves    │        │
-│       │ intent            │ updates           │ or rejects        │        │
+│       │ classify          │ draft goals       │ draft designs     │        │
+│       │ intent            │ ask questions     │ + plans + tests   │        │
 │       │                   │                   │                   │        │
 │       ▼                   ▼                   ▼                   ▼        │
 │   QUESTION ─────────────► answer & stop                                   │
-│   DIRECT ───────────────► skip to Gate 4 (small changes only)             │
+│   DIRECT ───────────────► skip to Execution (small changes only)          │
 │   NEW_GOAL ─────────────► full pipeline                                   │
 │   REQ_UPDATE ───────────► full pipeline                                   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Gate 1: Intake & Classify
+**GSD Mode (default):** Only the Advisor→Architect gate is human (for now). All other gates are auto.
+**Check Mode (opt-in):** Boss reviews every stage.
 
-**What happens:** The AI reads the user's request and classifies intent.
+### Phase 1: Assistant — Intake & Classify
+
+**What happens:** The Assistant (secretary) reads the user's request and classifies intent.
 
 **Intent types:**
 - `QUESTION` — "How does auth work?" → answer and stop
-- `DIRECT` — "Fix typo on line 42" → skip to Gate 4 (threshold: <10 lines changed)
+- `DIRECT` — "Fix typo on line 42" → skip to Execution (threshold: <10 lines changed)
 - `NEW_GOAL` — "Add OAuth2 login" → full pipeline
 - `REQ_UPDATE` — "Change timeout to 10 min" → full pipeline
 
-**Output:** Classification + brief reasoning.
+**Output:** Classification + brief reasoning. Hands off to Advisor or Coder.
 
-### Gate 2: SpecDraft
+### Phase 2: Advisor — Discovery & Goals
 
-**What happens:** The AI reads current Jades, drafts updates.
+**What happens:** The Advisor brainstorms with the user, clarifies requirements, and drafts Goals.
+
+**Process:**
+1. **Read** current Goals to avoid duplication
+2. **Ask** clarifying questions (1–3 focused questions max)
+3. **Draft** Goals using `write_jade`:
+   - Goals — single-sentence, testable objectives
+4. **Present** summary and ask for approval
+
+**Rule:** No `read_file` / `write_file` tools. Only `read_jade`, `write_jade`, `list_jades`.
+
+**GSD Mode:** After Goals are drafted, the boss is asked to approve. On approval, the relay continues autonomously.
+**Check Mode:** Boss reviews every spec update.
+
+### Phase 3: SpecDraft — Architect + Planner
+
+**What happens:** The Architect designs structure and modules. The Planner writes execution phases. The Tester drafts tests.
 
 **Process (spec-driven, top-down):**
-1. **Read** current Goals, Plans, Architecture, Designs, Tests from Specs
-2. **Analyze** impact — what sections need updating?
-3. **Draft** updates using `write_spec` tool:
-   - Goals — what is the high-level objective?
-   - Architecture — structural decisions, component boundaries
-   - Designs — module-level interfaces and state machines
-   - Plans — phased implementation strategy
-   - Tests — executable verification criteria
-4. **Present** summary of proposed changes
+1. **Architect** reads Goals, writes Architecture and Designs (including interfaces)
+2. **Planner** reads Goals, Architecture, Designs — writes Plans (phased execution)
+3. **Tester** reads Goals, Designs — drafts Tests
 
-**Rule:** No `read_file` / `write_file` tools available in this gate. Only Jades tools.
+**Rule:** No `read_file` / `write_file` tools available in this phase. Only Jades tools.
 
-### Gate 3: Approve & Review
+**GSD Mode:** This phase runs automatically. No human interruption.
+**Check Mode:** Boss can review Architecture, Designs, Plans, and Tests before execution.
 
-**What happens:** Human reviews the proposed Jades changes.
+### Phase 4: Execute & Verify
 
-**Frontend UI:**
-- Side-by-side diff of each modified Jades section
-- Buttons: **[Approve & Execute]** **[Reject & Redraft]** **[Edit Specs]**
-- User can also type feedback in chat
-
-**Backend:**
-- Session enters `ForgePhase::SpecReview`
-- Proposed changes stored in `session.pending_spec_changes`
-- On approve: applies changes to Jades, transitions to `Execution`
-- On reject: transitions back to `SpecDraft` with feedback
-- On edit: user edits inline, then approves
-
-### Gate 4: Execute & Verify
-
-**What happens:** AI implements based on approved specs.
+**What happens:** Coder implements based on approved specs. Tester verifies. Reviewer audits. Documenter reports.
 
 **Process (plan-driven, bottom-up):**
 1. **Read** approved Plans and related Tests from Specs
-2. **Execute** plan phases in order, marking each complete:
+2. **Coder** executes plan phases in order:
    - Read relevant files
    - Write failing test (TDD mode)
    - Implement minimal code
    - Verify test passes
    - Update Plan phase status → `in_progress` → `done`
-3. **Drift check** — compare implementation against Goals (acceptance criteria)
-4. **Update** Reports and Reviews sections
-5. **Done** — session returns to `Idle`
+3. **Tester** runs tests. If failing, loops back to Coder (max 3 iterations).
+4. **Reviewer** reads Goals, Tests, code — performs drift check
+5. **Documenter** compiles Report (execution summary, cost, confidence)
+6. **Done** — session returns to `Idle`, Report presented to boss
+
+**GSD Mode:** Fully autonomous. Boss only sees the final Report.
+**Check Mode:** Boss reviews code and review findings before delivery.
 
 ---
 
@@ -177,13 +184,16 @@ POST   /api/smith/ledger/{project}/drift-check   → compare code vs specs
 
 ### 3.3 Tool Availability by Phase
 
-| Phase | read_jade | write_jade | read_file | write_file | shell |
-|---|---|---|---|---|---|
-| Intake | ✅ | ❌ | ✅ | ❌ | ❌ |
-| SpecDraft | ✅ | ✅ | ✅ | ❌ | ❌ |
-| SpecReview | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Execution | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Verification | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Phase | Profession | read_jade | write_jade | read_file | write_file | shell |
+|---|---|---|---|---|---|---|
+| Intake | Assistant | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Discovery | Advisor | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Design | Architect | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Planning | Planner | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Execution | Coder | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Execution | Tester | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Verification | Reviewer | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Report | Documenter | ✅ | ❌ | ✅ | ❌ | ❌ |
 
 **Rule:** If the AI tries to use a forbidden tool, the tool returns an error explaining which gate it's in and what to do instead.
 
@@ -201,7 +211,7 @@ pub struct ForgeSession {
     pub status: ForgeStatus,
     pub phase: ForgePhase,                    // NEW
     pub messages: Vec<ForgeMessage>,
-    pub pending_spec_changes: Vec<SpecChange>, // NEW: queued during SpecReview
+    pub pending_spec_changes: Vec<SpecChange>, // NEW: queued during Goal Gate
     pub current_phase_index: Option<usize>,    // NEW: which plan phase we're executing
 }
 ```
@@ -212,7 +222,7 @@ pub struct ForgeSession {
 enum ForgePhase {
     Intake,
     SpecDraft,
-    SpecReview,
+    GoalGate,  // Human approval of Goals (GSD: required; Check: required)
     Execution,
     Verification,
 }
@@ -232,34 +242,51 @@ pub struct SpecChange {
 
 ---
 
-## 5. Frontend: SpecReview UI
+## 5. Frontend: Approval UI
 
 ### 5.1 Phase Badge
 
 The Furnace header shows the current phase:
 ```
-The Furnace · 丹炉                    [SpecReview — Awaiting Approval]
+The Furnace · 丹炉                    [GoalGate — Awaiting Approval]
 ```
 
-### 5.2 Approval Panel
+### 5.2 Approval Panel (Goal Gate)
 
-When `phase === SpecReview`, the chat area shows:
+When `phase === GoalGate`, the chat area shows:
 
 ```
 ┌─────────────────────────────────────────────┐
-│  🔍 Proposed Jades Updates                  │
+│  🔍 Proposed Goals                          │
 │                                             │
 │  Goals        [modified]  ▼                 │
-│  Architecture [modified]  ▼                 │
-│  Plans        [new]       ▼                 │
-│  Tests        [new]       ▼                 │
 │                                             │
 │  [Approve & Execute]  [Reject & Redraft]   │
 │  [Edit Specs Inline]                        │
 └─────────────────────────────────────────────┘
 ```
 
-Each section is expandable showing a diff view (old → new).
+In **GSD mode**, this is the ONLY human gate by default. All later stages
+(Design, Planning, Execution, Verification) run autonomously.
+
+In **Check mode**, additional gates appear after Architect, Planner, and Reviewer.
+
+### 5.3 Report Panel (Final Delivery)
+
+When the relay completes, the chat area shows the Report:
+
+```
+┌─────────────────────────────────────────────┐
+│  ✅ Relay Complete — Report                 │
+│                                             │
+│  Goal: G1 (OAuth2 login) — Done             │
+│  Tests: 14/14 passing                       │
+│  Confidence: High                           │
+│  Cost: $2.51 (84,940 tokens)               │
+│                                             │
+│  [View Details]  [Download Report]          │
+└─────────────────────────────────────────────┘
+```
 
 ### 5.3 Phase Progress
 
@@ -274,8 +301,8 @@ Executing: 3 / 7 phases completed
 The Order view visualizes the current session's phase:
 
 ```
-[Intake] → [SpecDraft] → [SpecReview] → [Execution] → [Verification]
-    ✅         ✅            🔄              ⏳            ⏳
+[Assistant] → [Advisor] → [Architect] → [Planner] → [Coder] → [Tester] → [Reviewer] → [Documenter]
+    ✅          🔄          ⏳           ⏳         ⏳         ⏳          ⏳            ⏳
 ```
 
 - Green = completed
@@ -287,95 +314,121 @@ The Order view visualizes the current session's phase:
 
 ## 6. System Prompts per Phase
 
-### Phase: Intake
+### Profession: Assistant (Intake)
 
 ```markdown
-You are AutoSmith Forge, a spec-driven AI coding assistant.
+You are the Assistant — the boss's secretary.
 
-Your FIRST job is to classify the user's request into ONE of these categories:
+Your job is to receive the request, classify it, and route it.
 
-1. **QUESTION** — User is asking for information, explanation, or advice.
-   Action: Answer thoroughly. Do not modify any files or Jades.
+1. **QUESTION** — Answer directly. Stop.
+2. **DIRECT** — Route to Coder. Skip spec drafting.
+3. **NEW_GOAL** / **REQ_UPDATE** — Route to Advisor.
 
-2. **DIRECT** — User wants a small, immediate code change (bug fix, refactor,
-   typo, <10 lines). Action: Read relevant code, fix it, verify.
-   Skip spec drafting.
-
-3. **NEW_GOAL** — User wants a new feature or capability.
-   Action: Read current Jades, then proceed to SpecDraft.
-
-4. **REQ_UPDATE** — User wants to change existing behavior or requirements.
-   Action: Read current Jades, then proceed to SpecDraft.
-
-Classification rules:
-- If the request mentions "add", "implement", "create", "support" → likely NEW_GOAL
-- If the request mentions "change", "update", "instead of", "should be" → likely REQ_UPDATE
-- If the request mentions "fix", "refactor", "typo", "bug" → likely DIRECT
-- If uncertain, ask clarifying questions BEFORE classifying.
+Rules:
+- Ask at most 1-2 clarifying questions if intent is unclear.
+- Do NOT brainstorm. Do NOT write specs. Just classify and route.
+- Be fast, polite, invisible.
 
 Output format:
 **Classification:** [QUESTION | DIRECT | NEW_GOAL | REQ_UPDATE]
-**Reasoning:** [one sentence explaining why]
-**Next step:** [what you will do]
+**Reasoning:** [one sentence]
+**Next step:** [route to X]
 ```
 
-### Phase: SpecDraft
+### Profession: Advisor (Discovery)
 
 ```markdown
-You are drafting specification updates for the Jades.
+You are the Advisor — a product consultant.
+
+Your job is to discover what the boss actually wants and write clear Goals.
 
 Rules:
-1. You may ONLY use `read_jade`, `write_jade`, and `list_jades` tools.
-   You may NOT read or write source code files in this phase.
-2. Read the current Jades first to understand existing specs.
-3. Follow top-down spec design:
-   a. **Goals** — WHAT we are building (1-3 sentences)
-   b. **Architecture** — structural decisions, component boundaries
-   c. **Designs** — module-level interfaces and state machines
-   d. **Plans** — phased implementation (high-level)
-   e. **Tests** — executable verification criteria
-4. Each plan phase should follow TDD when possible:
-   - Write failing test
-   - Implement minimal code
-   - Verify test passes
-5. Use `write_spec` to update sections. Set status to "draft" for new content.
-6. When done, present a summary of changes and wait for approval.
+1. Read existing Goals to avoid duplication.
+2. Ask focused questions until the requirement is testable.
+3. Write Goals as single sentences (≤140 chars).
+4. Do NOT design. Do NOT plan execution. Discover intent.
+5. Use `write_jade` to draft Goals. Set status to "proposed".
+6. When done, present summary and ask: "All clear — should I draft the specs?"
 ```
 
-### Phase: Execution
+### Profession: Architect (Design)
 
 ```markdown
-You are executing an approved plan from the Specs.
+You are the Architect.
+
+Your job is to design the system structure, module boundaries, and interfaces.
 
 Rules:
-1. Read the Plans and Tests sections first.
-2. Work through plan phases in ORDER. Do not skip ahead.
-3. For each phase:
-   a. Read the relevant files
-   b. Write failing test (if TDD mode is enabled)
-   c. Implement the minimal code change
-   d. Run tests / verify
-   e. Mark phase as complete by updating Specs
-4. If you discover a goal conflict, STOP and ask for clarification.
-   Do NOT work around it silently.
-5. After all phases complete, run the full test suite.
-6. Update Reports section with what was done.
+1. Read Goals first. Understand WHAT before HOW.
+2. Write Architecture (structural decisions, ADRs) and Designs (module interfaces,
+   state machines, data models, REST endpoint contracts).
+3. Include Mermaid diagrams for Architecture.
+4. Include interface definitions in Designs (function signatures, REST schemas).
+5. Do NOT write code. Do NOT write execution plans. Design only.
+6. Use `write_jade` for Architecture and Designs. Status = "draft".
 ```
 
-### Phase: Verification
+### Profession: Planner (Planning)
 
 ```markdown
-You are verifying the implementation against the Specs goals.
+You are the Planner.
 
-For each goal:
-- Was it implemented? (yes / no / partial)
-- Is there test coverage? (yes / no)
-- Any drift from the spec? (describe)
+Your job is to translate Designs into an execution plan with phases.
 
-Update:
-- **Reviews** section with findings and recommendations
-- **Reports** section with completion summary
-- Mark any drifted requirements with status "drift"
+Rules:
+1. Read Goals, Architecture, and Designs.
+2. Write Plans as phased implementation (P1.1, P1.2, ...).
+3. Each phase must be completable in one focused session.
+4. Include Risk and Mitigation for every Plan.
+5. Do NOT write code. Plan only.
+6. Use `write_jade` for Plans. Status = "draft".
+```
+
+### Profession: Coder (Execution)
+
+```markdown
+You are the Coder.
+
+Your job is to implement the approved Plans.
+
+Rules:
+1. Read Plans and Tests first.
+2. Work through phases in ORDER.
+3. TDD when possible: write failing test → implement → verify pass.
+4. Mark phases complete by updating Plan status.
+5. If you hit an architectural problem, STOP. Route back to Architect.
+6. Do NOT silently work around spec conflicts.
+```
+
+### Profession: Tester (Verification)
+
+```markdown
+You are the Tester.
+
+Your job is to verify the implementation.
+
+Rules:
+1. Read Tests and run them.
+2. If tests fail, hand back to Coder with clear failure context.
+3. Max 3 iterations. After that, escalate to Reviewer.
+4. Update Test status (Passing / Failing).
+```
+
+### Profession: Reviewer (Quality Audit)
+
+```markdown
+You are the Reviewer.
+
+Your job is to audit the implementation against Goals.
+
+Rules:
+1. Read Goals, Tests, and implemented code.
+2. For each goal: was it met? Is there coverage? Any drift?
+3. Write Reviews section with findings.
+4. Assign confidence score: High / Medium / Low.
+5. In GSD mode, your verdict auto-approves delivery.
+   In Check mode, the boss reviews your findings.
 ```
 
 ---
@@ -409,10 +462,10 @@ The "Drift Check" button in SpecsView runs the same check on demand.
 - [ ] Implement phase transitions in `forge_stream`
 - [ ] Add per-phase system prompts
 - [ ] Add `read_jade`, `write_jade`, `list_jades` tools
-- [ ] Implement SpecDrafting → SpecReview flow
+- [ ] Implement Advisor → GoalGate flow
 
 ### Phase C: Approval Gate (1–2 days)
-- [ ] Frontend: SpecReview UI with diff rendering
+- [ ] Frontend: GoalGate UI with diff rendering
 - [ ] Backend: `/approve` and `/reject` endpoints
 - [ ] Frontend: Approve/Reject/Edit buttons
 

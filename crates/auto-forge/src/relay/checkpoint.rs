@@ -45,6 +45,8 @@ pub struct Checkpoint {
     pub gate_feedback: HashMap<String, Vec<String>>,
     /// Budget tracker state for cost analytics persistence.
     pub budget_tracker: BudgetTracker,
+    /// Execution mode (GSD or Check) for gate behavior on resume.
+    pub mode: crate::relay::pipeline::RelayMode,
 }
 
 /// State of a single file at checkpoint time.
@@ -125,6 +127,7 @@ impl Checkpoint {
             cumulative_tokens: engine.cumulative_tokens,
             gate_feedback: engine.gate_feedback.clone(),
             budget_tracker: engine.budget_tracker.clone(),
+            mode: engine.mode,
         })
     }
 
@@ -203,6 +206,7 @@ impl PipelineEngine {
             cumulative_tokens: checkpoint.cumulative_tokens,
             gate_resolved_for_step: None,
             budget_tracker: checkpoint.budget_tracker,
+            mode: checkpoint.mode,
         })
     }
 }
@@ -399,6 +403,7 @@ mod tests {
             cumulative_tokens: 0,
             gate_feedback: HashMap::new(),
             budget_tracker: BudgetTracker::default(),
+            mode: crate::relay::pipeline::RelayMode::GSD,
         };
 
         // Mutate files before restore
@@ -432,6 +437,7 @@ mod tests {
             cumulative_tokens: 0,
             gate_feedback: HashMap::new(),
             budget_tracker: BudgetTracker::default(),
+            mode: crate::relay::pipeline::RelayMode::GSD,
         };
         let cp2 = cp1.clone();
         assert_eq!(cp1.integrity_hash(), cp2.integrity_hash());
@@ -530,7 +536,7 @@ mod tests {
     #[test]
     fn test_checkpoint_with_human_gate_feedback() {
         let mut flow = FlowSpec::new("test-gate-ckpt");
-        flow.add_step(FlowStep::new("s1", "planner").with_gate(GateType::Human));
+        flow.add_step(FlowStep::new("s1", "advisor").with_gate(GateType::Human));
         flow.add_step(FlowStep::new("s2", "architect"));
 
         let mut engine = PipelineEngine::new(flow.clone(), "run-gate-ckpt");

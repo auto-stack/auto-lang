@@ -129,7 +129,6 @@ import PlanCards from '@/components/category/PlanCards.vue'
 import TestsCards from '@/components/category/TestsCards.vue'
 import ReviewCards from '@/components/category/ReviewCards.vue'
 import ReportCards from '@/components/category/ReportCards.vue'
-import ApiCards from '@/components/category/ApiCards.vue'
 
 const { document, isLoading, error, loadDocument, saveDocument, findItemById, findSectionByItemId, rebuildRelations: apiRebuildRelations } = useSpecs()
 
@@ -162,7 +161,6 @@ const DEFAULT_SECTIONS: SpecsSection[] = [
   { id: 'tests', section_type: 'tests', title: '🧪 Tests', items: [], content: '', status: 'empty', last_modified: Date.now() },
   { id: 'reviews', section_type: 'reviews', title: '📝 Reviews', items: [], content: '', status: 'empty', last_modified: Date.now() },
   { id: 'reports', section_type: 'reports', title: '📊 Reports', items: [], content: '', status: 'empty', last_modified: Date.now() },
-  { id: 'apis', section_type: 'apis', title: '🔌 APIs', items: [], content: '', status: 'empty', last_modified: Date.now() },
 ]
 
 const sections = computed(() => {
@@ -195,7 +193,6 @@ const categoryComponent = computed(() => {
     case 'tests': return TestsCards
     case 'reviews': return ReviewCards
     case 'reports': return ReportCards
-    case 'apis': return ApiCards
     default: return null
   }
 })

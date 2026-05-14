@@ -330,7 +330,7 @@ mod tests {
     fn test_run_store_gate_waiting() {
         let store = new_run_store();
         let mut flow = FlowSpec::new("test");
-        flow.add_step(FlowStep::new("s1", "planner").with_gate(GateType::Human));
+        flow.add_step(FlowStep::new("s1", "advisor").with_gate(GateType::Human));
 
         start_run(&store, flow, "run-gate").unwrap();
         let r = advance_run(&store, "run-gate").unwrap();

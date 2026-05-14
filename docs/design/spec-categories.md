@@ -22,10 +22,10 @@ Specs are not flat documents — they form a **layered decision pyramid**. Each 
                              │ refines into
             ┌────────────────┼────────────────┐
             ▼                ▼                ▼
-     ┌────────────┐   ┌────────────┐   ┌────────────┐
-How-high│Architecture│   │   APIs     │   │  Designs   │
-     └────────────┘   └────────────┘   └────────────┘
-            │                │                │
+     ┌────────────┐   ┌────────────┐
+How-high│Architecture│   │  Designs   │  ← includes interfaces, REST, schemas
+     └────────────┘   └────────────┘
+            │                │
             └────────────────┼────────────────┘
                              │ drives
                       ┌──────┴──────┐
@@ -41,7 +41,7 @@ How-high│Architecture│   │   APIs     │   │  Designs   │
                       └──────┬──────┘
                              │ feeds
                       ┌──────┴──────┐
-       Know           │   Reports   │  ← status snapshot
+       Know           │   Reports   │  ← relay execution summary
                       └─────────────┘
 ```
 
@@ -61,8 +61,7 @@ Every item in every category receives a typed, hierarchical ID:
 | Plans | `P` | `P1`, `P2` | Sequential plan phase |
 | Tests | `S` | `S1.1`, `S2.1` | `S<goal>.<seq>` (S = Spec/Test) |
 | Reviews | `V` | `V1`, `V2` | Sequential review cycle |
-| Reports | `X` | `X2026-05`, `X2026-W20` | Date-based |
-| APIs | `I` | `I1`, `I2` | Sequential interface spec |
+| Reports | `X` | `X2026-05`, `X2026-W20` | Date-based or run-based |
 
 **Rules:**
 - IDs are immutable. Once assigned, they never change.
@@ -83,7 +82,7 @@ The `depends_on` field on every `SpecItem` contains a list of upstream IDs. The 
 
 **Valid reference rules:**
 - `Goals` are root items — they may only reference other Goals.
-- `Architecture` / `Designs` / `APIs` may depend on `Goals` or each other.
+- `Architecture` / `Designs` may depend on `Goals` or each other.
 - `Plans` may depend on `Goals`, `Architecture`, `Designs`.
 - `Tests` may depend on `Goals` and `Designs`.
 - `Reviews` may depend on `Goals`, `Tests`, and `Plans`.
@@ -97,18 +96,16 @@ All categories share a common `Status` enum, but each category exposes only a re
 |---|---|---|
 | `empty` | Section has no items yet | All |
 | `proposed` | Idea floated, not yet analysed | Goals |
-| `draft` | Content written, under internal review | Architecture, Designs, Plans, APIs |
-| `under_review` | Under formal review / critique | Architecture, Designs, APIs |
+| `draft` | Content written, under internal review | Architecture, Designs, Plans |
+| `under_review` | Under formal review / critique | Architecture, Designs |
 | `approved` | Human has approved | Goals, Architecture, Designs, Plans |
 | `in_progress` | Work has started | Goals, Plans |
 | `implemented` | Code complete, not yet verified | Goals |
 | `verified` | Verified against acceptance criteria | Goals, Plans |
 | `done` | Fully complete | Goals, Plans |
-| `stable` | Contract frozen, backward-compatible | APIs |
 | `published` | Report/review published | Reviews, Reports |
 | `superseded` | Replaced by newer design | Architecture, Designs |
 | `outdated` | No longer reflects reality | Architecture, Designs |
-| `deprecated` | Scheduled for removal | APIs |
 | `rejected` | Explicitly rejected | Goals |
 | `archived` | Retired, kept for history | Goals |
 | `obsolete` | Plan no longer relevant | Plans |
@@ -219,14 +216,16 @@ Empty → Draft → UnderReview → Approved → Superseded / Outdated
 
 **Ownership:** Human architects write and approve. AI may draft `Draft` proposals.
 
-**Downstream:** Architecture guides `Designs` and `APIs`.
+**Downstream:** Architecture guides `Designs`.
 
 ---
 
 ### 3.3 Designs 🎨
 
 **Question:** *How does each module work internally?*  
-**Purpose:** Specify module interfaces, state machines, algorithms, and data models at the implementation level.
+**Purpose:** Specify module interfaces (including REST endpoints, request/response schemas, and function signatures), state machines, algorithms, and data models at the implementation level. 
+
+> **Note:** Interface contracts that were previously in a separate `APIs` category now live here, co-located with the module design. A REST endpoint spec is part of the design for the module that serves it.
 
 **Unit:** Module design document.
 
@@ -288,10 +287,12 @@ fn compile_dep(dep):
 
 **Rules:**
 - Every Design must reference its parent Architecture item in `Scope`.
-- Include a concrete **Interface** (function signatures, types, error variants).
+- Include a concrete **Interface** (function signatures, REST endpoints, types, error variants).
 - Include a **State Machine** if the module has non-trivial lifecycle.
 - Include a **Data Model** table for key structs.
 - Pseudocode is preferred over prose for algorithms.
+- If the module exposes public REST endpoints, document them in the `Interface` section
+  using the same structured format (Method, Path, Request, Response, Errors, Schema).
 
 **Status Lifecycle:**
 ```
@@ -302,7 +303,7 @@ Empty → Draft → UnderReview → Approved → Superseded / Outdated
 
 **Ownership:** Senior engineer or human architect approves. AI drafts during Gate 2.
 
-**Downstream:** Designs inform `Plans` and `APIs`.
+**Downstream:** Designs inform `Plans` and `Tests`.
 
 ---
 
@@ -415,53 +416,68 @@ Empty → Draft → Published
 
 ### 3.6 Reports 📊
 
-**Question:** *What is the current state of the project?*  
-**Purpose:** Provide a periodic snapshot of progress, risks, and blockers for stakeholders. Reports are read-only aggregations.
+**Question:** *What happened in this relay run?*  
+**Purpose:** Summarize the execution of a relay run for the boss. Reports are generated automatically after a Reviewer completes its work. They aggregate what was built, what changed, test results, drift findings, cost, and confidence.
+
+> **Note:** Reports are **relay execution summaries**, not periodic status updates. Each Report corresponds to a completed relay run (or a batch of runs) and is presented to the boss as the primary deliverable.
 
 **Unit:** Status snapshot.
 
-**Format:** Executive summary with metrics and blockers.
+**Format:** Executive summary with metrics, cost, and confidence.
 
 ```markdown
 ## Reports
 
-### X2026-W20 Weekly Status
-**Period:** 2026-05-11 — 2026-05-17  
+### X42 — OAuth2 Implementation Relay
+**Run ID:** 42  
 **Status:** Published
 
 **Executive Summary:**
-G1 (FFI pipeline) is Done. G2 (self-hosted frontend) is InProgress,
-with Phase 1.2 (Lexer) 80% complete. No critical blockers.
+G1 (OAuth2 login) is Done. All 4 plan phases completed. 14/14 tests pass.
+1 minor drift detected in refresh token expiry (hardcoded 3600s).
 
 **Metrics:**
-| Metric | Value | Trend |
+| Metric | Value |
+|---|---|
+| Goals Met | 1/1 |
+| Tests Pass | 14/14 |
+| Drift Detected | 1 (Low) |
+| Code Files Changed | 4 |
+
+**Cost:**
+| Profession | Tokens | Cost |
 |---|---|---|
-| Goals Complete | 1/3 | ↑ |
-| Goals Verified | 2/3 | ↑ |
-| Plans Done | 1/2 | → |
-| Plans Done | 2/3 | ↑ |
-| Open Blockers | 1 | → |
+| Advisor | 3,240 | $0.08 |
+| Architect | 8,100 | $0.24 |
+| Planner | 2,500 | $0.07 |
+| Coder | 42,500 | $1.27 |
+| Tester | 23,400 | $0.70 |
+| Reviewer | 5,200 | $0.15 |
+| **Total** | **84,940** | **$2.51** |
 
-**Blockers:**
-- **B1** [Blocked] P1.5 — Windows CI runner unavailable for cdylib tests.
-  - Impact: G1 cross-platform verification delayed.
-  - ETA: 2026-05-20
+**Confidence:** High (Reviewer verdict: approved with minor fix)
 
-**Risks:**
-- **R1** G2 Phase 1.3 (Parser) may slip by 3 days due to VM string bug complexity.
+**Deliverables:**
+- `crates/auth/src/token.rs`
+- `crates/auth/src/middleware.rs`
+- `crates/auth/src/routes.rs`
+- `crates/auth/src/errors.rs`
 
-**Next Week Focus:**
-- Close G2 Phase 1.2 (Lexer)
-- Resolve B1 (Windows runner)
-- Start G2 Phase 1.3 (Parser)
+**Drift:**
+- Refresh token rotation deferred to Phase 2. Token expiry hardcoded.
+  Assigned to: future sprint.
+
+**Blockers:** None.
 ```
 
 **Rules:**
 - Reports are **aggregators** — they reference items from all other categories, never introduce new specs.
-- Published on a schedule: weekly (`XYYYY-WNN`) or per-milestone.
-- `Metrics` table is mandatory — quantifiable progress.
+- Generated automatically at the end of a relay run (by the Documenter profession).
+- `Metrics` table is mandatory — quantifiable progress (goals met, tests passed, drift detected).
 - `Blockers` must link to specific `Plans`.
 - `Risks` must link to specific `Plans` or `Goals`.
+- `Cost` section is mandatory — tokens spent, time elapsed.
+- `Confidence` score is mandatory — Reviewer's verdict (High / Medium / Low).
 
 **Status Lifecycle:**
 ```
@@ -474,89 +490,7 @@ Empty → Draft → Published
 
 ---
 
-### 3.7 APIs 🔌
 
-**Question:** *What contracts does the system expose to the outside world?*  
-**Purpose:** Define public interfaces — REST endpoints, function signatures, data schemas — that external consumers depend on.
-
-**Unit:** Endpoint or Type specification.
-
-**Format:** OpenAPI-inspired structured spec.
-
-```markdown
-## APIs
-
-### I1 AutoForge Specs API
-**Status:** Stable  
-**Version:** v1  
-**Base URL:** `/api/forge/specs/{project}`
-
-**Endpoints:**
-
-#### GET /{project}
-**Description:** Retrieve full Specs document for a project.
-
-**Request:**
-```http
-GET /api/forge/specs/auto-lang HTTP/1.1
-```
-
-**Response:**
-```json
-{
-  "project": "auto-lang",
-  "version": 3,
-  "sections": [
-    {"id": "goals", "section_type": "goals", "items": [...]}
-  ]
-}
-```
-
-**Errors:**
-| Code | Meaning |
-|---|---|
-| 404 | Project not found |
-| 409 | Version conflict (stale read) |
-
----
-
-#### PUT /{project}
-**Description:** Update full Specs document (optimistic concurrency).
-
-**Request Body:** `SpecsDocument`  
-**Headers:** `Content-Type: application/json`
-
-**Response:** `200 OK` with updated document.
-
-**Errors:**
-| Code | Meaning |
-|---|---|
-| 409 | Version mismatch — re-fetch and retry |
-
-**Schema:**
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `project` | `string` | yes | Project identifier |
-| `version` | `integer` | yes | Optimistic concurrency version |
-| `sections` | `Section[]` | yes | Ordered list of spec sections |
-
-**Depends on:** A1 (backend architecture)
-```
-
-**Rules:**
-- Every API spec must include: Description, Request, Response, Errors, Schema.
-- Use `Stable` status only after the API has been consumed by at least one client and no breaking changes are expected.
-- Breaking changes require a new API version (`I2`) and deprecation of the old (`I1` → `Deprecated`).
-- Schema tables use standard TypeScript/Rust type notation.
-
-**Status Lifecycle:**
-```
-Empty → Draft → UnderReview → Stable → Deprecated
-```
-
-**Ownership:** Human API designer approves. AI drafts during Gate 2.
-
-**Downstream:** APIs inform `Designs` (client-side consumption) and `Tests` (contract tests).
 
 ---
 
@@ -650,7 +584,6 @@ graph TB
     end
     subgraph HowHigh
         A[Architecture]
-        I[APIs]
     end
     subgraph HowLow
         D[Designs]
@@ -667,11 +600,9 @@ graph TB
     end
 
     G -->|informs| A
-    G -->|contracts| I
     G -->|drives| P
     G -->|verified by| S
     A -->|guides| D
-    A -->|contracts| I
     D -->|informs| P
     D -->|informs| S
     S -->|feeds| V
@@ -680,19 +611,15 @@ graph TB
     V -->|feeds| X
     P -->|feeds| X
     G -->|feeds| X
-    I -->|informs| D
-```
 
 **Reference Table:**
 
 | From | To | Relation | Cardinality |
 |---|---|---|---|
 | Goals | Architecture | informs | N:G → 1:A |
-| Goals | APIs | contracts | N:G → N:I |
 | Goals | Plans | drives | N:G → 1:P |
 | Goals | Tests | verified by | N:G → N:S |
 | Architecture | Designs | guides | 1:A → N:D |
-| Architecture | APIs | contracts | 1:A → N:I |
 | Designs | Plans | informs | N:D → 1:P |
 | Designs | Tests | informs | N:D → N:S |
 | Tests | Reviews | feeds results | N:S → 1:V |
@@ -716,7 +643,6 @@ graph TB
 | Tests | Empty, Draft, Implemented, Passing, Failing, Skipped | Draft→Implemented→Passing; Failing→Fixed→Passing |
 | Reviews | Empty, Draft, Published | Draft→Published |
 | Reports | Empty, Draft, Published | Draft→Published |
-| APIs | Empty, Draft, UnderReview, Stable, Deprecated | Draft→UnderReview→Stable→Deprecated |
 
 ---
 
@@ -731,10 +657,9 @@ graph TB
 | Tests | Draft from Goals | Implement + run + update status | May override | AI Agent (TDD) |
 | Reviews | Draft findings | No | Yes (to `Published`) | Human reviewer + AI |
 | Reports | Draft snapshot | No | Yes (to `Published`) | PM (review) / AI (draft) |
-| APIs | Draft (`Draft`) | During rework | Yes (to `Stable`) | API Designer |
 
 **Gate Mapping:**
-- **Gate 2 (SpecDraft):** AI drafts sub-goals, Tests, Architecture, Designs, Plans, APIs.
+- **Gate 2 (SpecDraft):** AI drafts sub-goals, Tests, Architecture, Designs, Plans.
 - **Gate 3 (Approve):** Human reviews and approves.
 - **Gate 4 (Execute):** AI executes approved Plans (TDD: write Test first, implement, verify Test passes), updates Test and Plan statuses.
 - **Gate 4 (Verify):** AI drafts Reviews using Test results as evidence; human publishes.
@@ -901,33 +826,7 @@ graph TB
 
 ### API
 ```markdown
-### I1 <title>
-**Status:** Draft
-**Version:** v1
-**Base URL:** `<path>`
 
-#### <METHOD> <path>
-**Description:** ...
-
-**Request:**
-```http
-<example>
-```
-
-**Response:**
-```json
-<example>
-```
-
-**Errors:**
-| Code | Meaning |
-|---|---|
-| ... | ... |
-
-**Schema:**
-| Field | Type | Required | Description |
-|---|---|---|---|
-| ... | ... | ... | ... |
 ```
 
 ---
@@ -947,8 +846,7 @@ graph TB
 
 | Tests | Not formalized | Structured test spec with fixture + steps + expected outcome |
 | Reviews | Not formalized | Structured criterion table + issue IDs |
-| Reports | Not formalized | Periodic snapshot with metrics |
-| APIs | Not formalized | OpenAPI-style structured spec |
+| Reports | Not formalized | Relay execution summary with metrics + cost + confidence |
 
 ### 8.2 Migration Steps
 
@@ -959,7 +857,7 @@ graph TB
 5. **Restructure Plans**: Convert free-text phases into machine-parseable tables.
 
 7. **Create Tests from Goals**: For each Goal, draft at least one Test with fixture, steps, and expected outcome.
-8. **Create initial Reviews/Reports/APIs**: These may be empty (`Empty` status) until the project reaches the verification phase.
+8. **Create initial Reviews/Reports:** These may be empty (`Empty` status) until the project reaches the verification phase.
 
 ### 8.3 Backward Compatibility
 
@@ -996,7 +894,7 @@ Use this checklist before approving any spec:
 - [ ] Every Plan has a risk + mitigation.
 - [ ] Every Review uses the criterion table format.
 - [ ] Every Report has metrics and blockers.
-- [ ] Every API has request, response, error, and schema.
+- [ ] Every Design with public interfaces includes request, response, error, and schema.
 - [ ] Every Goal has at least one associated Test.
 - [ ] Every Test has a `Test File` path hint.
 - [ ] All IDs follow the typed prefix convention.

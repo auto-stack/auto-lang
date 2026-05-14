@@ -6,7 +6,6 @@ export type SectionType =
   | 'tests'
   | 'reviews'
   | 'reports'
-  | 'apis'
 
 export type Status =
   | 'empty'

@@ -318,27 +318,7 @@ export interface SpecsSection {
 
 **Edit Mode:** Markdown textarea with metric auto-completion (typing `@` suggests metrics).
 
-### 3.10 APIs 🔌 — Schema View
 
-**List View:** Cards with endpoint summary.
-
-```
-┌─ I1 AutoForge Specs API ───────────────────────────────┐
-│ Status: Stable  │  v1  │  2 endpoints                  │
-│                                                        │
-│ GET  /{project}         → SpecsDocument                │
-│ PUT  /{project}         → update with version check    │
-└────────────────────────────────────────────────────────┘
-```
-
-**Detail View:**
-- Relations Panel: Parents (Architecture), Children (Designs)
-- Content: Endpoint details with request/response/schema
-- Actions: Status dropdown, Edit
-
-**Edit Mode:** Endpoint list editor. Each endpoint has sub-fields: Method, Path, Description, Request, Response, Errors, Schema.
-
----
 
 ## 4. Relations Panel (Bidirectional Traceability)
 
@@ -416,7 +396,7 @@ Each section header has an **Edit** button. Clicking enters edit mode for the en
 | Mode | When Used | UI |
 |---|---|---|
 | **Structured** | Goals, Tests | Form fields per category template |
-| **Free Markdown** | Architecture, Designs, Plans, Reviews, Reports, APIs | Markdown textarea + live preview |
+| **Free Markdown** | Architecture, Designs, Plans, Reviews, Reports | Markdown textarea + live preview |
 
 The backend always stores Markdown. Structured editors serialize to Markdown on save.
 

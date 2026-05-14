@@ -120,7 +120,8 @@ pub async fn list_professions() -> Json<ProfessionsResponse> {
 
 pub async fn list_souls() -> Json<SoulsResponse> {
     let souls = vec![
-        SoulDto { id: "intaker".into(), name: "Intaker".into() },
+        SoulDto { id: "assistant".into(), name: "Assistant".into() },
+        SoulDto { id: "advisor".into(), name: "Advisor".into() },
         SoulDto { id: "planner".into(), name: "Planner".into() },
         SoulDto { id: "architect".into(), name: "Architect".into() },
         SoulDto { id: "coder".into(), name: "Coder".into() },

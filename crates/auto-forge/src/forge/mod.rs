@@ -55,7 +55,6 @@ pub enum SectionType {
     Tests,
     Reviews,
     Reports,
-    Apis,
 }
 
 impl SectionType {
@@ -68,7 +67,6 @@ impl SectionType {
             SectionType::Tests => "tests",
             SectionType::Reviews => "reviews",
             SectionType::Reports => "reports",
-            SectionType::Apis => "apis",
         }
     }
 }
@@ -220,15 +218,14 @@ impl SectionConfig {
                     (Status::Done, Status::Obsolete),
                 ],
             },
-            SectionType::Apis => Self {
-                section_type: SectionType::Apis,
+            SectionType::Reports => Self {
+                section_type: SectionType::Reports,
                 allowed_statuses: vec![
-                    Status::Empty, Status::Draft, Status::UnderReview, Status::Stable,
-                    Status::Deprecated,
+                    Status::Empty, Status::Draft, Status::Published,
                 ],
                 allowed_transitions: vec![
                     (Status::Empty, Status::Draft),
-                    (Status::Draft, Status::UnderReview),
+                    (Status::Draft, Status::Published),
                     (Status::UnderReview, Status::Stable),
                     (Status::Stable, Status::Deprecated),
                 ],
@@ -568,7 +565,7 @@ const TMPL_PLANS: &str = include_str!("templates/plans.ad");
 const TMPL_TESTS: &str = include_str!("templates/tests.ad");
 const TMPL_REVIEWS: &str = include_str!("templates/reviews.ad");
 const TMPL_REPORTS: &str = include_str!("templates/reports.ad");
-const TMPL_APIS: &str = include_str!("templates/apis.ad");
+
 
 impl SpecsStore {
     fn new() -> Self {
@@ -612,7 +609,7 @@ impl SpecsStore {
     }
 
     fn extract_embedded_templates(&self) {
-        let templates: [(&str, &str); 8] = [
+        let templates: [(&str, &str); 7] = [
             ("goals", TMPL_GOALS),
             ("architecture", TMPL_ARCHITECTURE),
             ("designs", TMPL_DESIGNS),
@@ -620,7 +617,7 @@ impl SpecsStore {
             ("tests", TMPL_TESTS),
             ("reviews", TMPL_REVIEWS),
             ("reports", TMPL_REPORTS),
-            ("apis", TMPL_APIS),
+
         ];
         for (name, content) in templates {
             let path = self.templates_dir.join(format!("{}.ad", name));
@@ -643,7 +640,7 @@ impl SpecsStore {
                 "tests" => TMPL_TESTS.to_string(),
                 "reviews" => TMPL_REVIEWS.to_string(),
                 "reports" => TMPL_REPORTS.to_string(),
-                "apis" => TMPL_APIS.to_string(),
+
                 _ => String::new(),
             }
         })
@@ -805,7 +802,6 @@ impl SpecsStore {
             "tests" => SectionType::Tests,
             "reviews" => SectionType::Reviews,
             "reports" => SectionType::Reports,
-            "apis" => SectionType::Apis,
             _ => SectionType::Goals,
         }
     }
@@ -1036,7 +1032,7 @@ impl SpecsStore {
                     SectionType::Tests => "tests",
                     SectionType::Reviews => "reviews",
                     SectionType::Reports => "reports",
-                    SectionType::Apis => "apis",
+
                 }.to_string(),
                 title: s.title.clone(),
                 status: Self::serialize_status(&s.status),
@@ -1099,7 +1095,7 @@ impl SpecsStore {
                 SpecsSection { id: String::from("tests"), section_type: SectionType::Tests, title: String::from("🧪 Tests"), status: Status::Empty, items: vec![], content: self.load_template("tests"), depends_on: vec![], last_modified: now, last_verified: None },
                 SpecsSection { id: String::from("reviews"), section_type: SectionType::Reviews, title: String::from("📝 Reviews"), status: Status::Empty, items: vec![], content: self.load_template("reviews"), depends_on: vec![], last_modified: now, last_verified: None },
                 SpecsSection { id: String::from("reports"), section_type: SectionType::Reports, title: String::from("📊 Reports"), status: Status::Empty, items: vec![], content: self.load_template("reports"), depends_on: vec![], last_modified: now, last_verified: None },
-                SpecsSection { id: String::from("apis"), section_type: SectionType::Apis, title: String::from("🔌 APIs"), status: Status::Empty, items: vec![], content: self.load_template("apis"), depends_on: vec![], last_modified: now, last_verified: None },
+
             ],
         }
     }

@@ -218,12 +218,15 @@ const {
 const showStartModal = ref(false)
 const newFlowId = ref('demo-flow')
 const newSteps = ref<{ id: string; profession_id: string; gate: string }[]>([
-  { id: 'intake', profession_id: 'intaker', gate: 'auto' },
-  { id: 'plan', profession_id: 'planner', gate: 'human' },
-  { id: 'design', profession_id: 'architect', gate: 'human' },
+  { id: 'intake', profession_id: 'assistant', gate: 'auto' },
+  { id: 'discover', profession_id: 'advisor', gate: 'human' },
+  { id: 'design', profession_id: 'architect', gate: 'auto' },
+  { id: 'plan', profession_id: 'planner', gate: 'auto' },
+  { id: 'draft-tests', profession_id: 'tester', gate: 'auto' },
   { id: 'code', profession_id: 'coder', gate: 'auto' },
-  { id: 'test', profession_id: 'tester', gate: 'auto' },
+  { id: 'run-tests', profession_id: 'tester', gate: 'auto' },
   { id: 'review', profession_id: 'reviewer', gate: 'auto' },
+  { id: 'report', profession_id: 'documenter', gate: 'auto' },
 ])
 
 let unsubscribe: (() => void) | null = null
@@ -301,7 +304,7 @@ function runProgressPercent(run: { current_step: number; total_steps: number }):
 
 function professionIcon(id: string): string {
   const map: Record<string, string> = {
-    intaker: '📥', planner: '📝', architect: '🏗️',
+    assistant: '📥', advisor: '💡', planner: '📝', architect: '🏗️',
     coder: '💻', tester: '🧪', reviewer: '🔍', documenter: '📚',
   }
   return map[id] ?? '⚙️'

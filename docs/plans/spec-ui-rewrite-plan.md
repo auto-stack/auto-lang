@@ -197,15 +197,7 @@
 - Parses metrics table from content
 - Shows blockers/risks count
 
-### P4.10 `ApisSchema` component
 
-**File:** `packages/auto-forge-ui/src/components/category/ApisSchema.vue`
-
-- Card layout with endpoint list
-- Parses endpoint sections from markdown
-- Expanded detail: full schema
-
----
 
 ## Phase 5: JadesView.vue Rewrite (P6)
 
@@ -228,7 +220,7 @@
     tests: TestsCards,
     reviews: ReviewsCards,
     reports: ReportsDashboard,
-    apis: ApisSchema,
+
   }
   ```
 
@@ -309,7 +301,7 @@
 - `packages/auto-forge-ui/src/components/category/TestsCards.vue` (new)
 - `packages/auto-forge-ui/src/components/category/ReviewsCards.vue` (new)
 - `packages/auto-forge-ui/src/components/category/ReportsDashboard.vue` (new)
-- `packages/auto-forge-ui/src/components/category/ApisSchema.vue` (new)
+
 - `packages/auto-forge-ui/src/views/JadesView.vue` — major rewrite
 
 ### Templates

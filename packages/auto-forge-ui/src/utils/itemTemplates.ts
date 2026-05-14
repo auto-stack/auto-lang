@@ -28,30 +28,6 @@ export const ITEM_TEMPLATES: Record<string, string> = {
 **Test File:** 
 `,
 
-  apis: `**Endpoint:** 
-
-**Description:** 
-
-**Request:**
-\`\`\`json
-{
-  // request schema
-}
-\`\`\`
-
-**Response:**
-\`\`\`json
-{
-  // response schema
-}
-\`\`\`
-
-**Errors:**
-- 400 Bad Request — 
-- 404 Not Found — 
-- 500 Internal Server Error — 
-`,
-
   plans: `## Phase 1: <Phase Name>
 
 - [ ] <task 1>
@@ -128,7 +104,7 @@ export function getDefaultStatus(sectionType: string): Status {
     case 'tests': return 'draft'
     case 'reviews': return 'draft'
     case 'reports': return 'draft'
-    case 'apis': return 'draft'
+
     default: return 'draft'
   }
 }
@@ -136,7 +112,7 @@ export function getDefaultStatus(sectionType: string): Status {
 export function getNextId(sectionType: string, existingIds: string[]): string {
   const prefixMap: Record<string, string> = {
     goals: 'G', architecture: 'A', designs: 'D', plans: 'P',
-    tests: 'S', reviews: 'V', reports: 'X', apis: 'I',
+    tests: 'S', reviews: 'V', reports: 'X',
   }
   const prefix = prefixMap[sectionType] || sectionType.charAt(0).toUpperCase()
 

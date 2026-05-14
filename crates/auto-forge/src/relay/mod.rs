@@ -61,8 +61,9 @@ impl RelayRegistry {
 
     /// Load built-in default souls embedded in the binary.
     fn load_builtin_souls(&mut self) {
-        let defaults: [(&str, &str); 7] = [
-            ("intaker", include_str!("souls/intaker.md")),
+        let defaults: [(&str, &str); 8] = [
+            ("assistant", include_str!("souls/assistant.md")),
+            ("advisor", include_str!("souls/advisor.md")),
             ("planner", include_str!("souls/planner.md")),
             ("architect", include_str!("souls/architect.md")),
             ("coder", include_str!("souls/coder.md")),

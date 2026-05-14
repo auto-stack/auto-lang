@@ -84,7 +84,7 @@ impl AgentTurn {
     ) -> Self {
         let allowed: Vec<String> = agent.profession.allowed_tools.clone();
         let tool_definitions: Vec<ToolDefinition> = if allowed.is_empty() {
-            // If no tools are explicitly allowed, allow none (intaker/documenter)
+            // If no tools are explicitly allowed, allow none (assistant/documenter)
             Vec::new()
         } else {
             registry

@@ -114,3 +114,25 @@
 | P6.3 | Dogfooding: use Forge to implement P1-P5 specs | Tooling | 5 days | P6.2 | Done |
 | P6.4 | Drift detection on Agents module specs | Tooling | 2 days | P6.3 | Done |
 | P6.5 | Documentation and tutorial for custom flows | Tooling | 2 days | P6.1 | Done |
+
+---
+
+## P7 Relay Refactor — New Design v2
+**Status:** done
+**Depends on:** G6, G7, D6, D7
+
+| Phase | Task | Owner | Duration | Dependencies | Status |
+|---|---|---|---|---|---|
+| P7.1 | Rename `Intaker` profession to `Assistant`; update `profession.rs` registry | Tooling | 1 day | D7 | Done |
+| P7.2 | Add `Advisor` profession with Goals ownership and Discovery phase | Tooling | 1 day | D7 | Done |
+| P7.3 | Add `RelayMode` enum (`GSD` / `Check`) to `pipeline.rs` and `session` model | Tooling | 1 day | D6 | Done |
+| P7.4 | Extend `ForgePhase` enum: add Discovery, GoalGate, Design, Planning, Report | Tooling | 1 day | D6 | Done |
+| P7.5 | Update `PipelineEngine` gate logic: GSD only pauses at GoalGate; Check pauses at all gates | Tooling | 2 days | D6, P7.3 | Done |
+| P7.6 | Remove `APIs` from `SectionType` and Architect's `owned_sections` | Tooling | 0.5 day | G7 | Done |
+| P7.7 | Update all soul files: rename `intaker.md` → `assistant.md`; add `advisor.md`; remove API references | Tooling | 1 day | P7.1, P7.2 | Done |
+| P7.8 | Update `FlowSpec` default flow: Assistant → Advisor → Architect → Planner → Tester → Coder → Tester → Reviewer → Documenter | Tooling | 1 day | P7.1-P7.5 | Done |
+| P7.9 | Update frontend: remove `ApisSchema` component; add `RelayMode` toggle (GSD/Check) | UI | 2 days | P7.3 | Done |
+| P7.10 | Update frontend pipeline visualization to show 8 professions | UI | 1 day | P7.8 | Done |
+| P7.11 | Update `design/docs` to match new spec categories (already done) | Tooling | 0.5 day | — | Done |
+| P7.12 | Write integration tests for new flow (S7.1–S7.4) | Tooling | 2 days | P7.1-P7.10 | Done |
+| P7.13 | Run full test suite: `cargo check -p auto-forge` and `cargo test -p auto-forge` | Tooling | 0.5 day | P7.12 | Done |

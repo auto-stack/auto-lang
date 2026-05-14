@@ -21,7 +21,7 @@ let registry = ProfessionRegistry::new();
 3. Query `registry.get("coder")`
 4. Query `registry.get("nonexistent")`
 
-- Architect profession exists with `owned_sections: [Architecture, Designs, APIs]`.
+- Architect profession exists with `owned_sections: [Architecture, Designs]`.
 - Coder profession exists with `tools: [read_file, write_file, edit_file, shell, search]`.
 - Nonexistent returns `None`.
 
@@ -323,3 +323,97 @@ let store = new_run_store();
 - Checkpoint captures current_step = 3, step_history len = 3.
 - Resumed engine has Idle status, no chat history.
 - Can advance to Coder step.
+
+---
+
+## S7.1 [G7] Profession registry contains new v2 professions and no Intaker or APIs
+**Status:** done
+**Test File:** `crates/auto-forge/src/relay/profession.rs` (inline `#[cfg(test)]`)
+**Depends on:** G7, D7, P7.1, P7.2
+
+```rust
+let registry = ProfessionRegistry::new();
+```
+
+1. Query `registry.get("assistant")`.
+2. Query `registry.get("advisor")`.
+3. Query `registry.get("intaker")`.
+4. Query `registry.get("architect")`.
+5. Inspect `architect.owned_sections`.
+
+- Assistant exists with `phase: Intake`, `owned_sections: []`.
+- Advisor exists with `phase: Discovery`, `owned_sections: [Goals]`.
+- Intaker returns `None`.
+- Architect exists with `owned_sections: [Architecture, Designs]` (no APIs).
+
+---
+
+## S7.2 [G6] GSD mode auto-approves all gates except GoalGate
+**Status:** draft
+**Test File:** `crates/auto-forge/src/relay/pipeline.rs` (inline `#[cfg(test)]`)
+**Depends on:** G6, D6, P7.3, P7.5
+
+```rust
+let flow = gsd_flow(); // Advisor (human gate) → Architect (auto) → Planner (auto) → ...
+let mut engine = PipelineEngine::new(flow, "test-gsd".into());
+engine.mode = RelayMode::GSD;
+```
+
+1. Execute Advisor step.
+2. Assert status is `WaitingForHuman` (GoalGate).
+3. Approve GoalGate.
+4. Execute Architect step.
+5. Assert status is `Running` (NOT WaitingForHuman).
+6. Execute Planner, Coder, Tester, Reviewer, Documenter.
+
+- Only GoalGate pauses in GSD mode.
+- All other gates proceed automatically.
+- Final status is `Completed` without further human interaction.
+
+---
+
+## S7.3 [G6] Check mode pauses at every human-configured gate
+**Status:** done
+**Test File:** `crates/auto-forge/src/relay/pipeline.rs` (inline `#[cfg(test)]`)
+**Depends on:** G6, D6, P7.3, P7.5
+
+```rust
+let flow = check_flow(); // Advisor (human) → Architect (human) → Planner (human) → ...
+let mut engine = PipelineEngine::new(flow, "test-check".into());
+engine.mode = RelayMode::Check;
+```
+
+1. Execute Advisor step → assert `WaitingForHuman`.
+2. Approve → execute Architect → assert `WaitingForHuman`.
+3. Approve → execute Planner → assert `WaitingForHuman`.
+4. Approve → execute remaining steps.
+
+- Every gate with `gate: human` pauses the engine.
+- All 3 human gates are exercised.
+
+---
+
+## S7.4 [G7] New end-to-end flow executes in correct order
+**Status:** done
+**Test File:** `crates/auto-forge/tests/relay_integration.rs`
+**Depends on:** G1-G7, P7
+
+```rust
+let flow = new_v2_flow(); // Assistant → Advisor → Architect → Planner → Tester → Coder → Tester → Reviewer → Documenter
+let store = new_run_store();
+```
+
+1. Start run in GSD mode.
+2. Execute all steps with mocked handoffs.
+3. Record profession order.
+
+- Step 1: Assistant.
+- Step 2: Advisor.
+- Step 3: Architect.
+- Step 4: Planner.
+- Step 5: Tester (drafts tests).
+- Step 6: Coder.
+- Step 7: Tester (runs tests).
+- Step 8: Reviewer.
+- Step 9: Documenter.
+- Total 9 steps in order.

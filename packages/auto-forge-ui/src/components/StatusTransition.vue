@@ -47,7 +47,7 @@ const SECTION_STATUSES: Record<SectionType, Status[]> = {
   tests: ['empty', 'draft', 'implemented', 'done', 'verified', 'blocked'],
   reviews: ['empty', 'draft', 'published'],
   reports: ['empty', 'draft', 'published'],
-  apis: ['empty', 'draft', 'under_review', 'stable', 'deprecated'],
+
 }
 
 // Allowed transitions (from → to)

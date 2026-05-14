@@ -64,7 +64,7 @@ Inspired by OpenClaw, the Soul is a markdown document that defines the agent's c
 
 ## Working Style
 - Before proposing any design, I read the current Architecture and Designs specs.
-- I never modify code. I only modify specs (Architecture, Designs, APIs).
+- I never modify code. I only modify specs (Architecture, Designs).
 - I write handoffs as structured documents, not chat transcripts.
 
 ## Handoff Ritual
@@ -107,12 +107,13 @@ pub struct Profession {
 
 | Profession | Phase | Owned Specs | Model Tier | Key Constraint |
 |------------|-------|-------------|------------|----------------|
-| **Intaker** | Intake | None | Cheap (Haiku/4o-mini) | Classify only, no tools |
-| **Planner** | SpecDraft | Goals, Plans | Medium (Sonnet/4o) | No code tools |
-| **Architect** | SpecDraft | Architecture, Designs, APIs | Strong (Sonnet/4o) | No code tools |
+| **Assistant** | Intake | None | Cheap (Haiku/4o-mini) | Classify only, no tools |
+| **Advisor** | Discovery | Goals | Medium (Sonnet/4o) | No code tools, user-facing |
+| **Architect** | Design | Architecture, Designs | Strong (Sonnet/4o) | No code tools |
+| **Planner** | Planning | Plans | Medium (Sonnet/4o) | No code tools |
 | **Coder** | Execution | None (writes code files) | Strong (Sonnet/4o) | Reads Plans, Tests |
 | **Tester** | Execution | Tests | Medium (Sonnet/4o) | Runs shell, reads code |
-| **Reviewer** | Verification | Reviews, Reports | Strong (Opus/o3) | Read-only on code |
+| **Reviewer** | Verification | Reviews | Strong (Opus/o3) | Read-only on code |
 | **Documenter** | Any | Reports | Cheap (Haiku/4o-mini) | Read-only |
 
 ### 2.3 The Model Configuration
@@ -168,24 +169,36 @@ $Flow(id: "feature_impl", version: 1) {
 
 ## Pipeline
 
-$Step(profession: "intaker", gate: "auto") {
+$Step(profession: "assistant", gate: "auto") {
   exit: "classify(intent) -> branch"
 }
 
-$Step(profession: "planner", gate: "human") {
-  requires: [Goals, Architecture]
-  produces: [Goals, Plans]
+$Step(profession: "advisor", gate: "auto") {
+  requires: [Goals]
+  produces: [Goals]
   exit: "handoff_to: architect"
 }
 
-$Step(profession: "architect", gate: "human") {
-  requires: [Goals, Plans, Architecture]
-  produces: [Architecture, Designs, APIs]
+$Step(profession: "architect", gate: "auto") {
+  requires: [Goals, Architecture]
+  produces: [Architecture, Designs]
+  exit: "handoff_to: planner"
+}
+
+$Step(profession: "planner", gate: "auto") {
+  requires: [Goals, Architecture, Designs]
+  produces: [Plans]
+  exit: "handoff_to: tester"
+}
+
+$Step(profession: "tester", gate: "auto") {
+  requires: [Tests, Designs, Plans]
+  produces: [Tests]
   exit: "handoff_to: coder"
 }
 
 $Step(profession: "coder", gate: "auto") {
-  requires: [Plans, Designs, APIs]
+  requires: [Plans, Designs]
   produces: [code_files]
   loop: {
     max_iterations: 5,
@@ -204,18 +217,25 @@ $Step(profession: "tester", gate: "auto") {
   exit: "handoff_to: reviewer"
 }
 
-$Step(profession: "reviewer", gate: "human") {
+$Step(profession: "reviewer", gate: "auto") {
   requires: [all]
-  produces: [Reviews, Reports]
+  produces: [Reviews]
+  exit: "handoff_to: documenter"
+}
+
+$Step(profession: "documenter", gate: "auto") {
+  requires: [all]
+  produces: [Reports]
   exit: "complete"
 }
 ```
 
 **Key concepts:**
-- **`gate: human/auto`**: Human gates pause the flow and notify the user. Auto gates proceed immediately.
+- **`gate: human/auto`**: Human gates pause the flow and notify the boss. Auto gates proceed immediately.
 - **`loop`**: Some steps naturally loop (Coder → Tester → Coder). The loop has a max iteration bound.
-- **`branch`**: The Intaker can branch to different flows (DIRECT → single Coder step; NEW_GOAL → full pipeline).
+- **`branch`**: The Assistant can branch to different flows (QUESTION → stop; DIRECT → single Coder step; NEW_GOAL → full pipeline).
 - **`on_fail`**: If an agent cannot complete its work (e.g., tests keep failing), the flow can route backward to a different profession.
+- **`mode`**: The boss selects **GSD** (Get Shit Done, default) or **Check** (human reviews every gate). In GSD mode, only the Advisor→Architect gate is human (for now); all others are auto. The Reviewer acts as an internal quality auditor, not a human gate.
 
 ### 3.3 Baton State Machine
 
@@ -471,11 +491,13 @@ Each profession "owns" certain spec sections:
 
 | Profession | Owns (can write) | Reads (context) |
 |------------|------------------|-----------------|
-| Planner | Goals, Plans | Architecture (read-only) |
-| Architect | Architecture, Designs, APIs | Goals, Plans |
-| Coder | None (writes code) | Plans, Designs, APIs, Tests |
+| Advisor | Goals | Architecture (read-only) |
+| Architect | Architecture, Designs | Goals, Plans |
+| Planner | Plans | Goals, Architecture, Designs, Tests |
+| Coder | None (writes code) | Plans, Designs, Tests |
 | Tester | Tests | Plans, Designs, code |
-| Reviewer | Reviews, Reports | All specs, all code |
+| Reviewer | Reviews | All specs, all code |
+| Documenter | Reports | All specs |
 
 This prevents conflicts: two agents never write to the same spec section simultaneously (because the Relay ensures only one agent runs at a time).
 
@@ -483,7 +505,7 @@ This prevents conflicts: two agents never write to the same spec section simulta
 
 When the Architect hands off to the Coder, the contract is:
 
-> "Coder, implement Designs:D3.2 and APIs:A2.1. Do not deviate without updating the Designs spec and routing back to Architect."
+> "Coder, implement Designs:D3.2. Do not deviate without updating the Designs spec and routing back to Architect."
 
 If the Coder discovers a problem, they do NOT work around it. They:
 1. Document the issue in the handoff
@@ -631,21 +653,39 @@ Even with full automation, humans are the **final authority** at key gates.
 
 ### 9.1 Gate Types
 
-| Gate | When | UI |
-|------|------|-----|
-| **Spec Gate** | After Planner/Architect | Side-by-side spec diff, Approve/Reject/Edit |
-| **Code Gate** | After Coder (optional) | File diff view, Approve/Reject/Comment |
-| **Review Gate** | After Reviewer | Review report with findings, Approve/Request Changes |
-| **Budget Gate** | When budget exceeded | Notification: "Step over budget. Continue? Escalate? Abort?" |
-| **Error Gate** | On unexpected failure | Error details, Retry/Rollback/Abort |
+| Gate | When | GSD Mode | Check Mode | UI |
+|------|------|----------|------------|-----|
+| **Goal Gate** | After Advisor | **Human** (for now) | **Human** | Goal spec diff, Approve/Redraft/Edit |
+| **Design Gate** | After Architect | Auto | **Human** | Architecture + Designs diff |
+| **Plan Gate** | After Planner | Auto | **Human** | Plans + Tests diff |
+| **Code Gate** | After Coder (optional) | Auto | Optional | File diff view |
+| **Review Gate** | After Reviewer | Auto | **Human** | Review report, Approve/Request Changes |
+| **Budget Gate** | When budget exceeded | **Human** | **Human** | "Continue? Escalate? Abort?" |
+| **Error Gate** | On unexpected failure | **Human** | **Human** | Error details, Retry/Rollback/Abort |
 
-### 9.2 Async Notification
+### 9.2 Boss-First Philosophy
+
+The human is the **boss**, not a coworker. The boss gives one order and expects results.
+
+**Default behavior (GSD mode):**
+1. Boss gives order
+2. AI executes full relay autonomously
+3. Boss receives final Report
+
+**The boss is only interrupted when:**
+- The Advisor cannot clarify intent (ambiguity)
+- The Coder fails after max retries (blockage)
+- Budget is exceeded (cost control)
+- An unexpected error occurs (system failure)
+- Boss explicitly selected **Check mode**
+
+### 9.3 Async Notification
 
 When a human gate is reached:
 1. Run state → `WaitingForHuman`
 2. SSE event sent to frontend
 3. Notification pushed (desktop, email, or Slack webhook)
-4. Human can respond immediately or hours later
+4. Boss can respond immediately or hours later
 5. On resume, the flow continues exactly where it left off (via checkpoint)
 
 ---
@@ -654,7 +694,7 @@ When a human gate is reached:
 
 ### Phase 1: Soul + Profession Framework (2 weeks)
 - [ ] Define `SoulConfig`, `Profession`, `ModelConfig` structs
-- [ ] Create built-in professions (Intaker, Planner, Architect, Coder, Tester, Reviewer)
+- [ ] Create built-in professions (Assistant, Advisor, Architect, Planner, Coder, Tester, Reviewer, Documenter)
 - [ ] Create default Souls in `.autoforge/souls/`
 - [ ] Refactor existing Forge to use `AgentTurn` with parameterized profession
 - [ ] Backend: Profession registry API
@@ -669,7 +709,7 @@ When a human gate is reached:
 ### Phase 3: Flow Engine (2 weeks)
 - [ ] Define `FlowSpec` parser (AutoDown-based)
 - [ ] Implement `PipelineEngine` with step execution
-- [ ] Implement branching (Intaker → different flows)
+- [ ] Implement branching (Assistant → different flows)
 - [ ] Implement looping (Coder → Tester → Coder)
 - [ ] Add human gates with SSE notifications
 
