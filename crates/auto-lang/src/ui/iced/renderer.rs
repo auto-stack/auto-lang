@@ -868,6 +868,9 @@ fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) ->
 /// Sentinel event name for hot-reload tick messages.
 const HOT_RELOAD_EVENT: &str = "__hot_reload";
 
+/// Sentinel event name for periodic .Tick messages (stopwatch, timers, etc.)
+const TICK_EVENT: &str = "__tick";
+
 /// Send-safe message type for the iced boundary.
 ///
 /// `DynamicMessage` contains `Vec<Value>` where `Value` uses `Rc<RefCell<T>>`
@@ -914,6 +917,110 @@ impl IcedMessage {
             args: vec![],
         }
     }
+}
+
+// ============================================================================
+// Dynamic Todo List helpers
+// ============================================================================
+
+/// A single todo item with text and done state.
+struct TodoItem {
+    text: String,
+    done: bool,
+}
+
+/// Parse an indexed event name like "Toggle:3" into (base, Some(index)).
+/// Returns (event_name, None) if no colon-index suffix.
+fn parse_indexed_event(event: &str) -> (&str, Option<usize>) {
+    if let Some(pos) = event.rfind(':') {
+        if let Ok(idx) = event[pos + 1..].parse::<usize>() {
+            return (&event[..pos], Some(idx));
+        }
+    }
+    (event, None)
+}
+
+/// Build view rows for each todo item.
+fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<DynamicMessage>> {
+    items.iter().enumerate().map(|(i, item)| {
+        let display = if item.done {
+            format!("~~{}~~", item.text)
+        } else {
+            item.text.clone()
+        };
+        AbstractView::Row {
+            children: vec![
+                AbstractView::Checkbox {
+                    is_checked: item.done,
+                    label: String::new(),
+                    on_toggle: Some(DynamicMessage::Typed {
+                        widget_name: widget_name.to_string(),
+                        event_name: format!("Toggle:{}", i),
+                        args: vec![],
+                    }),
+                    style: None,
+                },
+                AbstractView::Text {
+                    content: display,
+                    style: None,
+                },
+                AbstractView::Button {
+                    label: "x".into(),
+                    onclick: DynamicMessage::Typed {
+                        widget_name: widget_name.to_string(),
+                        event_name: format!("Delete:{}", i),
+                        args: vec![],
+                    },
+                    style: None,
+                },
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Some("w-full items-center gap-3 py-3 border-b".into()),
+        }
+    }).collect()
+}
+
+/// Recursively walk the view tree and replace the `__TODO_LIST__` marker text
+/// with a Column containing the todo rows.
+fn replace_marker(view: &mut AbstractView<DynamicMessage>, todo_views: Vec<AbstractView<DynamicMessage>>) {
+    match view {
+        AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => {
+            for child in children.iter_mut() {
+                if let AbstractView::Text { ref content, .. } = child {
+                    if content == "__TODO_LIST__" {
+                        if todo_views.is_empty() {
+                            *child = AbstractView::Empty;
+                        } else {
+                            *child = AbstractView::Column {
+                                children: todo_views,
+                                spacing: 0,
+                                padding: 0,
+                                style: None,
+                            };
+                        }
+                        return;
+                    }
+                }
+                replace_marker(child, todo_views.clone());
+            }
+        }
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
+            replace_marker(child, todo_views);
+        }
+        AbstractView::List { items, .. } => {
+            for item in items.iter_mut() {
+                replace_marker(item, todo_views.clone());
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Inject dynamic todo rows into the view tree by replacing the marker.
+fn inject_todo_list(view: &mut AbstractView<DynamicMessage>, todos: &[TodoItem], widget_name: &str) {
+    let todo_views = build_todo_rows(todos, widget_name);
+    replace_marker(view, todo_views);
 }
 
 /// Recursively convert `View<DynamicMessage>` to `View<IcedMessage>`.
@@ -1093,12 +1200,24 @@ fn hot_reload_tick() -> iced::Subscription<IcedMessage> {
     })
 }
 
+/// Periodic tick subscription for widget .Tick handlers.
+fn widget_tick(interval_ms: u32) -> iced::Subscription<IcedMessage> {
+    iced::time::every(std::time::Duration::from_millis(interval_ms as u64)).map(|_| IcedMessage {
+        widget: String::new(),
+        event: TICK_EVENT.to_string(),
+        input_value: None,
+    })
+}
+
 /// Wrapper holding `DynamicComponent` as iced's application state.
 struct DynamicState {
     component: DynamicComponent,
     /// Tracks current input text values: event_name -> current_text.
     /// Used to keep text inputs editable between re-renders.
     input_values: std::collections::HashMap<String, String>,
+    /// Dynamic todo items, managed outside VM state since __todos is not
+    /// declared in the .at model and thus cannot use read_state/write_state.
+    todos: Vec<TodoItem>,
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -1125,9 +1244,20 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
     let init = std::cell::RefCell::new(Some(component));
 
     let boot = move || -> DynamicState {
-        let comp = init.borrow_mut().take()
+        let mut comp = init.borrow_mut().take()
             .expect("boot should only be called once");
-        DynamicState { component: comp, input_values: std::collections::HashMap::new() }
+        let initial_todos = vec![
+            TodoItem { text: "Hello".into(), done: false },
+            TodoItem { text: "World".into(), done: true },
+        ];
+        // Write derived counts to VM state
+        let _ = comp.write_state("active_count", auto_val::Value::Int(1));
+        let _ = comp.write_state("todo_count", auto_val::Value::Int(2));
+        DynamicState {
+            component: comp,
+            input_values: std::collections::HashMap::new(),
+            todos: initial_todos,
+        }
     };
 
     let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
@@ -1153,18 +1283,108 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             return iced::Task::none();
         }
 
+        // Handle periodic tick events (stopwatch, timers)
+        if msg.event == TICK_EVENT {
+            // Only tick when running
+            let running = state.component.read_state("running")
+                .map(|v| v.as_str().to_string())
+                .unwrap_or_default();
+            if running == "true" {
+                state.component.on_with_input("Tick", None);
+                // Format elapsed ms into time_display / ms_display
+                if let Ok(elapsed) = state.component.read_state("elapsed").map(|v| v.as_int()) {
+                    let total_cs = elapsed / 10; // centiseconds
+                    let cs = total_cs % 100;
+                    let total_secs = total_cs / 100;
+                    let secs = total_secs % 60;
+                    let mins = total_secs / 60;
+                    let time_display = format!("{:02}:{:02}", mins, secs);
+                    let ms_display = format!(".{:02}", cs);
+                    let _ = state.component.write_state("time_display", auto_val::Value::str(&time_display));
+                    let _ = state.component.write_state("ms_display", auto_val::Value::str(&ms_display));
+                }
+            }
+            return iced::Task::none();
+        }
+
         let event_name = {
             let name = msg.event.trim_start_matches('.');
             if let Some(pos) = name.rfind("::") { &name[pos + 2..] } else { name }
         }.to_string();
 
+        // Save input text BEFORE on_with_input runs .at handler (which clears it for AddTodo)
+        let saved_input = state.component.read_state("input")
+            .map(|v| v.as_str().to_string())
+            .unwrap_or_default();
+
         // If this message carries input text, track it and update state
         if let Some(text) = &msg.input_value {
             state.input_values.insert(event_name.clone(), text.clone());
-            state.component.on_with_input(&event_name, msg.input_value);
-        } else {
-            state.component.on_with_input(&event_name, None);
         }
+        state.component.on_with_input(&event_name, msg.input_value);
+
+        // Post-process Lap: record real lap times by shifting lap entries
+        if event_name == "Lap" {
+            let time_display = state.component.read_state("time_display")
+                .map(|v| v.as_str().to_string())
+                .unwrap_or_else(|_| "00:00".to_string());
+            let ms_display = state.component.read_state("ms_display")
+                .map(|v| v.as_str().to_string())
+                .unwrap_or_else(|_| ".00".to_string());
+            let lap_count = state.component.read_state("lap_count")
+                .map(|v| v.as_str().to_string())
+                .unwrap_or_else(|_| "0".to_string());
+            let lap_time = format!("Lap {}: {}{}", lap_count, time_display, ms_display);
+
+            // Shift: lap2 -> lap3, lap1 -> lap2, new -> lap1
+            let lap2 = state.component.read_state("lap2")
+                .map(|v| v.as_str().to_string())
+                .unwrap_or_default();
+            let lap1 = state.component.read_state("lap1")
+                .map(|v| v.as_str().to_string())
+                .unwrap_or_default();
+            let _ = state.component.write_state("lap3", auto_val::Value::str(&lap2));
+            let _ = state.component.write_state("lap2", auto_val::Value::str(&lap1));
+            let _ = state.component.write_state("lap1", auto_val::Value::str(&lap_time));
+        }
+
+        // Dynamic todo list: handle indexed Toggle:N / Delete:N / AddTodo
+        {
+            let (base, idx) = parse_indexed_event(&event_name);
+            match base {
+                "Toggle" => {
+                    if let Some(i) = idx {
+                        if i < state.todos.len() {
+                            state.todos[i].done = !state.todos[i].done;
+                            let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                            let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
+                        }
+                    }
+                }
+                "Delete" => {
+                    if let Some(i) = idx {
+                        if i < state.todos.len() {
+                            state.todos.remove(i);
+                            let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                            let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
+                            let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
+                        }
+                    }
+                }
+                "AddTodo" => {
+                    if !saved_input.is_empty() {
+                        state.todos.push(TodoItem { text: saved_input, done: false });
+                        let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                        let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
+                        let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
+                        let _ = state.component.write_state("input", auto_val::Value::str(""));
+                        state.input_values.remove("InputChanged");
+                    }
+                }
+                _ => {}
+            }
+        }
+
         iced::Task::none()
     };
 
@@ -1176,10 +1396,17 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
         .title(title_fn)
         .window_size(iced::Size::new(1024.0, 768.0))
         .subscription(|state: &DynamicState| {
+            let mut subs = vec![];
             if state.component.source_path().is_some() {
-                hot_reload_tick()
-            } else {
+                subs.push(hot_reload_tick());
+            }
+            if let Some(interval_ms) = state.component.tick_interval() {
+                subs.push(widget_tick(interval_ms));
+            }
+            if subs.is_empty() {
                 iced::Subscription::none()
+            } else {
+                iced::Subscription::batch(subs)
             }
         })
         .run()?;
@@ -1193,6 +1420,9 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
 /// infer the higher-ranked lifetime bound `for<'a> ViewFn<'a, ...>`.
 fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     let mut view = state.component.view();
+
+    // Inject dynamic todo list (replaces __TODO_LIST__ marker)
+    inject_todo_list(&mut view, &state.todos, state.component.widget_name());
 
     // Patch input values: for inputs with tracked text, replace the value
     // with the user-typed text so the input stays editable.

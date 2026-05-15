@@ -29,8 +29,9 @@
 
 use std::collections::HashMap;
 
-use crate::vm::engine::AutoVM;
+use crate::vm::engine::{AutoVM, Closure};
 use crate::vm::generic_registry::GenericInstanceData;
+use crate::vm::opcode::OpCode;
 use crate::vm::task::AutoTask;
 use crate::vm::virt_memory::VirtualFlash;
 use crate::aura::{AuraExpr, AuraWidget, AuraStateDef, AuraNode, LogicPayload};
@@ -133,14 +134,50 @@ impl VmBridge {
     /// Returns an error if state initialization fails.
     pub fn new(widget: &AuraWidget) -> Result<Self> {
         // Ensure BIGVM_NATIVES is populated before AutoVM::new()
-        // (normal codegen path calls this via Codegen::new(), but dynamic UI skips codegen)
         crate::vm::native_registry::register_builtin_natives();
 
-        // 1. Create AutoVM instance with empty flash
-        let flash = VirtualFlash::new(0);
-        let vm = AutoVM::new(flash, 4096);
+        // 1. Pre-compile all handler AST statements into bytecode
+        let mut handler_bytecode: Vec<(String, Vec<u8>)> = Vec::new();
+        let mut all_strings: Vec<String> = Vec::new();
+        let field_names: Vec<String> = widget.state_vars.iter().map(|v| v.name.clone()).collect();
+        let temp_state_id = 4000000u64;
 
-        Self::new_with_vm(vm, widget)
+        // Sort handlers by name for deterministic compilation order
+        let mut sorted_handlers: Vec<_> = widget.handlers.iter().collect();
+        sorted_handlers.sort_by_key(|(pattern, _)| extract_handler_name(pattern).to_string());
+
+        for (event_pattern, payload) in &sorted_handlers {
+            if let LogicPayload::AstStmts(stmts) = payload {
+                let handler_name = extract_handler_name(event_pattern);
+                let string_base = all_strings.len();
+                if let Ok((bytecode, strings)) = compile_handler_stmts(stmts, temp_state_id, &field_names, string_base) {
+                    all_strings.extend(strings);
+                    handler_bytecode.push((handler_name.to_string(), bytecode));
+                }
+            }
+        }
+
+        // 2. Build flash with all handler bytecode
+        let mut flash = VirtualFlash::new(0);
+        let mut handler_addrs: HashMap<String, u32> = HashMap::new();
+        for (name, bytecode) in &handler_bytecode {
+            let addr = flash.memory.len() as u32;
+            flash.memory.extend_from_slice(bytecode);
+            handler_addrs.insert(name.clone(), addr);
+        }
+
+        // 3. Create VM
+        let mut vm = AutoVM::new(flash, 4096);
+
+        // 4. Add string constants to VM's string pool
+        {
+            let mut strings_pool = vm.strings.write().unwrap();
+            for s in &all_strings {
+                strings_pool.push(s.clone().into_bytes());
+            }
+        }
+
+        Self::new_with_vm_and_handlers(vm, widget, handler_addrs)
     }
 
     /// Create a new VmBridge with a pre-configured AutoVM instance.
@@ -151,13 +188,31 @@ impl VmBridge {
     ///
     /// * `vm` - Pre-configured AutoVM instance
     /// * `widget` - The AuraWidget to create a bridge for
-    pub fn new_with_vm(mut vm: AutoVM, widget: &AuraWidget) -> Result<Self> {
+    pub fn new_with_vm(vm: AutoVM, widget: &AuraWidget) -> Result<Self> {
+        Self::new_with_vm_and_handlers(vm, widget, HashMap::new())
+    }
+
+    /// Create a new VmBridge with pre-compiled handler addresses.
+    ///
+    /// This is the core constructor used by both `new()` and `new_with_vm()`.
+    /// Handler bytecode should already be loaded into flash before calling this.
+    ///
+    /// # Arguments
+    ///
+    /// * `vm` - Pre-configured AutoVM instance with handler bytecode in flash
+    /// * `widget` - The AuraWidget to create a bridge for
+    /// * `pre_compiled_addrs` - Handler name -> flash address mappings from pre-compilation
+    pub fn new_with_vm_and_handlers(
+        mut vm: AutoVM,
+        widget: &AuraWidget,
+        pre_compiled_addrs: HashMap<String, u32>,
+    ) -> Result<Self> {
         // Ensure BIGVM_NATIVES is populated (idempotent if already called)
         crate::vm::native_registry::register_builtin_natives();
 
         let widget_name = widget.name.clone();
 
-        // 2. Build state fields and default values
+        // Build state fields and default values
         let mut field_names = Vec::with_capacity(widget.state_vars.len());
         let mut field_values = Vec::with_capacity(widget.state_vars.len());
 
@@ -167,7 +222,7 @@ impl VmBridge {
             field_values.push(default_value);
         }
 
-        // 3. Create GenericInstanceData on the VM heap
+        // Create GenericInstanceData on the VM heap
         let mono_name = format!("{}_State", widget_name);
         let instance = GenericInstanceData::new_with_names(
             mono_name,
@@ -176,33 +231,42 @@ impl VmBridge {
         );
         let state_obj_id = vm.insert_heap_object(instance);
 
-        // 4. Process handlers - register bytecode or record addresses
+        // Register pre-compiled handlers as closures
         let mut handler_closures = HashMap::new();
         let mut handler_addrs = HashMap::new();
 
+        // First: register pre-compiled handlers (from new() path)
+        for (name, func_addr) in pre_compiled_addrs {
+            let closure_id = vm.closure_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            vm.closures.insert(closure_id, Closure {
+                func_addr,
+                env: HashMap::new(),
+                n_args: 0,
+            });
+            handler_closures.insert(name, closure_id);
+        }
+
+        // Then: process any remaining handlers from widget definition
         for (event_pattern, payload) in &widget.handlers {
-            // Extract the handler name from the pattern.
-            // Patterns can be ".Inc", "Msg::Inc", or plain "Inc".
             let handler_name = extract_handler_name(event_pattern);
+
+            // Skip if already registered via pre-compilation
+            if handler_closures.contains_key(handler_name) {
+                continue;
+            }
 
             match payload {
                 LogicPayload::Bytecode(_bytes) => {
-                    // For Phase 1, record that a handler exists with bytecode.
-                    // The actual bytecode loading requires VMLoader integration
-                    // which is deferred to Phase 2.
-                    // For now, we check if the VM's flash has exports matching
-                    // the handler name.
                     if let Some(&addr) = vm.flash.exports_by_name.get(handler_name) {
                         handler_addrs.insert(handler_name.to_string(), addr);
                     }
-                    // If not found in exports, handler will fail gracefully at call time
                 }
                 LogicPayload::AstBlock(_stmts) => {
-                    // AST blocks require compilation - deferred to Phase 2.
-                    // For now, skip handler registration.
+                    // AST blocks require compilation - not yet supported
                 }
                 LogicPayload::AstStmts(_stmts) => {
-                    // AutoLang AST statements - deferred to Phase 2.
+                    // Already handled via pre-compilation in new()
+                    // If we reach here, pre-compilation was skipped (new_with_vm path)
                 }
             }
         }
@@ -571,6 +635,11 @@ impl VmBridge {
                 Op::Or => Value::Bool(*a || *b),
                 _ => Value::Nil,
             },
+            (Value::Str(a), Value::Str(b)) => match op {
+                Op::Eq => Value::Bool(a.as_str() == b.as_str()),
+                Op::Neq => Value::Bool(a.as_str() != b.as_str()),
+                _ => Value::Nil,
+            },
             _ => Value::Nil,
         }
     }
@@ -641,6 +710,290 @@ fn extract_handler_name(pattern: &str) -> &str {
     } else {
         name
     }
+}
+
+// ============================================================================
+// Handler Bytecode Compilation
+// ============================================================================
+
+/// Compile handler AST statements into VM bytecode.
+///
+/// Produces bytecode that reads/writes widget state via GET_GENERIC_FIELD /
+/// SET_GENERIC_FIELD opcodes on the state heap object.
+///
+/// Returns (bytecode, string_constants) where string_constants need to be
+/// added to the VM's string pool before execution.
+///
+/// `string_base_idx` is the starting index in the VM string pool for this handler's strings.
+fn compile_handler_stmts(
+    stmts: &[crate::ast::Stmt],
+    state_obj_id: u64,
+    state_field_names: &[String],
+    string_base_idx: usize,
+) -> std::result::Result<(Vec<u8>, Vec<String>), String> {
+    let mut ctx = CompileContext {
+        code: Vec::new(),
+        strings: Vec::new(),
+        state_obj_id,
+        state_field_names,
+        string_base_idx,
+    };
+    for stmt in stmts {
+        compile_stmt(&mut ctx, stmt)?;
+    }
+    // Emit RET 0 (void return)
+    ctx.code.push(OpCode::RET as u8);
+    ctx.code.push(0);
+    Ok((ctx.code, ctx.strings))
+}
+
+/// Compilation context tracking bytecode and string constants.
+struct CompileContext<'a> {
+    code: Vec<u8>,
+    strings: Vec<String>,
+    state_obj_id: u64,
+    state_field_names: &'a [String],
+    string_base_idx: usize,
+}
+
+impl<'a> CompileContext<'a> {
+    /// Register a string constant, return its global pool index.
+    fn add_string(&mut self, s: &str) -> usize {
+        let local_idx = self.strings.len();
+        self.strings.push(s.to_string());
+        self.string_base_idx + local_idx
+    }
+}
+
+fn compile_stmt<'a>(
+    ctx: &mut CompileContext<'a>,
+    stmt: &crate::ast::Stmt,
+) -> std::result::Result<(), String> {
+    match stmt {
+        crate::ast::Stmt::Expr(expr) => {
+            compile_expr_stmt(ctx, expr)
+        }
+        crate::ast::Stmt::Store(store) => {
+            let field_idx = ctx.state_field_names.iter().position(|n| n == &store.name)
+                .ok_or_else(|| format!("field '{}' not found", store.name))?;
+            compile_expr(ctx, &store.expr)?;
+            emit_set_field(&mut ctx.code, ctx.state_obj_id, field_idx);
+            Ok(())
+        }
+        crate::ast::Stmt::If(if_stmt) => {
+            // Compile: cond → JMP_IF_Z to else_end → then_body → JMP past else → else_body
+            if let Some(branch) = if_stmt.branches.first() {
+                compile_expr(ctx, &branch.cond)?;
+                // JMP_IF_Z with placeholder offset (2 bytes)
+                ctx.code.push(OpCode::JMP_IF_Z as u8);
+                let jmp_else_pos = ctx.code.len();
+                ctx.code.push(0); // placeholder low byte
+                ctx.code.push(0); // placeholder high byte
+                // Compile then-body
+                for s in &branch.body.stmts {
+                    compile_stmt(ctx, s)?;
+                }
+                if let Some(else_body) = &if_stmt.else_ {
+                    // JMP over else body
+                    ctx.code.push(OpCode::JMP as u8);
+                    let jmp_end_pos = ctx.code.len();
+                    ctx.code.push(0); // placeholder
+                    ctx.code.push(0); // placeholder
+                    // Patch JMP_IF_Z to jump here (start of else)
+                    let else_start = ctx.code.len();
+                    let jmp_else_offset = (else_start as isize) - (jmp_else_pos as isize + 2) as isize;
+                    ctx.code[jmp_else_pos] = (jmp_else_offset & 0xFF) as u8;
+                    ctx.code[jmp_else_pos + 1] = ((jmp_else_offset >> 8) & 0xFF) as u8;
+                    // Compile else-body
+                    for s in &else_body.stmts {
+                        compile_stmt(ctx, s)?;
+                    }
+                    // Patch JMP to jump here (after else)
+                    let after_else = ctx.code.len();
+                    let jmp_end_offset = (after_else as isize) - (jmp_end_pos as isize + 2) as isize;
+                    ctx.code[jmp_end_pos] = (jmp_end_offset & 0xFF) as u8;
+                    ctx.code[jmp_end_pos + 1] = ((jmp_end_offset >> 8) & 0xFF) as u8;
+                } else {
+                    // No else — patch JMP_IF_Z to jump to end
+                    let after_then = ctx.code.len();
+                    let offset = (after_then as isize) - (jmp_else_pos as isize + 2) as isize;
+                    ctx.code[jmp_else_pos] = (offset & 0xFF) as u8;
+                    ctx.code[jmp_else_pos + 1] = ((offset >> 8) & 0xFF) as u8;
+                }
+            }
+            Ok(())
+        }
+        _ => Err(format!("unsupported stmt type in handler: {:?}", stmt)),
+    }
+}
+
+/// Compile an expression statement (assignment or compound assignment).
+fn compile_expr_stmt<'a>(
+    ctx: &mut CompileContext<'a>,
+    expr: &crate::ast::Expr,
+) -> std::result::Result<(), String> {
+    match expr {
+        // Simple assignment: .field = expr
+        crate::ast::Expr::Bina(lhs, op, rhs) if matches!(op, Op::Asn) => {
+            let target = resolve_state_target(lhs)?;
+            let field_idx = ctx.state_field_names.iter().position(|n| n == &target)
+                .ok_or_else(|| format!("field '{}' not found", target))?;
+            compile_expr(ctx, rhs)?;
+            emit_set_field(&mut ctx.code, ctx.state_obj_id, field_idx);
+            Ok(())
+        }
+        // Compound assignment: .field += expr, .field -= expr
+        crate::ast::Expr::Bina(lhs, op, rhs)
+            if matches!(op, Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq) =>
+        {
+            let target = resolve_state_target(lhs)?;
+            let field_idx = ctx.state_field_names.iter().position(|n| n == &target)
+                .ok_or_else(|| format!("field '{}' not found", target))?;
+            emit_get_field(&mut ctx.code, ctx.state_obj_id, field_idx);
+            compile_expr(ctx, rhs)?;
+            match op {
+                Op::AddEq => ctx.code.push(OpCode::ADD as u8),
+                Op::SubEq => ctx.code.push(OpCode::SUB as u8),
+                Op::MulEq => ctx.code.push(OpCode::MUL as u8),
+                Op::DivEq => ctx.code.push(OpCode::DIV as u8),
+                _ => unreachable!(),
+            }
+            emit_set_field(&mut ctx.code, ctx.state_obj_id, field_idx);
+            Ok(())
+        }
+        _ => Ok(()), // Ignore other expression statements
+    }
+}
+
+/// Compile an expression, pushing its result onto the VM stack.
+fn compile_expr<'a>(
+    ctx: &mut CompileContext<'a>,
+    expr: &crate::ast::Expr,
+) -> std::result::Result<(), String> {
+    match expr {
+        crate::ast::Expr::Int(n) => {
+            emit_const_i32(&mut ctx.code, *n);
+        }
+        crate::ast::Expr::Bool(b) => {
+            emit_const_i32(&mut ctx.code, if *b { 1 } else { 0 });
+        }
+        crate::ast::Expr::Str(s) => {
+            // Use LOAD_STR to push string — works in both nanbox and non-nanbox modes
+            let idx = ctx.add_string(s);
+            ctx.code.push(OpCode::LOAD_STR as u8);
+            ctx.code.extend_from_slice(&(idx as u16).to_le_bytes());
+        }
+        crate::ast::Expr::Float(f, _) | crate::ast::Expr::Double(f, _) => {
+            // Push as f64 via CONST_F64
+            ctx.code.push(OpCode::CONST_F64 as u8);
+            ctx.code.extend_from_slice(&f.to_le_bytes());
+        }
+        crate::ast::Expr::Ident(name) => {
+            let field_idx = ctx.state_field_names.iter().position(|n| n == name.as_ref())
+                .ok_or_else(|| format!("field '{}' not found", name))?;
+            emit_get_field(&mut ctx.code, ctx.state_obj_id, field_idx);
+        }
+        crate::ast::Expr::Dot(obj, field) => {
+            if is_self_ref(obj) {
+                let field_idx = ctx.state_field_names.iter().position(|n| n == field.as_ref())
+                    .ok_or_else(|| format!("field '{}' not found", field))?;
+                emit_get_field(&mut ctx.code, ctx.state_obj_id, field_idx);
+            } else {
+                return Err(format!("nested dot access not supported in handlers"));
+            }
+        }
+        crate::ast::Expr::Bina(lhs, op, rhs) => {
+            // For string concatenation with +, use STR_CAT
+            if matches!(op, Op::Add) && is_likely_string_expr(lhs) {
+                compile_expr(ctx, lhs)?;
+                compile_expr(ctx, rhs)?;
+                ctx.code.push(OpCode::STR_CAT as u8);
+            } else {
+                compile_expr(ctx, lhs)?;
+                compile_expr(ctx, rhs)?;
+                match op {
+                    Op::Add => ctx.code.push(OpCode::ADD as u8),
+                    Op::Sub => ctx.code.push(OpCode::SUB as u8),
+                    Op::Mul => ctx.code.push(OpCode::MUL as u8),
+                    Op::Div => ctx.code.push(OpCode::DIV as u8),
+                    Op::Mod => ctx.code.push(OpCode::MOD as u8),
+                    Op::Eq => ctx.code.push(OpCode::EQ as u8),
+                    Op::Neq => ctx.code.push(OpCode::NE as u8),
+                    Op::Lt => ctx.code.push(OpCode::LT as u8),
+                    Op::Gt => ctx.code.push(OpCode::GT as u8),
+                    Op::Le => ctx.code.push(OpCode::LE as u8),
+                    Op::Ge => ctx.code.push(OpCode::GE as u8),
+                    _ => return Err(format!("binary op {:?} not supported in handlers", op)),
+                }
+            }
+        }
+        crate::ast::Expr::Unary(op, operand) => {
+            compile_expr(ctx, operand)?;
+            match op {
+                Op::Not => ctx.code.push(OpCode::NOT as u8),
+                Op::Sub => ctx.code.push(OpCode::NEG as u8),
+                _ => return Err(format!("unary op {:?} not supported in handlers", op)),
+            }
+        }
+        _ => return Err(format!("expr type not supported in handler: {:?}", expr)),
+    }
+    Ok(())
+}
+
+/// Check if an expression likely produces a string value.
+/// Used to decide between ADD (arithmetic) and STR_CAT (string concatenation).
+fn is_likely_string_expr(expr: &crate::ast::Expr) -> bool {
+    match expr {
+        crate::ast::Expr::Str(_) => true,
+        crate::ast::Expr::Dot(_, name) => {
+            let n = name.as_ref();
+            n.contains("display") || n.contains("operator") || n.contains("input")
+                || n.contains("label") || n.contains("text") || n.contains("name")
+                || n.contains("str") || n.contains("msg")
+        }
+        crate::ast::Expr::Ident(name) => {
+            let n = name.as_ref();
+            n.contains("display") || n.contains("operator") || n.contains("input")
+                || n.contains("label") || n.contains("text") || n.contains("name")
+                || n.contains("str") || n.contains("msg")
+        }
+        crate::ast::Expr::Bina(_, op, _) if matches!(op, Op::Add) => {
+            // Nested concatenation — check left side
+            false
+        }
+        _ => false,
+    }
+}
+
+fn resolve_state_target(expr: &crate::ast::Expr) -> std::result::Result<String, String> {
+    match expr {
+        crate::ast::Expr::Ident(name) => Ok(name.as_ref().to_string()),
+        crate::ast::Expr::Dot(obj, field) if is_self_ref(obj) => {
+            Ok(field.as_ref().to_string())
+        }
+        _ => Err(format!("cannot resolve assignment target: {:?}", expr)),
+    }
+}
+
+fn is_self_ref(expr: &crate::ast::Expr) -> bool {
+    matches!(expr, crate::ast::Expr::Ident(name) if name.as_ref() == "." || name.as_ref() == "self")
+}
+
+fn emit_const_i32(code: &mut Vec<u8>, val: i32) {
+    code.push(OpCode::CONST_I32 as u8);
+    code.extend_from_slice(&val.to_le_bytes());
+}
+
+fn emit_get_field(code: &mut Vec<u8>, state_obj_id: u64, field_idx: usize) {
+    emit_const_i32(code, state_obj_id as i32);
+    code.push(OpCode::GET_GENERIC_FIELD as u8);
+    code.extend_from_slice(&(field_idx as u32).to_le_bytes());
+}
+
+fn emit_set_field(code: &mut Vec<u8>, state_obj_id: u64, field_idx: usize) {
+    emit_const_i32(code, state_obj_id as i32);
+    code.push(OpCode::SET_GENERIC_FIELD as u8);
+    code.extend_from_slice(&(field_idx as u32).to_le_bytes());
 }
 
 // ============================================================================

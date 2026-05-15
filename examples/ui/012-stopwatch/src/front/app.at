@@ -9,6 +9,8 @@ widget App {
         var lap1 str = ""
         var lap2 str = ""
         var lap3 str = ""
+        var elapsed int = 0
+        var interval int = 10
     }
 
     view {
@@ -55,12 +57,11 @@ widget App {
             .lap3 = ""
             .time_display = "00:00"
             .ms_display = ".00"
+            .elapsed = 0
         }
         .Lap -> {
-            .lap_count = .lap_count + 1
-            .lap1 = "Lap 1: 00:00.00"
-            .lap2 = "Lap 2: 00:00.00"
-            .lap3 = "Lap 3: 00:00.00"
+            .lap_count += 1
         }
+        .Tick -> { .elapsed += 10 }
     }
 }

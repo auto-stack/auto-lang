@@ -115,15 +115,21 @@ impl<'a> AuraViewBuilder<'a> {
                     style: None,
                 }
             }
-            AuraNode::Conditional { then_body, else_body, .. } => {
-                // Conditionals: for Phase 2, render the then_body branch.
-                // Full conditional evaluation requires runtime support.
-                let body = else_body.as_ref().unwrap_or(then_body);
+            AuraNode::Conditional { condition, then_body, else_body } => {
+                let is_true = self.eval_condition(condition);
+                let empty = Vec::new();
+                let body = if is_true {
+                    then_body
+                } else {
+                    else_body.as_ref().unwrap_or(&empty)
+                };
                 let children: Vec<View<DynamicMessage>> = body
                     .iter()
                     .map(|n| self.convert_node(n))
                     .collect();
-                if children.len() == 1 {
+                if children.is_empty() {
+                    View::Empty
+                } else if children.len() == 1 {
                     children.into_iter().next().unwrap()
                 } else {
                     View::Column {
@@ -195,7 +201,7 @@ impl<'a> AuraViewBuilder<'a> {
 
             // Input widgets (Phase 2 basic support)
             "input" => self.convert_input(props, events),
-            "checkbox" | "check" => self.convert_checkbox(props),
+            "checkbox" | "check" => self.convert_checkbox(props, events),
             "container" | "div" => self.convert_container(props, children),
 
             // Image placeholder (no native Image variant yet)
@@ -588,18 +594,38 @@ impl<'a> AuraViewBuilder<'a> {
     fn convert_checkbox(
         &self,
         props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
     ) -> View<DynamicMessage> {
         let label = self.extract_string(props, "text")
             .or_else(|| self.extract_string(props, "label"))
             .unwrap_or_default();
 
-        let is_checked = self.extract_bool(props, "checked")
-            .or_else(|| self.extract_bool(props, "is_checked"))
+        // Resolve checked from state ref or literal
+        let is_checked = props.get("checked")
+            .or_else(|| props.get("is_checked"))
+            .map(|v| match v {
+                AuraPropValue::Expr(AuraExpr::Bool(b)) => Some(*b),
+                AuraPropValue::Expr(AuraExpr::StateRef(name)) => {
+                    self.bridge.read_state(name)
+                        .map(|val| val.as_bool())
+                        .ok()
+                }
+                _ => None,
+            })
+            .flatten()
             .unwrap_or(false);
+
+        let on_toggle = events.get("onclick")
+            .or_else(|| events.get("change"))
+            .or_else(|| events.get("onchange"))
+            .map(|event| self.event_to_message(&event.handler));
 
         let style = self.extract_style(props);
 
         let mut view = View::checkbox(is_checked, label);
+        if let Some(msg) = on_toggle {
+            view = view.on_toggle(msg);
+        }
         if let Some(s) = style {
             if let View::Checkbox { style: ref mut st, .. } = view {
                 *st = Some(s);
@@ -674,6 +700,84 @@ impl<'a> AuraViewBuilder<'a> {
             AuraExpr::Bool(b) => b.to_string(),
             AuraExpr::StateRef(name) => self.read_state_as_string(name),
             _ => String::new(),
+        }
+    }
+
+    /// Evaluate a condition string against current state.
+    ///
+    /// Supports patterns like:
+    /// - `.running == "true"` — state ref compared to string literal
+    /// - `.count > 0` — state ref compared to number
+    /// - `.count == 0` — state ref compared to number
+    /// - `.flag` — bare state ref (truthy check)
+    fn eval_condition(&self, condition: &str) -> bool {
+        let cond = condition.trim();
+
+        // Strip leading dot for state ref
+        let (lhs, op, rhs) = if let Some(rest) = cond.strip_prefix('.') {
+            // Find operator
+            if let Some(pos) = rest.find(" == ") {
+                (&rest[..pos], "==", rest[pos + 4..].trim())
+            } else if let Some(pos) = rest.find(" != ") {
+                (&rest[..pos], "!=", rest[pos + 4..].trim())
+            } else if let Some(pos) = rest.find(" > ") {
+                (&rest[..pos], ">", rest[pos + 3..].trim())
+            } else if let Some(pos) = rest.find(" < ") {
+                (&rest[..pos], "<", rest[pos + 3..].trim())
+            } else if let Some(pos) = rest.find(" >= ") {
+                (&rest[..pos], ">=", rest[pos + 4..].trim())
+            } else if let Some(pos) = rest.find(" <= ") {
+                (&rest[..pos], "<=", rest[pos + 4..].trim())
+            } else {
+                // Bare state ref — truthy check
+                return self.bridge.read_state(rest)
+                    .map(|v| v.as_bool())
+                    .unwrap_or(false);
+            }
+        } else {
+            // No leading dot — treat as bare bool state ref
+            return self.bridge.read_state(cond)
+                .map(|v| v.as_bool())
+                .unwrap_or(false);
+        };
+
+        // Read state value for lhs
+        let state_val = match self.bridge.read_state(lhs) {
+            Ok(v) => value_to_display_string(&v),
+            Err(_) => return false,
+        };
+
+        // Compare
+        match op {
+            "==" => {
+                // Strip quotes from rhs if present
+                let rhs_clean = rhs.trim_matches('"');
+                state_val == rhs_clean
+            }
+            "!=" => {
+                let rhs_clean = rhs.trim_matches('"');
+                state_val != rhs_clean
+            }
+            ">" | "<" | ">=" | "<=" => {
+                // Try numeric comparison
+                let lhs_num: f64 = match state_val.parse() {
+                    Ok(n) => n,
+                    Err(_) => return false,
+                };
+                let rhs_clean = rhs.trim_matches('"');
+                let rhs_num: f64 = match rhs_clean.parse() {
+                    Ok(n) => n,
+                    Err(_) => return false,
+                };
+                match op {
+                    ">" => lhs_num > rhs_num,
+                    "<" => lhs_num < rhs_num,
+                    ">=" => lhs_num >= rhs_num,
+                    "<=" => lhs_num <= rhs_num,
+                    _ => false,
+                }
+            }
+            _ => false,
         }
     }
 

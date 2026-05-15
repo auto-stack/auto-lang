@@ -1,51 +1,26 @@
 widget App {
-    msg Msg { Toggle1, Delete1, InputChanged }
-
+    msg Msg { AddTodo, InputChanged }
     model {
         var input str = ""
-        var todo1_text str = "Hello"
-        var todo1_done bool = false
-        var todo2_text str = "World"
-        var todo2_done bool = true
+        var todo_count int = 2
         var active_count int = 1
     }
-
     view {
         center {
             col {
                 row {
                     input { placeholder: "Add todo", value: .input, oninput: .InputChanged }
-                    class: "w-full"
+                    button "Add" { onclick: .AddTodo, class: "px-4 py-2 bg-blue-500 text-white rounded" }
+                    class: "w-full gap-2 items-center"
                 }
-                row {
-                    checkbox { checked: .todo1_done, onclick: .Toggle1 }
-                    text .todo1_text
-                    button "x" { onclick: .Delete1 }
-                    class: "w-full items-center gap-3 py-3 border-b"
-                }
-                row {
-                    checkbox { checked: .todo2_done }
-                    text .todo2_text
-                    class: "w-full items-center gap-3 py-3 border-b"
-                }
+                text "__TODO_LIST__"
                 text `Active: ${.active_count}`
                 class: "w-full max-w-lg p-8 bg-white"
             }
         }
     }
-
     on {
         .InputChanged -> { .input = .input }
-        .Toggle1 -> {
-            .todo1_done = .todo1_done == false
-            if .todo1_done { .active_count = .active_count - 1 } else { .active_count = .active_count + 1 }
-        }
-        .Delete1 -> {
-            if .todo1_done == false { .active_count = .active_count - 1 }
-            .todo1_text = .todo2_text
-            .todo1_done = .todo2_done
-            .todo2_text = ""
-            .todo2_done = false
-        }
+        .AddTodo -> { .input = "" }
     }
 }

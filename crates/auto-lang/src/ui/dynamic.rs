@@ -102,14 +102,13 @@ pub struct DynamicComponent {
     /// Last known modification time of the source file.
     last_modified: Option<SystemTime>,
 
-    /// Handler AST bodies: event_name -> AST statements.
-    /// Used by call_handler_ast() for direct AST interpretation.
-    handler_asts: HashMap<String, Vec<crate::ast::Stmt>>,
-
     /// Input-to-state mapping: event_name -> state_field_name.
     /// When an input fires its oninput/onchange event, the typed text
     /// is written to the mapped state field before the handler runs.
     input_state_map: HashMap<String, String>,
+
+    /// Tick interval in ms — when set, the runtime emits .Tick events at this interval.
+    tick_interval: Option<u32>,
 }
 
 impl fmt::Debug for DynamicComponent {
@@ -147,21 +146,18 @@ impl DynamicComponent {
         let view_template = widget.view_tree.clone();
         let widget_name = widget.name.clone();
 
-        // 3. Extract handler AST bodies for direct interpretation
-        let handler_asts = extract_handler_asts(widget);
-
-        // 4. Extract input-to-state mapping for text input handling
+        // 3. Extract input-to-state mapping for text input handling
         let input_state_map = extract_input_state_map(&widget.view_tree);
 
         Ok(Self {
             bridge,
             view_template,
             widget_name,
-            dirty: true, // Initially dirty so first view() builds the tree
+            dirty: true,
             source_path: None,
             last_modified: None,
-            handler_asts,
             input_state_map,
+            tick_interval: widget.tick_interval,
         })
     }
 
@@ -182,7 +178,6 @@ impl DynamicComponent {
 
         let view_template = widget.view_tree.clone();
         let widget_name = widget.name.clone();
-        let handler_asts = extract_handler_asts(widget);
         let input_state_map = extract_input_state_map(&widget.view_tree);
 
         Ok(Self {
@@ -192,8 +187,8 @@ impl DynamicComponent {
             dirty: true,
             source_path: None,
             last_modified: None,
-            handler_asts,
             input_state_map,
+            tick_interval: widget.tick_interval,
         })
     }
 
@@ -248,6 +243,11 @@ impl DynamicComponent {
     /// Get a mutable reference to the underlying VmBridge.
     pub fn bridge_mut(&mut self) -> &mut VmBridge {
         &mut self.bridge
+    }
+
+    /// Get the tick interval in ms (if set).
+    pub fn tick_interval(&self) -> Option<u32> {
+        self.tick_interval
     }
 
     // ========================================================================
@@ -337,8 +337,8 @@ impl DynamicComponent {
         self.bridge = new_bridge;
         self.view_template = new_widget.view_tree.clone();
         self.widget_name = new_widget.name.clone();
-        self.handler_asts = extract_handler_asts(new_widget);
         self.input_state_map = extract_input_state_map(&new_widget.view_tree);
+        self.tick_interval = new_widget.tick_interval;
         self.dirty = true;
 
         Ok(report)
@@ -404,13 +404,8 @@ impl Component for DynamicComponent {
             DynamicMessage::String(name) => name.clone(),
         };
 
-        // Try AST-based handler first (dynamic UI path)
-        if let Some(stmts) = self.handler_asts.get(&event_name) {
-            let _ = self.bridge.call_handler_ast(&event_name, stmts);
-        } else {
-            // Fall back to VM bytecode handler
-            let _ = self.bridge.call_handler(&event_name, &[]);
-        }
+        // Execute handler via VM bytecode closure
+        let _ = self.bridge.call_handler(&event_name, &[]);
         self.dirty = true;
     }
 
@@ -445,12 +440,8 @@ impl DynamicComponent {
             }
         }
 
-        // Run the handler
-        if let Some(stmts) = self.handler_asts.get(event_name) {
-            let _ = self.bridge.call_handler_ast(event_name, stmts);
-        } else {
-            let _ = self.bridge.call_handler(event_name, &[]);
-        }
+        // Run the handler via VM bytecode closure
+        let _ = self.bridge.call_handler(event_name, &[]);
         self.dirty = true;
     }
 }
@@ -470,25 +461,6 @@ fn parse_input_value(text: &str) -> auto_val::Value {
         return auto_val::Value::Bool(text == "true");
     }
     auto_val::Value::str(text)
-}
-
-// ============================================================================
-// Handler AST extraction
-// ============================================================================
-
-/// Extract handler AST bodies from an AuraWidget for direct interpretation.
-///
-/// Converts the handler patterns (e.g., ".Inc", "Msg::Inc") to clean names
-/// and stores the AST statement bodies.
-fn extract_handler_asts(widget: &AuraWidget) -> HashMap<String, Vec<crate::ast::Stmt>> {
-    let mut asts = HashMap::new();
-    for (pattern, payload) in &widget.handlers {
-        let name = clean_handler_name(pattern);
-        if let crate::aura::LogicPayload::AstStmts(stmts) = payload {
-            asts.insert(name, stmts.clone());
-        }
-    }
-    asts
 }
 
 /// Clean a handler pattern to a simple name.
