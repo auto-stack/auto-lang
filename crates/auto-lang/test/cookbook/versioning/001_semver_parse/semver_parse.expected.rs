@@ -8,5 +8,7 @@ use auto_lang::a2r_std::*;
 use semver::Version;
 fn main() {
     let v = Version::parse("1.2.3").unwrap();
-    println!("Major: {}, Minor: {}, Patch: {}", v.major, v.minor, v.patch);
+    assert!(v.major == 1);
+    assert!(v.minor == 2);
+    assert!(v.patch == 3);
 }

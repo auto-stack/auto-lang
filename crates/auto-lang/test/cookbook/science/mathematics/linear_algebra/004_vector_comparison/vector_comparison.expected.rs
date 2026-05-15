@@ -14,5 +14,5 @@ fn main() {
             equal = false
         }
     }
-    println!("Vectors equal: {}", equal);
+    assert!(equal == true);
 }

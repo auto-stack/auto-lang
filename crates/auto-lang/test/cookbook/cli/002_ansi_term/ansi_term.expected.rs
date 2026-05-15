@@ -9,7 +9,10 @@ use ansi_term::Colour::Red;
 use ansi_term::Colour::Green;
 use ansi_term::Colour::Yellow;
 fn main() {
-    println!("{}", Red::paint("Error: something went wrong"));
-    println!("{}", Green::paint("Success: operation completed"));
-    println!("{}", Yellow::paint("Warning: check your input"));
+    let err = Red::paint("Error: something went wrong");
+    let ok = Green::paint("Success: operation completed");
+    let warn = Yellow::paint("Warning: check your input");
+    assert!(err.contains(&"Error"));
+    assert!(ok.contains(&"Success"));
+    assert!(warn.contains(&"Warning"));
 }

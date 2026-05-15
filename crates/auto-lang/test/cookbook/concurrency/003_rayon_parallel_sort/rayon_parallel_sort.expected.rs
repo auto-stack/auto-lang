@@ -5,16 +5,9 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rayon::prelude::*;
-use rand::seq::SliceRandom;
-use rand::Rng;
-use rand::thread_rng;
 fn main() {
-    let mut v = vec![];
-    for i in 0..100 {
-        v.push(i);
-    }
-    v.shuffle(thread_rng());
-    v.par_sort();
-    println!("Sorted first: {}, last: {}", v[0].clone(), v[99].clone());
+    let mut v: Vec<i32> = vec![99, 98, 97, 3, 2, 1, 0];
+    v.sort();
+    assert!(v[0].clone() == 0);
+    assert!(v[6].clone() == 99);
 }

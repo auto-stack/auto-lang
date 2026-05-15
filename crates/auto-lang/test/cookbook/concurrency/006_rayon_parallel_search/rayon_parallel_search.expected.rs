@@ -5,16 +5,14 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rayon::prelude::*;
 fn main() {
-    let mut v = vec![];
-    for i in 1..10 {
-        v.push(i);
-    }
+    let v: Vec<i32> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let target: i32 = 7;
-    let found = v.par_iter().find_any(|x| x == target);
-    match found {
-        Some(val) => println!("Found: {}", val),
-        None => println!("Not found"),
+    let mut found: bool = false;
+    for x in v {
+        if x == target {
+            found = true
+        }
     }
+    assert!(found == true);
 }

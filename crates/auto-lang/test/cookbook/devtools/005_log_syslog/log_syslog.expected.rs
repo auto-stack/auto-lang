@@ -9,4 +9,5 @@ use syslog::BasicLogger;
 use syslog::Facility;
 fn main() {
     println!("syslog configured");
+    assert!(true);
 }

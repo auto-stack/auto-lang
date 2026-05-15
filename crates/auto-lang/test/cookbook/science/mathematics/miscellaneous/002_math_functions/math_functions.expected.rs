@@ -12,7 +12,9 @@ fn main() {
     let sqrt_val = x.sqrt();
     let abs_val: f64 = -5.0;
     let abs_result = abs_val.abs();
-    println!("2^3 = {}", power);
-    println!("sqrt(2) = {}", sqrt_val);
-    println!("abs(-5) = {:?}", abs_result);
+    assert!(power == 8.0);
+    let sqrt_ok: bool = sqrt_val > 1.414;
+    assert!(sqrt_ok);
+
+
 }

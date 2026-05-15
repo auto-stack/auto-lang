@@ -8,11 +8,11 @@ use auto_lang::a2r_std::*;
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let entries = fs::read_dir(".")?;
+    let mut count: i32 = 0;
     for entry in entries {
         let entry = entry?;
-        let name = entry.file_name();
-        let name_str = name.to_str().unwrap();
-        println!("Found: {}", name_str);
+        count += 1;
     }
-    Ok(())
+
+    assert!(count > 0)
 }

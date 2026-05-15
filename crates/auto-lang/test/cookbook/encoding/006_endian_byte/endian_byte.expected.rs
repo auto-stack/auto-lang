@@ -8,7 +8,10 @@ use auto_lang::a2r_std::*;
 fn main() {
     let value: i32 = 4660;
     let bytes = value.to_be_bytes();
-    println!("BE bytes: {}, {}, {}, {}", bytes[0].clone(), bytes[1].clone(), bytes[2].clone(), bytes[3].clone());
+    assert!(bytes[0].clone() == 0);
+    assert!(bytes[2].clone() == 18);
+    assert!(bytes[3].clone() == 52);
     let le_bytes = value.to_le_bytes();
-    println!("LE bytes: {}, {}, {}, {}", le_bytes[0].clone(), le_bytes[1].clone(), le_bytes[2].clone(), le_bytes[3].clone());
+    assert!(le_bytes[0].clone() == 52);
+    assert!(le_bytes[1].clone() == 18);
 }

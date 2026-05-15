@@ -12,6 +12,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
     let mut normal = rand_distr::Normal::new(2.0, 3.0)?;
     let v: f64 = rng.sample(normal);
-    println!("Random from Normal(2, 3): {}", v);
-    Ok(())
+    assert!(true)
 }

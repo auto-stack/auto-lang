@@ -5,13 +5,11 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use heapless::Vec;
 fn main() {
 
     let mut buf = Vec::new();
-    let data = "hello".as_bytes();
-    for byte in data {
-        buf.push(byte).unwrap();
-    }
-    println!("Buffer: {} bytes", (buf.len() as i32));
+    buf.push(1);
+    buf.push(2);
+    buf.push(3);
+    assert!((buf.len() as i32) == 3);
 }

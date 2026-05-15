@@ -13,5 +13,5 @@ fn main() {
     let file = File::create("app.log").unwrap();
     WriteLogger::init(LevelFilter::Info, Config::default(), file).unwrap();
     info!("logging to custom file");
-    println!("log written to app.log");
+    assert!(true);
 }

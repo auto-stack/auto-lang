@@ -15,4 +15,5 @@ fn main() {
             println!("{:?}: {}", entry.path().display(), modified);
         }
     }
+    assert!(true);
 }

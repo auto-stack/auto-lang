@@ -12,5 +12,5 @@ fn main() {
     let parsed = serde_json::from_str(json_str.as_str());
     println!("Parsed: {}", parsed);
     let encoded = serde_json.to_string("hello world");
-    println!("Encoded: {}", encoded);
+    assert!(a2r_std::str_contains(encoded.as_str(), "hello"));
 }

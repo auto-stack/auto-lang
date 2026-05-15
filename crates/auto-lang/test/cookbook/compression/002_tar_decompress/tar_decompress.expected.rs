@@ -10,8 +10,11 @@ fn main() {
     entries.push("file1.txt");
     entries.push("file2.txt");
     entries.push("subdir/file3.txt");
-    println!("Extracted {} files", (entries.len() as i32));
-    for file in entries {
-        println!("  {}", file);
+    assert!((entries.len() as i32) == 3);
+
+    let mut count: i32 = 0;
+    for entry in entries {
+        count = count + 1;
     }
+    assert!(count == 3);
 }

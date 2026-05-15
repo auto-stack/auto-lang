@@ -15,6 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if a2r_std::str_ends_with(name_str.as_str(), ".txt") {
             println!("Text file: {}", name_str);
         }
+        
+        assert!(name_str == name_str.to_lowercase());
     }
     Ok(())
 }

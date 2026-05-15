@@ -12,6 +12,7 @@ fn main() {
     let month = now.month();
     let day = now.day();
     let hour = now.hour();
-    println!("Date: {}-{}-{}", year, month, day);
-    println!("Time: {}:00", hour);
+    assert!(year > 2000);
+    assert!(month >= 1);
+    assert!(day >= 1);
 }

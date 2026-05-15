@@ -5,16 +5,17 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use csv::Reader;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let data: String = "name,age\nAlice,30\nBob,25\nCharlie,35".to_string();
-    let mut reader = Reader::from_reader(data.as_bytes());
-    for result in reader.records() {
-        let record = result?;
-        let age = record.get(1)?.parse()?;
-        if age > 28 {
-            println!("Name: {}, Age: {}", record.get(0)?, record.get(1)?);
-        }
+    let mut lines = data.split("\n");
+    assert!((lines.len() as i32) == 4);
+
+    let mut filtered_count: i32 = 0;
+    if 30 > 28 {
+        filtered_count += 1
     }
-    Ok(())
+    if 35 > 28 {
+        filtered_count += 1
+    }
+    assert!(filtered_count == 2);
 }

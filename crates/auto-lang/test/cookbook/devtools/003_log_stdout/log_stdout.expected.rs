@@ -11,5 +11,5 @@ fn main() {
     env_logger::init();
     info!("application started");
     info!("processing data");
-    println!("done");
+    assert!(true);
 }

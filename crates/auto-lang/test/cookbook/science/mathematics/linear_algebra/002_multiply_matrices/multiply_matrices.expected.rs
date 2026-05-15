@@ -16,6 +16,8 @@ fn main() {
             }
         }
     }
-    println!("{} {}", c[0].clone()[0].clone(), c[0].clone()[1].clone());
-    println!("{} {}", c[1].clone()[0].clone(), c[1].clone()[1].clone());
+    assert!(c[0].clone()[0].clone() == 19);
+    assert!(c[0].clone()[1].clone() == 22);
+    assert!(c[1].clone()[0].clone() == 43);
+    assert!(c[1].clone()[1].clone() == 50);
 }

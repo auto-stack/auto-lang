@@ -9,5 +9,5 @@ use urlencoding::encode;
 fn main() {
     let input: String = "hello world! foo=bar&baz=qux".to_string();
     let encoded = encode(input);
-    println!("Encoded: {}", encoded);
+    assert!(encoded.contains(&"hello"));
 }

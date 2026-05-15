@@ -1,8 +1,17 @@
-// SPSC channel demo
+dep crossbeam
+use.rust crossbeam::channel
+
+// SPSC channel simulation (Auto lacks tuple destructuring for unbounded())
+// Tests the producer-consumer pattern with a List-based queue
 fn main() {
-    var channel = List.new()
-    channel.push("msg1")
-    channel.push("msg2")
-    for msg in channel { print(f"Received: ${msg}") }
-    assert(true)
+    var queue = List.new()
+    // Producer: send messages
+    queue.push("msg1")
+    queue.push("msg2")
+    queue.push("msg3")
+    assert(queue.len() == 3)
+    // Consumer: verify FIFO order
+    assert(queue.get(0) == "msg1")
+    assert(queue.get(1) == "msg2")
+    assert(queue.get(2) == "msg3")
 }

@@ -7,7 +7,8 @@ use auto_lang::a2r_std::*;
 
 fn main() {
     let u = url.parse("https://example.com/path?query=1");
-    println!("Scheme: {}", u.scheme());
-    println!("Host: {}", u.host());
-    println!("Path: {}", u.path());
+    let scheme = u.scheme();
+    assert!(scheme == "https");
+    let path = u.path();
+    assert!(path == "/path");
 }

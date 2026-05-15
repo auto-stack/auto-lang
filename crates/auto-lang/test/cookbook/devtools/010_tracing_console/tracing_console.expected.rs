@@ -11,5 +11,5 @@ fn main() {
     info!("application started");
     let count: i32 = 10;
     debug!("processing $count items");
-    info!("application finished");
+    assert!(count == 10);
 }

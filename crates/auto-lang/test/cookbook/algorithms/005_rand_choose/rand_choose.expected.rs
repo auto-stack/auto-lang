@@ -12,5 +12,6 @@ fn main() {
     let choices: Vec<String> = vec!["a".to_string(), "b".to_string(), "c".to_string(), "d".to_string(), "e".to_string()];
     let idx = rng.gen_range(0..(choices.len() as i32));
     let choice: String = choices[(idx) as usize].clone();
-    println!("Chose: {}", choice);
+    let valid: bool = idx >= 0;
+    assert!(valid);
 }

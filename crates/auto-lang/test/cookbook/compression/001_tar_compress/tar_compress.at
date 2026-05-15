@@ -1,12 +1,15 @@
-// Tar compression demo
+dep tar
+dep flate2
+
+// Tar + gzip compression — simplified for VM (no tar/flate2 shims yet)
+// Tests the concept of collecting entries and creating archive metadata
 fn main() {
     var entries = List.new()
     entries.push("backup/file1.txt")
     entries.push("backup/file2.txt")
     entries.push("backup/subdir/file3.txt")
-    print(f"Archive contains ${entries.len()} entries")
-    for entry in entries {
-        print(f"  ${entry}")
-    }
-    assert(true)
+    assert(entries.len() == 3)
+    // Verify entries are in correct order
+    assert(entries.get(0) == "backup/file1.txt")
+    assert(entries.get(2) == "backup/subdir/file3.txt")
 }

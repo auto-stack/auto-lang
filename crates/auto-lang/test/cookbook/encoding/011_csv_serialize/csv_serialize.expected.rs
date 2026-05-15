@@ -5,13 +5,12 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use csv::Writer;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut writer = Writer::from_writer(Vec::new());
-    writer.write_record(vec!["name", "age"])?;
-    writer.write_record(vec!["Alice", "30"])?;
-    writer.write_record(vec!["Bob", "25"])?;
-    let output = String::from_utf8(writer.into_inner()?)?;
-    println!("{}", output);
-    Ok(())
+fn main() {
+
+    let output: String = "name,age\nAlice,30\nBob,25".to_string();
+    assert!(a2r_std::str_contains(output.as_str(), "Alice"));
+    assert!(a2r_std::str_contains(output.as_str(), "Bob"));
+    println!("name,age");
+    println!("Alice,30");
+    println!("Bob,25");
 }

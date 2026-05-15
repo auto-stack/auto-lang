@@ -33,5 +33,5 @@ fn main() {
     log::set_boxed_logger(Box::new(SimpleLogger::new())).unwrap();
     log::set_max_level(LevelFilter::Debug);
     info!("custom logger active");
-    println!("done");
+    assert!(true);
 }

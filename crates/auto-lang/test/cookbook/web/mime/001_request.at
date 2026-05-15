@@ -4,14 +4,12 @@ fn main() {
     let url = "https://httpbin.org/json"
     let handle = http.get(url)
     let status = Response.status_code(handle)
-    print(f"Status: ${status}")
+    assert(status == 200)
 
     let content_type = Response.header_get(handle, "Content-Type")
-    print(f"Content-Type: ${content_type}")
+    assert(content_type.contains("json"))
 
     // Parse MIME type into type/subtype
     let parts = content_type.split("/")
-    print(f"Type: ${parts.get(0)}")
-    print(f"Subtype: ${parts.get(1)}")
-    assert(true)
+    assert(parts.get(0) == "application")
 }

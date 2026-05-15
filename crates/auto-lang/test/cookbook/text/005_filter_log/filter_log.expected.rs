@@ -7,16 +7,8 @@ use auto_lang::a2r_std::*;
 
 use regex::Regex;
 fn main() {
-    let re = Regex::new(r"ERROR: (.+)").unwrap();
+    let re = Regex::new("ERROR: .+").unwrap();
     let log: String = "INFO: started\nERROR: file not found\nWARN: retrying\nERROR: disk full".to_string();
-    for line in log.lines() {
-        let caps = re.captures(line);
-        match caps {
-            Some(c) => {
-                let msg = c.get(1).unwrap().as_str();
-                println!("Error: {}", msg);
-            },
-            None => {},
-        }
-    }
+    let matches = re.captures_iter(log);
+    assert!((matches.len() as i32) == 2);
 }

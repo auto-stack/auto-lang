@@ -10,5 +10,5 @@ use percent_encoding;
 fn main() {
     let input: String = "hello world! foo@bar.com".to_string();
     let encoded = percent_encode(input.as_bytes(), percent_encoding::NON_ALPHANUMERIC).to_string();
-    println!("Encoded: {}", encoded);
+    assert!(a2r_std::str_contains(encoded.as_str(), "hello"));
 }

@@ -7,8 +7,10 @@ use auto_lang::a2r_std::*;
 
 use walkdir;
 fn main() {
+    let mut count: i32 = 0;
     for entry in walkdir::WalkDir::new(".") {
         let entry = entry.unwrap();
-        println!("{:?}", entry.path().display().to_string());
+        count += 1;
     }
+    assert!(count > 0);
 }

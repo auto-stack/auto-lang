@@ -36,5 +36,7 @@ fn random_pet() -> Pet {
 
 fn main() {
     let pet: Pet = random_pet();
-    println!("Got a pet!");
+
+    let is_valid = pet == Pet::Dog || pet == Pet::Cat || pet == Pet::Bird;
+    assert!(is_valid);
 }

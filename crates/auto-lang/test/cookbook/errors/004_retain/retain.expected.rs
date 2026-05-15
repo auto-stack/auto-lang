@@ -17,8 +17,10 @@ fn outer() -> Result<String, Box<dyn std::error::Error>> {
 
 fn main() {
     let result = outer();
+    let mut got_err: bool = false;
     match result {
         Ok(val) => println!("Success: {}", val),
-        Err(e) => println!("Error: {}", e),
+        Err(e) => got_err = true,
     }
+    assert!(got_err == true);
 }

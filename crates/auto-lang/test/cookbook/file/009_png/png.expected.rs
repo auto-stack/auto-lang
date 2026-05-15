@@ -7,12 +7,6 @@ use auto_lang::a2r_std::*;
 
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let entries = fs::read_dir(".")?;
-    for entry in entries {
-        let entry = entry?;
-        let name = entry.file_name();
-        let name_str = name.to_str().unwrap();
-        println!("File: {}", name_str);
-    }
-    Ok(())
+    let content = a2r_std::fs::read_to_string("png.at")?;
+    assert!((content.len() as i32) > 0)
 }

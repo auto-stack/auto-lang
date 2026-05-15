@@ -12,5 +12,7 @@ fn main() {
     for i in 0..3 {
         result[(i) as usize].clone() = scalar * v[(i) as usize].clone();
     }
-    println!("Scaled vector: {}, {}, {}", result[0].clone(), result[1].clone(), result[2].clone());
+    assert!(result[0].clone() == 2);
+    assert!(result[1].clone() == 4);
+    assert!(result[2].clone() == 6);
 }

@@ -1,9 +1,12 @@
-// Simple encoding demo
+dep base64
+use.rust base64::Engine
+use.rust base64::engine::general_purpose::STANDARD
+
+// Base64 encode and decode
 fn main() {
-    let text = "hello"
-    print(f"Original: ${text}")
-    let upper = text.to_uppercase()
-    assert(upper == "HELLO")
-    let lower = upper.to_lowercase()
-    assert(lower == "hello")
+    let original = "hello world"
+    let encoded = STANDARD.encode(original)
+    assert(encoded == "aGVsbG8gd29ybGQ=")
+    let decoded = STANDARD.decode(encoded).unwrap()
+    assert(decoded.len() > 0)
 }

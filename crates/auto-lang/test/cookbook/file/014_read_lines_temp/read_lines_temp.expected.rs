@@ -11,8 +11,10 @@ fn main() {
     let path: String = "test_temp.txt".to_string();
     File::write_text(path.as_str(), content.as_str());
     let lines = File::read_text(path.as_str());
+    let mut line_count: i32 = 0;
     for line in lines.lines() {
-        println!("Line: {}", line);
+        line_count += 1;
     }
+    assert!(line_count == 3);
     File::delete(path.as_str());
 }

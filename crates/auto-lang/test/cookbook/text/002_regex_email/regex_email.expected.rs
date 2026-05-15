@@ -10,5 +10,5 @@ fn main() {
     let re = Regex::new(r"[a-z]+@[a-z]+\.[a-z]+").unwrap();
     let text: String = "Contact user@example.com for info".to_string();
     let matched = re.is_match(text);
-    println!("Has email: {}", matched);
+    assert!(matched == true);
 }

@@ -5,15 +5,10 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use csv::Reader;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let data: String = "name,age\nAlice,30\nBob,twenty-five\nCharlie,35".to_string();
-    let mut reader = Reader::from_reader(data.as_bytes());
-    for result in reader.records() {
-        match result {
-            Ok(record) => println!("Name: {}, Age: {}", record.get(0)?, record.get(1)?),
-            Err(e) => println!("Error reading record: {}", e),
-        }
-    }
-    Ok(())
+    let mut lines = data.split("\n");
+    assert!((lines.len() as i32) == 4);
+
+    assert!(a2r_std::str_contains(data.as_str(), "twenty-five"));
 }

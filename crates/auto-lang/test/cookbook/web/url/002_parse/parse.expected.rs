@@ -12,7 +12,10 @@ fn main() {
     let query = url::query();
     println!("Query string: {}", query);
 
+    let query = url::query();
+    let mut pair_count: i32 = 0;
     for pair in url::query_pairs() {
-        println!("Param: {}", pair);
+        pair_count += 1;
     }
+    assert!(pair_count == 2);
 }

@@ -5,11 +5,12 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 fn main() {
-    let text: String = "hello".to_string();
-    println!("Original: {}", text);
-    let upper = text.to_uppercase();
-    println!("Uppercase: {}", upper);
-    let lower = upper.to_lowercase();
-    println!("Lowercase: {}", lower);
+    let original: String = "hello world".to_string();
+    let encoded = STANDARD::encode(original.as_str());
+    assert!(encoded == "aGVsbG8gd29ybGQ=");
+    let decoded = STANDARD::decode(encoded).unwrap();
+    assert!((decoded.len() as i32) > 0);
 }

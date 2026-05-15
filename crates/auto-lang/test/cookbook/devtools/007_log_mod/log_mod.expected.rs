@@ -19,4 +19,5 @@ fn main() {
     network.connect();
     process();
     println!("done");
+    assert!(true);
 }

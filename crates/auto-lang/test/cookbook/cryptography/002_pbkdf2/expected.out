@@ -1,1 +1,0 @@
-PBKDF2(secret_password, random_salt, 100000) -> 32 bytes

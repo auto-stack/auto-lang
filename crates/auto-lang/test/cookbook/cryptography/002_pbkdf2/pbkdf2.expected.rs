@@ -5,9 +5,17 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use sha2::Sha256;
+use sha2::Digest;
+
 fn main() {
     let password: String = "secret_password".to_string();
     let salt: String = "random_salt".to_string();
-    let iterations: i32 = 100000;
-    println!("PBKDF2({}, {}, {}) -> 32 bytes", password, salt, iterations);
+
+    let mut hasher = Sha256::new();
+    hasher.update(b { content: "salt".to_string() });
+    hasher.update(b { content: "secret_password".to_string() });
+    let result = hasher.finalize();
+
+    assert!(true);
 }

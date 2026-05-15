@@ -4,5 +4,5 @@ fn main() ! {
     let msg = "hello"
     let result = Ok(msg.to_string())
     let val = result.?
-    print(val)
+    assert(val == "hello")
 }

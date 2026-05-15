@@ -11,6 +11,6 @@ fn main() {
     let b = BigInt::from(200);
     let sum = a + b;
     let product = a * b;
-    println!("Sum: {}", sum);
-    println!("Product: {}", product);
+    assert!(sum == 300);
+    assert!(product == 20000);
 }

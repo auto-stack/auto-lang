@@ -5,14 +5,15 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use walkdir::WalkDir;
 fn main() {
     let mut dirs = Vec::new();
     dirs.push("src/");
     dirs.push("docs/");
     dirs.push("test/");
     let count = (dirs.len() as i32);
+    assert!(count == 3);
     for d in dirs {
-        println!("Walking: {}", d);
+        assert!((d.len() as i32) > 0);
     }
-    println!("Walked {:?} directories", count);
 }

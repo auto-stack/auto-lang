@@ -12,5 +12,5 @@ fn main() {
     debug!("starting operation");
     let value: i32 = 42;
     debug!("value = {}", value);
-    println!("done");
+    assert!(value == 42);
 }

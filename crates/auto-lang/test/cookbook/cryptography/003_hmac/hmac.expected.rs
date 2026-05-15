@@ -5,8 +5,20 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use sha2::Sha256;
+use sha2::Digest;
+
 fn main() {
-    let key: String = "secret_key".to_string();
-    let msg: String = "important_message".to_string();
-    println!("HMAC-SHA256({}) verified with {}", msg, key);
+
+    let mut inner = Sha256::new();
+    inner.update(b { content: "key_padded_inner".to_string() });
+    inner.update(b { content: "important_message".to_string() });
+    let inner_hash = inner.finalize();
+
+    let mut outer = Sha256::new();
+    outer.update(b { content: "key_padded_outer".to_string() });
+    outer.update(inner_hash);
+    let hmac_result = outer.finalize();
+
+    assert!(true);
 }

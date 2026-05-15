@@ -17,4 +17,5 @@ fn main() {
         let entry = entry.unwrap();
         println!("Extracted: {:?}", entry.path().unwrap().display());
     }
+    assert!(true);
 }

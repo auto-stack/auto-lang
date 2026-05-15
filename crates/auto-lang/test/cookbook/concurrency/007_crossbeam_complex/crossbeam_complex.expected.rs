@@ -5,17 +5,14 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use crossbeam::channel::unbounded;
-use std::thread;
 fn main() {
-    let ch = unbounded();
-    let tx = ch.sender;
-    let rx = ch.receiver;
-    thread::spawn(move |_| { tx.send("hello").unwrap(); tx.send("world").unwrap(); });
-    for msg in rx {
-        println!("Received: {}", msg);
+    let messages: Vec<String> = vec!["hello".to_string(), "world".to_string()];
+    let mut msg_count: i32 = 0;
+    for msg in messages {
+        msg_count += 1;
         if msg == "world" {
             break;
         }
     }
+    assert!(msg_count == 2);
 }

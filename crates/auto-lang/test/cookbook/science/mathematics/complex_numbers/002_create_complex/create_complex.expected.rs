@@ -14,5 +14,5 @@ struct Complex {
 fn main() {
     let c = Complex { real: 3.0, imag: 4.0 };
     let norm = c.real * c.real + c.imag * c.imag;
-    println!("Norm squared: {}", norm);
+    assert!(norm == 25.0);
 }

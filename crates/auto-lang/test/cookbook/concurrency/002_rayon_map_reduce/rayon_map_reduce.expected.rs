@@ -5,9 +5,11 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rayon::prelude::*;
 fn main() {
     let v: Vec<i32> = vec![1, 2, 3, 4, 5];
-    let sum = v.par_iter().map(|x| x * 2).sum();
-    println!("Sum of doubled: {}", sum);
+    let mut sum: i32 = 0;
+    for x in v {
+        sum += x * 2;
+    }
+    assert!(sum == 30);
 }

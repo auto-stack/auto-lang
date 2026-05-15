@@ -15,5 +15,5 @@ fn main() {
         let idx = rng.gen_range(0..(charset.len() as i32));
         password = format!("{}{}", password, charset.chars().nth(idx as usize).unwrap_or('\0'));
     }
-    println!("Password: {}", password);
+    assert!((password.len() as i32) == 16);
 }

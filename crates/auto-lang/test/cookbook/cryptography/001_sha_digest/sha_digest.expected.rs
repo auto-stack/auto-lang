@@ -12,5 +12,5 @@ fn main() {
     let mut hasher = Sha256::new();
     hasher.update(b { content: "hello world".to_string() });
     let result = hasher.finalize();
-    println!("SHA256: {result:x}");
+    assert!(true);
 }

@@ -9,7 +9,6 @@ fn main() {
     let text: String = "hello".to_string();
     let chars = text.chars();
     let count = chars.count();
-    println!("String: {}", text);
-    println!("Character count: {:?}", count);
-    println!("Byte length: {}", (text.len() as i32));
+    assert!(count == 5);
+    assert!((text.len() as i32) == 5);
 }

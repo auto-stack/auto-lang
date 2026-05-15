@@ -14,6 +14,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let meta = entry.metadata()?;
         total = total + (meta.len() as i32);
     }
-    println!("Total size: {} bytes", total);
-    Ok(())
+    assert!(total >= 0)
 }

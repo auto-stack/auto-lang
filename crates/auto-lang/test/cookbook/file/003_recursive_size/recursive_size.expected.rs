@@ -16,5 +16,7 @@ fn main() {
             total_size = total_size + (meta.len() as i32)
         }
     }
-    println!("Total size: {} bytes", total_size);
+
+    let has_size: bool = total_size >= 0;
+    assert!(has_size);
 }

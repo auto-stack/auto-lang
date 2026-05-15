@@ -12,5 +12,5 @@ fn main() {
         sum_sq = sum_sq + v[(i) as usize].clone() * v[(i) as usize].clone();
     }
     let norm = sum_sq.sqrt();
-    println!("L2 norm: {}", norm);
+    assert!(norm == 5.0);
 }

@@ -11,5 +11,5 @@ fn main() {
     println!("From timestamp: {}", dt);
     let now = Utc::now();
     let ts = now.timestamp();
-    println!("Current timestamp: {}", ts);
+    assert!(ts > 1700000000);
 }

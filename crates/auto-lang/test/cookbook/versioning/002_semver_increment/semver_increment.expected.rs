@@ -9,8 +9,9 @@ use semver::Version;
 fn main() {
     let mut v = Version::parse("1.2.3").unwrap();
     v.patch = v.patch + 1;
-    println!("Next patch: {}", v);
+    assert!(v.patch == 4);
     v.minor = v.minor + 1;
     v.patch = 0;
-    println!("Next minor: {}", v);
+    assert!(v.minor == 3);
+    assert!(v.patch == 0);
 }

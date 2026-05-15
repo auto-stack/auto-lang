@@ -9,7 +9,9 @@ use semver::Version;
 fn main() {
     let v = Version::parse("1.2.3").unwrap();
     let threshold = Version::parse("1.0.0").unwrap();
+    let mut is_greater: bool = false;
     if v > threshold {
-        println!("version is greater than 1.0.0");
+        is_greater = true
     }
+    assert!(is_greater == true);
 }

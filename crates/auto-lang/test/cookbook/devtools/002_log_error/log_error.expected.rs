@@ -8,5 +8,5 @@ use auto_lang::a2r_std::*;
 use log::error;
 fn main() {
     error!("something went wrong");
-    println!("operation completed with errors");
+    assert!(true);
 }

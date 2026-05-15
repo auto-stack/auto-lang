@@ -30,5 +30,6 @@ ext Color {
 fn main() {
     let color Color = random_color()
     let name = color.debug_str()
-    assert(true)
+    // Verify debug_str returns one of the valid color names
+    assert(name == "Red" || name == "Green" || name == "Blue")
 }

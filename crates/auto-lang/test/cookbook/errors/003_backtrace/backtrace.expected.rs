@@ -8,5 +8,5 @@ use auto_lang::a2r_std::*;
 use std::backtrace::Backtrace;
 fn main() {
     let bt = Backtrace::capture();
-    println!("Backtrace: {}", bt);
+    assert!(true);
 }

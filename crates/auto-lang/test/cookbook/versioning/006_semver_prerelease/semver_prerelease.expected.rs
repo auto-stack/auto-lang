@@ -11,5 +11,5 @@ fn main() {
     println!("Major: {}", v.major);
     println!("Pre: {}", v.pre);
     let is_pre: bool = !(v.pre.is_empty());
-    println!("Is prerelease: {}", is_pre);
+    assert!(is_pre == true);
 }

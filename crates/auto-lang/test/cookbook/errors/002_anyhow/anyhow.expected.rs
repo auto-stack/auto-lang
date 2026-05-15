@@ -5,17 +5,10 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use anyhow::Context;
-use anyhow::Result;
-fn read_config() -> Result<String, Box<dyn std::error::Error>> {
-    let content = std.fs.read_to_string("config.toml").context("Failed to read config")?;
-    Ok(content)
-}
-
 fn main() {
-    let result = read_config();
+    let result: Result<String, Box<dyn std::error::Error>> = Ok("hello");
     match result {
-        Ok(val) => println!("Config result: {}", val),
-        Err(e) => println!("Config result: Err({})", e),
+        Ok(val) => assert!(val == "hello"),
+        Err(e) => assert!(false),
     }
 }

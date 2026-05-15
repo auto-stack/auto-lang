@@ -18,4 +18,5 @@ fn visit(path: &str, visited: HashSet<String>) {
 fn main() {
     let mut visited: HashSet<String> = HashSet::new();
     visit(".", visited);
+    assert!(visited.contains(&"."));
 }

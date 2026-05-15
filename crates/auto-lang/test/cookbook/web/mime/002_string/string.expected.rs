@@ -10,5 +10,5 @@ fn main() {
     let mime = "text/html".parse().unwrap();
     println!("MIME: {}", mime);
     let is_text: bool = mime::type_() == mime.TEXT;
-    println!("Is text: {}", is_text);
+    assert!(is_text == true);
 }

@@ -5,11 +5,16 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use crossbeam::channel;
 fn main() {
-    let mut channel = Vec::new();
-    channel.push("msg1");
-    channel.push("msg2");
-    for msg in channel {
-        println!("Received: {}", msg);
-    }
+    let mut queue = Vec::new();
+
+    queue.push("msg1");
+    queue.push("msg2");
+    queue.push("msg3");
+    assert!((queue.len() as i32) == 3);
+
+    assert!(queue.get(0) == "msg1");
+    assert!(queue.get(1) == "msg2");
+    assert!(queue.get(2) == "msg3");
 }

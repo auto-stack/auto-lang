@@ -8,8 +8,8 @@ use auto_lang::a2r_std::*;
 use url::Url;
 fn main() {
     let url = Url::parse("https://user:pass@example.com:8080/path?query=1#frag").unwrap();
-    println!("Scheme: {}", url::scheme());
-    println!("Host: {}", url::host_str());
-    println!("Port: {}", url::port());
-    println!("Origin: {}", url::origin());
+    let scheme = url::scheme();
+    let host = url::host_str();
+    assert!(scheme == "https");
+    assert!(host == "example.com");
 }

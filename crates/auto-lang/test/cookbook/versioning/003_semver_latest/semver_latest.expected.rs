@@ -15,5 +15,6 @@ fn main() {
             max = parsed
         }
     }
-    println!("Latest: {}", max);
+    assert!(max.major == 2);
+    assert!(max.minor == 1);
 }

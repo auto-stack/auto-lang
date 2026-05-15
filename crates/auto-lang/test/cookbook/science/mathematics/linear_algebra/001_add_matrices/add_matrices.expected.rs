@@ -14,6 +14,8 @@ fn main() {
             c[(i) as usize].clone()[(j) as usize].clone() = a[(i) as usize].clone()[(j) as usize].clone() + b[(i) as usize].clone()[(j) as usize].clone();
         }
     }
-    println!("{} {}", c[0].clone()[0].clone(), c[0].clone()[1].clone());
-    println!("{} {}", c[1].clone()[0].clone(), c[1].clone()[1].clone());
+    assert!(c[0].clone()[0].clone() == 6);
+    assert!(c[0].clone()[1].clone() == 8);
+    assert!(c[1].clone()[0].clone() == 10);
+    assert!(c[1].clone()[1].clone() == 12);
 }

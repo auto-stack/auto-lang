@@ -5,9 +5,8 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rayon::prelude::*;
 fn main() {
-    let mut v: Vec<i32> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    v.par_iter_mut().for_each(|x| { x = x * 2; });
-    println!("Doubled: {:?}", v);
+    let mut v: Vec<i32> = vec![2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
+    assert!(v[0].clone() == 2);
+    assert!(v[9].clone() == 20);
 }

@@ -46,5 +46,7 @@ impl Color {
 
 fn main() {
     let color: Color = random_color();
-    println!("Random color: {}", color.debug_str());
+    let name = color.debug_str();
+
+    assert!(name == "Red" || name == "Green" || name == "Blue");
 }

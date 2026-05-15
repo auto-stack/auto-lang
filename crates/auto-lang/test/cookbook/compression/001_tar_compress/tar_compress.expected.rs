@@ -10,8 +10,8 @@ fn main() {
     entries.push("backup/file1.txt");
     entries.push("backup/file2.txt");
     entries.push("backup/subdir/file3.txt");
-    println!("Archive contains {} entries", (entries.len() as i32));
-    for entry in entries {
-        println!("  {:?}", entry);
-    }
+    assert!((entries.len() as i32) == 3);
+
+    assert!(entries.get(0) == "backup/file1.txt");
+    assert!(entries.get(2) == "backup/subdir/file3.txt");
 }

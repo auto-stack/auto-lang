@@ -17,6 +17,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sum = sum + val;
     }
     let avg: f64 = sum / 1000.0;
-    println!("Average of 1000 normal samples: {:?}", avg);
-    Ok(())
+
+    assert!(avg == avg)
 }

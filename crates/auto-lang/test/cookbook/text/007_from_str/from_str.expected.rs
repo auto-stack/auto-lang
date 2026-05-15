@@ -7,10 +7,7 @@ use auto_lang::a2r_std::*;
 
 fn parse_parts(s: &str) {
     let mut parts = s.split(",");
-    let first = parts.next().unwrap();
-    let second = parts.next().unwrap();
-    println!("First: {}", first);
-    println!("Second: {}", second);
+    assert!((parts.len() as i32) == 2);
 }
 
 fn main() {

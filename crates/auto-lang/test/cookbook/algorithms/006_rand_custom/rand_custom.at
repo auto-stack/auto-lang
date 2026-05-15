@@ -19,5 +19,7 @@ fn random_pet() Pet {
 
 fn main() {
     let pet Pet = random_pet()
-    assert(true)
+    // Smoke test: random enum variant should be valid (Dog/Cat/Bird)
+    let is_valid = pet == Pet.Dog || pet == Pet.Cat || pet == Pet.Bird
+    assert(is_valid)
 }

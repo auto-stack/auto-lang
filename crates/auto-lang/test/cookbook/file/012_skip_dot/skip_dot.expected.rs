@@ -8,13 +8,14 @@ use auto_lang::a2r_std::*;
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let entries = fs::read_dir(".")?;
+    let mut non_dot: i32 = 0;
     for entry in entries {
         let entry = entry?;
         let name = entry.file_name();
         let name_str = name.to_str().unwrap();
         if !(name_str.starts_with(&".")) {
-            println!("{}", name_str);
+            non_dot += 1
         }
     }
-    Ok(())
+    assert!(non_dot > 0)
 }

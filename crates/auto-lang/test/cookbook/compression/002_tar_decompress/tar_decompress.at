@@ -1,12 +1,18 @@
-// Tar decompression demo
+dep tar
+dep flate2
+
+// Tar + gzip decompression — simplified for VM (no tar/flate2 shims yet)
+// Tests the concept of extracting and listing archive entries
 fn main() {
     var entries = List.new()
     entries.push("file1.txt")
     entries.push("file2.txt")
     entries.push("subdir/file3.txt")
-    print(f"Extracted ${entries.len()} files")
-    for file in entries {
-        print(f"  ${file}")
+    assert(entries.len() == 3)
+    // Verify we can iterate and count
+    var count = 0
+    for entry in entries {
+        count = count + 1
     }
-    assert(true)
+    assert(count == 3)
 }
