@@ -10,17 +10,16 @@ import { Button } from '@/components/ui/button'
 import { Palette, Check } from 'lucide-vue-next'
 
 const themes = [
-  { name: 'daylight', label: 'Daylight', color: 'bg-indigo-500' },
-  { name: 'midnight', label: 'Midnight', color: 'bg-indigo-400' },
+  { name: 'default', label: 'Indigo (Default)', color: 'bg-indigo-500' },
   { name: 'forest', label: 'Forest', color: 'bg-emerald-500' },
   { name: 'sunset', label: 'Sunset', color: 'bg-orange-500' },
   { name: 'ocean', label: 'Ocean', color: 'bg-cyan-500' },
 ]
 
-const currentTheme = ref('daylight')
+const currentTheme = ref('default')
 
 onMounted(() => {
-  const saved = localStorage.getItem('aui-theme')
+  const saved = localStorage.getItem('aui-color-theme')
   if (saved && themes.find(t => t.name === saved)) {
     currentTheme.value = saved
     applyTheme(saved)
@@ -28,8 +27,12 @@ onMounted(() => {
 })
 
 function applyTheme(name: string) {
-  document.documentElement.setAttribute('data-theme', name)
-  localStorage.setItem('aui-theme', name)
+  if (name === 'default') {
+    document.documentElement.removeAttribute('data-theme')
+  } else {
+    document.documentElement.setAttribute('data-theme', name)
+  }
+  localStorage.setItem('aui-color-theme', name)
   currentTheme.value = name
 }
 </script>
@@ -40,7 +43,7 @@ function applyTheme(name: string) {
       <Button variant="ghost" size="icon" class="h-9 w-9">
         <slot>
           <Palette class="h-4 w-4" />
-          <span class="sr-only">Toggle theme</span>
+          <span class="sr-only">Color theme</span>
         </slot>
       </Button>
     </DropdownMenuTrigger>

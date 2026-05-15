@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
-import { BarChart, Bell, Command, Home, Image, Layers, LayoutGrid, LayoutTemplate, Lock, Menu, MousePointerClick, Navigation, Palette, PanelLeft, Search, SquareStack, Table, Type } from 'lucide-vue-next'
+import { BarChart, Bell, Command, Home, Image, LayoutGrid, LayoutTemplate, Lock, MousePointerClick, Navigation, Palette, PanelLeft, Search, SquareStack, Table, Type } from 'lucide-vue-next'
 
+import UnifiedNavbar from '@/components/UnifiedNavbar.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 
 
@@ -43,29 +44,7 @@ function openSidebar(): void {
 <template>
   <div class="flex flex-col h-screen">
     <div class="flex flex-col h-screen overflow-hidden">
-      <header class="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur">
-        <div class="flex flex-row h-14 items-center px-4 md:px-6 w-full gap-3">
-          <Button class="md:hidden -ml-2" @click="openSidebar">
-            <Menu class="h-4 w-4" />          </Button>
-          <div class="flex flex-row items-center gap-2 mr-4 shrink-0">
-            <Layers class="w-5 h-5 h-5 w-5 text-primary" />
-            <span class="font-bold text-lg hidden sm:inline">Auto UI</span>
-          </div>
-          <div class="flex flex-row hidden md:flex items-center gap-1 text-sm">
-            <a href="/" class="group block"><span class="px-3 py-1.5 rounded-md transition-colors">Home</span></a>
-            <a href="/ui/index.html" class="group block"><span class="px-3 py-1.5 rounded-md transition-colors">UI</span></a>
-            <a href="/ui/gallery/index.html" class="group block"><span class="px-3 py-1.5 rounded-md transition-colors">Gallery</span></a>
-            <a href="/ui/blocks/index.html" class="group block"><span class="px-3 py-1.5 rounded-md transition-colors">Blocks</span></a>
-            <a href="/ui/charts/index.html" class="group block"><span class="px-3 py-1.5 rounded-md transition-colors">Charts</span></a>
-            <a href="/ui/a2ui/index.html" class="group block"><span class="px-3 py-1.5 rounded-md transition-colors">A2UI</span></a>
-          </div>
-          <div class="flex flex-row ml-auto items-center gap-1">
-            <Button variant="ghost" class="hidden md:flex h-9 w-9" @click="openSearch">
-              <Search class="h-4 w-4" />            </Button>
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
+      <UnifiedNavbar :show-search="true" @search-click="openSearch" active-section="blocks" />
       <Drawer v-model:open="searchOpen" @Close="closeSearch" />
       <div class="flex flex-row flex-1 overflow-hidden">
         <aside class="hidden md:flex w-64 lg:w-72 border-r bg-background flex-col shrink-0">
@@ -89,6 +68,10 @@ function openSidebar(): void {
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Table class="h-4 w-4 shrink-0" /><span>Products</span></div>            </router-link>
             <router-link to="/blocks/sidebar-demo">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><PanelLeft class="h-4 w-4 shrink-0" /><span>Sidebar</span></div>            </router-link>
+            <div class="mt-4 pt-4 border-t flex items-center justify-between px-2">
+              <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Color Theme</span>
+              <ThemeToggle />
+            </div>
           </ScrollArea>
         </aside>
         <Drawer v-model:open="sidebarOpen" @Close="closeSidebar" />

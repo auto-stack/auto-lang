@@ -2,11 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="/ui/blocks/icon.png">
+    <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auto UI Blocks</title>
-    <script type="module" crossorigin src="/ui/blocks/assets/index.js"></script>
-    <link rel="stylesheet" crossorigin href="/ui/blocks/assets/index.css">
+    <title>Auto Language - Blocks</title>
+    <script>
+      (function() {
+        var s = localStorage.getItem('vitepress-theme-appearance');
+        if (s === 'dark' || (!s && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index.css">
   </head>
   <body>
     <div id="app"></div>

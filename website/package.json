@@ -7,13 +7,17 @@
     "dev": "node scripts/prepare-content.js && vitepress dev",
     "build": "node scripts/prepare-content.js && vitepress build",
     "preview": "vitepress preview",
-    "prepare-content": "node scripts/prepare-content.js"
+    "prepare-content": "node scripts/prepare-content.js",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
   },
   "devDependencies": {
     "@codemirror/commands": "^6.8.0",
     "@codemirror/state": "^6.5.2",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.36.4",
+    "@playwright/test": "^1.59.1",
     "autoprefixer": "^10.4.21",
     "clsx": "^2.1.1",
     "codemirror": "^6.0.1",

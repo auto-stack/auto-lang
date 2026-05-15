@@ -5,7 +5,7 @@ export const shared = defineConfig({
   description: 'Auto — A modern systems and AI language',
   lastUpdated: true,
   cleanUrls: true,
-  metaChunk: true,
+  metaChunk: false,
   ignoreDeadLinks: true,
   appearance: 'dark',
 
@@ -33,6 +33,6 @@ export const shared = defineConfig({
     ['meta', { property: 'og:locale', content: 'en' }],
     ['meta', { property: 'og:title', content: 'Auto Language' }],
     ['meta', { property: 'og:site_name', content: 'Auto Language' }],
-    ['meta', { property: 'og:image', content: '/og-image.png' }],
+    ['meta', { property: 'og:image', content: '/auto.png' }],
   ],
 })

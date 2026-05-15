@@ -1,45 +1,20 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="daylight" data-palette="mono">
+<html lang="en">
   <head>
     <meta charset="UTF-8">
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>charts-gallery</title>
+    <title>Auto Language - Charts</title>
+    <script>
+      (function() {
+        var s = localStorage.getItem('vitepress-theme-appearance');
+        if (s === 'dark' || (!s && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
     <script type="module" crossorigin src="./assets/index.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index.css">
-    <style>
-      /* Mono palette overrides for charts */
-      [data-palette="mono"][data-theme="daylight"] {
-        --vis-primary-color: 239 75% 47%;
-        --vis-secondary-color: 239 84% 63%;
-        --vis-tertiary-color: 239 90% 75%;
-        --vis-quaternary-color: 239 95% 86%;
-      }
-      [data-palette="mono"][data-theme="midnight"] {
-        --vis-primary-color: 239 70% 42%;
-        --vis-secondary-color: 239 84% 55%;
-        --vis-tertiary-color: 239 84% 70%;
-        --vis-quaternary-color: 239 90% 82%;
-      }
-      [data-palette="mono"][data-theme="forest"] {
-        --vis-primary-color: 160 85% 24%;
-        --vis-secondary-color: 160 84% 39%;
-        --vis-tertiary-color: 160 70% 53%;
-        --vis-quaternary-color: 160 80% 70%;
-      }
-      [data-palette="mono"][data-theme="sunset"] {
-        --vis-primary-color: 20 85% 41%;
-        --vis-secondary-color: 24 95% 53%;
-        --vis-tertiary-color: 28 95% 65%;
-        --vis-quaternary-color: 30 95% 78%;
-      }
-      [data-palette="mono"][data-theme="ocean"] {
-        --vis-primary-color: 189 85% 32%;
-        --vis-secondary-color: 189 94% 43%;
-        --vis-tertiary-color: 189 90% 57%;
-        --vis-quaternary-color: 189 85% 72%;
-      }
-    </style>
   </head>
   <body>
     <div id="app"></div>

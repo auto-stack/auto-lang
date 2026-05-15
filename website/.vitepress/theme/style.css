@@ -63,6 +63,15 @@
   }
 }
 
+/* Hide default VitePress navbar — replaced by UnifiedNavbar in layout-top */
+.VPNav {
+  display: none !important;
+}
+
+.VPContent {
+  padding-top: 0 !important;
+}
+
 /* VitePress overrides for modern look */
 .VPHero {
   padding-top: 0 !important;
@@ -78,20 +87,6 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-}
-
-.VPNavBar {
-  backdrop-filter: blur(12px);
-  background-color: rgba(255, 255, 255, 0.8) !important;
-}
-
-.dark .VPNavBar {
-  background-color: rgba(15, 23, 42, 0.8) !important;
-}
-
-.VPNavBarTitle .logo {
-  height: 32px;
-  width: auto;
 }
 
 .VPFeature {

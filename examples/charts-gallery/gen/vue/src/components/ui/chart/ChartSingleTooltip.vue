@@ -12,7 +12,6 @@ const props = defineProps<{
   items?: BulletLegendItemInterface[]
   valueFormatter?: (tick: number, i?: number, ticks?: number[]) => string
   customTooltip?: Component
-  total?: number
 }>()
 
 // Use weakmap to store reference to each datapoint for Tooltip
@@ -25,19 +24,9 @@ function template(d: any, i: number, elements: (HTMLElement | SVGElement)[]) {
     }
     else {
       const componentDiv = document.createElement("div")
-      const entries = Object.entries(omit(d, [props.index]))
-      const dataEntries = entries.filter(([k]) => k !== 'description')
-      const omittedData = entries.map(([key, value]) => {
-        if (key === 'description') {
-          return { name: '', color: '', value: String(value) }
-        }
+      const omittedData = Object.entries(omit(d, [props.index])).map(([key, value]) => {
         const legendReference = props.items?.find(i => i.name === key)
-          ?? (dataEntries.length === 1 ? props.items?.find(i => i.name === d[props.index]) : undefined)
-        let formatted = valueFormatter(value)
-        if (props.total && typeof value === 'number') {
-          formatted += ` (${Math.round((value / props.total) * 100)}%)`
-        }
-        return { ...legendReference, value: formatted }
+        return { ...legendReference, value: valueFormatter(value) }
       })
       const TooltipComponent = props.customTooltip ?? ChartTooltip
       createApp(TooltipComponent, { title: d[props.index], data: omittedData }).mount(componentDiv)
