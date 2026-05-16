@@ -5,11 +5,25 @@
 
 use std::cell::RefCell;
 use std::ops::{Index, IndexMut};
+use serde::{Serialize, Deserialize, Deserializer, Serializer};
 
 /// AutoLang's List<T> - dynamic array with interior mutability
 #[derive(Debug, Clone)]
 pub struct List<T> {
     inner: RefCell<Vec<T>>,
+}
+
+impl<T: Serialize> Serialize for List<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.inner.borrow().serialize(serializer)
+    }
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for List<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let vec = Vec::<T>::deserialize(deserializer)?;
+        Ok(List { inner: RefCell::new(vec) })
+    }
 }
 
 impl<T> List<T> {
