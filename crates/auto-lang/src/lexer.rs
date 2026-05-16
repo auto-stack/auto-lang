@@ -442,7 +442,21 @@ impl<'a> Lexer<'a> {
                 self.buffer.push_back(tk);
                 break;
             }
-            if c == self.fstr_note {
+            if c == '\\' {
+                // Escape sequence: skip backslash, push the next char literally
+                self.chars.next(); // consume \
+                if let Some(&escaped) = self.chars.peek() {
+                    self.chars.next(); // consume escaped char
+                    if escaped == 'n' { text.push('\n'); }
+                    else if escaped == 't' { text.push('\t'); }
+                    else if escaped == 'r' { text.push('\r'); }
+                    else if escaped == '\\' { text.push('\\'); }
+                    else if escaped == '"' { text.push('"'); }
+                    else if escaped == '`' { text.push('`'); }
+                    else if escaped == '$' { text.push('$'); }
+                    else { text.push('\\'); text.push(escaped); }
+                }
+            } else if c == self.fstr_note {
                 // text until $ is a string part
                 let tk = Token::fstr_part(self.pos(text.len()), text.clone().into());
                 self.buffer.push_back(tk);

@@ -254,6 +254,7 @@ impl<'db> DepScanner<'db> {
             | Expr::ErrorPropagate(_) => {}
             | Expr::Cast { expr, .. } => { self.walk_expr(expr, deps); }
             | Expr::To { expr, .. } => { self.walk_expr(expr, deps); }
+            | Expr::TupleDestruct { expr, .. } => { self.walk_expr(expr, deps); }
             | Expr::NavCall { .. } => {}  // Plan 105: Navigation has no dependencies
             // Plan 120: Option and Result constructors - walk inner expressions
             | Expr::Some(e) => { self.walk_expr(e, deps); }

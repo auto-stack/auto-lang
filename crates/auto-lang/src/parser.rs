@@ -1738,15 +1738,6 @@ impl<'a> Parser<'a> {
                 | TokenKind::ModEq => self.op(),
                 TokenKind::DotView
                 | TokenKind::DotMut
-                | TokenKind::DotTake => self.op(),
-                TokenKind::As => {
-                    // Infix `as` type cast: expr as Type
-                    self.next(); // consume 'as'
-                    let target_type = self.parse_type()?;
-                    lhs = Expr::Cast { expr: Box::new(lhs), target_type };
-                    continue;
-                }
-                | TokenKind::DotMut
                 | TokenKind::DotMove
                 | TokenKind::DotTake
                 | TokenKind::DotQuestion => {
@@ -1754,6 +1745,13 @@ impl<'a> Parser<'a> {
                     // Error propagation: ?. (Phase 1b.3)
                     // These are postfix operators with same precedence as dot
                     self.op()
+                }
+                TokenKind::As => {
+                    // Infix `as` type cast: expr as Type
+                    self.next(); // consume 'as'
+                    let target_type = self.parse_type()?;
+                    lhs = Expr::Cast { expr: Box::new(lhs), target_type };
+                    continue;
                 }
                 TokenKind::Dot => self.op(),
                 TokenKind::Colon => self.op(),
@@ -6030,6 +6028,31 @@ impl<'a> Parser<'a> {
             store_kind = StoreKind::Shared;
         }
 
+        // Check for tuple destructuring: let (a, b) = expr
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // skip (
+            let mut names = Vec::new();
+            if !self.is_kind(TokenKind::RParen) {
+                names.push(self.parse_name()?);
+                while self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    self.skip_empty_lines();
+                    names.push(self.parse_name()?);
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+            self.expect(TokenKind::Asn)?;
+            let expr = self.rhs_expr()?;
+            // Emit as a single Store with the tuple expr; downstream handles the destructuring
+            // Use the first name as primary, store the full tuple and names
+            // For now, emit a special Expr::TupleDestruct that the transpiler can handle
+            let name = names.first().cloned().unwrap_or_else(|| Name::from("_"));
+            return Ok(Stmt::Expr(Expr::TupleDestruct {
+                names,
+                expr: Box::new(expr),
+            }));
+        }
+
         // identifier name
         let mut name = self.parse_name()?;
 
@@ -6930,6 +6953,7 @@ impl<'a> Parser<'a> {
     // parse function parameters
     pub fn fn_params(&mut self) -> AutoResult<Vec<Param>> {
         let mut params = Vec::new();
+        self.skip_empty_lines();
 
         // Plan 088 Phase 3, Plan 122: Support parameter mode keywords
         // Trinity of Resources: view, mut, move (copy deprecated, take deprecated)
@@ -7031,6 +7055,7 @@ impl<'a> Parser<'a> {
                 mode,
             });
             self.sep_params()?;
+            self.skip_empty_lines();
         }
 
         // Handle variadic arguments (...) for C functions

@@ -356,6 +356,7 @@ pub enum Expr {
     ErrorPropagate(Box<Expr>),            // expression.?
     Cast { expr: Box<Expr>, target_type: Type },  // expr.as(Type) — type conversion (zero-cost reinterpret)
     To { expr: Box<Expr>, target_type: Type },    // expr.to(Type) — explicit type conversion (may allocate)
+    TupleDestruct { names: Vec<Name>, expr: Box<Expr> },  // let (a, b) = expr
     // Plan 120: Option and Result constructors
     Some(Box<Expr>),                      // Some(value)
     None,                                 // None
@@ -477,6 +478,7 @@ impl fmt::Display for Expr {
             Expr::ErrorPropagate(e) => write!(f, "(?. {})", e),
             Expr::Cast { expr, target_type } => write!(f, "(as {} {})", expr, target_type),
             Expr::To { expr, target_type } => write!(f, "(to {} {})", expr, target_type),
+            Expr::TupleDestruct { names, expr } => write!(f, "(destr ({}) {})", names.iter().map(|n| n.as_str()).collect::<Vec<_>>().join(" "), expr),
             // Plan 120: Option and Result constructors
             Expr::Some(e) => write!(f, "(Some {})", e),
             Expr::None => write!(f, "None"),
@@ -988,6 +990,14 @@ impl ToNode for Expr {
                 let mut node = AutoNode::new("to");
                 node.add_kid(expr.to_node());
                 node.add_arg(auto_val::Arg::Pos(Value::str(format!("{:?}", target_type))));
+                node
+            }
+            Expr::TupleDestruct { names, expr } => {
+                let mut node = AutoNode::new("tuple_destruct");
+                for n in names {
+                    node.add_arg(auto_val::Arg::Pos(Value::str(n.as_str())));
+                }
+                node.add_kid(expr.to_node());
                 node
             }
             Expr::Dot(object, field) => {
