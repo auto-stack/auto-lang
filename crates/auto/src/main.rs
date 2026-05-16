@@ -665,7 +665,55 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{} test file(s), {} file(s) had failures", test_files, failed_files);
             }
 
-            if all_results.has_failures() {
+            // Plan 262: File-based tests (test/vm/)
+            let mut file_test_failures = false;
+            // Look for VM tests in known locations (crates/auto-lang/test/vm/ is primary)
+            let vm_test_dirs = [
+                std::path::PathBuf::from("crates/auto-lang/test/vm"),
+                std::path::PathBuf::from("test/vm"),
+            ];
+            let mut all_file_cases = Vec::new();
+            for vm_dir in &vm_test_dirs {
+                if vm_dir.is_dir() {
+                    all_file_cases.extend(auto_lang::test_runner::discover_vm_tests(vm_dir));
+                }
+            }
+
+            // If --dir points into a VM test tree, filter to only matching cases
+            let target_str = target.replace('\\', "/");
+            for vm_prefix in &["crates/auto-lang/test/vm/", "test/vm/"] {
+                if target_str.starts_with(vm_prefix) {
+                    let subpath = &target_str[vm_prefix.len()..];
+                    all_file_cases.retain(|c| c.name.starts_with(subpath) || subpath.is_empty());
+                    break;
+                }
+            }
+
+            if !all_file_cases.is_empty() {
+                // Apply filter to file-based tests
+                if let Some(f) = &filter {
+                    all_file_cases.retain(|c| c.name.contains(f.as_str()));
+                }
+
+                if !all_file_cases.is_empty() {
+                    println!("\nRunning file-based tests ({} cases):", all_file_cases.len());
+                    let file_start = std::time::Instant::now();
+                    let mut file_reports = Vec::new();
+
+                    for case in &all_file_cases {
+                        let report = auto_lang::run_vm_file_test(case);
+                        if matches!(report.outcome, auto_lang::test_runner::TestOutcome::Failed(_)) {
+                            file_test_failures = true;
+                        }
+                        file_reports.push(report);
+                    }
+
+                    let file_elapsed = file_start.elapsed().as_millis();
+                    print!("{}", auto_lang::test_runner::format_file_test_report(&file_reports, file_elapsed));
+                }
+            }
+
+            if all_results.has_failures() || file_test_failures {
                 std::process::exit(1);
             }
         }

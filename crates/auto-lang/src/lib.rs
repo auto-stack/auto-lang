@@ -757,6 +757,187 @@ pub fn test_file(path: &str) -> AutoResult<test_runner::TestResult> {
     rt.block_on(test_code(&code))
 }
 
+/// Auto library files to prepend for AAVM bootstrap tests.
+const AUTO_LIB_FILES: &[&str] = &[
+    "auto/lib/pos.at",
+    "auto/lib/token.at",
+    "auto/lib/error.at",
+    "auto/lib/lexer.at",
+    "auto/lib/ast.at",
+    "auto/lib/parser.at",
+    "auto/lib/typeinfer.at",
+    "auto/lib/codegen.at",
+    "auto/lib/vm.at",
+    "auto/lib/a2r.at",
+    "auto/lib/eval.at",
+];
+
+/// Read and concatenate all auto/lib/*.at files for bootstrap tests.
+fn read_auto_lib(project_root: &std::path::Path) -> AutoResult<String> {
+    let mut lib_code = String::new();
+    for file in AUTO_LIB_FILES {
+        let path = project_root.join(file);
+        if path.exists() {
+            lib_code.push_str(&std::fs::read_to_string(&path)?);
+            lib_code.push('\n');
+        }
+    }
+    Ok(lib_code)
+}
+
+/// Find the project root by walking up from a path, looking for `auto/` dir or `Cargo.toml`.
+fn find_project_root(from: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut dir = from;
+    loop {
+        if dir.join("auto").is_dir() || dir.join("Cargo.toml").is_file() {
+            return Some(dir.to_path_buf());
+        }
+        dir = dir.parent()?;
+    }
+}
+
+/// Plan 262: Run a single VM file-based test case.
+/// Returns a `FileTestReport` with pass/fail outcome.
+pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTestReport {
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let case_name = case.name.clone();
+
+    // Read source file
+    let src = match std::fs::read_to_string(&case.source_file) {
+        Ok(s) => s,
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("failed to read source: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    // Prepend auto/lib for bootstrap tests
+    let src = if case.is_bootstrap {
+        let project_root = match find_project_root(&case.dir) {
+            Some(r) => r,
+            None => {
+                return test_runner::FileTestReport {
+                    name: case_name,
+                    outcome: test_runner::TestOutcome::Failed("cannot find project root for bootstrap test".into()),
+                    duration_ms: start.elapsed().as_millis(),
+                    stdout: String::new(),
+                };
+            }
+        };
+        match read_auto_lib(&project_root) {
+            Ok(lib) => format!("{}\n{}", lib, src),
+            Err(e) => {
+                return test_runner::FileTestReport {
+                    name: case_name,
+                    outcome: test_runner::TestOutcome::Failed(format!("failed to read auto lib: {}", e)),
+                    duration_ms: start.elapsed().as_millis(),
+                    stdout: String::new(),
+                };
+            }
+        }
+    } else {
+        src
+    };
+
+    // Error expectation test
+    if case.expected_error.is_some() {
+        let result = run(&src);
+        let duration_ms = start.elapsed().as_millis();
+        return match result {
+            Err(_) => test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Passed,
+                duration_ms,
+                stdout: String::new(),
+            },
+            Ok(v) => test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("expected error but got: {:?}", v)),
+                duration_ms,
+                stdout: String::new(),
+            },
+        };
+    }
+
+    // Normal execution with capture
+    let (result, stdout) = match run_with_capture(&src) {
+        Ok(r) => r,
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("execution error: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    let duration_ms = start.elapsed().as_millis();
+
+    // Check stdout against .expected.out
+    if let Some(ref expected_path) = case.expected_out {
+        let expected = match std::fs::read_to_string(expected_path) {
+            Ok(e) => e,
+            Err(e) => {
+                return test_runner::FileTestReport {
+                    name: case_name,
+                    outcome: test_runner::TestOutcome::Failed(format!("failed to read expected.out: {}", e)),
+                    duration_ms,
+                    stdout: stdout.clone(),
+                };
+            }
+        };
+        if stdout != expected {
+            let wrong_path = expected_path.with_extension("wrong.out");
+            let _ = std::fs::write(&wrong_path, &stdout);
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed("stdout mismatch".into()),
+                duration_ms,
+                stdout,
+            };
+        }
+    }
+
+    // Check return value against .expected.result
+    if let Some(ref expected_path) = case.expected_result {
+        let expected = match std::fs::read_to_string(expected_path) {
+            Ok(e) => e,
+            Err(e) => {
+                return test_runner::FileTestReport {
+                    name: case_name,
+                    outcome: test_runner::TestOutcome::Failed(format!("failed to read expected.result: {}", e)),
+                    duration_ms,
+                    stdout: stdout.clone(),
+                };
+            }
+        };
+        if result != expected {
+            let wrong_path = expected_path.with_extension("wrong.result");
+            let _ = std::fs::write(&wrong_path, &result);
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed("result mismatch".into()),
+                duration_ms,
+                stdout,
+            };
+        }
+    }
+
+    test_runner::FileTestReport {
+        name: case_name,
+        outcome: test_runner::TestOutcome::Passed,
+        duration_ms,
+        stdout,
+    }
+}
+
 /// Extract and format the result value from a VM task after execution.
 /// Plan 225: Shared between execute_autovm and debug sessions.
 pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64, result_type: Option<crate::vm::codegen::ObjectType>) -> AutoResult<String> {
