@@ -1129,6 +1129,30 @@ impl RustTrans {
                 write!(out, "]").map_err(Into::into)
             }
 
+            Expr::Tuple(elems) => {
+                write!(out, "(")?;
+                for (i, elem) in elems.iter().enumerate() {
+                    self.expr(elem, out)?;
+                    if i < elems.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, ")").map_err(Into::into)
+            }
+
+            Expr::TupleDestruct { names, expr } => {
+                write!(out, "let (")?;
+                for (i, name) in names.iter().enumerate() {
+                    write!(out, "{}", name)?;
+                    if i < names.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, ") = ")?;
+                self.expr(expr, out)?;
+                Ok(())
+            }
+
             Expr::Index(arr, idx) => {
                 self.expr(arr, out)?;
                 write!(out, "[")?;
