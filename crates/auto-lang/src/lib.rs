@@ -107,6 +107,8 @@ pub mod util;
 pub mod vm;
 // Plan 095: Compile-Time Execution Engine
 pub mod comptime;
+// Plan 260: Test framework
+pub mod test_runner;
 
 // Plan 088: Parameter passing mode tests
 #[cfg(test)]
@@ -643,6 +645,116 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     let result = extract_autovm_result(&vm, task_id, Some(result_type)).await?;
 
     Ok((result, get_stdout()))
+}
+
+/// Plan 260: Compile and run all `#[test]` functions in the given code.
+/// Returns a TestResult with pass/fail details for each discovered test.
+pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
+    use crate::vm::codegen::Codegen;
+    use crate::vm::engine::AutoVM;
+    use crate::vm::opcode::OpCode;
+    use crate::vm::loader::Linker;
+    use crate::vm::virt_memory::VirtualFlash;
+    use std::time::Instant;
+
+    // Compilation pipeline (same as execute_autovm)
+    let mut session = compile::CompileSession::new();
+    session.collect_rust_imports(code)?;
+    session.collect_py_imports(code)?;
+    session.resolve_deps(code)?;
+    session.resolve_uses(code)?;
+
+    let rust_ffi_native_interface = init_rust_ffi(&session);
+    let py_ffi_native_interface = init_py_ffi(&session);
+
+    let mut parser = Parser::new_with_type_store(code, session.type_store());
+    let mut ast = parser.parse()?;
+
+    let mut ctee = crate::comptime::CTEE::new();
+    ctee.transform(&mut ast)?;
+
+    // Collect tests from AST before compilation
+    let registry = test_runner::collect_tests(&ast.stmts, "");
+
+    if registry.tests.is_empty() {
+        return Ok(test_runner::TestResult::default());
+    }
+
+    let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
+        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
+    });
+
+    for stmt in &type_decls {
+        codegen.compile_stmt(stmt)?;
+    }
+
+    if !other_stmts.is_empty() {
+        let n_locals = 16;
+        codegen.emit_op(OpCode::FN_PROLOG);
+        codegen.emit_byte(0);
+        codegen.emit_byte(n_locals as u8);
+        codegen.emit_op(OpCode::RESERVE_STACK);
+        codegen.emit_byte(n_locals as u8);
+        for stmt in other_stmts.iter() {
+            codegen.compile_stmt(stmt)?;
+        }
+    }
+    codegen.code.push(OpCode::HALT as u8);
+
+    let strings = codegen.strings.clone();
+    let mut linker = Linker::new();
+    let dep_modules = session.take_compiled_modules();
+    for module in dep_modules {
+        linker.add_module(module);
+    }
+    let object_keys = codegen.object_keys.clone();
+    let object_types = codegen.object_types.clone();
+    let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    let main_module = codegen.finish("<main>".to_string());
+    linker.add_module(main_module);
+
+    let (linked_code, global_symbols) = linker.link().map_err(|e| {
+        crate::error::AutoError::Msg(e.message.clone())
+    })?;
+
+    // Create VM with capture
+    let flash = VirtualFlash::from_vec_with_metadata(
+        linked_code,
+        global_symbols.clone(),
+        object_keys,
+        object_types,
+    );
+    let (mut vm, _output_buffer) = AutoVM::new_with_capture(flash, 8192);
+    vm.load_strings(strings);
+    vm.load_generic_registry(generic_registry);
+
+    if let Some(rust_ni) = rust_ffi_native_interface {
+        vm.merge_native_interface(&rust_ni);
+    }
+    if let Some(py_ni) = py_ffi_native_interface {
+        vm.merge_native_interface(&py_ni);
+    }
+
+    // Run each test
+    let mut result = test_runner::TestResult::default();
+    let _start = Instant::now();
+
+    for test in &registry.tests {
+        let report = test_runner::run_test_in_vm(&vm, test, &global_symbols).await;
+        result.reports.push(report);
+    }
+
+    Ok(result)
+}
+
+/// Plan 260: Run all `#[test]` functions in an Auto source file.
+/// Synchronous wrapper around test_code.
+pub fn test_file(path: &str) -> AutoResult<test_runner::TestResult> {
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| crate::error::AutoError::Msg(format!("Failed to read file: {}", e)))?;
+    let rt = get_global_runtime();
+    rt.block_on(test_code(&code))
 }
 
 /// Extract and format the result value from a VM task after execution.

@@ -257,6 +257,15 @@ enum Commands {
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    #[command(about = "Run all #[test] functions in the project", alias = "t")]
+    Test {
+        #[arg(short, long, help = "Source file or directory to test")]
+        dir: Option<String>,
+        #[arg(short, long, help = "Run only tests matching this filter")]
+        filter: Option<String>,
+        #[arg(short = 'v', long, help = "Show test output (print statements)")]
+        verbose: bool,
+    },
     #[command(about = "Remove the .auto/build directory and artifacts")]
     Clean {
         #[arg(short, long)]
@@ -561,6 +570,64 @@ fn real_main(cli: Cli) -> Result<()> {
             })?;
             if !ai_mode {
                 println!("------------- end --------------");
+            }
+        }
+        Some(Commands::Test { dir, filter, verbose }) => {
+            let target = dir.unwrap_or_else(|| ".".to_string());
+
+            // Determine source file(s) to test
+            let path = std::path::Path::new(&target);
+            let files: Vec<String> = if path.is_file() {
+                vec![target.clone()]
+            } else {
+                // Look for main entry point
+                let mut found = Vec::new();
+                for name in &["src/main.at", "main.at", "index.at", "app.at"] {
+                    let p = path.join(name);
+                    if p.exists() {
+                        found.push(p.to_string_lossy().to_string());
+                        break;
+                    }
+                }
+                if found.is_empty() {
+                    eprintln!("error: no Auto source file found in '{}'. Use `auto test --dir <file.at>` to specify.", target);
+                    std::process::exit(1);
+                }
+                found
+            };
+
+            let start = std::time::Instant::now();
+            let mut all_results = auto_lang::test_runner::TestResult::default();
+
+            for file in &files {
+                match auto_lang::test_file(file) {
+                    Ok(result) => {
+                        // Apply filter
+                        for report in &result.reports {
+                            if let Some(f) = &filter {
+                                if !report.qualified_name.contains(f.as_str()) {
+                                    continue;
+                                }
+                            }
+                            if verbose && !report.stdout.is_empty() {
+                                println!("--- {} stdout ---", report.qualified_name);
+                                println!("{}", report.stdout);
+                            }
+                            all_results.reports.push(report.clone());
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("error: failed to compile {}: {}", file, e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+
+            let elapsed = start.elapsed().as_millis();
+            print!("{}", auto_lang::test_runner::format_test_report(&all_results, elapsed));
+
+            if all_results.has_failures() {
+                std::process::exit(1);
             }
         }
         Some(Commands::Clean { dir }) => {

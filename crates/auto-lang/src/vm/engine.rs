@@ -1067,9 +1067,12 @@ impl AutoVM {
                             format!("{:?}", e)
                         };
                         task.last_error = Some(error_msg.clone());
-                        eprintln!("Task {} Error: {}", task.id, error_msg);
+                        // Plan 260: Suppress error output when running in test mode (output_buffer set)
+                        if self.output_buffer.is_none() {
+                            eprintln!("Task {} Error: {}", task.id, error_msg);
+                        }
                         // Plan 199: Print call stack trace on error
-                        if !task.call_stack.is_empty() {
+                        if self.output_buffer.is_none() && !task.call_stack.is_empty() {
                             eprintln!("Stack trace:");
                             for (i, frame) in task.call_stack.iter().enumerate().rev() {
                                 let name = frame.fn_name.as_deref().unwrap_or("<anonymous>");

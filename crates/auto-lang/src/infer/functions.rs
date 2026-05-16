@@ -153,6 +153,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -195,6 +196,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -236,6 +238,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -265,6 +268,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -315,6 +319,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -350,6 +355,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -390,6 +396,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -426,6 +433,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -454,6 +462,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -488,6 +497,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -527,6 +537,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -576,6 +587,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -616,6 +628,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -644,6 +657,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -679,6 +693,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 
@@ -713,6 +728,7 @@ mod tests {
             doc: None,
             span: None,
             is_mut: false,
+            is_test: false,
             is_pub: false,
         };
 

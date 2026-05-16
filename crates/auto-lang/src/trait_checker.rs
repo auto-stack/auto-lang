@@ -297,6 +297,7 @@ mod tests {
             type_params: Vec::new(),  // Plan 061: No generic parameters
             span: None,  // Plan 061: No source location
             is_mut: false,
+            is_test: false,
             doc: None,
             is_pub: false,
         }
