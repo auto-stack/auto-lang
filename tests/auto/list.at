@@ -1,0 +1,71 @@
+/// Auto tests for List operations (active tests only)
+/// Migrated from crates/auto-lang/src/tests/list_tests.rs
+
+use auto.test: assert_eq, assert_true
+
+#[test]
+fn test_list_new_and_len() {
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+    assert_eq(list.len(), 3)
+}
+
+#[test]
+fn test_list_push_and_pop() {
+    let list = List.new()
+    list.push(10)
+    list.push(20)
+    let first = list.pop()
+    let second = list.pop()
+    assert_eq(first, 20)
+    assert_eq(second, 10)
+    assert_eq(list.len(), 0)
+}
+
+#[test]
+fn test_list_is_empty() {
+    let list = List.new()
+    assert_eq(list.is_empty(), 1)
+    list.push(1)
+    assert_eq(list.is_empty(), 0)
+    list.pop()
+    assert_eq(list.is_empty(), 1)
+}
+
+#[test]
+fn test_list_get_and_set() {
+    let list = List.new()
+    list.push(10)
+    list.push(20)
+    list.push(30)
+    assert_eq(list.get(0), 10)
+    assert_eq(list.get(1), 20)
+    list.set(1, 99)
+    assert_eq(list.get(1), 99)
+}
+
+#[test]
+fn test_list_clear() {
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+    assert_eq(list.len(), 3)
+    list.clear()
+    assert_eq(list.len(), 0)
+    assert_eq(list.is_empty(), 1)
+}
+
+#[test]
+fn test_list_insert_and_remove() {
+    let list = List.new()
+    list.push(1)
+    list.push(3)
+    list.insert(1, 2)
+    assert_eq(list.get(1), 2)
+    let removed = list.remove(1)
+    assert_eq(removed, 2)
+    assert_eq(list.len(), 2)
+}

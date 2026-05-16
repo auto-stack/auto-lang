@@ -1,0 +1,71 @@
+/// Auto tests for field access on type instances
+/// Migrated from crates/auto-lang/src/tests/field_access_tests.rs
+
+use auto.test: assert_eq
+
+type Point {
+    x int
+    y int
+}
+
+type Inner {
+    value int
+}
+
+type Outer {
+    inner Inner
+}
+
+type Data {
+    name str
+    count int
+    active bool
+}
+
+#[test]
+fn test_field_access_basic() {
+    let p = Point(10, 20)
+    assert_eq(p.x, 10)
+}
+
+#[test]
+fn test_field_access_both_fields() {
+    let p = Point(1, 2)
+    assert_eq(p.x, 1)
+    assert_eq(p.y, 2)
+}
+
+#[test]
+fn test_multiple_field_accesses() {
+    let d = Point(1, 2)
+    let a = d.x
+    let b = d.y
+    assert_eq(a, 1)
+    assert_eq(b, 2)
+}
+
+#[test]
+fn test_field_assignment_and_access() {
+    let p = Point(1, 2)
+    p.x = 10
+    p.y = 20
+    assert_eq(p.x, 10)
+}
+
+#[test]
+fn test_nested_field_access() {
+    let outer = Outer(Inner(42))
+    assert_eq(outer.inner.value, 42)
+}
+
+#[test]
+fn test_field_access_str() {
+    let d = Data("test", 42, true)
+    assert_eq(d.name, "test")
+}
+
+#[test]
+fn test_field_access_int() {
+    let d = Data("test", 42, true)
+    assert_eq(d.count, 42)
+}

@@ -1,0 +1,112 @@
+/// Auto tests for .type inference
+/// Migrated from crates/auto-lang/src/tests/infer_tests.rs
+
+use auto.test: assert_eq
+
+// ===== Literal .type Tests =====
+
+#[test]
+fn test_infer_int() {
+    assert_eq(42.type, "int")
+}
+
+#[test]
+fn test_type_literal_float() {
+    assert_eq(1.5.type, "float")
+}
+
+#[test]
+fn test_type_literal_str() {
+    assert_eq("hello".type, "str")
+}
+
+#[test]
+fn test_type_literal_bool() {
+    assert_eq(true.type, "bool")
+}
+
+// ===== Variable .type Tests =====
+
+#[test]
+fn test_type_variable_int() {
+    let x = 42
+    assert_eq(x.type, "int")
+}
+
+#[test]
+fn test_type_variable_float() {
+    let f = 1.5
+    assert_eq(f.type, "float")
+}
+
+#[test]
+fn test_type_variable_str() {
+    let name = "hello"
+    assert_eq(name.type, "str")
+}
+
+#[test]
+fn test_type_variable_bool() {
+    let flag = true
+    assert_eq(flag.type, "bool")
+}
+
+// ===== Function .type Tests =====
+
+fn get_value() int {
+    42
+}
+
+fn get_name() str {
+    "hello"
+}
+
+fn identity(x int) int {
+    x
+}
+
+#[test]
+fn test_type_function_return_int() {
+    let x = get_value()
+    assert_eq(x.type, "int")
+}
+
+#[test]
+fn test_type_function_return_str() {
+    let name = get_name()
+    assert_eq(name.type, "str")
+}
+
+#[test]
+fn test_type_function_parameter() {
+    let result = identity(42)
+    assert_eq(result.type, "int")
+}
+
+// ===== Array .type Tests =====
+
+#[test]
+fn test_type_array_element() {
+    let arr = [1, 2, 3]
+    assert_eq(arr[0].type, "int")
+}
+
+#[test]
+fn test_type_array_element_str() {
+    let arr = ["a", "b", "c"]
+    assert_eq(arr[1].type, "str")
+}
+
+// ===== Binary Expression .type Tests =====
+
+#[test]
+fn test_type_binary_add() {
+    let sum = 1 + 2
+    assert_eq(sum.type, "int")
+}
+
+#[test]
+fn test_type_binary_multiply() {
+    let product = 3 * 4
+    assert_eq(product.type, "int")
+}

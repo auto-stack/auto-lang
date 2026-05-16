@@ -1,0 +1,77 @@
+/// Auto tests for runtime array allocation
+/// Migrated from crates/auto-lang/src/tests/mem_tests.rs
+
+use auto.test: assert_eq
+
+fn get_size() int {
+    10
+}
+
+fn get_index() int {
+    0
+}
+
+#[test]
+fn test_runtime_array_with_function_size() {
+    var arr [get_size()]int
+    arr[0] = 42
+    assert_eq(arr[0], 42)
+}
+
+#[test]
+fn test_runtime_array_multiple_elements() {
+    var arr [5]int
+    arr[0] = 10
+    arr[1] = 20
+    arr[2] = 30
+    assert_eq(arr[0] + arr[1] + arr[2], 60)
+}
+
+#[test]
+fn test_runtime_array_with_variable_size() {
+    let size = 3
+    var arr [size]int
+    arr[0] = 100
+    assert_eq(arr[0], 100)
+}
+
+#[test]
+fn test_runtime_array_sum() {
+    var arr [3]int
+    arr[0] = 1
+    arr[1] = 2
+    arr[2] = 3
+    assert_eq(arr[0] + arr[1] + arr[2], 6)
+}
+
+#[test]
+fn test_runtime_array_mixed_types() {
+    var arr [2]int
+    var brr [2]int
+    arr[0] = 10
+    brr[0] = 20
+    assert_eq(arr[0] + brr[0], 30)
+}
+
+#[test]
+fn test_runtime_array_large_size() {
+    var arr [100]int
+    arr[0] = 999
+    arr[99] = 111
+    assert_eq(arr[0] + arr[99], 1110)
+}
+
+#[test]
+fn test_runtime_array_update_element() {
+    var arr [3]int
+    arr[0] = 10
+    arr[0] = 20
+    assert_eq(arr[0], 20)
+}
+
+#[test]
+fn test_runtime_array_expression_index() {
+    var arr [3]int
+    arr[0] = 42
+    assert_eq(arr[get_index()], 42)
+}

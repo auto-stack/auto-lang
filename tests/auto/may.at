@@ -1,0 +1,90 @@
+/// Auto tests for ?T (May<T>) syntax sugar
+/// Migrated from crates/auto-lang/src/tests/may_tests.rs
+
+use auto.test: assert_eq
+
+fn get_value() ?int {
+    42
+}
+
+fn get_message() ?str {
+    "hello"
+}
+
+fn is_ready() ?bool {
+    true
+}
+
+fn helper(x int) int {
+    x * 2
+}
+
+fn inner() ?int {
+    10
+}
+
+fn outer() ?int {
+    inner()
+}
+
+fn get_value_flag(flag bool) ?int {
+    if flag {
+        100
+    } else {
+        200
+    }
+}
+
+#[test]
+fn test_question_int_return_type() {
+    let result = get_value()
+    assert_eq(result.?, 42)
+}
+
+#[test]
+fn test_question_str_return_type() {
+    let msg = get_message()
+    assert_eq(msg.?.len(), 5)
+}
+
+#[test]
+fn test_question_bool_return_type() {
+    let ready = is_ready()
+    assert_eq(ready.?, 1)
+}
+
+#[test]
+fn test_question_int_arithmetic() {
+    let result = 10 + 20
+    assert_eq(result, 30)
+}
+
+#[test]
+fn test_question_int_variable_binding() {
+    let x = 42
+    assert_eq(x, 42)
+}
+
+#[test]
+fn test_question_int_function_call() {
+    let result = helper(21)
+    assert_eq(result, 42)
+}
+
+#[test]
+fn test_question_int_nested_call() {
+    let result = outer()
+    assert_eq(result.?, 10)
+}
+
+#[test]
+fn test_question_int_if_expression() {
+    let val = get_value_flag(true)
+    assert_eq(val.?, 100)
+}
+
+#[test]
+fn test_question_int_complex_arithmetic() {
+    let result = ((10 + 20) * 2) - 5
+    assert_eq(result, 55)
+}

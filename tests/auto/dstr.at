@@ -1,0 +1,164 @@
+/// Auto tests for String (DStr) type operations
+/// Migrated from crates/auto-lang/src/tests/dstr_tests.rs
+
+use auto.test: assert_eq
+
+#[test]
+fn test_string_new() {
+    let s = String.new()
+    assert_eq(s.len(), 0)
+}
+
+#[test]
+fn test_string_from() {
+    let s = String.from("A")
+    assert_eq(s.len(), 1)
+}
+
+#[test]
+fn test_string_from_multi_char() {
+    let s = String.from("AB")
+    assert_eq(s.len(), 2)
+}
+
+#[test]
+fn test_string_push() {
+    var s = String.new()
+    s.push('A')
+    s.push('B')
+    s.push('C')
+    assert_eq(s.len(), 3)
+}
+
+#[test]
+fn test_string_push_and_get() {
+    var s = String.new()
+    s.push('H')
+    s.push('e')
+    s.push('l')
+    s.push('l')
+    s.push('o')
+    assert_eq(s.get(0), 72)
+}
+
+#[test]
+fn test_string_pop() {
+    var s = String.new()
+    s.push('A')
+    s.push('B')
+    s.push('C')
+    let val = s.pop()
+    assert_eq(val, 67)
+}
+
+#[test]
+fn test_string_pop_reduces_length() {
+    var s = String.new()
+    s.push('A')
+    s.push('B')
+    s.push('C')
+    s.pop()
+    assert_eq(s.len(), 2)
+}
+
+#[test]
+fn test_string_get() {
+    var s = String.new()
+    s.push('A')
+    s.push('B')
+    s.push('C')
+    assert_eq(s.get(1), 66)
+}
+
+#[test]
+fn test_string_set() {
+    var s = String.new()
+    s.push('A')
+    s.push('B')
+    s.set(0, 'C')
+    assert_eq(s.get(0), 67)
+}
+
+#[test]
+fn test_string_is_empty() {
+    let s = String.new()
+    assert_eq(s.is_empty(), 1)
+}
+
+#[test]
+fn test_string_is_empty_after_push() {
+    var s = String.new()
+    s.push('A')
+    assert_eq(s.is_empty(), 0)
+}
+
+#[test]
+fn test_string_insert() {
+    var s = String.new()
+    s.push('A')
+    s.push('C')
+    s.insert(1, 'B')
+    assert_eq(s.get(1), 66)
+}
+
+#[test]
+fn test_string_insert_at_beginning() {
+    var s = String.new()
+    s.push('B')
+    s.push('C')
+    s.insert(0, 'A')
+    assert_eq(s.get(0), 65)
+}
+
+#[test]
+fn test_string_remove() {
+    var s = String.new()
+    s.push('A')
+    s.push('B')
+    s.push('C')
+    assert_eq(s.remove(1), 66)
+}
+
+#[test]
+fn test_string_remove_reduces_length() {
+    var s = String.new()
+    s.push('A')
+    s.push('B')
+    s.push('C')
+    s.remove(1)
+    assert_eq(s.len(), 2)
+}
+
+#[test]
+fn test_string_clear() {
+    var s = String.new()
+    s.push('A')
+    s.push('B')
+    s.push('C')
+    s.clear()
+    assert_eq(s.is_empty(), 1)
+}
+
+#[test]
+fn test_string_reserve() {
+    var s = String.new()
+    s.reserve(100)
+    s.push('A')
+    assert_eq(s.len(), 1)
+}
+
+#[test]
+fn test_string_from_then_push() {
+    var s = String.from("A")
+    s.push('B')
+    s.push('C')
+    assert_eq(s.len(), 3)
+}
+
+#[test]
+fn test_string_from_then_modify() {
+    var s = String.from("AB")
+    s.push('C')
+    s.set(0, 'D')
+    assert_eq(s.get(0), 68)
+}

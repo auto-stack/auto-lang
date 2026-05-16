@@ -1,0 +1,51 @@
+/// Auto tests for VM memory management functions
+/// Migrated from crates/auto-lang/src/tests/memory_tests.rs
+/// and crates/auto-lang/src/tests/list_growth_tests.rs
+
+use auto.test: assert_eq
+
+// ===== List growth tests =====
+
+#[test]
+fn test_list_automatic_growth() {
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+    list.push(4)
+    list.push(5)
+    list.push(6)
+    list.push(7)
+    list.push(8)
+    list.push(9)
+    list.push(10)
+    assert_eq(list.len(), 10)
+    assert_eq(list.get(0), 1)
+    assert_eq(list.get(9), 10)
+}
+
+#[test]
+fn test_list_large_growth() {
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+    list.push(4)
+    list.push(5)
+    list.push(6)
+    list.push(7)
+    list.push(8)
+    list.push(9)
+    list.push(10)
+    list.push(11)
+    list.push(12)
+    list.push(13)
+    list.push(14)
+    list.push(15)
+    list.push(16)
+    list.push(17)
+    list.push(18)
+    list.push(19)
+    list.push(20)
+    assert_eq(list.len(), 20)
+}
