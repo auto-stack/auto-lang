@@ -600,6 +600,9 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             } else {
                 vm_print(vm, &format!("<invalid string index: {}>", str_index));
             }
+        } else if auto_val::is_null(nv) {
+            // None value (null nanbox)
+            vm_print(vm, "None");
         } else if auto_val::is_object(nv) {
             let handle = auto_val::decode_object(nv) as u64;
             if let Some(obj) = vm.get_heap_object(handle) {
@@ -614,8 +617,13 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             }
         } else {
             let val = auto_val::decode_i32(nv);
-            // Check if positive value is a heap object handle (RustStdlibObject etc.)
-            if val > 0 {
+            // Boolean sentinel values: i32::MIN = true, i32::MIN+1 = false
+            if val == -2147483648 {
+                vm_print(vm, "1");
+            } else if val == -2147483647 {
+                vm_print(vm, "0");
+            } else if val > 0 {
+                // Check if positive value is a heap object handle (RustStdlibObject etc.)
                 let handle = val as u64;
                 if let Some(obj) = vm.get_heap_object(handle) {
                     let guard = obj.read().unwrap();
@@ -784,6 +792,8 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             } else {
                 vm_print(vm, &format!("<invalid string index: {}>", str_index));
             }
+        } else if auto_val::is_null(nv) {
+            vm_print(vm, "None");
         } else if auto_val::is_object(nv) {
             let handle = auto_val::decode_object(nv) as u64;
             if let Some(obj) = vm.get_heap_object(handle) {
@@ -798,8 +808,13 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             }
         } else {
             let val = auto_val::decode_i32(nv);
-            // Check if positive value is a heap object handle (RustStdlibObject etc.)
-            if val > 0 {
+            // Boolean sentinel values
+            if val == -2147483648 {
+                vm_print(vm, "1");
+            } else if val == -2147483647 {
+                vm_print(vm, "0");
+            } else if val > 0 {
+                // Check if positive value is a heap object handle
                 let handle = val as u64;
                 if let Some(obj) = vm.get_heap_object(handle) {
                     let guard = obj.read().unwrap();

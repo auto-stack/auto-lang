@@ -77,6 +77,9 @@ fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
     let nv = ram.pop_nv();
     if auto_val::is_string(nv) {
         StackTag::Str(auto_val::decode_string(nv))
+    } else if auto_val::is_null(nv) {
+        // None (null nanbox) — map to old sentinel for backward compatibility
+        StackTag::Int(-1)
     } else {
         StackTag::Int(auto_val::decode_i32(nv))
     }
@@ -1564,7 +1567,9 @@ impl AutoVM {
                                         }
                                     }
                                     StackTag::Int(bits) => {
-                                        if bits == i32::MIN {
+                                        if bits == -1 {
+                                            "None".to_string()
+                                        } else if bits == i32::MIN {
                                             "true".to_string()
                                         } else if bits == i32::MIN + 1 {
                                             "false".to_string()
@@ -1584,7 +1589,9 @@ impl AutoVM {
                                         }
                                     }
                                     StackTag::Int(bits) => {
-                                        if bits == i32::MIN {
+                                        if bits == -1 {
+                                            "None".to_string()
+                                        } else if bits == i32::MIN {
                                             "true".to_string()
                                         } else if bits == i32::MIN + 1 {
                                             "false".to_string()
