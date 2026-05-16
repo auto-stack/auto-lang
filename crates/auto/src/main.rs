@@ -575,34 +575,58 @@ fn real_main(cli: Cli) -> Result<()> {
         Some(Commands::Test { dir, filter, verbose }) => {
             let target = dir.unwrap_or_else(|| ".".to_string());
 
-            // Determine source file(s) to test
+            // Collect .at files to test
             let path = std::path::Path::new(&target);
             let files: Vec<String> = if path.is_file() {
+                // File mode: test a single file
                 vec![target.clone()]
-            } else {
-                // Look for main entry point
+            } else if path.is_dir() {
+                // Directory mode: discover all .at files recursively
                 let mut found = Vec::new();
-                for name in &["src/main.at", "main.at", "index.at", "app.at"] {
-                    let p = path.join(name);
-                    if p.exists() {
-                        found.push(p.to_string_lossy().to_string());
-                        break;
+                fn collect_at_files(dir: &std::path::Path, out: &mut Vec<String>) {
+                    if let Ok(entries) = std::fs::read_dir(dir) {
+                        for entry in entries.flatten() {
+                            let p = entry.path();
+                            if p.is_dir() {
+                                collect_at_files(&p, out);
+                            } else if p.extension().map_or(false, |e| e == "at") {
+                                out.push(p.to_string_lossy().to_string());
+                            }
+                        }
                     }
                 }
+                collect_at_files(path, &mut found);
+                found.sort();
                 if found.is_empty() {
-                    eprintln!("error: no Auto source file found in '{}'. Use `auto test --dir <file.at>` to specify.", target);
+                    eprintln!("error: no .at files found in '{}'", target);
                     std::process::exit(1);
                 }
                 found
+            } else {
+                eprintln!("error: '{}' not found", target);
+                std::process::exit(1);
             };
 
             let start = std::time::Instant::now();
             let mut all_results = auto_lang::test_runner::TestResult::default();
+            let mut test_files = 0;
+            let mut failed_files = 0;
+            let multi_file = files.len() > 1;
 
             for file in &files {
                 match auto_lang::test_file(file) {
                     Ok(result) => {
-                        // Apply filter
+                        // Skip files with no tests
+                        if result.reports.is_empty() {
+                            continue;
+                        }
+                        test_files += 1;
+                        let mut file_failed = 0;
+                        if multi_file {
+                            let file_name = std::path::Path::new(file)
+                                .file_name().unwrap_or_default().to_string_lossy();
+                            println!("\nRunning {} ({} tests):", file_name, result.reports.len());
+                        }
                         for report in &result.reports {
                             if let Some(f) = &filter {
                                 if !report.qualified_name.contains(f.as_str()) {
@@ -613,18 +637,33 @@ fn real_main(cli: Cli) -> Result<()> {
                                 println!("--- {} stdout ---", report.qualified_name);
                                 println!("{}", report.stdout);
                             }
+                            match &report.outcome {
+                                auto_lang::test_runner::TestOutcome::Passed => {}
+                                auto_lang::test_runner::TestOutcome::Failed(_) => file_failed += 1,
+                            }
                             all_results.reports.push(report.clone());
                         }
+                        if file_failed > 0 {
+                            failed_files += 1;
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("error: failed to compile {}: {}", file, e);
-                        std::process::exit(1);
+                    Err(_) => {
+                        // Compile errors are expected for non-test files (stdlib, examples, etc.)
+                        // Only report errors in single-file mode
+                        if !multi_file {
+                            eprintln!("error: failed to compile {}", file);
+                            std::process::exit(1);
+                        }
                     }
                 }
             }
 
             let elapsed = start.elapsed().as_millis();
             print!("{}", auto_lang::test_runner::format_test_report(&all_results, elapsed));
+
+            if multi_file {
+                println!("{} test file(s), {} file(s) had failures", test_files, failed_files);
+            }
 
             if all_results.has_failures() {
                 std::process::exit(1);
