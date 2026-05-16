@@ -1753,6 +1753,28 @@ impl<'a> Parser<'a> {
                     lhs = Expr::Cast { expr: Box::new(lhs), target_type };
                     continue;
                 }
+                TokenKind::Question => {
+                    // Ternary conditional: condition ? true_expr : false_expr
+                    // Precedence: very low (between assignment=1 and comparison)
+                    const PREC_TERNARY: u8 = 2;
+                    if PREC_TERNARY < min_power {
+                        break;
+                    }
+                    self.next(); // consume ?
+                    // Parse true branch with min_power > PREC_PAIR.l (8) so : isn't consumed as pair
+                    let true_expr = self.expr_pratt(9)?;
+                    self.expect(TokenKind::Colon)?;
+                    let false_expr = self.expr_pratt(PREC_TERNARY)?;
+                    // Desugar into If expression
+                    let true_body = Body { stmts: vec![Stmt::Expr(true_expr)], has_new_line: false, source_lines: vec![] };
+                    let false_body = Body { stmts: vec![Stmt::Expr(false_expr)], has_new_line: false, source_lines: vec![] };
+                    let branch = Branch { cond: lhs, body: true_body };
+                    lhs = Expr::If(If {
+                        branches: vec![branch],
+                        else_: Some(false_body),
+                    });
+                    continue;
+                }
                 TokenKind::Dot => self.op(),
                 TokenKind::Colon => self.op(),
                 TokenKind::Range | TokenKind::RangeEq => self.op(),
@@ -4084,9 +4106,19 @@ impl<'a> Parser<'a> {
 
         while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
             // Check for methods inside enum body
-            if self.is_kind(TokenKind::Fn) {
+            if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
+                let is_static = self.is_kind(TokenKind::Static);
+                if is_static {
+                    self.next(); // skip static
+                    self.skip_empty_lines();
+                }
                 let fn_stmt = self.fn_decl_stmt(&Name::from(name.as_str()))?;
                 if let Stmt::Fn(fn_expr) = fn_stmt {
+                    // Mark as static if needed
+                    let mut fn_expr = fn_expr;
+                    if is_static {
+                        fn_expr.is_static = true;
+                    }
                     methods.push(fn_expr);
                 }
                 self.expect_eos(false)?;
