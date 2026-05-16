@@ -25,3 +25,35 @@ fn rand_bool() bool
 /// Shuffle a list in-place using Fisher-Yates algorithm.
 #[vm]
 fn shuffle(list List) void
+
+/// Random number generator — opaque #[vm]-backed type.
+type Random {
+    _seed int
+
+    /// Create a new RNG seeded from system entropy.
+    static fn new() Random {
+        return Random._vm_new()
+    }
+
+    /// Create a new RNG with a deterministic seed.
+    static fn with_seed(seed int) Random {
+        return Random._vm_seeded(seed)
+    }
+
+    #[vm]
+    static fn _vm_new() Random
+    #[vm]
+    static fn _vm_seeded(seed int) Random
+
+    /// Random int in [0, max).
+    #[vm]
+    fn int(max int) int
+
+    /// Random float in [0.0, 1.0).
+    #[vm]
+    fn float() float
+
+    /// Random boolean.
+    #[vm]
+    fn bool() bool
+}

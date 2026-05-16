@@ -18,3 +18,15 @@ fn sha256(data str) str
 /// Compute SHA512 hash of a string. Returns hex digest.
 #[vm]
 fn sha512(data str) str
+
+/// Compute HMAC-SHA256 of data with key. Returns hex digest.
+#[vm]
+fn hmac_sha256(data str, key str) str
+
+/// Compute MD5 hash of a file. Returns hex digest, or empty string on error.
+#[vm]
+fn file_md5(path str) str
+
+/// Compute SHA256 hash of a file. Returns hex digest, or empty string on error.
+#[vm]
+fn file_sha256(path str) str

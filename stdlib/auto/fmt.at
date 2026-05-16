@@ -50,3 +50,8 @@ ext bool for Debug {
     #[vm]
     fn debug() str
 }
+
+ext float for Debug {
+    #[vm]
+    fn debug() str
+}

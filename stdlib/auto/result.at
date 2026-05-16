@@ -66,4 +66,28 @@ enum Result<T, E> {
             Err(e) -> Err(e)
         }
     }
+
+    /// Map the Err value using a function. Ok passes through unchanged.
+    fn map_err(f fn(E) F) Result<T, F> {
+        is self {
+            Ok(v) -> Ok(v)
+            Err(e) -> Err(f(e))
+        }
+    }
+
+    /// Convert to May: Ok(v) becomes May.val(v), Err becomes May.nil()
+    fn ok() May<T> {
+        is self {
+            Ok(v) -> May.value(v)
+            Err(_) -> May.empty()
+        }
+    }
+
+    /// Convert Err to May: Err(e) becomes May.val(e), Ok becomes May.nil()
+    fn err() May<E> {
+        is self {
+            Ok(_) -> May.empty()
+            Err(e) -> May.value(e)
+        }
+    }
 }

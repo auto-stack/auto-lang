@@ -34,3 +34,27 @@ fn stem(path str) str
 /// Walk directory recursively returning only files. Returns JSON array of paths.
 #[vm]
 fn walk_files(dir str) str
+
+/// Walk directory recursively returning all entries (files + dirs). Returns JSON array of paths.
+#[vm]
+fn walk(dir str) str
+
+/// Get file metadata (size, is_dir, is_file, modified timestamp).
+#[vm]
+fn metadata(path str) str
+
+/// Copy a file or directory recursively.
+#[vm]
+fn copy_recursive(src str, dst str) void
+
+/// Get filename component of a path (e.g., "doc.txt" from "/home/user/doc.txt").
+#[vm]
+fn filename(path str) str
+
+/// Get parent directory of a path.
+#[vm]
+fn parent(path str) str
+
+/// Join path components with the OS separator.
+#[vm]
+fn join(base str, rest str) str

@@ -353,7 +353,36 @@ macro_rules! for_each_native {
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
-            (2847, NATIVE_FS_WALK_FILES, shim_fs_walk_files, "auto.fs.walk_files")
+            (2847, NATIVE_FS_WALK_FILES, shim_fs_walk_files, "auto.fs.walk_files"),
+
+            // === FS more (2860-2865) ===
+            (2860, NATIVE_FS_WALK, shim_fs_walk, "auto.fs.walk"),
+            (2861, NATIVE_FS_METADATA, shim_fs_metadata, "auto.fs.metadata"),
+            (2862, NATIVE_FS_COPY_RECURSIVE, shim_fs_copy_recursive, "auto.fs.copy_recursive"),
+            (2863, NATIVE_FS_FILENAME, shim_fs_filename, "auto.fs.filename"),
+            (2864, NATIVE_FS_PARENT, shim_fs_parent, "auto.fs.parent"),
+            (2865, NATIVE_FS_JOIN, shim_fs_join, "auto.fs.join"),
+
+            // === Hash extended (2814-2816) ===
+            (2814, NATIVE_HASH_HMAC_SHA256, shim_hash_hmac_sha256, "auto.hash.hmac_sha256"),
+            (2815, NATIVE_HASH_FILE_MD5, shim_hash_file_md5, "auto.hash.file_md5"),
+            (2816, NATIVE_HASH_FILE_SHA256, shim_hash_file_sha256, "auto.hash.file_sha256"),
+
+            // === Random type (2870-2874) ===
+            (2870, NATIVE_RANDOM_NEW, shim_random_new, "auto.random._vm_new"),
+            (2871, NATIVE_RANDOM_SEEDED, shim_random_seeded, "auto.random._vm_seeded"),
+            (2872, NATIVE_RANDOM_INSTANCE_INT, shim_random_instance_int, "auto.random.int"),
+            (2873, NATIVE_RANDOM_INSTANCE_FLOAT, shim_random_instance_float, "auto.random.float"),
+            (2874, NATIVE_RANDOM_INSTANCE_BOOL, shim_random_instance_bool, "auto.random.bool"),
+
+            // === Fmt (2752) ===
+            (2752, NATIVE_F64_DEBUG, shim_f64_debug, "auto.fmt.f64_debug"),
+
+            // === Cmp (2880) ===
+            (2880, NATIVE_STR_CMP, shim_str_cmp, "auto.cmp.str_cmp"),
+
+            // === DateTime cmp (2794) ===
+            (2794, NATIVE_DATETIME_CMP, shim_datetime_cmp, "auto.datetime.cmp")
         }
     };
 }
@@ -760,6 +789,35 @@ macro_rules! for_each_bigvm_native {
             ("auto.fs.copy", 1007, Void),
             ("auto.fs.size", 1008, Void),
             ("auto.fs.is_dir", 1009, Void),
+
+            // === FS extended (2860-2865) ===
+            ("auto.fs.walk", 2860, String),
+            ("auto.fs.metadata", 2861, String),
+            ("auto.fs.copy_recursive", 2862, Void),
+            ("auto.fs.filename", 2863, String),
+            ("auto.fs.parent", 2864, String),
+            ("auto.fs.join", 2865, String),
+
+            // === Hash extended (2814-2816) ===
+            ("auto.hash.hmac_sha256", 2814, String),
+            ("auto.hash.file_md5", 2815, String),
+            ("auto.hash.file_sha256", 2816, String),
+
+            // === Random type (2870-2874) ===
+            ("auto.random._vm_new", 2870, Void),
+            ("auto.random._vm_seeded", 2871, Void),
+            ("auto.random.int", 2872, Void),
+            ("auto.random.float", 2873, Void),
+            ("auto.random.bool", 2874, Void),
+
+            // === Fmt (2752) ===
+            ("auto.fmt.f64_debug", 2752, String),
+
+            // === Cmp (2880) ===
+            ("auto.cmp.str_cmp", 2880, Int),
+
+            // === DateTime cmp (2794) ===
+            ("auto.datetime.cmp", 2794, Int),
 
             // === File I/O opaque handles (1010-1013) ===
             ("auto.file.create_handle", 1010, Void),
@@ -1700,4 +1758,33 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("str.split_once", 1518),
     ("str.match_count", 1519),
     ("str.replace_first", 1520),
+
+    // === FS extended (2860-2865) ===
+    ("auto.fs.walk", 2860),
+    ("auto.fs.metadata", 2861),
+    ("auto.fs.copy_recursive", 2862),
+    ("auto.fs.filename", 2863),
+    ("auto.fs.parent", 2864),
+    ("auto.fs.join", 2865),
+
+    // === Hash extended (2814-2816) ===
+    ("auto.hash.hmac_sha256", 2814),
+    ("auto.hash.file_md5", 2815),
+    ("auto.hash.file_sha256", 2816),
+
+    // === Random type (2870-2874) ===
+    ("auto.random._vm_new", 2870),
+    ("auto.random._vm_seeded", 2871),
+    ("auto.random.int", 2872),
+    ("auto.random.float", 2873),
+    ("auto.random.bool", 2874),
+
+    // === Fmt (2752) ===
+    ("auto.fmt.f64_debug", 2752),
+
+    // === Cmp (2880) ===
+    ("auto.cmp.str_cmp", 2880),
+
+    // === DateTime cmp (2794) ===
+    ("auto.datetime.cmp", 2794),
 ];

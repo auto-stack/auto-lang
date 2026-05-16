@@ -6339,6 +6339,337 @@ fn walkdir_recursive(dir: &str) -> Result<Vec<String>, std::io::Error> {
     Ok(result)
 }
 
+// --- FS more (2860-2865) ---
+
+/// Walk directory recursively, return JSON array of ALL paths (files + dirs).
+/// Stack: str_idx(dir) -> str_idx (JSON)
+pub fn shim_fs_walk(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let dir_idx = task.ram.pop_str_idx() as u16;
+    let dir = vm.get_string(dir_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let mut paths: Vec<String> = Vec::new();
+    if let Ok(entries) = walkdir_all(&dir) {
+        paths = entries;
+    }
+    let json = serde_json::to_string(&paths)
+        .map_err(|e| VMError::RuntimeError(format!("walk json: {}", e)))?;
+    let str_idx = vm.add_string(json.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Recursive directory walker returning ALL paths (files + dirs).
+fn walkdir_all(dir: &str) -> Result<Vec<String>, std::io::Error> {
+    let mut result = Vec::new();
+    let entries = std::fs::read_dir(dir)?;
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        let path_str = path.to_string_lossy().to_string();
+        result.push(path_str.clone());
+        if path.is_dir() {
+            let sub = walkdir_all(&path.to_string_lossy())?;
+            result.extend(sub);
+        }
+    }
+    Ok(result)
+}
+
+/// Get file metadata as JSON string.
+/// Stack: str_idx(path) -> str_idx (JSON with len, is_dir, is_file, readonly)
+pub fn shim_fs_metadata(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u16;
+    let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let metadata = std::fs::metadata(&path)
+        .map_err(|e| VMError::RuntimeError(format!("metadata failed: {}: {}", path, e)))?;
+    let json = serde_json::json!({
+        "len": metadata.len(),
+        "is_dir": metadata.is_dir(),
+        "is_file": metadata.is_file(),
+        "readonly": metadata.permissions().readonly(),
+    });
+    let result = serde_json::to_string(&json)
+        .map_err(|e| VMError::RuntimeError(format!("metadata json: {}", e)))?;
+    let str_idx = vm.add_string(result.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Recursive copy of directory or file.
+/// Stack: str_idx(dst), str_idx(src) -> void
+pub fn shim_fs_copy_recursive(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let dst_idx = task.ram.pop_str_idx() as u16;
+    let src_idx = task.ram.pop_str_idx() as u16;
+    let dst = vm.get_string(dst_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let src = vm.get_string(src_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    copy_recursive(&src, &dst)
+        .map_err(|e| VMError::RuntimeError(format!("copy_recursive failed: {}", e)))?;
+    Ok(())
+}
+
+fn copy_recursive(src: &str, dst: &str) -> Result<(), std::io::Error> {
+    let src_path = std::path::Path::new(src);
+    if src_path.is_dir() {
+        let dst_path = std::path::Path::new(dst);
+        std::fs::create_dir_all(dst_path)?;
+        for entry in std::fs::read_dir(src_path)? {
+            let entry = entry?;
+            let src_child = entry.path();
+            let dst_child = dst_path.join(entry.file_name());
+            copy_recursive(&src_child.to_string_lossy(), &dst_child.to_string_lossy())?;
+        }
+    } else {
+        std::fs::copy(src, dst)?;
+    }
+    Ok(())
+}
+
+/// Extract filename from path.
+/// Stack: str_idx(path) -> str_idx (filename)
+pub fn shim_fs_filename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u16;
+    let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let filename = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let str_idx = vm.add_string(filename.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Get parent directory of path.
+/// Stack: str_idx(path) -> str_idx (parent)
+pub fn shim_fs_parent(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u16;
+    let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let parent = std::path::Path::new(&path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let str_idx = vm.add_string(parent.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Join path components.
+/// Stack: str_idx(b), str_idx(a) -> str_idx (joined path)
+pub fn shim_fs_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let b_idx = task.ram.pop_str_idx() as u16;
+    let a_idx = task.ram.pop_str_idx() as u16;
+    let b = vm.get_string(b_idx).map(|bytes| String::from_utf8_lossy(&bytes).to_string()).unwrap_or_default();
+    let a = vm.get_string(a_idx).map(|bytes| String::from_utf8_lossy(&bytes).to_string()).unwrap_or_default();
+    let joined = std::path::Path::new(&a).join(&b).to_string_lossy().to_string();
+    let str_idx = vm.add_string(joined.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+// --- Hash extended (2814-2816) ---
+
+/// HMAC-SHA256.
+/// Stack: str_idx(key), str_idx(data) -> str_idx (hex digest)
+pub fn shim_hash_hmac_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_idx = task.ram.pop_str_idx() as u16;
+    let data_idx = task.ram.pop_str_idx() as u16;
+    let key = vm.get_string(key_idx).unwrap_or_default();
+    let data = vm.get_string(data_idx).unwrap_or_default();
+    let digest = hmac_sha256_hash(&key, &data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// MD5 hash of file contents.
+/// Stack: str_idx(path) -> str_idx (hex digest)
+pub fn shim_hash_file_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u16;
+    let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let data = std::fs::read(&path)
+        .map_err(|e| VMError::RuntimeError(format!("file_md5: {}: {}", path, e)))?;
+    let digest = md5_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// SHA256 hash of file contents.
+/// Stack: str_idx(path) -> str_idx (hex digest)
+pub fn shim_hash_file_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u16;
+    let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let data = std::fs::read(&path)
+        .map_err(|e| VMError::RuntimeError(format!("file_sha256: {}: {}", path, e)))?;
+    let digest = sha256_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+fn hmac_sha256_hash(key: &[u8], data: &[u8]) -> String {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+    let mut mac = HmacSha256::new_from_slice(key)
+        .expect("HMAC can take key of any size");
+    mac.update(data);
+    let result = mac.finalize();
+    format!("{:02x}", result.into_bytes())
+}
+
+// --- Random type (2870-2874) ---
+
+/// Create RNG from system entropy.
+/// Stack: [] -> rng_handle (i32)
+pub fn shim_random_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let rng = std::sync::Mutex::new(Xorshift64::new(seed));
+    let obj = RustStdlibObject::new("random::Rng", rng);
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// Create seeded RNG.
+/// Stack: seed (i32) -> rng_handle (i32)
+pub fn shim_random_seeded(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let seed = task.ram.pop_i32() as u64;
+    let rng = std::sync::Mutex::new(Xorshift64::new(seed));
+    let obj = RustStdlibObject::new("random::Rng", rng);
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// Instance method: rng.int(max) -> i32
+/// Stack: max (i32), rng_handle (i32) -> i32
+pub fn shim_random_instance_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let max = task.ram.pop_i32();
+    let rng_id = task.ram.pop_i32() as u64;
+    let max = if max <= 0 { 1 } else { max as u32 };
+    if let Some(obj) = vm.get_heap_object(rng_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
+                let val = rng.get_mut().unwrap().next();
+                let result = (val % max as u64) as i32;
+                task.ram.push_i32(result);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Instance method: rng.float() -> f64
+/// Stack: rng_handle (i32) -> f64
+pub fn shim_random_instance_float(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let rng_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(rng_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
+                let val = (rng.get_mut().unwrap().next() as f64) / (u64::MAX as f64);
+                task.ram.push_f64(val);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_f64(0.0);
+    Ok(())
+}
+
+/// Instance method: rng.bool() -> bool (i32)
+/// Stack: rng_handle (i32) -> i32 (0 or 1)
+pub fn shim_random_instance_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let rng_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(rng_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
+                let val = rng.get_mut().unwrap().next() % 2 == 0;
+                task.ram.push_i32(if val { 1 } else { 0 });
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// --- Fmt (2752) ---
+
+/// Float debug string with full precision.
+/// Stack: f64_val -> str_idx
+pub fn shim_f64_debug(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_f64();
+    let s = format!("{:?}", val);
+    let str_idx = vm.add_string(s.into_bytes());
+    task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+// --- Cmp (2880) ---
+
+/// String lexicographic comparison, returns Ordering (-1, 0, 1).
+/// Stack: str_idx(b), str_idx(a) -> i32 (-1, 0, 1)
+pub fn shim_str_cmp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let b_idx = task.ram.pop_str_idx() as u16;
+    let a_idx = task.ram.pop_str_idx() as u16;
+    let a = vm.get_string(a_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let b = vm.get_string(b_idx).map(|bytes| String::from_utf8_lossy(&bytes).to_string()).unwrap_or_default();
+    use std::cmp::Ordering;
+    let result = match a.cmp(&b) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+// --- DateTime cmp (2794) ---
+
+/// Compare two datetimes by timestamp.
+/// Stack: handle_b (i32), handle_a (i32) -> i32 (-1, 0, 1)
+pub fn shim_datetime_cmp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let b_id = task.ram.pop_i32() as u64;
+    let a_id = task.ram.pop_i32() as u64;
+
+    let ts_a = get_datetime_timestamp(vm, a_id);
+    let ts_b = get_datetime_timestamp(vm, b_id);
+
+    use std::cmp::Ordering;
+    let result = match ts_a.cmp(&ts_b) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+fn get_datetime_timestamp(vm: &AutoVM, handle: u64) -> i64 {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    if let Some(obj) = vm.get_heap_object(handle) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                return dt.lock().unwrap().and_utc().timestamp();
+            }
+        }
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

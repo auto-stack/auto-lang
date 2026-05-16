@@ -72,3 +72,14 @@ type DateTime {
         return .format("%Y-%m-%d %H:%M:%S")
     }
 }
+
+/// Display extension for DateTime
+ext DateTime for Display {
+    fn fmt() str { return self.to_str() }
+}
+
+/// Cmp extension for DateTime — compare by timestamp
+ext DateTime for Cmp {
+    #[vm]
+    fn cmp(other Self) Ordering
+}
