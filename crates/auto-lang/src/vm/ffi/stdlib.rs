@@ -823,19 +823,32 @@ pub fn shim_str_reverse(s: String) -> String {
 }
 
 /// Find first occurrence of substring with optional start position.
-/// Stack: [receiver(str), needle(str), start_pos(i32)]
-/// In nanbox mode, strings occupy 2 slots each.
+/// Supports both 2-arg (find(s, needle)) and 3-arg (s.find(needle, start_pos)) calling conventions.
+/// Detects whether top-of-stack is start_pos (i32) or needle (string) to handle both cases.
 pub fn shim_str_find_manual(task: &mut crate::vm::task::AutoTask, vm: &crate::vm::engine::AutoVM) -> Result<(), crate::vm::engine::VMError> {
     use crate::vm::ffi::convert::VMConvertible;
-    // Pop start_pos (i32, top of stack)
+
+    // Peek at top of stack to determine calling convention
     #[cfg(feature = "nanbox")]
     let start_pos: i64 = {
-        let nv = task.ram.pop_nv();
-        if auto_val::is_i32(nv) { auto_val::decode_i32(nv) as i64 }
-        else { -1i64 }
+        let top = task.ram.read_nv(task.ram.sp - 1);
+        if auto_val::is_i32(top) {
+            task.ram.pop_nv(); // consume start_pos
+            auto_val::decode_i32(top) as i64
+        } else {
+            0i64 // no start_pos, default to 0
+        }
     };
     #[cfg(not(feature = "nanbox"))]
-    let start_pos: i64 = task.ram.pop_i32() as i64;
+    let start_pos: i64 = {
+        let top = task.ram.read_i32(task.ram.sp - 1);
+        if top >= 0 {
+            task.ram.pop_i32(); // consume start_pos
+            top as i64
+        } else {
+            0i64 // top is a string handle (negative), no start_pos
+        }
+    };
 
     // Pop needle (String)
     let needle: String = VMConvertible::pop_from_stack(task, vm)
@@ -961,41 +974,78 @@ pub fn shim_char_to_upper(codepoint: i32) -> i32 {
 
 /// Option.or(default) / Option.unwrap_or(default) — returns default if None, unwraps Some
 pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop default value
+    #[cfg(feature = "nanbox")]
+    let default_val = { let nv = task.ram.pop_nv(); auto_val::decode_i32(nv) };
+    #[cfg(not(feature = "nanbox"))]
     let default_val = task.ram.pop_i32();
-    let opt_val = task.ram.pop_i32();
 
-    // Check if it's Option.None (heap object or legacy sentinel)
-    if opt_val == -1 {
-        task.ram.push_i32(default_val);
-        return Ok(());
-    }
-
-    if opt_val > 0 {
-        let instance_id = opt_val as u64;
-        if vm.is_option_none(instance_id) {
+    // Pop option value — check for None (null nanbox or -1 sentinel)
+    #[cfg(feature = "nanbox")]
+    {
+        let opt_nv = task.ram.pop_nv();
+        // None is represented as encode_null() (TAG_NULL) or encode_i32(-1)
+        if auto_val::is_null(opt_nv) {
             task.ram.push_i32(default_val);
             return Ok(());
         }
-        if vm.is_option_some(instance_id) {
-            // Unwrap: push the inner value (field _0) as i32
-            if let Some(inner) = vm.get_option_inner(instance_id) {
-                match inner {
-                    auto_val::Value::Int(n) => task.ram.push_i32(n),
-                    auto_val::Value::Bool(b) => task.ram.push_i32(if b { 1 } else { 0 }),
-                    _other => {
-                        // For non-i32 values, push the heap_id of the inner value
-                        // (strings, floats etc are heap-stored)
-                        task.ram.push_i32(opt_val);
-                    }
-                }
+        let opt_val = auto_val::decode_i32(opt_nv);
+        if opt_val == -1 {
+            task.ram.push_i32(default_val);
+            return Ok(());
+        }
+        // Check for heap-based Option
+        if opt_val > 0 {
+            let instance_id = opt_val as u64;
+            if vm.is_option_none(instance_id) {
+                task.ram.push_i32(default_val);
                 return Ok(());
             }
+            if vm.is_option_some(instance_id) {
+                if let Some(inner) = vm.get_option_inner(instance_id) {
+                    match inner {
+                        auto_val::Value::Int(n) => task.ram.push_i32(n),
+                        auto_val::Value::Bool(b) => task.ram.push_i32(if b { 1 } else { 0 }),
+                        _other => task.ram.push_i32(opt_val),
+                    }
+                    return Ok(());
+                }
+            }
         }
+        task.ram.push_nv(opt_nv);
+        return Ok(());
     }
+    #[cfg(not(feature = "nanbox"))]
+    let opt_val = task.ram.pop_i32();
 
-    // Not an Option — return as-is
-    task.ram.push_i32(opt_val);
-    Ok(())
+    #[cfg(not(feature = "nanbox"))]
+    {
+        // Check if it's Option.None (heap object or legacy sentinel)
+        if opt_val == -1 || opt_val == i32::MIN + 1 {
+            task.ram.push_i32(default_val);
+            return Ok(());
+        }
+
+        if opt_val > 0 {
+            let instance_id = opt_val as u64;
+            if vm.is_option_none(instance_id) {
+                task.ram.push_i32(default_val);
+                return Ok(());
+            }
+            if vm.is_option_some(instance_id) {
+                if let Some(inner) = vm.get_option_inner(instance_id) {
+                    match inner {
+                        auto_val::Value::Int(n) => task.ram.push_i32(n),
+                        auto_val::Value::Bool(b) => task.ram.push_i32(if b { 1 } else { 0 }),
+                        _other => task.ram.push_i32(opt_val),
+                    }
+                    return Ok(());
+                }
+            }
+        }
+        task.ram.push_i32(opt_val);
+        Ok(())
+    }
 }
 
 // ============================================================================

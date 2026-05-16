@@ -614,7 +614,22 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             }
         } else {
             let val = auto_val::decode_i32(nv);
-            vm_print(vm, &val.to_string());
+            // Check if positive value is a heap object handle (RustStdlibObject etc.)
+            if val > 0 {
+                let handle = val as u64;
+                if let Some(obj) = vm.get_heap_object(handle) {
+                    let guard = obj.read().unwrap();
+                    if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                        vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                    } else {
+                        vm_print(vm, &val.to_string());
+                    }
+                } else {
+                    vm_print(vm, &val.to_string());
+                }
+            } else {
+                vm_print(vm, &val.to_string());
+            }
         }
         Ok(())
     }
@@ -783,7 +798,22 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             }
         } else {
             let val = auto_val::decode_i32(nv);
-            vm_print(vm, &val.to_string());
+            // Check if positive value is a heap object handle (RustStdlibObject etc.)
+            if val > 0 {
+                let handle = val as u64;
+                if let Some(obj) = vm.get_heap_object(handle) {
+                    let guard = obj.read().unwrap();
+                    if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                        vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                    } else {
+                        vm_print(vm, &val.to_string());
+                    }
+                } else {
+                    vm_print(vm, &val.to_string());
+                }
+            } else {
+                vm_print(vm, &val.to_string());
+            }
         }
     }
     Ok(())
@@ -3521,7 +3551,7 @@ pub fn shim_str_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         let str_nv = task.ram.pop_nv();
         let str_s = nv_to_string(str_nv, vm);
         let sub_s = nv_to_string(sub_nv, vm);
-        task.ram.push_i32(if str_s.contains(sub_s.as_str()) { -2147483648 } else { -2147483647 });
+        task.ram.push_i32(if str_s.contains(sub_s.as_str()) { 1 } else { 0 });
     }
     #[cfg(not(feature = "nanbox"))]
     {
@@ -3529,7 +3559,7 @@ pub fn shim_str_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         let str_idx = task.ram.pop_str_idx() as u16;
         let str_s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
         let sub_s = vm.get_string(sub_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
-        task.ram.push_i32(if str_s.contains(&sub_s) { -2147483648 } else { -2147483647 });
+        task.ram.push_i32(if str_s.contains(&sub_s) { 1 } else { 0 });
     }
     Ok(())
 }
@@ -3542,7 +3572,7 @@ pub fn shim_str_starts_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         let str_nv = task.ram.pop_nv();
         let str_s = nv_to_string(str_nv, vm);
         let prefix_s = nv_to_string(prefix_nv, vm);
-        task.ram.push_i32(if str_s.starts_with(prefix_s.as_str()) { -2147483648 } else { -2147483647 });
+        task.ram.push_i32(if str_s.starts_with(prefix_s.as_str()) { 1 } else { 0 });
     }
     #[cfg(not(feature = "nanbox"))]
     {
@@ -3550,7 +3580,7 @@ pub fn shim_str_starts_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         let str_idx = task.ram.pop_str_idx() as u16;
         let str_s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
         let prefix_s = vm.get_string(prefix_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
-        task.ram.push_i32(if str_s.starts_with(&prefix_s) { -2147483648 } else { -2147483647 });
+        task.ram.push_i32(if str_s.starts_with(&prefix_s) { 1 } else { 0 });
     }
     Ok(())
 }
@@ -3563,7 +3593,7 @@ pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         let str_nv = task.ram.pop_nv();
         let str_s = nv_to_string(str_nv, vm);
         let suffix_s = nv_to_string(suffix_nv, vm);
-        task.ram.push_i32(if str_s.ends_with(suffix_s.as_str()) { -2147483648 } else { -2147483647 });
+        task.ram.push_i32(if str_s.ends_with(suffix_s.as_str()) { 1 } else { 0 });
     }
     #[cfg(not(feature = "nanbox"))]
     {
@@ -3571,7 +3601,7 @@ pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         let str_idx = task.ram.pop_str_idx() as u16;
         let str_s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
         let suffix_s = vm.get_string(suffix_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
-        task.ram.push_i32(if str_s.ends_with(&suffix_s) { -2147483648 } else { -2147483647 });
+        task.ram.push_i32(if str_s.ends_with(&suffix_s) { 1 } else { 0 });
     }
     Ok(())
 }

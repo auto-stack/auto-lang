@@ -5414,15 +5414,32 @@ impl Codegen {
                         }
                     }
                 }
-                // Route bitwise methods (x.or(), x.and(), x.not()) to auto.int.*
+                // Route bitwise methods (x.and(), x.not(), x.xor(), etc.) to auto.int.*
+                // For .or(), only route when receiver is a known integer type,
+                // since Option.or has the same method name.
                 if let Some(ref fname) = func_name {
                     let method = fname.rsplit('.').next().unwrap_or("");
-                    const BITWISE_METHODS: &[&str] = &["or", "and", "not", "xor", "shl", "shr"];
-                    if BITWISE_METHODS.contains(&method) && !fname.starts_with("auto.int.") {
-                        let new_name = format!("auto.int.{}", method);
-                        let mut reg = BIGVM_NATIVES.lock().unwrap();
-                        if reg.resolve_qualified(&new_name).is_some() {
-                            func_name = Some(new_name);
+                    if method == "or" {
+                        // Only route .or() to bitwise int.or for known integer types
+                        let prefix = fname.split('.').next().unwrap_or("");
+                        const INT_TYPE_PREFIXES: &[&str] = &[
+                            "int", "uint", "i32", "i64", "u32", "u64", "u8", "byte", "usize", "isize",
+                        ];
+                        if INT_TYPE_PREFIXES.contains(&prefix) && !fname.starts_with("auto.int.") {
+                            let new_name = "auto.int.or".to_string();
+                            let mut reg = BIGVM_NATIVES.lock().unwrap();
+                            if reg.resolve_qualified(&new_name).is_some() {
+                                func_name = Some(new_name);
+                            }
+                        }
+                    } else {
+                        const BITWISE_METHODS: &[&str] = &["and", "not", "xor", "shl", "shr"];
+                        if BITWISE_METHODS.contains(&method) && !fname.starts_with("auto.int.") {
+                            let new_name = format!("auto.int.{}", method);
+                            let mut reg = BIGVM_NATIVES.lock().unwrap();
+                            if reg.resolve_qualified(&new_name).is_some() {
+                                func_name = Some(new_name);
+                            }
                         }
                     }
                 }

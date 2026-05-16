@@ -1781,10 +1781,20 @@ impl AutoVM {
                     let mut propagate_value = 0;
 
                     // Plan 197 Task 16: Check if May<T> is Option.None (heap object or old -1)
+                    #[cfg(feature = "nanbox")]
+                    let is_none = if auto_val::is_null(may_nv) {
+                        true
+                    } else if may_bits == -1 {
+                        true
+                    } else if may_bits > 0 {
+                        self.is_option_none(may_bits as u64)
+                    } else {
+                        false
+                    };
+                    #[cfg(not(feature = "nanbox"))]
                     let is_none = if may_bits == -1 {
                         true
                     } else if may_bits > 0 {
-                        // Check if it's an Option.None heap object
                         self.is_option_none(may_bits as u64)
                     } else {
                         false
@@ -4294,7 +4304,9 @@ impl AutoVM {
                                 format!("<unknown:{}>", obj_key)
                             }
                         } else if auto_val::is_null(receiver_nv) {
-                            "None".to_string()
+                            "Option".to_string()
+                        } else if receiver == -1 {
+                            "Option".to_string()
                         } else {
                             format!("<invalid_i32:{}>", receiver)
                         }
@@ -4369,10 +4381,11 @@ impl AutoVM {
                         else {
                             format!("<unknown:{}>", obj_key)
                         }
+                    } else if receiver == -1 {
+                        "Option".to_string()
                     } else {
                         format!("<invalid:{}>", receiver)
                     };
-
                     // Construct function name: TypeName.method
                     let func_name = format!("{}.{}", type_name, method_name);
 
