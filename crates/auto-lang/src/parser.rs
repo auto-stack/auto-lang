@@ -1738,6 +1738,15 @@ impl<'a> Parser<'a> {
                 | TokenKind::ModEq => self.op(),
                 TokenKind::DotView
                 | TokenKind::DotMut
+                | TokenKind::DotTake => self.op(),
+                TokenKind::As => {
+                    // Infix `as` type cast: expr as Type
+                    self.next(); // consume 'as'
+                    let target_type = self.parse_type()?;
+                    lhs = Expr::Cast { expr: Box::new(lhs), target_type };
+                    continue;
+                }
+                | TokenKind::DotMut
                 | TokenKind::DotMove
                 | TokenKind::DotTake
                 | TokenKind::DotQuestion => {
@@ -2226,6 +2235,7 @@ impl<'a> Parser<'a> {
     pub fn args(&mut self) -> AutoResult<Args> {
         self.expect(TokenKind::LParen)?;
         let mut args = Args::new();
+        self.skip_empty_lines();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RParen) {
             let expr = if self.is_kind(TokenKind::Ident) {
                 let e = self.node_or_call_expr()?;
@@ -2280,6 +2290,7 @@ impl<'a> Parser<'a> {
                 }
             }
             self.sep_args()?;
+            self.skip_empty_lines();
         }
         self.expect(TokenKind::RParen)?;
         Ok(args)
@@ -3054,6 +3065,26 @@ impl<'a> Parser<'a> {
         // Continue parsing to handle member access (e.g., Msg.Inc)
         let result = self.expr_pratt_with_left(lhs, 0)?;
 
+        // Convert Call(Dot(Ident(type_name), variant_name), [bindings]) into Cover::Tag
+        // This handles enum variant patterns for imported types where lookup_type returns User instead of Enum
+        if let Expr::Call(call) = &result {
+            if let Expr::Dot(base, variant) = call.name.as_ref() {
+                if let Expr::Ident(type_name) = base.as_ref() {
+                    let bindings: Vec<Name> = call.args.args.iter().map(|arg| {
+                        match arg {
+                            Arg::Pos(Expr::Ident(name)) => name.clone(),
+                            _ => Name::from("_"),
+                        }
+                    }).collect();
+                    return Ok(Expr::Cover(Cover::Tag(TagCover {
+                        kind: type_name.clone(),
+                        tag: variant.clone(),
+                        bindings,
+                    })));
+                }
+            }
+        }
+
         // Plan 165: Check for enum variant struct destructuring: Msg.User { content }
         if let Expr::Cover(Cover::Tag(tag)) = &result {
             if self.is_kind(TokenKind::LBrace) {
@@ -3192,7 +3223,11 @@ impl<'a> Parser<'a> {
             && self.type_store.read()
                 .map(|store| store.lookup_enum_decl_str(&name).is_some())
                 .unwrap_or(false);
-        if is_enum_or_tag || is_user_enum {
+        // Also treat as enum if it's a known type followed by .Variant pattern
+        let is_user_with_variant = matches!(*typ.borrow(), Type::User(_))
+            && !matches!(*typ.borrow(), Type::Unknown | Type::Void)
+            && self.is_kind(TokenKind::Dot);
+        if is_enum_or_tag || is_user_enum || is_user_with_variant {
             return self.tag_cover(&name);
         }
 
@@ -3337,6 +3372,7 @@ impl<'a> Parser<'a> {
             let saved_cur = self.cur.clone();
             let saved_prev = self.prev.clone();
             self.next(); // consume "pub"
+
 
             // Check what follows "pub"
             let stmt = match self.kind() {
@@ -5782,7 +5818,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_is(&mut self) -> AutoResult<Is> {
         self.next(); // skip is
-        let target = self.lhs_expr()?;
+        let target = self.parse_expr()?;
 
         self.expect(TokenKind::LBrace)?; // {
         self.skip_empty_lines();
@@ -5890,13 +5926,8 @@ impl<'a> Parser<'a> {
                                     }
                                 }
                             }
-                            _ => {
-                                return Err(SyntaxError::Generic {
-                                    message: format!("Invalid tag type: {}", cover.kind),
-                                    span: pos_to_span(self.cur.pos),
-                                }
-                                .into());
-                            }
+                            // Imported enum types appear as User — use Unknown for field types
+                            _ => Type::Unknown,
                         };
 
                         for binding in &cover.bindings {
@@ -6523,13 +6554,14 @@ impl<'a> Parser<'a> {
             self.skip_empty_lines();
         }
         // TODO: determine return type with last stmt if it's not specified
-        // Support: Ident (int, str), LSquare ([]int), Star (*int), Question (?T), Not (!T - Plan 121)
+        // Support: Ident (int, str), LSquare ([]int), Star (*int), Question (?T), Not (!T - Plan 121), LParen (tuple)
         else if self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::LSquare)
             || self.is_kind(TokenKind::Star)
             || self.is_kind(TokenKind::Question)
             || self.is_kind(TokenKind::Not)
             || self.is_kind(TokenKind::Tilde)
+            || self.is_kind(TokenKind::LParen)
         {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());
@@ -6736,13 +6768,14 @@ impl<'a> Parser<'a> {
             self.skip_empty_lines();
         }
         // TODO: determine return type with last stmt if it's not specified
-        // Support: Ident (int, str), LSquare ([]int), Star (*int), Question (?T), Not (!T - Plan 121)
+        // Support: Ident (int, str), LSquare ([]int), Star (*int), Question (?T), Not (!T - Plan 121), LParen (tuple)
         else if self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::LSquare)
             || self.is_kind(TokenKind::Star)
             || self.is_kind(TokenKind::Question)
             || self.is_kind(TokenKind::Not)
             || self.is_kind(TokenKind::Tilde)
+            || self.is_kind(TokenKind::LParen)
         {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());
@@ -8181,6 +8214,37 @@ impl<'a> Parser<'a> {
                     _ => {}
                 }
 
+                // Handle dotted module paths: flow.FlowSpec -> User("flow.FlowSpec")
+                if self.is_kind(TokenKind::Dot) {
+                    let mut qualified = name.to_string();
+                    while self.is_kind(TokenKind::Dot) {
+                        self.next(); // consume .
+                        let next = self.cur.text.clone();
+                        self.next(); // consume ident
+                        qualified.push('.');
+                        qualified.push_str(&next);
+                    }
+                    // Check for generic args after the qualified name
+                    if self.cur.kind == TokenKind::Lt && self.next_token_is_type() {
+                        return self.parse_generic_instance(AutoStr::from(qualified));
+                    }
+                    return Ok(Type::User(TypeDecl {
+                        name: AutoStr::from(qualified),
+                        kind: TypeDeclKind::UserType,
+                        parent: None,
+                        has: Vec::new(),
+                        specs: Vec::new(),
+                        spec_impls: Vec::new(),
+                        generic_params: Vec::new(),
+                        members: Vec::new(),
+                        delegations: Vec::new(),
+                        methods: Vec::new(),
+                        attrs: vec![],
+                        doc: None,
+                        is_pub: false,
+                    }));
+                }
+
                 // Check if this is a generic instance (e.g., List<int>, May<string>)
                 if self.cur.kind == TokenKind::Lt {
                     // Context check: make sure < is followed by a type
@@ -8188,6 +8252,21 @@ impl<'a> Parser<'a> {
                     if self.next_token_is_type() {
                         return self.parse_generic_instance(name);
                     }
+                }
+                // Support Result(T, E) style generic with parens
+                if self.cur.kind == TokenKind::LParen && (name == "Result" || name == "Option" || name == "List" || name == "Map") {
+                    self.next(); // consume (
+                    let mut args = vec![self.parse_type()?];
+                    while self.cur.kind == TokenKind::Comma {
+                        self.next(); // consume ,
+                        args.push(self.parse_type()?);
+                    }
+                    self.expect(TokenKind::RParen)?;
+                    return Ok(Type::GenericInstance(GenericInstance {
+                        base_name: name,
+                        args,
+                        source: None,
+                    }));
                 }
 
                 // Plan 052: Check if this identifier is a const generic parameter
