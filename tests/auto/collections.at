@@ -1,0 +1,126 @@
+/// Auto tests for VecDeque and BTreeMap collections
+/// Migrated from crates/auto-lang/src/vm/tests_collections.rs
+/// Note: String-returning FFI methods (front, back, pop_front, pop_back, get,
+/// first_key, last_key) return non-comparable NanoValues. Only int-returning
+/// methods are tested here. String return values are tested via file-based tests.
+
+use auto.test: assert_eq, assert_true
+
+// ===== VecDeque Tests =====
+
+#[test]
+fn test_vecdeque_new() {
+    let deque = VecDeque.new()
+    let size = deque.size()
+    deque.drop()
+    assert_eq(size, 0)
+}
+
+#[test]
+fn test_vecdeque_push_back() {
+    let deque = VecDeque.new()
+    deque.push_back("first")
+    deque.push_back("second")
+    let size = deque.size()
+    deque.drop()
+    assert_eq(size, 2)
+}
+
+#[test]
+fn test_vecdeque_is_empty() {
+    let deque = VecDeque.new()
+    let empty1 = deque.is_empty()
+    deque.push_back("item")
+    let empty2 = deque.is_empty()
+    deque.drop()
+    assert_eq(empty1, 1)
+    assert_eq(empty2, 0)
+}
+
+#[test]
+fn test_vecdeque_clear() {
+    let deque = VecDeque.new()
+    deque.push_back("a")
+    deque.push_back("b")
+    deque.clear()
+    let size = deque.size()
+    deque.drop()
+    assert_eq(size, 0)
+}
+
+#[test]
+fn test_vecdeque_stack_lifo() {
+    let stack = VecDeque.new()
+    stack.push_back(1)
+    stack.push_back(2)
+    stack.push_back(3)
+    let top1 = stack.pop_back()
+    let top2 = stack.pop_back()
+    stack.drop()
+    assert_eq(top1, 3)
+    assert_eq(top2, 2)
+}
+
+// ===== BTreeMap Tests =====
+
+#[test]
+fn test_btreemap_new() {
+    let map = BTreeMap.new()
+    let size = map.size()
+    map.drop()
+    assert_eq(size, 0)
+}
+
+#[test]
+fn test_btreemap_contains() {
+    let map = BTreeMap.new()
+    map.insert("key1", "value1")
+    let has_key1 = map.contains("key1")
+    let has_missing = map.contains("missing")
+    map.drop()
+    assert_eq(has_key1, 1)
+    assert_eq(has_missing, 0)
+}
+
+#[test]
+fn test_btreemap_size() {
+    let map = BTreeMap.new()
+    map.insert("a", 1)
+    map.insert("b", 2)
+    map.insert("c", 3)
+    let size = map.size()
+    map.drop()
+    assert_eq(size, 3)
+}
+
+#[test]
+fn test_btreemap_remove() {
+    let map = BTreeMap.new()
+    map.insert("temp", "value")
+    map.remove("temp")
+    let has_after = map.contains("temp")
+    map.drop()
+    assert_eq(has_after, 0)
+}
+
+#[test]
+fn test_btreemap_clear() {
+    let map = BTreeMap.new()
+    map.insert("a", 1)
+    map.insert("b", 2)
+    map.clear()
+    let size = map.size()
+    map.drop()
+    assert_eq(size, 0)
+}
+
+#[test]
+fn test_btreemap_is_empty() {
+    let map = BTreeMap.new()
+    let empty1 = map.is_empty()
+    map.insert("key", "value")
+    let empty2 = map.is_empty()
+    map.drop()
+    assert_eq(empty1, 1)
+    assert_eq(empty2, 0)
+}
