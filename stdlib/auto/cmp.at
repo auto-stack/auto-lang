@@ -47,3 +47,16 @@ ext Ordering {
         }
     }
 }
+
+/// Cmp implementation for int
+ext int for Cmp {
+    fn cmp(other Self) Ordering {
+        if self < other {
+            return Less
+        }
+        if self > other {
+            return Greater
+        }
+        return Equal
+    }
+}

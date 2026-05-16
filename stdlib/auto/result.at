@@ -50,4 +50,20 @@ enum Result<T, E> {
             Ok(_) -> panic("unwrap_err on Ok")
         }
     }
+
+    /// Map the Ok value using a function. Err passes through unchanged.
+    fn map(f fn(T) U) Result<U, E> {
+        is self {
+            Ok(v) -> Ok(f(v))
+            Err(e) -> Err(e)
+        }
+    }
+
+    /// Chain a function that returns Result. Err passes through unchanged.
+    fn and_then(f fn(T) Result<U, E>) Result<U, E> {
+        is self {
+            Ok(v) -> f(v)
+            Err(e) -> Err(e)
+        }
+    }
 }
