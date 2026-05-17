@@ -547,12 +547,32 @@ impl AutoVM {
         strings: &std::sync::Arc<RwLock<Vec<Vec<u8>>>>,
     ) {
         match value {
-            Value::Int(i) => ram.push_i32(*i),
-            Value::Uint(u) => ram.push_i32(*u as i32),
+            Value::Int(i) => {
+                #[cfg(feature = "nanbox")]
+                ram.push_nv(auto_val::encode_i32(*i));
+                #[cfg(not(feature = "nanbox"))]
+                ram.push_i32(*i);
+            }
+            Value::Uint(u) => {
+                #[cfg(feature = "nanbox")]
+                ram.push_nv(auto_val::encode_i32(*u as i32));
+                #[cfg(not(feature = "nanbox"))]
+                ram.push_i32(*u as i32);
+            }
             Value::Float(f) => ram.push_f32(*f as f32),
             Value::Double(d) => ram.push_f64(*d),
-            Value::Bool(b) => ram.push_i32(if *b { 1 } else { 0 }),
-            Value::Char(c) => ram.push_i32(*c as i32),
+            Value::Bool(b) => {
+                #[cfg(feature = "nanbox")]
+                ram.push_nv(auto_val::encode_bool(*b));
+                #[cfg(not(feature = "nanbox"))]
+                ram.push_i32(if *b { 1 } else { 0 });
+            }
+            Value::Char(c) => {
+                #[cfg(feature = "nanbox")]
+                ram.push_nv(auto_val::encode_i32(*c as i32));
+                #[cfg(not(feature = "nanbox"))]
+                ram.push_i32(*c as i32);
+            }
             Value::Nil => {
                 #[cfg(feature = "nanbox")]
                 ram.push_nv(auto_val::encode_null());
@@ -570,11 +590,16 @@ impl AutoVM {
                 push_str_tag(ram, idx as u32);
             }
             Value::VmRef(vmref) => {
-                // Push heap object ID as i32
+                #[cfg(feature = "nanbox")]
+                ram.push_nv(auto_val::encode_object(vmref.id as u32));
+                #[cfg(not(feature = "nanbox"))]
                 ram.push_i32(vmref.id as i32);
             }
             _ => {
                 eprintln!("WARNING: push_value unsupported type: {:?}", value);
+                #[cfg(feature = "nanbox")]
+                ram.push_nv(auto_val::encode_i32(0));
+                #[cfg(not(feature = "nanbox"))]
                 ram.push_i32(0);
             }
         }
@@ -1139,6 +1164,9 @@ impl AutoVM {
             return Err(VMError::RuntimeError(format!("Invalid opcode: 0x{:02x} at ip={}", op_byte, task.ip - 1)));
         }
         let op: OpCode = op_byte.into();
+
+
+
 
             // Plan 199: Debugger hook — check if we should pause before executing
             {
@@ -3616,6 +3644,14 @@ impl AutoVM {
                         else { auto_val::decode_i32(nv) as usize }
                     };
                     // Pop object_id
+                    #[cfg(feature = "nanbox")]
+                    let obj_id = {
+                        let nv = task.ram.pop_nv();
+                        if auto_val::is_i32(nv) { auto_val::decode_i32(nv) as u64 }
+                        else if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
+                        else { auto_val::decode_i32(nv) as u64 }
+                    };
+                    #[cfg(not(feature = "nanbox"))]
                     let obj_id = task.ram.pop_i32() as u64;
                     // Pop value (bottom of stack)
                     #[cfg(not(feature = "nanbox"))]
@@ -3755,6 +3791,24 @@ impl AutoVM {
                     task.ip += 2;
 
                     // Pop object ID from stack
+                    #[cfg(feature = "nanbox")]
+                    let obj_id = {
+                        let nv = task.ram.pop_nv();
+                        if auto_val::is_i32(nv) {
+                            auto_val::decode_i32(nv) as u64
+                        } else if auto_val::is_object(nv) {
+                            auto_val::decode_object(nv) as u64
+                        } else {
+                            let fn_name = task.call_stack.last().map(|f| f.fn_name.clone().unwrap_or_default()).unwrap_or_default();
+                            let field_name = self.strings.read().unwrap()
+                                .get(field_idx as usize)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            eprintln!("[GET_FIELD] non-i32 obj_id: raw={:016x} field={} fn={} bp={} ip={}", nv, field_name, fn_name, task.bp, task.ip);
+                            auto_val::decode_i32(nv) as u64
+                        }
+                    };
+                    #[cfg(not(feature = "nanbox"))]
                     let obj_id = task.ram.pop_i32() as u64;
 
                     // Get field name from strings pool (Plan 073: Now uses RwLock)

@@ -225,6 +225,11 @@ pub struct Codegen {
     /// Used to format output correctly (e.g., byte as hex, uint with suffix)
     pub last_expr_type: ObjectType,
 
+    /// Track whether the last compiled expression was a native call (CALL_NAT).
+    /// CALL_NAT void shims don't push return values, but CALL+RET always does.
+    /// This lets Stmt::Expr emit POP only when needed.
+    last_was_native_void: bool,
+
     /// Plan 127: Task handler registry for message routing
     /// Stores handler metadata for each task type
     pub task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry,
@@ -327,6 +332,7 @@ impl Codegen {
             max_locals: 0,
             should_pop_expr_result: false,
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
+            last_was_native_void: false,
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             current_type_members: None, // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
@@ -444,6 +450,7 @@ impl Codegen {
             max_locals: 0,
             should_pop_expr_result: false,
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
+            last_was_native_void: false,
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             current_type_members: None, // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
@@ -540,8 +547,12 @@ impl Codegen {
                 self.compile_expr(expr)?;
                 // Plan 089: Evaluate and discard result if this is not the last expression
                 // of a block or script. This keeps the stack clean for subsequent ops.
-                // Plan 118 Phase 7: Don't pop if expression is void (no value on stack)
-                if self.should_pop_expr_result && self.last_expr_type != ObjectType::Void {
+                // User-defined void functions (CALL+RET) leave a return value on the stack,
+                // so POP is needed. Native void shims (CALL_NAT) don't push return values,
+                // so POP must be skipped to avoid eating a value below.
+                let needs_pop = self.should_pop_expr_result
+                    && (!matches!(self.last_expr_type, ObjectType::Void) || !self.last_was_native_void);
+                if needs_pop {
                     if matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint) {
                         self.emit(OpCode::POP_N);
                         self.code.push(2);
@@ -563,11 +574,11 @@ impl Codegen {
                     }
                     let is_last = i == n - 1;
                     let old_pop = self.should_pop_expr_result;
-                    // Plan 118 Phase 5: For the last statement in a block, we should NOT pop
-                    // the result because it's the block's return value.
-                    // For non-last statements, we should pop to prevent stack growth.
                     if is_last {
-                        self.should_pop_expr_result = false;
+                        // Keep outer context's should_pop_expr_result for the last
+                        // statement. Expression contexts (function bodies) will have
+                        // it as false (keep value as return). Statement contexts
+                        // (for-loop bodies) will have it as true (discard value).
                     } else {
                         self.should_pop_expr_result = true;
                     }
@@ -1784,8 +1795,11 @@ impl Codegen {
                             self.emit(OpCode::JMP_IF_Z);
                             let jump_to_end = self.emit_placeholder_i16();
 
-                            // Compile loop body
+                            // Compile loop body — discard body's return value
+                            let old_pop = self.should_pop_expr_result;
+                            self.should_pop_expr_result = true;
                             self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                            self.should_pop_expr_result = old_pop;
 
                             // Continue target: increment loop variable
                             let continue_pos = self.code.len();
@@ -1871,8 +1885,11 @@ impl Codegen {
                                 *pos = loop_start as usize;
                             }
 
-                            // Compile loop body
+                            // Compile loop body — discard body's return value
+                            let old_pop = self.should_pop_expr_result;
+                            self.should_pop_expr_result = true;
                             self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                            self.should_pop_expr_result = old_pop;
 
                             // JMP back to loop start
                             self.emit(OpCode::JMP);
@@ -1990,8 +2007,11 @@ impl Codegen {
                             // Store element to loop variable
                             self.emit_store_loc(var_index);
 
-                            // Compile loop body
+                            // Compile loop body — discard body's return value
+                            let old_pop = self.should_pop_expr_result;
+                            self.should_pop_expr_result = true;
                             self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                            self.should_pop_expr_result = old_pop;
 
                             // Continue target: increment counter
                             let continue_pos = self.code.len();
@@ -2066,8 +2086,11 @@ impl Codegen {
                             self.emit(OpCode::JMP_IF_Z);
                             let jump_to_end = self.emit_placeholder_i16();
 
-                            // Compile loop body
+                            // Compile loop body — discard body's return value
+                            let old_pop = self.should_pop_expr_result;
+                            self.should_pop_expr_result = true;
                             self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                            self.should_pop_expr_result = old_pop;
 
                             // Continue target: increment both loop variables
                             let continue_pos = self.code.len();
@@ -2178,8 +2201,11 @@ impl Codegen {
                             // Store to iter variable
                             self.emit_store_loc(iter_var_index);
 
-                            // Compile loop body
+                            // Compile loop body — discard body's return value
+                            let old_pop = self.should_pop_expr_result;
+                            self.should_pop_expr_result = true;
                             self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                            self.should_pop_expr_result = old_pop;
 
                             // Continue target: increment counter
                             let continue_pos = self.code.len();
@@ -2308,8 +2334,11 @@ impl Codegen {
                         // Store value to val variable
                         self.emit_store_loc(val_var_index);
 
-                        // Compile loop body
+                        // Compile loop body — discard body's return value
+                        let old_pop = self.should_pop_expr_result;
+                        self.should_pop_expr_result = true;
                         self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                        self.should_pop_expr_result = old_pop;
 
                         // Continue: increment counter
                         let continue_pos = self.code.len();
@@ -2356,8 +2385,13 @@ impl Codegen {
                         self.emit(OpCode::JMP_IF_Z);
                         let jump_to_end = self.emit_placeholder_i16();
 
-                        // Compile loop body
+                        // Compile loop body — force should_pop_expr_result = true
+                        // so the Block handler keeps it for the last statement
+                        // (loop body is a statement, its value is discarded).
+                        let old_pop = self.should_pop_expr_result;
+                        self.should_pop_expr_result = true;
                         self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                        self.should_pop_expr_result = old_pop;
 
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
@@ -2393,8 +2427,11 @@ impl Codegen {
                             *pos = loop_start;
                         }
 
-                        // Compile loop body
+                        // Compile loop body — discard body's return value
+                        let old_pop = self.should_pop_expr_result;
+                        self.should_pop_expr_result = true;
                         self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                        self.should_pop_expr_result = old_pop;
 
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
@@ -2463,8 +2500,11 @@ impl Codegen {
                             *pos = loop_start as usize;
                         }
 
-                        // Compile loop body
+                        // Compile loop body — discard body's return value
+                        let old_pop = self.should_pop_expr_result;
+                        self.should_pop_expr_result = true;
                         self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                        self.should_pop_expr_result = old_pop;
 
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
@@ -3000,7 +3040,9 @@ impl Codegen {
             Stmt::Node(node) => {
                 // Stmt::Node wraps an Expr::Node — compile the expression
                 self.compile_expr(&Expr::Node(node.clone()))?;
-                if self.should_pop_expr_result && self.last_expr_type != ObjectType::Void {
+                let needs_pop = self.should_pop_expr_result
+                    && (!matches!(self.last_expr_type, ObjectType::Void) || !self.last_was_native_void);
+                if needs_pop {
                     self.emit(OpCode::POP);
                 }
             }
@@ -3038,6 +3080,7 @@ impl Codegen {
                     }
                 }
                 self.last_expr_type = ObjectType::Void;
+                self.last_was_native_void = true;
             }
             crate::ast::Stmt::Dep(dep) => {
                 // Register dep name as module prefix in rust_native_map
@@ -3258,6 +3301,7 @@ impl Codegen {
     }
 
     pub fn compile_expr(&mut self, expr: &Expr) -> AutoResult<()> {
+        self.last_was_native_void = false; // reset for each expression
         match expr {
             Expr::Int(i) => {
                 self.last_expr_type = ObjectType::Int;
@@ -4385,6 +4429,7 @@ impl Codegen {
                         // SET_ELEM doesn't push a return value - mark as void to prevent
                         // Stmt::Expr from emitting a POP that would corrupt the stack
                         self.last_expr_type = ObjectType::Void;
+                        self.last_was_native_void = true;
                     } else if let Expr::Dot(obj, field) = lhs.as_ref() {
                         // Plan 075: Field assignment: obj.field = value
                         // Plan 087 Phase 2: Support generic instance field assignment
@@ -4577,6 +4622,7 @@ impl Codegen {
                         // mark as void to prevent Stmt::Expr from emitting a POP
                         // that would corrupt the stack
                         self.last_expr_type = ObjectType::Void;
+                        self.last_was_native_void = true;
                     } else {
                         unimplemented!("Assignment to complex LHS not supported yet");
                     }
@@ -5914,6 +5960,7 @@ impl Codegen {
                     // env_logger.init(), log.set_max_level(), etc. have no VM-side effect.
                     if func_name.as_deref() == Some("auto.log.noop") {
                         self.last_expr_type = ObjectType::Void;
+                        self.last_was_native_void = true;
                         return Ok(());
                     }
 
@@ -6025,6 +6072,7 @@ impl Codegen {
                     if let Some(ref name) = func_name {
                         if name.starts_with("print") || name == "write" || name == "say" || name.starts_with("assert") {
                             self.last_expr_type = ObjectType::Void;
+                            self.last_was_native_void = true;
                         } else if name.ends_with(".to_hex") || name.ends_with(".to_str")
                             || name.ends_with(".str") || name == "int_str"
                             || name.starts_with("auto.url_opaque.scheme")
@@ -6051,6 +6099,7 @@ impl Codegen {
                             // Fallback: infer return type from native name suffix
                             // to avoid stale last_expr_type from argument compilation
                             self.last_expr_type = self.infer_native_return_type(name);
+                            self.last_was_native_void = matches!(self.last_expr_type, ObjectType::Void);
                         }
                         // List HOF methods return arrays (tracked for type-aware dispatch)
                         if name == "List.map" || name == "List.filter" {
@@ -6068,6 +6117,9 @@ impl Codegen {
                                 Some(Type::Uint | Type::U64) => ObjectType::Uint,
                                 _ => ObjectType::String,
                             };
+                            if matches!(self.last_expr_type, ObjectType::Void) {
+                                self.last_was_native_void = true;
+                            }
                         }
                         // Plan 214/222: Python FFI functions — type-aware return tracking
                         if self.py_native_map.contains_key(name) {
@@ -6207,11 +6259,14 @@ impl Codegen {
                         let type_part = name.split('.').next().unwrap_or("");
                         type_part.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
                             && !KNOWN_STATIC_TYPES.contains(&type_part)
+                            && !self.exports.contains_key(name)
                     })
                     .unwrap_or(false);
 
                 // For unresolved static calls (e.g., Normal.new(2.0, 3.0)),
                 // push type name as receiver BEFORE args so stack layout is [receiver, arg0, ...]
+                // Only do this for truly unresolved calls (not for regular functions
+                // that happen to start with uppercase like OP_RESERVE_STACK).
                 if is_unresolved_static {
                     if let Some(name) = func_name.as_ref() {
                         let type_part = name.split('.').next().unwrap_or("");

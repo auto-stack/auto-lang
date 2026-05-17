@@ -39,6 +39,7 @@ pub struct AutoTask {
     pub ram: VirtualRAM,
     pub ip: usize,
     pub bp: usize, // Base Pointer
+    pub prev_sp: usize, // Debug: previous sp for tracking drift
     pub num_locals: usize, // Number of local variables in current stack frame
     pub status: TaskStatus,
     pub wake_time: Option<Instant>, // For SLEEP opcode
@@ -70,6 +71,7 @@ impl AutoTask {
             ram: VirtualRAM::new(ram_size),
             ip: start_ip,
             bp: 0,
+            prev_sp: 0,
             num_locals: 0,
             status: TaskStatus::Ready,
             wake_time: None,
