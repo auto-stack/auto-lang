@@ -5903,7 +5903,11 @@ impl<'a> Parser<'a> {
 
     pub fn parse_is(&mut self) -> AutoResult<Is> {
         self.next(); // skip is
+        // Disable symbol checking for is-target (it's a name to match, not a variable to resolve)
+        let old_skip_check = self.skip_check;
+        self.skip_check = true;
         let target = self.parse_expr()?;
+        self.skip_check = old_skip_check;
 
         self.expect(TokenKind::LBrace)?; // {
         self.skip_empty_lines();
