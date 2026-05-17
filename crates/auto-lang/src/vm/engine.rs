@@ -4166,8 +4166,22 @@ impl AutoVM {
                 }
 
                 OpCode::NOT => {
-                    let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a == 0 { 1 } else { 0 });
+                    #[cfg(feature = "nanbox")]
+                    {
+                        let nv = task.ram.pop_nv();
+                        // Falsy: null nanbox, i32(0), i32(false sentinel -2147483647), or bool false
+                        let decoded = auto_val::decode_i32(nv);
+                        let is_false = auto_val::is_null(nv)
+                            || decoded == 0
+                            || decoded == -2147483647
+                            || nv == auto_val::encode_bool(false);
+                        task.ram.push_i32(if is_false { 1 } else { 0 });
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
+                        let a = task.ram.pop_i32();
+                        task.ram.push_i32(if a == 0 || a == i32::MIN + 1 { 1 } else { 0 });
+                    }
                 }
                 OpCode::CALL => {
                     vm_debug!("DEBUG CALL: Stack depth before = {}", task.ram.sp);
