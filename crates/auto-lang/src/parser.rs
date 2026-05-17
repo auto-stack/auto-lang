@@ -208,6 +208,8 @@ pub struct Parser<'a> {
     raw_attrs: Vec<AutoStr>,
     /// Collected doc comment lines (///) to attach to the next declaration
     pending_docs: Vec<AutoStr>,
+    /// Track imported module names from `use` statements for check_symbol
+    use_imports: Vec<AutoStr>,
 }
 
 impl<'a> Parser<'a> {
@@ -252,6 +254,7 @@ impl<'a> Parser<'a> {
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
             pending_docs: Vec::new(),
+            use_imports: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -316,6 +319,7 @@ impl<'a> Parser<'a> {
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
             pending_docs: Vec::new(),
+            use_imports: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -359,6 +363,7 @@ impl<'a> Parser<'a> {
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
             pending_docs: Vec::new(),
+            use_imports: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -937,6 +942,11 @@ impl<'a> Parser<'a> {
 
     fn return_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip return keyword
+        if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi)
+            || self.is_kind(TokenKind::RBrace) || self.is_kind(TokenKind::EOF)
+        {
+            return Ok(Stmt::Return(Box::new(Expr::Nil)));
+        }
         let expr = self.parse_expr()?;
         Ok(Stmt::Return(Box::new(expr)))
     }
@@ -3047,6 +3057,18 @@ impl<'a> Parser<'a> {
     }
 
     pub fn is_branch_cond_expr(&mut self) -> AutoResult<Expr> {
+        // Skip symbol checking during pattern parsing — bindings like Some(x) or Type.Variant(y)
+        // have not-yet-defined variables that would trigger false "undefined variable" errors.
+        let prev_skip = self.skip_check;
+        self.skip_check = true;
+
+        let result = self.is_branch_cond_expr_inner();
+
+        self.skip_check = prev_skip;
+        result
+    }
+
+    fn is_branch_cond_expr_inner(&mut self) -> AutoResult<Expr> {
         // Plan 120: Check for Option/Result patterns first
         // Some(binding) => ...  or None => ...
         // Ok(binding) => ...    or Err(binding) => ...
@@ -3087,17 +3109,39 @@ impl<'a> Parser<'a> {
 
         // Convert Call(Dot(Ident(type_name), variant_name), [bindings]) into Cover::Tag
         // This handles enum variant patterns for imported types where lookup_type returns User instead of Enum
+        // Also handles 3-level paths: Call(Dot(Dot(Ident(mod), type_name), variant_name), [bindings])
+        // Also handles 3-level via Cover::Tag: Call(Dot(Cover::Tag(mod.type), variant), [bindings])
         if let Expr::Call(call) = &result {
             if let Expr::Dot(base, variant) = call.name.as_ref() {
-                if let Expr::Ident(type_name) = base.as_ref() {
+                let type_name = match base.as_ref() {
+                    Expr::Ident(name) => Some(name.clone()),
+                    Expr::Dot(mod_name, sub_type) => {
+                        // 3-level: module.Type.Variant(binding)
+                        match mod_name.as_ref() {
+                            Expr::Ident(mod_ident) => {
+                                let full_name = format!("{}.{}", mod_ident, sub_type);
+                                Some(Name::from(full_name))
+                            }
+                            _ => None,
+                        }
+                    }
+                    Expr::Cover(Cover::Tag(inner_tag)) => {
+                        // Cover::Tag from earlier dot: module.Type -> TagCover, then .Variant(binding)
+                        let full_name = format!("{}.{}", inner_tag.kind, inner_tag.tag);
+                        Some(Name::from(full_name))
+                    }
+                    _ => None,
+                };
+                if let Some(type_name) = type_name {
                     let bindings: Vec<Name> = call.args.args.iter().map(|arg| {
                         match arg {
                             Arg::Pos(Expr::Ident(name)) => name.clone(),
+                            Arg::Name(name) => name.clone(),
                             _ => Name::from("_"),
                         }
                     }).collect();
                     return Ok(Expr::Cover(Cover::Tag(TagCover {
-                        kind: type_name.clone(),
+                        kind: type_name,
                         tag: variant.clone(),
                         bindings,
                     })));
@@ -4916,6 +4960,17 @@ impl<'a> Parser<'a> {
             segments
         };
 
+        // Track imported module names for check_symbol (e.g., "flow" from "use super.flow")
+        if let Some(last) = paths.last() {
+            let name = last.as_str();
+            if name != "super" {
+                let already = self.use_imports.iter().any(|s| s.as_str() == name);
+                if !already {
+                    self.use_imports.push(last.clone());
+                }
+            }
+        }
+
         // Create the Use statement
         // Plan 085: Import is now handled by CompileSession.resolve_uses()
         // The symbols should already be in type_store before parsing
@@ -6655,17 +6710,16 @@ impl<'a> Parser<'a> {
         // if has parent_name, define `self` in current scope
         if !parent_name.is_empty() {
             let parent_type = self.find_type_for_name(parent_name);
-            if let Some(parent_type) = parent_type {
-                self.define(
-                    "self",
-                    Meta::Store(Store {
-                        kind: StoreKind::Let,
-                        name: "self".into(),
-                        ty: parent_type.clone(),
-                        expr: Expr::Ident("self".into()),
-                    }),
-                );
-            }
+            let ty = parent_type.unwrap_or(Type::Unknown);
+            self.define(
+                "self",
+                Meta::Store(Store {
+                    kind: StoreKind::Let,
+                    name: "self".into(),
+                    ty,
+                    expr: Expr::Ident("self".into()),
+                }),
+            );
         }
 
         // parse function body
@@ -6869,17 +6923,16 @@ impl<'a> Parser<'a> {
         // if has parent_name, define `self` in current scope
         if !parent_name.is_empty() {
             let parent_type = self.find_type_for_name(parent_name);
-            if let Some(parent_type) = parent_type {
-                self.define(
-                    "self",
-                    Meta::Store(Store {
-                        kind: StoreKind::Let,
-                        name: "self".into(),
-                        ty: parent_type.clone(),
-                        expr: Expr::Ident("self".into()),
-                    }),
-                );
-            }
+            let ty = parent_type.unwrap_or(Type::Unknown);
+            self.define(
+                "self",
+                Meta::Store(Store {
+                    kind: StoreKind::Let,
+                    name: "self".into(),
+                    ty,
+                    expr: Expr::Ident("self".into()),
+                }),
+            );
         }
 
         // parse function body
@@ -8781,6 +8834,18 @@ impl<'a> Parser<'a> {
     // 1，简单名称；
     // 2，点号表达式最左侧的名称
     // 3, 函数调用，如果函数名不存在，表示是一个节点实例
+    /// Check if a name refers to an imported module (from `use` statements)
+    fn is_imported_module(&self, name: &str) -> bool {
+        for use_path in &self.use_imports {
+            if let Some(alias) = use_path.rsplit('.').next() {
+                if alias == name {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub fn check_symbol(&mut self, expr: Expr) -> AutoResult<Expr> {
         if self.skip_check {
             return Ok(expr);
@@ -8797,13 +8862,17 @@ impl<'a> Parser<'a> {
                         };
 
                         if !self.exists(&name) && !is_type_valid {
-                            let candidates = self.get_defined_names();
-                            return Err(NameError::undefined_variable(
-                                name.to_string(),
-                                pos_to_span(self.cur.pos),
-                                &candidates,
-                            )
-                            .into());
+                            // Allow module-qualified names (e.g., flow.FlowSpec)
+                            // where the left side is an imported module, not a local variable
+                            if !self.is_imported_module(name) {
+                                let candidates = self.get_defined_names();
+                                return Err(NameError::undefined_variable(
+                                    name.to_string(),
+                                    pos_to_span(self.cur.pos),
+                                    &candidates,
+                                )
+                                .into());
+                            }
                         }
                     }
                     Ok(expr)
