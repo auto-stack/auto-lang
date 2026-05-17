@@ -3757,6 +3757,9 @@ impl Codegen {
                         Type::Double => ObjectType::Double,
                         _ => ObjectType::Int,
                     };
+                } else {
+                    // No type tracked — default to Int for untyped variables
+                    self.last_expr_type = ObjectType::Int;
                 }
 
                 // Check if this is a captured variable (Plan 071)
