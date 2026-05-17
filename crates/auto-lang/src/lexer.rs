@@ -442,8 +442,9 @@ impl<'a> Lexer<'a> {
                 self.buffer.push_back(tk);
                 break;
             }
-            if c == '\\' {
+            if c == '\\' && endchar != '`' {
                 // Escape sequence: skip backslash, push the next char literally
+                // Backtick strings are raw — no escape processing
                 self.chars.next(); // consume \
                 if let Some(&escaped) = self.chars.peek() {
                     self.chars.next(); // consume escaped char

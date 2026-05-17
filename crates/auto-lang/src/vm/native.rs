@@ -983,11 +983,12 @@ pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
         let left_is_str = auto_val::is_string(left_nv);
         let right_is_str = auto_val::is_string(right_nv);
-
         let equal = if left_is_str && right_is_str {
-            let left_str = vm.get_string(auto_val::decode_string(left_nv) as u16)
+            let lidx = auto_val::decode_string(left_nv) as u16;
+            let ridx = auto_val::decode_string(right_nv) as u16;
+            let left_str = vm.get_string(lidx)
                 .map(|b| String::from_utf8_lossy(&b).to_string());
-            let right_str = vm.get_string(auto_val::decode_string(right_nv) as u16)
+            let right_str = vm.get_string(ridx)
                 .map(|b| String::from_utf8_lossy(&b).to_string());
             left_str.as_deref() == right_str.as_deref()
         } else if left_nv == right_nv {
