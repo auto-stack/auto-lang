@@ -1,0 +1,8 @@
+// Test helper module for 17_modules/001_use_fn
+pub fn greet(name str) {
+    print(name)
+}
+
+pub fn add(a int, b int) int {
+    a + b
+}
