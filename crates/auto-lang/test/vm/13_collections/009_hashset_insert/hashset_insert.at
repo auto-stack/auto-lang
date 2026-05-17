@@ -2,6 +2,6 @@ var s = HashSet.new()
 s.insert("a")
 s.insert("b")
 s.insert("c")
-var r = f"[$s.contains(\"a\"), $s.contains(\"b\"), $s.contains(\"c\")]"
+var r = f"[${s.contains("a")}, ${s.contains("b")}, ${s.contains("c")}]"
+print(r)
 s.drop()
-r
