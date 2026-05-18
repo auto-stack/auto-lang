@@ -1,0 +1,8 @@
+/// A2C transpiler tests — discovers and runs all .at → .expected.c/.h test cases
+/// Plan 263 Phase 3: Convention-based test discovery via tests/a2c_tests.at
+
+#[test]
+fn test_a2c_transpiler() {
+    let failures = Test.run_a2c_dir("crates/auto-lang/test/a2c")
+    assert_eq(failures, 0)
+}

@@ -1117,8 +1117,11 @@ macro_rules! for_each_bigvm_native {
             // === Mime (2740) ===
             ("auto.mime.from_path", 2740, String),
 
-            // === Test runner (2826) — Plan 263 Phase 2 ===
+            // === Test runner (2826-2829) — Plan 263 Phase 2-3 ===
             ("auto.test.run_a2r_dir", 2826, Int),
+            ("auto.test.run_vm_dir", 2827, Int),
+            ("auto.test.run_a2c_dir", 2828, Int),
+            ("auto.test.run_a2ts_dir", 2829, Int),
 
             // === Rust stdlib dispatch (3000) ===
             ("auto.rust_stdlib.dispatch", 3000, Void),
@@ -1679,6 +1682,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.sha2_opaque.drop", 2739),
     ("auto.mime.from_path", 2740),
     ("auto.test.run_a2r_dir", 2826),
+    ("auto.test.run_vm_dir", 2827),
+    ("auto.test.run_a2c_dir", 2828),
+    ("auto.test.run_a2ts_dir", 2829),
     ("auto.rust_stdlib.dispatch", 3000),
     ("sleep", 1202),
     ("parse_sse", 2250),

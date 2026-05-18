@@ -327,14 +327,14 @@ pub struct A2rTestCase {
 
 /// Discover all a2r transpiler test cases under `test/a2r/` (or `test/cookbook/`).
 /// Walks category/nnn_name/ directories, finds .at + .expected.rs pairs.
-pub fn discover_a2r_tests(test_a2r_dir: &Path, suite_name: &str) -> Vec<A2rTestCase> {
+pub fn discover_a2r_tests(test_dir: &Path, suite_name: &str) -> Vec<A2rTestCase> {
     let mut cases = Vec::new();
-    if !test_a2r_dir.is_dir() {
+    if !test_dir.is_dir() {
         return cases;
     }
 
     // Walk category directories
-    if let Ok(entries) = std::fs::read_dir(test_a2r_dir) {
+    if let Ok(entries) = std::fs::read_dir(test_dir) {
         let mut cat_entries: Vec<_> = entries.flatten().collect();
         cat_entries.sort_by_key(|e| e.file_name());
 
@@ -421,4 +421,157 @@ pub fn format_file_test_report(reports: &[FileTestReport], elapsed: u128) -> Str
     ));
 
     output
+}
+
+// =============================================================================
+// Plan 263 Phase 3: A2C transpiler file-based test support
+// =============================================================================
+
+/// A single a2c transpiler test case (directory with .at source + .expected.c/.h).
+#[derive(Debug, Clone)]
+pub struct A2cTestCase {
+    pub name: String,
+    pub dir: PathBuf,
+    pub source_file: PathBuf,
+    pub expected_c: PathBuf,
+    pub expected_h: PathBuf,
+    pub expected_error: Option<PathBuf>,
+}
+
+/// Discover all a2c transpiler test cases under `test/a2c/`.
+/// Walks category/nnn_name/ directories, finds .at + .expected.c pairs.
+pub fn discover_a2c_tests(test_dir: &Path) -> Vec<A2cTestCase> {
+    let mut cases = Vec::new();
+    if !test_dir.is_dir() {
+        return cases;
+    }
+
+    if let Ok(entries) = std::fs::read_dir(test_dir) {
+        let mut cat_entries: Vec<_> = entries.flatten().collect();
+        cat_entries.sort_by_key(|e| e.file_name());
+
+        for cat_entry in cat_entries {
+            let cat_path = cat_entry.path();
+            if !cat_path.is_dir() {
+                continue;
+            }
+            let cat_name = cat_entry.file_name().to_string_lossy().to_string();
+
+            if let Ok(case_entries) = std::fs::read_dir(&cat_path) {
+                let mut case_entries: Vec<_> = case_entries.flatten().collect();
+                case_entries.sort_by_key(|e| e.file_name());
+
+                for case_entry in case_entries {
+                    let case_path = case_entry.path();
+                    if !case_path.is_dir() {
+                        continue;
+                    }
+
+                    let case_dir_name = case_entry.file_name().to_string_lossy().to_string();
+                    let stem = extract_test_stem(&case_dir_name);
+
+                    let source_file = case_path.join(format!("{}.at", stem));
+                    if !source_file.is_file() {
+                        continue;
+                    }
+
+                    let expected_c = case_path.join(format!("{}.expected.c", stem));
+                    let expected_h = case_path.join(format!("{}.expected.h", stem));
+                    let expected_error = {
+                        let p = case_path.join(format!("{}.expected.error.log", stem));
+                        if p.is_file() { Some(p) } else { None }
+                    };
+
+                    // Must have at least .expected.c or .expected.error.log
+                    if !expected_c.is_file() && expected_error.is_none() {
+                        continue;
+                    }
+
+                    let name = format!("{}/{}", cat_name, case_dir_name);
+
+                    cases.push(A2cTestCase {
+                        name,
+                        dir: case_path,
+                        source_file,
+                        expected_c,
+                        expected_h,
+                        expected_error,
+                    });
+                }
+            }
+        }
+    }
+
+    cases
+}
+
+// =============================================================================
+// Plan 263 Phase 3: A2TS transpiler file-based test support
+// =============================================================================
+
+/// A single a2ts transpiler test case (directory with .at source + .expected.ts).
+#[derive(Debug, Clone)]
+pub struct A2tsTestCase {
+    pub name: String,
+    pub dir: PathBuf,
+    pub source_file: PathBuf,
+    pub expected_file: PathBuf,
+}
+
+/// Discover all a2ts transpiler test cases under `test/a2ts/`.
+/// Walks category/nnn_name/ directories, finds .at + .expected.ts pairs.
+pub fn discover_a2ts_tests(test_dir: &Path) -> Vec<A2tsTestCase> {
+    let mut cases = Vec::new();
+    if !test_dir.is_dir() {
+        return cases;
+    }
+
+    if let Ok(entries) = std::fs::read_dir(test_dir) {
+        let mut cat_entries: Vec<_> = entries.flatten().collect();
+        cat_entries.sort_by_key(|e| e.file_name());
+
+        for cat_entry in cat_entries {
+            let cat_path = cat_entry.path();
+            if !cat_path.is_dir() {
+                continue;
+            }
+            let cat_name = cat_entry.file_name().to_string_lossy().to_string();
+
+            if let Ok(case_entries) = std::fs::read_dir(&cat_path) {
+                let mut case_entries: Vec<_> = case_entries.flatten().collect();
+                case_entries.sort_by_key(|e| e.file_name());
+
+                for case_entry in case_entries {
+                    let case_path = case_entry.path();
+                    if !case_path.is_dir() {
+                        continue;
+                    }
+
+                    let case_dir_name = case_entry.file_name().to_string_lossy().to_string();
+                    let stem = extract_test_stem(&case_dir_name);
+
+                    let source_file = case_path.join(format!("{}.at", stem));
+                    if !source_file.is_file() {
+                        continue;
+                    }
+
+                    let expected_file = case_path.join(format!("{}.expected.ts", stem));
+                    if !expected_file.is_file() {
+                        continue;
+                    }
+
+                    let name = format!("{}/{}", cat_name, case_dir_name);
+
+                    cases.push(A2tsTestCase {
+                        name,
+                        dir: case_path,
+                        source_file,
+                        expected_file,
+                    });
+                }
+            }
+        }
+    }
+
+    cases
 }

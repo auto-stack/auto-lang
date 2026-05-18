@@ -1022,6 +1022,213 @@ pub fn run_a2r_file_test(case: &test_runner::A2rTestCase) -> test_runner::FileTe
     }
 }
 
+/// Plan 263 Phase 3: Run a single a2c transpiler file-based test case.
+/// Reads .at source, transpiles to C, compares against .expected.c and .expected.h.
+pub fn run_a2c_file_test(case: &test_runner::A2cTestCase) -> test_runner::FileTestReport {
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let case_name = case.name.clone();
+
+    let stem = case.source_file
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("test");
+
+    // Read source
+    let src = match std::fs::read_to_string(&case.source_file) {
+        Ok(s) => s,
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("failed to read source: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    // Check if this is an error test
+    if case.expected_error.is_some() {
+        let result = crate::trans::c::transpile_c(stem, &src);
+        let duration_ms = start.elapsed().as_millis();
+        return match result {
+            Err(_) => test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Passed,
+                duration_ms,
+                stdout: String::new(),
+            },
+            Ok(_) => test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed("expected error but transpilation succeeded".into()),
+                duration_ms,
+                stdout: String::new(),
+            },
+        };
+    }
+
+    // Normal transpile
+    let mut ccode = match crate::trans::c::transpile_c(stem, &src) {
+        Ok(c) => c,
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("transpiler error: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    let actual_src = match ccode.done() {
+        Ok(bytes) => bytes.to_vec(),
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("transpiler finalize error: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+    let actual_header = ccode.header;
+
+    let duration_ms = start.elapsed().as_millis();
+
+    // Compare .c output
+    let expected_c = std::fs::read(&case.expected_c).unwrap_or_default();
+    if actual_src != expected_c {
+        let wrong_path = case.expected_c.with_extension("wrong.c");
+        let _ = std::fs::write(&wrong_path, &actual_src);
+        return test_runner::FileTestReport {
+            name: case_name,
+            outcome: test_runner::TestOutcome::Failed("C source mismatch".into()),
+            duration_ms,
+            stdout: String::from_utf8_lossy(&actual_src).to_string(),
+        };
+    }
+
+    // Compare .h output
+    let expected_h = std::fs::read(&case.expected_h).unwrap_or_default();
+    if actual_header != expected_h {
+        let wrong_path = case.expected_h.with_extension("wrong.h");
+        let _ = std::fs::write(&wrong_path, &actual_header);
+        return test_runner::FileTestReport {
+            name: case_name,
+            outcome: test_runner::TestOutcome::Failed("C header mismatch".into()),
+            duration_ms,
+            stdout: String::from_utf8_lossy(&actual_header).to_string(),
+        };
+    }
+
+    test_runner::FileTestReport {
+        name: case_name,
+        outcome: test_runner::TestOutcome::Passed,
+        duration_ms,
+        stdout: String::new(),
+    }
+}
+
+/// Plan 263 Phase 3: Run a single a2ts transpiler file-based test case.
+/// Reads .at source, transpiles to TypeScript, compares against .expected.ts.
+pub fn run_a2ts_file_test(case: &test_runner::A2tsTestCase) -> test_runner::FileTestReport {
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let case_name = case.name.clone();
+
+    let stem = case.source_file
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("test");
+
+    // Read source
+    let src = match std::fs::read_to_string(&case.source_file) {
+        Ok(s) => s,
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("failed to read source: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    // Parse and transpile
+    let _scope = crate::scope_manager::ScopeManager::new();
+    let mut parser = crate::parser::Parser::from(src.as_str());
+    let ast = match parser.parse() {
+        Ok(a) => a,
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("parse error: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    let mut sink = crate::trans::Sink::new(stem.into());
+    let mut trans = crate::trans::typescript::TypeScriptTrans::new(stem.into());
+    let ts_code = match trans.trans(ast, &mut sink) {
+        Ok(_) => match sink.done() {
+            Ok(bytes) => bytes.to_vec(),
+            Err(e) => {
+                return test_runner::FileTestReport {
+                    name: case_name,
+                    outcome: test_runner::TestOutcome::Failed(format!("sink finalize error: {}", e)),
+                    duration_ms: start.elapsed().as_millis(),
+                    stdout: String::new(),
+                };
+            }
+        },
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("transpiler error: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    // Read expected
+    let expected = match std::fs::read(&case.expected_file) {
+        Ok(b) => b,
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("failed to read expected.ts: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    let duration_ms = start.elapsed().as_millis();
+
+    if ts_code != expected {
+        let wrong_path = case.expected_file.with_extension("wrong.ts");
+        let _ = std::fs::write(&wrong_path, &ts_code);
+        test_runner::FileTestReport {
+            name: case_name,
+            outcome: test_runner::TestOutcome::Failed("transpiler output mismatch".into()),
+            duration_ms,
+            stdout: String::from_utf8_lossy(&ts_code).to_string(),
+        }
+    } else {
+        test_runner::FileTestReport {
+            name: case_name,
+            outcome: test_runner::TestOutcome::Passed,
+            duration_ms,
+            stdout: String::new(),
+        }
+    }
+}
+
 /// Extract and format the result value from a VM task after execution.
 /// Plan 225: Shared between execute_autovm and debug sessions.
 pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64, result_type: Option<crate::vm::codegen::ObjectType>) -> AutoResult<String> {

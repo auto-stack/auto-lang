@@ -1,0 +1,8 @@
+/// VM file-based tests — discovers and runs all .at → .expected.out/result test cases
+/// Plan 263 Phase 3: Convention-based test discovery via tests/vm_tests.at
+
+#[test]
+fn test_vm() {
+    let failures = Test.run_vm_dir("crates/auto-lang/test/vm")
+    assert_eq(failures, 0)
+}

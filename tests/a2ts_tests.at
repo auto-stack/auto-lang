@@ -1,0 +1,8 @@
+/// A2TS transpiler tests — discovers and runs all .at → .expected.ts test cases
+/// Plan 263 Phase 3: Convention-based test discovery via tests/a2ts_tests.at
+
+#[test]
+fn test_a2ts_transpiler() {
+    let failures = Test.run_a2ts_dir("crates/auto-lang/test/a2ts")
+    assert_eq(failures, 0)
+}

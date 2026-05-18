@@ -3634,8 +3634,11 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Plan 192: Rust stdlib dynamic dispatch (manual — uses heap objects)
     natives.register_shim_by_name("auto.rust_stdlib.dispatch", shim_rust_stdlib_dispatch);
 
-    // Plan 263 Phase 2: Test runner (manual shim — calls discover/run from test_runner)
+    // Plan 263 Phase 2-3: Test runners (manual shims — calls discover/run from test_runner)
     natives.register_shim_by_name("auto.test.run_a2r_dir", shim_test_run_a2r_dir);
+    natives.register_shim_by_name("auto.test.run_vm_dir", shim_test_run_vm_dir);
+    natives.register_shim_by_name("auto.test.run_a2c_dir", shim_test_run_a2c_dir);
+    natives.register_shim_by_name("auto.test.run_a2ts_dir", shim_test_run_a2ts_dir);
 }
 
 // ============================================================================
@@ -5026,8 +5029,113 @@ mod tests {
 // Plan 263 Phase 2: Test runner FFI — run_a2r_dir
 // ============================================================================
 
+/// Run all VM file-based tests in a directory.
+/// Pops path (String) from stack, pushes failure count (i64) to stack.
+pub fn shim_test_run_vm_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let dir = Path::new(&path);
+    let cases = crate::test_runner::discover_vm_tests(dir);
+
+    if cases.is_empty() {
+        return Err(VMError::RuntimeError(format!(
+            "Test.run_vm_dir: no tests found in: {}",
+            path
+        )));
+    }
+
+    let mut failures = 0i64;
+    for case in &cases {
+        let report = crate::run_vm_file_test(case);
+        match &report.outcome {
+            crate::test_runner::TestOutcome::Passed => {
+                print!("test {} ... ok\n", case.name);
+            }
+            crate::test_runner::TestOutcome::Failed(msg) => {
+                print!("test {} ... FAILED\n", case.name);
+                print!("    {}\n", msg);
+                failures += 1;
+            }
+        }
+    }
+
+    failures.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Run all a2c transpiler tests in a directory.
+/// Pops path (String) from stack, pushes failure count (i64) to stack.
+pub fn shim_test_run_a2c_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let dir = Path::new(&path);
+    let cases = crate::test_runner::discover_a2c_tests(dir);
+
+    if cases.is_empty() {
+        return Err(VMError::RuntimeError(format!(
+            "Test.run_a2c_dir: no tests found in: {}",
+            path
+        )));
+    }
+
+    let mut failures = 0i64;
+    for case in &cases {
+        let report = crate::run_a2c_file_test(case);
+        match &report.outcome {
+            crate::test_runner::TestOutcome::Passed => {
+                print!("test {} ... ok\n", case.name);
+            }
+            crate::test_runner::TestOutcome::Failed(msg) => {
+                print!("test {} ... FAILED\n", case.name);
+                print!("    {}\n", msg);
+                failures += 1;
+            }
+        }
+    }
+
+    failures.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Run all a2ts transpiler tests in a directory.
+/// Pops path (String) from stack, pushes failure count (i64) to stack.
+pub fn shim_test_run_a2ts_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let dir = Path::new(&path);
+    let cases = crate::test_runner::discover_a2ts_tests(dir);
+
+    if cases.is_empty() {
+        return Err(VMError::RuntimeError(format!(
+            "Test.run_a2ts_dir: no tests found in: {}",
+            path
+        )));
+    }
+
+    let mut failures = 0i64;
+    for case in &cases {
+        let report = crate::run_a2ts_file_test(case);
+        match &report.outcome {
+            crate::test_runner::TestOutcome::Passed => {
+                print!("test {} ... ok\n", case.name);
+            }
+            crate::test_runner::TestOutcome::Failed(msg) => {
+                print!("test {} ... FAILED\n", case.name);
+                print!("    {}\n", msg);
+                failures += 1;
+            }
+        }
+    }
+
+    failures.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
 /// Run all a2r transpiler tests in a directory.
-/// Pops path (String) from stack, pushes failure count (i32) to stack.
+/// Pops path (String) from stack, pushes failure count (i64) to stack.
 pub fn shim_test_run_a2r_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let path: String = VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
