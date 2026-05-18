@@ -15,7 +15,7 @@ fn main() {
     archive.set_prefix_strip(3);
     for entry in archive.entries().unwrap() {
         let entry = entry.unwrap();
-        println!("Extracted: {:?}", entry.path().unwrap().display());
+        println!("Extracted: {}", entry.path().unwrap().display());
     }
     assert!(true);
 }

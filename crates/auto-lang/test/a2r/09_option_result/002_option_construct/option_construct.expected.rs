@@ -17,7 +17,6 @@ fn divide(a: i32, b: i32) -> Result<i32, Box<dyn std::error::Error>> {
         return Err("division by zero".into());
     }
     return Ok(a / b);
-    Ok(())
 }
 
 fn main() {

@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 fn test_propagate() -> i32 {
     let x: i32 = 10;
-    let y: i32 = x?;
+    let y = x?;
     y
 }
 

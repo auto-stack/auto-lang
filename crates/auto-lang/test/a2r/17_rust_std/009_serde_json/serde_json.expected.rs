@@ -6,6 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use serde_json::{from_str, to_string};
+use serde_json::Value;
 fn main() {
     let json = to_string("hello");
     let parsed = from_str(json);

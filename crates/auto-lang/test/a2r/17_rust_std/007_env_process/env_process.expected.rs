@@ -7,5 +7,5 @@ use auto_lang::a2r_std::*;
 
 use std::env;
 fn main() {
-    let args = env.args();
+    let args = a2r_std::env::args();
 }

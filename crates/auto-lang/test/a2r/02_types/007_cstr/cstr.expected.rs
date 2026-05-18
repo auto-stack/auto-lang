@@ -8,7 +8,7 @@ use auto_lang::a2r_std::*;
 
 
 fn println(msg: &str) {
-    print!("%s\n", msg);
+    print!("%s\\n", msg);
 }
 
 fn main() {

@@ -1022,6 +1022,15 @@ impl<'a> Lexer<'a> {
                                     break;
                                 }
                             }
+                            // If the identifier starts with a known comptime keyword prefix
+                            // (if, for, is), return Hash only and let the rest be lexed
+                            // as a separate ident on the next call.
+                            if name.starts_with("if")
+                                || name.starts_with("for")
+                                || name.starts_with("is")
+                            {
+                                return Ok(self.single(TokenKind::Hash, c));
+                            }
                             // Consume # + identifier from self.chars
                             self.chars.next(); // skip '#'
                             for _ in 0..name.len() {

@@ -766,7 +766,7 @@ impl RustTrans {
             }
             .map_err(Into::into),
             Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
-            Expr::CStr(s) => write!(out, "r\"{}\"", s).map_err(Into::into),
+            Expr::CStr(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::Ident(name) => {
                 // Plan 151: Global variable access - add .lock().unwrap() pattern
                 if self.is_global_var(name) {
@@ -927,11 +927,43 @@ impl RustTrans {
                                 // Check if lhs is a type-like expression (identifier or module.Type chain)
                                 let lhs_is_type = if matches!(lhs.as_ref(), Expr::Ident(_)) {
                                     is_enum_variant || is_type_name
-                                } else if let Expr::Dot(il, _ir) = lhs.as_ref() {
-                                    matches!(il.as_ref(), Expr::Ident(_))
-                                } else if let Expr::Bina(il, Op::Dot, _ir) = lhs.as_ref() {
+                                } else if let Expr::Dot(il, ir) = lhs.as_ref() {
+                                    // module.Type or nested field like circle.center
+                                    // Only treat as type-like if inner field starts with uppercase
+                                    // or leftmost segment is a known module
+                                    let inner_is_type = ir
+                                        .chars()
+                                        .next()
+                                        .map(|c| c.is_uppercase())
+                                        .unwrap_or(false);
+                                    let leftmost_is_module = if let Expr::Ident(name) = il.as_ref() {
+                                        self.uses.iter().any(|u| {
+                                            let u_str = u.as_str();
+                                            u_str == name.as_str()
+                                                || u_str.ends_with(&format!("::{}", name))
+                                        })
+                                    } else {
+                                        false
+                                    };
+                                    inner_is_type || leftmost_is_module
+                                } else if let Expr::Bina(il, Op::Dot, ir) = lhs.as_ref() {
                                     // module.Type or module.module.Type chain (nested Dot via Bina)
-                                    matches!(il.as_ref(), Expr::Ident(_))
+                                    // Same check: inner field must be type-like or leftmost must be a module
+                                    let inner_is_type = if let Expr::Ident(name) = ir.as_ref() {
+                                        name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                                    } else {
+                                        false
+                                    };
+                                    let leftmost_is_module = if let Expr::Ident(name) = il.as_ref() {
+                                        self.uses.iter().any(|u| {
+                                            let u_str = u.as_str();
+                                            u_str == name.as_str()
+                                                || u_str.ends_with(&format!("::{}", name))
+                                        })
+                                    } else {
+                                        false
+                                    };
+                                    inner_is_type || leftmost_is_module
                                 } else {
                                     false
                                 };
@@ -1978,9 +2010,26 @@ impl RustTrans {
                     self.expr(object, out)?;
                     write!(out, "::{}", field)?;
                     return Ok(());
-                } else if let Expr::Dot(il, _) = object.as_ref() {
+                } else if let Expr::Dot(il, inner_field) = object.as_ref() {
                     // module.Type.method() via Expr::Dot variant
-                    if matches!(il.as_ref(), Expr::Ident(_)) {
+                    // Only use :: if the inner field looks like a type (starts with uppercase)
+                    // or the leftmost segment is a known module — otherwise it's nested
+                    // struct field access like circle.center.x which should use .
+                    let inner_is_type = inner_field
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false);
+                    let leftmost_is_module = if let Expr::Ident(name) = il.as_ref() {
+                        self.uses.iter().any(|u| {
+                            let u_str = u.as_str();
+                            u_str == name.as_str()
+                                || u_str.ends_with(&format!("::{}", name))
+                        })
+                    } else {
+                        false
+                    };
+                    if inner_is_type || leftmost_is_module {
                         self.expr(object, out)?;
                         write!(out, "::{}", field)?;
                         return Ok(());
@@ -5324,15 +5373,9 @@ impl RustTrans {
                 write!(sink.body, ", ")?;
             }
             for (i, param) in params_to_emit.iter().enumerate() {
-                let mut_prefix = if matches!(param.ty, Type::User(_) | Type::Enum(_) | Type::Tag(_)) {
-                    "mut "
-                } else {
-                    ""
-                };
                 write!(
                     sink.body,
-                    "{}{}: {}",
-                    mut_prefix,
+                    "{}: {}",
                     param.name,
                     self.rust_param_type_name(&param.ty)
                 )?;
@@ -5342,15 +5385,9 @@ impl RustTrans {
             }
         } else {
             for (i, param) in fn_decl.params.iter().enumerate() {
-                let mut_prefix = if matches!(param.ty, Type::User(_) | Type::Enum(_) | Type::Tag(_)) {
-                    "mut "
-                } else {
-                    ""
-                };
                 write!(
                     sink.body,
-                    "{}{}: {}",
-                    mut_prefix,
+                    "{}: {}",
                     param.name,
                     self.rust_param_type_name(&param.ty)
                 )?;
@@ -6409,8 +6446,7 @@ impl RustTrans {
                 self.print_indent(&mut sink.body)?;
                 write!(
                     sink.body,
-                    "{}{}: {},",
-                    if type_decl.is_pub { "pub " } else { "" },
+                    "{}: {},",
                     member.name,
                     self.rust_type_name(&member.ty)
                 )?;
@@ -7590,15 +7626,12 @@ impl RustTrans {
     fn needs_debug_format(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Ident(name) => {
+                // Only use name heuristics for types strongly associated with non-Display:
+                // Duration, Instant, DirEntry, etc. Common variable names like "count",
+                // "value", "avg" are often primitives (i32, f64) that implement Display.
                 let lower = name.as_str().to_lowercase();
                 if lower.contains("duration") || lower.contains("elapsed") || lower.contains("instant")
-                    || lower.contains("vec") || lower.contains("list") || lower.contains("map")
-                    || lower.contains("set") || lower.contains("hashmap") || lower.contains("entry")
-                    || lower.contains("result") || lower.contains("option") || lower.contains("dir_entry")
-                    || lower.contains("people") || lower.contains("numbers") || lower.contains("items")
-                    || lower.contains("now") || lower.contains("future") || lower.contains("past")
-                    || lower == "value" || lower == "exists" || lower == "has_none" || lower == "has_value"
-                    || lower == "numbers" || lower == "count" || lower == "avg"
+                    || lower.contains("dir_entry")
                 {
                     return true;
                 }

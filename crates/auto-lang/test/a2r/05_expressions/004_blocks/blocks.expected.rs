@@ -17,5 +17,5 @@ fn main() {
     let sum = add(5, 3);
     let product = multiply(4, 7);
     let result = sum + product;
-    println!("Sum: {} {} {} {} {:?}", sum, "Product:", product, "Result:", result);
+    println!("Sum: {} {} {} {} {}", sum, "Product:", product, "Result:", result);
 }

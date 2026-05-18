@@ -8,7 +8,7 @@ use auto_lang::a2r_std::*;
 use chrono::{Utc, Duration};
 fn main() {
     let now = Utc::now();
-    println!("Current time: {:?}", now);
+    println!("Current time: {}", now);
     let future = now.checked_add_signed(Duration::days(30));
     assert!(true);
 }

@@ -33,6 +33,15 @@ pub fn str_find(s: &str, pattern: &str) -> i32 {
     s.find(pattern).map(|p| p as i32).unwrap_or(-1)
 }
 
+/// Find the index of a substring starting from position, returns -1 if not found
+pub fn str_find_from(s: &str, pattern: &str, start: i32) -> i32 {
+    let start = start.max(0) as usize;
+    if start >= s.len() {
+        return -1;
+    }
+    s[start..].find(pattern).map(|p| (start + p) as i32).unwrap_or(-1)
+}
+
 /// Extract a substring from start index with given length
 pub fn str_substr(s: &str, start: i32, len: i32) -> String {
     let start = start.max(0) as usize;

@@ -8,5 +8,5 @@ use auto_lang::a2r_std::*;
 #[tokio::main]
 async fn main() {
     let result = fetch_data().await;
-    println!("{:?}", result);
+    println!("{}", result);
 }

@@ -13,6 +13,7 @@ pub mod json;
 pub mod fs;
 pub mod list;
 pub mod hashmap;
+pub mod http;
 
 // Re-export commonly used types
 pub use list::List;
@@ -58,6 +59,7 @@ pub fn value_len(val: &serde_json::Value) -> usize {
 
 // Re-export string functions at crate root for transpiler compatibility
 pub use str::str_find;
+pub use str::str_find_from;
 pub use str::str_substr;
 pub use str::str_ends_with;
 pub use str::str_starts_with;

@@ -17,10 +17,10 @@ impl SimpleLogger {
     fn new() -> SimpleLogger {
         SimpleLogger {}
     }
-    fn enabled(&self, mut metadata: Metadata) -> bool {
+    fn enabled(&self, metadata: Metadata) -> bool {
         metadata.level() <= log.Level::Debug
     }
-    fn log(&self, mut record: Record) {
+    fn log(&self, record: Record) {
         if self.enabled(record.metadata()) {
             println!("{} - {}", record.level(), record.args());
         }

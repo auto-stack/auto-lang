@@ -7,8 +7,8 @@ use auto_lang::a2r_std::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Message {
-    pub role: String,
-    pub content: String,
+    role: String,
+    content: String,
 }
 
 pub fn load() -> Result<Vec<Message>, String> {

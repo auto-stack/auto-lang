@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 use regex::Regex;
 fn main() {
-    let re = Regex::new(r"\d+").unwrap();
+    let re = Regex::new("\\d+").unwrap();
     let text: String = "abc 123 def 456".to_string();
     let replaced = re.replace_all(text, "NUM");
     assert!(replaced == "abc NUM def NUM");

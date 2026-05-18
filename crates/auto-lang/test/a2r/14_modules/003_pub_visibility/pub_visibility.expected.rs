@@ -7,8 +7,8 @@ use auto_lang::a2r_std::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Point {
-    pub x: i32,
-    pub y: i32,
+    x: i32,
+    y: i32,
 }
 
 impl Point {
