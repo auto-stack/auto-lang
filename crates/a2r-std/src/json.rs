@@ -19,8 +19,8 @@ pub fn encode_pretty(value: &Value) -> String {
 // Decoding
 // ═══════════════════════════════════════════════════════════
 
-pub fn parse(s: &str) -> Option<Value> {
-    serde_json::from_str(s).ok()
+pub fn parse(s: &str) -> Value {
+    serde_json::from_str(s).unwrap_or(Value::Null)
 }
 
 pub fn is_valid(s: &str) -> bool {
@@ -47,8 +47,8 @@ pub fn is_null(val: &Value) -> bool {
     val.is_null()
 }
 
-pub fn as_string(val: &Value) -> Option<String> {
-    val.as_str().map(|s| s.to_string())
+pub fn as_string(val: &Value) -> String {
+    val.as_str().unwrap_or("").to_string()
 }
 
 pub fn as_number(val: &Value) -> f64 {
@@ -67,8 +67,8 @@ pub fn json_get(val: &Value, key: &str) -> Option<Value> {
     val.get(key).cloned()
 }
 
-pub fn get_at(val: &Value, idx: usize) -> Option<Value> {
-    val.get(idx).cloned()
+pub fn get_at(val: &Value, idx: usize) -> Value {
+    val.get(idx).cloned().unwrap_or(Value::Null)
 }
 
 pub fn json_len(val: &Value) -> usize {
@@ -91,6 +91,32 @@ pub fn keys(val: &Value) -> Vec<String> {
 
 pub fn as_array(val: &Value) -> Vec<Value> {
     val.as_array().cloned().unwrap_or_default()
+}
+
+// ═══════════════════════════════════════════════════════════
+// Aliases for transpiler convenience
+// ═══════════════════════════════════════════════════════════
+
+/// Alias for json_get — transpiler generates json::get(...)
+/// Returns Value::Null if not found (transpiler doesn't handle Option)
+pub fn get(val: &Value, key: &str) -> Value {
+    val.get(key).cloned().unwrap_or(Value::Null)
+}
+
+/// Alias for json_len — transpiler generates json::len(...)
+pub fn len(val: &Value) -> usize {
+    json_len(val)
+}
+
+/// Convert a Value to its JSON string representation.
+pub fn to_string(val: &Value) -> String {
+    serde_json::to_string(val).unwrap_or_default()
+}
+
+/// Get a string value directly from a JSON object key.
+/// Returns empty string if not found (transpiler doesn't handle Option)
+pub fn get_str(val: &Value, key: &str) -> String {
+    val.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string()
 }
 
 // ═══════════════════════════════════════════════════════════

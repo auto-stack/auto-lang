@@ -23,3 +23,8 @@ pub fn now_sec() -> i32 {
 pub fn sleep_ms(ms: u64) {
     std::thread::sleep(Duration::from_millis(ms));
 }
+
+/// Alias: time_now → now_sec (transpiler compatibility)
+pub fn time_now() -> String {
+    now_sec().to_string()
+}

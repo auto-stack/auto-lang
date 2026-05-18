@@ -41,3 +41,35 @@ pub fn nil<T>() -> Option<T> {
 pub fn sleep_ms(ms: u64) {
     std::thread::sleep(std::time::Duration::from_millis(ms));
 }
+
+/// Simple hash function (transpiler compatibility)
+pub fn simple_hash(s: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    s.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+/// Value length — alias for json::len for transpiler compatibility
+pub fn value_len(val: &serde_json::Value) -> usize {
+    json::json_len(val)
+}
+
+// Re-export string functions at crate root for transpiler compatibility
+pub use str::str_find;
+pub use str::str_substr;
+pub use str::str_ends_with;
+pub use str::str_starts_with;
+pub use str::str_split;
+pub use str::str_trim;
+pub use str::str_to_lower;
+pub use str::str_to_upper;
+
+/// Generate a UUID string
+pub fn uuid() -> String {
+    format!("{:x}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos())
+}

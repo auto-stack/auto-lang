@@ -82,3 +82,8 @@ pub fn append_text(path: &str, content: &str) -> i32 {
         Err(_) => -1,
     }
 }
+
+/// Alias: mkdir_all → create_dir_all
+pub fn mkdir_all(path: &str) -> i32 {
+    create_dir(path)
+}
