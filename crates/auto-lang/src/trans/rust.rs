@@ -8041,40 +8041,18 @@ impl RustTrans {
 
     /// Fix common String/&str mismatch patterns.
     fn fix_string_str_mismatches(content: &mut String) {
-        // 1. .push("literal") → .push("literal".to_string()) for Vec<String>
-        let lines: Vec<&str> = content.lines().collect();
-        let mut new_lines = Vec::new();
-        let mut fixes = 0;
-        for line in &lines {
-            let mut new_line = line.to_string();
-            // push("literal") → push("literal".to_string())
-            if let Ok(re) = regex::Regex::new(r#"\.push\("(.*?)"\)"#) {
-                let replaced = re.replace_all(&new_line, |caps: &regex::Captures| {
-                    let lit = caps.get(1).unwrap().as_str();
-                    format!(r#".push("{}.to_string())"#, lit)
-                });
-                // Fix the malformed .to_string() placement
-                let replaced = replaced.replace(r#".push("*.to_string())"#, r#".push("".to_string())"#);
-                // Fix double .to_string().to_string()
-                let replaced = replaced.replace(".to_string().to_string()", ".to_string()");
-                if replaced != new_line {
-                    fixes += 1;
-                }
-                new_line = replaced;
-            }
-            new_lines.push(new_line);
-        }
-        if fixes > 0 {
-            *content = new_lines.join("\n");
-        }
-
-        // 2. Remove .to_string().as_str() → .as_str()
+        // 1. Remove .to_string().as_str() → .as_str()
         let reduced = content.replace(".to_string().as_str()", ".as_str()");
         if reduced != *content {
             *content = reduced;
         }
-        // 3. Remove .clone().as_str() → .as_str()
+        // 2. Remove .clone().as_str() → .as_str()
         let reduced = content.replace(".clone().as_str()", ".as_str()");
+        if reduced != *content {
+            *content = reduced;
+        }
+        // 3. Remove duplicate .to_string().to_string() → .to_string()
+        let reduced = content.replace(".to_string().to_string()", ".to_string()");
         if reduced != *content {
             *content = reduced;
         }
@@ -8303,7 +8281,6 @@ pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> 
 
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);
-    transpiler.emit_allow_pragma = true;
     transpiler.trans(ast, &mut out)?;
 
     // Apply post-processing fixes (replaces fix_transpiled.py)
