@@ -312,6 +312,79 @@ pub fn discover_vm_tests(test_vm_dir: &Path) -> Vec<FileTestCase> {
     cases
 }
 
+// =============================================================================
+// Plan 263: A2R transpiler file-based test support
+// =============================================================================
+
+/// A single a2r transpiler test case (directory with .at source + .expected.rs).
+#[derive(Debug, Clone)]
+pub struct A2rTestCase {
+    pub name: String,           // "a2r/01_basics/001_hello"
+    pub dir: PathBuf,
+    pub source_file: PathBuf,   // hello.at
+    pub expected_file: PathBuf, // hello.expected.rs
+}
+
+/// Discover all a2r transpiler test cases under `test/a2r/` (or `test/cookbook/`).
+/// Walks category/nnn_name/ directories, finds .at + .expected.rs pairs.
+pub fn discover_a2r_tests(test_a2r_dir: &Path, suite_name: &str) -> Vec<A2rTestCase> {
+    let mut cases = Vec::new();
+    if !test_a2r_dir.is_dir() {
+        return cases;
+    }
+
+    // Walk category directories
+    if let Ok(entries) = std::fs::read_dir(test_a2r_dir) {
+        let mut cat_entries: Vec<_> = entries.flatten().collect();
+        cat_entries.sort_by_key(|e| e.file_name());
+
+        for cat_entry in cat_entries {
+            let cat_path = cat_entry.path();
+            if !cat_path.is_dir() {
+                continue;
+            }
+
+            // Walk test case directories: 001_hello, 002_sqrt, etc.
+            if let Ok(case_entries) = std::fs::read_dir(&cat_path) {
+                let mut case_entries: Vec<_> = case_entries.flatten().collect();
+                case_entries.sort_by_key(|e| e.file_name());
+
+                for case_entry in case_entries {
+                    let case_path = case_entry.path();
+                    if !case_path.is_dir() {
+                        continue;
+                    }
+
+                    let case_dir_name = case_entry.file_name().to_string_lossy().to_string();
+                    let stem = extract_test_stem(&case_dir_name);
+
+                    let source_file = case_path.join(format!("{}.at", stem));
+                    if !source_file.is_file() {
+                        continue;
+                    }
+
+                    let expected_file = case_path.join(format!("{}.expected.rs", stem));
+                    if !expected_file.is_file() {
+                        continue;
+                    }
+
+                    let cat_name = cat_entry.file_name().to_string_lossy().to_string();
+                    let name = format!("{}/{}/{}", suite_name, cat_name, case_dir_name);
+
+                    cases.push(A2rTestCase {
+                        name,
+                        dir: case_path,
+                        source_file,
+                        expected_file,
+                    });
+                }
+            }
+        }
+    }
+
+    cases
+}
+
 /// Format file-based test results in cargo test style.
 pub fn format_file_test_report(reports: &[FileTestReport], elapsed: u128) -> String {
     let mut output = String::new();

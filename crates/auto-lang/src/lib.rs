@@ -938,6 +938,90 @@ pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTe
     }
 }
 
+/// Plan 263: Run a single a2r transpiler file-based test case.
+/// Reads .at source, transpiles to Rust, compares against .expected.rs.
+pub fn run_a2r_file_test(case: &test_runner::A2rTestCase) -> test_runner::FileTestReport {
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let case_name = case.name.clone();
+
+    // Extract stem from source file name for transpile_rust
+    let stem = case.source_file
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("test");
+
+    // Read source
+    let src = match std::fs::read_to_string(&case.source_file) {
+        Ok(s) => s,
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("failed to read source: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    // Transpile
+    let actual = match crate::trans::rust::transpile_rust(stem, &src) {
+        Ok(mut rcode) => match rcode.done() {
+            Ok(bytes) => bytes.to_vec(),
+            Err(e) => {
+                return test_runner::FileTestReport {
+                    name: case_name,
+                    outcome: test_runner::TestOutcome::Failed(format!("transpiler finalize error: {}", e)),
+                    duration_ms: start.elapsed().as_millis(),
+                    stdout: String::new(),
+                };
+            }
+        },
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("transpiler error: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    // Read expected
+    let expected = match std::fs::read(&case.expected_file) {
+        Ok(b) => b,
+        Err(e) => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(format!("failed to read expected.rs: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+
+    let duration_ms = start.elapsed().as_millis();
+
+    if actual != expected {
+        let wrong_path = case.expected_file.with_extension("wrong.rs");
+        let _ = std::fs::write(&wrong_path, &actual);
+        test_runner::FileTestReport {
+            name: case_name,
+            outcome: test_runner::TestOutcome::Failed("transpiler output mismatch".into()),
+            duration_ms,
+            stdout: String::from_utf8_lossy(&actual).to_string(),
+        }
+    } else {
+        test_runner::FileTestReport {
+            name: case_name,
+            outcome: test_runner::TestOutcome::Passed,
+            duration_ms,
+            stdout: String::new(),
+        }
+    }
+}
+
 /// Extract and format the result value from a VM task after execution.
 /// Plan 225: Shared between execute_autovm and debug sessions.
 pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64, result_type: Option<crate::vm::codegen::ObjectType>) -> AutoResult<String> {

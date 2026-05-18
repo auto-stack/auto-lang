@@ -4,7 +4,7 @@
 
 The Auto language has ~150 Rust inline tests that run Auto code through the VM and assert on results. With Plan 260's `auto test` framework now working, these tests can be expressed directly in Auto as `#[test]` functions — eliminating the Rust wrapper boilerplate and letting tests live in the language they test.
 
-The file-based VM tests (426 in `test/vm/`, 163 in `test/cookbook/`) use a different paradigm (print output → compare against expected file) and are NOT in scope for this migration. They remain as-is.
+The file-based VM tests (426 in `test/vm/`, 163 in `test/cookbook/`) use a different paradigm (print output → compare against expected file) and are NOT in scope for this migration. They remain as-is — now auto-discovered by `auto test` via Plan 262 (VM) and Plan 263 (a2r/cookbook).
 
 ## What's In Scope
 

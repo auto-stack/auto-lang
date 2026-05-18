@@ -713,6 +713,50 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             }
 
+            // Plan 263: A2R transpiler file-based tests (test/a2r/ and test/cookbook/)
+            let a2r_test_dirs = [
+                (std::path::PathBuf::from("crates/auto-lang/test/a2r"), "a2r"),
+                (std::path::PathBuf::from("crates/auto-lang/test/cookbook"), "cookbook"),
+            ];
+            let mut all_a2r_cases = Vec::new();
+            for (dir, suite) in &a2r_test_dirs {
+                if dir.is_dir() {
+                    all_a2r_cases.extend(auto_lang::test_runner::discover_a2r_tests(dir, suite));
+                }
+            }
+
+            // Filter by --dir if it points into an a2r/cookbook tree
+            for prefix in &["crates/auto-lang/test/a2r/", "crates/auto-lang/test/cookbook/"] {
+                if target_str.starts_with(prefix) {
+                    let subpath = &target_str[prefix.len()..];
+                    all_a2r_cases.retain(|c| c.name.contains(subpath) || subpath.is_empty());
+                    break;
+                }
+            }
+
+            if !all_a2r_cases.is_empty() {
+                if let Some(f) = &filter {
+                    all_a2r_cases.retain(|c| c.name.contains(f.as_str()));
+                }
+
+                if !all_a2r_cases.is_empty() {
+                    println!("\nRunning transpiler tests ({} cases):", all_a2r_cases.len());
+                    let a2r_start = std::time::Instant::now();
+                    let mut a2r_reports = Vec::new();
+
+                    for case in &all_a2r_cases {
+                        let report = auto_lang::run_a2r_file_test(case);
+                        if matches!(report.outcome, auto_lang::test_runner::TestOutcome::Failed(_)) {
+                            file_test_failures = true;
+                        }
+                        a2r_reports.push(report);
+                    }
+
+                    let a2r_elapsed = a2r_start.elapsed().as_millis();
+                    print!("{}", auto_lang::test_runner::format_file_test_report(&a2r_reports, a2r_elapsed));
+                }
+            }
+
             if all_results.has_failures() || file_test_failures {
                 std::process::exit(1);
             }
