@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
-import { BarChart, Bell, Command, Home, Image, LayoutGrid, LayoutTemplate, Lock, MousePointerClick, Navigation, Palette, PanelLeft, Search, SquareStack, Table, Type } from 'lucide-vue-next'
+import { Bell, Command, Home, Image, LayoutGrid, MousePointerClick, Navigation, Palette, Search, SquareStack, Type } from 'lucide-vue-next'
 
 import UnifiedNavbar from '@/components/UnifiedNavbar.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
@@ -18,13 +18,13 @@ const sidebarOpen = ref<boolean>(false)
 const searchOpen = ref<boolean>(false)
 const searchQuery = ref<string>('')
 
-function closeSidebar(): void {
-  sidebarOpen.value = false;
+function closeSearch(): void {
+  searchOpen.value = false;
 
 }
 
-function closeSearch(): void {
-  searchOpen.value = false;
+function closeSidebar(): void {
+  sidebarOpen.value = false;
 
 }
 
@@ -42,7 +42,7 @@ function openSearch(): void {
 </script>
 
 <template>
-  <div class="flex flex-col h-screen">
+  <div class="flex flex-col pb-8">
     <div class="flex flex-col h-screen overflow-hidden">
       <UnifiedNavbar :show-search="true" @search-click="openSearch" active-section="gallery" />
       <Drawer v-model:open="searchOpen" @Close="closeSearch" />
@@ -147,21 +147,6 @@ function openSearch(): void {
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutGrid class="h-4 w-4 shrink-0" /><span>Popover</span></div>            </router-link>
             <router-link to="/sheet">
               <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><SquareStack class="h-4 w-4 shrink-0" /><span>Sheet</span></div>            </router-link>
-            <span class="mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Blocks</span>
-            <router-link to="/blocks">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><LayoutTemplate class="h-4 w-4 shrink-0" /><span>All Blocks</span></div>            </router-link>
-            <router-link to="/blocks/login-01">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Lock class="h-4 w-4 shrink-0" /><span>Login</span></div>            </router-link>
-            <router-link to="/blocks/dashboard-01">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><BarChart class="h-4 w-4 shrink-0" /><span>Dashboard</span></div>            </router-link>
-            <router-link to="/blocks/products-01">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><Table class="h-4 w-4 shrink-0" /><span>Products</span></div>            </router-link>
-            <router-link to="/blocks/sidebar-demo">
-              <div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><PanelLeft class="h-4 w-4 shrink-0" /><span>Sidebar</span></div>            </router-link>
-            <div class="mt-4 pt-4 border-t flex items-center justify-between px-2">
-              <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Color Theme</span>
-              <ThemeToggle />
-            </div>
           </ScrollArea>
         </aside>
         <Drawer v-model:open="sidebarOpen" @Close="closeSidebar" />

@@ -52,31 +52,6 @@ widget App {
         "/toggle" -> use toggle
         "/togglegroup" -> use togglegroup
         "/tooltip" -> use tooltip
-        "/blocks" -> use blocks
-        "/blocks/login-01" -> use login_01
-        "/blocks/login-02" -> use login_02
-        "/blocks/login-03" -> use login_03
-        "/blocks/login-04" -> use login_04
-        "/blocks/login-05" -> use login_05
-        "/blocks/dashboard-01" -> use dashboard_01
-        "/blocks/products-01" -> use products_01
-        "/blocks/sidebar-01" -> use sidebar_01
-        "/blocks/sidebar-02" -> use sidebar_02
-        "/blocks/sidebar-03" -> use sidebar_03
-        "/blocks/sidebar-04" -> use sidebar_04
-        "/blocks/sidebar-05" -> use sidebar_05
-        "/blocks/sidebar-06" -> use sidebar_06
-        "/blocks/sidebar-07" -> use sidebar_07
-        "/blocks/sidebar-08" -> use sidebar_08
-        "/blocks/sidebar-09" -> use sidebar_09
-        "/blocks/sidebar-10" -> use sidebar_10
-        "/blocks/sidebar-11" -> use sidebar_11
-        "/blocks/sidebar-12" -> use sidebar_12
-        "/blocks/sidebar-13" -> use sidebar_13
-        "/blocks/sidebar-14" -> use sidebar_14
-        "/blocks/sidebar-15" -> use sidebar_15
-        "/blocks/sidebar-16" -> use sidebar_16
-        "/blocks/sidebar-demo" -> use sidebar_demo
     }
 
     model {
@@ -200,14 +175,6 @@ widget App {
                         nav-link (to: "/dropdownmenu", icon: "layout-grid", label: "DropdownMenu") {}
                         nav-link (to: "/popover", icon: "layout-grid", label: "Popover") {}
                         nav-link (to: "/sheet", icon: "square-stack", label: "Sheet") {}
-
-                        // Blocks group
-                        text (text: "Blocks", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/blocks", icon: "layout-template", label: "All Blocks") {}
-                        nav-link (to: "/blocks/login-01", icon: "lock", label: "Login") {}
-                        nav-link (to: "/blocks/dashboard-01", icon: "bar-chart", label: "Dashboard") {}
-                        nav-link (to: "/blocks/products-01", icon: "table", label: "Products") {}
-                        nav-link (to: "/blocks/sidebar-demo", icon: "panel-left", label: "Sidebar") {}
                     }
                 }
 

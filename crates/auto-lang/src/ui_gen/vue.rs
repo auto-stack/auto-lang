@@ -1568,9 +1568,9 @@ impl VueGenerator {
 
         // Wrapper div with Tailwind classes
         let classes = if self.wrapper_classes.is_empty() {
-            "flex flex-col h-screen".to_string()
+            "flex flex-col pb-8".to_string()
         } else {
-            format!("flex flex-col h-screen {}", self.wrapper_classes)
+            format!("flex flex-col pb-8 {}", self.wrapper_classes)
         };
 
         // Dark mode: add :class binding for isDark state

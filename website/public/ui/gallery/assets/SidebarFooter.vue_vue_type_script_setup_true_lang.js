@@ -1,1 +1,0 @@
-import{d as o,o as r,a as t,G as n,u as l,H as c,q as p}from"./index.js";const i=o({__name:"SidebarFooter",props:{class:{type:[Boolean,null,String,Object,Array]}},setup(e){const a=e;return(s,d)=>(r(),t("div",{"data-sidebar":"footer",class:n(l(c)("flex flex-col gap-2 p-2",a.class))},[p(s.$slots,"default")],2))}});export{i as _};
