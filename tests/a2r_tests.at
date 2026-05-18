@@ -1,0 +1,14 @@
+/// A2R transpiler tests — discovers and runs all .at → .expected.rs test cases
+/// Plan 263 Phase 2: Convention-based test discovery via tests/a2r_tests.at
+
+#[test]
+fn test_a2r_transpiler() {
+    let failures = Test.run_a2r_dir("crates/auto-lang/test/a2r")
+    assert_eq(failures, 0)
+}
+
+#[test]
+fn test_cookbook_transpiler() {
+    let failures = Test.run_a2r_dir("crates/auto-lang/test/cookbook")
+    assert_eq(failures, 0)
+}

@@ -3633,6 +3633,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 
     // Plan 192: Rust stdlib dynamic dispatch (manual — uses heap objects)
     natives.register_shim_by_name("auto.rust_stdlib.dispatch", shim_rust_stdlib_dispatch);
+
+    // Plan 263 Phase 2: Test runner (manual shim — calls discover/run from test_runner)
+    natives.register_shim_by_name("auto.test.run_a2r_dir", shim_test_run_a2r_dir);
 }
 
 // ============================================================================
@@ -5017,4 +5020,44 @@ mod tests {
         assert_eq!(matches[0].as_str(), "123");
         assert_eq!(matches[1].as_str(), "456");
     }
+}
+
+// ============================================================================
+// Plan 263 Phase 2: Test runner FFI — run_a2r_dir
+// ============================================================================
+
+/// Run all a2r transpiler tests in a directory.
+/// Pops path (String) from stack, pushes failure count (i32) to stack.
+pub fn shim_test_run_a2r_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let dir = Path::new(&path);
+    let suite_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("a2r");
+    let cases = crate::test_runner::discover_a2r_tests(dir, suite_name);
+
+    if cases.is_empty() {
+        return Err(VMError::RuntimeError(format!(
+            "Test.run_a2r_dir: no tests found in: {}",
+            path
+        )));
+    }
+
+    let mut failures = 0i64;
+    for case in &cases {
+        let report = crate::run_a2r_file_test(case);
+        match &report.outcome {
+            crate::test_runner::TestOutcome::Passed => {
+                print!("test {} ... ok\n", case.name);
+            }
+            crate::test_runner::TestOutcome::Failed(msg) => {
+                print!("test {} ... FAILED\n", case.name);
+                print!("    {}\n", msg);
+                failures += 1;
+            }
+        }
+    }
+
+    failures.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
 }
