@@ -646,6 +646,13 @@ impl GenericRegistry {
         Ok(())
     }
 
+    /// Register or replace a template. Used when EnumDecl compilation needs to
+    /// update a placeholder registered earlier from TypeStore data.
+    pub fn register_or_update_template(&mut self, template: ClassTemplate) {
+        let name = template.name.clone();
+        self.templates.insert(name, Arc::new(template));
+    }
+
     /// Get template by name
     pub fn get_template(&self, name: &str) -> Option<Arc<ClassTemplate>> {
         self.templates.get(name).cloned()

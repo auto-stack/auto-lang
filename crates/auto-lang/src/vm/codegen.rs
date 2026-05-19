@@ -376,11 +376,11 @@ impl Codegen {
     /// Register enum variants from pre-collected TypeStore data into codegen's
     /// enum_values and generic_registry. This allows cross-module enum construction
     /// (e.g. `ApiError.Http("msg")` when `ApiError` is defined in a `use errors` module).
-    fn register_enums_from_data(&mut self, enums: &[(String, Vec<(String, i32, Option<Type>, Vec<crate::ast::EnumField>)>)]) {
+    fn register_enums_from_data(&mut self, enums: &[(String, Vec<(String, i32, Option<Type>, Vec<Type>, Vec<crate::ast::EnumField>)>)]) {
         use crate::vm::generic_registry::{ClassTemplate, FieldDef};
 
         for (enum_name, variants) in enums {
-            for (variant_name, value, payload_type, fields) in variants {
+            for (variant_name, value, payload_type, payload_types, fields) in variants {
                 let key = format!("{}.{}", enum_name, variant_name);
                 self.enum_values.entry(key.clone()).or_insert(*value);
 
@@ -388,6 +388,13 @@ impl Codegen {
                 if !fields.is_empty() {
                     let fdefs: Vec<FieldDef> = fields.iter()
                         .map(|f| FieldDef::new(f.name.as_str(), f.field_type.clone()))
+                        .collect();
+                    let template = ClassTemplate::new(&variant_mono, vec![], fdefs, vec![]);
+                    let _ = self.generic_registry.register_template(template);
+                } else if !payload_types.is_empty() {
+                    // Multi-field anonymous variant: ToolUse str str str -> fields _0, _1, _2
+                    let fdefs: Vec<FieldDef> = payload_types.iter().enumerate()
+                        .map(|(i, t)| FieldDef::new(&format!("_{}", i), t.clone()))
                         .collect();
                     let template = ClassTemplate::new(&variant_mono, vec![], fdefs, vec![]);
                     let _ = self.generic_registry.register_template(template);
@@ -497,13 +504,13 @@ impl Codegen {
         codegen.register_builtin_option_variants();
         // Register enum variants from TypeStore (populated by use/module resolution)
         {
-            let enum_data: Vec<(String, Vec<(String, i32, Option<Type>, Vec<crate::ast::EnumField>)>)> = {
+            let enum_data: Vec<(String, Vec<(String, i32, Option<Type>, Vec<Type>, Vec<crate::ast::EnumField>)>)> = {
                 let ts = codegen.type_store.read().unwrap();
                 ts.all_enum_decls().map(|(name, decl)| {
                     let items = decl.items.iter().enumerate().map(|(i, item)| {
                         let value = item.scalar_value.unwrap_or(i as i32);
                         let variant_name = item.name.to_string();
-                        (variant_name, value, item.payload_type.clone(), item.fields.clone())
+                        (variant_name, value, item.payload_type.clone(), item.payload_types.clone(), item.fields.clone())
                     }).collect();
                     (name.to_string(), items)
                 }).collect()
@@ -1740,7 +1747,7 @@ impl Codegen {
                             fields,
                             vec![],
                         );
-                        let _ = self.generic_registry.register_template(template);
+                        self.generic_registry.register_or_update_template(template);
                         continue;
                     }
 
@@ -1763,8 +1770,7 @@ impl Codegen {
                             fields,
                             vec![],  // No methods for enum variants
                         );
-                        // Ignore duplicate registration errors (e.g., if already registered)
-                        let _ = self.generic_registry.register_template(template);
+                        self.generic_registry.register_or_update_template(template);
                     } else if !item.payload_types.is_empty() {
                         // Multi-field anonymous variant: ToolUse str str str -> fields _0, _1, _2
                         let fields: Vec<FieldDef> = item.payload_types.iter().enumerate()
@@ -1776,7 +1782,7 @@ impl Codegen {
                             fields,
                             vec![],
                         );
-                        let _ = self.generic_registry.register_template(template);
+                        self.generic_registry.register_or_update_template(template);
                     }
                 }
             }
