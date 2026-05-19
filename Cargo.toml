@@ -16,8 +16,6 @@ members = [
     "crates/auto-cache",
     # Plan 202: Auto Playground
     "crates/auto-playground",
-    # AutoForge backend
-    "crates/auto-forge",
     # Plan 216: C FFI Bindgen
     "crates/auto-bindgen",
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored

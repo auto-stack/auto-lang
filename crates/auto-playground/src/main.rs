@@ -7,8 +7,6 @@ mod routes;
 
 mod vm_runner;
 
-use auto_forge::ai::{ClaudeProvider, AIProviderState};
-
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::FromRef;
 use axum::http::Method;
@@ -22,7 +20,6 @@ use tower_http::cors::CorsLayer;
 struct AppState {
     agent_sessions: routes::agent_debug::AgentDebugSessions,
     notebook_state: notebook::NotebookState,
-    ai_provider: AIProviderState,
 }
 
 impl FromRef<AppState> for routes::agent_debug::AgentDebugSessions {
@@ -34,12 +31,6 @@ impl FromRef<AppState> for routes::agent_debug::AgentDebugSessions {
 impl FromRef<AppState> for notebook::NotebookActor {
     fn from_ref(state: &AppState) -> Self {
         state.notebook_state.clone()
-    }
-}
-
-impl FromRef<AppState> for AIProviderState {
-    fn from_ref(state: &AppState) -> Self {
-        state.ai_provider.clone()
     }
 }
 
@@ -61,15 +52,6 @@ async fn main() {
         .join("dist");
     let lab_dist_dir = lab_dist_dir.canonicalize().unwrap_or(lab_dist_dir);
 
-    // AutoSmith UI static files
-    let smith_dist_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("packages")
-        .join("auto-forge-ui")
-        .join("dist");
-    let smith_dist_dir = smith_dist_dir.canonicalize().unwrap_or(smith_dist_dir);
-
     // Spawn frontend dev server if no production build
     let mut frontend_child: Option<tokio::process::Child> = None;
     if !dist_dir.exists() {
@@ -84,11 +66,9 @@ async fn main() {
     let app_state = AppState {
         agent_sessions: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         notebook_state: notebook::NotebookActor::new(),
-        ai_provider: std::sync::Arc::new(ClaudeProvider::new()),
     };
 
     let api_routes = Router::new()
-        .merge(auto_forge::forge::routes())
         .route("/api/run", post(routes::run::run_handler))
         .route("/api/run_abt", post(routes::run_abt::run_abt_handler))
         .route("/api/run_code", post(routes::run_code::run_code_handler))
@@ -100,8 +80,6 @@ async fn main() {
         .route("/api/notebook/{sid}/variables", get(routes::notebook::variables_handler))
         .route("/api/notebook/{sid}/transpile", post(routes::notebook::transpile_handler))
         .route("/api/notebook/{sid}", delete(routes::notebook::delete_session_handler))
-        .route("/api/notebook/{sid}/ai", post(routes::notebook::ai_handler))
-        .route("/api/notebook/{sid}/ai/stream", post(routes::notebook::ai_stream_handler))
         .route("/api/debug/ws", get(debug_ws_handler))
         .route("/api/agent-debug/start", post(routes::agent_debug::start_handler))
         .route("/api/agent-debug/sessions", get(routes::agent_debug::sessions_handler))
@@ -118,10 +96,6 @@ async fn main() {
         .with_state(app_state);
 
     let mut app = api_routes;
-    if smith_dist_dir.exists() {
-        app = app.nest_service("/forge", tower_http::services::ServeDir::new(&smith_dist_dir));
-        tracing::info!("AutoForge UI served at /forge ({})", smith_dist_dir.display());
-    }
     if lab_dist_dir.exists() {
         app = app.nest_service("/lab", tower_http::services::ServeDir::new(&lab_dist_dir));
         tracing::info!("AutoLab UI served at /lab ({})", lab_dist_dir.display());

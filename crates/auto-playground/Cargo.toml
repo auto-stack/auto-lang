@@ -6,7 +6,6 @@ description = "Auto Playground web API server"
 
 [dependencies]
 auto-lang = { path = "../auto-lang" }
-auto-forge = { path = "../auto-forge" }
 axum = { version = "0.8", features = ["json", "ws"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "fs"] }
