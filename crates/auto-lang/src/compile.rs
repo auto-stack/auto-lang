@@ -1278,6 +1278,12 @@ impl CompileSession {
 
                 }
 
+                crate::ast::Stmt::EnumDecl(enum_decl) => {
+
+                    type_store.register_enum_decl(enum_decl.clone());
+
+                }
+
                 _ => {}
 
             }
@@ -1318,7 +1324,7 @@ impl CompileSession {
 
 
 
-        let mut codegen = Codegen::new();
+        let mut codegen = Codegen::new_with_type_store(self.type_store.clone());
 
 
 
@@ -1333,6 +1339,12 @@ impl CompileSession {
                 }
 
                 crate::ast::Stmt::TypeDecl(_) => {
+
+                    codegen.compile_stmt(stmt)?;
+
+                }
+
+                crate::ast::Stmt::EnumDecl(_) => {
 
                     codegen.compile_stmt(stmt)?;
 

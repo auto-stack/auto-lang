@@ -309,6 +309,11 @@ impl TypeStore {
         self.fn_decls.iter()
     }
 
+    /// Iterate all registered enum declarations
+    pub fn all_enum_decls(&self) -> impl Iterator<Item = (&AutoStr, &Rc<EnumDecl>)> {
+        self.enum_decls.iter()
+    }
+
     /// 查找 spec 声明
     pub fn lookup_spec_decl(&self, name: &AutoStr) -> Option<&SpecDecl> {
         self.spec_decls.get(name)
@@ -508,6 +513,11 @@ impl TypeStore {
             self.spec_decls.insert(name.clone(), spec_decl.clone());
         }
 
+        // 合并枚举声明
+        for (name, decl) in &other.enum_decls {
+            self.enum_decls.entry(name.clone()).or_insert(decl.clone());
+        }
+
         // 合并泛型模板
         for (name, template) in &other.generic_templates {
             self.generic_templates.insert(name.clone(), template.clone());
@@ -541,6 +551,11 @@ impl TypeStore {
             // 检查是否是 spec
             if let Some(spec_decl) = other.spec_decls.get(&item_name) {
                 self.spec_decls.insert(item_name.clone(), spec_decl.clone());
+            }
+
+            // 检查是否是枚举
+            if let Some(enum_decl) = other.enum_decls.get(&item_name) {
+                self.enum_decls.entry(item_name.clone()).or_insert(enum_decl.clone());
             }
 
             // 检查是否是类型别名

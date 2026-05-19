@@ -373,6 +373,36 @@ impl Codegen {
         let _ = self.generic_registry.register_template(none_template);
     }
 
+    /// Register enum variants from pre-collected TypeStore data into codegen's
+    /// enum_values and generic_registry. This allows cross-module enum construction
+    /// (e.g. `ApiError.Http("msg")` when `ApiError` is defined in a `use errors` module).
+    fn register_enums_from_data(&mut self, enums: &[(String, Vec<(String, i32, Option<Type>, Vec<crate::ast::EnumField>)>)]) {
+        use crate::vm::generic_registry::{ClassTemplate, FieldDef};
+
+        for (enum_name, variants) in enums {
+            for (variant_name, value, payload_type, fields) in variants {
+                let key = format!("{}.{}", enum_name, variant_name);
+                self.enum_values.entry(key.clone()).or_insert(*value);
+
+                let variant_mono = key.clone();
+                if !fields.is_empty() {
+                    let fdefs: Vec<FieldDef> = fields.iter()
+                        .map(|f| FieldDef::new(f.name.as_str(), f.field_type.clone()))
+                        .collect();
+                    let template = ClassTemplate::new(&variant_mono, vec![], fdefs, vec![]);
+                    let _ = self.generic_registry.register_template(template);
+                } else if let Some(ref payload) = payload_type {
+                    let fdefs = vec![FieldDef::new("_0", payload.clone())];
+                    let template = ClassTemplate::new(&variant_mono, vec![], fdefs, vec![]);
+                    let _ = self.generic_registry.register_template(template);
+                } else {
+                    let template = ClassTemplate::new(&variant_mono, vec![], vec![], vec![]);
+                    let _ = self.generic_registry.register_template(template);
+                }
+            }
+        }
+    }
+
     /// Plan 084 Phase 3: Create Codegen with custom TypeStore
     /// Allows Parser and Codegen to share the same TypeStore instance
     /// Plan 123: Accept Arc<RwLock<TypeStore>> for shared access with Parser
@@ -465,6 +495,21 @@ impl Codegen {
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
+        // Register enum variants from TypeStore (populated by use/module resolution)
+        {
+            let enum_data: Vec<(String, Vec<(String, i32, Option<Type>, Vec<crate::ast::EnumField>)>)> = {
+                let ts = codegen.type_store.read().unwrap();
+                ts.all_enum_decls().map(|(name, decl)| {
+                    let items = decl.items.iter().enumerate().map(|(i, item)| {
+                        let value = item.scalar_value.unwrap_or(i as i32);
+                        let variant_name = item.name.to_string();
+                        (variant_name, value, item.payload_type.clone(), item.fields.clone())
+                    }).collect();
+                    (name.to_string(), items)
+                }).collect()
+            };
+            codegen.register_enums_from_data(&enum_data);
+        }
         codegen
     }
 
