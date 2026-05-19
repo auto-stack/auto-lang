@@ -1027,14 +1027,7 @@ impl Codegen {
                 );
 
                 if !is_new_declaration && scope.contains_key(&name_str) {
-                    // Reassignment of existing variable — check immutability
-                    if let Some(is_mutable) = self.var_mutability.get(&name_str) {
-                        if !is_mutable {
-                            return Err(crate::error::AutoError::Msg(
-                                format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
-                            ));
-                        }
-                    }
+                    // Auto allows reassignment of `let` variables (unlike Rust)
                 }
 
                 if is_new_declaration || !scope.contains_key(&name_str) {
@@ -4337,14 +4330,7 @@ impl Codegen {
                                 "Compound assignment to captured variables not yet supported in AutoVM".to_string()
                             ));
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
-                            // Variable found in local scope - check mutability
-                            if let Some(is_mutable) = self.var_mutability.get(&name_str) {
-                                if !is_mutable {
-                                    return Err(crate::error::AutoError::Msg(
-                                        format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
-                                    ));
-                                }
-                            }
+                            // Auto allows reassignment of `let` variables (unlike Rust)
                             // Load variable FIRST (for correct operand order)
                             self.emit_load_loc(var_index);
 
@@ -4407,14 +4393,7 @@ impl Codegen {
                             self.emit(OpCode::DUP); // Keep value for expression result
                             self.emit_store_captured(&name_str);
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
-                            // Variable found in local scope - check mutability
-                            if let Some(is_mutable) = self.var_mutability.get(&name_str) {
-                                if !is_mutable {
-                                    return Err(crate::error::AutoError::Msg(
-                                        format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
-                                    ));
-                                }
-                            }
+                            // Auto allows reassignment of `let` variables (unlike Rust)
                             // Store value to variable
                             let asn_is_two_slot = matches!(asn_stored_type, Some(Type::U64 | Type::I64 | Type::Double))
                                 || matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint);
@@ -6494,7 +6473,15 @@ impl Codegen {
                 let is_user_type_method = if let Expr::Dot(obj, _) = call.name.as_ref() {
                     if let Expr::Ident(receiver_name) = obj.as_ref() {
                         self.var_types.get(receiver_name.as_ref())
-                            .map(|ty| matches!(ty, Type::User(_)))
+                            .map(|ty| {
+                                if let Type::User(td) = ty {
+                                    // Option.Some/Option.None are synthetic types from enum destructuring,
+                                    // not real user-defined types — don't treat them as user type methods
+                                    !td.name.starts_with("Option.") && !td.name.starts_with("Result.")
+                                } else {
+                                    matches!(ty, Type::User(_))
+                                }
+                            })
                             .unwrap_or(false)
                     } else { false }
                 } else { false };
