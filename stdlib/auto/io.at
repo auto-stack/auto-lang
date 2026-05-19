@@ -19,3 +19,8 @@ type File {
 }
 
 pub fn say(msg str);
+
+/// Read a line from standard input (strips trailing newline)
+/// Example: let line = io.read_line()
+#[vm]
+pub fn read_line() str;

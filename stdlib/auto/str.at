@@ -99,4 +99,19 @@ ext str {
     /// Example: "hello\nworld".lines()  // returns ["hello", "world"]
     #[vm]
     fn lines() []str
+
+    /// Generate a UUID string
+    /// Example: str.uuid()  // returns "a1b2c3d4-e5f6-4789-abcd-1234567890ab"
+    #[vm]
+    fn uuid() str
+
+    /// Convert unsigned integer to string
+    /// Example: str.from_uint(42)  // returns "42"
+    #[vm]
+    fn from_uint(n i64) str
+
+    /// Parse string as unsigned integer
+    /// Example: str.to_uint("42")  // returns 42
+    #[vm]
+    fn to_uint(s str) i64
 }

@@ -52,10 +52,14 @@ pub const NATIVE_ENV_GET: u16 = 1100;
 pub const NATIVE_ENV_SET: u16 = 1101;
 pub const NATIVE_ENV_REMOVE: u16 = 1102;
 
+// IO functions: 1150-1169
+pub const NATIVE_IO_READ_LINE: u16 = 1150;
+
 // Time functions: 1200-1299
 pub const NATIVE_TIME_NOW_MS: u16 = 1200;
 pub const NATIVE_TIME_NOW_SEC: u16 = 1201;
 pub const NATIVE_TIME_SLEEP_MS: u16 = 1202;
+pub const NATIVE_TIME_NOW: u16 = 1205;
 
 // Process functions: 1300-1399
 pub const NATIVE_PROCESS_EXIT: u16 = 1300;
@@ -249,6 +253,9 @@ pub const NATIVE_STR_PARSE_FLOAT: u16 = 1517;
 pub const NATIVE_STR_SPLIT_ONCE: u16 = 1518;
 pub const NATIVE_STR_MATCH_COUNT: u16 = 1519;
 pub const NATIVE_STR_REPLACE_FIRST: u16 = 1520;
+pub const NATIVE_STR_UUID: u16 = 1521;
+pub const NATIVE_STR_FROM_UINT: u16 = 1522;
+pub const NATIVE_STR_TO_UINT: u16 = 1523;
 
 // Char functions: 1600-1699
 pub const NATIVE_CHAR_IS_ALPHA: u16 = 1600;
@@ -505,6 +512,16 @@ pub fn shim_time_sleep_ms(ms: i32) {
     std::thread::sleep(std::time::Duration::from_millis(ms as u64));
 }
 
+/// Get current timestamp as a string (seconds since epoch)
+#[auto_macros::rust_fn("Time.now")]
+pub fn shim_time_now() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        .to_string()
+}
+
 // ============================================================================
 // Process Functions
 // ============================================================================
@@ -534,6 +551,25 @@ pub fn shim_process_current_dir() -> String {
 pub fn shim_process_set_current_dir(path: String) -> Result<(), String> {
     std::env::set_current_dir(&path)
         .map_err(|e| format!("Process.set_current_dir failed: {} - {}", path, e))
+}
+
+// ============================================================================
+// IO Functions
+// ============================================================================
+
+/// Read a line from stdin
+#[auto_macros::rust_fn("IO.read_line")]
+pub fn shim_io_read_line() -> String {
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).ok();
+    // Trim trailing newline
+    if line.ends_with('\n') {
+        line.pop();
+        if line.ends_with('\r') {
+            line.pop();
+        }
+    }
+    line
 }
 
 /// Spawn an external process and wait for it to complete
@@ -910,6 +946,41 @@ pub fn shim_str_match_count(s: String, pattern: String) -> i32 {
 #[auto_macros::rust_fn("Str.replace_first")]
 pub fn shim_str_replace_first(s: String, from: String, to: String) -> String {
     s.replacen(&from, &to, 1)
+}
+
+/// Generate a UUID-like string from timestamp and random components
+#[auto_macros::rust_fn("Str.uuid")]
+pub fn shim_str_uuid() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos: u64 = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64;
+    // Simple UUID v4-like: 8-4-4-4-12 hex format using nanos + LCG
+    let r1: u64 = nanos;
+    let r2: u64 = nanos.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let r3: u64 = nanos.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407).rotate_left(17);
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:04x}-{:08x}{:04x}",
+        (r1 >> 32) as u32,
+        (r1 >> 16) as u16 & 0xFFFF,
+        ((r2 >> 16) as u16 & 0x0FFF) | 0x4000, // version 4
+        ((r2 >> 0) as u16 & 0x3FFF) | 0x8000,  // variant 1
+        (r3 >> 32) as u32,
+        r3 as u16,
+    )
+}
+
+/// Convert unsigned integer to string
+#[auto_macros::rust_fn("Str.from_uint")]
+pub fn shim_str_from_uint(n: i64) -> String {
+    n.to_string()
+}
+
+/// Parse string as unsigned integer
+#[auto_macros::rust_fn("Str.to_uint")]
+pub fn shim_str_to_uint(s: String) -> i64 {
+    s.trim().parse::<i64>().unwrap_or(0)
 }
 
 // ============================================================================

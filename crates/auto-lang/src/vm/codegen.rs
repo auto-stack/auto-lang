@@ -1027,7 +1027,14 @@ impl Codegen {
                 );
 
                 if !is_new_declaration && scope.contains_key(&name_str) {
-                    // Reassignment of existing variable - AutoLang allows this for all variables
+                    // Reassignment of existing variable — check immutability
+                    if let Some(is_mutable) = self.var_mutability.get(&name_str) {
+                        if !is_mutable {
+                            return Err(crate::error::AutoError::Msg(
+                                format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
+                            ));
+                        }
+                    }
                 }
 
                 if is_new_declaration || !scope.contains_key(&name_str) {
@@ -5610,6 +5617,15 @@ impl Codegen {
                             ("env", "get_or") => Some("auto.env.get_or".to_string()),
                             ("env", "set") => Some("auto.env.set".to_string()),
                             ("env", "remove") => Some("auto.env.remove".to_string()),
+                            ("time", "now_ms") => Some("auto.time.now_ms".to_string()),
+                            ("time", "now_sec") => Some("auto.time.now_sec".to_string()),
+                            ("time", "sleep_ms") => Some("auto.time.sleep_ms".to_string()),
+                            ("time", "now") => Some("auto.time.now".to_string()),
+                            ("io", "read_line") => Some("auto.io.read_line".to_string()),
+                            ("io", "say") => Some("auto.print_str".to_string()),
+                            ("process", "args") => Some("auto.process.args".to_string()),
+                            ("process", "exit") => Some("auto.process.exit".to_string()),
+                            ("process", "current_dir") => Some("auto.process.current_dir".to_string()),
                             ("fs", "read_to_string") | ("fs", "read_text") => Some("auto.fs.read_text".to_string()),
                             ("fs", "write") | ("fs", "write_all") | ("fs", "write_text") => Some("auto.fs.write_text".to_string()),
                             ("fs", "create_dir") | ("fs", "create_dir_all") => Some("auto.fs.create_dir".to_string()),
@@ -5623,11 +5639,19 @@ impl Codegen {
                             ("fs", "is_dir") => Some("auto.fs.is_dir".to_string()),
                             ("fs", "walk") => Some("auto.file.walk".to_string()),
                             ("fs", "is_binary") => Some("auto.fs.is_binary".to_string()),
+                            ("fs", "file_size") => Some("auto.fs.size".to_string()),
+                            ("fs", "list_dir") => Some("auto.fs.walk".to_string()),
+                            ("fs", "mkdir_all") => Some("auto.fs.create_dir".to_string()),
+                            ("fs", "parent_dir") => Some("auto.fs.parent".to_string()),
+                            ("fs", "filename") => Some("auto.fs.filename".to_string()),
+                            ("fs", "cwd") => Some("auto.process.current_dir".to_string()),
+                            ("fs", "append_text") => Some("auto.file.append_text".to_string()),
+                            ("fs", "read_lines") => Some("auto.file.read_lines".to_string()),
                             ("json", "parse") => Some("auto.json.parse".to_string()),
                             ("json", "get") => Some("auto.json.get".to_string()),
                             ("json", "get_str") => Some("auto.json.as_string".to_string()),
                             ("json", "as_string") => Some("auto.json.as_string".to_string()),
-                            ("json", "encode") => Some("auto.json.encode".to_string()),
+                            ("json", "encode") | ("json", "to_string") => Some("auto.json.encode".to_string()),
                             ("json", "decode") => Some("auto.json.decode".to_string()),
                             ("json", "is_valid") => Some("auto.json.is_valid".to_string()),
                             ("json", "has_key") => Some("auto.json.has_key".to_string()),

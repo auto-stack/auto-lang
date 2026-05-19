@@ -838,6 +838,13 @@ macro_rules! for_each_bigvm_native {
             ("auto.time.sleep_ms", 1202, Void),
             ("auto.time.instant_now", 1203, Void),
             ("auto.time.instant_elapsed", 1204, Void),
+            ("auto.time.now", 1205, String),
+            ("Time.now", 1205, String),
+
+            // === IO (1150) ===
+            ("auto.io.read_line", 1150, String),
+            ("IO.read_line", 1150, String),
+            ("io.read_line", 1150, String),
 
             // === OnceCell (2850-2852) ===
             ("auto.cell.once_new", 2850, Void),
@@ -937,6 +944,9 @@ macro_rules! for_each_bigvm_native {
 
             // === serde_json aliases ===
             ("auto.serde_json.to_string", 1900, Void),
+            ("auto.json.to_string", 1900, Void),
+            ("json.to_string", 1900, Void),
+            ("Json.to_string", 1900, Void),
             ("auto.serde_json.from_str", 1902, Void),
 
             // === TOML (2750-2751) ===
@@ -1181,6 +1191,9 @@ macro_rules! for_each_bigvm_native {
             ("Str.split_once", 1518, Void),
             ("Str.match_count", 1519, Void),
             ("Str.replace_first", 1520, Void),
+            ("Str.uuid", 1521, String),
+            ("Str.from_uint", 1522, String),
+            ("Str.to_uint", 1523, I64),
 
             // === Runtime aliases (CALL_SPEC lowercase type) ===
             ("str.len", 1500, Void),
@@ -1222,7 +1235,10 @@ macro_rules! for_each_bigvm_native {
             // === str.* typed entries ===
             ("str.split_once", 1518, List),
             ("str.match_count", 1519, Int),
-            ("str.replace_first", 1520, String)
+            ("str.replace_first", 1520, String),
+            ("str.uuid", 1521, String),
+            ("str.from_uint", 1522, String),
+            ("str.to_uint", 1523, I64)
         }
     };
 }
@@ -1542,6 +1558,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.json.keys", 1915),
     ("auto.json.has_key", 1917),
     ("auto.serde_json.to_string", 1900),
+    ("auto.json.to_string", 1900),
+    ("json.to_string", 1900),
+    ("Json.to_string", 1900),
     ("auto.serde_json.from_str", 1902),
     ("auto.toml.from_str", 2750),
     ("auto.toml.to_string", 2751),
@@ -1734,6 +1753,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("Str.split_once", 1518),
     ("Str.match_count", 1519),
     ("Str.replace_first", 1520),
+    ("Str.uuid", 1521),
+    ("Str.from_uint", 1522),
+    ("Str.to_uint", 1523),
     ("str.len", 1500),
     ("str.contains", 1504),
     ("str.starts_with", 1505),
@@ -1768,6 +1790,18 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("str.split_once", 1518),
     ("str.match_count", 1519),
     ("str.replace_first", 1520),
+    ("str.uuid", 1521),
+    ("str.from_uint", 1522),
+    ("str.to_uint", 1523),
+
+    // === Time (1200-1205) ===
+    ("auto.time.now", 1205),
+    ("Time.now", 1205),
+
+    // === IO (1150) ===
+    ("auto.io.read_line", 1150),
+    ("IO.read_line", 1150),
+    ("io.read_line", 1150),
 
     // === FS extended (2860-2865) ===
     ("auto.fs.walk", 2860),

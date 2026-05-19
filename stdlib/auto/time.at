@@ -13,3 +13,7 @@ pub fn now_sec() i64;
 /// Sleep for specified milliseconds
 /// Example: sleep_ms(1000)  // Sleep 1 second
 pub fn sleep_ms(ms int);
+
+/// Get current timestamp as string (seconds since Unix epoch)
+/// Example: let ts = now()  // returns "1700000000"
+pub fn now() str;
