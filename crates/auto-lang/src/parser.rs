@@ -3115,20 +3115,15 @@ impl<'a> Parser<'a> {
             if let Expr::Dot(base, variant) = call.name.as_ref() {
                 let type_name = match base.as_ref() {
                     Expr::Ident(name) => Some(name.clone()),
-                    Expr::Dot(mod_name, sub_type) => {
+                    Expr::Dot(_mod_name, sub_type) => {
                         // 3-level: module.Type.Variant(binding)
-                        match mod_name.as_ref() {
-                            Expr::Ident(mod_ident) => {
-                                let full_name = format!("{}.{}", mod_ident, sub_type);
-                                Some(Name::from(full_name))
-                            }
-                            _ => None,
-                        }
+                        // Use just the type name (sub_type), stripping module prefix
+                        Some(sub_type.clone())
                     }
                     Expr::Cover(Cover::Tag(inner_tag)) => {
                         // Cover::Tag from earlier dot: module.Type -> TagCover, then .Variant(binding)
-                        let full_name = format!("{}.{}", inner_tag.kind, inner_tag.tag);
-                        Some(Name::from(full_name))
+                        // Use just the tag (type name), stripping module prefix
+                        Some(inner_tag.tag.clone())
                     }
                     _ => None,
                 };
@@ -3288,7 +3283,10 @@ impl<'a> Parser<'a> {
                 .map(|store| store.lookup_enum_decl_str(&name).is_some())
                 .unwrap_or(false);
         // Also treat as enum if it's a known type followed by .Variant pattern
-        let is_user_with_variant = matches!(*typ.borrow(), Type::User(_))
+        // But NOT if the name is an imported module (e.g., `types` from `use types`)
+        let is_imported_module = self.use_imports.iter().any(|s| s.as_str() == name.as_str());
+        let is_user_with_variant = !is_imported_module
+            && matches!(*typ.borrow(), Type::User(_))
             && !matches!(*typ.borrow(), Type::Unknown | Type::Void)
             && self.is_kind(TokenKind::Dot);
         if is_enum_or_tag || is_user_enum || is_user_with_variant {

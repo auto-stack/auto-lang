@@ -254,14 +254,12 @@ impl Linker {
             // Register exports
             for (sym_name, sym_offset) in &module.exports {
                 if global_symbols.contains_key(sym_name) {
-                    return Err(LinkError {
-                        message: format!("Duplicate symbol: {}", sym_name),
-                        symbol: sym_name.clone(),
-                        module: module.name.clone(),
-                        source_pos: None,
-                    });
+                    // Duplicate symbol — use module-qualified name instead
+                    let qualified = format!("{}#{}", module.name, sym_name);
+                    global_symbols.insert(qualified, current_offset + sym_offset);
+                } else {
+                    global_symbols.insert(sym_name.clone(), current_offset + sym_offset);
                 }
-                global_symbols.insert(sym_name.clone(), current_offset + sym_offset);
             }
 
             current_offset += module.code.len() as u32;

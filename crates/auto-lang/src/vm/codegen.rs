@@ -247,6 +247,10 @@ pub struct Codegen {
     /// Populated from use statements with specific imports: `use auto.fs: read_text`
     import_scope: HashMap<String, String>,
 
+    /// Known module prefixes from module-level imports (e.g., `use types`)
+    /// Used to recognize qualified access patterns like `types.SectionType.Goals`
+    known_module_prefixes: HashSet<String>,
+
     /// Plan 212b Task 3: Rust FFI function name mappings
     /// Maps local function name → (crate_name, full_path) for use.rust imports
     /// e.g., "from_str" → ("serde_json", "serde_json::from_str")
@@ -338,6 +342,7 @@ impl Codegen {
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
+            known_module_prefixes: HashSet::new(),
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
@@ -402,10 +407,10 @@ impl Codegen {
                     let fdefs = vec![FieldDef::new("_0", payload.clone())];
                     let template = ClassTemplate::new(&variant_mono, vec![], fdefs, vec![]);
                     let _ = self.generic_registry.register_template(template);
-                } else {
-                    let template = ClassTemplate::new(&variant_mono, vec![], vec![], vec![]);
-                    let _ = self.generic_registry.register_template(template);
                 }
+                // Scalar enum variants (no fields, no payload) are NOT registered as templates.
+                // They compile to plain integer constants, so has_template() returning false
+                // causes the is-pattern codegen to use EQ comparison (correct for scalar enums).
             }
         }
     }
@@ -493,6 +498,7 @@ impl Codegen {
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
+            known_module_prefixes: HashSet::new(),
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
@@ -1021,17 +1027,7 @@ impl Codegen {
                 );
 
                 if !is_new_declaration && scope.contains_key(&name_str) {
-                    // This is a reassignment (not a new declaration) - check if variable is immutable
-                    if let Some(&is_mutable) = self.var_mutability.get(&name_str) {
-                        if !is_mutable {
-                            // Variable was declared with 'let' (immutable) - reject reassignment
-                            return Err(crate::error::AutoError::Msg(format!(
-                                "Cannot reassign to immutable variable '{}' (declared with 'let')",
-                                name_str
-                            )));
-                        }
-                        // Variable is mutable - allow reassignment
-                    }
+                    // Reassignment of existing variable - AutoLang allows this for all variables
                 }
 
                 if is_new_declaration || !scope.contains_key(&name_str) {
@@ -2872,7 +2868,6 @@ impl Codegen {
                                 }
                                 _ => {
                                     // Standard equality comparison for patterns
-                                    // For multi-pattern (OR): compare each, OR results together
                                     if patterns.len() == 1 {
                                         self.emit_load_loc(target_var);
                                         self.compile_expr(pattern)?;
@@ -3201,8 +3196,12 @@ impl Codegen {
                 let qualified = format!("{}.{}", module_path, local_name);
                 self.import_scope.insert(local_name.to_string(), qualified);
             }
+        } else {
+            // Module-level import (use types): record module name as known prefix
+            // so Dot(Dot(Ident("types"), ...), ...) can be recognized as qualified access
+            let module_name = module_path.split('.').last().unwrap_or(&module_path);
+            self.known_module_prefixes.insert(module_name.to_string());
         }
-        // Module imports without specific items (use auto.fs) are not added to scope
     }
 
     /// Plan 212b Task 3: Handle use.rust statement and record function name mappings
@@ -3928,6 +3927,13 @@ impl Codegen {
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
+                        } else if self.known_module_prefixes.contains(&name_str)
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml")
+                        {
+                            // Module prefix from module-level import or built-in stdlib module
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(0);
+                            self.last_expr_type = ObjectType::NestedObject;
                         } else {
                             return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
                         }
@@ -3953,6 +3959,26 @@ impl Codegen {
                         self.emit(OpCode::CONST_I32);
                         self.emit_i32(value);
                         return Ok(());
+                    }
+                }
+
+                // Qualified enum variant access (e.g., types.SectionType.Goals)
+                // This is Dot(Dot(Ident("types"), "SectionType"), "Goals")
+                if let Expr::Dot(inner, type_field) = obj.as_ref() {
+                    if let Expr::Ident(_mod_name) = inner.as_ref() {
+                        let key = format!("{}.{}", type_field, field);
+                        if let Some(&value) = self.enum_values.get(&key) {
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(value);
+                            return Ok(());
+                        }
+                        let variant_value = self.type_store.read().unwrap()
+                            .get_enum_variant_value(type_field.as_ref(), field.as_ref());
+                        if let Some(value) = variant_value {
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(value);
+                            return Ok(());
+                        }
                     }
                 }
 
@@ -4368,16 +4394,8 @@ impl Codegen {
                             self.emit_store_captured(&name_str);
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
                             // Variable found in local scope - check mutability
-                            // Plan 118: Check if variable is immutable (declared with 'let')
-                            if let Some(&is_mutable) = self.var_mutability.get(&name_str) {
-                                if !is_mutable {
-                                    return Err(crate::error::AutoError::Msg(format!(
-                                        "Cannot reassign to immutable variable '{}' (declared with 'let')",
-                                        name_str
-                                    )));
-                                }
-                            }
-                            // Variable is mutable - store value to it
+                            // AutoLang allows reassignment for all variables
+                            // Store value to variable
                             let asn_is_two_slot = matches!(asn_stored_type, Some(Type::U64 | Type::I64 | Type::Double))
                                 || matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint);
                             if asn_is_two_slot {
@@ -7235,6 +7253,27 @@ impl Codegen {
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(0);
                 self.last_expr_type = ObjectType::Int;
+            }
+            Expr::TupleDestruct { names, expr } => {
+                // let (a, b) = expr — compile as: evaluate expr, then extract elements
+                self.compile_expr(expr)?;
+                // The result is on the stack — assume it's a list/array-like object
+                // Store it in a temp variable
+                let temp_idx = self.add_var("_tuple_destruct");
+                self.emit_store_loc(temp_idx);
+
+                // Extract each element and bind to variable
+                for (i, name) in names.iter().enumerate() {
+                    self.emit_load_loc(temp_idx);
+                    self.emit(OpCode::CONST_I32);
+                    self.emit_i32(i as i32);
+                    self.emit(OpCode::GET_ELEM);
+                    let var_idx = self.add_var(name.as_str());
+                    self.emit_store_loc(var_idx);
+                }
+                // Push null as the expression result
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(0);
             }
             _ => {
                 unimplemented!("Expression {:?}", expr);

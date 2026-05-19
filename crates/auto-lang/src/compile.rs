@@ -110,6 +110,12 @@ pub struct CompileSession {
 
     compiled_modules: Vec<crate::vm::loader::Module>,
 
+    /// Directories where source files have been found (for multi-dir module resolution)
+    source_dirs: Vec<std::path::PathBuf>,
+
+    /// Paths of modules already compiled to bytecode (to avoid duplicate compilation)
+    compiled_module_paths: HashSet<String>,
+
     /// Plan 212b Task 2: Rust imports collected from use.rust statements
 
     /// Maps crate_name 鈫?list of imported function names
@@ -147,6 +153,10 @@ impl Clone for CompileSession {
             loading_stack: Vec::new(),
 
             compiled_modules: Vec::new(),
+
+            source_dirs: self.source_dirs.clone(),
+
+            compiled_module_paths: HashSet::new(),
 
             rust_imports: self.rust_imports.clone(),
 
@@ -187,6 +197,10 @@ impl CompileSession {
             loading_stack: Vec::new(),
 
             compiled_modules: Vec::new(),
+
+            source_dirs: Vec::new(),
+
+            compiled_module_paths: HashSet::new(),
 
             rust_imports: std::collections::HashMap::new(),
 
@@ -1006,7 +1020,18 @@ impl CompileSession {
 
         // 灏嗘ā鍧楄矾寰勮浆鎹负鏂囦欢璺緞
 
-        let module_path = use_stmt.module.replace(".", "/");
+        let raw_module_path = use_stmt.module.replace(".", "/");
+
+        // Handle `super.xxx` -- resolve relative to parent directories
+        let (module_path, _parent_dirs): (String, Vec<std::path::PathBuf>) = if raw_module_path.starts_with("super/") {
+            let rest = &raw_module_path[6..];
+            let parents: Vec<std::path::PathBuf> = self.source_dirs.iter()
+                .filter_map(|d| d.parent().map(|p| p.to_path_buf()))
+                .collect();
+            (rest.to_string(), parents)
+        } else {
+            (raw_module_path, vec![])
+        };
 
 
 
@@ -1072,11 +1097,73 @@ impl CompileSession {
 
 
 
+        // 3. Try directory module pattern: tools/ → tools/mod.at
+        if found_path.is_none() {
+            for ext in &extensions {
+                let dir_mod_path = std::path::Path::new(&module_path).join(format!("mod{}", ext));
+                if dir_mod_path.exists() {
+                    found_path = Some(dir_mod_path);
+                    break;
+                }
+                // Also try stdlib directory module
+                let stdlib_relative = if module_path.starts_with("auto/") {
+                    &module_path[5..]
+                } else {
+                    &module_path
+                };
+                let stdlib_dir_mod = stdlib_base.join(stdlib_relative).join(format!("mod{}", ext));
+                if stdlib_dir_mod.exists() {
+                    found_path = Some(stdlib_dir_mod);
+                    break;
+                }
+            }
+        }
+
+
+
+        // 4. Try searching in all known source directories (handles cross-dir imports
+        // like agent.at's `use registry` resolving to tools/registry.at)
+        // Also search parent dirs for `super.xxx` resolution
+        if found_path.is_none() {
+            let mut all_search_dirs: Vec<&std::path::Path> = self.source_dirs.iter()
+                .map(|d| d.as_path()).collect();
+            for pd in &_parent_dirs {
+                if !all_search_dirs.iter().any(|d| *d == pd) {
+                    all_search_dirs.push(pd);
+                }
+            }
+            for ext in &extensions {
+                for src_dir in &all_search_dirs {
+                    let path = src_dir.join(format!("{}{}", module_path, ext));
+                    if path.exists() {
+                        found_path = Some(path);
+                        break;
+                    }
+                    // Also try directory module in source dirs
+                    let dir_mod = src_dir.join(&module_path).join(format!("mod{}", ext));
+                    if dir_mod.exists() {
+                        found_path = Some(dir_mod);
+                        break;
+                    }
+                }
+                if found_path.is_some() { break; }
+            }
+        }
+
+
+
         let root_path = found_path.ok_or_else(|| {
 
             AutoError::Msg(format!("Module not found: {}", use_stmt.module))
 
         })?;
+
+        // Record the directory of this module for future lookups
+        if let Some(parent) = root_path.parent() {
+            if !self.source_dirs.iter().any(|d| d == parent) {
+                self.source_dirs.push(parent.to_path_buf());
+            }
+        }
 
 
 
@@ -1156,16 +1243,22 @@ impl CompileSession {
 
         let module_type_store = self.parse_module_to_type_store(&module_source, &root_path.to_string_lossy())?;
 
-
+        // Recursively resolve use statements inside this module
+        // so that dependencies (e.g. agent.at's `use permission`) are loaded
+        // into the session TypeStore before compilation
+        self.resolve_uses(&module_source)?;
 
         // Cross-module function calls: compile module to bytecode
-
-        let module_code = self.compile_module_to_bytecode(&module_source, &root_path.to_string_lossy())?;
-
-        if !module_code.exports.is_empty() {
-
-            self.compiled_modules.push(module_code);
-
+        // Skip if already compiled (avoid duplicate symbols)
+        let path_key = root_path.canonicalize()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| root_path.to_string_lossy().to_string());
+        if !self.compiled_module_paths.contains(&path_key) {
+            let module_code = self.compile_module_to_bytecode(&module_source, &root_path.to_string_lossy())?;
+            if !module_code.exports.is_empty() {
+                self.compiled_modules.push(module_code);
+            }
+            self.compiled_module_paths.insert(path_key);
         }
 
 
@@ -1351,6 +1444,12 @@ impl CompileSession {
                 }
 
                 crate::ast::Stmt::Ext(_) => {
+
+                    codegen.compile_stmt(stmt)?;
+
+                }
+
+                crate::ast::Stmt::Use(_) => {
 
                     codegen.compile_stmt(stmt)?;
 
