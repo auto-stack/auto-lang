@@ -3645,7 +3645,8 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 // Plan 192: Rust stdlib Dynamic Dispatch Handler
 // ============================================================================
 
-/// Push a Rust stdlib object onto the VM heap and push its handle as i64.
+/// Push a Rust stdlib object onto the VM heap and push its handle.
+/// In nanbox mode, uses encode_object so print() can detect heap objects.
 fn push_rust_obj<T: Any + Send + Sync + 'static>(
     task: &mut AutoTask,
     vm: &AutoVM,
@@ -3653,20 +3654,45 @@ fn push_rust_obj<T: Any + Send + Sync + 'static>(
     value: T,
 ) -> Result<(), VMError> {
     let obj = RustStdlibObject::new(type_name, value);
-    let handle = vm.insert_heap_object(obj) as i32;
-    task.ram.push_i32(handle);
+    let handle = vm.insert_heap_object(obj) as u32;
+    #[cfg(feature = "nanbox")]
+    {
+        task.ram.push_nv(auto_val::encode_object(handle));
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        task.ram.push_i32(handle as i32);
+    }
     Ok(())
 }
 
 /// Pop a heap handle and return a reference to the RustStdlibObject.
 fn pop_rust_obj(task: &mut AutoTask, vm: &AutoVM, context: &str) -> Result<u64, VMError> {
-    let handle = task.ram.pop_i32() as u64;
-    if vm.get_heap_object(handle).is_none() {
-        return Err(VMError::RuntimeError(format!(
-            "Invalid Rust stdlib handle in {} (handle={})", context, handle
-        )));
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+        let handle = if auto_val::is_object(nv) {
+            auto_val::decode_object(nv) as u64
+        } else {
+            auto_val::decode_i32(nv) as u64
+        };
+        if vm.get_heap_object(handle).is_none() {
+            return Err(VMError::RuntimeError(format!(
+                "Invalid Rust stdlib handle in {} (handle={})", context, handle
+            )));
+        }
+        Ok(handle)
     }
-    Ok(handle)
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let handle = task.ram.pop_i32() as u64;
+        if vm.get_heap_object(handle).is_none() {
+            return Err(VMError::RuntimeError(format!(
+                "Invalid Rust stdlib handle in {} (handle={})", context, handle
+            )));
+        }
+        Ok(handle)
+    }
 }
 
 /// Generic dispatch handler for Rust stdlib calls.
