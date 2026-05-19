@@ -1,3 +1,6 @@
+import path from 'path'
+import { fileURLToPath } from 'url'
+const __root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../')
 import { defineConfig, type Plugin } from 'vitepress'
 import { shared } from './config/shared'
 import { en } from './config/en'
@@ -40,6 +43,7 @@ export default defineConfig({
     resolve: {
       alias: {
         '@': __dirname,
+        'auto-playground-vue': path.resolve(__root, 'packages/auto-playground-vue/src/index.ts'),
       },
     },
     server: {
