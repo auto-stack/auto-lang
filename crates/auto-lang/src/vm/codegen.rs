@@ -4337,7 +4337,14 @@ impl Codegen {
                                 "Compound assignment to captured variables not yet supported in AutoVM".to_string()
                             ));
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
-                            // Variable found in local scope
+                            // Variable found in local scope - check mutability
+                            if let Some(is_mutable) = self.var_mutability.get(&name_str) {
+                                if !is_mutable {
+                                    return Err(crate::error::AutoError::Msg(
+                                        format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
+                                    ));
+                                }
+                            }
                             // Load variable FIRST (for correct operand order)
                             self.emit_load_loc(var_index);
 
@@ -4401,7 +4408,13 @@ impl Codegen {
                             self.emit_store_captured(&name_str);
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
                             // Variable found in local scope - check mutability
-                            // AutoLang allows reassignment for all variables
+                            if let Some(is_mutable) = self.var_mutability.get(&name_str) {
+                                if !is_mutable {
+                                    return Err(crate::error::AutoError::Msg(
+                                        format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
+                                    ));
+                                }
+                            }
                             // Store value to variable
                             let asn_is_two_slot = matches!(asn_stored_type, Some(Type::U64 | Type::I64 | Type::Double))
                                 || matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint);
@@ -9271,7 +9284,19 @@ impl Codegen {
                 Type::Array(_) | Type::RuntimeArray(_) => Some("Array".to_string()),
                 Type::List(_) => Some("List".to_string()),
                 Type::Map(_, _) => Some("Map".to_string()),  // Plan 160
-                Type::Option(_) => Some("Option".to_string()),
+                Type::Option(inner) => {
+                    // Unwrap Option<T> → use inner type for method dispatch
+                    // e.g., ?str calling .len() should dispatch as "str.len", not "Option.len"
+                    match inner.as_ref() {
+                        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => Some("str".to_string()),
+                        Type::List(_) => Some("List".to_string()),
+                        Type::Map(_, _) => Some("Map".to_string()),
+                        Type::Array(_) => Some("Array".to_string()),
+                        Type::Int | Type::I64 => Some("int".to_string()),
+                        Type::User(td) => Some(td.name.to_string()),
+                        _ => Some("Option".to_string()),
+                    }
+                }
                 Type::User(type_decl) => {
                     let name = type_decl.name.to_string();
                     // Option.Some/Option.None → "Option" for method dispatch
