@@ -177,14 +177,14 @@ and complicates memory sharing. cdylib offers the best balance: compile
 once, load at runtime, zero overhead for cached crates.
 
 **Components:**
-```mermaid
+~~~mermaid
 graph LR
     A[AutoVM Runtime] -->|dep stmt| B[Sandbox]
     B -->|generates| C[Wrapper Crate]
     C -->|cargo build| D[cdylib .so]
     D -->|libloading| E[RustFfiBridge]
     E -->|register| A
-```
+~~~
 
 **Trade-offs:**
 | Approach | Pros | Cons |
@@ -240,13 +240,13 @@ Empty → Draft → UnderReview → Approved → Superseded / Outdated
 **Scope:** A1
 
 **Interface:**
-```rust
+~~~rust
 impl Sandbox {
     /// Compile a Rust crate dependency as a cdylib.
     /// Returns the path to the compiled `.so`/`.dll`.
     pub fn compile_dep(&self, dep: &DepStmt) -> Result<PathBuf, CompileError>;
 }
-```
+~~~
 
 **State Machine:**
 ```mermaid
@@ -512,10 +512,10 @@ Empty → Draft → Published
 **Scope:** G1
 
 **Fixture:**
-```rust
+~~~rust
 let sandbox = Sandbox::new(temp_dir());
 let dep = DepStmt::parse("dep serde_json").unwrap();
-```
+~~~
 
 **Steps:**
 1. Call `sandbox.compile_dep(&dep)`
@@ -611,6 +611,7 @@ graph TB
     V -->|feeds| X
     P -->|feeds| X
     G -->|feeds| X
+```
 
 **Reference Table:**
 
@@ -702,9 +703,9 @@ graph TB
 <why>
 
 **Components:**
-```mermaid
+~~~mermaid
 <diagram>
-```
+~~~
 
 **Trade-offs:**
 | Approach | Pros | Cons |
@@ -723,9 +724,9 @@ graph TB
 **Scope:** A1
 
 **Interface:**
-```<lang>
+~~~<lang>
 <signatures>
-```
+~~~
 
 **State Machine:**
 ```mermaid
@@ -768,9 +769,9 @@ graph TB
 **Scope:** G1
 
 **Fixture:**
-```<lang>
+~~~<lang>
 <setup code>
-```
+~~~
 
 **Steps:**
 1. <action>
