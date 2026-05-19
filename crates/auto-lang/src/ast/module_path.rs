@@ -15,7 +15,8 @@ pub enum PathPrefix {
     /// No prefix - same directory: `use db`
     None,
     /// `super.` prefix - parent directory: `use super.db`
-    Super,
+    /// The usize value indicates how many levels of super (1 = super, 2 = super.super, etc.)
+    Super(usize),
     /// `pac.` prefix - package root: `use pac.db`
     Pac,
     /// Dependency name - from declared dep: `use database.connection`
@@ -46,7 +47,7 @@ impl ModulePath {
 
     /// Create a super path (parent directory)
     pub fn super_path(segments: Vec<AutoStr>) -> Self {
-        Self::new(PathPrefix::Super, segments, Vec::new())
+        Self::new(PathPrefix::Super(1), segments, Vec::new())
     }
 
     /// Create a package path (from root)
@@ -70,7 +71,15 @@ impl ModulePath {
         let mut result = String::new();
         match &self.prefix {
             PathPrefix::None => {}
-            PathPrefix::Super => result.push_str("super."),
+            PathPrefix::Super(count) => {
+                match count {
+                    1 => result.push_str("super."),
+                    2 => result.push_str("super2."),
+                    3 => result.push_str("super3."),
+                    4 => result.push_str("super4."),
+                    _ => { for _ in 0..*count { result.push_str("super."); } }
+                }
+            }
             PathPrefix::Pac => result.push_str("pac."),
             PathPrefix::Dep(name) => {
                 result.push_str(name.as_str());
@@ -103,7 +112,7 @@ mod tests {
     fn test_super_path() {
         let path = ModulePath::super_path(vec!["db".into()]);
         assert_eq!(path.display(), "super.db");
-        assert_eq!(path.prefix, PathPrefix::Super);
+        assert_eq!(path.prefix, PathPrefix::Super(1));
     }
 
     #[test]

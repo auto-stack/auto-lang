@@ -115,6 +115,9 @@ pub enum TokenKind {
     Use,
     Pac,    // Plan 131: package keyword (use pac.db)
     Super,  // Plan 131: super keyword (use super.utils)
+    Super2, // super2 = two levels up (use super2.types)
+    Super3, // super3 = three levels up (use super3.types)
+    Super4, // super4 = four levels up (use super4.types)
     As,
     To,   // Plan 162: .to(Type) method keyword for explicit type conversion
     Enum,
@@ -264,6 +267,9 @@ impl fmt::Display for Token {
             TokenKind::Use => write!(f, "<use>"),
             TokenKind::Pac => write!(f, "<pac>"),
             TokenKind::Super => write!(f, "<super>"),
+            TokenKind::Super2 => write!(f, "<super2>"),
+            TokenKind::Super3 => write!(f, "<super3>"),
+            TokenKind::Super4 => write!(f, "<super4>"),
             TokenKind::Spec => write!(f, "<spec>"),
             TokenKind::CStr => write!(f, "<cstr:{}>", self.text),
             TokenKind::At => write!(f, "<@>"),
@@ -364,6 +370,9 @@ impl Token {
             "use" => Some(TokenKind::Use),
             "pac" => Some(TokenKind::Pac),   // Plan 131: package keyword
             "super" => Some(TokenKind::Super), // Plan 131: super keyword
+            "super2" => Some(TokenKind::Super2),
+            "super3" => Some(TokenKind::Super3),
+            "super4" => Some(TokenKind::Super4),
             "as" => Some(TokenKind::As),
             "to" => Some(TokenKind::To),
             "enum" => Some(TokenKind::Enum),

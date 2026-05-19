@@ -825,12 +825,16 @@ macro_rules! for_each_bigvm_native {
             ("auto.file.write_handle", 1012, Void),
             ("auto.file.try_clone", 1013, Void),
 
-            // === Env (1100-1103) ===
+            // === Env (1100-1104) ===
             ("auto.env.get", 1100, Void),
             ("auto.env.set", 1101, Void),
             ("auto.env.remove", 1102, Void),
             ("auto.env.get_or", 1103, Void),
             ("Env.get_or", 1103, Void),
+            ("auto.env.local_data_dir", 1104, Void),
+            ("env.local_data_dir", 1104, Void),
+            ("auto.env.home_dir", 1105, Void),
+            ("env.home_dir", 1105, Void),
 
             // === Time (1200-1204) ===
             ("auto.time.now_ms", 1200, I64),
@@ -1472,6 +1476,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.env.remove", 1102),
     ("auto.env.get_or", 1103),
     ("Env.get_or", 1103),
+    ("auto.env.local_data_dir", 1104),
+    ("env.local_data_dir", 1104),
+    ("auto.env.home_dir", 1105),
+    ("env.home_dir", 1105),
     ("auto.time.now_ms", 1200),
     ("auto.time.now_sec", 1201),
     ("auto.time.sleep_ms", 1202),

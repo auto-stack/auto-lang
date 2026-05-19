@@ -109,7 +109,7 @@ fn test_integration_pac_import_parsing_and_resolution() {
     assert!(
         matches!(
             super_utils.module_path.as_ref().unwrap().prefix,
-            PathPrefix::Super
+            PathPrefix::Super(_)
         ),
         "super.utils should have Super prefix"
     );

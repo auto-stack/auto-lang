@@ -1022,15 +1022,34 @@ impl CompileSession {
 
         let raw_module_path = use_stmt.module.replace(".", "/");
 
-        // Handle `super.xxx` -- resolve relative to parent directories
-        let (module_path, _parent_dirs): (String, Vec<std::path::PathBuf>) = if raw_module_path.starts_with("super/") {
-            let rest = &raw_module_path[6..];
-            let parents: Vec<std::path::PathBuf> = self.source_dirs.iter()
-                .filter_map(|d| d.parent().map(|p| p.to_path_buf()))
-                .collect();
-            (rest.to_string(), parents)
-        } else {
-            (raw_module_path, vec![])
+        // Handle super/super2/super3/super4 prefix -- resolve relative to parent directories
+        let (module_path, _parent_dirs): (String, Vec<std::path::PathBuf>) = {
+            let path = raw_module_path.as_str();
+            let (super_count, rest) = if path.starts_with("super4/") {
+                (4, &path[7..])
+            } else if path.starts_with("super3/") {
+                (3, &path[7..])
+            } else if path.starts_with("super2/") {
+                (2, &path[7..])
+            } else if path.starts_with("super/") {
+                (1, &path[6..])
+            } else {
+                (0, path)
+            };
+            if super_count > 0 {
+                let parents: Vec<std::path::PathBuf> = self.source_dirs.iter()
+                    .filter_map(|d| {
+                        let mut p = d.to_path_buf();
+                        for _ in 0..super_count {
+                            p = p.parent()?.to_path_buf();
+                        }
+                        Some(p)
+                    })
+                    .collect();
+                (rest.to_string(), parents)
+            } else {
+                (raw_module_path.clone(), vec![])
+            }
         };
 
 

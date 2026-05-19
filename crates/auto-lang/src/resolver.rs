@@ -170,33 +170,41 @@ impl FilesystemResolver {
                 }
                 Err(format!("Module not found: {}", module_path.display()))
             }
-            PathPrefix::Super => {
+            PathPrefix::Super(count) => {
                 // Resolve relative to parent of current file's directory
-                let current_dir = current_file
+                // Support multi-level super (count = number of super prefixes)
+                let mut current_dir = current_file
                     .parent()
-                    .ok_or("Cannot resolve super: current file has no parent directory")?;
+                    .ok_or("Cannot resolve super: current file has no parent directory")?
+                    .to_path_buf();
 
-                // Check if we're already at the package root
-                let is_at_root = self.search_paths.iter().any(|p| current_dir == *p);
-                if is_at_root {
-                    return Err(format!(
-                        "Cannot use 'super' at package root level.\n\
-                         \n\
-                         Current directory '{}' is already at the package root.\n\
-                         Use 'pac.' prefix to import from the package root instead:\n\
-                         \n\
-                         use pac.{}",
-                        current_dir.display(),
-                        segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(".")
-                    ));
+                // Walk up `count` levels
+                for i in 0..*count {
+                    // Check if we're already at the package root
+                    let is_at_root = self.search_paths.iter().any(|p| current_dir == *p);
+                    if is_at_root {
+                        return Err(format!(
+                            "Cannot use 'super' at package root level (level {} of {}).\n\
+                             \n\
+                             Current directory '{}' is already at the package root.\n\
+                             Use 'pac.' prefix to import from the package root instead:\n\
+                             \n\
+                             use pac.{}",
+                            i + 1, count,
+                            current_dir.display(),
+                            segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(".")
+                        ));
+                    }
+
+                    current_dir = current_dir.parent()
+                        .ok_or_else(|| format!(
+                            "Cannot resolve super: no parent directory above '{}'",
+                            current_dir.display()
+                        ))?
+                        .to_path_buf();
                 }
 
-                let parent_dir = current_dir.parent()
-                    .ok_or_else(|| format!(
-                        "Cannot resolve super: no parent directory above '{}'",
-                        current_dir.display()
-                    ))?;
-                self.find_module(parent_dir, segments)
+                self.find_module(&current_dir, segments)
             }
             PathPrefix::None => {
                 // Same directory as current file

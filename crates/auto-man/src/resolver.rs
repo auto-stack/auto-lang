@@ -347,7 +347,7 @@ impl AutoManResolver {
                 self.find_module_in_dep(&dep.path, segments)
             }
             // For other prefixes, use the package root
-            PathPrefix::Pac | PathPrefix::Super | PathPrefix::None => {
+            PathPrefix::Pac | PathPrefix::Super(_) | PathPrefix::None => {
                 // Delegate to base resolver logic
                 let base_resolver = auto_lang::resolver::FilesystemResolver::with_package_root(self.project_root.clone());
                 base_resolver.resolve_with_prefix(module_path, current_file)

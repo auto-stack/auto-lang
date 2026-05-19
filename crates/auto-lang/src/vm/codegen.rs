@@ -1027,7 +1027,14 @@ impl Codegen {
                 );
 
                 if !is_new_declaration && scope.contains_key(&name_str) {
-                    // Auto allows reassignment of `let` variables (unlike Rust)
+                    // Reassignment of existing variable — check immutability
+                    if let Some(is_mutable) = self.var_mutability.get(&name_str) {
+                        if !is_mutable {
+                            return Err(crate::error::AutoError::Msg(
+                                format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
+                            ));
+                        }
+                    }
                 }
 
                 if is_new_declaration || !scope.contains_key(&name_str) {
@@ -4330,7 +4337,14 @@ impl Codegen {
                                 "Compound assignment to captured variables not yet supported in AutoVM".to_string()
                             ));
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
-                            // Auto allows reassignment of `let` variables (unlike Rust)
+                            // Variable found in local scope - check mutability
+                            if let Some(is_mutable) = self.var_mutability.get(&name_str) {
+                                if !is_mutable {
+                                    return Err(crate::error::AutoError::Msg(
+                                        format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
+                                    ));
+                                }
+                            }
                             // Load variable FIRST (for correct operand order)
                             self.emit_load_loc(var_index);
 
@@ -4393,7 +4407,14 @@ impl Codegen {
                             self.emit(OpCode::DUP); // Keep value for expression result
                             self.emit_store_captured(&name_str);
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
-                            // Auto allows reassignment of `let` variables (unlike Rust)
+                            // Variable found in local scope - check mutability
+                            if let Some(is_mutable) = self.var_mutability.get(&name_str) {
+                                if !is_mutable {
+                                    return Err(crate::error::AutoError::Msg(
+                                        format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
+                                    ));
+                                }
+                            }
                             // Store value to variable
                             let asn_is_two_slot = matches!(asn_stored_type, Some(Type::U64 | Type::I64 | Type::Double))
                                 || matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint);
@@ -5246,7 +5267,10 @@ impl Codegen {
                                 vm_debug!("DEBUG: Dot Ident: obj_name={}, method={}, var_type={:?}", obj_name, method, self.var_types.get(obj_name.as_str()));
                                 // Check if it's a static method call (Type.method with capital T)
                                 // Also treat stdlib singleton module names (env, fs) as static
-                                let is_stdlib_module = matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex");
+                                // BUT: if the name is a known local variable (e.g. `json str` parameter),
+                                // treat as instance method call instead of module call
+                                let is_local_var = self.var_types.contains_key(obj_name.as_ref());
+                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex");
                                 if is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
@@ -5334,7 +5358,9 @@ impl Codegen {
                                                 }
                                                 Type::User(td) => {
                                                     let name = td.name.to_string();
-                                                    (name, vec![])
+                                                    // Strip module prefix (e.g., "types.ToolRegistry" → "ToolRegistry")
+                                                    let short = name.rsplit('.').next().unwrap_or(&name);
+                                                    (short.to_string(), vec![])
                                                 }
                                                 other => {
                                                     // Extract name via infer_type_from_var logic for other types
@@ -5609,6 +5635,8 @@ impl Codegen {
                             ("env", "get_or") => Some("auto.env.get_or".to_string()),
                             ("env", "set") => Some("auto.env.set".to_string()),
                             ("env", "remove") => Some("auto.env.remove".to_string()),
+                            ("env", "local_data_dir") => Some("auto.env.local_data_dir".to_string()),
+                            ("env", "home_dir") => Some("auto.env.home_dir".to_string()),
                             ("time", "now_ms") => Some("auto.time.now_ms".to_string()),
                             ("time", "now_sec") => Some("auto.time.now_sec".to_string()),
                             ("time", "sleep_ms") => Some("auto.time.sleep_ms".to_string()),
@@ -9290,7 +9318,9 @@ impl Codegen {
                     if name.starts_with("Option.") || name.starts_with("Result.") {
                         name.split('.').next().map(|s| s.to_string())
                     } else {
-                        Some(name)
+                        // Strip module prefix for method dispatch (e.g., "types.ToolRegistry" → "ToolRegistry")
+                        let short = name.rsplit('.').next().unwrap_or(&name);
+                        Some(short.to_string())
                     }
                 }
                 Type::GenericInstance(inst) => Some(inst.base_name.to_string()),

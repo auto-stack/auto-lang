@@ -51,6 +51,8 @@ pub const NATIVE_FILE_READ_LINES: u16 = 1012;
 pub const NATIVE_ENV_GET: u16 = 1100;
 pub const NATIVE_ENV_SET: u16 = 1101;
 pub const NATIVE_ENV_REMOVE: u16 = 1102;
+pub const NATIVE_ENV_LOCAL_DATA_DIR: u16 = 1104;
+pub const NATIVE_ENV_HOME_DIR: u16 = 1105;
 
 // IO functions: 1150-1169
 pub const NATIVE_IO_READ_LINE: u16 = 1150;
@@ -482,6 +484,27 @@ pub fn shim_env_remove(key: String) {
 #[auto_macros::rust_fn("Env.get_or")]
 pub fn shim_env_get_or(key: String, default: String) -> String {
     std::env::var(&key).unwrap_or(default)
+}
+
+/// Get the local data directory (e.g. ~/.local/share on Unix, %APPDATA% on Windows)
+#[auto_macros::rust_fn("Env.local_data_dir")]
+pub fn shim_env_local_data_dir() -> String {
+    if cfg!(target_os = "windows") {
+        std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string())
+    } else {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        home + "/.local/share"
+    }
+}
+
+/// Get the user's home directory
+#[auto_macros::rust_fn("Env.home_dir")]
+pub fn shim_env_home_dir() -> String {
+    if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string())
+    } else {
+        std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
+    }
 }
 
 // ============================================================================

@@ -4894,14 +4894,27 @@ impl<'a> Parser<'a> {
         self.next(); // skip use
 
         // Plan 131: Check for pac. or super. prefix
+        // Support super (1 level), super2 (2 levels), super3 (3 levels), super4 (4 levels)
         let prefix = if self.is_kind(TokenKind::Pac) {
             self.next(); // skip 'pac'
             self.expect(TokenKind::Dot)?;
             PathPrefix::Pac
+        } else if self.is_kind(TokenKind::Super2) {
+            self.next(); // skip 'super2'
+            self.expect(TokenKind::Dot)?;
+            PathPrefix::Super(2)
+        } else if self.is_kind(TokenKind::Super3) {
+            self.next(); // skip 'super3'
+            self.expect(TokenKind::Dot)?;
+            PathPrefix::Super(3)
+        } else if self.is_kind(TokenKind::Super4) {
+            self.next(); // skip 'super4'
+            self.expect(TokenKind::Dot)?;
+            PathPrefix::Super(4)
         } else if self.is_kind(TokenKind::Super) {
             self.next(); // skip 'super'
             self.expect(TokenKind::Dot)?;
-            PathPrefix::Super
+            PathPrefix::Super(1)
         } else {
             PathPrefix::None
         };
@@ -4929,8 +4942,10 @@ impl<'a> Parser<'a> {
 
         while self.is_kind(TokenKind::Dot) {
             self.next(); // skip .
-            // Check for pac/super after dot - not allowed
-            if self.is_kind(TokenKind::Pac) || self.is_kind(TokenKind::Super) {
+            // Keywords pac/super/super2/super3/super4 not allowed after dot
+            if self.is_kind(TokenKind::Pac) || self.is_kind(TokenKind::Super)
+                || self.is_kind(TokenKind::Super2) || self.is_kind(TokenKind::Super3)
+                || self.is_kind(TokenKind::Super4) {
                 return Err(SyntaxError::Generic {
                     message: "Keywords 'pac' and 'super' can only appear at the start of a module path".into(),
                     span: pos_to_span(self.cur.pos),
@@ -4949,9 +4964,10 @@ impl<'a> Parser<'a> {
         let paths = if prefix == PathPrefix::Pac {
             // Skip "pac" prefix for legacy paths (pac.db -> ["db"])
             segments
-        } else if prefix == PathPrefix::Super {
+        } else if matches!(prefix, PathPrefix::Super(_)) {
             // Include "super" in legacy paths (super.utils -> ["super", "utils"])
-            let mut p = vec!["super".into()];
+            let super_count = match &prefix { PathPrefix::Super(n) => *n, _ => 0 };
+            let mut p: Vec<AutoStr> = (0..super_count).map(|_| "super".into()).collect();
             p.extend(segments);
             p
         } else {
@@ -12434,7 +12450,7 @@ widget Test {
         match &ast.stmts[0] {
             Stmt::Use(u) => {
                 let mp = u.module_path.as_ref().unwrap();
-                assert_eq!(mp.prefix, PathPrefix::Super);
+                assert_eq!(mp.prefix, PathPrefix::Super(1));
                 assert_eq!(mp.segments, vec!["utils"]);
                 assert_eq!(mp.display(), "super.utils");
             }
@@ -12482,7 +12498,7 @@ widget Test {
         match &ast.stmts[0] {
             Stmt::Use(u) => {
                 let mp = u.module_path.as_ref().unwrap();
-                assert_eq!(mp.prefix, PathPrefix::Super);
+                assert_eq!(mp.prefix, PathPrefix::Super(1));
                 assert_eq!(mp.segments, vec!["io"]);
                 assert_eq!(mp.items, vec!["say", "ask"]);
             }
