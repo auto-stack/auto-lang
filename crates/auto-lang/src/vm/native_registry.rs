@@ -243,10 +243,6 @@ impl AutoVMNativeRegistry {
     /// - "TaskSystem.start" → "auto.task_system.start" (via TYPE_CANONICAL_MAP)
     fn to_canonical(name: &str) -> Option<String> {
         let (prefix, rest) = name.split_once('.')?;
-        // Aliases for common patterns
-        if name == "json.to_string" { return Some("auto.json.as_string".to_string()); }
-        if name == "json.from_uint" { return Some("auto.json.from_uint".to_string()); }
-        if name == "json.from_int" { return Some("auto.json.from_int".to_string()); }
         // Check explicit map first (handles composite/wrong-case type names)
         for &(short, canonical_prefix) in TYPE_CANONICAL_MAP {
             if prefix == short {
