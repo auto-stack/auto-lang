@@ -1,5 +1,5 @@
 import { ref, watch, computed } from 'vue';
-import type { RunResponse, TransResponse, OutputTab, SourceMapEntry } from '../types';
+import type { RunResponse, TransResponse, OutputTab, SourceMapEntry, DebugState, DebugCommand, BytecodeLine } from '../types';
 import { runTypeScript } from '../utils/tsRunner';
 
 const DEBOUNCE_MS = 500;
@@ -332,12 +332,100 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     }
   }
 
+  // ── Debug state ──
+  const debugSessionId = ref<string | null>(null);
+  const debugState = ref<DebugState | null>(null);
+  const bytecode = ref<BytecodeLine[]>([]);
+  const breakpoints = ref<number[]>([]);
+  const isDebugging = ref(false);
+
+  async function debugStart() {
+    isLoading.value = true;
+    stderr.value = '';
+    try {
+      const res = await fetch(`${API_BASE}/agent-debug/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: source.value }),
+      });
+      const data = await res.json();
+      debugSessionId.value = data.session_id;
+      bytecode.value = (data.bytecode || []).map((b: any) => ({
+        offset: b.offset ?? b.idx ?? 0,
+        mnemonic: b.mnemonic ?? b.op ?? '',
+        operands: b.operands ?? b.args ?? '',
+        line: b.line,
+      }));
+      isDebugging.value = true;
+      debugState.value = null;
+      if (breakpoints.value.length > 0) {
+        await debugSetBreakpoints(breakpoints.value);
+      }
+    } catch (e: any) {
+      stderr.value = `Debug start error: ${e.message}`;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  async function debugSetBreakpoints(lines: number[]) {
+    breakpoints.value = lines;
+    if (!debugSessionId.value) return;
+    try {
+      await fetch(`${API_BASE}/agent-debug/${debugSessionId.value}/breakpoints`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lines }),
+      });
+    } catch { /* ignore */ }
+  }
+
+  async function debugCommand(cmd: DebugCommand) {
+    if (!debugSessionId.value) return;
+    isLoading.value = true;
+    try {
+      const res = await fetch(`${API_BASE}/agent-debug/${debugSessionId.value}/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cmd }),
+      });
+      const data: DebugState = await res.json();
+      debugState.value = data;
+      if (data.stdout) stdout.value = data.stdout;
+      if (data.stderr) stderr.value = data.stderr;
+      if (data.result) resultCode.value = data.result;
+      if (data.status === 'finished' || data.status === 'error') {
+        isDebugging.value = false;
+      }
+    } catch (e: any) {
+      stderr.value = `Debug command error: ${e.message}`;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  async function debugStop() {
+    if (!debugSessionId.value) return;
+    try {
+      await fetch(`${API_BASE}/agent-debug/${debugSessionId.value}`, {
+        method: 'DELETE',
+      });
+    } catch { /* ignore */ }
+    debugSessionId.value = null;
+    debugState.value = null;
+    isDebugging.value = false;
+  }
+
   return {
     source, stdout, stderr, resultCode, timeMs, isLoading,
     activeTab, transpiledCode, transpileTarget, liveCompile,
     sourceMap, highlightedSourceLine, highlightedOutputLines,
     shareToast,
+    // Debug state
+    debugSessionId, debugState, bytecode, breakpoints, isDebugging,
+    // Methods
     run, runAbt, runCode, transpile, switchTab, loadExample, highlightSourceLine, clearHighlight,
     share,
+    debugStart, debugSetBreakpoints, debugCommand, debugStop,
   };
 }

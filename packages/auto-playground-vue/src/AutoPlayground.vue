@@ -7,7 +7,7 @@
         <ExampleSelector :api-base="apiBase" @select="onLoadExample" />
       </div>
       <div class="toolbar-right">
-        <select v-model="targetLang" class="target-select">
+        <select v-model="targetLang" class="target-select" :disabled="isDebugging">
           <option value="run">Run</option>
           <option value="rust">→ Rust</option>
           <option value="c">→ C</option>
@@ -15,12 +15,36 @@
           <option value="typescript">→ TypeScript</option>
           <option value="abt">→ ABT</option>
         </select>
-        <button class="run-btn" @click="runAction" :disabled="isLoading">
+        <button v-if="!isDebugging" class="run-btn" @click="runAction" :disabled="isLoading">
           <Play v-if="!isLoading" :size="14" />
           <Loader2 v-else :size="14" class="spin" />
           {{ isLoading ? 'Running...' : 'Run' }}
         </button>
-        <label class="switch-widget" title="Toggle live transpile on edit">
+        <template v-else>
+          <div class="debug-controls">
+            <button class="debug-btn continue" @click="debugCommand('continue')" :disabled="isLoading" title="Continue">
+              <Play :size="14" />
+            </button>
+            <button class="debug-btn step" @click="debugCommand('step')" :disabled="isLoading" title="Step Into">
+              <ArrowDown :size="14" />
+            </button>
+            <button class="debug-btn step-over" @click="debugCommand('step_over')" :disabled="isLoading" title="Step Over">
+              <SkipForward :size="14" />
+            </button>
+            <button class="debug-btn step-out" @click="debugCommand('step_out')" :disabled="isLoading" title="Step Out">
+              <ArrowUp :size="14" />
+            </button>
+          </div>
+        </template>
+        <button v-if="isDebugging" class="stop-btn" @click="onDebugStop" title="Stop Debug">
+          <Square :size="14" />
+          Stop
+        </button>
+        <button v-else class="debug-start-btn" @click="onDebugStart" :disabled="isLoading" title="Start Debug">
+          <Bug :size="14" />
+          Debug
+        </button>
+        <label v-if="!isDebugging" class="switch-widget" title="Toggle live transpile on edit">
           <span class="switch-label">Live</span>
           <span class="switch">
             <input type="checkbox" v-model="liveCompile" />
@@ -38,6 +62,10 @@
           :model-value="source"
           @update:model-value="source = $event"
           :on-run="runAction"
+          :is-debugging="isDebugging"
+          :breakpoints="breakpoints"
+          :current-debug-line="debugState?.line ?? null"
+          @breakpoints-change="onBreakpointsChange"
         />
       </div>
       <div class="output-pane">
@@ -52,6 +80,9 @@
             {{ tabLabels[tab] }}
           </button>
           <div class="spacer" />
+          <span v-if="isDebugging && debugState" class="debug-status" :class="debugState.status">
+            {{ debugState.status }}
+          </span>
           <button
             v-if="canCopy"
             class="icon-btn copy-btn"
@@ -70,12 +101,45 @@
             :result="resultCode"
             :time-ms="timeMs"
           />
+          <BytecodePanel
+            v-else-if="displayTab === 'Bytecode'"
+            :bytecode="bytecode"
+            :current-ip="debugState?.ip"
+            @offset-click="onBytecodeOffsetClick"
+          />
           <CodePreview
             v-else
             :code="transpiledCode"
             :language="displayTab"
             :highlight-lines="highlightedOutputLines"
           />
+        </div>
+        <!-- Debug state panel -->
+        <div v-if="isDebugging && debugState" class="debug-panel">
+          <div class="debug-section" v-if="debugState.stack.length">
+            <div class="debug-section-title">Stack ({{ debugState.stack.length }})</div>
+            <div class="debug-stack">
+              <span v-for="(val, i) in debugState.stack.slice(-8)" :key="i" class="stack-item">{{ val }}</span>
+            </div>
+          </div>
+          <div class="debug-section" v-if="debugState.call_stack.length">
+            <div class="debug-section-title">Call Stack</div>
+            <div v-for="(frame, i) in debugState.call_stack" :key="i" class="call-frame">
+              <span class="frame-name">{{ frame.fn_name || '&lt;root&gt;' }}</span>
+              <span class="frame-info">line {{ frame.line }}, bp={{ frame.bp }}</span>
+            </div>
+          </div>
+          <div class="debug-section" v-if="debugState.locals.length">
+            <div class="debug-section-title">Locals</div>
+            <div class="debug-locals">
+              <span v-for="(local, i) in debugState.locals" :key="i" class="local-item">
+                <span class="local-idx">[{{ local.index }}]</span> {{ local.value }}
+              </span>
+            </div>
+          </div>
+          <div class="debug-registers" v-if="debugState.registers">
+            IP={{ debugState.registers.ip }} BP={{ debugState.registers.bp }} SP={{ debugState.registers.sp }}
+          </div>
         </div>
       </div>
     </div>
@@ -87,13 +151,14 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import { Play, Loader2, Code2, Share2, Copy, Check } from 'lucide-vue-next'
+import { Play, Loader2, Code2, Share2, Copy, Check, Bug, Square, ArrowDown, ArrowUp, SkipForward } from 'lucide-vue-next'
 import CodeEditor from './components/CodeEditor.vue'
 import CodePreview from './components/CodePreview.vue'
 import ConsoleOutput from './components/ConsoleOutput.vue'
+import BytecodePanel from './components/BytecodePanel.vue'
 import ExampleSelector from './components/ExampleSelector.vue'
 import { usePlayground } from './composables/usePlayground'
-import type { OutputTab } from './types'
+import type { OutputTab, DebugCommand } from './types'
 
 const props = withDefaults(defineProps<{
   code?: string
@@ -101,8 +166,8 @@ const props = withDefaults(defineProps<{
   height?: string
 }>(), {
   code: `fn main() {
-    let message = "Hello from Auto!";
-    println(message);
+    let message = "Hello from Auto!"
+    print(message)
 }`,
   apiUrl: '',
   height: '500px'
@@ -114,7 +179,9 @@ const {
   source, stdout, stderr, resultCode, timeMs, isLoading,
   transpiledCode, liveCompile,
   highlightedOutputLines, shareToast,
+  debugState, bytecode, breakpoints, isDebugging,
   run, switchTab, loadExample, share,
+  debugStart, debugSetBreakpoints, debugCommand, debugStop,
 } = usePlayground({
   apiBase,
   defaultSource: props.code,
@@ -126,7 +193,7 @@ const displayTab = ref<EmbedTab>('Output')
 const targetLang = ref<'run' | Exclude<OutputTab, 'bytecode'>>('run')
 const copied = ref(false)
 
-const tabs = ['Output', 'rust', 'c', 'python', 'typescript', 'abt'] as const
+const tabs = ['Output', 'rust', 'c', 'python', 'typescript', 'abt', 'Bytecode'] as const
 type EmbedTab = typeof tabs[number]
 
 const tabLabels: Record<EmbedTab, string> = {
@@ -136,13 +203,14 @@ const tabLabels: Record<EmbedTab, string> = {
   python: 'Python',
   typescript: 'TS',
   abt: 'ABT',
+  Bytecode: 'Bytecode',
 }
 
 const wrapperStyle = computed(() => ({
   height: props.height,
 }))
 
-const canCopy = computed(() => displayTab.value !== 'Output' && transpiledCode.value)
+const canCopy = computed(() => displayTab.value !== 'Output' && displayTab.value !== 'Bytecode' && transpiledCode.value)
 
 async function runAction() {
   if (targetLang.value === 'run') {
@@ -163,10 +231,10 @@ watch(targetLang, (lang) => {
 
 function onSwitchTab(tab: EmbedTab) {
   displayTab.value = tab
-  if (tab !== 'Output') {
+  if (tab !== 'Output' && tab !== 'Bytecode') {
     targetLang.value = tab
     switchTab(tab)
-  } else {
+  } else if (tab === 'Output') {
     targetLang.value = 'run'
   }
 }
@@ -184,6 +252,24 @@ async function copyCode() {
     copied.value = true
     setTimeout(() => { copied.value = false }, 2000)
   } catch { /* ignore */ }
+}
+
+async function onDebugStart() {
+  await debugStart()
+  displayTab.value = 'Bytecode'
+}
+
+async function onDebugStop() {
+  await debugStop()
+  displayTab.value = 'Output'
+}
+
+function onBreakpointsChange(lines: number[]) {
+  debugSetBreakpoints(lines)
+}
+
+function onBytecodeOffsetClick(_offset: number) {
+  // Could cross-highlight source line from bytecode offset
 }
 </script>
 
@@ -238,13 +324,16 @@ async function copyCode() {
   cursor: pointer;
 }
 
-.run-btn {
+.target-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.run-btn, .debug-start-btn, .stop-btn {
   display: flex;
   align-items: center;
   gap: 0.35rem;
   padding: 0.4rem 0.8rem;
-  background: #27c93f;
-  color: #1e1e2e;
   border: none;
   border-radius: 6px;
   font-size: 0.8rem;
@@ -253,13 +342,63 @@ async function copyCode() {
   transition: opacity 0.2s;
 }
 
-.run-btn:hover {
+.run-btn {
+  background: #27c93f;
+  color: #1e1e2e;
+}
+
+.debug-start-btn {
+  background: #89b4fa;
+  color: #1e1e2e;
+}
+
+.stop-btn {
+  background: #f38ba8;
+  color: #1e1e2e;
+}
+
+.run-btn:hover, .debug-start-btn:hover, .stop-btn:hover {
   opacity: 0.9;
 }
 
-.run-btn:disabled {
+.run-btn:disabled, .debug-start-btn:disabled, .stop-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.debug-controls {
+  display: flex;
+  gap: 2px;
+}
+
+.debug-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #313244;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.debug-btn:hover:not(:disabled) {
+  background: #45475a;
+}
+
+.debug-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.debug-btn.continue {
+  color: #a6e3a1;
+}
+
+.debug-btn.step {
+  color: #89b4fa;
 }
 
 .spin {
@@ -415,10 +554,115 @@ async function copyCode() {
   flex: 1;
 }
 
+.debug-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.debug-status.paused {
+  background: #f9e2af33;
+  color: #f9e2af;
+}
+
+.debug-status.running {
+  background: #a6e3a133;
+  color: #a6e3a1;
+}
+
+.debug-status.error {
+  background: #f38ba833;
+  color: #f38ba8;
+}
+
+.debug-status.finished {
+  background: #89b4fa33;
+  color: #89b4fa;
+}
+
 .output-content {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
+}
+
+.output-content :deep(.bytecode-panel) {
+  height: 100%;
+}
+
+/* Debug state panel */
+.debug-panel {
+  border-top: 1px solid #313244;
+  background: #181825;
+  padding: 0.5rem 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: #a6adc8;
+  max-height: 160px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.debug-section {
+  margin-bottom: 0.4rem;
+}
+
+.debug-section-title {
+  color: #89b4fa;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.debug-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.stack-item {
+  background: #313244;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+}
+
+.call-frame {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 0;
+}
+
+.frame-name {
+  color: #cba6f7;
+}
+
+.frame-info {
+  color: #6c7086;
+}
+
+.debug-locals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.local-item {
+  background: #313244;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.local-idx {
+  color: #6c7086;
+}
+
+.debug-registers {
+  color: #585b70;
+  font-size: 0.7rem;
+  margin-top: 0.3rem;
 }
 
 .toast {
