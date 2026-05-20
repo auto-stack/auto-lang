@@ -617,6 +617,14 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
 
+    // Register standard native shims (fs, str, process, etc.)
+    {
+        let mut ni = crate::vm::native::NativeInterface::new();
+        ni.register_std_shims();
+        crate::vm::ffi::stdlib::register_stdlib_ffi(&mut ni);
+        vm.merge_native_interface(&ni);
+    }
+
     // Plan 212b Task 4: Merge Rust FFI native interface into VM
     if let Some(rust_ni) = rust_ffi_native_interface {
         vm.merge_native_interface(&rust_ni);

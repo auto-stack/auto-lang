@@ -555,10 +555,10 @@ pub fn shim_process_exit(code: i32) {
     std::process::exit(code);
 }
 
-/// Get command line arguments
+/// Get command line arguments as a space-joined string
 #[auto_macros::rust_fn("Process.args")]
-pub fn shim_process_args() -> Vec<String> {
-    std::env::args().collect()
+pub fn shim_process_args() -> String {
+    std::env::args().collect::<Vec<_>>().join(" ")
 }
 
 /// Get current working directory
@@ -3107,6 +3107,16 @@ pub fn shim_http_last_status(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
     Ok(())
 }
 
+/// HTTP listen stub — starts a simple HTTP server.
+/// Stack: [callback_closure, port, host] -> []
+/// Currently a stub that prints a message and returns.
+pub fn shim_http_listen(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    // Pop 3 args: host, port, callback
+    // For now, just print a warning and return void
+    eprintln!("WARN: http.listen() stub called — HTTP server not yet implemented in AutoVM");
+    Ok(())
+}
+
 // ============================================================================
 // Task/Msg Functions (Plan 121)
 // ============================================================================
@@ -3619,6 +3629,55 @@ pub fn shim_ctx_reply(value: i64) -> Result<(), String> {
 }
 
 // ============================================================================
+// Essential File System VM Shims
+// ============================================================================
+
+fn shim_file_read_text_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    match fs::read_to_string(&path) {
+        Ok(content) => content.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string())),
+        Err(_) => {
+            // Return empty string on failure (matches .at convention: content == "")
+            let empty = String::new();
+            empty.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+        }
+    }
+}
+
+fn shim_file_write_text_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let content: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    fs::write(&path, &content)
+        .map_err(|e| VMError::RuntimeError(format!("write_text failed: {} - {}", path, e)))?;
+    0i64.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+fn shim_file_exists_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let exists = fs::metadata(&path).is_ok();
+    let result: i64 = if exists { 1 } else { 0 };
+    result.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+fn shim_fs_create_dir_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let _ = fs::create_dir_all(&path);
+    0i64.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+fn shim_fs_delete_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let _ = fs::remove_file(&path);
+    0i64.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+// ============================================================================
 // Registration Function
 // ============================================================================
 
@@ -3632,6 +3691,18 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.file.walk", shim_file_walk);
     natives.register_shim_by_name("auto.file.read_lines", shim_file_read_lines);
     natives.register_shim_by_name("auto.fs.is_binary", shim_fs_is_binary);
+
+    // File read_text/write_text — essential for settings/config loading
+    natives.register_shim_by_name("auto.file.read_text", shim_file_read_text_vm);
+    natives.register_shim_by_name("auto.fs.read_text", shim_file_read_text_vm);
+    natives.register_shim_by_name("auto.fs.read", shim_file_read_text_vm);
+    natives.register_shim_by_name("auto.file.write_text", shim_file_write_text_vm);
+    natives.register_shim_by_name("auto.fs.write_text", shim_file_write_text_vm);
+    natives.register_shim_by_name("auto.fs.write", shim_file_write_text_vm);
+    natives.register_shim_by_name("auto.file.exists", shim_file_exists_vm);
+    natives.register_shim_by_name("auto.fs.exists", shim_file_exists_vm);
+    natives.register_shim_by_name("auto.fs.create_dir", shim_fs_create_dir_vm);
+    natives.register_shim_by_name("auto.fs.delete", shim_fs_delete_vm);
 
     // String method — manual shim for nanbox compatibility
     natives.register_shim_by_name("auto.str.find", shim_str_find_manual);
@@ -3717,6 +3788,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.post_sync", shim_http_post_sync);
     natives.register_shim_by_name("auto.http.post_bearer", shim_http_post_bearer);
     natives.register_shim_by_name("auto.http.last_status", shim_http_last_status);
+    natives.register_shim_by_name("auto.http.listen", shim_http_listen);
 
     // Regex (manual shim — heap objects for compiled regex)
     natives.register_shim_by_name("auto.regex.find_all", shim_regex_find_all);

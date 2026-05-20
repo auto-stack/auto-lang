@@ -966,8 +966,6 @@ impl CompileSession {
 
         self.loading_stack.push(use_stmt.module.clone());
 
-
-
         let result = self.load_module_inner(use_stmt);
 
 
@@ -1053,8 +1051,6 @@ impl CompileSession {
         };
 
 
-
-        // 灏濊瘯鎵惧埌妯″潡鏍规枃浠?(.at)
 
         let extensions = [".at", ".auto"];
 
@@ -1173,14 +1169,20 @@ impl CompileSession {
 
         let root_path = found_path.ok_or_else(|| {
 
-            AutoError::Msg(format!("Module not found: {}", use_stmt.module))
+            AutoError::Msg(format!("Module not found: {} (module_path={}, parent_dirs={:?})", use_stmt.module, module_path, _parent_dirs))
 
         })?;
 
         // Record the directory of this module for future lookups
+        // Use canonical (absolute) path so that parent() calculations work correctly
         if let Some(parent) = root_path.parent() {
-            if !self.source_dirs.iter().any(|d| d == parent) {
-                self.source_dirs.push(parent.to_path_buf());
+            let abs_parent = if parent.as_os_str().is_empty() {
+                std::path::PathBuf::from(".")
+            } else {
+                std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf())
+            };
+            if !self.source_dirs.iter().any(|d| *d == abs_parent) {
+                self.source_dirs.push(abs_parent);
             }
         }
 
@@ -1258,14 +1260,13 @@ impl CompileSession {
 
         // DEBUG: Print module source being parsed
 
-        // 瑙ｆ瀽鍚堝苟鍚庣殑妯″潡鑾峰彇 type_store
-
-        let module_type_store = self.parse_module_to_type_store(&module_source, &root_path.to_string_lossy())?;
-
-        // Recursively resolve use statements inside this module
+        // Recursively resolve use statements inside this module FIRST
         // so that dependencies (e.g. agent.at's `use permission`) are loaded
-        // into the session TypeStore before compilation
+        // into the session TypeStore before parse_module_to_type_store needs them
         self.resolve_uses(&module_source)?;
+
+        // 瑙ｆ瀽鍚堝苟鍚庣殑妯″潡鑾峰彇 type_store
+        let module_type_store = self.parse_module_to_type_store(&module_source, &root_path.to_string_lossy())?;
 
         // Cross-module function calls: compile module to bytecode
         // Skip if already compiled (avoid duplicate symbols)
@@ -1348,11 +1349,9 @@ impl CompileSession {
 
 
 
-        // 浣跨敤 Parser 瑙ｆ瀽婧愮爜
-
+        // 浣跨敤 Parser 瑙ｆ瀽婧愮爜锛屼紶鍏ュ叏灞?type_store 浠ヤ究瑙ｆ瀽 use 瀵煎叆
         let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
-
-        let mut parser = Parser::from(source);
+        let mut parser = Parser::new_with_type_store(source, self.type_store.clone());
 
         let ast = parser.parse()
 
@@ -1428,7 +1427,7 @@ impl CompileSession {
 
 
 
-        let mut parser = Parser::from(source);
+        let mut parser = Parser::new_with_type_store(source, self.type_store.clone());
 
         let ast = parser.parse()
 

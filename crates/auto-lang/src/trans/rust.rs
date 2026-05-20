@@ -162,6 +162,13 @@ pub struct RustTrans {
     // Whether to emit #![allow(...)] pragma at file top (for full files, not test fragments)
     emit_allow_pragma: bool,
 
+    // Plan 264: Maps module name → set of type names defined in that module.
+    // Used to determine if `module.Type` should be `module::Type` in Rust.
+    module_types: HashMap<String, HashSet<String>>,
+    // Plan 264: Name of the module currently being transpiled.
+    // Types defined in the current module don't need crate:: prefix.
+    current_module_name: String,
+
 }
 
 impl RustTrans {
@@ -202,6 +209,8 @@ impl RustTrans {
             var_spec_map: HashMap::new(),
             fn_spec_param_indices: HashMap::new(),
             emit_allow_pragma: false,
+            module_types: HashMap::new(),
+            current_module_name: String::new(),
         }
     }
 
@@ -243,6 +252,8 @@ impl RustTrans {
             var_spec_map: HashMap::new(),
             fn_spec_param_indices: HashMap::new(),
             emit_allow_pragma: false,
+            module_types: HashMap::new(),
+            current_module_name: String::new(),
         }
     }
 
@@ -575,8 +586,8 @@ impl RustTrans {
                 // Plan 052: Reference transpiles to &T in Rust
                 format!("&{}", self.rust_type_name(inner))
             }
-            Type::User(usr) => usr.name.to_string(),
-            Type::Enum(en) => en.borrow().name.to_string(),
+            Type::User(usr) => self.qualify_type_name(&usr.name.to_string()),
+            Type::Enum(en) => self.qualify_type_name(&en.borrow().name.to_string()),
             Type::Spec(spec) => format!("Box<dyn {}>", spec.borrow().name), // Spec 作为类型标注 → Box<dyn Trait>
             Type::Union(u) => u.name.to_string(),
             Type::Tag(t) => t.borrow().name.to_string(),
@@ -634,6 +645,67 @@ impl RustTrans {
                 format!("({})", elems.join(", "))
             }
         }
+    }
+
+    /// Plan 264: Qualify a type name with its module path.
+    /// Handles both bare names ("ForgeSession") and dotted paths ("forge.ForgeSession").
+    /// If the type is defined in another module, returns `crate::module::Type`.
+    /// If defined in the current module, returns bare `Type`.
+    fn qualify_type_name(&self, name: &str) -> String {
+        // Skip well-known Rust/std types that should never be qualified
+        match name {
+            "String" | "Vec" | "HashMap" | "HashSet" | "Option" | "Result"
+            | "Box" | "Rc" | "Arc" | "Mutex" | "RwLock"
+            | "IoError" | "Error" | "Display" | "Debug"
+            | "Ok" | "Err" | "Some" | "None" | "Self"
+            => return name.to_string(),
+            _ => {}
+        }
+
+        // Handle dotted paths like "forge.ForgeSession"
+        if let Some(dot_pos) = name.rfind('.') {
+            let prefix = &name[..dot_pos];
+            let bare = &name[dot_pos + 1..];
+
+            // Check if prefix is a known module and bare name is a type in it
+            if let Some(types) = self.module_types.get(prefix) {
+                if types.contains(bare) {
+                    if prefix == self.current_module_name {
+                        return bare.to_string();
+                    }
+                    // Convert dotted prefix to :: path: "forge" → "crate::forge"
+                    let rust_prefix = prefix.replace('.', "::");
+                    if prefix.contains('.') {
+                        return format!("crate::{}::{}", rust_prefix, bare);
+                    }
+                    return format!("crate::{}::{}", prefix, bare);
+                }
+            }
+
+            // Prefix not a known module — try to resolve bare name
+            for (mod_name, types) in &self.module_types {
+                if types.contains(bare) {
+                    if *mod_name == self.current_module_name {
+                        return bare.to_string();
+                    }
+                    return format!("crate::{}::{}", mod_name, bare);
+                }
+            }
+
+            // Fallback: convert all dots to ::
+            return name.replace('.', "::");
+        }
+
+        // Bare name: look up which module defines it
+        for (mod_name, types) in &self.module_types {
+            if types.contains(name) {
+                if *mod_name == self.current_module_name {
+                    return name.to_string();
+                }
+                return format!("crate::{}::{}", mod_name, name);
+            }
+        }
+        name.to_string()
     }
 
     /// Plan 204 Phase 1B: Return type mapping for function return positions.
@@ -950,6 +1022,7 @@ impl RustTrans {
                                             u_str == name
                                                 || u_str.ends_with(&format!("::{}", name))
                                         })
+                                        || self.module_types.contains_key(name) // Plan 264: known module name
                                 } else {
                                     false
                                 };
@@ -972,6 +1045,7 @@ impl RustTrans {
                                             u_str == name.as_str()
                                                 || u_str.ends_with(&format!("::{}", name))
                                         })
+                                            || self.module_types.contains_key(name.as_str()) // Plan 264
                                     } else {
                                         false
                                     };
@@ -990,6 +1064,7 @@ impl RustTrans {
                                             u_str == name.as_str()
                                                 || u_str.ends_with(&format!("::{}", name))
                                         })
+                                            || self.module_types.contains_key(name.as_str()) // Plan 264
                                     } else {
                                         false
                                     };
@@ -1000,9 +1075,25 @@ impl RustTrans {
 
                                 if lhs_is_type {
                                     // Type::Variant or Type::method()
-                                    self.expr(lhs, out)?;
-                                    write!(out, "::")?;
-                                    self.expr(rhs, out)?;
+                                    // Plan 264: If lhs is a known module name, qualify with crate::
+                                    if let Expr::Ident(lhs_name) = lhs.as_ref() {
+                                        if self.module_types.contains_key(lhs_name.as_str()) {
+                                            if lhs_name.as_str() == self.current_module_name {
+                                                write!(out, "{}::", lhs_name.as_str())?;
+                                            } else {
+                                                write!(out, "crate::{}::", lhs_name.as_str())?;
+                                            }
+                                            self.expr(rhs, out)?;
+                                        } else {
+                                            self.expr(lhs, out)?;
+                                            write!(out, "::")?;
+                                            self.expr(rhs, out)?;
+                                        }
+                                    } else {
+                                        self.expr(lhs, out)?;
+                                        write!(out, "::")?;
+                                        self.expr(rhs, out)?;
+                                    }
                                 } else {
                                     // expr.field or expr.method()
                                     // Parenthesize lhs if it's a binary op (e.g., (a / b).method())
@@ -1563,6 +1654,12 @@ impl RustTrans {
                     write!(out, "}}")
                 } else {
                     // Regular struct construction
+                    // DEBUG: trace AgentTurn construction
+                    if node.name.as_str() == "AgentTurn" {
+                        for (i, arg) in node.args.args.iter().enumerate() {
+                            eprintln!("[DEBUG Node AgentTurn] arg[{}] = {:?}", i, arg);
+                        }
+                    }
                     write!(out, "{} {{", node.name)?;
                     if !node.args.args.is_empty() || !node.body.stmts.is_empty() {
                         write!(out, " ")?;
@@ -2029,10 +2126,20 @@ impl RustTrans {
                             let u_str = u.as_str();
                             u_str == type_name
                                 || u_str.ends_with(&format!("::{}", type_name))
-                        });
+                        })
+                        || self.module_types.contains_key(type_name.as_str()); // Plan 264
                     if is_type_name {
                         // Type::Variant (enum) or Type::method (static method)
-                        write!(out, "{}::{}", type_name, field)?;
+                        // Plan 264: If type_name is a known module, qualify with crate::
+                        if self.module_types.contains_key(type_name.as_str()) {
+                            if type_name.as_str() == self.current_module_name {
+                                write!(out, "{}::{}", type_name, field)?;
+                            } else {
+                                write!(out, "crate::{}::{}", type_name, field)?;
+                            }
+                        } else {
+                            write!(out, "{}::{}", type_name, field)?;
+                        }
                         return Ok(());
                     }
                 } else if let Expr::Bina(_, Op::Dot, _) = object.as_ref() {
@@ -2056,6 +2163,7 @@ impl RustTrans {
                             u_str == name.as_str()
                                 || u_str.ends_with(&format!("::{}", name))
                         })
+                            || self.module_types.contains_key(name.as_str()) // Plan 264
                     } else {
                         false
                     };
@@ -2498,7 +2606,15 @@ impl RustTrans {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
-                                if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                // Only add .as_str() if expr is not already &str
+                                let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                                    || if let Expr::Ident(name) = expr {
+                                        self.fn_param_str_slice.contains(name.as_str())
+                                            || self.local_var_types.get(name)
+                                                .map(|ty| matches!(ty, Type::StrSlice))
+                                                .unwrap_or(false)
+                                    } else { false };
+                                if !already_str {
                                     write!(out, ".as_str()")?;
                                 }
                             }
@@ -2645,7 +2761,14 @@ impl RustTrans {
                                         if i > 0 { write!(out, ", ")?; }
                                         if let Arg::Pos(expr) = arg {
                                             self.expr(expr, out)?;
-                                            if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                            let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                                                || if let Expr::Ident(name) = expr {
+                                                    self.fn_param_str_slice.contains(name.as_str())
+                                                        || self.local_var_types.get(name)
+                                                            .map(|ty| matches!(ty, Type::StrSlice))
+                                                            .unwrap_or(false)
+                                                } else { false };
+                                            if !already_str {
                                                 write!(out, ".as_str()")?;
                                             }
                                         }
@@ -3323,6 +3446,10 @@ impl RustTrans {
                                 write!(out, ", ")?;
                                 self.arg(arg, out)?;
                             }
+                            // Default start_pos = 0 if not provided
+                            if call.args.args.len() < 2 {
+                                write!(out, ", 0")?;
+                            }
                             write!(out, ")")?;
                             return Ok(());
                         }
@@ -3542,9 +3669,11 @@ impl RustTrans {
                     return Ok(());
                 }
                 "len" | "length" => {
-                    // Skip if object is a known stdlib module — handled by Expr::Ident block below
+                    // Skip if object is a known stdlib module — handled by Expr::Ident block below.
+                    // But if the name is a known local variable (e.g. param named "json"), it's NOT a module.
                     let is_stdlib_module = if let Expr::Ident(name) = object.as_ref() {
-                        matches!(name.as_str(), "json" | "shell" | "fs" | "regex" | "env" | "http")
+                        let name_is_local = self.local_var_types.contains_key(name);
+                        !name_is_local && matches!(name.as_str(), "json" | "shell" | "fs" | "regex" | "env" | "http")
                     } else { false };
 
                     if !is_stdlib_module {
@@ -3717,6 +3846,10 @@ impl RustTrans {
                             self.arg(arg, out)?;
                         }
                     }
+                    // Default start_pos = 0 if not provided
+                    if call.args.args.len() < 2 {
+                        write!(out, ", 0")?;
+                    }
                     write!(out, ")")?;
                     return Ok(());
                 }
@@ -3751,6 +3884,9 @@ impl RustTrans {
             // instead of falling into the simple name-remap (which would generate
             // e.g. `json.len()` as a method call on the `json` module).
             if let Expr::Ident(type_name) = object.as_ref() {
+                // If the identifier is a known local variable, skip stdlib routing
+                let is_local_var = self.local_var_types.contains_key(type_name);
+                if !is_local_var {
                 match (type_name.as_str(), method_name.as_str()) {
                     ("json", "parse") => {
                         write!(out, "a2r_std::json::parse(")?;
@@ -4051,6 +4187,7 @@ impl RustTrans {
                     }
                     _ => {} // fall through to remap table
                 }
+                } // if !is_local_var
             }
 
             // .len() and .length() return usize in Rust, cast to i32 for Auto's int
@@ -4271,7 +4408,7 @@ impl RustTrans {
                                 .and_then(|f| f.get(i))
                                 .copied()
                                 .unwrap_or(false);
-                            if is_str_param && !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                            if is_str_param && !matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_, _)) {
                                 let is_str_slice_var = if let Expr::Ident(name) = expr {
                                     self.local_var_types.get(name)
                                         .map(|ty| matches!(ty, Type::StrSlice))
@@ -4318,6 +4455,7 @@ impl RustTrans {
                             u_str == name || u_str.ends_with(&format!("::{}", name))
                         })
                         || self.dep_crates.contains(id)
+                        || self.module_types.contains_key(name) // Plan 264
                 }
                 Expr::Dot(il, _) => {
                     matches!(il.as_ref(), Expr::Ident(id) if {
@@ -4327,6 +4465,7 @@ impl RustTrans {
                                 let u_str = u.as_str();
                                 u_str == name || u_str.ends_with(&format!("::{}", name))
                             })
+                            || self.module_types.contains_key(name) // Plan 264
                     })
                 }
                 Expr::Bina(il, Op::Dot, _) => {
@@ -4337,6 +4476,7 @@ impl RustTrans {
                                 let u_str = u.as_str();
                                 u_str == name || u_str.ends_with(&format!("::{}", name))
                             })
+                            || self.module_types.contains_key(name) // Plan 264
                     })
                 }
                 _ => false,
@@ -4367,7 +4507,25 @@ impl RustTrans {
                 Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
             );
             if obj_needs_parens { write!(out, "(")?; }
-            self.expr(object, out)?;
+            // Plan 264: When object is a known module name and this is a type chain,
+            // output crate::module instead of bare module name
+            if obj_is_type_chain {
+                if let Expr::Ident(obj_name) = object.as_ref() {
+                    if self.module_types.contains_key(obj_name.as_str()) {
+                        if obj_name.as_str() == self.current_module_name {
+                            write!(out, "{}", obj_name)?;
+                        } else {
+                            write!(out, "crate::{}", obj_name)?;
+                        }
+                    } else {
+                        self.expr(object, out)?;
+                    }
+                } else {
+                    self.expr(object, out)?;
+                }
+            } else {
+                self.expr(object, out)?;
+            }
             if obj_needs_parens { write!(out, ")")?; }
             write!(out, "{}{}(", if obj_is_type_chain { "::" } else { "." }, method_name)?;
             // Add `move` for thread::spawn closures (captured locals need 'static)
@@ -4395,7 +4553,7 @@ impl RustTrans {
                             .copied()
                             .unwrap_or(false);
                         if (is_str_param || is_str_param_offset)
-                            && !matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                            && !matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_, _))
                             && !Self::is_str_slice_var(arg, &self.local_var_types)
                         {
                             write!(out, ".as_str()")?;
@@ -4528,6 +4686,59 @@ impl RustTrans {
                     return Ok(());
                 }
                 _ => {}
+            }
+        }
+
+        // Plan 264: Handle module.Type(args) constructor calls
+        // e.g., types.ToolChatRequest(a, b, c) → crate::types::ToolChatRequest { field1: a, ... }
+        if let Expr::Dot(obj, type_name) = call.name.as_ref() {
+            if let Expr::Ident(module_name) = obj.as_ref() {
+                if type_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    let is_module = self.module_types.contains_key(module_name.as_str())
+                        || self.uses.iter().any(|u| {
+                            let u_str = u.as_str();
+                            u_str == module_name.as_str()
+                                || u_str.ends_with(&format!("::{}", module_name))
+                        });
+                    if is_module {
+                        let qualified = if module_name.as_str() == self.current_module_name {
+                            format!("{}::{}", module_name, type_name)
+                        } else {
+                            format!("crate::{}::{}", module_name, type_name)
+                        };
+                        // Use bare type name for struct_fields lookup
+                        let field_names = self.struct_fields.get(type_name).cloned().unwrap_or_default();
+                        let field_types = self.struct_field_types.get(type_name).cloned().unwrap_or_default();
+
+                        if call.args.args.is_empty() {
+                            write!(out, "{} {{}}", qualified)?;
+                            return Ok(());
+                        }
+                        write!(out, "{} {{ ", qualified)?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            let field_name = field_names.get(i)
+                                .map(|n| n.as_str())
+                                .unwrap_or_else(|| if i == 0 { "field0" } else { "fieldN" });
+                            write!(out, "{}: ", field_name)?;
+                            self.arg(arg, out)?;
+                            // Auto .to_string() when assigning &str to String field
+                            if let Some((_, ft)) = field_types.get(i) {
+                                if matches!(ft, Type::StrOwned | Type::StrFixed(_)) {
+                                    if let Arg::Pos(expr) = arg {
+                                        if self.needs_as_str(expr) {
+                                            write!(out, ".to_string()")?;
+                                        }
+                                    }
+                                }
+                            }
+                            if i < call.args.args.len() - 1 {
+                                write!(out, ", ")?;
+                            }
+                        }
+                        write!(out, " }}")?;
+                        return Ok(());
+                    }
+                }
             }
         }
 
@@ -4708,6 +4919,7 @@ impl RustTrans {
                 true
             }
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => false, // literals are already &str
+            Expr::Int(_) | Expr::Float(_, _) => false, // numeric types don't have as_str
             _ => true, // complex expressions (function calls, etc.) may return String
         }
     }
@@ -5241,17 +5453,18 @@ impl RustTrans {
         // Exception: spec array expressions need explicit type annotation for dyn Trait
         let skip_type_annotation = (has_unknown || is_closure) && spec_array_type.is_none();
 
+        let safe_name = Self::rust_ident(store.name.as_str());
         if skip_type_annotation {
             // No type annotation - let Rust infer the type
             match store.kind {
                 StoreKind::Let => {
-                    write!(out, "let {} = ", store.name)?;
+                    write!(out, "let {} = ", safe_name)?;
                 }
                 StoreKind::Var => {
-                    write!(out, "let mut {} = ", store.name)?;
+                    write!(out, "let mut {} = ", safe_name)?;
                 }
                 _ => {
-                    write!(out, "let {} = ", store.name)?;
+                    write!(out, "let {} = ", safe_name)?;
                 }
             }
         } else {
@@ -5259,13 +5472,13 @@ impl RustTrans {
             let ty_str = spec_array_type.as_deref().unwrap_or(&ty_name);
             match store.kind {
                 StoreKind::Let => {
-                    write!(out, "let {}: {} = ", store.name, ty_str)?;
+                    write!(out, "let {}: {} = ", safe_name, ty_str)?;
                 }
                 StoreKind::Var => {
-                    write!(out, "let mut {}: {} = ", store.name, ty_str)?;
+                    write!(out, "let mut {}: {} = ", safe_name, ty_str)?;
                 }
                 _ => {
-                    write!(out, "let {}: {} = ", store.name, ty_str)?;
+                    write!(out, "let {}: {} = ", safe_name, ty_str)?;
                 }
             }
         }
@@ -6143,15 +6356,35 @@ impl RustTrans {
                             self.glob_imported_modules.insert(mod_name.to_string());
                             format!("crate::{}", mod_name)
                         }
-                    } else if full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty()) {
+                    } else if full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty() || self.is_dir_module) {
                         // In multi-file mode, Auto's `use super.X` means "parent directory's X"
-                        let crate_mod = &full_path[7..];
-                        self.glob_imported_modules.insert(crate_mod.to_string());
-                        // For directory modules (mod.rs), super::X should be self::X
-                        if self.is_dir_module {
-                            format!("self::{}", crate_mod)
+                        // Extract just the module name (first segment after super::) for dir_children lookup
+                        let after_super = &full_path[7..];
+                        let crate_mod = if let Some(colon_pos) = after_super.find("::") {
+                            &after_super[..colon_pos]
                         } else {
+                            after_super
+                        };
+                        self.glob_imported_modules.insert(crate_mod.to_string());
+                        // Build the replacement prefix based on whether it's a dir child
+                        let prefix = if self.is_dir_module && self.dir_children.contains(crate_mod) {
+                            // Directory module: X is a child module → self::X
+                            format!("self::{}", crate_mod)
+                        } else if !self.is_dir_module && self.sibling_modules.contains(crate_mod) {
+                            // Non-dir module: X is a known sibling (same directory) → super::X
+                            format!("super::{}", crate_mod)
+                        } else if !self.is_dir_module && !self.module_types.contains_key(crate_mod) {
+                            // Non-dir module: X is not a top-level module → likely a sibling
+                            format!("super::{}", crate_mod)
+                        } else {
+                            // X is a crate-level module → crate::X
                             format!("crate::{}", crate_mod)
+                        };
+                        // Replace super::module with the computed prefix, keeping the rest of the path
+                        if after_super.len() > crate_mod.len() {
+                            format!("{}{}", prefix, &after_super[crate_mod.len()..])
+                        } else {
+                            prefix
                         }
                     } else if full_path.starts_with("auto::") {
                         let rest = &full_path[6..];
@@ -6178,17 +6411,46 @@ impl RustTrans {
                             _ => format!("crate::{}", mod_name),
                         }
                     } else {
-                        full_path.replace("auto::", "crate::")
+                        // Check if the first segment is a known crate module or stdlib
+                        let first_seg = use_stmt.paths[0].as_str();
+                        let is_stdlib = matches!(first_seg,
+                            "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
+                            | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
+                            | "char" | "conv" | "io" | "log" | "path" | "net" | "url"
+                            | "process" | "sys" | "sse" | "may" | "regex"
+                        );
+                        if is_stdlib {
+                            format!("a2r_std::{}", full_path)
+                        } else if self.module_types.contains_key(first_seg)
+                            || self.dep_crates.contains(&AutoStr::from(first_seg))
+                            || first_seg == "serde" || first_seg == "chrono"
+                        {
+                            // Known crate module → prefix with crate::
+                            format!("crate::{}", full_path)
+                        } else {
+                            full_path.replace("auto::", "crate::")
+                        }
                     };
                     if use_stmt.is_wildcard {
                         write!(out, "{}use {}::*;", pub_kw, rust_path)?;
                     } else if !use_stmt.items.is_empty() {
                         write!(out, "{}use {}::{{{}}};", pub_kw, rust_path, use_stmt.items.join(", "))?;
-                    } else if is_multi_file_bare
-                        || (full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty()))
-                    {
+                    } else if is_multi_file_bare {
                         // In multi-file mode, bare import → wildcard
                         write!(out, "{}use {}::*;", pub_kw, rust_path)?;
+                    } else if full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty() || self.is_dir_module) {
+                        // Multi-segment super:: path in directory module context.
+                        // Only add wildcard if the last segment is a known module name,
+                        // NOT if it's a type/function name (e.g., GateType, AgentTurn).
+                        let last_seg = use_stmt.paths.last().map(|s| s.as_str()).unwrap_or("");
+                        let is_last_mod = self.dir_children.contains(last_seg)
+                            || self.module_types.contains_key(last_seg)
+                            || self.local_modules.contains(last_seg);
+                        if is_last_mod {
+                            write!(out, "{}use {}::*;", pub_kw, rust_path)?;
+                        } else {
+                            write!(out, "{}use {};", pub_kw, rust_path)?;
+                        }
                     } else {
                         write!(out, "{}use {};", pub_kw, rust_path)?;
                     }
@@ -6572,9 +6834,10 @@ impl RustTrans {
                     write!(sink.body, "#[{}]\n", attr)?;
                 }
                 self.print_indent(&mut sink.body)?;
+                // pub type → all fields pub; non-pub types also need pub for cross-module access
                 write!(
                     sink.body,
-                    "{}: {},",
+                    "pub {}: {},",
                     member.name,
                     self.rust_type_name(&member.ty)
                 )?;
@@ -7909,6 +8172,9 @@ impl RustTrans {
         // A8: HashMap.get(key).field → HashMap.get(key).unwrap().field
         Self::fix_option_unwrapping(&mut content);
 
+        // A9: vec.get(0.as_str()) → vec[0], vec.get(N.as_str()) → vec[N as usize]
+        Self::fix_numeric_get_as_str(&mut content);
+
         // B2: String/&str heuristic fixes
         Self::fix_string_str_mismatches(&mut content);
 
@@ -7984,6 +8250,7 @@ impl RustTrans {
         let i32_vars = [
             "i", "j", "k", "ci", "ti", "ki", "ri", "ei", "pi", "si",
             "ti2", "ri2", "tri", "tc_i", "step_idx", "idx", "offset",
+            "pos", "n", "count", "len", "start", "end", "index", "from",
         ];
         let hash_map_names = [
             "map", "dict", "env", "vars", "cache", "sessions", "entries",
@@ -7994,8 +8261,22 @@ impl RustTrans {
         ];
 
         for var in &i32_vars {
+            // Pattern: vecname.get(var.as_str()) → vecname[var as usize]
+            let pattern_str = format!(r"(\w+)\.get\({}\.as_str\(\)\)", regex::escape(var));
+            if let Ok(re) = regex::Regex::new(&pattern_str) {
+                let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let vec_name = caps.get(1).unwrap().as_str();
+                    if hash_map_names.contains(&vec_name) {
+                        format!("{}.get({}.as_str())", vec_name, var)
+                    } else {
+                        format!("{}[{} as usize]", vec_name, var)
+                    }
+                }).to_string();
+                *content = new_content;
+            }
+
             // Pattern: vecname.get(var) where vecname is NOT a HashMap-like name
-            let pattern = format!(r"(\w+)\.get\({}\)(?! as usize)", regex::escape(var));
+            let pattern = format!(r"(\w+)\.get\({}\)(?! as usize)(?!\.as_str)", regex::escape(var));
             if let Ok(re) = regex::Regex::new(&pattern) {
                 let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                     let vec_name = caps.get(1).unwrap().as_str();
@@ -8008,6 +8289,16 @@ impl RustTrans {
                 }).to_string();
                 *content = new_content;
             }
+        }
+    }
+
+    /// Fix numeric literal .as_str() — numbers should never have .as_str()
+    /// E.g., 0.as_str() → 0, 100000.as_str() → 100000
+    fn fix_numeric_get_as_str(content: &mut String) {
+        // Remove .as_str() after any numeric literal (standalone digits)
+        if let Ok(re) = regex::Regex::new(r"(\d+)\.as_str\(\)") {
+            let new_content = re.replace_all(content.as_str(), "$1").to_string();
+            *content = new_content;
         }
     }
 
@@ -8347,9 +8638,22 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     // when Usage is defined in types.at) to be resolved during parsing.
     let shared_type_store = Arc::new(RwLock::new(TypeStore::new()));
     let mut all_enum_names: HashSet<AutoStr> = HashSet::new();
+    // Plan 264: module name → set of type names defined in that module.
+    // Used to translate Auto's `module.Type` → Rust's `crate::module::Type`.
+    let mut module_types: HashMap<String, HashSet<String>> = HashMap::new();
     {
         let mut store = shared_type_store.write().unwrap();
         for module in &modules {
+            let mod_name = if module.is_dir_module {
+                module.source_path.parent().unwrap()
+                    .file_name().unwrap().to_string_lossy().to_string()
+            } else {
+                module.source_path.file_stem()
+                    .unwrap().to_string_lossy().to_string()
+            };
+            // Ensure module exists in module_types even if it has no type declarations.
+            // This is needed so `use relay.X` gets `crate::` prefix in other modules.
+            module_types.entry(mod_name.clone()).or_default();
             let source = std::fs::read_to_string(&module.source_path)
                 .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", module.source_path.display(), e)))?;
             for line in source.lines() {
@@ -8381,6 +8685,10 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                 if !name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
                     continue;
                 }
+                // Plan 264: record module → type name mapping
+                module_types.entry(mod_name.clone())
+                    .or_default()
+                    .insert(name.to_string());
                 if prefix.contains("type ") {
                     let decl = TypeDecl::builtin(name);
                     store.register_type_decl(&decl);
@@ -8469,6 +8777,17 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
             transpiler.emit_allow_pragma = true;
         }
 
+        // Plan 264: Pass module_types and current module name for path qualification
+        transpiler.module_types = module_types.clone();
+        let cur_mod_name = if module.is_dir_module {
+            module.source_path.parent().unwrap()
+                .file_name().unwrap().to_string_lossy().to_string()
+        } else {
+            module.source_path.file_stem()
+                .unwrap().to_string_lossy().to_string()
+        };
+        transpiler.current_module_name = cur_mod_name.clone();
+
         // Pre-populate tag_types with all known enum names for Err boxing detection
         transpiler.tag_types = all_enum_names.clone();
 
@@ -8529,6 +8848,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         if module.is_dir_module {
             transpiler.is_dir_module = true;
             let mod_dir = module.source_path.parent().unwrap();
+            // Collect from discovered modules
             for other in &modules {
                 if other.source_path == module.source_path || other.is_dir_module {
                     continue;
@@ -8539,6 +8859,22 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         .unwrap().to_string_lossy().to_string();
                     transpiler.dir_children.insert(other_name);
                 }
+            }
+            // Also scan disk for .at files not yet discovered
+            if let Ok(entries) = std::fs::read_dir(mod_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "at").unwrap_or(false) {
+                        if let Some(stem) = path.file_stem() {
+                            let name = stem.to_string_lossy().to_string();
+                            if name != "mod" {
+                                transpiler.dir_children.insert(name);
+                            }
+                        }
+                    }
+                }
+            } else {
+                eprintln!("[DEBUG 264] WARNING: read_dir failed for {:?}", mod_dir);
             }
         }
 
@@ -8561,10 +8897,12 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         }
 
         // For directory modules (mod.at), emit pub mod declarations for discovered sibling files
-        // Only emit for files that were actually discovered by discover_modules (not all .at files on disk)
+        // Scan the actual directory on disk to ensure all sibling .at files are included,
+        // even if discover_modules didn't find them via super.X paths.
         if module.is_dir_module {
             let mod_dir = module.source_path.parent().unwrap();
             let mut submodules: Vec<String> = Vec::new();
+            // First: collect from discovered modules
             for other in &modules {
                 if other.source_path == module.source_path {
                     continue;
@@ -8573,6 +8911,20 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                 if other_dir == mod_dir && !other.is_dir_module {
                     if let Some(name) = other.source_path.file_stem() {
                         submodules.push(name.to_string_lossy().to_string());
+                    }
+                }
+            }
+            // Then: scan disk for any .at files not yet discovered
+            if let Ok(entries) = std::fs::read_dir(mod_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "at").unwrap_or(false) {
+                        if let Some(stem) = path.file_stem() {
+                            let name = stem.to_string_lossy().to_string();
+                            if name != "mod" && !submodules.contains(&name) {
+                                submodules.push(name);
+                            }
+                        }
                     }
                 }
             }
@@ -8658,6 +9010,8 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                 }
             }
         }
+
+        // Note: external deps from hand-written .rs files are scanned by CargoBuilder::setup()
         if !deps.is_empty() {
             cargo_toml.push_str("\n[dependencies]\n");
             for dep in &deps {
@@ -8776,16 +9130,25 @@ fn discover_modules(
             }
 
             // Cross-module dotted path: resolve each segment
-            let first_file = file_path.parent().unwrap().join(format!("{}.at", parts[0]));
-            let first_dir = file_path.parent().unwrap().join(&parts[0]).join("mod.at");
+            // First try relative to current file, then fall back to base_dir (project root)
+            let cur_dir = file_path.parent().unwrap();
+            let first_file = cur_dir.join(format!("{}.at", parts[0]));
+            let first_dir = cur_dir.join(&parts[0]).join("mod.at");
+            let first_file_root = base_dir.join(format!("{}.at", parts[0]));
+            let first_dir_root = base_dir.join(&parts[0]).join("mod.at");
 
             let first_path = if first_file.exists() {
-                first_file
+                first_file.clone()
             } else if first_dir.exists() {
-                first_dir
+                first_dir.clone()
+            } else if first_file_root.exists() {
+                first_file_root.clone()
+            } else if first_dir_root.exists() {
+                first_dir_root.clone()
             } else {
                 continue;
             };
+
             // Discover the parent module
             discover_modules(&first_path, base_dir, modules, visited)?;
 
@@ -8802,11 +9165,46 @@ fn discover_modules(
         } else {
             let dep_file = file_path.parent().unwrap().join(format!("{}.at", dep_name));
             let dep_dir = file_path.parent().unwrap().join(dep_name).join("mod.at");
+            let dep_file_root = base_dir.join(format!("{}.at", dep_name));
+            let dep_dir_root = base_dir.join(dep_name).join("mod.at");
 
             if dep_file.exists() {
                 discover_modules(&dep_file, base_dir, modules, visited)?;
             } else if dep_dir.exists() {
                 discover_modules(&dep_dir, base_dir, modules, visited)?;
+            } else if dep_file_root.exists() {
+                discover_modules(&dep_file_root, base_dir, modules, visited)?;
+            } else if dep_dir_root.exists() {
+                discover_modules(&dep_dir_root, base_dir, modules, visited)?;
+            }
+        }
+    }
+
+    // For directory modules (mod.at), also discover all sibling .at files
+    // that may not be referenced via non-super use statements.
+    // E.g., relay/turn.at is only referenced via `use super.turn` in mod.at,
+    // which is skipped above. Scan disk to find all submodules.
+    if is_dir_module {
+        if let Some(parent_dir) = file_path.parent() {
+            if let Ok(entries) = std::fs::read_dir(parent_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "at").unwrap_or(false) {
+                        if let Some(stem) = path.file_stem() {
+                            let name = stem.to_string_lossy().to_string();
+                            if name != "mod" && !name.starts_with('.') {
+                                let _ = discover_modules(&path, base_dir, modules, visited);
+                            }
+                        }
+                    }
+                    // Also discover subdirectory modules (subdir/mod.at)
+                    if path.is_dir() {
+                        let sub_mod = path.join("mod.at");
+                        if sub_mod.exists() {
+                            let _ = discover_modules(&sub_mod, base_dir, modules, visited);
+                        }
+                    }
+                }
             }
         }
     }

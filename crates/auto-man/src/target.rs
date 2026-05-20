@@ -734,6 +734,80 @@ impl Target {
             info!("Generated {}", full_path);
         }
 
+        // Update lib.rs to ensure all subdirectory modules have pub mod declarations.
+        // The transpiler may generate subdirectory modules (tools/, forge/, relay/, etc.)
+        // that aren't listed in the hand-written lib.rs.
+        let lib_rs_path = format!("{}/lib.rs", rs_dir);
+        if Path::new(&lib_rs_path).exists() {
+            let mut lib_content = std::fs::read_to_string(&lib_rs_path)
+                .map_err(|e| format!("Failed to read lib.rs: {}", e))?;
+
+            // Find all subdirectories in rust/src/ that contain mod.rs
+            let mut declared: std::collections::HashSet<String> = std::collections::HashSet::new();
+            // Extract existing pub mod declarations
+            for line in lib_content.lines() {
+                let trimmed = line.trim();
+                if let Some(rest) = trimmed.strip_prefix("pub mod ") {
+                    if let Some(name) = rest.strip_suffix(';') {
+                        declared.insert(name.trim().to_string());
+                    }
+                } else if let Some(rest) = trimmed.strip_prefix("mod ") {
+                    if let Some(name) = rest.strip_suffix(';') {
+                        declared.insert(name.trim().to_string());
+                    }
+                }
+            }
+
+            // Scan for directories with mod.rs that aren't declared
+            let src_path = Path::new(rs_dir);
+            let mut missing_mods: Vec<String> = Vec::new();
+            if let Ok(entries) = std::fs::read_dir(src_path) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                            // Check if directory has a mod.rs or is a valid module
+                            let has_mod_rs = path.join("mod.rs").exists();
+                            let has_rs_files = path.read_dir()
+                                .map(|mut entries| entries.any(|e| e.map(|e| e.path().extension().map(|ext| ext == "rs").unwrap_or(false)).unwrap_or(false)))
+                                .unwrap_or(false);
+                            if (has_mod_rs || has_rs_files) && !declared.contains(name) {
+                                missing_mods.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Also check for standalone .rs files not declared
+            if let Ok(entries) = std::fs::read_dir(src_path) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() && path.extension().map(|e| e == "rs").unwrap_or(false) {
+                        if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
+                            if name != "lib" && name != "main" && !declared.contains(name) {
+                                missing_mods.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !missing_mods.is_empty() {
+                missing_mods.sort();
+                // Insert pub mod declarations at the beginning of lib.rs
+                let mut new_lines: Vec<String> = Vec::new();
+                for m in &missing_mods {
+                    new_lines.push(format!("pub mod {};", m));
+                }
+                new_lines.push(String::new());
+                let updated = format!("{}\n{}", new_lines.join("\n"), lib_content);
+                std::fs::write(&lib_rs_path, &updated)
+                    .map_err(|e| format!("Failed to update lib.rs: {}", e))?;
+                info!("Updated lib.rs with {} missing module declarations: {:?}", missing_mods.len(), missing_mods);
+            }
+        }
+
         Ok(())
     }
 

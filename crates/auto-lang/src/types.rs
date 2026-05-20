@@ -309,6 +309,11 @@ impl TypeStore {
         self.fn_decls.iter()
     }
 
+    /// Iterate all registered type declarations
+    pub fn all_type_decls(&self) -> impl Iterator<Item = (&AutoStr, &Rc<TypeDecl>)> {
+        self.type_decls.iter()
+    }
+
     /// Iterate all registered enum declarations
     pub fn all_enum_decls(&self) -> impl Iterator<Item = (&AutoStr, &Rc<EnumDecl>)> {
         self.enum_decls.iter()

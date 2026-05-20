@@ -36,6 +36,10 @@ pub fn Server.static(self Server, prefix str, dir str) Server;
 /// Example: server.listen("127.0.0.1:8080")
 pub fn Server.listen(self Server, addr str) void;
 
+/// Start a simple HTTP server with a callback dispatcher (blocking)
+/// Example: http.listen("127.0.0.1", 8080, fn(method, path, body) { "OK" })
+pub fn listen(host str, port int, handler fn(str, str, str) str) void;
+
 // ═══════════════════════════════════════════════════════════
 // HTTP Request
 // ═══════════════════════════════════════════════════════════

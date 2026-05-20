@@ -1527,6 +1527,48 @@ impl AutoVM {
                 }
                 OpCode::ARRAY_LEN => {
                     // Stack: array_id
+                    #[cfg(feature = "nanbox")]
+                    {
+                        let nv = task.ram.pop_nv();
+                        if auto_val::is_string(nv) {
+                            // String .len() fallback — get string bytes length
+                            let str_idx = auto_val::decode_string(nv) as usize;
+                            let len = self.strings.read().unwrap()
+                                .get(str_idx)
+                                .map(|b| b.len() as i32)
+                                .unwrap_or(0);
+                            task.ram.push_i32(len);
+                        } else if auto_val::is_i32(nv) {
+                            let val = auto_val::decode_i32(nv);
+                            // Check arrays/heap_objects
+                            let array_id = val as u64;
+                            if let Some(array_ref) = self.arrays.get(&array_id) {
+                                let guard = array_ref.read().unwrap();
+                                task.ram.push_i32(guard.len() as i32);
+                            } else if let Some(list) = self.heap_objects.get(&array_id) {
+                                use crate::vm::types::ListData;
+                                let guard = list.read().unwrap();
+                                let len = if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                                    list.elems.len() as i32
+                                } else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+                                    list.elems.len() as i32
+                                } else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
+                                    list.elems.len() as i32
+                                } else if let Some(list) = guard.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+                                    list.elems.len() as i32
+                                } else {
+                                    0
+                                };
+                                task.ram.push_i32(len);
+                            } else {
+                                task.ram.push_i32(0);
+                            }
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let array_id = task.ram.pop_i32() as u64;
 
                     // Get array length
@@ -1553,6 +1595,7 @@ impl AutoVM {
                     } else {
                         // Array not found
                         task.ram.push_i32(0);
+                    }
                     }
                 }
                 // Plan 073: F-string support (f"hello $name")
@@ -3916,8 +3959,8 @@ impl AutoVM {
                                 }
                             } else {
                                 return Err(VMError::RuntimeError(format!(
-                                    "Field '{}' not found on type instance {}",
-                                    field_name, inst.mono_name
+                                    "Field '{}' not found on type instance {} (fields: {:?})",
+                                    field_name, inst.mono_name, inst.field_names
                                 )));
                             }
                         } else if let Some(rust_obj) = heap_obj.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
@@ -4342,20 +4385,26 @@ impl AutoVM {
                             .get(str_idx)
                             .map(|b| String::from_utf8_lossy(b).to_string())
                             .unwrap_or_default();
-                        // If string matches a known crate type name pushed by codegen
-                        // for static calls (e.g., "Command", "Writer"), use it as type_name.
-                        // Regular strings like "HELLO" must NOT be treated as types.
-                        const STATIC_CALL_TYPES: &[&str] = &[
-                            "Command", "Stdio", "Writer", "Reader", "ReaderBuilder",
-                            "WriterBuilder", "StringRecord", "ThreadRng", "Complex",
-                            "BigInt", "Normal", "Rng", "WalkDir", "Instant", "Duration",
-                            "OnceCell", "Regex", "Url", "Version", "RefCell", "Child",
-                            "File", "FileWriter", "PathBuf", "String", "Vec",
-                        ];
-                        if STATIC_CALL_TYPES.contains(&s.as_str()) {
+                        // Check if this string is a type name by looking up "TypeName.method" in exports.
+                        // This handles user-defined types (Settings.load, Agent.new, etc.) that
+                        // the static call types list below can't cover.
+                        let candidate = format!("{}.{}", s, method_name);
+                        if self.flash.exports_by_name.contains_key(&candidate) {
                             s
                         } else {
-                            "str".to_string()
+                            // Fallback: check known crate type names pushed by codegen for static calls.
+                            const STATIC_CALL_TYPES: &[&str] = &[
+                                "Command", "Stdio", "Writer", "Reader", "ReaderBuilder",
+                                "WriterBuilder", "StringRecord", "ThreadRng", "Complex",
+                                "BigInt", "Normal", "Rng", "WalkDir", "Instant", "Duration",
+                                "OnceCell", "Regex", "Url", "Version", "RefCell", "Child",
+                                "File", "FileWriter", "PathBuf", "String", "Vec",
+                            ];
+                            if STATIC_CALL_TYPES.contains(&s.as_str()) {
+                                s
+                            } else {
+                                "str".to_string()
+                            }
                         }
                     } else if auto_val::is_i32(receiver_nv) {
                         let receiver = auto_val::decode_i32(receiver_nv);
@@ -4415,16 +4464,21 @@ impl AutoVM {
                         let str_idx = (-receiver - 1) as usize;
                         if let Some(bytes) = self.strings.read().unwrap().get(str_idx) {
                             let s = String::from_utf8_lossy(bytes).to_string();
-                            const STATIC_CALL_TYPES: &[&str] = &[
-                                "Command", "Stdio", "Writer", "Reader", "ReaderBuilder",
-                                "WriterBuilder", "StringRecord", "ThreadRng", "Complex",
-                                "BigInt", "Normal", "Rng", "WalkDir", "Instant", "Duration",
-                                "OnceCell", "Regex", "Url", "Version",
-                            ];
-                            if STATIC_CALL_TYPES.contains(&s.as_str()) {
+                            let candidate = format!("{}.{}", s, method_name);
+                            if self.flash.exports_by_name.contains_key(&candidate) {
                                 s
                             } else {
-                                "str".to_string()
+                                const STATIC_CALL_TYPES: &[&str] = &[
+                                    "Command", "Stdio", "Writer", "Reader", "ReaderBuilder",
+                                    "WriterBuilder", "StringRecord", "ThreadRng", "Complex",
+                                    "BigInt", "Normal", "Rng", "WalkDir", "Instant", "Duration",
+                                    "OnceCell", "Regex", "Url", "Version",
+                                ];
+                                if STATIC_CALL_TYPES.contains(&s.as_str()) {
+                                    s
+                                } else {
+                                    "str".to_string()
+                                }
                             }
                         } else {
                             "str".to_string()
@@ -5028,6 +5082,19 @@ impl AutoVM {
                                 #[cfg(not(feature = "nanbox"))]
                                 { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(list_id as i32); }
                             }
+                            "to_string" | "to_str" => {
+                                let s = int_val.to_string();
+                                let bytes = s.into_bytes();
+                                let idx = {
+                                    let mut strings = self.strings.write().unwrap();
+                                    strings.push(bytes);
+                                    strings.len() - 1
+                                };
+                                #[cfg(feature = "nanbox")]
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(-(idx as i32) - 1); }
+                            }
                             _ => {
                                 #[cfg(feature = "nanbox")]
                                 task.ram.push_nv(auto_val::encode_null());
@@ -5225,7 +5292,41 @@ impl AutoVM {
                             }
                         }
                         if !converted {
-                            // Primitive value — leave receiver as-is
+                            // Primitive value — convert i32/f64 to string
+                            #[cfg(feature = "nanbox")]
+                            {
+                                let s = if auto_val::is_i32(recv_nv) {
+                                    auto_val::decode_i32(recv_nv).to_string()
+                                } else if auto_val::is_f64(recv_nv) {
+                                    format!("{}", auto_val::decode_f64(recv_nv))
+                                } else if auto_val::is_null(recv_nv) {
+                                    "null".to_string()
+                                } else {
+                                    format!("{:?}", recv_nv)
+                                };
+                                // Pop receiver + args
+                                for _ in 0..=arg_count { task.ram.pop_nv(); }
+                                // Push string result
+                                let bytes = s.into_bytes();
+                                let idx = {
+                                    let mut strings = self.strings.write().unwrap();
+                                    strings.push(bytes);
+                                    strings.len() - 1
+                                };
+                                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                            }
+                            #[cfg(not(feature = "nanbox"))]
+                            {
+                                let s = recv_val.to_string();
+                                for _ in 0..=arg_count { task.ram.pop_i32(); }
+                                let bytes = s.into_bytes();
+                                let idx = {
+                                    let mut strings = self.strings.write().unwrap();
+                                    strings.push(bytes);
+                                    strings.len() - 1
+                                };
+                                task.ram.push_i32(-(idx as i32) - 1);
+                            }
                         }
                     } else {
                         return Err(VMError::RuntimeError(

@@ -523,6 +523,34 @@ impl Codegen {
             };
             codegen.register_enums_from_data(&enum_data);
         }
+        // Register user-defined types (TypeDecl) from TypeStore into generic_registry
+        // so that cross-module type constructors and field access work correctly
+        {
+            let type_decls: Vec<(String, Vec<String>, Vec<crate::ast::Type>)> = {
+                let ts = codegen.type_store.read().unwrap();
+                let decls: Vec<_> = ts.all_type_decls().collect();
+                decls.into_iter().map(|(name, decl)| {
+                    let field_names: Vec<String> = decl.members.iter().map(|m| m.name.to_string()).collect();
+                    let field_types: Vec<crate::ast::Type> = decl.members.iter().map(|m| m.ty.clone()).collect();
+                    (name.to_string(), field_names, field_types)
+                }).collect()
+            };
+            for (type_name, field_names, field_types) in type_decls {
+                if !codegen.generic_registry.has_template(&type_name) {
+                    let fdefs: Vec<crate::vm::generic_registry::FieldDef> = field_names.iter().zip(field_types.iter())
+                        .map(|(n, t): (&String, &crate::ast::Type)| crate::vm::generic_registry::FieldDef::new(n.clone(), t.clone()))
+                        .collect();
+                    let template = crate::vm::generic_registry::ClassTemplate::new(type_name.clone(), vec![], fdefs, vec![]);
+                    let _ = codegen.generic_registry.register_template(template);
+                }
+                // Ensure monomorphic instance exists in types map (needed for CONSTRUCT_INSTANCE)
+                let _ = codegen.generic_registry.get_or_create_type(&type_name, vec![]);
+                codegen.types.insert(type_name.clone(), crate::vm::codegen::TypeInfo {
+                    _name: type_name.clone(),
+                    member_names: field_names,
+                });
+            }
+        }
         codegen
     }
 
@@ -6106,7 +6134,12 @@ impl Codegen {
                                     }
                                 }
                                 _ => {
-                                    unimplemented!("Named arguments not supported in AutoVM yet")
+                                    // Arg::Name — compile as positional identifier (e.g., print(x))
+                                    let name = match arg {
+                                        crate::ast::Arg::Name(n) => n.clone(),
+                                        _ => unreachable!(),
+                                    };
+                                    self.compile_expr(&Expr::Ident(name))?;
                                 }
                             }
                         }

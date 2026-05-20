@@ -182,6 +182,24 @@ edition = "2021"
             }
         }
 
+        // Scan existing .rs files in src/ for external crate usage
+        // (e.g. hand-written files using `use serde::{Serialize, Deserialize}`)
+        let src_dir_path = self.path.parent().join("src");
+        if src_dir_path.path().exists() {
+            let mut extra_deps: Vec<String> = Vec::new();
+            let built_in = ["std", "core", "alloc", "proc_macro", "crate", "super", "self",
+                "a2r_std", "auto_lang"];
+            scan_rs_for_crates(src_dir_path.path(), &mut extra_deps, &built_in);
+            for dep in &extra_deps {
+                // Check it's not already in deps (from target.deps or auto-lang)
+                let already = dep == "auto-lang"
+                    || target.deps.iter().any(|d| d.name.as_str() == dep);
+                if !already {
+                    cargo_toml.push_str(&format!("{} = \"*\"\n", dep));
+                }
+            }
+        }
+
         // Prevent cargo from detecting parent workspace
         cargo_toml.push_str("\n\n[workspace]\n");
 
@@ -259,5 +277,38 @@ edition = "2021"
 
     fn get_memory_output(&self) -> HashMap<String, Vec<u8>> {
         self.memory_files.clone()
+    }
+}
+
+/// Recursively scan .rs files for external crate usage (e.g. `use serde::{...}`).
+/// Only detects `use X::...` patterns (must contain `::` to be an external crate).
+fn scan_rs_for_crates(dir: &Path, deps: &mut Vec<String>, exclude: &[&str]) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                scan_rs_for_crates(&path, deps, exclude);
+            } else if path.extension().map(|e| e == "rs").unwrap_or(false) {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    for line in content.lines() {
+                        let trimmed = line.trim();
+                        if let Some(rest) = trimmed.strip_prefix("use ") {
+                            let rest = rest.trim_start();
+                            // Must contain :: to be an external crate path
+                            if !rest.contains("::") {
+                                continue;
+                            }
+                            let first = rest.split("::").next().unwrap_or("").trim();
+                            if !first.is_empty()
+                                && !exclude.contains(&first)
+                                && !deps.contains(&first.to_string())
+                            {
+                                deps.push(first.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
