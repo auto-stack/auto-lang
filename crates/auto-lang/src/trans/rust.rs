@@ -3855,12 +3855,34 @@ impl RustTrans {
                 }
                 "set" => {
                     // Map.set(key, val) -> HashMap::insert(key, val)
-                    // Auto's .set() is only used on Map types, always translate to .insert()
                     self.expr(object, out)?;
                     write!(out, ".insert(")?;
                     for (i, arg) in call.args.args.iter().enumerate() {
                         if i > 0 { write!(out, ", ")?; }
                         self.arg(arg, out)?;
+                        // First arg: add as usize only for clearly integer expressions
+                        if i == 0 {
+                            if let Arg::Pos(expr) = arg {
+                                match expr {
+                                    Expr::Int(_) => { write!(out, " as usize")?; }
+                                    Expr::Ident(name) => {
+                                        let ty = self.local_var_types.get(name);
+                                        let is_str = ty.map_or(false, |t| 
+                                            matches!(t, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)));
+                                        if !is_str {
+                                            // Not a known string; check if known int
+                                            let is_int = ty.map_or(false, |t| 
+                                                matches!(t, Type::Int | Type::Uint));
+                                            if is_int {
+                                                write!(out, " as usize")?;
+                                            }
+                                            // Unknown type: skip, let post-processing handle
+                                        }
+                                    }
+                                    _ => {} // Other exprs (calls, etc): no cast
+                                }
+                            }
+                        }
                         // Auto-borrow: key/value might be &str, but HashMap<String,V> needs String
                         if let Arg::Pos(expr) = arg {
                             if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
@@ -4259,10 +4281,26 @@ impl RustTrans {
                         }
                     }
                 } else {
-                    let is_push_or_insert = matches!(method_name.as_str(), "push" | "insert");
+                    let is_push_or_insert = matches!(method_name.as_str(), "push" | "set");
+                    let is_insert = method_name.as_str() == "set";
                     for (i, arg) in call.args.args.iter().enumerate() {
                         self.arg(arg, out)?;
-                        // push/insert with string literal → .to_string() for Vec<String>/HashMap<String,_>
+                        // set(idx, val) -> insert(idx, val): only add as usize for int-typed idx
+                        if is_insert && i == 0 {
+                            if let Arg::Pos(expr) = arg {
+                                if let Expr::Int(_) = expr {
+                                    write!(out, " as usize")?;
+                                } else if let Expr::Ident(name) = expr {
+                                    let is_int_type = self.local_var_types.get(name)
+                                        .map(|ty| matches!(ty, Type::Int | Type::Uint))
+                                        .unwrap_or(false);
+                                    if is_int_type {
+                                        write!(out, " as usize")?;
+                                    }
+                                }
+                            }
+                        }
+                        // push/insert with string literal -> .to_string() for Vec<String>/HashMap<String,_>
                         if is_push_or_insert {
                             if let Arg::Pos(expr) = arg {
                                 if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
@@ -8192,6 +8230,15 @@ impl RustTrans {
         // B2: String/&str heuristic fixes
         Self::fix_string_str_mismatches(&mut content);
 
+        // B4: Fix u32/i32 cast mismatches
+        Self::fix_u32_i32_casts(&mut content);
+
+        // B5: Fix Vec/HashMap .insert() first arg needs usize
+        Self::fix_insert_usize(&mut content);
+
+        // B6: Fix bool-returning functions used with == 0 / != 0
+        Self::fix_bool_int_comparisons(&mut content);
+
         *output = content.into_bytes();
     }
 
@@ -8355,6 +8402,151 @@ impl RustTrans {
             }).to_string();
             *content = new_content;
         }
+    }
+
+    /// Fix u32/i32 cast mismatches:
+    /// 1. `let ... : u32 = (... as i32)` → `as u32`
+    /// 2. `while var < (... as i32)` where var was declared as u32 → `as u32`
+    fn fix_u32_i32_casts(content: &mut String) {
+        use std::collections::HashMap;
+        // Build a map of variable names declared as u32
+        let u32_vars: HashMap<String, ()> = {
+            let mut map = HashMap::new();
+            if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*:\s*u32\s*=") {
+                for caps in re.captures_iter(content) {
+                    map.insert(caps.get(1).unwrap().as_str().to_string(), ());
+                }
+            }
+            map
+        };
+        if u32_vars.is_empty() { return; }
+
+        // Pattern 1: `let ... : u32 = (... as i32)` → `as u32`
+        if let Ok(re) = regex::Regex::new(r"(let\s+(?:mut\s+)?\w+\s*:\s*u32\s*=\s*\()(.+?)\s+as\s+i32\)") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let prefix = caps.get(1).unwrap().as_str();
+                let expr = caps.get(2).unwrap().as_str();
+                format!("{}{} as u32)", prefix, expr)
+            }).to_string();
+            *content = new;
+        }
+
+        // Pattern 2: `while var < (... as i32)` where var is a u32 var → `as u32`
+        for var_name in u32_vars.keys() {
+            let pattern = format!(
+                r"(while\s+{}\s*<\s*\()(.+?)\s+as\s+i32\)",
+                regex::escape(var_name)
+            );
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let _vn = var_name.clone(); // used in closure if needed
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let prefix = caps.get(1).unwrap().as_str();
+                    let expr = caps.get(2).unwrap().as_str();
+                    format!("{}{} as u32)", prefix, expr)
+                }).to_string();
+                *content = new;
+            }
+        }
+
+        // Pattern 3: struct field assignment `self.field: u32 = (... as i32)` for known u32 fields
+        // Detected via struct field declarations: `pub field_name: u32,`
+        let u32_fields: Vec<String> = {
+            let mut fields = Vec::new();
+            if let Ok(re) = regex::Regex::new(r"pub\s+(\w+)\s*:\s*u32\s*,") {
+                for caps in re.captures_iter(content) {
+                    fields.push(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
+            fields
+        };
+        for field_name in &u32_fields {
+            // `self.field_name = (... as i32)` → `as u32`
+            let pattern = format!(
+                r"(self\.{}\s*=\s*\()(.+?)\s+as\s+i32\)",
+                regex::escape(field_name)
+            );
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let prefix = caps.get(1).unwrap().as_str();
+                    let expr = caps.get(2).unwrap().as_str();
+                    format!("{}{} as u32)", prefix, expr)
+                }).to_string();
+                *content = new;
+            }
+        }
+    }
+
+    /// Fix Vec/HashMap .insert() where first argument needs to be usize.
+    /// Only handles variables with known integer type annotations (u32, i32).
+    fn fix_insert_usize(content: &mut String) {
+        use std::collections::HashSet;
+        let mut int_names: HashSet<String> = HashSet::new();
+        for ty in &["u32", "i32"] {
+            let pat = format!(r"let\s+(?:mut\s+)?(\w+)\s*:\s*{}\s*=", ty);
+            if let Ok(re) = regex::Regex::new(&pat) {
+                for caps in re.captures_iter(content) {
+                    int_names.insert(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
+            let pat = format!(r"pub\s+(\w+)\s*:\s*{}\s*,", ty);
+            if let Ok(re) = regex::Regex::new(&pat) {
+                for caps in re.captures_iter(content) {
+                    int_names.insert(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
+        }
+        if int_names.is_empty() { return; }
+
+        for name in &int_names {
+            let pattern = format!(
+                r"\.insert\(\s*{}\s*(,)",
+                regex::escape(name)
+            );
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let n = name.clone();
+                let new = re.replace_all(content.as_str(), move |caps: &regex::Captures| {
+                    let comma = caps.get(1).unwrap().as_str();
+                    format!(".insert({} as usize{}", n, comma)
+                }).to_string();
+                *content = new;
+            }
+        }
+    }
+
+    /// Fix bool-returning functions compared with integer literals.
+    /// a2r_std::fs::exists/is_dir now return bool, but Auto code uses == 0 / != 0.
+    fn fix_bool_int_comparisons(content: &mut String) {
+        // Pattern: `a2r_std::fs::exists(X) == 0` → `!a2r_std::fs::exists(X)`
+        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::exists\(([^)]*)\)\s*==\s*0") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                format!("!a2r_std::fs::exists({})", caps.get(1).unwrap().as_str())
+            }).to_string();
+            *content = new;
+        }
+        // Pattern: `a2r_std::fs::exists(X) != 0` → `a2r_std::fs::exists(X)`
+        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::exists\(([^)]*)\)\s*!=\s*0") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                format!("a2r_std::fs::exists({})", caps.get(1).unwrap().as_str())
+            }).to_string();
+            *content = new;
+        }
+        // Pattern: `a2r_std::fs::is_dir(X) == 0` → `!a2r_std::fs::is_dir(X)`
+        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::is_dir\(([^)]*)\)\s*==\s*0") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                format!("!a2r_std::fs::is_dir({})", caps.get(1).unwrap().as_str())
+            }).to_string();
+            *content = new;
+        }
+        // Pattern: `a2r_std::fs::is_dir(X) != 0` → `a2r_std::fs::is_dir(X)`
+        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::is_dir\(([^)]*)\)\s*!=\s*0") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                format!("a2r_std::fs::is_dir({})", caps.get(1).unwrap().as_str())
+            }).to_string();
+            *content = new;
+        }
+        // Pattern: `!(a2r_std::fs::is_dir(X))` → `!a2r_std::fs::is_dir(X)`
+        // Only if the closing parens match — avoid removing extra parens
+        // Skip this for now — `!(bool_expr)` is valid Rust
     }
 
     /// Fix common String/&str mismatch patterns.

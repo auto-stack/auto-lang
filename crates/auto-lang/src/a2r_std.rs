@@ -424,8 +424,8 @@ pub mod fs {
         std::fs::write(path, content).is_ok()
     }
 
-    pub fn exists(path: &str) -> i32 {
-        if std::path::Path::new(path).exists() { 1 } else { 0 }
+    pub fn exists(path: &str) -> bool {
+        std::path::Path::new(path).exists()
     }
 
     pub fn create_dir(path: &str) -> bool {
@@ -444,8 +444,8 @@ pub mod fs {
         std::fs::remove_file(path).is_ok()
     }
 
-    pub fn is_dir(path: &str) -> i32 {
-        if std::path::Path::new(path).is_dir() { 1 } else { 0 }
+    pub fn is_dir(path: &str) -> bool {
+        std::path::Path::new(path).is_dir()
     }
 
     pub fn is_binary(path: &str) -> i32 {
