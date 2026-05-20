@@ -3861,9 +3861,11 @@ impl RustTrans {
                     for (i, arg) in call.args.args.iter().enumerate() {
                         if i > 0 { write!(out, ", ")?; }
                         self.arg(arg, out)?;
-                        // Auto-borrow: key might be &str, but HashMap<String,V> needs String
-                        if i == 0 {
-                            if let Arg::Pos(Expr::Ident(name)) = arg {
+                        // Auto-borrow: key/value might be &str, but HashMap<String,V> needs String
+                        if let Arg::Pos(expr) = arg {
+                            if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                write!(out, ".to_string()")?;
+                            } else if let Expr::Ident(name) = expr {
                                 let is_str = self.local_var_types.get(name)
                                     .map(|ty| matches!(ty, Type::StrSlice))
                                     .unwrap_or(false);
@@ -4229,6 +4231,9 @@ impl RustTrans {
                 "clear" => Some("clear"),
                 "to_array" => Some("clone"),
                 "retain" => Some("retain"),
+                // HashMap methods
+                "set" => Some("insert"),
+                "delete" => Some("remove"),
                 // Type conversion
                 "to_string" => Some("to_string"),
                 _ => contains_rust,
@@ -4254,8 +4259,17 @@ impl RustTrans {
                         }
                     }
                 } else {
+                    let is_push_or_insert = matches!(method_name.as_str(), "push" | "insert");
                     for (i, arg) in call.args.args.iter().enumerate() {
                         self.arg(arg, out)?;
+                        // push/insert with string literal → .to_string() for Vec<String>/HashMap<String,_>
+                        if is_push_or_insert {
+                            if let Arg::Pos(expr) = arg {
+                                if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                    write!(out, ".to_string()")?;
+                                }
+                            }
+                        }
                         if i < call.args.args.len() - 1 {
                             write!(out, ", ")?;
                         }
@@ -8327,6 +8341,19 @@ impl RustTrans {
                 }).to_string();
                 *content = new_content;
             }
+        }
+        // Also handle .get(X).as_str() → .get(X).unwrap().as_str()
+        // (Option<&String> doesn't have .as_str(), need to unwrap first)
+        if let Ok(re) = regex::Regex::new(r"\.get\(([^)]+)\)\.as_str\(\)") {
+            let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let inner = caps.get(1).unwrap().as_str();
+                if inner.contains(".unwrap()") {
+                    caps.get(0).unwrap().as_str().to_string()
+                } else {
+                    format!(".get({}).unwrap().as_str()", inner)
+                }
+            }).to_string();
+            *content = new_content;
         }
     }
 
