@@ -262,6 +262,16 @@ impl RustTrans {
         // Plan 091: scope removed, no-op
     }
 
+    /// Access the struct_fields cache (for pre-population from sibling files)
+    pub fn struct_fields(&self) -> &HashMap<AutoStr, Vec<AutoStr>> {
+        &self.struct_fields
+    }
+
+    /// Mutable access to the struct_fields cache
+    pub fn struct_fields_mut(&mut self) -> &mut HashMap<AutoStr, Vec<AutoStr>> {
+        &mut self.struct_fields
+    }
+
     pub fn set_edition(&mut self, edition: RustEdition) {
         self.edition = edition;
     }
@@ -1030,7 +1040,7 @@ impl RustTrans {
                                         || matches!(name,
                                             "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
                                             | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
-                                            | "f32" | "f64" | "bool" | "char" | "str"
+                                            | "f32" | "f64" | "bool" | "char"
                                         )
                                         || self.uses.iter().any(|u| {
                                             let u_str = u.as_str();
@@ -2647,7 +2657,13 @@ impl RustTrans {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
-                                if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                                    || if let Expr::Ident(name) = expr {
+                                        self.local_var_types.get(name)
+                                            .map(|ty| matches!(ty, Type::StrSlice))
+                                            .unwrap_or(false)
+                                    } else { false };
+                                if !already_str {
                                     write!(out, ".as_str()")?;
                                 }
                             }
@@ -2661,7 +2677,13 @@ impl RustTrans {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
-                                if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                                    || if let Expr::Ident(name) = expr {
+                                        self.local_var_types.get(name)
+                                            .map(|ty| matches!(ty, Type::StrSlice))
+                                            .unwrap_or(false)
+                                    } else { false };
+                                if !already_str {
                                     write!(out, ".as_str()")?;
                                 }
                             }
@@ -3304,6 +3326,48 @@ impl RustTrans {
             }
         }
 
+        // Binary-dot module calls: str.uuid() → a2r_std::uuid(), str.from_uint(x) → x.to_string(), etc.
+        // Handles both Expr::Bina(_, Dot, _) and Expr::Dot(_, _) AST forms.
+        {
+            let maybe_module_method: Option<(&Expr, &Name)> = match call.name.as_ref() {
+                Expr::Bina(lhs, op, rhs) if matches!(op, Op::Dot) => {
+                    if let Expr::Ident(method) = rhs.as_ref() {
+                        Some((lhs.as_ref(), method))
+                    } else { None }
+                }
+                Expr::Dot(obj, field) => Some((obj.as_ref(), field)),
+                _ => None,
+            };
+            if let Some((obj, method_name)) = maybe_module_method {
+                if let Expr::Ident(module) = obj {
+                    match module.as_str() {
+                        "str" => match method_name.as_str() {
+                            "uuid" => {
+                                write!(out, "a2r_std::uuid()")?;
+                                return Ok(());
+                            }
+                            "from_uint" | "from_int" => {
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ".to_string()")?;
+                                return Ok(());
+                            }
+                            "to_uint" => {
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ".parse::<u64>().unwrap_or(0)")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+            }
+        }
+
         // Plan 124 Phase 2.2: Handle TaskHandle.send_await(msg) -> tx.send(msg).await
         // This transforms the method call to use Rust's async send pattern
         if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
@@ -3500,6 +3564,8 @@ impl RustTrans {
                         "trim_right" => Some("trim_end"),
                         "starts_with" => Some("starts_with"),
                         "ends_with" => Some("ends_with"),
+                        "find_last" => Some("rfind"),
+                        "to_str" => Some("to_string"),
                         "append" => Some("push_str"),
                         // Collection methods
                         "push" => Some("push"),
@@ -4061,7 +4127,13 @@ impl RustTrans {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
-                                if !matches!(expr, Expr::Int(_) | Expr::Float(_, _)) {
+                                let skip_as_str = matches!(expr, Expr::Int(_) | Expr::Float(_, _))
+                                    || if let Expr::Ident(name) = expr {
+                                        self.local_var_types.get(name)
+                                            .map(|ty| matches!(ty, Type::StrSlice))
+                                            .unwrap_or(false)
+                                    } else { false };
+                                if !skip_as_str {
                                     write!(out, ".as_str()")?;
                                 }
                             }
@@ -4261,6 +4333,8 @@ impl RustTrans {
                 "trim_right" => Some("trim_end"),
                 "starts_with" => Some("starts_with"),
                 "ends_with" => Some("ends_with"),
+                "find_last" => Some("rfind"),
+                "to_str" => Some("to_string"),
                 "append" => Some("push_str"),
                 // Collection methods
                 "push" => Some("push"),
@@ -7498,6 +7572,44 @@ impl RustTrans {
                 writeln!(sink.body, "}}")?;
                 self.dedent();
                 writeln!(sink.body, "}}")?;
+
+                // Generate from_id() method: EnumType::from_id(name) → Option<EnumType>
+                writeln!(
+                    sink.body,
+                    "impl {} {{",
+                    enum_decl.name
+                )?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                writeln!(
+                    sink.body,
+                    "pub fn from_id(id: &str) -> Self {{"
+                )?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                writeln!(sink.body, "match id {{")?;
+                self.indent();
+                for item in &enum_decl.items {
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(
+                        sink.body,
+                        "\"{}\" | \"{}\" => {}::{},",
+                        item.name,
+                        item.name.to_lowercase(),
+                        enum_decl.name,
+                        item.name.clone()
+                    )?;
+                }
+                self.print_indent(&mut sink.body)?;
+                writeln!(sink.body, "_ => {}::{}", enum_decl.name, enum_decl.items.first().map(|i| i.name.as_str()).unwrap_or("Unknown"))?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                writeln!(sink.body, "}}")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                writeln!(sink.body, "}}")?;
+                self.dedent();
+                writeln!(sink.body, "}}")?;
             }
             EnumKind::Homogeneous { payload_type } => {
                 // Generate Rust enum where all variants wrap the same type
@@ -7601,6 +7713,60 @@ impl RustTrans {
                 self.print_indent(&mut sink.body)?;
                 writeln!(sink.body, "}}")?;
                 sink.body.write(b"\n")?;
+
+                // For heterogeneous enums that are all unit variants (like SpecStatus with methods),
+                // generate Display and from_id similar to scalar enums
+                let all_unit = enum_decl.items.iter().all(|item| {
+                    item.payload_type.is_none() && item.payload_types.is_empty() && !item.has_fields()
+                });
+                if all_unit {
+                    // Display impl
+                    writeln!(sink.body, "impl std::fmt::Display for {} {{", enum_decl.name)?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{")?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "match self {{")?;
+                    self.indent();
+                    for item in &enum_decl.items {
+                        self.print_indent(&mut sink.body)?;
+                        writeln!(sink.body, "{}::{} => write!(f, \"{}\"),", enum_decl.name, item.name, item.name)?;
+                    }
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "}}")?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "}}")?;
+                    self.dedent();
+                    writeln!(sink.body, "}}")?;
+
+                    // from_id impl
+                    writeln!(sink.body, "impl {} {{", enum_decl.name)?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "pub fn from_id(id: &str) -> Self {{")?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "match id {{")?;
+                    self.indent();
+                    for item in &enum_decl.items {
+                        self.print_indent(&mut sink.body)?;
+                        writeln!(sink.body, "\"{}\" | \"{}\" => {}::{},", item.name, item.name.to_lowercase(), enum_decl.name, item.name)?;
+                    }
+                    self.print_indent(&mut sink.body)?;
+                    let first = enum_decl.items.first().map(|i| i.name.as_str()).unwrap_or("Unknown");
+                    writeln!(sink.body, "_ => {}::{}", enum_decl.name, first)?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "}}")?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "}}")?;
+                    self.dedent();
+                    writeln!(sink.body, "}}")?;
+                }
             }
         }
 

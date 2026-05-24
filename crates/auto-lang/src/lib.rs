@@ -2447,6 +2447,40 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // Full transpilation via RustTrans::trans()
     let mut sink = Sink::new(fname.clone());
     let mut trans = crate::trans::rust::RustTrans::new(fname);
+
+    // Pre-populate struct_fields from sibling .at files in the same directory.
+    // This allows cross-file positional struct construction (e.g., Pos(1, 0, 0)
+    // in lexer.at when Pos is defined in pos.at) to use actual field names
+    // instead of falling back to field0/field1/field2.
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
+                if entry_path.extension().map(|e| e == "at").unwrap_or(false) {
+                    if entry_path == std::path::Path::new(path) { continue; }
+                    if let Ok(sibling_code) = std::fs::read_to_string(&entry_path) {
+                        let mut sib_parser = Parser::from(sibling_code.as_str());
+                        sib_parser.set_dest(crate::parser::CompileDest::TransRust);
+                        sib_parser.skip_check = true;
+                        if let Ok(sib_ast) = sib_parser.parse() {
+                            for stmt in &sib_ast.stmts {
+                                if let crate::ast::Stmt::TypeDecl(td) = stmt {
+                                    let field_names: Vec<auto_val::AutoStr> = td.members.iter()
+                                        .map(|m| m.name.clone()).collect();
+                                    if !field_names.is_empty()
+                                        && !trans.struct_fields().contains_key(&td.name)
+                                    {
+                                        trans.struct_fields_mut().insert(td.name.clone(), field_names);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     trans.trans(ast, &mut sink)?;
 
     // Write output file
