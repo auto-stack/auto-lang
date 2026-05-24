@@ -3624,6 +3624,7 @@ impl RustTrans {
                     return Ok(());
                 }
                 // list.get(i) -> list[i as usize].clone() for Vec-like collections
+                // HashMap get falls through to generic method call handler
                 "get" => {
                     if call.args.args.len() == 1 {
                         if let Some(Arg::Pos(arg)) = call.args.args.first() {
@@ -3642,10 +3643,7 @@ impl RustTrans {
                             }
                         }
                     }
-                    // HashMap get: emit map.get(&key) or map.get(key)
-                    // Let post-processing handle .cloned()/.unwrap_or_default() as needed
-                    // since different contexts (is-match vs assignment) need different transforms.
-                    // Fall through to generic method call handler.
+                    // Non-numeric get: fall through to generic method call
                 }
                 // Plan 204 Phase 5: Complex method translations requiring
                 // non-trivial Rust output (not just a name remap).
