@@ -4301,6 +4301,47 @@ impl RustTrans {
                 } // if !is_local_var
             }
 
+            // Dynamic Map methods: insert_int/get_int/insert_str/get_str
+            // Auto's Map stores everything as strings; int values are encoded/decoded
+            // via to_string()/parse(). These methods need inline code generation.
+            match method_name.as_str() {
+                "insert_int" => {
+                    self.expr(object, out)?;
+                    write!(out, ".insert(")?;
+                    self.arg(&call.args.args[0], out)?;
+                    write!(out, ".to_string(), ")?;
+                    self.arg(&call.args.args[1], out)?;
+                    write!(out, ".to_string())")?;
+                    return Ok(());
+                }
+                "get_int" => {
+                    write!(out, "(")?;
+                    self.expr(object, out)?;
+                    write!(out, ".get(&")?;
+                    self.arg(&call.args.args[0], out)?;
+                    write!(out, ".to_string()).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0))")?;
+                    return Ok(());
+                }
+                "insert_str" => {
+                    self.expr(object, out)?;
+                    write!(out, ".insert(")?;
+                    self.arg(&call.args.args[0], out)?;
+                    write!(out, ".to_string(), ")?;
+                    self.arg(&call.args.args[1], out)?;
+                    write!(out, ".to_string())")?;
+                    return Ok(());
+                }
+                "get_str" => {
+                    write!(out, "(")?;
+                    self.expr(object, out)?;
+                    write!(out, ".get(&")?;
+                    self.arg(&call.args.args[0], out)?;
+                    write!(out, ".to_string()).cloned().unwrap_or_default())")?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+
             // .len() and .length() return usize in Rust, cast to i32 for Auto's int
             let needs_i32_cast = matches!(method_name.as_str(), "len" | "length");
 
