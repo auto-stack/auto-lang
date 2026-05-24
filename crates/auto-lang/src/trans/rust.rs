@@ -786,12 +786,11 @@ impl RustTrans {
         }
     }
 
-    /// Plan 232: Parameter type mapping for function parameter positions.
-    /// Auto `str` in parameter position -> Rust `&str` (borrowed, Copy).
-    /// This avoids String ownership transfer on repeated function calls.
+    /// Parameter type mapping: Auto str → Rust &str for function parameters.
+    /// Call sites borrow String args with & prefix.
     fn rust_param_type_name(&self, ty: &Type) -> String {
         match ty {
-            Type::StrFixed(_) | Type::StrSlice | Type::CStrLit => "&str".to_string(),
+            Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit => "&str".to_string(),
             _ => self.rust_type_name(ty),
         }
     }
@@ -2613,10 +2612,9 @@ impl RustTrans {
                                 // Only add .as_str() if expr is not already &str
                                 let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
                                     || if let Expr::Ident(name) = expr {
-                                        self.fn_param_str_slice.contains(name.as_str())
-                                            || self.local_var_types.get(name)
-                                                .map(|ty| matches!(ty, Type::StrSlice))
-                                                .unwrap_or(false)
+                                        self.local_var_types.get(name)
+                                            .map(|ty| matches!(ty, Type::StrSlice))
+                                            .unwrap_or(false)
                                     } else { false };
                                 if !already_str {
                                     write!(out, ".as_str()")?;
@@ -2779,10 +2777,9 @@ impl RustTrans {
                                             self.expr(expr, out)?;
                                             let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
                                                 || if let Expr::Ident(name) = expr {
-                                                    self.fn_param_str_slice.contains(name.as_str())
-                                                        || self.local_var_types.get(name)
-                                                            .map(|ty| matches!(ty, Type::StrSlice))
-                                                            .unwrap_or(false)
+                                                    self.local_var_types.get(name)
+                                                        .map(|ty| matches!(ty, Type::StrSlice))
+                                                        .unwrap_or(false)
                                                 } else { false };
                                             if !already_str {
                                                 write!(out, ".as_str()")?;
@@ -3405,12 +3402,22 @@ impl RustTrans {
                             return Ok(());
                         }
                         "contains" => {
-                            // Map.contains(key) -> HashMap::contains_key(key)
-                            self.expr(lhs, out)?;
-                            write!(out, ".contains_key(")?;
-                            if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
-                            write!(out, ")")?;
-                            return Ok(());
+                            // Only convert to contains_key if lhs is a known Map variable.
+                            // For other cases (e.g., plan.content which is String), fall through
+                            // to the later handler which decides based on type info.
+                            if let Expr::Ident(name) = lhs.as_ref() {
+                                let is_map = self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::Map(_, _)))
+                                    .unwrap_or(false);
+                                if is_map {
+                                    self.expr(lhs, out)?;
+                                    write!(out, ".contains_key(")?;
+                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                            }
+                            // Fall through — don't intercept, let later code handle it
                         }
                         "char_at" => {
                             // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0') as i32
@@ -3635,17 +3642,10 @@ impl RustTrans {
                             }
                         }
                     }
-                    // HashMap get: map.get(key) -> map.get(&*key).cloned().unwrap_or_default()
-                    self.expr(object, out)?;
-                    write!(out, ".get(")?;
-                    if let Some(Arg::Pos(a)) = call.args.args.first() {
-                        if matches!(a, Expr::Ident(_)) {
-                            write!(out, "&*")?;
-                        }
-                        self.expr(a, out)?;
-                    }
-                    write!(out, ").cloned().unwrap_or_default()")?;
-                    return Ok(());
+                    // HashMap get: emit map.get(&key) or map.get(key)
+                    // Let post-processing handle .cloned()/.unwrap_or_default() as needed
+                    // since different contexts (is-match vs assignment) need different transforms.
+                    // Fall through to generic method call handler.
                 }
                 // Plan 204 Phase 5: Complex method translations requiring
                 // non-trivial Rust output (not just a name remap).
@@ -4319,9 +4319,9 @@ impl RustTrans {
                     self.expr(object, out)?;
                     write!(out, ".insert(")?;
                     self.arg(&call.args.args[0], out)?;
-                    write!(out, ".to_string(), ")?;
+                    write!(out, ".to_string(), (")?;
                     self.arg(&call.args.args[1], out)?;
-                    write!(out, ".to_string())")?;
+                    write!(out, ").to_string())")?;
                     return Ok(());
                 }
                 "get_int" => {
@@ -4336,9 +4336,9 @@ impl RustTrans {
                     self.expr(object, out)?;
                     write!(out, ".insert(")?;
                     self.arg(&call.args.args[0], out)?;
-                    write!(out, ".to_string(), ")?;
+                    write!(out, ".to_string(), (")?;
                     self.arg(&call.args.args[1], out)?;
-                    write!(out, ".to_string())")?;
+                    write!(out, ").to_string())")?;
                     return Ok(());
                 }
                 "get_str" => {
@@ -4356,10 +4356,8 @@ impl RustTrans {
             let needs_i32_cast = matches!(method_name.as_str(), "len" | "length");
 
             // For "contains", choose between str::contains and map::contains_key
-            // String .contains() is already handled by the early interceptor above.
-            // For Expr::Ident objects: use contains_key for known Map types, contains otherwise
-            // For Expr::Dot objects (e.g., self.field): default to contains_key since
-            // Auto's .contains() on maps maps to HashMap::contains_key
+            // Only use contains_key when we KNOW the object is a Map.
+            // Default to str::contains since it works on String and &str.
             let contains_rust = if method_name.as_str() == "contains" {
                 match object.as_ref() {
                     Expr::Ident(name) => {
@@ -4368,7 +4366,16 @@ impl RustTrans {
                             .unwrap_or(false);
                         if obj_is_map { Some("contains_key") } else { Some("contains") }
                     }
-                    Expr::Dot(_, _) => Some("contains_key"), // self.field on a Map
+                    Expr::Dot(inner_obj, inner_field) => {
+                        // Check if the inner field is a known Map type in any struct
+                        let field_is_map = if let Expr::Ident(_) = inner_obj.as_ref() {
+                            self.struct_field_types.values()
+                                .any(|fields| fields.iter()
+                                    .any(|(fname, fty)| fname == inner_field
+                                        && matches!(fty, Type::Map(_, _))))
+                        } else { false };
+                        if field_is_map { Some("contains_key") } else { Some("contains") }
+                    }
                     _ => Some("contains"),
                 }
             } else { None };
@@ -4412,11 +4419,19 @@ impl RustTrans {
                 self.expr(object, out)?;
                 if obj_parens { write!(out, ")")?; }
                 write!(out, ".{}(", rust_name)?;
-                // Auto-borrow string args for pattern-matching methods
-                // Only add & for actual string methods, not contains_key (which takes &str directly)
-                if matches!(rust_name, "contains" | "starts_with" | "ends_with") {
+                // Auto-borrow string args for pattern-matching and map lookup methods
+                if matches!(rust_name, "contains" | "contains_key" | "starts_with" | "ends_with") {
                     for (i, arg) in call.args.args.iter().enumerate() {
-                        write!(out, "&")?;
+                        // Only add & for String-typed args, not &str params or literals
+                        let already_borrowed = matches!(arg, Arg::Pos(Expr::Str(_) | Expr::CStr(_)))
+                            || if let Arg::Pos(Expr::Ident(name)) = arg {
+                                self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false)
+                            } else { false };
+                        if !already_borrowed {
+                            write!(out, "&")?;
+                        }
                         self.arg(arg, out)?;
                         if i < call.args.args.len() - 1 {
                             write!(out, ", ")?;
@@ -4427,7 +4442,7 @@ impl RustTrans {
                     let is_insert = method_name.as_str() == "set";
                     for (i, arg) in call.args.args.iter().enumerate() {
                         self.arg(arg, out)?;
-                        // set(idx, val) -> insert(idx, val): only add as usize for int-typed idx
+                        // set(idx, val) -> insert(idx, val): add 'as usize' for int-typed idx
                         if is_insert && i == 0 {
                             if let Arg::Pos(expr) = arg {
                                 if let Expr::Int(_) = expr {
@@ -5141,17 +5156,10 @@ impl RustTrans {
 
     /// Check if an expression likely needs .as_str() to convert String → &str.
     /// Returns true for Expr::Ident variables that may be String at runtime.
-    /// Note: Auto's `str` type maps to StrSlice but generated code often uses String
-    /// (due to .to_string() on assignment), so we conservatively add .as_str() for all
-    /// variables except those that are clearly function params with &str type.
     fn needs_as_str(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Ident(name) => {
-                // Function parameters typed as &str are safe (caller passes &str).
-                // Variables tracked as StrSlice are also &str.
-                if self.fn_param_str_slice.contains(name.as_str()) {
-                    return false;
-                }
+                // Variables tracked as StrSlice are &str — no conversion needed.
                 if let Some(ty) = self.local_var_types.get(name) {
                     if matches!(ty, Type::StrSlice) {
                         return false;
@@ -5947,7 +5955,7 @@ impl RustTrans {
             for (i, param) in fn_decl.params.iter().enumerate() {
                 write!(
                     sink.body,
-                    "{}: {}",
+                    "mut {}: {}",
                     param.name,
                     self.rust_param_type_name(&param.ty)
                 )?;
@@ -5960,10 +5968,10 @@ impl RustTrans {
 
         // Cache which params are str (&str) type for auto-borrow at call sites
         let str_param_flags: Vec<bool> = fn_decl.params.iter()
-            .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit))
+            .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit))
             .collect();
         for param in &fn_decl.params {
-            if matches!(param.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit) {
+            if matches!(param.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit) {
                 self.current_fn_str_params.insert(param.name.clone());
                 self.fn_param_str_slice.insert(param.name.clone());
             }
