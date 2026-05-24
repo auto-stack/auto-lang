@@ -4,13 +4,13 @@
 
 // Parser state
 type Parser {
-    tokens List
+    tokens List<Token>
     pos int
     len int
 }
 
 // Create a new parser from a token list
-fn parser_new(tokens List) Parser {
+fn parser_new(tokens List<Token>) Parser {
     Parser(tokens, 0, tokens.len())
 }
 
@@ -127,7 +127,7 @@ fn is_stop_token(kind TokenKind) bool {
 // ---- Entry Points ----
 
 // Parse a full program
-fn parse_program(p Parser) List {
+fn parse_program(p Parser) List<ASTNode> {
     var stmts = empty_list()
     parser_skip_nl_semi(p)
 
@@ -159,7 +159,7 @@ fn parse_top_stmt(p Parser) ASTNode {
 
 // Parse a block body: { stmts }
 // Returns List of ASTNode statements
-fn parse_body(p Parser) List {
+fn parse_body(p Parser) List<ASTNode> {
     p.pos = p.pos + 1  // skip '{'
     parser_skip_nl_semi(p)
 
@@ -179,7 +179,7 @@ fn parse_body(p Parser) List {
 }
 
 // Convert body statement list to S-expression string
-fn body_to_str(body List) str {
+fn body_to_str(body List<ASTNode>) str {
     var result = ""
     var i = 0
     var n = body.len()

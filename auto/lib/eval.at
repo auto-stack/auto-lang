@@ -3,9 +3,9 @@
 
 // Evaluator environment
 type EvalEnv {
-    globals Map       // global variable bindings: name -> value
-    scopes List       // scope stack: List of Map
-    fn_defs Map       // function definitions: name -> ASTNode (heap id)
+    globals Map<str, str>       // global variable bindings: name -> value
+    scopes List                 // scope stack: List of Map
+    fn_defs Map<str, str>       // function definitions: name -> ASTNode (heap id)
     output str        // accumulated print output
 }
 
@@ -206,7 +206,7 @@ fn str_get_part(s str, index int) str {
 // ---- Entry Points ----
 
 // Evaluate a full program (list of top-level statements)
-fn eval_program(env EvalEnv, stmts List) {
+fn eval_program(env EvalEnv, stmts List<ASTNode>) {
     // First pass: register all function definitions
     var i = 0
     var n = stmts.len()
@@ -291,7 +291,7 @@ fn eval_exec_stmt(env EvalEnv, node ASTNode) int {
 
 // Execute a list of statements (body), returns 1 if return was hit
 // Sets return_value in env.globals under key "__ret__"
-fn eval_exec_body(env EvalEnv, body List) int {
+fn eval_exec_body(env EvalEnv, body List<ASTNode>) int {
     var i = 0
     var n = body.len()
     for i < n {

@@ -1,77 +1,76 @@
 // AutoVM Bytecode Opcodes — AAVM self-hosted compiler
 // Constants aligned with Rust VM opcode.rs
-// NOTE: Using inline values because top-level let is not accessible inside functions
 
 // Stack
-let OP_POP = 1
-let OP_DUP = 3
-let OP_RESERVE_STACK = 6
+const OP_POP = 1
+const OP_DUP = 3
+const OP_RESERVE_STACK = 6
 
 // Constants
-let OP_CONST_I32 = 16
-let OP_CONST_0 = 18
-let OP_CONST_1 = 19
-let OP_LOAD_STR = 31
+const OP_CONST_I32 = 16
+const OP_CONST_0 = 18
+const OP_CONST_1 = 19
+const OP_LOAD_STR = 31
 
 // Locals
-let OP_LOAD_LOCAL = 32
-let OP_STORE_LOCAL = 33
+const OP_LOAD_LOCAL = 32
+const OP_STORE_LOCAL = 33
 
 // Arithmetic
-let OP_ADD = 48
-let OP_SUB = 49
-let OP_MUL = 50
-let OP_DIV = 51
-let OP_MOD = 52
+const OP_ADD = 48
+const OP_SUB = 49
+const OP_MUL = 50
+const OP_DIV = 51
+const OP_MOD = 52
 
 // Comparison
-let OP_EQ = 80
-let OP_NE = 81
-let OP_LT = 82
-let OP_GT = 83
-let OP_LE = 84
-let OP_GE = 85
+const OP_EQ = 80
+const OP_NE = 81
+const OP_LT = 82
+const OP_GT = 83
+const OP_LE = 84
+const OP_GE = 85
 
 // Control
-let OP_JMP = 96
-let OP_JMP_IF_Z = 97
+const OP_JMP = 96
+const OP_JMP_IF_Z = 97
 
 // Functions
-let OP_CALL = 112
-let OP_RET = 113
-let OP_CALL_NAT = 114
+const OP_CALL = 112
+const OP_RET = 113
+const OP_CALL_NAT = 114
 
 // Collections
-let OP_LIST_NEW = 64
-let OP_LIST_PUSH = 65
-let OP_LIST_GET = 66
-let OP_LIST_LEN = 67
-let OP_MAP_NEW = 68
-let OP_MAP_INSERT_INT = 69
-let OP_MAP_GET_INT = 70
-let OP_MAP_CONTAINS = 71
-let OP_MAP_INSERT_STR = 72
-let OP_MAP_GET_STR = 73
-let OP_LIST_SET = 74
-let OP_LIST_POP = 75
-let OP_STR_LEN = 76
-let OP_STR_CHAR_AT = 77
-let OP_STR_SUBSTR = 78
-let OP_LIST_PUSH_STR = 79
-let OP_LIST_GET_STR = 86
-let OP_LIST_SET_STR = 87
-let OP_LIST_POP_STR = 88
+const OP_LIST_NEW = 64
+const OP_LIST_PUSH = 65
+const OP_LIST_GET = 66
+const OP_LIST_LEN = 67
+const OP_MAP_NEW = 68
+const OP_MAP_INSERT_INT = 69
+const OP_MAP_GET_INT = 70
+const OP_MAP_CONTAINS = 71
+const OP_MAP_INSERT_STR = 72
+const OP_MAP_GET_STR = 73
+const OP_LIST_SET = 74
+const OP_LIST_POP = 75
+const OP_STR_LEN = 76
+const OP_STR_CHAR_AT = 77
+const OP_STR_SUBSTR = 78
+const OP_LIST_PUSH_STR = 79
+const OP_LIST_GET_STR = 86
+const OP_LIST_SET_STR = 87
+const OP_LIST_POP_STR = 88
 
 // String
-let OP_STR_CAT = 124
+const OP_STR_CAT = 124
 
 // Halt
-let OP_HALT = 255
+const OP_HALT = 255
 
 // Boolean sentinels (use i32 min/max)
-let BOOL_TRUE = -2147483648
-let BOOL_FALSE = -2147483647
+const BOOL_TRUE = -2147483648
+const BOOL_FALSE = -2147483647
 
 // Native function IDs
-let NATIVE_PRINT_I32 = 1
-let NATIVE_PRINT_STR = 3
+const NATIVE_PRINT_I32 = 1
+const NATIVE_PRINT_STR = 3

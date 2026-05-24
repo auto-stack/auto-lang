@@ -301,7 +301,7 @@ fn a2r_expr(node ASTNode, tenv TypeEnv) str {
 
 // ---- Statement Transpiler ----
 
-fn a2r_body(stmts List, tenv TypeEnv, indent int) str {
+fn a2r_body(stmts List<ASTNode>, tenv TypeEnv, indent int) str {
     var out = ""
     var i = 0
     var n = stmts.len()
@@ -467,7 +467,7 @@ fn a2r_fn(node ASTNode, tenv TypeEnv, indent int) str {
 
 // ---- Top-level Transpiler ----
 
-fn a2r_transpile(stmts List, tenv TypeEnv) str {
+fn a2r_transpile(stmts List<ASTNode>, tenv TypeEnv) str {
     var out = ""
     var has_main = 0
     var top_stmts = ""
@@ -754,7 +754,7 @@ fn a2r_fstr(node ASTNode, tenv TypeEnv) str {
 
 // ---- E5: Struct Constructor ----
 
-fn a2r_struct_init(type_name str, args List, tenv TypeEnv) str {
+fn a2r_struct_init(type_name str, args List<ASTNode>, tenv TypeEnv) str {
     var fields_str = tenv.struct_fields.get(type_name)
     var out = type_name + " { "
     var i = 0

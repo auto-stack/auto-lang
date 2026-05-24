@@ -3,10 +3,10 @@
 // Type tags: 0=int, 1=str, 2=bool, 3=void, -1=unknown
 
 type TypeEnv {
-    var_types Map
-    fn_ret_types Map
-    fn_param_types Map
-    struct_fields Map
+    var_types Map<str, str>
+    fn_ret_types Map<str, str>
+    fn_param_types Map<str, str>
+    struct_fields Map<str, str>
 }
 
 fn typeenv_new() TypeEnv {
@@ -121,7 +121,7 @@ fn type_infer_expr(tenv TypeEnv, node ASTNode) int {
     return -1
 }
 
-fn type_infer_stmts(tenv TypeEnv, stmts List) {
+fn type_infer_stmts(tenv TypeEnv, stmts List<ASTNode>) {
     var i = 0
     var n = stmts.len()
     for i < n {
@@ -203,7 +203,7 @@ fn type_infer_stmt(tenv TypeEnv, stmt ASTNode) int {
     return 0
 }
 
-fn type_infer_program(tenv TypeEnv, stmts List) {
+fn type_infer_program(tenv TypeEnv, stmts List<ASTNode>) {
     // First pass: collect struct field names
     var i = 0
     var n = stmts.len()

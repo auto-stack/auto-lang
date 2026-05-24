@@ -1,11 +1,11 @@
 // Bytecode Interpreter for AAVM self-hosted compiler
 // Uses a single Map for all state (ints, strings, emulated arrays)
-// List/Map heap stored in state Map via key conventions:
+// List/Map heap stored in state Map<str, str> via key conventions:
 //   __nl = next list id, __nm = next map id
 //   __l{id}_n = list length, __l{id}_{idx} = list element
 //   __m{id}_{key} = map int value, __m{id}_h_{key} = has-key flag
 
-fn bvm_init(state Map) {
+fn bvm_init(state Map<str, str>) {
     state.insert_int("__ip", 0)
     state.insert_int("__sp", 0)
     state.insert_int("__bp", 0)
@@ -15,7 +15,7 @@ fn bvm_init(state Map) {
     state.insert_int("__nm", 0)
 }
 
-fn bvm_push_int(state Map, val int) {
+fn bvm_push_int(state Map<str, str>, val int) {
     var sp = state.get_int("__sp")
     state.insert_int("v" + int_to_str(sp), val)
     state.insert_str("s" + int_to_str(sp), "")
@@ -23,7 +23,7 @@ fn bvm_push_int(state Map, val int) {
     state.insert_int("__sp", sp + 1)
 }
 
-fn bvm_push_list_ref(state Map, heap_idx int) {
+fn bvm_push_list_ref(state Map<str, str>, heap_idx int) {
     var sp = state.get_int("__sp")
     state.insert_int("v" + int_to_str(sp), heap_idx)
     state.insert_str("s" + int_to_str(sp), "")
@@ -31,7 +31,7 @@ fn bvm_push_list_ref(state Map, heap_idx int) {
     state.insert_int("__sp", sp + 1)
 }
 
-fn bvm_push_map_ref(state Map, heap_idx int) {
+fn bvm_push_map_ref(state Map<str, str>, heap_idx int) {
     var sp = state.get_int("__sp")
     state.insert_int("v" + int_to_str(sp), heap_idx)
     state.insert_str("s" + int_to_str(sp), "")
@@ -39,7 +39,7 @@ fn bvm_push_map_ref(state Map, heap_idx int) {
     state.insert_int("__sp", sp + 1)
 }
 
-fn bvm_push_str(state Map, pool_key str) {
+fn bvm_push_str(state Map<str, str>, pool_key str) {
     var sp = state.get_int("__sp")
     state.insert_int("v" + int_to_str(sp), 0)
     state.insert_str("s" + int_to_str(sp), pool_key)
@@ -47,7 +47,7 @@ fn bvm_push_str(state Map, pool_key str) {
     state.insert_int("__sp", sp + 1)
 }
 
-fn bvm_pop_int(state Map) int {
+fn bvm_pop_int(state Map<str, str>) int {
     var sp = state.get_int("__sp")
     if sp > 0 {
         sp = sp - 1
@@ -57,7 +57,7 @@ fn bvm_pop_int(state Map) int {
     return 0
 }
 
-fn bvm_pop_str_key(state Map) str {
+fn bvm_pop_str_key(state Map<str, str>) str {
     var sp = state.get_int("__sp")
     if sp > 0 {
         sp = sp - 1
@@ -67,14 +67,14 @@ fn bvm_pop_str_key(state Map) str {
     return ""
 }
 
-fn bvm_read_u8(code List, state Map) int {
+fn bvm_read_u8(code List<int>, state Map<str, str>) int {
     var ip = state.get_int("__ip")
     var val = code.get(ip)
     state.insert_int("__ip", ip + 1)
     return val
 }
 
-fn bvm_read_i32(code List, state Map) int {
+fn bvm_read_i32(code List<int>, state Map<str, str>) int {
     var b0 = bvm_read_u8(code, state)
     var b1 = bvm_read_u8(code, state)
     var b2 = bvm_read_u8(code, state)
@@ -84,13 +84,13 @@ fn bvm_read_i32(code List, state Map) int {
     return val
 }
 
-fn bvm_read_u16(code List, state Map) int {
+fn bvm_read_u16(code List<int>, state Map<str, str>) int {
     var b0 = bvm_read_u8(code, state)
     var b1 = bvm_read_u8(code, state)
     return b0 + b1 * 256
 }
 
-fn bvm_read_i16(code List, state Map) int {
+fn bvm_read_i16(code List<int>, state Map<str, str>) int {
     var b0 = bvm_read_u8(code, state)
     var b1 = bvm_read_u8(code, state)
     var val = b0 + b1 * 256
@@ -98,7 +98,7 @@ fn bvm_read_i16(code List, state Map) int {
     return val
 }
 
-fn bvm_read_u32(code List, state Map) int {
+fn bvm_read_u32(code List<int>, state Map<str, str>) int {
     var b0 = bvm_read_u8(code, state)
     var b1 = bvm_read_u8(code, state)
     var b2 = bvm_read_u8(code, state)
@@ -108,7 +108,7 @@ fn bvm_read_u32(code List, state Map) int {
     return val
 }
 
-fn bvm_run(code List, strings Map, state Map) str {
+fn bvm_run(code List<int>, strings Map<str, str>, state Map<str, str>) str {
     var running = 1
     for running == 1 {
         running = bvm_step(code, strings, state)
@@ -116,7 +116,7 @@ fn bvm_run(code List, strings Map, state Map) str {
     return state.get("__output")
 }
 
-fn bvm_step(code List, strings Map, state Map) int {
+fn bvm_step(code List<int>, strings Map<str, str>, state Map<str, str>) int {
     var op = bvm_read_u8(code, state)
 
     // OP_HALT = 255

@@ -1,6 +1,6 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: ⏳ Phase 2 (a2r) E1-E5 部分完成 (2026-05-24 更新)
+## 实施状态: ⏳ Phase 3 自举验证 (2026-05-24 更新)
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
@@ -29,7 +29,7 @@
 | 2.E3: 表达式补全 | ✅ 已完成 | 数组/错误传播/self字段替换/别名, 测试 094-099 (Plan 237 Phase E3+E4) |
 | 2.E4: 对象/闭包 | ✅ 已完成 | 对象字面量 + lambda + PairExpr (合并到 E3 一起实现) |
 | 2.E5: 类型增强 | ✅ 已完成 | struct构造函数✅ Option/Result匹配✅ 借用语义✅ |
-| Phase 3: 自举 | 🔧 进行中 | Rust版a2r转译12文件成功, 合并编译有1356错误(Map裸类型推断) |
+| Phase 3: 自举 | 🔧 进行中 | 合并编译从1356→929错误, Map/List/field0/重复定义已修复, char/i32等深层问题待解决 |
 
 **已完成的基础工作:**
 - [x] a2r 转译器成熟化: step-00（555 行 Auto 程序）从 69 错误降至 0 错误（Apr 30）
@@ -49,13 +49,19 @@
 - [x] Phase 2.E5: Option/Result 模式匹配 — parser.at 添加 SomeKW/NoneKW/OkKW/ErrKW 处理, a2r.at CallExpr 正确输出 Some(x)/None/Ok(x)/Err(x) (测试 107)
 - [x] Phase 2.E5: 借用语义 — lexer.at 添加 DotView/DotMut/DotMove/DotTake, parser.at 添加后缀解析, ast.at 添加 ViewExpr/MutExpr/MoveExpr, a2r.at .view→&expr/.mut→&mut/.move→passthrough (测试 108)
 - [x] Phase 3 进展: Rust版a2r成功转译全部12个auto/lib/文件 (6386行Rust), pos+error+token合并编译运行通过
-- [ ] Phase 3 阻塞: 裸Map/List类型推断 → Rust版a2r输出HashMap</* unknown */> → 1356编译错误
+- [x] Phase 3 进展: 裸Map/List默认类型 → Rust版a2r输出HashMap<String,String>/Vec<String> (不再输出/* unknown */)
+- [x] Phase 3 进展: 跨模块struct_fields预填充 → 同目录.at文件的struct定义自动共享，field0/field1/field2问题清零
+- [x] Phase 3 进展: auto/lib所有bare List/Map添加泛型参数 (List→List<ASTNode>/List<int>, Map→Map<str,str>)
+- [x] Phase 3 进展: opcode.at从let改为const，codegen.at保留fn形式（VM兼容）
+- [ ] Phase 3 剩余: 合并编译929错误 — 主要是a2r代码生成质量(char vs i32, 动态Map方法不匹配等)
 
 **下一步行动:**
-- Phase 3 阻塞: Rust版a2r处理裸 `Map`/`List` 类型推断不足，输出 `/* unknown */`
-  - 需要给 auto/lib/ 中的 Map/List 字段添加泛型参数（如 `Map<str, str>` 替代 `Map`）
-  - 或增强 Rust 版 a2r 的类型推断，对裸 `Map` 输出 `HashMap<String, String>` 默认值
-- Phase 3 验证: pos.at + error.at + token.at 合并编译运行成功
+- Phase 3 深层修复: a2r transpiler代码生成质量
+  - E0308 (442): char vs i32 类型不匹配 — a2r stdlib FFI映射需修复
+  - E0599 (186): 方法不存在 — 动态类型Map方法在HashMap<String,String>上不可用
+  - E0277 (161): trait bound — 需要 Display/Clone 等derive
+  - E0609 (95): 字段不存在 — a2r生成的struct字段名不匹配
+  - E0382 (30): 所有权/借用问题 — Auto的clone语义vs Rust的move语义
 
 ---
 

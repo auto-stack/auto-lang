@@ -8586,7 +8586,8 @@ impl RustTrans {
             "i", "j", "k", "ci", "ti", "ki", "ri", "ei", "pi", "si",
             "ti2", "ri2", "tri", "tc_i", "step_idx", "idx", "offset",
             "pos", "n", "count", "len", "start", "end", "index", "from",
-            "slot", "col",
+            "slot", "col", "gii", "pii", "ppi", "ii", "iii", "di",
+            "li", "mi", "ni", "qi", "vi", "wi", "xi", "yi", "zi",
         ];
 
         for var in &int_like_vars {
@@ -8642,6 +8643,24 @@ impl RustTrans {
                 }
             }).to_string();
             if new_content != *content { *content = new_content; }
+        }
+
+        // Pattern 4: expr.field.get(var) → expr.field[var as usize] for Vec fields
+        // Handles cases like goal.items.get(gii), plan.sections.get(pi), etc.
+        for var in &int_like_vars {
+            let pattern = format!(r"(\w+)\.(\w+)\.get\({}\)", regex::escape(var));
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let obj = caps.get(1).unwrap().as_str();
+                    let field = caps.get(2).unwrap().as_str();
+                    if vec_field_names.contains(&field) {
+                        format!("{}.{}[{} as usize]", obj, field, var)
+                    } else {
+                        format!("{}.{}.get({})", obj, field, var)
+                    }
+                }).to_string();
+                if new_content != *content { *content = new_content; }
+            }
         }
     }
 

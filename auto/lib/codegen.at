@@ -56,13 +56,13 @@ fn NATIVE_PRINT_I32() int { return 1 }
 fn NATIVE_PRINT_STR() int { return 3 }
 
 type CodeGen {
-    code List
-    strings Map       // string pool: "0" -> str, "1" -> str, ...
+    code List<int>
+    strings Map<str, str>       // string pool: "0" -> str, "1" -> str, ...
     n_strings int
-    exports Map
-    locals Map
+    exports Map<str, str>
+    locals Map<str, str>
     n_locals int
-    elem_types Map    // var_name -> elem type (0=int, 1=str) for List monomorphization
+    elem_types Map<str, str>    // var_name -> elem type (0=int, 1=str) for List monomorphization
 }
 
 fn codegen_new() CodeGen {
@@ -187,7 +187,7 @@ fn codegen_expr(cg CodeGen, node ASTNode, tenv TypeEnv) {
     }
 
     if kind == NodeKind.StrExpr {
-        codegen_emit(cg, OP_LOAD_STR())
+        codegen_emit(cg, OP_LOAD_STR() )
         var idx = codegen_add_string(cg, node.name)
         codegen_emit_u16(cg, idx)
         return 0
@@ -196,9 +196,9 @@ fn codegen_expr(cg CodeGen, node ASTNode, tenv TypeEnv) {
     if kind == NodeKind.BoolExpr {
         codegen_emit(cg, OP_CONST_I32())
         if node.name == "true" {
-            codegen_emit_i32(cg, BOOL_TRUE())
+            codegen_emit_i32(cg, BOOL_TRUE() )
         } else {
-            codegen_emit_i32(cg, BOOL_FALSE())
+            codegen_emit_i32(cg, BOOL_FALSE() )
         }
         return 0
     }
@@ -211,7 +211,7 @@ fn codegen_expr(cg CodeGen, node ASTNode, tenv TypeEnv) {
     if kind == NodeKind.IdentExpr {
         var slot = codegen_find_local(cg, node.name)
         if slot >= 0 {
-            codegen_emit(cg, OP_LOAD_LOCAL())
+            codegen_emit(cg, OP_LOAD_LOCAL() )
             codegen_emit(cg, slot)
         } else {
             codegen_emit(cg, OP_CONST_0())
@@ -229,12 +229,12 @@ fn codegen_expr(cg CodeGen, node ASTNode, tenv TypeEnv) {
         if node.op == "-" {
             codegen_emit(cg, OP_CONST_I32())
             codegen_emit_i32(cg, -1)
-            codegen_emit(cg, OP_MUL())
+            codegen_emit(cg, OP_MUL() )
         }
         if node.op == "!" {
             codegen_emit(cg, OP_CONST_I32())
             codegen_emit_i32(cg, 0)
-            codegen_emit(cg, OP_EQ())
+            codegen_emit(cg, OP_EQ() )
         }
         return 0
     }
@@ -262,8 +262,8 @@ fn codegen_binop(cg CodeGen, node ASTNode, tenv TypeEnv) {
         if left_node.kind == NodeKind.IdentExpr {
             var slot = codegen_find_local(cg, left_node.name)
             if slot >= 0 {
-                codegen_emit(cg, OP_DUP())
-                codegen_emit(cg, OP_STORE_LOCAL())
+                codegen_emit(cg, OP_DUP() )
+                codegen_emit(cg, OP_STORE_LOCAL() )
                 codegen_emit(cg, slot)
             }
         }
@@ -275,11 +275,11 @@ fn codegen_binop(cg CodeGen, node ASTNode, tenv TypeEnv) {
         if lt == 1 {
             codegen_expr(cg, node.left.get(0), tenv)
             codegen_expr(cg, node.right.get(0), tenv)
-            codegen_emit(cg, OP_STR_CAT())
+            codegen_emit(cg, OP_STR_CAT() )
         } else {
             codegen_expr(cg, node.left.get(0), tenv)
             codegen_expr(cg, node.right.get(0), tenv)
-            codegen_emit(cg, OP_ADD())
+            codegen_emit(cg, OP_ADD() )
         }
         return 0
     }
@@ -287,41 +287,41 @@ fn codegen_binop(cg CodeGen, node ASTNode, tenv TypeEnv) {
     codegen_expr(cg, node.left.get(0), tenv)
     codegen_expr(cg, node.right.get(0), tenv)
 
-    if op == "-" { codegen_emit(cg, OP_SUB()); return 0 }
-    if op == "*" { codegen_emit(cg, OP_MUL()); return 0 }
-    if op == "/" { codegen_emit(cg, OP_DIV()); return 0 }
-    if op == "%" { codegen_emit(cg, OP_MOD()); return 0 }
+    if op == "-" { codegen_emit(cg, OP_SUB() ); return 0 }
+    if op == "*" { codegen_emit(cg, OP_MUL() ); return 0 }
+    if op == "/" { codegen_emit(cg, OP_DIV() ); return 0 }
+    if op == "%" { codegen_emit(cg, OP_MOD() ); return 0 }
 
-    if op == "==" { codegen_emit(cg, OP_EQ()); return 0 }
-    if op == "!=" { codegen_emit(cg, OP_NE()); return 0 }
-    if op == "<" { codegen_emit(cg, OP_LT()); return 0 }
-    if op == ">" { codegen_emit(cg, OP_GT()); return 0 }
-    if op == "<=" { codegen_emit(cg, OP_LE()); return 0 }
-    if op == ">=" { codegen_emit(cg, OP_GE()); return 0 }
+    if op == "==" { codegen_emit(cg, OP_EQ() ); return 0 }
+    if op == "!=" { codegen_emit(cg, OP_NE() ); return 0 }
+    if op == "<" { codegen_emit(cg, OP_LT() ); return 0 }
+    if op == ">" { codegen_emit(cg, OP_GT() ); return 0 }
+    if op == "<=" { codegen_emit(cg, OP_LE() ); return 0 }
+    if op == ">=" { codegen_emit(cg, OP_GE() ); return 0 }
 
     if op == "||" {
         codegen_emit(cg, OP_CONST_0())
-        codegen_emit(cg, OP_NE())
-        codegen_emit(cg, OP_DUP())
+        codegen_emit(cg, OP_NE() )
+        codegen_emit(cg, OP_DUP() )
         var jmp_early = codegen_offset(cg)
-        codegen_emit(cg, OP_JMP_IF_Z())
+        codegen_emit(cg, OP_JMP_IF_Z() )
         codegen_emit_u16(cg, 0)
-        codegen_emit(cg, OP_POP())
+        codegen_emit(cg, OP_POP() )
         codegen_emit(cg, OP_CONST_1())
         codegen_patch_u16(cg, jmp_early + 1, codegen_offset(cg) - jmp_early - 3)
         return 0
     }
     if op == "&&" {
         codegen_emit(cg, OP_CONST_0())
-        codegen_emit(cg, OP_NE())
-        codegen_emit(cg, OP_DUP())
+        codegen_emit(cg, OP_NE() )
+        codegen_emit(cg, OP_DUP() )
         var jmp_short = codegen_offset(cg)
-        codegen_emit(cg, OP_JMP_IF_Z())
+        codegen_emit(cg, OP_JMP_IF_Z() )
         codegen_emit_u16(cg, 0)
-        codegen_emit(cg, OP_POP())
+        codegen_emit(cg, OP_POP() )
         codegen_expr(cg, node.right.get(0), tenv)
         codegen_emit(cg, OP_CONST_0())
-        codegen_emit(cg, OP_NE())
+        codegen_emit(cg, OP_NE() )
         codegen_patch_u16(cg, jmp_short + 1, codegen_offset(cg) - jmp_short - 3)
         return 0
     }
@@ -360,11 +360,11 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
 
     // Static constructors: List.new() / Map.new()
     if callee == "List.new" {
-        codegen_emit(cg, OP_LIST_NEW())
+        codegen_emit(cg, OP_LIST_NEW() )
         return 0
     }
     if callee == "Map.new" {
-        codegen_emit(cg, OP_MAP_NEW())
+        codegen_emit(cg, OP_MAP_NEW() )
         return 0
     }
 
@@ -387,7 +387,7 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
         var var_name = codegen_extract_var_name(callee)
         var slot = codegen_find_local(cg, var_name)
         if slot >= 0 {
-            codegen_emit(cg, OP_LOAD_LOCAL())
+            codegen_emit(cg, OP_LOAD_LOCAL() )
             codegen_emit(cg, slot)
             var i = 0
             var pn = node.params.len()
@@ -402,64 +402,64 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
                     et = type_infer_expr(tenv, node.params.get(0))
                 }
                 if et == 1 {
-                    codegen_emit(cg, OP_LIST_PUSH_STR())
+                    codegen_emit(cg, OP_LIST_PUSH_STR() )
                     codegen_record_elem(cg, var_name, 1)
                 } else {
-                    codegen_emit(cg, OP_LIST_PUSH())
+                    codegen_emit(cg, OP_LIST_PUSH() )
                 }
                 codegen_emit(cg, OP_CONST_0())
                 return 0
             }
             if codegen_extract_method_suffix(callee, ".get") == 1 {
                 var et = codegen_lookup_elem(cg, var_name)
-                if et == 1 { codegen_emit(cg, OP_LIST_GET_STR()) }
-                else { codegen_emit(cg, OP_LIST_GET()) }
+                if et == 1 { codegen_emit(cg, OP_LIST_GET_STR() ) }
+                else { codegen_emit(cg, OP_LIST_GET() ) }
                 return 0
             }
             if codegen_extract_method_suffix(callee, ".len") == 1 {
                 var len_type = type_lookup(tenv, var_name)
-                if len_type == 1 { codegen_emit(cg, OP_STR_LEN()) }
-                else { codegen_emit(cg, OP_LIST_LEN()) }
+                if len_type == 1 { codegen_emit(cg, OP_STR_LEN() ) }
+                else { codegen_emit(cg, OP_LIST_LEN() ) }
                 return 0
             }
             if codegen_extract_method_suffix(callee, ".insert_int") == 1 {
-                codegen_emit(cg, OP_MAP_INSERT_INT())
+                codegen_emit(cg, OP_MAP_INSERT_INT() )
                 codegen_emit(cg, OP_CONST_0())
                 return 0
             }
-            if codegen_extract_method_suffix(callee, ".get_int") == 1 { codegen_emit(cg, OP_MAP_GET_INT()); return 0 }
-            if codegen_extract_method_suffix(callee, ".contains") == 1 { codegen_emit(cg, OP_MAP_CONTAINS()); return 0 }
+            if codegen_extract_method_suffix(callee, ".get_int") == 1 { codegen_emit(cg, OP_MAP_GET_INT() ); return 0 }
+            if codegen_extract_method_suffix(callee, ".contains") == 1 { codegen_emit(cg, OP_MAP_CONTAINS() ); return 0 }
             if codegen_extract_method_suffix(callee, ".insert_str") == 1 {
-                codegen_emit(cg, OP_MAP_INSERT_STR())
+                codegen_emit(cg, OP_MAP_INSERT_STR() )
                 codegen_emit(cg, OP_CONST_0())
                 return 0
             }
-            if codegen_extract_method_suffix(callee, ".get_str") == 1 { codegen_emit(cg, OP_MAP_GET_STR()); return 0 }
+            if codegen_extract_method_suffix(callee, ".get_str") == 1 { codegen_emit(cg, OP_MAP_GET_STR() ); return 0 }
             if codegen_extract_method_suffix(callee, ".set") == 1 {
                 var et = codegen_lookup_elem(cg, var_name)
-                if et == 1 { codegen_emit(cg, OP_LIST_SET_STR()) }
-                else { codegen_emit(cg, OP_LIST_SET()) }
+                if et == 1 { codegen_emit(cg, OP_LIST_SET_STR() ) }
+                else { codegen_emit(cg, OP_LIST_SET() ) }
                 codegen_emit(cg, OP_CONST_0())
                 return 0
             }
             if codegen_extract_method_suffix(callee, ".pop") == 1 {
                 var et = codegen_lookup_elem(cg, var_name)
-                if et == 1 { codegen_emit(cg, OP_LIST_POP_STR()) }
-                else { codegen_emit(cg, OP_LIST_POP()) }
+                if et == 1 { codegen_emit(cg, OP_LIST_POP_STR() ) }
+                else { codegen_emit(cg, OP_LIST_POP() ) }
                 return 0
             }
-            if codegen_extract_method_suffix(callee, ".char_at") == 1 { codegen_emit(cg, OP_STR_CHAR_AT()); return 0 }
-            if codegen_extract_method_suffix(callee, ".substr") == 1 { codegen_emit(cg, OP_STR_SUBSTR()); return 0 }
+            if codegen_extract_method_suffix(callee, ".char_at") == 1 { codegen_emit(cg, OP_STR_CHAR_AT() ); return 0 }
+            if codegen_extract_method_suffix(callee, ".substr") == 1 { codegen_emit(cg, OP_STR_SUBSTR() ); return 0 }
         }
     }
 
     if callee == "print" {
         if node.params.len() == 0 {
             var idx = codegen_add_string(cg, "\n")
-            codegen_emit(cg, OP_LOAD_STR())
+            codegen_emit(cg, OP_LOAD_STR() )
             codegen_emit_u16(cg, idx)
-            codegen_emit(cg, OP_CALL_NAT())
-            codegen_emit_u16(cg, NATIVE_PRINT_STR())
+            codegen_emit(cg, OP_CALL_NAT() )
+            codegen_emit_u16(cg, NATIVE_PRINT_STR() )
         } else {
             var arg_node = node.params.get(0)
             var arg_type = type_infer_expr(tenv, arg_node)
@@ -469,18 +469,18 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
             }
             codegen_expr(cg, arg_node, tenv)
             if arg_type == 1 {
-                codegen_emit(cg, OP_CALL_NAT())
-                codegen_emit_u16(cg, NATIVE_PRINT_STR())
+                codegen_emit(cg, OP_CALL_NAT() )
+                codegen_emit_u16(cg, NATIVE_PRINT_STR() )
             } else {
-                codegen_emit(cg, OP_CALL_NAT())
+                codegen_emit(cg, OP_CALL_NAT() )
                 codegen_emit_u16(cg, NATIVE_PRINT_I32())
             }
         }
         var nl = codegen_add_string(cg, "\n")
-        codegen_emit(cg, OP_LOAD_STR())
+        codegen_emit(cg, OP_LOAD_STR() )
         codegen_emit_u16(cg, nl)
-        codegen_emit(cg, OP_CALL_NAT())
-        codegen_emit_u16(cg, NATIVE_PRINT_STR())
+        codegen_emit(cg, OP_CALL_NAT() )
+        codegen_emit_u16(cg, NATIVE_PRINT_STR() )
         codegen_emit(cg, OP_CONST_0())
         return 0
     }
@@ -492,7 +492,7 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
             codegen_expr(cg, node.params.get(i), tenv)
             i = i + 1
         }
-        codegen_emit(cg, OP_CALL())
+        codegen_emit(cg, OP_CALL() )
         var addr = cg.exports.get_int(callee)
         codegen_emit_u32(cg, addr)
         codegen_emit(cg, pn)
@@ -524,7 +524,7 @@ fn codegen_stmt(cg CodeGen, node ASTNode, tenv TypeEnv) {
         } else {
             codegen_emit(cg, OP_CONST_0())
         }
-        codegen_emit(cg, OP_STORE_LOCAL())
+        codegen_emit(cg, OP_STORE_LOCAL() )
         codegen_emit(cg, slot)
         return 0
     }
@@ -535,7 +535,7 @@ fn codegen_stmt(cg CodeGen, node ASTNode, tenv TypeEnv) {
         } else {
             codegen_emit(cg, OP_CONST_0())
         }
-        codegen_emit(cg, OP_RET())
+        codegen_emit(cg, OP_RET() )
         // Use current function's n_args stored during compile
         var n_args = 0
         if cg.exports.contains("__current_n_args__") {
@@ -548,11 +548,11 @@ fn codegen_stmt(cg CodeGen, node ASTNode, tenv TypeEnv) {
     if kind == NodeKind.IfStmt {
         codegen_expr(cg, node.cond.get(0), tenv)
         var jmp_else = codegen_offset(cg)
-        codegen_emit(cg, OP_JMP_IF_Z())
+        codegen_emit(cg, OP_JMP_IF_Z() )
         codegen_emit_u16(cg, 0)
         codegen_stmts(cg, node.children, tenv)
         var jmp_end = codegen_offset(cg)
-        codegen_emit(cg, OP_JMP())
+        codegen_emit(cg, OP_JMP() )
         codegen_emit_u16(cg, 0)
         codegen_patch_u16(cg, jmp_else + 1, codegen_offset(cg) - jmp_else - 3)
         if node.else_body.len() > 0 {
@@ -571,10 +571,10 @@ fn codegen_stmt(cg CodeGen, node ASTNode, tenv TypeEnv) {
         var loop_start = codegen_offset(cg)
         codegen_expr(cg, node.left.get(0), tenv)
         var jmp_exit = codegen_offset(cg)
-        codegen_emit(cg, OP_JMP_IF_Z())
+        codegen_emit(cg, OP_JMP_IF_Z() )
         codegen_emit_u16(cg, 0)
         codegen_stmts(cg, node.children, tenv)
-        codegen_emit(cg, OP_JMP())
+        codegen_emit(cg, OP_JMP() )
         var loop_size = codegen_offset(cg) - loop_start
         var back_jmp = loop_size + 2
         var neg_off = 0 - back_jmp
@@ -589,35 +589,35 @@ fn codegen_stmt(cg CodeGen, node ASTNode, tenv TypeEnv) {
         var slot = codegen_alloc_local(cg, node.name)
         var range_node = node.left.get(0)
         codegen_expr(cg, range_node.left.get(0), tenv)
-        codegen_emit(cg, OP_STORE_LOCAL())
+        codegen_emit(cg, OP_STORE_LOCAL() )
         codegen_emit(cg, slot)
         var end_slot = codegen_alloc_local(cg, "__forin_end__")
         codegen_expr(cg, range_node.right.get(0), tenv)
         if range_node.op == "..=" {
             codegen_emit(cg, OP_CONST_I32())
             codegen_emit_i32(cg, 1)
-            codegen_emit(cg, OP_ADD())
+            codegen_emit(cg, OP_ADD() )
         }
-        codegen_emit(cg, OP_STORE_LOCAL())
+        codegen_emit(cg, OP_STORE_LOCAL() )
         codegen_emit(cg, end_slot)
         var loop_start = codegen_offset(cg)
-        codegen_emit(cg, OP_LOAD_LOCAL())
+        codegen_emit(cg, OP_LOAD_LOCAL() )
         codegen_emit(cg, slot)
-        codegen_emit(cg, OP_LOAD_LOCAL())
+        codegen_emit(cg, OP_LOAD_LOCAL() )
         codegen_emit(cg, end_slot)
-        codegen_emit(cg, OP_LT())
+        codegen_emit(cg, OP_LT() )
         var jmp_exit = codegen_offset(cg)
-        codegen_emit(cg, OP_JMP_IF_Z())
+        codegen_emit(cg, OP_JMP_IF_Z() )
         codegen_emit_u16(cg, 0)
         codegen_stmts(cg, node.children, tenv)
-        codegen_emit(cg, OP_LOAD_LOCAL())
+        codegen_emit(cg, OP_LOAD_LOCAL() )
         codegen_emit(cg, slot)
         codegen_emit(cg, OP_CONST_I32())
         codegen_emit_i32(cg, 1)
-        codegen_emit(cg, OP_ADD())
-        codegen_emit(cg, OP_STORE_LOCAL())
+        codegen_emit(cg, OP_ADD() )
+        codegen_emit(cg, OP_STORE_LOCAL() )
         codegen_emit(cg, slot)
-        codegen_emit(cg, OP_JMP())
+        codegen_emit(cg, OP_JMP() )
         var loop_size = codegen_offset(cg) - loop_start
         var back_jmp = loop_size + 2
         var neg_off = 0 - back_jmp
@@ -630,7 +630,7 @@ fn codegen_stmt(cg CodeGen, node ASTNode, tenv TypeEnv) {
 
     if kind == NodeKind.ExprStmt {
         codegen_expr(cg, node.left.get(0), tenv)
-        codegen_emit(cg, OP_POP())
+        codegen_emit(cg, OP_POP() )
         return 0
     }
 
@@ -642,7 +642,7 @@ fn codegen_stmt(cg CodeGen, node ASTNode, tenv TypeEnv) {
     return 0
 }
 
-fn codegen_stmts(cg CodeGen, stmts List, tenv TypeEnv) {
+fn codegen_stmts(cg CodeGen, stmts List<ASTNode>, tenv TypeEnv) {
     var i = 0
     var n = stmts.len()
     for i < n {
@@ -653,7 +653,7 @@ fn codegen_stmts(cg CodeGen, stmts List, tenv TypeEnv) {
 
 // ---- Top-Level Compilation ----
 
-fn codegen_compile(cg CodeGen, stmts List, tenv TypeEnv) {
+fn codegen_compile(cg CodeGen, stmts List<ASTNode>, tenv TypeEnv) {
     var header_size = 7
     var offset = 0
     for offset < header_size {
@@ -679,14 +679,14 @@ fn codegen_compile(cg CodeGen, stmts List, tenv TypeEnv) {
                 codegen_alloc_local(cg, param.name)
                 j = j + 1
             }
-            codegen_emit(cg, OP_RESERVE_STACK())
+            codegen_emit(cg, OP_RESERVE_STACK() )
             codegen_emit(cg, 0)
             var reserve_off = codegen_offset(cg) - 1
             // Store current n_args for ReturnStmt to use
             cg.exports.insert_int("__current_n_args__", pn)
             codegen_stmts(cg, stmt.children, tenv)
             codegen_emit(cg, OP_CONST_0())
-            codegen_emit(cg, OP_RET())
+            codegen_emit(cg, OP_RET() )
             codegen_emit(cg, pn)
             cg.code.set(reserve_off, cg.n_locals)
         }
@@ -695,9 +695,9 @@ fn codegen_compile(cg CodeGen, stmts List, tenv TypeEnv) {
 
     if cg.exports.contains("main") {
         var main_addr = cg.exports.get_int("main")
-        cg.code.set(0, OP_CALL())
+        cg.code.set(0, OP_CALL() )
         codegen_patch_u32(cg, 1, main_addr)
         cg.code.set(5, 0)
-        cg.code.set(6, OP_HALT())
+        cg.code.set(6, OP_HALT() )
     }
 }
