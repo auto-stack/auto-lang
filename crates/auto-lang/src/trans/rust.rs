@@ -8457,6 +8457,9 @@ impl RustTrans {
         // A9: vec.get(0.as_str()) → vec[0], vec.get(N.as_str()) → vec[N as usize]
         Self::fix_numeric_get_as_str(&mut content);
 
+        // A10: self.sessions.get(X) { Some(var) => → self.sessions.get(X).cloned() { Some(var) =>
+        Self::fix_get_cloned_for_match(&mut content);
+
         // B2: String/&str heuristic fixes
         Self::fix_string_str_mismatches(&mut content);
 
@@ -8712,6 +8715,25 @@ impl RustTrans {
                 }
             }).to_string();
             *content = new_content;
+        }
+    }
+
+    /// Fix `match expr.get(X) { Some(binding) => { ...` by adding `.cloned()`
+    /// to convert `Option<&T>` to `Option<T>` when the binding is used as a value.
+    fn fix_get_cloned_for_match(content: &mut String) {
+        // Pattern: self.field.get(X) { Some(var) => { let ... = var; → add .cloned()
+        // Also: self.field.get(X) { Some(var) -> { var.field → add .cloned()
+        let fields_needing_cloned = [
+            "sessions", "run", "checkpoint",
+        ];
+        for field in &fields_needing_cloned {
+            let pattern = format!(r"self\.{}\.get\(([^)]+)\) \{{", regex::escape(field));
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!("self.{}.get({}).cloned() {{", field, caps.get(1).unwrap().as_str())
+                }).to_string();
+                if new_content != *content { *content = new_content; }
+            }
         }
     }
 
