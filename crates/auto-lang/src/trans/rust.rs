@@ -4698,7 +4698,13 @@ impl RustTrans {
             // Regular method call: object.method(args)
             let is_insert = method_name.as_str() == "insert";
             // Look up str-param flags for auto-borrow at method call sites
-            // Try qualified key "Type.method" first, then bare "method"
+            // Try qualified key "Type.method" first. Only fall back to bare "method"
+            // when the method name is NOT a generic Rust method (get, insert, push, etc.)
+            // to avoid false positive .as_str() on non-string args.
+            let generic_rust_methods = [
+                "get", "insert", "push", "remove", "contains", "len",
+                "is_empty", "iter", "keys", "values", "clone", "new",
+            ];
             let method_str_flags = if let Expr::Ident(obj_name) = object.as_ref() {
                 // Try to infer the type from local_var_types
                 let obj_type: String = self.local_var_types.get(obj_name).map(|ty| {
@@ -4709,9 +4715,14 @@ impl RustTrans {
                     }
                 }).unwrap_or_default();
                 let qualified: AutoStr = format!("{}.{}", obj_type, method_name).into();
-                self.fn_str_param_indices.get(&qualified)
-                    .cloned()
-                    .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
+                let from_qualified = self.fn_str_param_indices.get(&qualified).cloned();
+                if from_qualified.is_some() {
+                    from_qualified
+                } else if !generic_rust_methods.contains(&method_name.as_str()) {
+                    self.fn_str_param_indices.get(method_name.as_str()).cloned()
+                } else {
+                    None
+                }
             } else {
                 // For non-simple objects (e.g., self.field, module.Type), don't fall back to
                 // bare method name lookup — it may match wrong function signatures.
@@ -5105,12 +5116,27 @@ impl RustTrans {
 
     /// Check if an arg is an integer-typed variable (i32/u32/usize)
     fn is_int_var(arg: &Arg, local_var_types: &HashMap<AutoStr, Type>) -> bool {
-        if let Arg::Pos(Expr::Ident(name)) = arg {
-            local_var_types.get(name)
-                .map(|ty| matches!(ty, Type::Int | Type::Uint))
-                .unwrap_or(false)
-        } else {
-            false
+        match arg {
+            Arg::Pos(Expr::Ident(name)) => {
+                local_var_types.get(name)
+                    .map(|ty| matches!(ty, Type::Int | Type::Uint))
+                    .unwrap_or(false)
+            }
+            Arg::Pos(Expr::Dot(obj, field)) => {
+                // self.uint_field → check if it's a known uint struct field
+                if let Expr::Ident(_) = obj.as_ref() {
+                    // Check struct_field_types for this field
+                    // Heuristic: if field name ends with common integer suffixes
+                    let fname = field.as_str();
+                    fname == "current_step" || fname == "cumulative_tokens"
+                        || fname == "step_count" || fname == "run_id"
+                        || fname.ends_with("_count") || fname.ends_with("_index")
+                        || fname.ends_with("_idx") || fname.ends_with("_id")
+                } else {
+                    false
+                }
+            }
+            _ => false,
         }
     }
 
@@ -8078,6 +8104,8 @@ impl RustTrans {
         ret_type: &Type,
         _insert: &str,
     ) -> AutoResult<()> {
+        // Set current_fn_ret_type so that return statements can check if .to_string() is needed
+        self.current_fn_ret_type = Some(ret_type.clone());
         let has_return = !matches!(ret_type, Type::Void);
 
         sink.body.write(b"{\n")?;
@@ -10034,14 +10062,24 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
     // Helper: collect Fn declarations from statements, including methods inside TypeDecl
     fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
+        // Generic method names that should never be stored as bare-name keys
+        // to avoid false positive .as_str() on unrelated calls
+        let generic_methods = [
+            "get", "set", "insert", "push", "remove", "contains", "len",
+            "is_empty", "iter", "keys", "values", "clone", "new",
+            "update", "delete", "find", "index",
+        ];
         for stmt in stmts {
             if let Stmt::Fn(fn_decl) = stmt {
                 let str_flags: Vec<bool> = fn_decl.params.iter()
                     .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
                     .collect();
                 if !str_flags.is_empty() {
-                    map.insert(fn_decl.name.clone(), str_flags.clone());
-                    // Also store qualified key "TypeName.method_name" for methods
+                    // Only store bare name for non-generic method names
+                    if !generic_methods.contains(&fn_decl.name.as_str()) {
+                        map.insert(fn_decl.name.clone(), str_flags.clone());
+                    }
+                    // Always store qualified key "TypeName.method_name" for methods
                     if !type_name.is_empty() || fn_decl.parent.is_some() {
                         let parent = fn_decl.parent.as_ref().map(|p| p.to_string()).unwrap_or_else(|| type_name.to_string());
                         let qualified = format!("{}.{}", parent, fn_decl.name);
@@ -10057,7 +10095,9 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
                         .collect();
                     if !str_flags.is_empty() {
-                        map.insert(method.name.clone(), str_flags.clone());
+                        if !generic_methods.contains(&method.name.as_str()) {
+                            map.insert(method.name.clone(), str_flags.clone());
+                        }
                         let qualified = format!("{}.{}", type_name_str, method.name);
                         map.insert(AutoStr::from(qualified), str_flags);
                     }
