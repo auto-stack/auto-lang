@@ -5031,7 +5031,19 @@ impl RustTrans {
         let str_flags = if let Expr::Ident(fn_name) = call.name.as_ref() {
             self.fn_str_param_indices.get(fn_name).cloned()
         } else {
-            None
+            // Try to extract the last segment of a qualified path like crate::forge::func
+            let last_seg = match call.name.as_ref() {
+                Expr::Dot(_, field) => Some(field.as_str()),
+                Expr::Bina(_, Op::Dot, rhs) => {
+                    if let Expr::Ident(name) = rhs.as_ref() { Some(name.as_str()) } else { None }
+                }
+                _ => None,
+            };
+            if let Some(name) = last_seg {
+                self.fn_str_param_indices.get(name).cloned()
+            } else {
+                None
+            }
         };
 
         // Look up struct-param flags for auto-clone at call sites
