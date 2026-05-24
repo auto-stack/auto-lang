@@ -29,7 +29,7 @@
 | 2.E3: 表达式补全 | ✅ 已完成 | 数组/错误传播/self字段替换/别名, 测试 094-099 (Plan 237 Phase E3+E4) |
 | 2.E4: 对象/闭包 | ✅ 已完成 | 对象字面量 + lambda + PairExpr (合并到 E3 一起实现) |
 | 2.E5: 类型增强 | ✅ 已完成 | struct构造函数✅ Option/Result匹配✅ 借用语义✅ |
-| Phase 3: 自举 | ⏳ 待开始 | 依赖 Phase 2 |
+| Phase 3: 自举 | 🔧 进行中 | Rust版a2r转译12文件成功, 合并编译有1356错误(Map裸类型推断) |
 
 **已完成的基础工作:**
 - [x] a2r 转译器成熟化: step-00（555 行 Auto 程序）从 69 错误降至 0 错误（Apr 30）
@@ -48,10 +48,14 @@
 - [x] Phase 2.E5: struct 构造函数 Point(1,2) → Point { x: 1, y: 2 } + 多语句 match arm + use.c/py FFI + 泛型类型映射
 - [x] Phase 2.E5: Option/Result 模式匹配 — parser.at 添加 SomeKW/NoneKW/OkKW/ErrKW 处理, a2r.at CallExpr 正确输出 Some(x)/None/Ok(x)/Err(x) (测试 107)
 - [x] Phase 2.E5: 借用语义 — lexer.at 添加 DotView/DotMut/DotMove/DotTake, parser.at 添加后缀解析, ast.at 添加 ViewExpr/MutExpr/MoveExpr, a2r.at .view→&expr/.mut→&mut/.move→passthrough (测试 108)
+- [x] Phase 3 进展: Rust版a2r成功转译全部12个auto/lib/文件 (6386行Rust), pos+error+token合并编译运行通过
+- [ ] Phase 3 阻塞: 裸Map/List类型推断 → Rust版a2r输出HashMap</* unknown */> → 1356编译错误
 
 **下一步行动:**
-- D2: 泛型注册表 (generics.at 类型字符串替换)
-- Phase 3 准备: 用 AA2R 转译 auto/lib/ 所有文件，验证输出可编译
+- Phase 3 阻塞: Rust版a2r处理裸 `Map`/`List` 类型推断不足，输出 `/* unknown */`
+  - 需要给 auto/lib/ 中的 Map/List 字段添加泛型参数（如 `Map<str, str>` 替代 `Map`）
+  - 或增强 Rust 版 a2r 的类型推断，对裸 `Map` 输出 `HashMap<String, String>` 默认值
+- Phase 3 验证: pos.at + error.at + token.at 合并编译运行成功
 
 ---
 

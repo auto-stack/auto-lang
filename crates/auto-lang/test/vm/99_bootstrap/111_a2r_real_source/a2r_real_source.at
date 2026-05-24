@@ -1,0 +1,111 @@
+// Test: AA2R Phase 3 — transpile real auto/lib source snippets
+// Each test uses actual source patterns from auto/lib files
+
+fn main() {
+    // T1: pos.at — type definition
+    var pos_src = "type Pos {\nline uint\nat uint\ntotal uint\n}"
+    var r1 = run_a2r(pos_src)
+    var has_struct = r1.find("struct Pos")
+    var has_line = r1.find("line: u32")
+    if has_struct >= 0 && has_line >= 0 {
+        print("t1_pos:ok")
+    } else {
+        print("t1_pos:fail:" + r1)
+    }
+
+    // T2: error.at — type with str field
+    var err_src = "type Error {\nmessage str\nline uint\nat uint\n}"
+    var r2 = run_a2r(err_src)
+    var has_msg = r2.find("message: String")
+    if has_msg >= 0 {
+        print("t2_error:ok")
+    } else {
+        print("t2_error:fail:" + r2)
+    }
+
+    // T3: token.at — enum with many variants
+    var tok_src = "enum TokenKind {\nInt\nUint\nStr\nBool\nIdent\nLParen\nRParen\nComma\nDot\n}"
+    var r3 = run_a2r(tok_src)
+    var has_enum = r3.find("enum TokenKind")
+    var has_int = r3.find("Int")
+    if has_enum >= 0 && has_int >= 0 {
+        print("t3_token:ok")
+    } else {
+        print("t3_token:fail:" + r3)
+    }
+
+    // T4: ast.at — type with method (ASTNode)
+    var ast_src = "type ASTNode {\nkind int\nvalue str\nname str\n}"
+    var r4 = run_a2r(ast_src)
+    var has_ast = r4.find("struct ASTNode")
+    var has_kind = r4.find("kind: i32")
+    if has_ast >= 0 && has_kind >= 0 {
+        print("t4_ast:ok")
+    } else {
+        print("t4_ast:fail:" + r4)
+    }
+
+    // T5: parser.at — function with List parameter
+    var parse_src = "fn parse_expr(p int) str {\nreturn \"expr\"\n}"
+    var r5 = run_a2r(parse_src)
+    var has_fn = r5.find("fn parse_expr")
+    if has_fn >= 0 {
+        print("t5_parser:ok")
+    } else {
+        print("t5_parser:fail:" + r5)
+    }
+
+    // T6: lexer.at — function with string operations
+    var lex_src = "fn skip_ws(src str) str {\nvar i = 0\nfor i < src.len() {\ni = i + 1\n}\nreturn src\n}"
+    var r6 = run_a2r(lex_src)
+    var has_skip = r6.find("fn skip_ws")
+    var has_while = r6.find("while")
+    if has_skip >= 0 && has_while >= 0 {
+        print("t6_lexer:ok")
+    } else {
+        print("t6_lexer:fail:" + r6)
+    }
+
+    // T7: a2r.at — complex function with string concat and conditions
+    var a2r_src = "fn a2r_type(t str) str {\nif t == \"int\" {\nreturn \"i32\"\n}\nreturn t\n}"
+    var r7 = run_a2r(a2r_src)
+    var has_a2r = r7.find("fn a2r_type")
+    var has_i32 = r7.find("i32")
+    if has_a2r >= 0 && has_i32 >= 0 {
+        print("t7_a2r:ok")
+    } else {
+        print("t7_a2r:fail:" + r7)
+    }
+
+    // T8: ext block with methods
+    var ext_src = "ext Pos {\nfn to_str() str {\nreturn \"pos\"\n}\n}"
+    var r8 = run_a2r(ext_src)
+    var has_impl = r8.find("impl Pos")
+    var has_method = r8.find("fn to_str")
+    if has_impl >= 0 && has_method >= 0 {
+        print("t8_ext:ok")
+    } else {
+        print("t8_ext:fail:" + r8)
+    }
+
+    // T9: use statement
+    var use_src = "use io\nfn main() {\nprint(42)\n}"
+    var r9 = run_a2r(use_src)
+    var has_use = r9.find("use io")
+    if has_use >= 0 {
+        print("t9_use:ok")
+    } else {
+        print("t9_use:fail:" + r9)
+    }
+
+    // T10: is/match with else
+    var is_src = "fn classify(x int) str {\nis x {\n0 -> \"zero\"\nelse -> \"other\"\n}\n}"
+    var r10 = run_a2r(is_src)
+    var has_match = r10.find("match x")
+    var has_else = r10.find("_ =>")
+    if has_match >= 0 && has_else >= 0 {
+        print("t10_is:ok")
+    } else {
+        print("t10_is:fail:" + r10)
+    }
+}
