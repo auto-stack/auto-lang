@@ -4256,6 +4256,8 @@ impl RustTrans {
                 // HashMap methods
                 "set" => Some("insert"),
                 "delete" => Some("remove"),
+                // String methods that need special handling
+                "split" => Some("split"),
                 // Type conversion
                 "to_string" => Some("to_string"),
                 _ => contains_rust,
@@ -4320,6 +4322,11 @@ impl RustTrans {
                 // trim/trim_start/trim_end return &str, auto-convert to String
                 if matches!(method_name.as_str(), "trim" | "trim_left" | "trim_right") {
                     write!(out, ".to_string()")?;
+                }
+                // split returns iterator in Rust, but Auto treats it as Vec.
+                // Collect into Vec so .len() and .get() work.
+                if method_name.as_str() == "split" {
+                    write!(out, ".collect::<Vec<_>>()")?;
                 }
                 return Ok(());
             }
@@ -8293,6 +8300,10 @@ impl RustTrans {
         // B10: Fix integer.as_str() → integer.to_string().as_str()
         Self::fix_int_as_str(&mut content);
 
+        // B11: Fix str.split(X).len() → str.split(X).count()
+        //     and str.split(X).get(i) → str.split(X).nth(i)
+        Self::fix_split_methods(&mut content);
+
         *output = content.into_bytes();
     }
 
@@ -8804,6 +8815,50 @@ impl RustTrans {
             if new != *content {
                 *content = new;
             }
+        }
+    }
+
+    /// Fix str.split(X).len() → str.split(X).count()
+    /// and str.split(X).get(i) → str.split(X).nth(i)
+    /// Rust's Split is an iterator, not a Vec.
+    fn fix_split_methods(content: &mut String) {
+        // Pattern: VAR.split(X).len() → VAR.split(X).count()
+        if let Ok(re) = regex::Regex::new(r"\.split\(([^)]+)\)\.len\(\)") {
+            let new = re.replace_all(content, |caps: &regex::Captures| {
+                let arg = caps.get(1).unwrap().as_str();
+                format!(".split({}).count()", arg)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+
+        // Pattern: VAR.split(X).get(N) → VAR.split(X).nth(N)
+        if let Ok(re) = regex::Regex::new(r"\.split\(([^)]+)\)\.get\(([^)]+)\)") {
+            let new = re.replace_all(content, |caps: &regex::Captures| {
+                let split_arg = caps.get(1).unwrap().as_str();
+                let get_arg = caps.get(2).unwrap().as_str();
+                format!(".split({}).nth({})", split_arg, get_arg)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+
+        // Pattern: VAR.split(X)[N] → VAR.split(X).nth(N).unwrap()
+        if let Ok(re) = regex::Regex::new(r"\.split\(([^)]+)\)\[(\d+)\]") {
+            let new = re.replace_all(content, |caps: &regex::Captures| {
+                let split_arg = caps.get(1).unwrap().as_str();
+                let idx = caps.get(2).unwrap().as_str();
+                format!(".split({}).nth({}).unwrap()", split_arg, idx)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+
+        // Pattern: VAR.split(X)[VAR2 as usize] → VAR.split(X).nth(VAR2 as usize).unwrap()
+        if let Ok(re) = regex::Regex::new(r"\.split\(([^)]+)\)\[(\w+ as usize)\]") {
+            let new = re.replace_all(content, |caps: &regex::Captures| {
+                let split_arg = caps.get(1).unwrap().as_str();
+                let idx = caps.get(2).unwrap().as_str();
+                format!(".split({}).nth({}).unwrap()", split_arg, idx)
+            }).to_string();
+            if new != *content { *content = new; }
         }
     }
 
