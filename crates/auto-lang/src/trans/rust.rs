@@ -8230,6 +8230,12 @@ impl RustTrans {
         // B2: String/&str heuristic fixes
         Self::fix_string_str_mismatches(&mut content);
 
+        // B7: Fix vec![(str, str, str)] where return type is Vec<(String,...)>
+        Self::fix_vec_tuple_string_literals(&mut content);
+
+        // B8: Fix tuple.get_N() -> tuple.N
+        Self::fix_tuple_get_n(&mut content);
+
         // B4: Fix u32/i32 cast mismatches
         Self::fix_u32_i32_casts(&mut content);
 
@@ -8547,6 +8553,87 @@ impl RustTrans {
         // Pattern: `!(a2r_std::fs::is_dir(X))` → `!a2r_std::fs::is_dir(X)`
         // Only if the closing parens match — avoid removing extra parens
         // Skip this for now — `!(bool_expr)` is valid Rust
+    }
+
+    /// Fix vec![(str, str, str)] where the return type is Vec<(String, String, String)>.
+    /// Adds .to_string() to string literals inside tuples in vec![] macros.
+    fn fix_vec_tuple_string_literals(content: &mut String) {
+        // Strategy: find vec![ ... ]; regions and add .to_string() to bare string literals.
+        // Use a simple state machine over the full content.
+        let bytes = content.as_bytes();
+        let len = bytes.len();
+        let mut result = Vec::new();
+        let mut i = 0;
+        let mut in_vec = false;
+        let mut vec_depth = 0;
+
+        while i < len {
+            // Detect vec![
+            if !in_vec && i + 5 <= len && &bytes[i..i+5] == b"vec![" {
+                in_vec = true;
+                vec_depth = 1;
+                result.extend_from_slice(b"vec![");
+                i += 5;
+                continue;
+            }
+
+            if in_vec {
+                match bytes[i] {
+                    b'[' => { vec_depth += 1; result.push(b'['); i += 1; continue; }
+                    b']' => {
+                        vec_depth -= 1;
+                        result.push(b']');
+                        i += 1;
+                        if vec_depth == 0 { in_vec = false; }
+                        continue;
+                    }
+                    b'"' => {
+                        // Read the string literal
+                        let start = i;
+                        i += 1; // skip opening "
+                        while i < len && bytes[i] != b'"' {
+                            if bytes[i] == b'\\' { i += 1; } // skip escape
+                            i += 1;
+                        }
+                        if i < len { i += 1; } // skip closing "
+                        let lit = &content[start..i];
+                        // Check if already followed by .to_string()
+                        let rest = &content[i..];
+                        if rest.trim_start().starts_with(".to_string()") {
+                            result.extend_from_slice(lit.as_bytes());
+                        } else {
+                            result.extend_from_slice(lit.as_bytes());
+                            result.extend_from_slice(b".to_string()");
+                        }
+                        continue;
+                    }
+                    _ => { result.push(bytes[i]); i += 1; continue; }
+                }
+            }
+
+            result.push(bytes[i]);
+            i += 1;
+        }
+
+        let new = String::from_utf8(result).unwrap_or_else(|_| content.clone());
+        if new != *content {
+            *content = new;
+        }
+    }
+
+    /// Fix tuple.get_N() -> tuple.N (Rust tuple indexing)
+    fn fix_tuple_get_n(content: &mut String) {
+        let mut count = 0;
+        for n in 0..=9 {
+            let pattern = format!(".get_{}()", n);
+            let replacement = format!(".{}", n);
+            let reduced = content.replace(&pattern, &replacement);
+            if reduced != *content {
+                count += 1;
+                *content = reduced;
+            }
+        }
+        let _ = count;
     }
 
     /// Fix common String/&str mismatch patterns.
