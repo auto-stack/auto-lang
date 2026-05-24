@@ -3643,7 +3643,8 @@ impl RustTrans {
                             }
                         }
                     }
-                    // Non-numeric get: fall through to generic method call
+                    // Non-numeric get: fall through to generic method call handler
+                    // HashMap .get(&key).cloned() is handled by Python post-processing
                 }
                 // Plan 204 Phase 5: Complex method translations requiring
                 // non-trivial Rust output (not just a name remap).
@@ -8520,6 +8521,9 @@ impl RustTrans {
         // B2: String/&str heuristic fixes
         Self::fix_string_str_mismatches(&mut content);
 
+        // B13: Fix derive macros on structs with dyn Trait fields
+        Self::fix_dyn_trait_derives(&mut content);
+
         // B7: Fix vec![(str, str, str)] where return type is Vec<(String,...)>
         Self::fix_vec_tuple_string_literals(&mut content);
 
@@ -8793,6 +8797,22 @@ impl RustTrans {
                 if new_content != *content { *content = new_content; }
             }
         }
+        // Also fix: return self.field.get(X); → return self.field.get(X).cloned();
+        // HashMap::get returns Option<&T>, but Auto expects Option<T> for return types
+        if let Ok(re) = regex::Regex::new(r"return self\.(\w+)\.get\(([^)]+)\);") {
+            let map_fields = ["sessions", "run", "checkpoint", "pages", "wiki_dirs",
+                "project_locks", "professions", "souls", "agents"];
+            let new_content = re.replace_all(content, |caps: &regex::Captures| {
+                let field = caps.get(1).unwrap().as_str();
+                let key = caps.get(2).unwrap().as_str();
+                if map_fields.contains(&field) {
+                    format!("return self.{}.get({}).cloned();", field, key)
+                } else {
+                    caps.get(0).unwrap().as_str().to_string()
+                }
+            }).to_string();
+            if new_content != *content { *content = new_content; }
+        }
     }
 
     /// Fix u32/i32 cast mismatches:
@@ -8908,28 +8928,29 @@ impl RustTrans {
     /// a2r_std::fs::exists/is_dir now return bool, but Auto code uses == 0 / != 0.
     fn fix_bool_int_comparisons(content: &mut String) {
         // Pattern: `a2r_std::fs::exists(X) == 0` → `!a2r_std::fs::exists(X)`
-        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::exists\(([^)]*)\)\s*==\s*0") {
+        // Use non-greedy match to handle nested parens like `file_path.as_str()`
+        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::exists\((.+?)\)\s*==\s*0") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 format!("!a2r_std::fs::exists({})", caps.get(1).unwrap().as_str())
             }).to_string();
             *content = new;
         }
         // Pattern: `a2r_std::fs::exists(X) != 0` → `a2r_std::fs::exists(X)`
-        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::exists\(([^)]*)\)\s*!=\s*0") {
+        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::exists\((.+?)\)\s*!=\s*0") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 format!("a2r_std::fs::exists({})", caps.get(1).unwrap().as_str())
             }).to_string();
             *content = new;
         }
         // Pattern: `a2r_std::fs::is_dir(X) == 0` → `!a2r_std::fs::is_dir(X)`
-        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::is_dir\(([^)]*)\)\s*==\s*0") {
+        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::is_dir\((.+?)\)\s*==\s*0") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 format!("!a2r_std::fs::is_dir({})", caps.get(1).unwrap().as_str())
             }).to_string();
             *content = new;
         }
         // Pattern: `a2r_std::fs::is_dir(X) != 0` → `a2r_std::fs::is_dir(X)`
-        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::is_dir\(([^)]*)\)\s*!=\s*0") {
+        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::is_dir\((.+?)\)\s*!=\s*0") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 format!("a2r_std::fs::is_dir({})", caps.get(1).unwrap().as_str())
             }).to_string();
@@ -8938,6 +8959,46 @@ impl RustTrans {
         // Pattern: `!(a2r_std::fs::is_dir(X))` → `!a2r_std::fs::is_dir(X)`
         // Only if the closing parens match — avoid removing extra parens
         // Skip this for now — `!(bool_expr)` is valid Rust
+
+        // Pattern: `let VAR = a2r_std::fs::is_dir(X); ... if VAR != 0` → `if VAR`
+        // Find variables assigned from is_dir and replace `VAR != 0` with just `VAR`
+        if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*a2r_std::fs::is_dir\(") {
+            let bool_vars: Vec<String> = re.captures_iter(content.as_str())
+                .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
+                .collect();
+            for var in &bool_vars {
+                // var is a simple identifier, safe to embed directly
+                let pattern_ne = format!(r"if\s+{}\s*!=\s*0\s*\{{", var);
+                if let Ok(re) = regex::Regex::new(&pattern_ne) {
+                    let replacement = format!("if {} {{", var);
+                    let new = re.replace_all(content.as_str(), replacement.as_str()).to_string();
+                    if new != *content { *content = new; }
+                }
+                let pattern_eq = format!(r"if\s+{}\s*==\s*0\s*\{{", var);
+                if let Ok(re) = regex::Regex::new(&pattern_eq) {
+                    let replacement = format!("if !{} {{", var);
+                    let new = re.replace_all(content.as_str(), replacement.as_str()).to_string();
+                    if new != *content { *content = new; }
+                }
+            }
+        }
+    }
+
+    /// Fix derive macros on structs containing `Box<dyn Trait>` fields.
+    /// `dyn Trait` doesn't implement Clone/PartialEq/Eq/PartialOrd/Ord,
+    /// so we remove those derives, keeping only Debug.
+    fn fix_dyn_trait_derives(content: &mut String) {
+        if let Ok(re) = regex::Regex::new(
+            r"(?s)(#\[derive\(([^)]*)\)\]\npub struct (\w+) \{[^}]*Box<dyn)"
+        ) {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let full = caps.get(0).unwrap().as_str();
+                let derives = caps.get(2).unwrap().as_str();
+                // dyn Trait doesn't implement any standard derives — remove entirely
+                full.replace(&format!("#[derive({})]", derives), "#[allow(dead_code)]")
+            }).to_string();
+            if new != *content { *content = new; }
+        }
     }
 
     /// Fix vec![(str, str, str)] where the return type is Vec<(String, String, String)>.

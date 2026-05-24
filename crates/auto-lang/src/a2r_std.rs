@@ -19,6 +19,26 @@
 
 use std::cell::RefCell;
 
+/// Extension trait to provide stable `as_str()` for String/&str.
+/// In Rust 1.93, String::as_str() is stable but str::as_str() is still unstable (E0658).
+/// This trait provides a stable alternative that works for both types.
+#[allow(unstable_name_collisions)]
+pub trait StringAsStr {
+    fn as_str(&self) -> &str;
+}
+
+impl StringAsStr for String {
+    fn as_str(&self) -> &str {
+        self
+    }
+}
+
+impl StringAsStr for str {
+    fn as_str(&self) -> &str {
+        self
+    }
+}
+
 /// AutoLang's List<T> - a dynamic array similar to Vec<T>
 /// but with AutoLang's method naming conventions.
 #[derive(Debug, Clone)]
@@ -285,7 +305,8 @@ pub fn str_new(s: &str, _capacity: usize) -> String {
 /// Find substring in string, starting from position.
 /// Returns -1 if not found (matches Auto semantics, not Rust's Option).
 /// In AutoLang: s.find(needle, start_pos)
-pub fn str_find(s: &str, needle: &str, start: i32) -> i32 {
+pub fn str_find<S: AsRef<str>>(s: S, needle: &str, start: i32) -> i32 {
+    let s = s.as_ref();
     if start < 0 || start as usize > s.len() {
         return -1;
     }
@@ -297,7 +318,8 @@ pub fn str_find(s: &str, needle: &str, start: i32) -> i32 {
 
 /// Get substring from position with length.
 /// In AutoLang: s.substr(start, length)
-pub fn str_substr(s: &str, start: i32, length: i32) -> String {
+pub fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
+    let s = s.as_ref();
     if start < 0 || length <= 0 || start as usize >= s.len() {
         return String::new();
     }
@@ -308,14 +330,14 @@ pub fn str_substr(s: &str, start: i32, length: i32) -> String {
 
 /// String contains check.
 /// In AutoLang: s.contains(needle)
-pub fn str_contains(s: &str, needle: &str) -> bool {
-    s.contains(needle)
+pub fn str_contains<S: AsRef<str>>(s: S, needle: &str) -> bool {
+    s.as_ref().contains(needle)
 }
 
 /// String ends with check. Returns bool for Rust compat.
 /// In AutoLang: s.ends_with(suffix)
-pub fn str_ends_with(s: &str, suffix: &str) -> bool {
-    s.ends_with(suffix)
+pub fn str_ends_with<S: AsRef<str>>(s: S, suffix: &str) -> bool {
+    s.as_ref().ends_with(suffix)
 }
 
 /// Get string length
