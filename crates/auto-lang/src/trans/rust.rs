@@ -563,10 +563,25 @@ impl RustTrans {
             }
             Type::List(elem) => {
                 // List<T> transpiles to Vec<T> in Rust
-                format!("Vec<{}>", self.rust_type_name(elem))
+                let elem_name = if matches!(elem.as_ref(), Type::Unknown) {
+                    "String".to_string() // bare List defaults to Vec<String>
+                } else {
+                    self.rust_type_name(elem)
+                };
+                format!("Vec<{}>", elem_name)
             }
             Type::Map(k, v) => {
-                format!("std::collections::HashMap<{}, {}>", self.rust_type_name(k), self.rust_type_name(v))
+                let k_name = if matches!(k.as_ref(), Type::Unknown) {
+                    "String".to_string() // bare Map defaults to HashMap<String, String>
+                } else {
+                    self.rust_type_name(k)
+                };
+                let v_name = if matches!(v.as_ref(), Type::Unknown) {
+                    "String".to_string()
+                } else {
+                    self.rust_type_name(v)
+                };
+                format!("std::collections::HashMap<{}, {}>", k_name, v_name)
             }
             Type::Slice(slice) => {
                 // []T → &[T], but []Spec → Vec<Box<dyn Spec>> (dynamic polymorphism)
