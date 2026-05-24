@@ -381,12 +381,12 @@ pub mod io {
 /// AutoLang's env module — thin wrappers around std::env
 #[allow(non_snake_case)]
 pub mod env {
-    pub fn get(key: &str) -> String {
-        std::env::var(key).unwrap_or_default()
+    pub fn get(key: impl AsRef<str>) -> String {
+        std::env::var(key.as_ref()).unwrap_or_default()
     }
 
-    pub fn get_or(key: &str, default: &str) -> String {
-        std::env::var(key).unwrap_or_else(|_| default.to_string())
+    pub fn get_or(key: impl AsRef<str>, default: impl AsRef<str>) -> String {
+        std::env::var(key.as_ref()).unwrap_or_else(|_| default.as_ref().to_string())
     }
 
     pub fn set(key: &str, val: &str) {
@@ -420,36 +420,36 @@ pub mod fs {
         std::fs::read_to_string(path.as_ref()).unwrap_or_default()
     }
 
-    pub fn write(path: &str, content: &str) -> bool {
-        std::fs::write(path, content).is_ok()
+    pub fn write(path: impl AsRef<str>, content: impl AsRef<str>) -> bool {
+        std::fs::write(path.as_ref(), content.as_ref()).is_ok()
     }
 
-    pub fn exists(path: &str) -> bool {
-        std::path::Path::new(path).exists()
+    pub fn exists(path: impl AsRef<str>) -> bool {
+        std::path::Path::new(path.as_ref()).exists()
     }
 
-    pub fn create_dir(path: &str) -> bool {
-        std::fs::create_dir_all(path).is_ok()
+    pub fn create_dir(path: impl AsRef<str>) -> bool {
+        std::fs::create_dir_all(path.as_ref()).is_ok()
     }
 
-    pub fn write_text(path: &str, content: &str) -> bool {
-        std::fs::write(path, content).is_ok()
+    pub fn write_text(path: impl AsRef<str>, content: impl AsRef<str>) -> bool {
+        std::fs::write(path.as_ref(), content.as_ref()).is_ok()
     }
 
-    pub fn read_bytes(path: &str) -> Vec<u8> {
-        std::fs::read(path).unwrap_or_default()
+    pub fn read_bytes(path: impl AsRef<str>) -> Vec<u8> {
+        std::fs::read(path.as_ref()).unwrap_or_default()
     }
 
-    pub fn delete(path: &str) -> bool {
-        std::fs::remove_file(path).is_ok()
+    pub fn delete(path: impl AsRef<str>) -> bool {
+        std::fs::remove_file(path.as_ref()).is_ok()
     }
 
-    pub fn is_dir(path: &str) -> bool {
-        std::path::Path::new(path).is_dir()
+    pub fn is_dir(path: impl AsRef<str>) -> bool {
+        std::path::Path::new(path.as_ref()).is_dir()
     }
 
-    pub fn is_binary(path: &str) -> i32 {
-        match std::fs::read(path) {
+    pub fn is_binary(path: impl AsRef<str>) -> i32 {
+        match std::fs::read(path.as_ref()) {
             Ok(bytes) => {
                 if bytes.windows(2).any(|w| w == [0, 0]) { 1 } else { 0 }
             }
@@ -457,14 +457,14 @@ pub mod fs {
         }
     }
 
-    pub fn file_size(path: &str) -> i64 {
-        match std::fs::metadata(path) {
+    pub fn file_size(path: impl AsRef<str>) -> i64 {
+        match std::fs::metadata(path.as_ref()) {
             Ok(meta) => meta.len() as i64,
             Err(_) => -1,
         }
     }
 
-    pub fn walk(dir: &str) -> String {
+    pub fn walk(dir: impl AsRef<str>) -> String {
         fn do_walk(dir: &str, entries: &mut Vec<String>) {
             if let Ok(rd) = std::fs::read_dir(dir) {
                 for entry in rd.flatten() {
@@ -478,7 +478,7 @@ pub mod fs {
             }
         }
         let mut entries: Vec<String> = Vec::new();
-        do_walk(dir, &mut entries);
+        do_walk(dir.as_ref(), &mut entries);
         if entries.is_empty() {
             "[]".to_string()
         } else {
@@ -486,11 +486,11 @@ pub mod fs {
         }
     }
 
-    pub fn append_text(path: &str, content: &str) {
+    pub fn append_text(path: impl AsRef<str>, content: impl AsRef<str>) {
         use std::fs::OpenOptions;
         use std::io::Write;
-        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-            let _ = file.write_all(content.as_bytes());
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path.as_ref()) {
+            let _ = file.write_all(content.as_ref().as_bytes());
         }
     }
 }
@@ -562,10 +562,10 @@ pub mod http {
 
     /// Synchronous HTTP POST — blocking version for use in non-async contexts.
     /// Used by Auto's http.post_sync() when transpiled via a2r.
-    pub fn post_sync(url: &str, body: &str, api_key: &str) -> (i32, String) {
-        let url = url.to_string();
-        let body = body.to_string();
-        let api_key = api_key.to_string();
+    pub fn post_sync(url: impl AsRef<str>, body: impl AsRef<str>, api_key: impl AsRef<str>) -> (i32, String) {
+        let url = url.as_ref().to_string();
+        let body = body.as_ref().to_string();
+        let api_key = api_key.as_ref().to_string();
         let result = std::thread::spawn(move || -> Result<reqwest::blocking::Response, String> {
             let client = reqwest::blocking::Client::new();
             client
@@ -589,10 +589,10 @@ pub mod http {
 
     /// Async HTTP POST with Bearer token auth (for OpenAI-compatible APIs).
     /// Returns (status, body).
-    pub async fn post_bearer(url: &str, body: &str, api_key: &str) -> (i32, String) {
-        let url = url.to_string();
-        let body = body.to_string();
-        let api_key = api_key.to_string();
+    pub async fn post_bearer(url: impl AsRef<str>, body: impl AsRef<str>, api_key: impl AsRef<str>) -> (i32, String) {
+        let url = url.as_ref().to_string();
+        let body = body.as_ref().to_string();
+        let api_key = api_key.as_ref().to_string();
         let result = tokio::task::spawn_blocking(move || {
             let client = reqwest::blocking::Client::new();
             let result = client
@@ -626,10 +626,10 @@ pub mod http {
     }
 
     /// Synchronous HTTP POST with Bearer token auth (blocking, for non-async contexts).
-    pub fn post_bearer_sync(url: &str, body: &str, api_key: &str) -> (i32, String) {
-        let url = url.to_string();
-        let body = body.to_string();
-        let api_key = api_key.to_string();
+    pub fn post_bearer_sync(url: impl AsRef<str>, body: impl AsRef<str>, api_key: impl AsRef<str>) -> (i32, String) {
+        let url = url.as_ref().to_string();
+        let body = body.as_ref().to_string();
+        let api_key = api_key.as_ref().to_string();
         let result = std::thread::spawn(move || {
             let client = reqwest::blocking::Client::new();
             client
@@ -682,7 +682,7 @@ pub mod shell {
         s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "")
     }
 
-    pub fn exec(cmd: &str, timeout_ms: i32) -> String {
+    pub fn exec(cmd: impl AsRef<str>, timeout_ms: i32) -> String {
         use std::process::{Command, Stdio};
         use std::time::{Duration, Instant};
 
@@ -703,7 +703,7 @@ pub mod shell {
         }
 
         let result = if timeout_ms > 0 {
-            let mut child = make_cmd(cmd)
+            let mut child = make_cmd(cmd.as_ref())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn();
@@ -751,7 +751,7 @@ pub mod shell {
                 ),
             }
         } else {
-            let output = make_cmd(cmd).output();
+            let output = make_cmd(cmd.as_ref()).output();
             match output {
                 Ok(o) => {
                     let stdout = String::from_utf8_lossy(&o.stdout);
