@@ -4713,10 +4713,10 @@ impl RustTrans {
                     .cloned()
                     .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
             } else {
-                // For non-simple objects (e.g., self.field), don't fall back to
+                // For non-simple objects (e.g., self.field, module.Type), don't fall back to
                 // bare method name lookup — it may match wrong function signatures.
                 // Only use qualified lookups.
-                if let Expr::Dot(inner, _) = object.as_ref() {
+                if let Expr::Dot(inner, type_field) = object.as_ref() {
                     if let Expr::Ident(obj_name) = inner.as_ref() {
                         let obj_type: String = self.local_var_types.get(obj_name).map(|ty| {
                             match ty {
@@ -4725,8 +4725,34 @@ impl RustTrans {
                                 _ => String::new(),
                             }
                         }).unwrap_or_default();
+                        // Try "obj_type.method" first, then "type_field.method"
                         let qualified: AutoStr = format!("{}.{}", obj_type, method_name).into();
-                        self.fn_str_param_indices.get(&qualified).cloned()
+                        let result = self.fn_str_param_indices.get(&qualified).cloned();
+                        if result.is_some() {
+                            result
+                        } else {
+                            // module.Type.method() — try "Type.method"
+                            let type_qualified: AutoStr = format!("{}.{}", type_field, method_name).into();
+                            self.fn_str_param_indices.get(&type_qualified).cloned()
+                                .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
+                        }
+                    } else {
+                        // Nested: expr.Type.method() — try "Type.method"
+                        let type_qualified: AutoStr = format!("{}.{}", type_field, method_name).into();
+                        self.fn_str_param_indices.get(&type_qualified).cloned()
+                            .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
+                    }
+                } else if let Expr::Bina(inner, Op::Dot, rhs) = object.as_ref() {
+                    // module.Type.method() via Bina — try "Type.method"
+                    let type_name = if let Expr::Ident(name) = rhs.as_ref() {
+                        name.to_string()
+                    } else {
+                        String::new()
+                    };
+                    if !type_name.is_empty() {
+                        let type_qualified: AutoStr = format!("{}.{}", type_name, method_name).into();
+                        self.fn_str_param_indices.get(&type_qualified).cloned()
+                            .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
                     } else {
                         None
                     }
@@ -8527,6 +8553,15 @@ impl RustTrans {
         // B14: Fix integer type mismatches (u32 vs i32 vs usize)
         Self::fix_integer_type_mismatches(&mut content);
 
+        // B16: Add `mut` to let bindings that are later reassigned
+        Self::fix_mutable_bindings(&mut content);
+
+        // B17: Fix return None; in void functions → return;
+        Self::fix_void_return_none(&mut content);
+
+        // B18: Fix borrowing issues (&Vec → Vec.clone(), etc.)
+        Self::fix_borrowing_issues(&mut content);
+
         // B15: Fix enum == "str" comparisons — Auto enums can compare with str, Rust can't
         Self::fix_enum_str_comparisons(&mut content);
 
@@ -8633,7 +8668,7 @@ impl RustTrans {
         ];
         let vec_field_names = [
             "tool_call_ids", "tool_call_names", "tool_call_args", "tool_call_started",
-            "items", "steps", "events", "messages", "entries",
+            "items", "steps", "events", "messages",
         ];
 
         // Pattern 1: self.field.get(var) → self.field[var as usize] for known Vec fields
@@ -8912,6 +8947,12 @@ impl RustTrans {
                 }
             }
         }
+        // Also collect vars assigned from known u32-returning functions
+        if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*=\s*self\.ensure_tool_call\(") {
+            for caps in re.captures_iter(content) {
+                int_names.insert(caps.get(1).unwrap().as_str().to_string());
+            }
+        }
         if int_names.is_empty() { return; }
 
         for name in &int_names {
@@ -9009,6 +9050,7 @@ impl RustTrans {
 
     /// Fix integer type mismatches (u32 vs i32 vs usize).
     fn fix_integer_type_mismatches(content: &mut String) {
+        // Collect u32 and i32 variable names
         let u32_vars: std::collections::HashSet<String> = {
             let mut vars = std::collections::HashSet::new();
             if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*:\s*u32\s*=") {
@@ -9021,34 +9063,14 @@ impl RustTrans {
                     vars.insert(caps.get(1).unwrap().as_str().to_string());
                 }
             }
+            // Also track struct fields declared as u32 (accessed via self.field)
+            if let Ok(re) = regex::Regex::new(r"pub\s+(\w+):\s*u32") {
+                for caps in re.captures_iter(content.as_str()) {
+                    vars.insert(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
             vars
         };
-        for var in &u32_vars {
-            let pattern = format!("{} <= \\((.+?) as i32\\)", var);
-            if let Ok(re) = regex::Regex::new(&pattern) {
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let expr = caps.get(1).unwrap().as_str();
-                    format!("{} <= ({} as u32)", var, expr)
-                }).to_string();
-                if new != *content { *content = new; }
-            }
-            let pattern = format!("{} >= \\((.+?) as i32\\)", var);
-            if let Ok(re) = regex::Regex::new(&pattern) {
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let expr = caps.get(1).unwrap().as_str();
-                    format!("{} >= ({} as u32)", var, expr)
-                }).to_string();
-                if new != *content { *content = new; }
-            }
-            let pattern = format!("{} < \\((.+?) as i32\\)", var);
-            if let Ok(re) = regex::Regex::new(&pattern) {
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let expr = caps.get(1).unwrap().as_str();
-                    format!("{} < ({} as u32)", var, expr)
-                }).to_string();
-                if new != *content { *content = new; }
-            }
-        }
         let i32_vars: std::collections::HashSet<String> = {
             let mut vars = std::collections::HashSet::new();
             if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*:\s*i32\s*=") {
@@ -9061,8 +9083,30 @@ impl RustTrans {
                     vars.insert(caps.get(1).unwrap().as_str().to_string());
                 }
             }
+            // Also track struct fields declared as i32
+            if let Ok(re) = regex::Regex::new(r"pub\s+(\w+):\s*i32") {
+                for caps in re.captures_iter(content.as_str()) {
+                    vars.insert(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
             vars
         };
+
+        // Fix comparison operators: u32_var op (expr as i32) -> u32_var op (expr as u32)
+        for var in &u32_vars {
+            for op in &["<=", ">=", "<", ">"] {
+                let pattern = format!(r"{}\s*{}\s*\((.+?)\s+as\s+i32\)", regex::escape(var), regex::escape(op));
+                if let Ok(re) = regex::Regex::new(&pattern) {
+                    let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                        let expr = caps.get(1).unwrap().as_str();
+                        format!("{} {} ({} as u32)", var, op, expr)
+                    }).to_string();
+                    if new != *content { *content = new; }
+                }
+            }
+        }
+
+        // Fix comparisons between u32 and i32 vars: add `as u32` to i32 side
         for uvar in &u32_vars {
             for ivar in &i32_vars {
                 for op in &[" < ", " > ", " <= ", " >= "] {
@@ -9071,6 +9115,268 @@ impl RustTrans {
                     *content = content.replace(&pat, &repl);
                 }
             }
+        }
+
+        // Fix u32 vars used as usize index: vec[u32_var] -> vec[u32_var as usize]
+        for var in &u32_vars {
+            let pattern = format!(r"\[{}\]", regex::escape(var));
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let orig = content.clone();
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!("[{} as usize]", var)
+                }).to_string();
+                if new != orig { *content = new; }
+            }
+        }
+
+        // Fix u32 vars passed where i32 expected (enum variant args)
+        let enum_variants_needing_i32 = [
+            "ContentBlockStart", "ContentBlockDelta", "ContentBlockStop",
+            "StepStarted", "GateWaiting", "RunFailed",
+        ];
+        for variant in &enum_variants_needing_i32 {
+            for var in &u32_vars {
+                // Pattern: Variant(var, or Variant(var)
+                let pat = format!(r"::{}\({},\s*", regex::escape(variant), regex::escape(var));
+                if let Ok(re) = regex::Regex::new(&pat) {
+                    let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                        format!("::{}({} as i32, ", variant, var)
+                    }).to_string();
+                    if new != *content { *content = new; }
+                }
+                let pat = format!(r"::{}\(\s*{}\s*\)", regex::escape(variant), regex::escape(var));
+                if let Ok(re) = regex::Regex::new(&pat) {
+                    let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                        format!("::{}({} as i32)", variant, var)
+                    }).to_string();
+                    if new != *content { *content = new; }
+                }
+            }
+        }
+
+        // Fix i32 vars passed where u32 expected
+        let functions_needing_u32 = ["ensure_tool_call"];
+        for func in &functions_needing_u32 {
+            for var in &i32_vars {
+                let pat = format!(r"{}\({}\)", regex::escape(func), regex::escape(var));
+                if let Ok(re) = regex::Regex::new(&pat) {
+                    let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                        format!("{}({} as u32)", func, var)
+                    }).to_string();
+                    if new != *content { *content = new; }
+                }
+            }
+        }
+
+        // Fix self.u32_field used as usize index: vec[self.field] -> vec[self.field as usize]
+        for var in &u32_vars {
+            let pattern = format!(r"\[self\.{}\]", regex::escape(var));
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let orig = content.clone();
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!("[self.{} as usize]", var)
+                }).to_string();
+                if new != orig { *content = new; }
+            }
+            // Also: .insert(self.u32_field, -> .insert(self.u32_field as usize,
+            let pattern = format!(r"\.insert\(self\.{},\s*", regex::escape(var));
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let orig = content.clone();
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!(".insert(self.{} as usize, ", var)
+                }).to_string();
+                if new != orig { *content = new; }
+            }
+        }
+    }
+
+    /// Add `mut` to `let` bindings that are later reassigned (x.field = ... or x = ...).
+    /// Auto variables are mutable by default; Rust requires explicit `mut`.
+    fn fix_mutable_bindings(content: &mut String) {
+        // Find all `let name = ` bindings (without mut) and check if name.field or name = appears later
+        let lines: Vec<&str> = content.lines().collect();
+        let mut needs_mut: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+            // Match `let name = ` (without mut)
+            if let Some(caps) = regex::Regex::new(r"^let\s+(\w+)\s*=").unwrap().captures(trimmed) {
+                let var_name = caps.get(1).unwrap().as_str();
+                // Skip if already mut
+                if trimmed.starts_with("let mut") { continue; }
+                // Look ahead for assignments to this variable
+                let assign_pat = format!(r"\b{}\s*[.\[]", var_name);
+                let direct_pat = format!(r"\b{}\s*=[^=]", var_name);
+                if let Ok(re) = regex::Regex::new(&assign_pat) {
+                    for future_line in lines.iter().skip(i + 1) {
+                        // Stop at function boundary
+                        let fl = future_line.trim();
+                        if fl.starts_with("pub fn ") || fl.starts_with("fn ") || fl.starts_with("pub async fn ") || fl.starts_with("async fn ") {
+                            break;
+                        }
+                        if re.is_match(fl) {
+                            // Check if it's an actual assignment: var.field = or var[idx] =
+                            let field_assign = format!(r"\b{}\.\w+\s*=", var_name);
+                            let idx_assign = format!(r"\b{}\[[^\]]*\]\s*=", var_name);
+                            if let Ok(re2) = regex::Regex::new(&field_assign) {
+                                if re2.is_match(fl) {
+                                    needs_mut.insert(i);
+                                    break;
+                                }
+                            }
+                            if let Ok(re2) = regex::Regex::new(&idx_assign) {
+                                if re2.is_match(fl) {
+                                    needs_mut.insert(i);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if let Ok(re) = regex::Regex::new(&direct_pat) {
+                    for future_line in lines.iter().skip(i + 1) {
+                        let fl = future_line.trim();
+                        if fl.starts_with("pub fn ") || fl.starts_with("fn ") || fl.starts_with("pub async fn ") || fl.starts_with("async fn ") {
+                            break;
+                        }
+                        if re.is_match(fl) && !fl.starts_with(&format!("let {}", var_name)) {
+                            // Exclude == and !=
+                            if let Ok(eq_check) = regex::Regex::new(&format!(r"\b{}\s*=[^=]", var_name)) {
+                                if eq_check.is_match(fl) {
+                                    needs_mut.insert(i);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if needs_mut.is_empty() { return; }
+
+        let new_lines: Vec<String> = lines.iter().enumerate().map(|(i, line)| {
+            if needs_mut.contains(&i) {
+                line.replacen("let ", "let mut ", 1)
+            } else {
+                line.to_string()
+            }
+        }).collect();
+        *content = new_lines.join("\n");
+    }
+
+    /// Fix `return None;` in void (unit-return) functions → `return;`.
+    /// Auto's `return` in void functions is parsed as `Return(Nil)` → transpiled as `return None;`
+    /// but Rust void functions need plain `return;`.
+    fn fix_void_return_none(content: &mut String) {
+        let lines: Vec<&str> = content.lines().collect();
+        let mut result = Vec::with_capacity(lines.len());
+        let mut in_void_fn = false;
+        let mut brace_depth: i32 = 0;
+        let mut fn_brace_depth: i32 = 0;
+
+        for line in &lines {
+            let trimmed = line.trim();
+
+            // Track function declarations without return type (void)
+            if (trimmed.starts_with("pub fn ") || trimmed.starts_with("fn ")
+                || trimmed.starts_with("pub async fn ") || trimmed.starts_with("async fn "))
+                && !trimmed.contains("->")
+            {
+                in_void_fn = true;
+                fn_brace_depth = brace_depth;
+            }
+
+            // Track braces
+            for ch in trimmed.chars() {
+                match ch {
+                    '{' => brace_depth += 1,
+                    '}' => brace_depth -= 1,
+                    _ => {}
+                }
+            }
+
+            // If we've exited the void function's scope, reset
+            if in_void_fn && brace_depth <= fn_brace_depth && trimmed.contains('}') {
+                in_void_fn = false;
+            }
+
+            // Replace return None; with return; in void functions
+            if in_void_fn && trimmed == "return None;" {
+                result.push(line.replacen("return None;", "return;", 1));
+            } else {
+                result.push(line.to_string());
+            }
+        }
+
+        let new_content = result.join("\n");
+        if new_content != *content {
+            *content = new_content;
+        }
+    }
+
+    /// Fix common borrowing issues:
+    /// 1. `.insert(key, &vec_var)` → `.insert(key, vec_var.clone())`
+    /// 2. `.field = &var` where field is Vec/struct → `.field = var.clone()`
+    /// 3. map.get(X).unwrap_or(vec![]) → map.get(X).cloned().unwrap_or_default()
+    /// 4. let var = map.get(X).unwrap_or(default) → needs .cloned()
+    fn fix_borrowing_issues(content: &mut String) {
+        // Fix: map.get(X).unwrap_or(vec![]) → map.get(X).cloned().unwrap_or_default()
+        // Also: map.get(X).unwrap_or(&[]) → map.get(X).cloned().unwrap_or_default()
+        if let Ok(re) = regex::Regex::new(r"\.get\(([^)]+)\)\.unwrap_or\(vec!\[\]\)") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let key = caps.get(1).unwrap().as_str();
+                format!(".get({}).cloned().unwrap_or_default()", key)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+
+        // Fix: .get(X).unwrap_or(&[]) → .get(X).cloned().unwrap_or_default()
+        if let Ok(re) = regex::Regex::new(r"\.get\(([^)]+)\)\.unwrap_or\(&\[\]\)") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let key = caps.get(1).unwrap().as_str();
+                format!(".get({}).cloned().unwrap_or_default()", key)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+
+        // Fix: let var = map.get(X).unwrap_or(vec![...]) → add .cloned()
+        if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(\w+\.get\([^)]+\))\.unwrap_or\(vec!") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let var = caps.get(1).unwrap().as_str();
+                let get_expr = caps.get(2).unwrap().as_str();
+                format!("let mut {} = {}.cloned().unwrap_or(vec!", var, get_expr)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+
+        // Fix: map.insert(key, &variable) → map.insert(key, variable.clone())
+        if let Ok(re) = regex::Regex::new(r"\.insert\(([^,]+),\s+&(\w+)\)") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let key = caps.get(1).unwrap().as_str();
+                let var = caps.get(2).unwrap().as_str();
+                format!(".insert({}, {}.clone())", key, var)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+
+        // Fix: .field = &variable; → .field = variable.clone();
+        if let Ok(re) = regex::Regex::new(r"(\.\w+)\s*=\s+&(\w+);") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let field = caps.get(1).unwrap().as_str();
+                let var = caps.get(2).unwrap().as_str();
+                format!("{} = {}.clone();", field, var)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+
+        // Fix: .push(&variable) → .push(variable.clone())
+        if let Ok(re) = regex::Regex::new(r"\.push\(&(\w+)\)") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let var = caps.get(1).unwrap().as_str();
+                format!(".push({}.clone())", var)
+            }).to_string();
+            if new != *content { *content = new; }
         }
     }
 
@@ -9106,22 +9412,24 @@ impl RustTrans {
     /// Adds .to_string() to string literals inside tuples in vec![] macros.
     fn fix_vec_tuple_string_literals(content: &mut String) {
         // Strategy: find vec![ ... ]; regions and add .to_string() to bare string literals.
-        // This handles Vec<(String, String, String)> where the tuple contains string literals.
-        // But NOT inside function call arguments like vec![Func::new("arg")].
-        // Heuristic: add .to_string() unless the string is preceded by ( or , followed by
-        // an identifier and then ( — i.e., FuncName("arg") pattern.
+        // Track paren depth — inside function call args, don't add .to_string().
+        // Heuristic: if ( is preceded by an identifier (Name(), Type::method()), it's a function call.
+        // If ( is preceded by , or [ or (, it's a tuple — those still need .to_string().
         let bytes = content.as_bytes();
         let len = bytes.len();
         let mut result = Vec::new();
         let mut i = 0;
         let mut in_vec = false;
         let mut vec_depth = 0;
+        let mut paren_depth: i32 = 0;
+        let mut func_paren_depths: std::collections::HashSet<i32> = std::collections::HashSet::new();
 
         while i < len {
-            // Detect vec![
             if !in_vec && i + 5 <= len && &bytes[i..i+5] == b"vec![" {
                 in_vec = true;
                 vec_depth = 1;
+                paren_depth = 0;
+                func_paren_depths.clear();
                 result.extend_from_slice(b"vec![");
                 i += 5;
                 continue;
@@ -9137,6 +9445,25 @@ impl RustTrans {
                         if vec_depth == 0 { in_vec = false; }
                         continue;
                     }
+                    b'(' => {
+                        // Check if this ( is a function call: preceded by identifier or ::
+                        let before = content[..i].trim_end();
+                        let is_func = before.chars().last().map(|c| c.is_alphanumeric() || c == '_' || c == ':').unwrap_or(false);
+                        if is_func {
+                            func_paren_depths.insert(paren_depth + 1);
+                        }
+                        paren_depth += 1;
+                        result.push(b'(');
+                        i += 1;
+                        continue;
+                    }
+                    b')' => {
+                        func_paren_depths.remove(&(paren_depth));
+                        paren_depth -= 1;
+                        result.push(b')');
+                        i += 1;
+                        continue;
+                    }
                     b'"' => {
                         let start = i;
                         i += 1;
@@ -9147,18 +9474,9 @@ impl RustTrans {
                         if i < len { i += 1; }
                         let lit = &content[start..i];
                         let rest = &content[i..];
-                        let trimmed_rest = rest.trim_start();
-                        // Check if this string is a function call argument.
-                        // Look backwards from the opening " to see if it follows Name( pattern.
-                        let before = &content[..start];
-                        let before_trimmed = before.trim_end();
-                        let is_func_arg = before_trimmed.ends_with('(') && {
-                            // Check if the ( is preceded by an identifier (function name)
-                            let before_paren = before_trimmed[..before_trimmed.len()-1].trim_end();
-                            before_paren.chars().last().map(|c| c.is_alphanumeric() || c == '_').unwrap_or(false)
-                        };
-                        let already_has = trimmed_rest.starts_with(".to_string()");
-                        if is_func_arg || already_has {
+                        let already_has = rest.trim_start().starts_with(".to_string()");
+                        let inside_func_call = func_paren_depths.contains(&paren_depth);
+                        if inside_func_call || already_has {
                             result.extend_from_slice(lit.as_bytes());
                         } else {
                             result.extend_from_slice(lit.as_bytes());
