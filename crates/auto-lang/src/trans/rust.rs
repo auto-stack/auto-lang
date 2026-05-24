@@ -8524,9 +8524,6 @@ impl RustTrans {
         // B13: Fix derive macros on structs with dyn Trait fields
         Self::fix_dyn_trait_derives(&mut content);
 
-        // B14: Fix integer type mismatches (u32 vs i32 vs usize)
-        Self::fix_integer_type_mismatches(&mut content);
-
         // B7: Fix vec![(str, str, str)] where return type is Vec<(String,...)>
         Self::fix_vec_tuple_string_literals(&mut content);
 
@@ -9001,89 +8998,6 @@ impl RustTrans {
                 full.replace(&format!("#[derive({})]", derives), "#[allow(dead_code)]")
             }).to_string();
             if new != *content { *content = new; }
-        }
-    }
-
-    /// Fix integer type mismatches in comparisons and assignments.
-    /// Auto uses `uint` → `u32` but `len()` returns `usize`, and `int` → `i32`.
-    /// Common pattern: `u32_var < (expr as i32)` → `u32_var < (expr as u32)`
-    /// Also: `u32_var as usize` indexing is fine, but `u32_var` where `usize` expected needs cast.
-    fn fix_integer_type_mismatches(content: &mut String) {
-        // Find all u32 variables (loop counters typically)
-        let u32_vars: std::collections::HashSet<String> = {
-            let mut vars = std::collections::HashSet::new();
-            if let Ok(re) = regex::Regex::new(r"let\s+mut\s+(\w+)\s*:\s*u32\s*=") {
-                for caps in re.captures_iter(content.as_str()) {
-                    vars.insert(caps.get(1).unwrap().as_str().to_string());
-                }
-            }
-            // Also check function params: fn foo(x: u32, ...)
-            if let Ok(re) = regex::Regex::new(r"\b(\w+)\s*:\s*u32") {
-                for caps in re.captures_iter(content.as_str()) {
-                    vars.insert(caps.get(1).unwrap().as_str().to_string());
-                }
-            }
-            vars
-        };
-
-        // Pattern: `u32_var < (expr as i32)` → `u32_var < (expr as u32)`
-        if let Ok(re) = regex::Regex::new(r"(\w+)\s*<\s*\(([^)]+)\s+as\s+i32\)") {
-            let vars = u32_vars.clone();
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let var = caps.get(1).unwrap().as_str();
-                let expr = caps.get(2).unwrap().as_str();
-                if vars.contains(var) && (expr.contains("len()") || expr.contains("len(") || expr.contains("len_str")) {
-                    format!("{} < ({} as u32)", var, expr)
-                } else {
-                    caps.get(0).unwrap().as_str().to_string()
-                }
-            }).to_string();
-            if new != *content { *content = new; }
-        }
-
-        // Pattern: `u32_var <= (expr as i32)` → `u32_var <= (expr as u32)`
-        if let Ok(re) = regex::Regex::new(r"(\w+)\s*<=\s*\(([^)]+)\s+as\s+i32\)") {
-            let vars = u32_vars.clone();
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let var = caps.get(1).unwrap().as_str();
-                let expr = caps.get(2).unwrap().as_str();
-                if vars.contains(var) && (expr.contains("len()") || expr.contains("len(")) {
-                    format!("{} <= ({} as u32)", var, expr)
-                } else {
-                    caps.get(0).unwrap().as_str().to_string()
-                }
-            }).to_string();
-            if new != *content { *content = new; }
-        }
-
-        // Pattern: `u32_var < i32_var` → `u32_var < i32_var as u32`
-        let i32_vars: std::collections::HashSet<String> = {
-            let mut vars = std::collections::HashSet::new();
-            // Explicit i32 type annotation
-            if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*:\s*i32\s*=") {
-                for caps in re.captures_iter(content.as_str()) {
-                    vars.insert(caps.get(1).unwrap().as_str().to_string());
-                }
-            }
-            // Inferred i32 from `as i32` cast (non-greedy to handle nested parens)
-            if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*\(.+?\s+as\s+i32\)") {
-                for caps in re.captures_iter(content.as_str()) {
-                    vars.insert(caps.get(1).unwrap().as_str().to_string());
-                }
-            }
-            vars
-        };
-        for uvar in &u32_vars {
-            for ivar in &i32_vars {
-                for op in &["<", "<=", "==", "!="] {
-                    let pattern = format!(r"{uvar}\s*{op}\s*{ivar}\b");
-                    if let Ok(re) = regex::Regex::new(&pattern) {
-                        let replacement = format!("{uvar} {op} {ivar} as u32");
-                        let new = re.replace_all(content.as_str(), replacement.as_str()).to_string();
-                        if new != *content { *content = new; }
-                    }
-                }
-            }
         }
     }
 
