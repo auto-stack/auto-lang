@@ -98,6 +98,10 @@ fn infix_prec(kind TokenKind) int {
         TokenKind.Mod -> 7
         TokenKind.Dot -> 8
         TokenKind.DotQuest -> 8
+        TokenKind.DotView -> 8
+        TokenKind.DotMut -> 8
+        TokenKind.DotMove -> 8
+        TokenKind.DotTake -> 8
         TokenKind.LParen -> 8
         TokenKind.LSquare -> 8
         else -> 0
@@ -660,6 +664,23 @@ fn parse_expr_prec(p Parser, min_prec int) ASTNode {
             continue
         }
 
+        // E5: ownership/borrowing postfix operators
+        if kind == TokenKind.DotView {
+            p.pos = p.pos + 1  // skip '.view'
+            lhs = view_node(lhs)
+            continue
+        }
+        if kind == TokenKind.DotMut {
+            p.pos = p.pos + 1  // skip '.mut'
+            lhs = mut_node(lhs)
+            continue
+        }
+        if kind == TokenKind.DotMove || kind == TokenKind.DotTake {
+            p.pos = p.pos + 1  // skip '.move' or '.take'
+            lhs = move_node(lhs)
+            continue
+        }
+
         // Postfix: function call
         if kind == TokenKind.LParen {
             var args_str = ""
@@ -738,6 +759,46 @@ fn parse_atom(p Parser) ASTNode {
         TokenKind.Nil -> {
             p.pos = p.pos + 1
             return nil_node()
+        }
+        TokenKind.NoneKW -> {
+            p.pos = p.pos + 1
+            return ident_node("None")
+        }
+        TokenKind.SomeKW -> {
+            p.pos = p.pos + 1
+            if parser_kind(p) == TokenKind.LParen {
+                p.pos = p.pos + 1  // skip '('
+                var inner = parse_expr(p)
+                if parser_kind(p) == TokenKind.RParen { p.pos = p.pos + 1 }
+                var sargs = empty_list()
+                sargs.push(inner)
+                return call_node(ident_node("Some"), inner.value, sargs)
+            }
+            return ident_node("Some")
+        }
+        TokenKind.OkKW -> {
+            p.pos = p.pos + 1
+            if parser_kind(p) == TokenKind.LParen {
+                p.pos = p.pos + 1
+                var inner2 = parse_expr(p)
+                if parser_kind(p) == TokenKind.RParen { p.pos = p.pos + 1 }
+                var oargs = empty_list()
+                oargs.push(inner2)
+                return call_node(ident_node("Ok"), inner2.value, oargs)
+            }
+            return ident_node("Ok")
+        }
+        TokenKind.ErrKW -> {
+            p.pos = p.pos + 1
+            if parser_kind(p) == TokenKind.LParen {
+                p.pos = p.pos + 1
+                var inner3 = parse_expr(p)
+                if parser_kind(p) == TokenKind.RParen { p.pos = p.pos + 1 }
+                var eargs = empty_list()
+                eargs.push(inner3)
+                return call_node(ident_node("Err"), inner3.value, eargs)
+            }
+            return ident_node("Err")
         }
         TokenKind.Ident -> {
             // Check for single-param closure: x => expr

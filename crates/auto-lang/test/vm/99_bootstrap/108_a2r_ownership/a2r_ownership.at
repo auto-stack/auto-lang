@@ -1,0 +1,44 @@
+// Test: a2r ownership/borrowing semantics
+// .view → &, .mut → &mut, .move/.take → passthrough
+
+fn main() {
+    // Test 1: .view → &
+    var src1 = "fn main() {\nvar x = 42\nvar r = x.view\n}"
+    var r1 = run_a2r(src1)
+    var has_ref = r1.find("&x")
+    if has_ref >= 0 {
+        print("t1:ok")
+    } else {
+        print("t1:fail:" + r1)
+    }
+
+    // Test 2: .mut → &mut
+    var src2 = "fn main() {\nvar y = 10\nvar mr = y.mut\n}"
+    var r2 = run_a2r(src2)
+    var has_mut = r2.find("&mut y")
+    if has_mut >= 0 {
+        print("t2:ok")
+    } else {
+        print("t2:fail:" + r2)
+    }
+
+    // Test 3: .move → passthrough
+    var src3 = "fn main() {\nvar z = \"hello\"\nvar owned = z.move\n}"
+    var r3 = run_a2r(src3)
+    var no_move = r3.find(".move")
+    if no_move < 0 {
+        print("t3:ok")
+    } else {
+        print("t3:fail:" + r3)
+    }
+
+    // Test 4: .take → passthrough
+    var src4 = "fn main() {\nvar a = 99\nvar b = a.take\n}"
+    var r4 = run_a2r(src4)
+    var no_take = r4.find(".take")
+    if no_take < 0 {
+        print("t4:ok")
+    } else {
+        print("t4:fail:" + r4)
+    }
+}

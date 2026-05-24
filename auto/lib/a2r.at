@@ -280,6 +280,22 @@ fn a2r_expr(node ASTNode, tenv TypeEnv) str {
         return expr + "?"
     }
 
+    // E5: ownership/borrowing
+    if kind == NodeKind.ViewExpr {
+        var inner = a2r_expr(node.left.get(0), tenv)
+        return "&" + inner
+    }
+
+    if kind == NodeKind.MutExpr {
+        var inner2 = a2r_expr(node.left.get(0), tenv)
+        return "&mut " + inner2
+    }
+
+    if kind == NodeKind.MoveExpr {
+        // .move/.take → just pass through (Rust defaults to move)
+        return a2r_expr(node.left.get(0), tenv)
+    }
+
     return "/* expr:" + int_to_str(kind) + " */"
 }
 

@@ -1,6 +1,6 @@
 # Plan 237: AAVM Architecture Gap Closure — 分阶段拉近与 Rust AutoVM 的距离
 
-## 状态: Phase A-E6 + D1 已完成, 95 个 bootstrap 测试通过 (2026-05-09)
+## 状态: Phase A-E6 + D1 + E5 已完成, 97 个 bootstrap 测试通过 (2026-05-24)
 
 ### 已完成
 
@@ -14,16 +14,16 @@
 | E5 构造函数 | 102 | `Point(1,2)` → `Point { x: 1, y: 2 }` | +struct_fields Map |
 | E6 高级特性 | 100-101, 103 | 多语句 match arm, use.c/py FFI, 泛型类型映射 | — |
 | D1 泛型解析 | 104-106 | Parser `<T>` 读取 + a2r 泛型转译 + enum/spec/ext 泛型输出 | +parser_try_read_generic_type, a2r_type char_at 解析 |
+| E5 Option/Result | 107 | parser SomeKW/NoneKW/OkKW/ErrKW + a2r CallExpr 输出 | parser.at +a2r.at |
+| E5 借用语义 | 108 | lexer DotView/DotMut/DotMove/DotTake + parser + a2r | lexer.at +parser.at +ast.at +a2r.at |
 
-**总计**: 12 个 Auto 源文件, ~5,700 行, 95 个 bootstrap 测试
+**总计**: 12 个 Auto 源文件, ~5,800 行, 97 个 bootstrap 测试
 
 ### 未完成
 
 | 编号 | 内容 | 优先级 | 估计量 |
 |------|------|--------|--------|
 | D2 | generics.at 泛型注册表 (类型字符串替换) | 中 | ~300 行 |
-| E5 | Option/Result 匹配 (`is opt { Some(x) -> ... }`) | 高 | ~150 行 |
-| E5 | 借用语义 (`.view`/`.mut`/`.take` → `&`/`&mut`) | 中 | ~100 行 |
 | E6 | Grid/矩阵表达式 | 低 | ~200 行 |
 
 ## 目标
@@ -58,15 +58,13 @@
 
 ### a2r 转译器特性覆盖
 
-**已覆盖**: 基础表达式, 函数, 变量, if/else, for, struct, enum, impl, trait, match, F-string, 闭包, 数组, 对象, 错误传播, struct 构造函数, 多语句 match, use.c/py FFI, 泛型类型映射 (`List<int>` → `Vec<i32>`, `Map<str, int>` → `HashMap<String, i32>`), 泛型 enum/spec/ext 输出
+**已覆盖**: 基础表达式, 函数, 变量, if/else, for, struct, enum, impl, trait, match, F-string, 闭包, 数组, 对象, 错误传播, struct 构造函数, 多语句 match, use.c/py FFI, 泛型类型映射, 泛型 enum/spec/ext 输出, Option/Result 匹配, 借用语义 (.view→&, .mut→&mut, .move/.take→passthrough)
 
 **未覆盖**:
 
 | 特性 | 难度 | 优先级 |
 |------|------|--------|
-| Option/Result 匹配 (`Some(x) -> ...`) | 中 | P0 |
 | 泛型单态化 (generics.at) | 高 | P1 |
-| 借用语义 (`.view`/`.mut`/`.take`) | 中 | P1 |
 | 泛型 type alias | 中 | P2 |
 | 原始指针 (`*T`) | 低 | P2 |
 

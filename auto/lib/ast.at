@@ -36,6 +36,10 @@ enum NodeKind {
     PairExpr
     ArrayExpr
     ErrorPropagateExpr
+    // E5: ownership/borrowing
+    ViewExpr
+    MutExpr
+    MoveExpr
 }
 
 // Function parameter
@@ -336,6 +340,28 @@ fn error_propagate_node(expr ASTNode) ASTNode {
     l.push(expr)
     var s = "(? " + expr.value + ")"
     ASTNode(NodeKind.ErrorPropagateExpr, s, "", empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+// E5: ownership/borrowing nodes
+fn view_node(expr ASTNode) ASTNode {
+    var l = empty_list()
+    l.push(expr)
+    var s = "(& " + expr.value + ")"
+    ASTNode(NodeKind.ViewExpr, s, "", empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn mut_node(expr ASTNode) ASTNode {
+    var l = empty_list()
+    l.push(expr)
+    var s = "(&mut " + expr.value + ")"
+    ASTNode(NodeKind.MutExpr, s, "", empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn move_node(expr ASTNode) ASTNode {
+    var l = empty_list()
+    l.push(expr)
+    var s = "(move " + expr.value + ")"
+    ASTNode(NodeKind.MoveExpr, s, "", empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 // Simply return the pre-computed S-expression string

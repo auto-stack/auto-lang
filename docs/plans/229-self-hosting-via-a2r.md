@@ -1,6 +1,6 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: ⏳ Phase 2 (a2r) E1-E4 已完成, E5 待开始 (2026-05-09 更新)
+## 实施状态: ⏳ Phase 2 (a2r) E1-E5 部分完成 (2026-05-24 更新)
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
@@ -9,7 +9,7 @@
 
 **预估工期:** 16–22 周（4–5.5 个月）
 
-### 进度摘要（2026-05-09 更新）
+### 进度摘要（2026-05-24 更新）
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
@@ -28,7 +28,7 @@
 | 2.E2: 结构化 AST | ✅ 已完成 | struct/enum/match/use/impl/trait/f-string, 测试 087-093 (Plan 237 Phase E2) |
 | 2.E3: 表达式补全 | ✅ 已完成 | 数组/错误传播/self字段替换/别名, 测试 094-099 (Plan 237 Phase E3+E4) |
 | 2.E4: 对象/闭包 | ✅ 已完成 | 对象字面量 + lambda + PairExpr (合并到 E3 一起实现) |
-| 2.E5: 类型增强 | ⏳ 待开始 | Option/Result匹配/泛型/struct构造函数 |
+| 2.E5: 类型增强 | ✅ 已完成 | struct构造函数✅ Option/Result匹配✅ 借用语义✅ |
 | Phase 3: 自举 | ⏳ 待开始 | 依赖 Phase 2 |
 
 **已完成的基础工作:**
@@ -45,9 +45,12 @@
 - [x] Phase 0.5 Bug 2: let 绑定字符串切片丢失类型 → codegen.rs 中 Expr::Index+Range 的 string range slice 类型推断
 - [x] Phase 0.5 Bug 3: STR_CAT 后 last_expr_type 被设为 Int → codegen.rs binary expr 结果类型追踪加 is_string 检查
 - [x] Phase 0.5 Bug 4: RET 不恢复 current_fn_n_args → engine.rs CallFrame 中保存/恢复函数元数据 + AND/OR 改为逻辑操作
+- [x] Phase 2.E5: struct 构造函数 Point(1,2) → Point { x: 1, y: 2 } + 多语句 match arm + use.c/py FFI + 泛型类型映射
+- [x] Phase 2.E5: Option/Result 模式匹配 — parser.at 添加 SomeKW/NoneKW/OkKW/ErrKW 处理, a2r.at CallExpr 正确输出 Some(x)/None/Ok(x)/Err(x) (测试 107)
+- [x] Phase 2.E5: 借用语义 — lexer.at 添加 DotView/DotMut/DotMove/DotTake, parser.at 添加后缀解析, ast.at 添加 ViewExpr/MutExpr/MoveExpr, a2r.at .view→&expr/.mut→&mut/.move→passthrough (测试 108)
 
 **下一步行动:**
-- E5: Option/Result 模式匹配、泛型 struct/enum、struct 构造函数 (Point { x: 1, y: 2 })
+- D2: 泛型注册表 (generics.at 类型字符串替换)
 - 文件 I/O 验证: fs.read_to_string / fs.write_string
 - Phase 3 准备: 用 AA2R 转译 auto/lib/ 所有文件，验证输出可编译
 

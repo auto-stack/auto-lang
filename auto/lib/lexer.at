@@ -304,6 +304,25 @@ fn lex_operator(source str, pos int) Token {
         if peek_char(source, p, '?') {
             return Token(TokenKind.DotQuest, Pos(1, p, 2), ".?")
         }
+        // Property keywords: .view, .mut, .move, .take
+        var next4 = ""
+        var pi = p + 1
+        var pc = 0
+        for pc < 6 {
+            if pi >= source.len() { break }
+            var ch = source.char_at(pi)
+            if (ch >= 97 && ch <= 122) || (ch >= 65 && ch <= 90) || ch == 95 {
+                next4 = next4 + source.sub(pi, pi + 1)
+            } else {
+                break
+            }
+            pi = pi + 1
+            pc = pc + 1
+        }
+        if next4 == "view" { return Token(TokenKind.DotView, Pos(1, p, 5), ".view") }
+        if next4 == "mut" { return Token(TokenKind.DotMut, Pos(1, p, 4), ".mut") }
+        if next4 == "move" { return Token(TokenKind.DotMove, Pos(1, p, 5), ".move") }
+        if next4 == "take" { return Token(TokenKind.DotTake, Pos(1, p, 5), ".take") }
         return Token(TokenKind.Dot, Pos(1, p, 1), ".")
     }
     if c == '?' {

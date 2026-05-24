@@ -1,0 +1,39 @@
+// Test: a2r Option/Result pattern matching
+// Verifies that is opt { Some(x) -> ..., None -> ... } transpiles to Rust match
+
+fn main() {
+    // Test 1: Option match with Some(x) and None
+    var src1 = "fn maybe(x int) str {\nis x {\n0 -> \"zero\",\nelse -> \"other\"\n}\n}\nfn main() {\nprint(maybe(0))\n}"
+    var r1 = run_a2r(src1)
+    var has_match = r1.find("match")
+    var has_arrow = r1.find("=>")
+    var has_zero = r1.find("\"zero\"")
+    if has_match >= 0 && has_arrow >= 0 && has_zero >= 0 {
+        print("t1:ok")
+    } else {
+        print("t1:fail:" + r1)
+    }
+
+    // Test 2: Some(x) pattern in is branch
+    var src2 = "fn main() {\nvar x = Some(42)\nis x {\nSome(v) -> print(v)\nNone -> print(\"none\")\n}\n}"
+    var r2 = run_a2r(src2)
+    var has_some = r2.find("Some(v)")
+    var has_none = r2.find("None")
+    var has_match2 = r2.find("match")
+    if has_some >= 0 && has_none >= 0 && has_match2 >= 0 {
+        print("t2:ok")
+    } else {
+        print("t2:fail:" + r2)
+    }
+
+    // Test 3: Ok/Err pattern
+    var src3 = "fn main() {\nvar result = Ok(100)\nis result {\nOk(v) -> print(v)\nErr(e) -> print(e)\n}\n}"
+    var r3 = run_a2r(src3)
+    var has_ok = r3.find("Ok(v)")
+    var has_err = r3.find("Err(e)")
+    if has_ok >= 0 && has_err >= 0 {
+        print("t3:ok")
+    } else {
+        print("t3:fail:" + r3)
+    }
+}
