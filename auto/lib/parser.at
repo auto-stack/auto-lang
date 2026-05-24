@@ -6,7 +6,7 @@
 type Parser {
     tokens List<Token>
     pos int
-    len int
+    token_count int
 }
 
 // Create a new parser from a token list
@@ -16,7 +16,7 @@ fn parser_new(tokens List<Token>) Parser {
 
 // Get current token
 fn parser_cur(p Parser) Token {
-    if p.pos >= p.len {
+    if p.pos >= p.token_count {
         return Token(TokenKind.EOF, Pos(0, 0, 0), "")
     }
     return p.tokens.get(p.pos)
@@ -40,7 +40,7 @@ fn parser_is(p Parser, kind TokenKind) bool {
 // Look ahead at the next token kind (1-token lookahead)
 fn parser_peek_kind(p Parser) TokenKind {
     var next = p.pos + 1
-    if next >= p.len {
+    if next >= p.token_count {
         return TokenKind.EOF
     }
     return p.tokens.get(next).kind
@@ -219,11 +219,11 @@ fn parse_stmt(p Parser) ASTNode {
             // Check for object literal: {key: value, ...}
             // Lookahead: pos+1 is Ident, pos+2 is Colon
             var p1 = p.pos + 1
-            if p1 < p.len {
+            if p1 < p.token_count {
                 var t1 = p.tokens.get(p1)
                 if t1.kind == TokenKind.Ident {
                     var p2 = p.pos + 2
-                    if p2 < p.len {
+                    if p2 < p.token_count {
                         var t2 = p.tokens.get(p2)
                         if t2.kind == TokenKind.Colon {
                             return parse_object(p)
@@ -964,11 +964,11 @@ fn parse_atom(p Parser) ASTNode {
             // Object literal: {key: value, ...}
             // Check lookahead: pos+1 is Ident, pos+2 is Colon
             var p1 = p.pos + 1
-            if p1 < p.len {
+            if p1 < p.token_count {
                 var t1 = p.tokens.get(p1)
                 if t1.kind == TokenKind.Ident {
                     var p2 = p.pos + 2
-                    if p2 < p.len {
+                    if p2 < p.token_count {
                         var t2 = p.tokens.get(p2)
                         if t2.kind == TokenKind.Colon {
                             return parse_object(p)

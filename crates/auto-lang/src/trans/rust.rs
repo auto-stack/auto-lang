@@ -876,20 +876,23 @@ impl RustTrans {
                 .map_err(Into::into)
             }
             Expr::Bool(b) => write!(out, "{}", b).map_err(Into::into),
-            Expr::Char(c) => if *c == '\n' {
-                write!(out, "'\\n'")
-            } else if *c == '\t' {
-                write!(out, "'\\t'")
-            } else if *c == '\r' {
-                write!(out, "'\\r'")
-            } else if *c == '\0' {
-                write!(out, "'\\0'")
-            } else if *c == '\\' {
-                write!(out, "'\\\\'")
-            } else if *c == '\'' {
-                write!(out, "'\\''")
-            } else {
-                write!(out, "'{}'", c)
+            Expr::Char(c) => {
+                // Auto char is int (i32) — emit as Rust char cast to i32
+                if *c == '\n' {
+                    write!(out, "('\\n' as i32)")
+                } else if *c == '\t' {
+                    write!(out, "('\\t' as i32)")
+                } else if *c == '\r' {
+                    write!(out, "('\\r' as i32)")
+                } else if *c == '\0' {
+                    write!(out, "('\\0' as i32)")
+                } else if *c == '\\' {
+                    write!(out, "('\\\\' as i32)")
+                } else if *c == '\'' {
+                    write!(out, "('\\'' as i32)")
+                } else {
+                    write!(out, "('{}' as i32)", c)
+                }
             }
             .map_err(Into::into),
             Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
@@ -1205,35 +1208,11 @@ impl RustTrans {
                         }
                     }
                     Op::Eq | Op::Neq => {
-                        // Plan 220 Task 5: When comparing with a single-char string literal,
-                        // emit a char comparison instead of &str comparison.
-                        // e.g.  ch == "a"  ->  ch == 'a'
-                        let op_str = op.op(); // "==" or "!="
-                        if let Expr::Str(s) = rhs.as_ref() {
-                            if s.chars().count() == 1 {
-                                self.expr(lhs, out)?;
-                                write!(out, " {} ", op_str)?;
-                                write!(out, "'{}'", escape_str(s))?;
-                            } else {
-                                self.expr(lhs, out)?;
-                                write!(out, " {} ", op_str)?;
-                                self.expr(rhs, out)?;
-                            }
-                        } else if let Expr::Str(s) = lhs.as_ref() {
-                            if s.chars().count() == 1 {
-                                write!(out, "'{}'", escape_str(s))?;
-                                write!(out, " {} ", op_str)?;
-                                self.expr(rhs, out)?;
-                            } else {
-                                self.expr(lhs, out)?;
-                                write!(out, " {} ", op_str)?;
-                                self.expr(rhs, out)?;
-                            }
-                        } else {
-                            self.expr(lhs, out)?;
-                            write!(out, " {} ", op_str)?;
-                            self.expr(rhs, out)?;
-                        }
+                        // Auto char literals ('a') are emitted as i32, string literals stay as strings
+                        let op_str = op.op();
+                        self.expr(lhs, out)?;
+                        write!(out, " {} ", op_str)?;
+                        self.expr(rhs, out)?;
                     }
                     _ => {
                         // Binary operators: lhs OP rhs
@@ -3434,13 +3413,13 @@ impl RustTrans {
                             return Ok(());
                         }
                         "char_at" => {
-                            // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0')
+                            // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0') as i32
                             self.expr(lhs, out)?;
                             write!(out, ".chars().nth(")?;
                             if let Some(Arg::Pos(arg)) = call.args.args.first() {
                                 self.expr(arg, out)?;
                             }
-                            write!(out, " as usize).unwrap_or('\\0')")?;
+                            write!(out, " as usize).unwrap_or('\\0') as i32")?;
                             return Ok(());
                         }
                         "sub" => {
@@ -3637,16 +3616,47 @@ impl RustTrans {
                     write!(out, ".is_null())")?;
                     return Ok(());
                 }
+                // list.get(i) -> list[i as usize].clone() for Vec-like collections
+                "get" => {
+                    if call.args.args.len() == 1 {
+                        if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                            let is_numeric = matches!(arg, Expr::Int(_) | Expr::Uint(_) | Expr::I8(_))
+                                || if let Expr::Ident(name) = arg {
+                                    self.local_var_types.get(name)
+                                        .map(|ty| matches!(ty, Type::Int | Type::Uint | Type::I64 | Type::U64))
+                                        .unwrap_or(true)
+                                } else { false };
+                            if is_numeric {
+                                self.expr(object, out)?;
+                                write!(out, "[")?;
+                                self.expr(arg, out)?;
+                                write!(out, " as usize].clone()")?;
+                                return Ok(());
+                            }
+                        }
+                    }
+                    // HashMap get: map.get(key) -> map.get(&*key).cloned().unwrap_or_default()
+                    self.expr(object, out)?;
+                    write!(out, ".get(")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        if matches!(a, Expr::Ident(_)) {
+                            write!(out, "&*")?;
+                        }
+                        self.expr(a, out)?;
+                    }
+                    write!(out, ").cloned().unwrap_or_default()")?;
+                    return Ok(());
+                }
                 // Plan 204 Phase 5: Complex method translations requiring
                 // non-trivial Rust output (not just a name remap).
                 "char_at" => {
-                    // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0')
+                    // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0') as i32
                     self.expr(object, out)?;
                     write!(out, ".chars().nth(")?;
                     if let Some(Arg::Pos(arg)) = call.args.args.first() {
                         self.expr(arg, out)?;
                     }
-                    write!(out, " as usize).unwrap_or('\\0')")?;
+                    write!(out, " as usize).unwrap_or('\\0') as i32")?;
                     return Ok(());
                 }
                 "sub" => {
@@ -8632,6 +8642,7 @@ impl RustTrans {
             "pos", "n", "count", "len", "start", "end", "index", "from",
             "slot", "col", "gii", "pii", "ppi", "ii", "iii", "di",
             "li", "mi", "ni", "qi", "vi", "wi", "xi", "yi", "zi",
+            "gi", "si2", "hi", "fi", "ai", "bi", "ci2", "no",
         ];
 
         for var in &int_like_vars {

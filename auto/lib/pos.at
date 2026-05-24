@@ -1,7 +1,7 @@
 // Position tracking for source code locations
 
 type Pos {
-    line uint   // 1-based line number
-    at uint     // 0-based column offset
-    total uint  // 0-based byte offset from start of source
+    line int   // 1-based line number
+    at int     // 0-based column offset
+    total int  // 0-based byte offset from start of source
 }
