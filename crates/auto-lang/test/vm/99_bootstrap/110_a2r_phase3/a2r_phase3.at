@@ -1,0 +1,54 @@
+// Test: AA2R Phase 3 readiness — transpile each auto/lib file
+// Verify that the self-hosted a2r can handle its own source code
+
+fn main() {
+    // Test: transpile pos.at
+    var pos_src = "type Pos {\nline uint\nat uint\ntotal uint\n}"
+    var r1 = run_a2r(pos_src)
+    var h1 = r1.find("struct Pos")
+    if h1 >= 0 {
+        print("pos:ok")
+    } else {
+        print("pos:fail:" + r1)
+    }
+
+    // Test: transpile a simple function with type params
+    var fn_src = "fn add(a int, b int) int {\nreturn a + b\n}"
+    var r2 = run_a2r(fn_src)
+    var h2 = r2.find("fn add(a: i32, b: i32)")
+    if h2 >= 0 {
+        print("fn:ok")
+    } else {
+        print("fn:fail:" + r2)
+    }
+
+    // Test: transpile type with methods
+    var type_src = "type Counter {\ncount int\nfn get() int {\nreturn count\n}\n}"
+    var r3 = run_a2r(type_src)
+    var h3 = r3.find("struct Counter")
+    if h3 >= 0 {
+        print("type:ok")
+    } else {
+        print("type:fail:" + r3)
+    }
+
+    // Test: transpile enum
+    var enum_src = "enum Color {\nRED = 1\nGREEN = 2\nBLUE = 3\n}"
+    var r4 = run_a2r(enum_src)
+    var h4 = r4.find("enum Color")
+    if h4 >= 0 {
+        print("enum:ok")
+    } else {
+        print("enum:fail:" + r4)
+    }
+
+    // Test: transpile is/match
+    var is_src = "fn classify(x int) str {\nis x {\n0 -> \"zero\"\nelse -> \"other\"\n}\n}"
+    var r5 = run_a2r(is_src)
+    var h5 = r5.find("match x")
+    if h5 >= 0 {
+        print("is:ok")
+    } else {
+        print("is:fail:" + r5)
+    }
+}

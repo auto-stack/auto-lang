@@ -792,3 +792,4 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_aavm_99_bootstrap_106_a2r_generic_enum() { test_aavm("99_bootstrap/106_a2r_generic_enum").unwrap(); }
 #[test] #[ignore] fn test_aavm_99_bootstrap_107_a2r_option_match() { test_aavm("99_bootstrap/107_a2r_option_match").unwrap(); }
 #[test] #[ignore] fn test_aavm_99_bootstrap_108_a2r_ownership() { test_aavm("99_bootstrap/108_a2r_ownership").unwrap(); }
+#[test] #[ignore] fn test_aavm_99_bootstrap_110_a2r_phase3() { test_aavm("99_bootstrap/110_a2r_phase3").unwrap(); }
