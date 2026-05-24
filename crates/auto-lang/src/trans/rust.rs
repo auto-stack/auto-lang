@@ -4552,7 +4552,26 @@ impl RustTrans {
                     .cloned()
                     .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
             } else {
-                self.fn_str_param_indices.get(method_name.as_str()).cloned()
+                // For non-simple objects (e.g., self.field), don't fall back to
+                // bare method name lookup — it may match wrong function signatures.
+                // Only use qualified lookups.
+                if let Expr::Dot(inner, _) = object.as_ref() {
+                    if let Expr::Ident(obj_name) = inner.as_ref() {
+                        let obj_type: String = self.local_var_types.get(obj_name).map(|ty| {
+                            match ty {
+                                Type::User(name) => name.to_string(),
+                                Type::Enum(decl) => decl.borrow().name.to_string(),
+                                _ => String::new(),
+                            }
+                        }).unwrap_or_default();
+                        let qualified: AutoStr = format!("{}.{}", obj_type, method_name).into();
+                        self.fn_str_param_indices.get(&qualified).cloned()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             };
             // Parenthesize object if it's a binary op (e.g., (a / b).method())
             let obj_needs_parens = matches!(object.as_ref(),
@@ -4590,30 +4609,42 @@ impl RustTrans {
                 match arg {
                     Arg::Pos(expr) => {
                         self.expr(expr, out)?;
+                        // For .get(): auto-borrow handling done via is_str_param below.
+                        // Post-processing (fix_vec_i32_index) converts .get(var) to [var as usize]
+                        // for Vec accesses, so we don't add as usize here.
                         // For Map.insert(), auto-convert to String for non-primitive types
                         if is_insert && !matches!(expr, Expr::Int(_) | Expr::Bool(_)) {
                             write!(out, ".to_string()")?;
                         }
                         // Auto-borrow: add .as_str() when passing String to &str method param
-                        let is_str_param = method_str_flags.as_ref()
-                            .and_then(|f| f.get(i))
-                            .copied()
-                            .unwrap_or(false);
-                        // Also try i+1 for methods that include self as first param
-                        let is_str_param_offset = method_str_flags.as_ref()
-                            .and_then(|f| f.get(i + 1))
-                            .copied()
-                            .unwrap_or(false);
-                        if (is_str_param || is_str_param_offset)
+                        // For module calls (obj_is_type_chain), flags[i] directly maps to arg[i].
+                        // For object method calls, try flags[i+1] since flags may include self.
+                        let is_str_param = if obj_is_type_chain {
+                            method_str_flags.as_ref()
+                                .and_then(|f| f.get(i))
+                                .copied()
+                                .unwrap_or(false)
+                        } else {
+                            method_str_flags.as_ref()
+                                .and_then(|f| f.get(i))
+                                .copied()
+                                .unwrap_or(false)
+                            || method_str_flags.as_ref()
+                                .and_then(|f| f.get(i + 1))
+                                .copied()
+                                .unwrap_or(false)
+                        };
+                        if is_str_param
                             && !matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_, _))
                             && !Self::is_str_slice_var(arg, &self.local_var_types)
+                            && !Self::is_int_var(arg, &self.local_var_types)
                         {
                             write!(out, ".as_str()")?;
                         }
                         // Auto-borrow for external crate calls: when calling crate::method()
                         // with a String-typed variable, add .as_str() since most Rust
                         // APIs accept &str rather than String.
-                        if obj_is_type_chain && !is_str_param && !is_str_param_offset {
+                        if obj_is_type_chain && !is_str_param {
                             if let Expr::Ident(name) = expr {
                                 if self.local_var_types.get(name)
                                     .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
@@ -4879,6 +4910,17 @@ impl RustTrans {
         if let Arg::Pos(Expr::Ident(name)) = arg {
             local_var_types.get(name)
                 .map(|ty| matches!(ty, Type::StrSlice))
+                .unwrap_or(false)
+        } else {
+            false
+        }
+    }
+
+    /// Check if an arg is an integer-typed variable (i32/u32/usize)
+    fn is_int_var(arg: &Arg, local_var_types: &HashMap<AutoStr, Type>) -> bool {
+        if let Arg::Pos(Expr::Ident(name)) = arg {
+            local_var_types.get(name)
+                .map(|ty| matches!(ty, Type::Int | Type::Uint))
                 .unwrap_or(false)
         } else {
             false
@@ -8245,6 +8287,12 @@ impl RustTrans {
         // B6: Fix bool-returning functions used with == 0 / != 0
         Self::fix_bool_int_comparisons(&mut content);
 
+        // B9: Fix map.get(key).as_str() → map.get(key).map(|s| s.as_str()).unwrap_or("")
+        Self::fix_map_get_as_str(&mut content);
+
+        // B10: Fix integer.as_str() → integer.to_string().as_str()
+        Self::fix_int_as_str(&mut content);
+
         *output = content.into_bytes();
     }
 
@@ -8314,21 +8362,43 @@ impl RustTrans {
 
     /// Fix Vec.get(i32_var) → Vec[i32_var as usize] using heuristic i32 variable names.
     fn fix_vec_i32_index(content: &mut String) {
-        let i32_vars = [
-            "i", "j", "k", "ci", "ti", "ki", "ri", "ei", "pi", "si",
-            "ti2", "ri2", "tri", "tc_i", "step_idx", "idx", "offset",
-            "pos", "n", "count", "len", "start", "end", "index", "from",
-        ];
         let hash_map_names = [
             "map", "dict", "env", "vars", "cache", "sessions", "entries",
             "headers", "params", "options", "metadata", "config",
             "routes", "data", "properties", "fields",
             "professions", "souls", "flows", "agents", "providers",
-            "runs", "checkpoints",
+            "runs", "checkpoints", "project_locks",
+        ];
+        let vec_field_names = [
+            "tool_call_ids", "tool_call_names", "tool_call_args", "tool_call_started",
+            "items", "steps", "events", "messages", "entries",
         ];
 
-        for var in &i32_vars {
-            // Pattern: vecname.get(var.as_str()) → vecname[var as usize]
+        // Pattern 1: self.field.get(var) → self.field[var as usize] for known Vec fields
+        if let Ok(re) = regex::Regex::new(r"(self\.(\w+))\.get\((\w+)\)") {
+            let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let full = caps.get(1).unwrap().as_str();
+                let field = caps.get(2).unwrap().as_str();
+                let var = caps.get(3).unwrap().as_str();
+                if vec_field_names.contains(&field) {
+                    format!("{}[{} as usize]", full, var)
+                } else {
+                    format!("{}.get({})", full, var)
+                }
+            }).to_string();
+            if new_content != *content { *content = new_content; }
+        }
+
+        // Pattern 2: vecname.get(var) → vecname[var as usize] for non-HashMap, non-self.field
+        let int_like_vars = [
+            "i", "j", "k", "ci", "ti", "ki", "ri", "ei", "pi", "si",
+            "ti2", "ri2", "tri", "tc_i", "step_idx", "idx", "offset",
+            "pos", "n", "count", "len", "start", "end", "index", "from",
+            "slot", "col",
+        ];
+
+        for var in &int_like_vars {
+            // vecname.get(var.as_str()) → vecname[var as usize]
             let pattern_str = format!(r"(\w+)\.get\({}\.as_str\(\)\)", regex::escape(var));
             if let Ok(re) = regex::Regex::new(&pattern_str) {
                 let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
@@ -8339,23 +8409,47 @@ impl RustTrans {
                         format!("{}[{} as usize]", vec_name, var)
                     }
                 }).to_string();
-                *content = new_content;
+                if new_content != *content { *content = new_content; }
             }
 
-            // Pattern: vecname.get(var) where vecname is NOT a HashMap-like name
-            let pattern = format!(r"(\w+)\.get\({}\)(?! as usize)(?!\.as_str)", regex::escape(var));
+            // vecname.get(var) where not already followed by .as_str or as usize
+            // Note: Rust regex crate doesn't support lookahead, so we match broadly
+            // and filter in the replacement callback
+            let pattern = format!(r"(\w+)\.get\({}\)", regex::escape(var));
             if let Ok(re) = regex::Regex::new(&pattern) {
                 let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let full_match = caps.get(0).unwrap();
+                    let after = &content[full_match.end()..];
+                    // Skip if already followed by " as usize" or ".as_str"
+                    if after.starts_with(" as usize") || after.starts_with(".as_str") {
+                        return full_match.as_str().to_string();
+                    }
                     let vec_name = caps.get(1).unwrap().as_str();
                     if hash_map_names.contains(&vec_name) {
-                        // Keep .get() for HashMap-like names
                         format!("{}.get({})", vec_name, var)
                     } else {
                         format!("{}[{} as usize]", vec_name, var)
                     }
                 }).to_string();
-                *content = new_content;
+                if new_content != *content {
+                    *content = new_content;
+                }
             }
+        }
+
+        // Pattern 3: .get(0) or .get(NUM) → [NUM] for Vec-like collections
+        // Only for simple var.get(NUM) not map.get("key")
+        if let Ok(re) = regex::Regex::new(r"(\w+)\.get\((\d+)\)") {
+            let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let vec_name = caps.get(1).unwrap().as_str();
+                let num = caps.get(2).unwrap().as_str();
+                if hash_map_names.contains(&vec_name) {
+                    format!("{}.get({})", vec_name, num)
+                } else {
+                    format!("{}[{}]", vec_name, num)
+                }
+            }).to_string();
+            if new_content != *content { *content = new_content; }
         }
     }
 
@@ -8634,6 +8728,83 @@ impl RustTrans {
             }
         }
         let _ = count;
+    }
+
+    /// Fix map.get(key).as_str() → map.get(key).map(|s| s.as_str()).unwrap_or("")
+    /// HashMap::get returns Option<&String>, but Auto treats get() as returning the value directly.
+    fn fix_map_get_as_str(content: &mut String) {
+        // Step 1: Replace `let VAR = EXPR.get(KEY);` with
+        //         `let VAR = EXPR.get(KEY).cloned().unwrap_or_default();`
+        //         for HashMap<String, String> patterns (params, headers, etc.)
+        if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*(\w+\.get\([^)]+\));") {
+            let mut replacements = Vec::new();
+            for caps in re.captures_iter(content) {
+                let var = caps.get(1).unwrap().as_str();
+                let get_expr = caps.get(2).unwrap().as_str();
+                // Skip if this is a Vec/Array .get() (e.g., route_list.get(i))
+                // We only want to unwrap HashMap .get() with string keys
+                if get_expr.contains(".get(\"") || get_expr.contains(".get(\"") {
+                    replacements.push((var.to_string(), get_expr.to_string()));
+                }
+            }
+            for (var, get_expr) in &replacements {
+                let old = format!("let {} = {};", var, get_expr);
+                let new = format!("let {} = {}.cloned().unwrap_or_default();", var, get_expr);
+                let replaced = content.replace(&old, &new);
+                if replaced != *content {
+                    *content = replaced;
+                }
+            }
+        }
+
+        // Step 2: Replace EXPR.get(KEY).as_str() inline patterns
+        // Pattern: var.get("key").as_str() → var.get("key").map(|s| s.as_str()).unwrap_or("")
+        if let Ok(re) = regex::Regex::new(r#"(\w+\.get\("[^"]+"\))\.as_str\(\)"#) {
+            let new = re.replace_all(content, |caps: &regex::Captures| {
+                let get_expr = caps.get(1).unwrap().as_str();
+                format!("{}.map(|s| s.as_str()).unwrap_or(\"\")", get_expr)
+            }).to_string();
+            if new != *content {
+                *content = new;
+            }
+        }
+    }
+
+    /// Fix integer.as_str() → integer.to_string().as_str()
+    /// i32/u32 don't have .as_str(), but Auto's str() conversion maps to .as_str().
+    fn fix_int_as_str(content: &mut String) {
+        // Track which variables are assigned from integer-returning expressions
+        // Pattern: let VAR = ... as i32; or let VAR: u32 = ...;
+        let mut int_vars = std::collections::HashSet::new();
+        if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*:\s*(u32|i32|usize)\s*=") {
+            for caps in re.captures_iter(content) {
+                int_vars.insert(caps.get(1).unwrap().as_str().to_string());
+            }
+        }
+        // Also track: let VAR = expr as i32/u32/usize;
+        if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*[^;]+\s+as\s+(u32|i32|usize)\s*;") {
+            for caps in re.captures_iter(content) {
+                int_vars.insert(caps.get(1).unwrap().as_str().to_string());
+            }
+        }
+        // Also track: let VAR: u32/i32;
+        if let Ok(re) = regex::Regex::new(r"let\s+mut\s+(\w+)\s*:\s*(u32|i32|usize)\s*;") {
+            for caps in re.captures_iter(content) {
+                int_vars.insert(caps.get(1).unwrap().as_str().to_string());
+            }
+        }
+
+        if int_vars.is_empty() { return; }
+
+        // Replace VAR.as_str() with format!("{}", VAR).as_str() for integer vars
+        for var in &int_vars {
+            let pattern = format!("{}.as_str()", var);
+            let replacement = format!("format!(\"{{}}\", {}).as_str()", var);
+            let new = content.replace(&pattern, &replacement);
+            if new != *content {
+                *content = new;
+            }
+        }
     }
 
     /// Fix common String/&str mismatch patterns.
