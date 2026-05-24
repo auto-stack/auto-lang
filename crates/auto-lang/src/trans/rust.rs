@@ -8524,6 +8524,12 @@ impl RustTrans {
         // B13: Fix derive macros on structs with dyn Trait fields
         Self::fix_dyn_trait_derives(&mut content);
 
+        // B14: Fix integer type mismatches (u32 vs i32 vs usize)
+        Self::fix_integer_type_mismatches(&mut content);
+
+        // B15: Fix enum == "str" comparisons — Auto enums can compare with str, Rust can't
+        Self::fix_enum_str_comparisons(&mut content);
+
         // B7: Fix vec![(str, str, str)] where return type is Vec<(String,...)>
         Self::fix_vec_tuple_string_literals(&mut content);
 
@@ -9001,11 +9007,109 @@ impl RustTrans {
         }
     }
 
+    /// Fix integer type mismatches (u32 vs i32 vs usize).
+    fn fix_integer_type_mismatches(content: &mut String) {
+        let u32_vars: std::collections::HashSet<String> = {
+            let mut vars = std::collections::HashSet::new();
+            if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*:\s*u32\s*=") {
+                for caps in re.captures_iter(content.as_str()) {
+                    vars.insert(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
+            if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*\(.+?\s+as\s+u32\)") {
+                for caps in re.captures_iter(content.as_str()) {
+                    vars.insert(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
+            vars
+        };
+        for var in &u32_vars {
+            let pattern = format!("{} <= \\((.+?) as i32\\)", var);
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let expr = caps.get(1).unwrap().as_str();
+                    format!("{} <= ({} as u32)", var, expr)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+            let pattern = format!("{} >= \\((.+?) as i32\\)", var);
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let expr = caps.get(1).unwrap().as_str();
+                    format!("{} >= ({} as u32)", var, expr)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+            let pattern = format!("{} < \\((.+?) as i32\\)", var);
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let expr = caps.get(1).unwrap().as_str();
+                    format!("{} < ({} as u32)", var, expr)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+        }
+        let i32_vars: std::collections::HashSet<String> = {
+            let mut vars = std::collections::HashSet::new();
+            if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*:\s*i32\s*=") {
+                for caps in re.captures_iter(content.as_str()) {
+                    vars.insert(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
+            if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*\(.+?\s+as\s+i32\)") {
+                for caps in re.captures_iter(content.as_str()) {
+                    vars.insert(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
+            vars
+        };
+        for uvar in &u32_vars {
+            for ivar in &i32_vars {
+                for op in &[" < ", " > ", " <= ", " >= "] {
+                    let pat = format!("{}{}{}", uvar, op, ivar);
+                    let repl = format!("{}{}{} as u32", uvar, op, ivar);
+                    *content = content.replace(&pat, &repl);
+                }
+            }
+        }
+    }
+
+    /// Fix enum == "str" comparisons.
+    fn fix_enum_str_comparisons(content: &mut String) {
+        let enum_fields = [
+            "section_type", "status", "phase", "kind", "role", "stop_reason",
+            "source_type", "provider", "decision",
+        ];
+        for field in &enum_fields {
+            let eq_pat = format!(".{}\\s*==\\s*\"", field);
+            if let Ok(re) = regex::Regex::new(&eq_pat) {
+                let old_eq = format!(".{field} ==");
+                let new_eq = format!(".{field}.to_string() ==");
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    caps.get(0).unwrap().as_str().replace(&old_eq, &new_eq)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+            let ne_pat = format!(".{}\\s*!=\\s*\"", field);
+            if let Ok(re) = regex::Regex::new(&ne_pat) {
+                let old_ne = format!(".{field} !=");
+                let new_ne = format!(".{field}.to_string() !=");
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    caps.get(0).unwrap().as_str().replace(&old_ne, &new_ne)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+        }
+    }
+
     /// Fix vec![(str, str, str)] where the return type is Vec<(String, String, String)>.
     /// Adds .to_string() to string literals inside tuples in vec![] macros.
     fn fix_vec_tuple_string_literals(content: &mut String) {
         // Strategy: find vec![ ... ]; regions and add .to_string() to bare string literals.
-        // Use a simple state machine over the full content.
+        // This handles Vec<(String, String, String)> where the tuple contains string literals.
+        // But NOT inside function call arguments like vec![Func::new("arg")].
+        // Heuristic: add .to_string() unless the string is preceded by ( or , followed by
+        // an identifier and then ( — i.e., FuncName("arg") pattern.
         let bytes = content.as_bytes();
         let len = bytes.len();
         let mut result = Vec::new();
@@ -9034,18 +9138,27 @@ impl RustTrans {
                         continue;
                     }
                     b'"' => {
-                        // Read the string literal
                         let start = i;
-                        i += 1; // skip opening "
+                        i += 1;
                         while i < len && bytes[i] != b'"' {
-                            if bytes[i] == b'\\' { i += 1; } // skip escape
+                            if bytes[i] == b'\\' { i += 1; }
                             i += 1;
                         }
-                        if i < len { i += 1; } // skip closing "
+                        if i < len { i += 1; }
                         let lit = &content[start..i];
-                        // Check if already followed by .to_string()
                         let rest = &content[i..];
-                        if rest.trim_start().starts_with(".to_string()") {
+                        let trimmed_rest = rest.trim_start();
+                        // Check if this string is a function call argument.
+                        // Look backwards from the opening " to see if it follows Name( pattern.
+                        let before = &content[..start];
+                        let before_trimmed = before.trim_end();
+                        let is_func_arg = before_trimmed.ends_with('(') && {
+                            // Check if the ( is preceded by an identifier (function name)
+                            let before_paren = before_trimmed[..before_trimmed.len()-1].trim_end();
+                            before_paren.chars().last().map(|c| c.is_alphanumeric() || c == '_').unwrap_or(false)
+                        };
+                        let already_has = trimmed_rest.starts_with(".to_string()");
+                        if is_func_arg || already_has {
                             result.extend_from_slice(lit.as_bytes());
                         } else {
                             result.extend_from_slice(lit.as_bytes());
