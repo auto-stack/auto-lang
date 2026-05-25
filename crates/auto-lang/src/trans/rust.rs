@@ -10800,13 +10800,39 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     use crate::ast::Stmt;
 
     let entry_path = std::path::Path::new(entry_file);
-    let entry_dir = entry_path.parent()
-        .ok_or_else(|| AutoError::Msg("Entry file has no parent directory".into()))?;
 
     // Phase 1: Discover all modules
+    // If entry is a directory, scan all .at files in it directly.
+    // If entry is a file, use the standard discover_modules mechanism.
     let mut modules = Vec::new();
-    let mut visited = std::collections::HashSet::new();
-    discover_modules(entry_path, entry_dir, &mut modules, &mut visited)?;
+    if entry_path.is_dir() {
+        // Directory mode: discover all .at files in the directory
+        let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(entry_path)
+            .map_err(|e| AutoError::Msg(format!("Cannot read directory {}: {}", entry_path.display(), e)))?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().map(|e| e == "at").unwrap_or(false))
+            .collect();
+        entries.sort();
+        for path in &entries {
+            let name = path.file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            modules.push(ProjectModule {
+                name: name.clone(),
+                source_path: path.clone(),
+                output_name: name,
+                is_dir_module: false,
+                uses: Vec::new(),
+            });
+        }
+    } else {
+        let entry_dir = entry_path.parent()
+            .ok_or_else(|| AutoError::Msg("Entry file has no parent directory".into()))?;
+        let mut visited = std::collections::HashSet::new();
+        discover_modules(entry_path, entry_dir, &mut modules, &mut visited)?;
+    }
 
     if modules.is_empty() {
         return Err(AutoError::Msg("No modules found".into()));
