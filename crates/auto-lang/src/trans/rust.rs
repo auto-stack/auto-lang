@@ -2407,6 +2407,13 @@ impl RustTrans {
     }
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        // DEBUG: trace ContentBlock-related calls
+        {
+            let name_str = format!("{}", call.name);
+            if name_str.contains("ContentBlock") || name_str.contains("ChatMessage") || name_str.contains("ToolChatEvent") {
+                eprintln!("[DEBUG call] name={}, args_count={}", name_str, call.args.args.len());
+            }
+        }
         // Detect Rust macro pattern: name!("...") was parsed as name.collect()("...")
         // because '!' is the eager collection operator in Auto.
         // Parser creates: Expr::Bina(lhs, Dot, "collect") then wraps in Call.
@@ -4881,60 +4888,139 @@ impl RustTrans {
         // **Phase 1.3: Tag Types**
         // Check if this is a tag construction call: Tag.Variant(value)
         // E.g., Atom.Int(11) should generate: Atom::Int(11)
-        if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
-            if matches!(op, Op::Dot) {
-                if let Expr::Ident(type_name) = lhs.as_ref() {
-                    if let Expr::Ident(variant_name) = rhs.as_ref() {
-                        if self.tag_types.contains(type_name) {
-                            let key = (type_name.clone(), variant_name.clone());
-                            let struct_fields = self.enum_struct_variants.get(&key).cloned();
-                            // Tag construction: TypeName::VariantName(args)
-                            write!(out, "{}::{}", type_name, variant_name)?;
-                            if let Some(fields) = struct_fields {
-                                // Struct variant: Type::Variant { field1: val1, field2: val2 }
-                                write!(out, " {{ ")?;
-                                for (i, (arg, field_name)) in call.args.args.iter().zip(fields.iter()).enumerate() {
-                                    if let Arg::Pos(expr) = arg {
-                                        write!(out, "{}: ", field_name)?;
-                                        self.expr(expr, out)?;
-                                        if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
-                                            write!(out, ".to_string()")?;
-                                        }
-                                    }
-                                    if i < call.args.args.len().min(fields.len()) - 1 { write!(out, ", ")?; }
-                                }
-                                write!(out, " }}")?;
-                            } else {
-                                // Tuple variant: Type::Variant(val1, val2, ...)
-                                let tuple_field_types = self.enum_tuple_field_types.get(&key).cloned();
-                                write!(out, "(")?;
-                                for (i, arg) in call.args.args.iter().enumerate() {
-                                    if let Arg::Pos(expr) = arg {
-                                        self.expr(expr, out)?;
-                                        if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
-                                            write!(out, ".to_string()")?;
-                                        } else if let Expr::Ident(name) = expr {
-                                            // Check if tuple field is String but arg is &str
-                                            let field_is_string = tuple_field_types.as_ref()
-                                                .and_then(|types| types.get(i))
-                                                .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
-                                                .unwrap_or(false);
-                                            let var_is_str_slice = self.local_var_types.get(name)
-                                                .map(|ty| matches!(ty, Type::StrSlice))
-                                                .unwrap_or(false);
-                                            if field_is_string && var_is_str_slice {
-                                                write!(out, ".to_string()")?;
+        // Also handles module.Type.Variant(value) → module::Type::Variant(value)
+        // Parser produces both Expr::Bina and Expr::Dot for dot paths:
+        //   Type.Variant → Expr::Bina(Type, Dot, Variant) or Expr::Dot(Type, Variant)
+        //   module.Type.Variant → Expr::Dot(Expr::Bina(module, Dot, Type), Variant)
+        {
+            let mut tag_match: Option<(Option<AutoStr>, AutoStr, AutoStr)> = None;
+            // Pattern A: Expr::Bina(lhs, Dot, rhs) — Type.Variant or module.Type.Variant
+            if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
+                if matches!(op, Op::Dot) {
+                    // Two-level: Type.Variant
+                    if let Expr::Ident(type_name) = lhs.as_ref() {
+                        if let Expr::Ident(variant_name) = rhs.as_ref() {
+                            if self.tag_types.contains(type_name) {
+                                tag_match = Some((None, type_name.clone(), variant_name.clone()));
+                            }
+                        }
+                    }
+                    // Three-level via Bina: module.Type.Variant
+                    if tag_match.is_none() {
+                        if let Expr::Bina(inner_lhs, inner_op, inner_rhs) = lhs.as_ref() {
+                            if matches!(inner_op, Op::Dot) {
+                                if let Expr::Ident(mod_name) = inner_lhs.as_ref() {
+                                    if let Expr::Ident(type_name) = inner_rhs.as_ref() {
+                                        if let Expr::Ident(variant_name) = rhs.as_ref() {
+                                            if self.tag_types.contains(type_name)
+                                                || self.module_types.contains_key(mod_name.as_str())
+                                            {
+                                                tag_match = Some((Some(mod_name.clone()), type_name.clone(), variant_name.clone()));
                                             }
                                         }
                                     }
-                                    if i < call.args.args.len() - 1 { write!(out, ", ")?; }
                                 }
-                                write!(out, ")")?;
                             }
-                            return Ok(());
                         }
                     }
                 }
+            }
+            // Pattern B: Expr::Dot(object, field) — Type.Variant or module.Type.Variant
+            if tag_match.is_none() {
+                if let Expr::Dot(obj, field_name) = call.name.as_ref() {
+                    // Two-level: Type.Variant via Dot — only match if type_name is a known tag type
+                    if let Expr::Ident(type_name) = obj.as_ref() {
+                        if self.tag_types.contains(type_name) {
+                            tag_match = Some((None, type_name.clone(), field_name.clone()));
+                        }
+                    }
+                    // Three-level: module.Type.Variant via Dot(Bina(module, Dot, Type), Variant)
+                    if tag_match.is_none() {
+                        if let Expr::Bina(inner_lhs, inner_op, inner_rhs) = obj.as_ref() {
+                            if matches!(inner_op, Op::Dot) {
+                                if let Expr::Ident(mod_name) = inner_lhs.as_ref() {
+                                    if let Expr::Ident(type_name) = inner_rhs.as_ref() {
+                                        if self.tag_types.contains(type_name)
+                                            || self.module_types.contains_key(mod_name.as_str())
+                                        {
+                                            tag_match = Some((Some(mod_name.clone()), type_name.clone(), field_name.clone()));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Three-level: module.Type.Variant via Dot(Dot(module, Type), Variant)
+                    if tag_match.is_none() {
+                        if let Expr::Dot(inner_obj, inner_type_name) = obj.as_ref() {
+                            if let Expr::Ident(mod_name) = inner_obj.as_ref() {
+                                if self.tag_types.contains(inner_type_name)
+                                    || self.module_types.contains_key(mod_name.as_str())
+                                {
+                                    tag_match = Some((Some(mod_name.clone()), inner_type_name.clone(), field_name.clone()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some((mod_prefix, type_name, variant_name)) = tag_match {
+                let key = (type_name.clone(), variant_name.clone());
+                let struct_fields = self.enum_struct_variants.get(&key).cloned();
+                // Tag construction with optional module prefix
+                if let Some(ref mp) = mod_prefix {
+                    if mp.as_str() == self.current_module_name {
+                        write!(out, "{}::{}::{}", mp, type_name, variant_name)?;
+                    } else if self.module_types.contains_key(mp.as_str()) {
+                        write!(out, "crate::{}::{}::{}", mp, type_name, variant_name)?;
+                    } else {
+                        write!(out, "{}::{}::{}", mp, type_name, variant_name)?;
+                    }
+                } else {
+                    write!(out, "{}::{}", type_name, variant_name)?;
+                }
+                if let Some(fields) = struct_fields {
+                    // Struct variant: Type::Variant { field1: val1, field2: val2 }
+                    write!(out, " {{ ")?;
+                    for (i, (arg, field_name)) in call.args.args.iter().zip(fields.iter()).enumerate() {
+                        if let Arg::Pos(expr) = arg {
+                            write!(out, "{}: ", field_name)?;
+                            self.expr(expr, out)?;
+                            if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                write!(out, ".to_string()")?;
+                            }
+                        }
+                        if i < call.args.args.len().min(fields.len()) - 1 { write!(out, ", ")?; }
+                    }
+                    write!(out, " }}")?;
+                } else {
+                    // Tuple variant: Type::Variant(val1, val2, ...)
+                    let tuple_field_types = self.enum_tuple_field_types.get(&key).cloned();
+                    write!(out, "(")?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        if let Arg::Pos(expr) = arg {
+                            self.expr(expr, out)?;
+                            if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                write!(out, ".to_string()")?;
+                            } else if let Expr::Ident(name) = expr {
+                                // Check if tuple field is String but arg is &str
+                                let field_is_string = tuple_field_types.as_ref()
+                                    .and_then(|types| types.get(i))
+                                    .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
+                                    .unwrap_or(false);
+                                let var_is_str_slice = self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false);
+                                if field_is_string && var_is_str_slice {
+                                    write!(out, ".to_string()")?;
+                                }
+                            }
+                        }
+                        if i < call.args.args.len() - 1 { write!(out, ", ")?; }
+                    }
+                    write!(out, ")")?;
+                }
+                return Ok(());
             }
         }
 
@@ -11113,43 +11199,195 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
 /// Post-processing passes specific to merged mode output.
 /// These handle cross-file issues that arise when concatenating modules.
 fn post_process_merged(body: &mut Vec<u8>) {
-    let mut content = String::from_utf8(std::mem::take(body)).unwrap();
+    let content = String::from_utf8(std::mem::take(body)).unwrap();
+    let lines: Vec<&str> = content.lines().collect();
 
-    // Remove duplicate #![allow(...)] pragmas (keep only the first)
+    // Track seen definitions for deduplication
     let mut seen_allow = false;
-    let lines: Vec<&str> = content.lines().collect();
-    let mut result = String::new();
-    for line in &lines {
-        if line.starts_with("#![allow(") {
-            if seen_allow {
-                continue; // skip duplicate
-            }
-            seen_allow = true;
-        }
-        result.push_str(line);
-        result.push('\n');
-    }
-    content = result;
-
-    // Remove duplicate use statements
     let mut seen_uses: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let lines: Vec<&str> = content.lines().collect();
+    let mut seen_top_level_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_struct_defs: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_enum_defs: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     let mut result = String::new();
-    for line in &lines {
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
         let trimmed = line.trim();
-        if trimmed.starts_with("use ") && !trimmed.starts_with("use crate::") && !trimmed.contains("::") {
-            // Simple use statement like "use std::collections::HashMap;"
-            if seen_uses.contains(trimmed) {
-                continue;
-            }
-            seen_uses.insert(trimmed.to_string());
+
+        // Skip duplicate #![allow(...)] pragmas
+        if trimmed.starts_with("#![allow(") {
+            if seen_allow { i += 1; continue; }
+            seen_allow = true;
+            result.push_str(line);
+            result.push('\n');
+            i += 1;
+            continue;
         }
+
+        // Skip duplicate use statements (any form)
+        if trimmed.starts_with("use ") || trimmed.starts_with("#[allow(unused_imports)]") && i + 1 < lines.len() && lines[i+1].trim().starts_with("use ") {
+            let use_line = if trimmed.starts_with("#[allow") {
+                // Skip the #[allow(unused_imports)] annotation line too
+                let actual_use = lines[i + 1].trim();
+                if seen_uses.contains(actual_use) {
+                    i += 2; continue; // skip both annotation and use
+                }
+                seen_uses.insert(actual_use.to_string());
+                result.push_str(line);
+                result.push('\n');
+                i += 1;
+                continue;
+            } else {
+                trimmed
+            };
+            if seen_uses.contains(use_line) {
+                i += 1; continue;
+            }
+            seen_uses.insert(use_line.to_string());
+            result.push_str(line);
+            result.push('\n');
+            i += 1;
+            continue;
+        }
+
+        // Skip duplicate const definitions (OP_*, BOOL_*, NATIVE_*, etc.)
+        if trimmed.starts_with("const ") && trimmed.ends_with(';') {
+            // Extract const name: "const OP_POP: i32 = 1;" → "OP_POP"
+            if let Some(name) = trimmed.strip_prefix("const ") {
+                if let Some(colon_pos) = name.find(':') {
+                    let const_name = &name[..colon_pos];
+                    if seen_top_level_names.contains(const_name) {
+                        i += 1; continue;
+                    }
+                    seen_top_level_names.insert(const_name.to_string());
+                }
+            }
+            result.push_str(line);
+            result.push('\n');
+            i += 1;
+            continue;
+        }
+
+        // Skip duplicate fn definitions (OP_*, BOOL_*, NATIVE_*, etc.)
+        if trimmed.starts_with("fn ") {
+            // Extract fn name: "fn OP_POP() -> i32 {" → "OP_POP"
+            if let Some(rest) = trimmed.strip_prefix("fn ") {
+                if let Some(paren_pos) = rest.find('(') {
+                    let fn_name = &rest[..paren_pos];
+                    if seen_top_level_names.contains(fn_name) {
+                        // Skip the entire function body
+                        let mut depth = 0i32;
+                        while i < lines.len() {
+                            for ch in lines[i].chars() {
+                                match ch {
+                                    '{' => depth += 1,
+                                    '}' => depth -= 1,
+                                    _ => {}
+                                }
+                            }
+                            if depth == 0 { break; }
+                            i += 1;
+                        }
+                        i += 1; // skip closing }
+                        continue;
+                    }
+                    seen_top_level_names.insert(fn_name.to_string());
+                }
+            }
+            result.push_str(line);
+            result.push('\n');
+            i += 1;
+            continue;
+        }
+
+        // Skip duplicate struct definitions
+        if trimmed.starts_with("struct ") || (trimmed.starts_with("#[derive") && i + 1 < lines.len() && lines[i+1].trim().starts_with("struct ")) {
+            let struct_line_idx = if trimmed.starts_with("struct ") { i } else { i + 1 };
+            let struct_trimmed = lines[struct_line_idx].trim();
+            if let Some(rest) = struct_trimmed.strip_prefix("struct ") {
+                let name = rest.split(|c: char| c == '{' || c == '<' || c == ' ').next().unwrap_or("").trim();
+                if !name.is_empty() {
+                    if seen_struct_defs.contains(name) {
+                        // Skip until closing brace
+                        let mut depth = 0i32;
+                        while i < lines.len() {
+                            for ch in lines[i].chars() {
+                                match ch {
+                                    '{' => depth += 1,
+                                    '}' => depth -= 1,
+                                    _ => {}
+                                }
+                            }
+                            if depth == 0 { break; }
+                            i += 1;
+                        }
+                        i += 1;
+                        continue;
+                    }
+                    seen_struct_defs.insert(name.to_string());
+                }
+            }
+            result.push_str(line);
+            result.push('\n');
+            i += 1;
+            continue;
+        }
+
+        // Skip duplicate enum definitions
+        if trimmed.starts_with("enum ") {
+            if let Some(rest) = trimmed.strip_prefix("enum ") {
+                let name = rest.split(|c: char| c == '{' || c == '<' || c == ' ').next().unwrap_or("").trim();
+                if !name.is_empty() {
+                    if seen_enum_defs.contains(name) {
+                        let mut depth = 0i32;
+                        while i < lines.len() {
+                            for ch in lines[i].chars() {
+                                match ch {
+                                    '{' => depth += 1,
+                                    '}' => depth -= 1,
+                                    _ => {}
+                                }
+                            }
+                            if depth == 0 { break; }
+                            i += 1;
+                        }
+                        i += 1;
+                        continue;
+                    }
+                    seen_enum_defs.insert(name.to_string());
+                }
+            }
+            result.push_str(line);
+            result.push('\n');
+            i += 1;
+            continue;
+        }
+
+        // Skip duplicate type aliases: "type X = ..."
+        if trimmed.starts_with("type ") && trimmed.contains('=') {
+            if let Some(rest) = trimmed.strip_prefix("type ") {
+                let name = rest.split(|c: char| c == '=' || c == '<' || c == ' ').next().unwrap_or("").trim();
+                if !name.is_empty() {
+                    if seen_top_level_names.contains(name) {
+                        i += 1; continue;
+                    }
+                    seen_top_level_names.insert(name.to_string());
+                }
+            }
+            result.push_str(line);
+            result.push('\n');
+            i += 1;
+            continue;
+        }
+
+        // Keep all other lines
         result.push_str(line);
         result.push('\n');
+        i += 1;
     }
-    content = result;
 
-    *body = content.into_bytes();
+    *body = result.into_bytes();
 }
 
 fn discover_modules(

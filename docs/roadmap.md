@@ -1,3 +1,36 @@
+# RoadMap to v0.5
+
+### 生命周期
+
+- 强化生命周期检查器
+- 实现AutoFree
+- 逃逸分析+ARC Fallback
+- 二阶逃逸分析
+
+### 解释器
+
+总体目标：实现1s周转
+
+- ABC文本形式汇编代码
+- 实时反汇编器
+- AutoVM拆分成Host和Client
+- ClientVM实现C的最小版本，部署到MCU
+- 热重载，包含数据迁移功能
+
+### Rust生态
+- 实现r2a反转译器
+- Rust常用库反迁移到Auto标准库，使用Auto特有的语法
+
+### C生态
+
+- 完善全部Auto语法对C的转译
+- 完善宏和其他的预处理系统
+- 完善CTE与C语言的无缝连接
+- 接管Linker，实现用Auto配置链接属性
+- 对接Debugger（OpenOCD）
+- 链接热重载
+- 基于SDL3实现基础的图形/小游戏框架
+
 # RoadMap to v0.4
 
 ## 核心语言特性
@@ -12,42 +45,19 @@
 - 增强闭包类型
 - 类型作为第一公民
 
-### 生命周期
-
-- 强化生命周期检查器
-- 实现AutoFree
-- 逃逸分析+ARC Fallback
-- 二阶逃逸分析
-
-
 ### 解释器
 
-总体目标：实现1s周转
-
-- ABC文本形式汇编代码
-- 实时反汇编器
-- AutoVM拆分成Host和Client
-- ClientVM实现C的最小版本，部署到MCU
-- 热重载，包含数据迁移功能
-
+- 能够正常运行AutoForge的后端代码的Auto版
+- 能够正常运行最新版的AAVM（即Auto版AutoVM）
 
 ### Rust生态
 
 - 完善全部Auto语法对Rust的转译
-- 实现r2a反转译器
-- 实现20+常用标准库的Rust转译
-- 开启Rust常用库的Auto反迁移工作
+- 实现Rust Stdlib的FFI
+- 实现任意Rust第三方库的FFI
 - 实现WEB/Desktop常用的后端技术库（HTTP/Redis/SQLite等）
+- 能够通过a2r转译并成功运行AutoForge的后端代码
 
-### C生态
-
-- 完善全部Auto语法对C的转译
-- 完善宏和其他的预处理系统
-- 完善CTE与C语言的无缝连接
-- 接管Linker，实现用Auto配置链接属性
-- 对接Debugger（OpenOCD）
-- 链接热重载
-- 基于SDL3实现基础的图形/小游戏框架
 
 ### WEB生态
 

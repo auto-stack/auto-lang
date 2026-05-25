@@ -2501,6 +2501,14 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     ))
 }
 
+/// Transpile a multi-file AutoLang project into a single merged Rust file.
+///
+/// Discovers all .at files starting from `entry_file`, transpiles them
+/// into one .rs file with deduplication and merge-specific post-processing.
+pub fn trans_rust_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
+    crate::trans::rust::transpile_rust_project_merged(entry_file)
+}
+
 /// Plan 204 Phase 6B: Basic structural validation of transpiled Rust output.
 ///
 /// Checks bracket matching and basic structural validity.

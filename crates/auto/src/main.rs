@@ -210,6 +210,8 @@ enum TransTarget {
     Rust {
         #[arg(short, long, help = "Output file path (default: same name with .rs extension)")]
         output: Option<String>,
+        #[arg(short, long, help = "Merge all discovered modules into a single .rs file")]
+        merge: bool,
     },
     Python {
         #[arg(short, long, help = "Output file path (default: same name with .py extension)")]
@@ -1144,18 +1146,29 @@ fn real_main(cli: Cli) -> Result<()> {
                     output_success(ai_mode, &c);
                 }
             }
-            TransTarget::Rust { output } => {
-                let r = auto_lang::trans_rust(path.as_str()).map_err(|e| {
-                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
-                    to_miette_err(e)
-                })?;
-                // trans_rust() already writes the output file internally.
-                // If -o was specified and differs from default path, copy the file.
-                if let Some(_out) = output {
-                    // Output already written by trans_rust to default path
-                    println!("{}", r);
+            TransTarget::Rust { output, merge } => {
+                if merge {
+                    let merged = auto_lang::trans_rust_merged(path.as_str()).map_err(|e| {
+                        if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                        to_miette_err(e)
+                    })?;
+                    let content = String::from_utf8_lossy(&merged);
+                    if let Some(out) = output {
+                        std::fs::write(&out, &*merged).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                        println!("[trans] {} -> {} (merged)", path, out);
+                    } else {
+                        output_success(ai_mode, &content);
+                    }
                 } else {
-                    output_success(ai_mode, &r);
+                    let r = auto_lang::trans_rust(path.as_str()).map_err(|e| {
+                        if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                        to_miette_err(e)
+                    })?;
+                    if let Some(_out) = output {
+                        println!("{}", r);
+                    } else {
+                        output_success(ai_mode, &r);
+                    }
                 }
             }
             TransTarget::Python { output } => {
