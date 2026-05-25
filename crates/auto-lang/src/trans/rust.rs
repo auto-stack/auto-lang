@@ -3588,6 +3588,7 @@ impl RustTrans {
                         // Collection methods
                         "push" => Some("push"),
                         "pop" => Some("pop"),
+                        "drop" => Some("take"),
                         "clear" => Some("clear"),
                         "to_array" => Some("clone"),
                         "contains" => Some("contains"),
@@ -4535,6 +4536,7 @@ impl RustTrans {
                 // Collection methods
                 "push" => Some("push"),
                 "pop" => Some("pop"),
+                "drop" => Some("take"),
                 "clear" => Some("clear"),
                 "to_array" => Some("clone"),
                 "retain" => Some("retain"),
@@ -5830,13 +5832,24 @@ impl RustTrans {
             }
 
             Stmt::Return(expr) => {
-                // If this is a unit-return function and expr is Nil/None, emit plain return;
+                // If this is a unit-return function (Void or no explicit type), emit plain return;
+                // Auto void functions may return 0, Nil, None, or any expr — all become return;
                 let is_unit_fn = self.current_fn_ret_type.as_ref()
-                    .map(|t| matches!(t, Type::Void))
-                    .unwrap_or(false);
-                if is_unit_fn && matches!(expr.as_ref(), Expr::Nil | Expr::None | Expr::Null) {
-                    sink.body.write(b"return;")?;
-                    return Ok(true);
+                    .map(|t| matches!(t, Type::Void | Type::Unknown))
+                    .unwrap_or(true);
+                if is_unit_fn {
+                    // Check if the return expression is trivially void-compatible
+                    let is_void_expr = matches!(expr.as_ref(),
+                        Expr::Nil | Expr::None | Expr::Null
+                        | Expr::Int(_) | Expr::Bool(_)
+                    );
+                    if is_void_expr {
+                        sink.body.write(b"return;")?;
+                        return Ok(true);
+                    }
+                    // Non-trivial expr in void function: still emit return; (discard value)
+                    // But only if we're confident the expr has no side effects worth keeping
+                    // For now, let expr through and let regex fix handle edge cases
                 }
                 sink.body.write(b"return ")?;
                 // Plan 232: If returning a &str parameter, add .to_string()
@@ -6333,8 +6346,6 @@ impl RustTrans {
             fn_decl.ret.clone()
         };
         self.current_fn_ret_type = Some(effective_ret_type.clone());
-
-        // Return type - unwrap Future/Handle for async fn (Rust's async fn wraps implicitly)
         // Plan 204 Phase 1B: Use rust_return_type_name for return positions (str -> String)
         if fn_body_has_try {
             write!(sink.body, " -> Result<(), Box<dyn std::error::Error>>")?;
@@ -11541,8 +11552,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         "=> { p.pos = p.pos + 1; nil_node(); }",
         "=> { p.pos = p.pos + 1; nil_node() }",
     );
-    // Option.drop() -> Option.take()
-    content = content.replace(".drop()", ".take()");
+    // Option.drop() -> Option.take(): now handled at AST level (method name mapping)
     // Fix int_to_str(X).cloned().unwrap_or_default()
     let re = regex::Regex::new(r"int_to_str\(([^)]+)\)\.cloned\(\)\.unwrap_or_default\(\)").unwrap();
     content = re.replace_all(&content, "int_to_str($1)").to_string();
@@ -11677,11 +11687,11 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     }
 
     // === fix_misc: void functions return 0 -> return ===
-    for fn_name in &["codegen_expr", "codegen_stmt", "type_infer_expr", "type_infer_stmts",
+    // AST level handles top-level return 0 in void functions, but if-block returns need regex
+    for fn_name in &["codegen_expr", "codegen_stmt", "type_infer_stmts",
                      "codegen_call", "codegen_binop", "codegen_unary", "a2r_transpile"] {
         let fn_pattern = format!("fn {}(", fn_name);
         if let Some(pos) = content.find(&fn_pattern) {
-            // Find the opening brace
             if let Some(brace_pos) = content[pos..].find('{') {
                 let abs_brace = pos + brace_pos;
                 let mut depth = 1i32;
@@ -11754,32 +11764,8 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
 }"#).to_string();
     }
 
-    // === Fix return; in non-void function (E0069) ===
-    // type_infer_expr returns i32 — void fn fix incorrectly changed its return 0; to return;
-    for fn_name in &["type_infer_expr"] {
-        let fn_pattern = format!("fn {}(", fn_name);
-        if let Some(pos) = content.find(&fn_pattern) {
-            if let Some(brace_pos) = content[pos..].find('{') {
-                let abs_brace = pos + brace_pos;
-                let mut depth = 1i32;
-                let mut end = abs_brace + 1;
-                let bytes = content.as_bytes();
-                while end < bytes.len() && depth > 0 {
-                    match bytes[end] {
-                        b'{' => depth += 1,
-                        b'}' => depth -= 1,
-                        _ => {}
-                    }
-                    end += 1;
-                }
-                let body = &content[abs_brace+1..end-1];
-                let fixed_body = body.replace("return;", "return 0;");
-                if body != &fixed_body {
-                    content = format!("{}{}{}", &content[..abs_brace+1], fixed_body, &content[end-1..]);
-                }
-            }
-        }
-    }
+    // === Fix return; in non-void function: no longer needed ===
+    // AST level now correctly emits "return 0;" for non-void functions, "return;" for void functions
 
     // === Fix double .cloned().unwrap_or_default() (E0599: String is not iterator) ===
     // Pattern: .cloned().unwrap_or_default().cloned().unwrap_or_default()
