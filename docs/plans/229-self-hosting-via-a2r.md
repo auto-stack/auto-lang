@@ -31,7 +31,7 @@
 | 2.E5: 类型增强 | ✅ 已完成 | struct构造函数✅ Option/Result匹配✅ 借用语义✅ |
 | Phase 3: 自举 | ✅ 已完成 | 合并编译 1427→0 错误 (2026-05-25), a2r改进+Python后处理pipeline |
 | Phase 4.1: Regex内化 | ✅ 已完成 | Python脚本已全部删除，regex后处理迁入a2r内部，11项已AST内化 |
-| Phase 4.1b: 类型系统增强 | 🔄 进行中 | Step 4(数据流)✅ 已完成，Step 1-3 待实施 |
+| Phase 4.1b: 类型系统增强 | 🔄 进行中 | Step 1✅ Step 4✅ 已完成，Step 2-3 待实施 |
 | Phase 4.2: 运行验证 | ✅ 已完成 | bootstrap.rs 编译通过(123KB) + 4测试通过 + 235回归测试通过 |
 | Phase 4.3: 固定点验证 | ⬜ 待开始 | Auto 编译器编译自身，输出与 Rust 编译器一致 |
 
@@ -64,7 +64,7 @@
   - 最终结果: 0 编译错误, 1277 warnings, `cargo check` 通过
 
 **下一步行动:**
-- Phase 4.1b: a2r 类型系统增强 — Step 4(数据流分析,方案A) 可先行，然后 Step 1→2→3 顺序实施
+- Phase 4.1b: a2r 类型系统增强 — Step 2(函数签名类型传播) → Step 3(方法返回类型推断) 顺序实施
 - Phase 4.3: 自举固定点验证 — Auto 编译器编译自身，输出与 Rust 编译器一致
 
 ---
@@ -106,13 +106,13 @@
 | `.insert(arith_expr,) → .insert((arith_expr) as usize,)` | 13 | usize 索引 |
 | `.cloned().unwrap_or_default()` 双重链消除 | 11 | 重复模式 |
 | `state.get()` borrow 冲突修复 | 19 | Rust 借用规则 |
-| `env.scopes` Vec&lt;String&gt; → Vec&lt;HashMap&gt; | 5 | a2r 把 bare List 映射为 Vec&lt;String&gt; |
+| `env.scopes` Vec&lt;String&gt; → Vec&lt;HashMap&gt; | ~~5~~ 0 | ✅ 已由 Auto 源码注解替代 |
 
 **SPECIFIC_HARDCODED 类（~107行）— 针对特定变量名:**
 
 | Fix | 命中次数 | 原因 |
 |-----|---------|------|
-| `fn_defs: HashMap&lt;String,String&gt; → HashMap&lt;String,ASTNode&gt;` | 17 | a2r 把所有 Map 值存为 String |
+| `fn_defs: HashMap&lt;String,String&gt; → HashMap&lt;String,ASTNode&gt;` | ~~17~~ 0 | ✅ 已由 Auto 源码注解替代 |
 | `NodeKind::Param` 变体添加 + `Param→ASTNode` 转换 | 9 | 跨文件类型系统问题 |
 | `str_substr` 内联 + `a2r_std::` 前缀替换 | 27 | 外部 crate 函数管理 |
 | `callee/op/path` 等 String→&str 转换 | 16 | 特定变量 borrow |
@@ -157,37 +157,26 @@
 
 **目标:** 增强 a2r 的类型系统能力，逐步替代 `apply_merged_regex_fixes` 中的 regex 后处理规则。
 
-#### Step 1: 泛型类型保留（难度：高，覆盖 ~22 条 regex）
+#### Step 1: 泛型类型保留（✅ 已完成，2026-05-26，方案: Auto 源码层注解）
 
 **问题:** Auto 前端 `typeinfer.at` 用整数 tag 表示类型（0-4），`Map<str, ASTNode>` 的泛型参数在类型推断阶段被丢弃。a2r 转译时裸 `Map` 被默认映射为 `HashMap<String, String>`。
 
-**属于哪个阶段:** 前端（typeinfer.at / parser.at / ast.at）
+**已实施方案:** 在 Auto 源码层添加完整泛型类型注解，利用 a2r 已有的泛型解析能力直接传递类型信息。
 
-**当前状态:**
-- `parser.at` 的 `parser_try_read_generic_type()` 已经能解析 `List<int>` 语法
-- `ast.at` 的 `type_name: str` 字段存储类型注解，但不解析泛型参数
-- `typeinfer.at` 的类型表示是整数 tag，无法承载泛型信息
+**关键变更:**
 
-**实施路径:**
-```
-1. ast.at: type_name 从简单 str 改为结构化类型表示
-   当前: type_name = "Map"
-   目标: type_name = "Map<str, ASTNode>"（保留完整泛型参数）
+| 变更 | 文件 | 说明 |
+|------|------|------|
+| `scopes List<Map<str, str>>` | `auto/lib/eval.at` L8 | 裸 List → 带完整泛型参数 |
+| `fn_defs Map<str, ASTNode>` | `auto/lib/eval.at` L9 | Map<str, str> → Map<str, ASTNode> |
+| `Vec<String>` 默认 | `auto/lib/a2r.at` L29 | 裸 List 默认 Vec<i32> → Vec<String> |
+| `HashMap<String, String>` 默认 | `auto/lib/a2r.at` L30 | 裸 Map 默认 HashMap<String, i32> → HashMap<String, String> |
+| 移除 regex 规则 | `rust.rs` | fn_defs 类型修正 + env.scopes 类型修正（2 条） |
 
-2. typeinfer.at: 类型表示从整数 tag 升级为字符串类型描述
-   当前: type_infer(var) → 0|1|2|3|4 (int|str|bool|void|unknown)
-   目标: type_infer(var) → "int" | "str" | "Map<str, ASTNode>" | ...
+**保留的 regex 规则:**
+- `fn_defs.insert(...)` `.to_string()` → `.clone()` — ASTNode 不实现 Display，需要 regex 修正
 
-3. a2r.at / rust.rs: 从结构化类型中提取泛型参数
-   已有 Type::Map(k, v) / Type::List(elem) 表示
-   需确保 merge 模式下 cross-module 类型信息传递完整
-```
-
-**替代的 regex 规则:**
-- `fn_defs: HashMap<String,String> → HashMap<String,ASTNode>` (17 条)
-- `env.scopes Vec<String> → Vec<HashMap>` (5 条)
-
-**验证:** 修改后 `fn_defs` 和 `env.scopes` 类型在生成的 Rust 代码中正确，无需 regex 修正。
+**验证结果:** 235/235 测试通过，bootstrap.rs 编译 0 错误，4/4 运行测试通过，EvalEnv struct 字段类型正确。
 
 ---
 
@@ -302,12 +291,12 @@
 
 | Step | 改动文件 | 预估代码量 | 前置依赖 | 状态 |
 |------|---------|-----------|----------|------|
-| 1. 泛型类型保留 | ast.at, typeinfer.at, parser.at, rust.rs | ~300 行 | 无 | ⬜ 待实施 |
+| 1. 泛型类型保留 | eval.at, a2r.at, rust.rs | ~20 行 | 无 | ✅ 已完成 |
 | 2. 函数签名类型传播 | typeinfer.at, rust.rs | ~150 行 | Step 1 | ⬜ 待实施 |
 | 3. 方法返回类型推断 | rust.rs | ~200 行 | Step 1 | ⬜ 待实施 |
 | 4. 数据流/借用分析(方案A) | rust.rs | ~75 行 | 无 | ✅ 已完成 |
 
-**Step 4 已完成。Step 1→2→3 顺序推进，需先实施 Step 1（泛型类型保留）作为基础。**
+**Step 1 和 Step 4 已完成。Step 2→3 顺序推进，需先实施 Step 2（函数签名类型传播）。**
 
 ### Phase 4.2: 自举运行验证（✅ 已完成，2026-05-25）
 

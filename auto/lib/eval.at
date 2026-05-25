@@ -4,8 +4,8 @@
 // Evaluator environment
 type EvalEnv {
     globals Map<str, str>       // global variable bindings: name -> value
-    scopes List                 // scope stack: List of Map
-    fn_defs Map<str, str>       // function definitions: name -> ASTNode (heap id)
+    scopes List<Map<str, str>>  // scope stack: List of Map
+    fn_defs Map<str, ASTNode>   // function definitions: name -> ASTNode
     output str        // accumulated print output
 }
 

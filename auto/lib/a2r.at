@@ -26,8 +26,8 @@ fn a2r_type(t str) str {
     if t == "f64" { return "f64" }
     if t == "f32" { return "f32" }
     if t == "byte" { return "u8" }
-    if t == "List" { return "Vec<i32>" }
-    if t == "Map" { return "std::collections::HashMap<String, i32>" }
+    if t == "List" { return "Vec<String>" }
+    if t == "Map" { return "std::collections::HashMap<String, String>" }
 
     // Generic types: "List<int>" → "Vec<i32>", "Map<str, int>" → "HashMap<String, i32>"
     var lt = a2r_find_lt(t)
