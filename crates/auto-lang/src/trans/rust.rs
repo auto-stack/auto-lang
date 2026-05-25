@@ -3662,6 +3662,10 @@ impl RustTrans {
                                     self.local_var_types.get(name)
                                         .map(|ty| matches!(ty, Type::Int | Type::Uint | Type::I64 | Type::U64))
                                         .unwrap_or(true)
+                                } else if let Expr::Dot(_, field) = arg {
+                                    // Field access like p.pos — assume numeric if field name suggests it
+                                    field.as_str().chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                                        && !field.as_str().starts_with('"')
                                 } else { false };
                             if is_numeric {
                                 self.expr(object, out)?;
@@ -3672,8 +3676,7 @@ impl RustTrans {
                             }
                         }
                     }
-                    // Non-numeric get: fall through to generic method call handler
-                    // HashMap .get(&key).cloned() is handled by Python post-processing
+                    // Non-numeric get (HashMap): fall through to generic method call handler
                 }
                 // Plan 204 Phase 5: Complex method translations requiring
                 // non-trivial Rust output (not just a name remap).
@@ -11602,7 +11605,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
 
     // === fix_contains_key.py: now handled at AST level (contains_rust logic + cross-module struct_field_types) ===
 
-    // === fix_vec_get.py ===
+    // === fix_vec_get.py: AST level covers most cases, regex catches remaining 2 edge cases ===
     let re = regex::Regex::new(r"p\.tokens\.get\(([^)]+)\)").unwrap();
     content = re.replace_all(&content, "p.tokens[$1 as usize].clone()").to_string();
     let re = regex::Regex::new(r"\bcode\.get\(([^)]+)\)").unwrap();
