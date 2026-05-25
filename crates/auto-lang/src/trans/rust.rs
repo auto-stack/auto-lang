@@ -4738,14 +4738,12 @@ impl RustTrans {
                                 .copied()
                                 .unwrap_or(false);
                             if is_str_param && !matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_, _)) {
-                                let is_str_slice_var = if let Expr::Ident(name) = expr {
-                                    self.local_var_types.get(name)
-                                        .map(|ty| matches!(ty, Type::StrSlice))
-                                        .unwrap_or(false)
+                                let is_fn_str_param = if let Expr::Ident(name) = expr {
+                                    self.current_fn_str_params.contains(name)
                                 } else {
                                     false
                                 };
-                                if !is_str_slice_var {
+                                if !is_fn_str_param {
                                     write!(out, ".as_str()")?;
                                 }
                             }
@@ -4950,7 +4948,7 @@ impl RustTrans {
                         };
                         if is_str_param
                             && !matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_, _))
-                            && !Self::is_str_slice_var(arg, &self.local_var_types)
+                            && !self.is_str_slice_var(arg)
                             && !Self::is_int_var(arg, &self.local_var_types)
                         {
                             write!(out, ".as_str()")?;
@@ -5269,7 +5267,7 @@ impl RustTrans {
                 .copied()
                 .unwrap_or(false);
             let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg)
-                && !Self::is_str_slice_var(arg, &self.local_var_types);
+                && !self.is_str_slice_var(arg);
 
             // Auto-cast enum→i32 when passing an enum variable to an Int param
             let is_int_param = int_flags.as_ref()
@@ -5335,12 +5333,13 @@ impl RustTrans {
         }
     }
 
-    /// Check if an arg is a &str variable — already borrowed, no .as_str() needed
-    fn is_str_slice_var(arg: &Arg, local_var_types: &HashMap<AutoStr, Type>) -> bool {
+    /// Check if an arg is a &str variable — already borrowed, no .as_str() needed.
+    /// A variable is truly &str in Rust only if it's a function parameter declared as `str`
+    /// (which maps to `mut x: &str` in Rust). Local variables typed `str` map to `String`.
+    fn is_str_slice_var(&self, arg: &Arg) -> bool {
         if let Arg::Pos(Expr::Ident(name)) = arg {
-            local_var_types.get(name)
-                .map(|ty| matches!(ty, Type::StrSlice))
-                .unwrap_or(false)
+            // Function params declared as `str` are truly `&str` in Rust
+            self.current_fn_str_params.contains(name)
         } else {
             false
         }
@@ -6250,6 +6249,7 @@ impl RustTrans {
         write!(sink.body, ")")?;
 
         // Cache which params are str (&str) type for auto-borrow at call sites
+        self.current_fn_str_params.clear();
         let str_param_flags: Vec<bool> = fn_decl.params.iter()
             .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit))
             .collect();
