@@ -164,6 +164,10 @@ pub struct RustTrans {
     // Whether to emit #![allow(...)] pragma at file top (for full files, not test fragments)
     emit_allow_pragma: bool,
 
+    // Merge mode: all modules compiled into single .rs file
+    // When true: skip mod X; declarations, skip use crate::X::*; / use super::X::*;
+    merge_mode: bool,
+
     // Plan 264: Maps module name → set of type names defined in that module.
     // Used to determine if `module.Type` should be `module::Type` in Rust.
     module_types: HashMap<String, HashSet<String>>,
@@ -212,6 +216,7 @@ impl RustTrans {
             var_spec_map: HashMap::new(),
             fn_spec_param_indices: HashMap::new(),
             emit_allow_pragma: false,
+            merge_mode: false,
             module_types: HashMap::new(),
             current_module_name: String::new(),
         }
@@ -256,6 +261,7 @@ impl RustTrans {
             var_spec_map: HashMap::new(),
             fn_spec_param_indices: HashMap::new(),
             emit_allow_pragma: false,
+            merge_mode: false,
             module_types: HashMap::new(),
             current_module_name: String::new(),
         }
@@ -6672,6 +6678,7 @@ impl RustTrans {
                 }
 
                 // Plan 167: In multi-file mode, local module use → mod declaration
+                // In merge mode, skip module imports entirely (all code in one file)
                 if !self.local_modules.is_empty()
                     && use_stmt.items.is_empty()
                     && !use_stmt.is_wildcard
@@ -6679,6 +6686,9 @@ impl RustTrans {
                 {
                     let mod_name = use_stmt.paths[0].as_str();
                     if self.local_modules.contains(mod_name) {
+                        if self.merge_mode {
+                            return Ok(()); // skip: functions already in merged file
+                        }
                         // Module already declared via mod X; at file header.
                         // use X (bare, no items) means "import all from this module"
                         // → generate use crate::X::*;
@@ -6701,6 +6711,10 @@ impl RustTrans {
                         && !self.local_modules.contains(mod_name);
                     // Map known Auto stdlib modules to a2r_std
                     let rust_path = if is_multi_file_bare {
+                        if self.merge_mode {
+                            // In merge mode, skip cross-module imports (all in one file)
+                            return Ok(());
+                        }
                         if self.sibling_modules.contains(mod_name) {
                             // Same directory → use super::X
                             self.glob_imported_modules.insert(mod_name.to_string());
@@ -8653,6 +8667,12 @@ impl RustTrans {
         // B21: Fix &str params assigned to String fields / pushed to Vec<String>
         Self::fix_str_to_string_assignments(&mut content);
 
+        // B22: Fix Option<String>.unwrap_or("") → .unwrap_or_default()
+        Self::fix_option_unwrap_or_empty(&mut content);
+
+        // B23: Fix String passed where &_ is expected (map.get(var) → map.get(&var))
+        Self::fix_string_to_ref(&mut content);
+
         // B15: Fix enum == "str" comparisons — Auto enums can compare with str, Rust can't
         Self::fix_enum_str_comparisons(&mut content);
 
@@ -9766,7 +9786,7 @@ impl RustTrans {
     /// Pattern: `let mut? var = expr.keys()` → `let mut? var: Vec<_> = expr.keys().cloned().collect()`
     fn fix_map_keys_indexing(content: &mut String) {
         // Find all .keys() assignments and check if they're used with indexing or .len()
-        if let Ok(re) = regex::Regex::new(r"(?m)^(    let (?:mut )?)(\w+) = (.+?)\.keys\(\)") {
+        if let Ok(re) = regex::Regex::new(r"(?m)^(\s+let (?:mut )?)(\w+) = (.+?)\.keys\(\)") {
             let captures: Vec<(usize, String, String, String)> = re.captures_iter(content.as_str())
                 .filter_map(|caps| {
                     let full = caps.get(0)?;
@@ -9785,9 +9805,19 @@ impl RustTrans {
                 let needs_fix = content.contains(&idx_pat) || content.contains(&len_pat);
                 if !needs_fix { continue; }
 
-                let old_line = format!("{}{} = {}.keys()", indent, var, expr);
-                let new_line = format!("{}{}: Vec<_> = {}.keys().cloned().collect()", indent, var, expr);
+                let old_line = format!("{}{} = {}.keys();", indent, var, expr);
+                let new_line = format!("{}{}: Vec<_> = {}.keys().cloned().collect();", indent, var, expr);
                 *content = content.replace(&old_line, &new_line);
+
+                // After converting to Vec, fix map.get(var[i].clone()) → map.get(&var[i])
+                // and map.insert(var[i].clone(), ...) → map.insert(var[i].clone(), ...)
+                let get_clone_pat = format!(r"\.get\({}\[([^\]]+)\]\s*\.clone\(\)\)", regex::escape(var));
+                if let Ok(get_re) = regex::Regex::new(&get_clone_pat) {
+                    let new = get_re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                        format!(".get(&{}[{}])", var, caps.get(1).unwrap().as_str())
+                    }).to_string();
+                    if new != *content { *content = new; }
+                }
             }
         }
     }
@@ -9874,6 +9904,85 @@ impl RustTrans {
         }
     }
 
+    /// Fix Option<String>.unwrap_or("") → Option<String>.unwrap_or_default()
+    /// Auto: Option<str>.unwrap_or("") works because "" is str
+    /// Rust: Option<String>.unwrap_or("") fails because "" is &str not String
+    fn fix_option_unwrap_or_empty(content: &mut String) {
+        // Pattern: .unwrap_or("") → .unwrap_or_default()
+        // This handles Option<String>.unwrap_or("") → unwrap_or_default()
+        if let Ok(re) = regex::Regex::new(r#"\.unwrap_or\(""\)"#) {
+            let new = re.replace_all(content.as_str(), ".unwrap_or_default()").to_string();
+            if new != *content { *content = new; }
+        }
+        // Pattern: .unwrap_or(vec![]) → .unwrap_or_default()
+        if let Ok(re) = regex::Regex::new(r"\.unwrap_or\(vec!\[\]\)") {
+            let new = re.replace_all(content.as_str(), ".unwrap_or_default()").to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Fix String passed where &_ is expected.
+    /// Pattern: map.get(var) where var: String → map.get(&var)
+    /// Pattern: map.contains_key(var) where var: String → map.contains_key(&var)
+    /// Pattern: vec_str.starts_with(var) where var: String → vec_str.starts_with(var.as_str())
+    fn fix_string_to_ref(content: &mut String) {
+        // Names that are too generic and should be excluded
+        let skip_names: std::collections::HashSet<&str> = [
+            "s", "result", "content", "text", "msg", "data", "key", "value",
+            "name", "path", "input", "output", "line", "str", "buf",
+        ].into_iter().collect();
+
+        // Pattern: .get(varname) → .get(&varname) where varname is a local String variable
+        // We find String variables first, then add & where needed
+        let string_vars: std::collections::HashSet<String> = regex_captures(content,
+            r"let (?:mut )?(\w+):\s*String\s*=");
+        let more_string_vars: std::collections::HashSet<String> = regex_captures(content,
+            r"let (?:mut )?(\w+)\s*=\s*format!");
+        let all_string_vars: std::collections::HashSet<String> = string_vars.union(&more_string_vars)
+            .cloned().filter(|p| !skip_names.contains(p.as_str()))
+            .collect();
+
+        if all_string_vars.is_empty() { return; }
+
+        for var in &all_string_vars {
+            // Pattern: .get(var) → .get(&var) — but not .get(&var) already
+            let get_pat = format!(r"\.get\({}(?!\.as_str)(?!\.clone)(?!\.to_string)\)", regex::escape(var));
+            if let Ok(re) = regex::Regex::new(&get_pat) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!(".get(&{})", var)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+
+            // Pattern: .contains_key(var) → .contains_key(&var)
+            let ck_pat = format!(r"\.contains_key\({}(?!\.as_str)(?!\.clone)(?!\.to_string)\)", regex::escape(var));
+            if let Ok(re) = regex::Regex::new(&ck_pat) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!(".contains_key(&{})", var)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+
+            // Pattern: str.starts_with(var) → str.starts_with(var.as_str()) where var: String
+            let sw_pat = format!(r"\.starts_with\({}(?!\.as_str)(?!\.clone)(?!\.to_string)\)", regex::escape(var));
+            if let Ok(re) = regex::Regex::new(&sw_pat) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!(".starts_with({}.as_str())", var)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+
+            // Pattern: str.ends_with(var) → str.ends_with(var.as_str())
+            let ew_pat = format!(r"\.ends_with\({}(?!\.as_str)(?!\.clone)(?!\.to_string)\)", regex::escape(var));
+            if let Ok(re) = regex::Regex::new(&ew_pat) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!(".ends_with({}.as_str())", var)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+        }
+    }
+
     /// Fix &str assigned to String fields and pushed to Vec<String>.
     /// Pattern 1: `self.field = str_param` where field is String → add .to_string()
     /// Pattern 2: `vec.push(str_param)` where vec is Vec<String> → add .to_string()
@@ -9882,14 +9991,20 @@ impl RustTrans {
         // Pattern: `somevec.push(param)` where param is a function parameter of type &str
         // We detect &str params from function signatures and add .to_string() when pushing
 
-        // Find all &str parameters in the file
+        // Names that are too generic and should be excluded to avoid false positives / OOM
+        let skip_names: std::collections::HashSet<&str> = [
+            "content", "text", "s", "key", "value", "name", "path", "input",
+            "result", "data", "msg", "line", "str", "buf", "arg", "args",
+            "url", "id", "dir", "file", "src", "dst", "out", "err", "ok",
+            "self",
+        ].into_iter().collect();
+
+        // Find all &str parameters in the file (only from single-line fn signatures)
         let str_params: std::collections::HashSet<String> = regex_captures(content,
             r#"fn \w+\((?:[^)]*,\s*)?(\w+):\s*&str"#);
-        // Also capture from multi-line signatures
-        let more_params: std::collections::HashSet<String> = regex_captures(content,
-            r#"^\s+(\w+):\s*&str"#);
-        let all_str_params: std::collections::HashSet<String> = str_params.union(&more_params)
-            .cloned().collect();
+        let all_str_params: std::collections::HashSet<String> = str_params.into_iter()
+            .filter(|p| !skip_names.contains(p.as_str()))
+            .collect();
 
         if all_str_params.is_empty() { return; }
 
@@ -10352,8 +10467,10 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         parsed_modules.push((module, ast));
     }
 
-    // Phase 2.5: Pre-scan all function signatures for cross-module str-param tracking
+    // Phase 2.5: Pre-scan all function signatures for cross-module param-type tracking
     let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_fn_struct_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
 
     // Helper: collect Fn declarations from statements, including methods inside TypeDecl
     fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
@@ -10401,8 +10518,81 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         }
     }
 
+    // Helper: collect non-Copy and Int param flags for cross-module clone/cast tracking
+    fn collect_fn_param_types(
+        stmts: &[Stmt],
+        type_name: &str,
+        struct_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+        int_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+    ) {
+        let generic_methods = [
+            "get", "set", "insert", "push", "remove", "contains", "len",
+            "is_empty", "iter", "keys", "values", "clone", "new",
+            "update", "delete", "find", "index",
+        ];
+        let process_fn = |fn_decl: &crate::ast::Fn, tname: &str, target_struct: &mut std::collections::HashMap<AutoStr, Vec<bool>>, target_int: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
+            let struct_flags: Vec<bool> = fn_decl.params.iter()
+                .map(|p| !matches!(p.ty,
+                    Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+                    | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+                    | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+                    | Type::Void | Type::Unknown))
+                .collect();
+            let int_flags: Vec<bool> = fn_decl.params.iter()
+                .map(|p| matches!(p.ty, Type::Int))
+                .collect();
+            let has_struct = struct_flags.iter().any(|&b| b);
+            let has_int = int_flags.iter().any(|&b| b);
+            if has_struct || has_int {
+                if !generic_methods.contains(&fn_decl.name.as_str()) {
+                    if has_struct { target_struct.insert(fn_decl.name.clone(), struct_flags.clone()); }
+                    if has_int { target_int.insert(fn_decl.name.clone(), int_flags.clone()); }
+                }
+                if !type_name.is_empty() || fn_decl.parent.is_some() {
+                    let parent = fn_decl.parent.as_ref().map(|p: &crate::ast::Name| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                    let qualified = format!("{}.{}", parent, fn_decl.name);
+                    if has_struct { target_struct.insert(AutoStr::from(&qualified), struct_flags); }
+                    if has_int { target_int.insert(AutoStr::from(&qualified), int_flags); }
+                }
+            }
+        };
+        for stmt in stmts {
+            if let Stmt::Fn(fn_decl) = stmt {
+                process_fn(fn_decl, type_name, struct_map, int_map);
+            }
+            if let Stmt::TypeDecl(type_decl) = stmt {
+                let type_name_str = type_decl.name.to_string();
+                for method in &type_decl.methods {
+                    // Create a temporary FnDecl-like approach by using the method directly
+                    let struct_flags: Vec<bool> = method.params.iter()
+                        .map(|p| !matches!(p.ty,
+                            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+                            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+                            | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+                            | Type::Void | Type::Unknown))
+                        .collect();
+                    let int_flags: Vec<bool> = method.params.iter()
+                        .map(|p| matches!(p.ty, Type::Int))
+                        .collect();
+                    let has_struct = struct_flags.iter().any(|&b| b);
+                    let has_int = int_flags.iter().any(|&b| b);
+                    if has_struct || has_int {
+                        if !generic_methods.contains(&method.name.as_str()) {
+                            if has_struct { struct_map.insert(method.name.clone(), struct_flags.clone()); }
+                            if has_int { int_map.insert(method.name.clone(), int_flags.clone()); }
+                        }
+                        let qualified = format!("{}.{}", type_name_str, method.name);
+                        if has_struct { struct_map.insert(AutoStr::from(&qualified), struct_flags); }
+                        if has_int { int_map.insert(AutoStr::from(&qualified), int_flags); }
+                    }
+                }
+            }
+        }
+    }
+
     for (_module, ast) in &parsed_modules {
         collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
+        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params);
     }
 
     // Phase 3: Transpile each module into its own Sink
@@ -10434,6 +10624,18 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         for (name, flags) in &global_fn_str_params {
             if !transpiler.fn_str_param_indices.contains_key(name) {
                 transpiler.fn_str_param_indices.insert(name.clone(), flags.clone());
+            }
+        }
+
+        // Pre-populate fn_struct_param_indices and fn_int_param_indices for cross-module clone/cast
+        for (name, flags) in &global_fn_struct_params {
+            if !transpiler.fn_struct_param_indices.contains_key(name) {
+                transpiler.fn_struct_param_indices.insert(name.clone(), flags.clone());
+            }
+        }
+        for (name, flags) in &global_fn_int_params {
+            if !transpiler.fn_int_param_indices.contains_key(name) {
+                transpiler.fn_int_param_indices.insert(name.clone(), flags.clone());
             }
         }
 
@@ -10575,7 +10777,8 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
         // Plan 167b: For entry file, emit mod X; declarations before transpilation
         // For dir modules (mod.at), the effective directory is the parent of mod.at's dir
-        if is_entry {
+        // In merge mode, skip mod declarations — all code goes into one file
+        if is_entry && !transpiler.merge_mode {
             let entry_dir = module.source_path.parent().unwrap();
             let mut mod_names: Vec<String> = Vec::new();
             for other in &modules {
@@ -10670,7 +10873,344 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     Ok(result)
 }
 
-/// Recursively discover all modules starting from an entry file
+/// Transpile a multi-file AutoLang project into a single merged Rust file.
+///
+/// Similar to `transpile_rust_project` but outputs one .rs file with:
+/// - All module code concatenated (no mod X; declarations)
+/// - Deduplicated struct/enum/use definitions
+/// - merge_mode = true to skip cross-module imports
+/// - post_process_merged() for additional fixes
+pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
+    use super::Sink;
+    use crate::ast::Stmt;
+
+    let entry_path = std::path::Path::new(entry_file);
+    let entry_dir = entry_path.parent()
+        .ok_or_else(|| AutoError::Msg("Entry file has no parent directory".into()))?;
+
+    // Phase 1: Discover all modules
+    let mut modules = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    discover_modules(entry_path, entry_dir, &mut modules, &mut visited)?;
+
+    if modules.is_empty() {
+        return Err(AutoError::Msg("No modules found".into()));
+    }
+
+    // Phase 1.5: Pre-register all type/enum declarations into shared TypeStore
+    let shared_type_store = Arc::new(RwLock::new(TypeStore::new()));
+    let mut all_enum_names: HashSet<AutoStr> = HashSet::new();
+    let mut module_types: HashMap<String, HashSet<String>> = HashMap::new();
+    {
+        let mut store = shared_type_store.write().unwrap();
+        for module in &modules {
+            let mod_name = if module.is_dir_module {
+                module.source_path.parent().unwrap()
+                    .file_name().unwrap().to_string_lossy().to_string()
+            } else {
+                module.source_path.file_stem()
+                    .unwrap().to_string_lossy().to_string()
+            };
+            module_types.entry(mod_name.clone()).or_default();
+            let source = std::fs::read_to_string(&module.source_path)
+                .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", module.source_path.display(), e)))?;
+            for line in source.lines() {
+                let trimmed = line.trim();
+                let (prefix, rest) = if trimmed.starts_with("pub type ") {
+                    ("pub type ", &trimmed[9..])
+                } else if trimmed.starts_with("pub enum ") {
+                    ("pub enum ", &trimmed[9..])
+                } else if trimmed.starts_with("type ") {
+                    ("type ", &trimmed[5..])
+                } else if trimmed.starts_with("enum ") {
+                    ("enum ", &trimmed[5..])
+                } else {
+                    continue;
+                };
+                let after_prefix = rest;
+                let name = if let Some(angle) = after_prefix.find('<') {
+                    &after_prefix[..angle]
+                } else if let Some(space) = after_prefix.find(' ') {
+                    &after_prefix[..space]
+                } else {
+                    after_prefix
+                };
+                if name.is_empty() || !name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    continue;
+                }
+                module_types.entry(mod_name.clone()).or_default().insert(name.to_string());
+                if prefix.contains("type ") {
+                    let decl = TypeDecl::builtin(name);
+                    store.register_type_decl(&decl);
+                } else if prefix.contains("enum ") {
+                    let enum_decl = EnumDecl {
+                        name: name.into(),
+                        items: Vec::new(),
+                        kind: EnumKind::Heterogeneous {
+                            generic_params: Vec::new(),
+                            methods: Vec::new(),
+                        },
+                        doc: None,
+                        is_pub: prefix.starts_with("pub"),
+                    };
+                    store.register_enum_decl(enum_decl);
+                    all_enum_names.insert(AutoStr::from(name));
+                }
+            }
+        }
+    }
+
+    // Phase 2: Parse each module
+    let mut parsed_modules = Vec::new();
+    for module in &modules {
+        let source = std::fs::read_to_string(&module.source_path)
+            .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", module.source_path.display(), e)))?;
+        let _scope = shared(crate::scope_manager::ScopeManager::new());
+        let mut parser = Parser::new_with_type_store(source.as_str(), shared_type_store.clone());
+        parser.set_dest(crate::parser::CompileDest::TransRust);
+        parser.skip_check = true;
+        let ast = parser.parse().map_err(|e| {
+            AutoError::Msg(format!("Parse error in {}: {}", module.source_path.display(), e.to_string()))
+        })?;
+        parsed_modules.push((module, ast));
+    }
+
+    // Phase 2.5: Pre-scan all function signatures for cross-module param-type tracking
+    let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_fn_struct_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+
+    fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
+        let generic_methods = ["get", "set", "insert", "push", "remove", "contains", "len",
+            "is_empty", "iter", "keys", "values", "clone", "new", "update", "delete", "find", "index"];
+        for stmt in stmts {
+            if let Stmt::Fn(fn_decl) = stmt {
+                let str_flags: Vec<bool> = fn_decl.params.iter()
+                    .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                    .collect();
+                if !str_flags.is_empty() {
+                    if !generic_methods.contains(&fn_decl.name.as_str()) {
+                        map.insert(fn_decl.name.clone(), str_flags.clone());
+                    }
+                    if !type_name.is_empty() || fn_decl.parent.is_some() {
+                        let parent = fn_decl.parent.as_ref().map(|p| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                        let qualified = format!("{}.{}", parent, fn_decl.name);
+                        map.insert(AutoStr::from(qualified), str_flags);
+                    }
+                }
+            }
+            if let Stmt::TypeDecl(type_decl) = stmt {
+                let type_name_str = type_decl.name.to_string();
+                for method in &type_decl.methods {
+                    let str_flags: Vec<bool> = method.params.iter()
+                        .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                        .collect();
+                    if !str_flags.is_empty() {
+                        if !generic_methods.contains(&method.name.as_str()) {
+                            map.insert(method.name.clone(), str_flags.clone());
+                        }
+                        let qualified = format!("{}.{}", type_name_str, method.name);
+                        map.insert(AutoStr::from(qualified), str_flags);
+                    }
+                }
+            }
+        }
+    }
+
+    fn collect_fn_param_types(
+        stmts: &[Stmt],
+        type_name: &str,
+        struct_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+        int_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+    ) {
+        let generic_methods = ["get", "set", "insert", "push", "remove", "contains", "len",
+            "is_empty", "iter", "keys", "values", "clone", "new", "update", "delete", "find", "index"];
+        for stmt in stmts {
+            if let Stmt::Fn(fn_decl) = stmt {
+                let struct_flags: Vec<bool> = fn_decl.params.iter()
+                    .map(|p| !matches!(p.ty,
+                        Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+                        | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+                        | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+                        | Type::Void | Type::Unknown))
+                    .collect();
+                let int_flags: Vec<bool> = fn_decl.params.iter()
+                    .map(|p| matches!(p.ty, Type::Int))
+                    .collect();
+                let has_struct = struct_flags.iter().any(|&b| b);
+                let has_int = int_flags.iter().any(|&b| b);
+                if has_struct || has_int {
+                    if !generic_methods.contains(&fn_decl.name.as_str()) {
+                        if has_struct { struct_map.insert(fn_decl.name.clone(), struct_flags.clone()); }
+                        if has_int { int_map.insert(fn_decl.name.clone(), int_flags.clone()); }
+                    }
+                    if !type_name.is_empty() || fn_decl.parent.is_some() {
+                        let parent = fn_decl.parent.as_ref().map(|p| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                        let qualified = format!("{}.{}", parent, fn_decl.name);
+                        if has_struct { struct_map.insert(AutoStr::from(&qualified), struct_flags); }
+                        if has_int { int_map.insert(AutoStr::from(&qualified), int_flags); }
+                    }
+                }
+            }
+            if let Stmt::TypeDecl(type_decl) = stmt {
+                let type_name_str = type_decl.name.to_string();
+                for method in &type_decl.methods {
+                    let struct_flags: Vec<bool> = method.params.iter()
+                        .map(|p| !matches!(p.ty,
+                            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+                            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+                            | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+                            | Type::Void | Type::Unknown))
+                        .collect();
+                    let int_flags: Vec<bool> = method.params.iter()
+                        .map(|p| matches!(p.ty, Type::Int))
+                        .collect();
+                    let has_struct = struct_flags.iter().any(|&b| b);
+                    let has_int = int_flags.iter().any(|&b| b);
+                    if has_struct || has_int {
+                        if !generic_methods.contains(&method.name.as_str()) {
+                            if has_struct { struct_map.insert(method.name.clone(), struct_flags.clone()); }
+                            if has_int { int_map.insert(method.name.clone(), int_flags.clone()); }
+                        }
+                        let qualified = format!("{}.{}", type_name_str, method.name);
+                        if has_struct { struct_map.insert(AutoStr::from(&qualified), struct_flags); }
+                        if has_int { int_map.insert(AutoStr::from(&qualified), int_flags); }
+                    }
+                }
+            }
+        }
+    }
+
+    for (_module, ast) in &parsed_modules {
+        collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
+        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params);
+    }
+
+    // Phase 3: Transpile all modules into a single Sink with merge_mode
+    let mut sink = Sink::new(AutoStr::from("merged"));
+    let mut seen_structs: HashSet<String> = HashSet::new();
+    let mut seen_enums: HashSet<String> = HashSet::new();
+
+    for (idx, (module, ast)) in parsed_modules.iter().enumerate() {
+        let mut transpiler = RustTrans::new(AutoStr::from("merged"));
+        transpiler.merge_mode = true;
+        transpiler.emit_allow_pragma = (idx == 0);
+
+        transpiler.module_types = module_types.clone();
+        let cur_mod_name = if module.is_dir_module {
+            module.source_path.parent().unwrap()
+                .file_name().unwrap().to_string_lossy().to_string()
+        } else {
+            module.source_path.file_stem()
+                .unwrap().to_string_lossy().to_string()
+        };
+        transpiler.current_module_name = cur_mod_name.clone();
+        transpiler.tag_types = all_enum_names.clone();
+
+        // Pre-populate cross-module param indices
+        for (name, flags) in &global_fn_str_params {
+            if !transpiler.fn_str_param_indices.contains_key(name) {
+                transpiler.fn_str_param_indices.insert(name.clone(), flags.clone());
+            }
+        }
+        for (name, flags) in &global_fn_struct_params {
+            if !transpiler.fn_struct_param_indices.contains_key(name) {
+                transpiler.fn_struct_param_indices.insert(name.clone(), flags.clone());
+            }
+        }
+        for (name, flags) in &global_fn_int_params {
+            if !transpiler.fn_int_param_indices.contains_key(name) {
+                transpiler.fn_int_param_indices.insert(name.clone(), flags.clone());
+            }
+        }
+
+        // Pre-populate struct_fields from all modules
+        for (_other_mod, other_ast) in &parsed_modules {
+            for stmt in &other_ast.stmts {
+                if let Stmt::TypeDecl(td) = stmt {
+                    if !transpiler.struct_fields.contains_key(&td.name) {
+                        let field_names: Vec<AutoStr> = td.members.iter()
+                            .map(|m| m.name.clone()).collect();
+                        if !field_names.is_empty() {
+                            transpiler.struct_fields.insert(td.name.clone(), field_names);
+                        }
+                        let field_types: Vec<(AutoStr, Type)> = td.members.iter()
+                            .map(|m| (m.name.clone(), m.ty.clone())).collect();
+                        if !field_types.is_empty() {
+                            transpiler.struct_field_types.insert(td.name.clone(), field_types);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Dedup: skip struct/enum definitions already emitted by a previous module
+        let mut deduped_ast = ast.clone();
+        deduped_ast.stmts.retain(|stmt| {
+            match stmt {
+                Stmt::TypeDecl(td) => seen_structs.insert(td.name.to_string()),
+                Stmt::EnumDecl(ed) => seen_enums.insert(ed.name.to_string()),
+                _ => true,
+            }
+        });
+        // Record what we've seen
+        for stmt in &ast.stmts {
+            if let Stmt::TypeDecl(td) = stmt { seen_structs.insert(td.name.to_string()); }
+            if let Stmt::EnumDecl(ed) = stmt { seen_enums.insert(ed.name.to_string()); }
+        }
+
+        transpiler.trans(deduped_ast, &mut sink)?;
+    }
+
+    // Phase 3.4: Apply post-processing
+    RustTrans::post_process(&mut sink.body);
+    post_process_merged(&mut sink.body);
+
+    Ok(sink.body)
+}
+
+/// Post-processing passes specific to merged mode output.
+/// These handle cross-file issues that arise when concatenating modules.
+fn post_process_merged(body: &mut Vec<u8>) {
+    let mut content = String::from_utf8(std::mem::take(body)).unwrap();
+
+    // Remove duplicate #![allow(...)] pragmas (keep only the first)
+    let mut seen_allow = false;
+    let lines: Vec<&str> = content.lines().collect();
+    let mut result = String::new();
+    for line in &lines {
+        if line.starts_with("#![allow(") {
+            if seen_allow {
+                continue; // skip duplicate
+            }
+            seen_allow = true;
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+    content = result;
+
+    // Remove duplicate use statements
+    let mut seen_uses: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut result = String::new();
+    for line in &lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with("use ") && !trimmed.starts_with("use crate::") && !trimmed.contains("::") {
+            // Simple use statement like "use std::collections::HashMap;"
+            if seen_uses.contains(trimmed) {
+                continue;
+            }
+            seen_uses.insert(trimmed.to_string());
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+    content = result;
+
+    *body = content.into_bytes();
+}
+
 fn discover_modules(
     file_path: &std::path::Path,
     base_dir: &std::path::Path,
