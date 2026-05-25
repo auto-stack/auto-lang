@@ -168,6 +168,10 @@ pub struct RustTrans {
     // When true: skip mod X; declarations, skip use crate::X::*; / use super::X::*;
     merge_mode: bool,
 
+    // Const names seen during Phase 2.5 pre-scan (for merge mode).
+    // Used to convert SCREAMING_CASE() calls to bare const references.
+    const_names: HashSet<AutoStr>,
+
     // Plan 264: Maps module name → set of type names defined in that module.
     // Used to determine if `module.Type` should be `module::Type` in Rust.
     module_types: HashMap<String, HashSet<String>>,
@@ -217,6 +221,7 @@ impl RustTrans {
             fn_spec_param_indices: HashMap::new(),
             emit_allow_pragma: false,
             merge_mode: false,
+            const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
         }
@@ -262,6 +267,7 @@ impl RustTrans {
             fn_spec_param_indices: HashMap::new(),
             emit_allow_pragma: false,
             merge_mode: false,
+            const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
         }
@@ -686,6 +692,7 @@ impl RustTrans {
     /// Handles both bare names ("ForgeSession") and dotted paths ("forge.ForgeSession").
     /// If the type is defined in another module, returns `crate::module::Type`.
     /// If defined in the current module, returns bare `Type`.
+    /// In merge_mode, all types are in one file — always return bare name.
     fn qualify_type_name(&self, name: &str) -> String {
         // Skip well-known Rust/std types that should never be qualified
         match name {
@@ -695,6 +702,14 @@ impl RustTrans {
             | "Ok" | "Err" | "Some" | "None" | "Self"
             => return name.to_string(),
             _ => {}
+        }
+
+        // Merge mode: all types are in one file, skip crate:: prefix
+        if self.merge_mode {
+            if let Some(dot_pos) = name.rfind('.') {
+                return name[dot_pos + 1..].to_string();
+            }
+            return name.to_string();
         }
 
         // Handle dotted paths like "forge.ForgeSession"
@@ -1115,7 +1130,9 @@ impl RustTrans {
                                     // Plan 264: If lhs is a known module name, qualify with crate::
                                     if let Expr::Ident(lhs_name) = lhs.as_ref() {
                                         if self.module_types.contains_key(lhs_name.as_str()) {
-                                            if lhs_name.as_str() == self.current_module_name {
+                                            if self.merge_mode {
+                                                write!(out, "{}::", lhs_name.as_str())?;
+                                            } else if lhs_name.as_str() == self.current_module_name {
                                                 write!(out, "{}::", lhs_name.as_str())?;
                                             } else {
                                                 write!(out, "crate::{}::", lhs_name.as_str())?;
@@ -2145,7 +2162,7 @@ impl RustTrans {
                         // Type::Variant (enum) or Type::method (static method)
                         // Plan 264: If type_name is a known module, qualify with crate::
                         if self.module_types.contains_key(type_name.as_str()) {
-                            if type_name.as_str() == self.current_module_name {
+                            if self.merge_mode || type_name.as_str() == self.current_module_name {
                                 write!(out, "{}::{}", type_name, field)?;
                             } else {
                                 write!(out, "crate::{}::{}", type_name, field)?;
@@ -4414,7 +4431,7 @@ impl RustTrans {
                     if variant_is_upper || has_struct_fields || has_tuple_fields {
                         let struct_fields = self.enum_struct_variants.get(&key).cloned();
                         if let Some(ref mp) = mod_prefix {
-                            if mp.as_str() == self.current_module_name {
+                            if self.merge_mode || mp.as_str() == self.current_module_name {
                                 write!(out, "{}::{}::{}", mp, type_name, variant_name)?;
                             } else if self.module_types.contains_key(mp.as_str()) {
                                 write!(out, "crate::{}::{}::{}", mp, type_name, variant_name)?;
@@ -4895,7 +4912,7 @@ impl RustTrans {
             if obj_is_type_chain {
                 if let Expr::Ident(obj_name) = object.as_ref() {
                     if self.module_types.contains_key(obj_name.as_str()) {
-                        if obj_name.as_str() == self.current_module_name {
+                        if self.merge_mode || obj_name.as_str() == self.current_module_name {
                             write!(out, "{}", obj_name)?;
                         } else {
                             write!(out, "crate::{}", obj_name)?;
@@ -5063,7 +5080,7 @@ impl RustTrans {
                 let struct_fields = self.enum_struct_variants.get(&key).cloned();
                 // Tag construction with optional module prefix
                 if let Some(ref mp) = mod_prefix {
-                    if mp.as_str() == self.current_module_name {
+                    if self.merge_mode || mp.as_str() == self.current_module_name {
                         write!(out, "{}::{}::{}", mp, type_name, variant_name)?;
                     } else if self.module_types.contains_key(mp.as_str()) {
                         write!(out, "crate::{}::{}::{}", mp, type_name, variant_name)?;
@@ -5121,13 +5138,16 @@ impl RustTrans {
         // Check if this is a struct construction call: Type(args)
         // Heuristic: If the callee name starts with uppercase, treat as type construction
         // This works because Rust convention: TypeNames are CamelCase, functions are snake_case
+        // Exception: SCREAMING_CASE names (OP_XXX, BOOL_XXX) are constants/functions, not types
         if let Expr::Ident(type_name) = call.name.as_ref() {
-            let is_type = type_name
+            let first_char_upper = type_name
                 .chars()
                 .next()
                 .map(|c| c.is_uppercase())
                 .unwrap_or(false);
-            if is_type {
+            let is_screaming_case = type_name.chars().all(|c| c.is_uppercase() || c.is_ascii_digit() || c == '_')
+                && type_name.contains('_');
+            if first_char_upper && !is_screaming_case {
                 // This is a struct construction: Type { field1: value1, ... }
                 return self.struct_init(type_name, &call.args, out);
             }
@@ -5176,7 +5196,7 @@ impl RustTrans {
                                 || u_str.ends_with(&format!("::{}", module_name))
                         });
                     if is_module {
-                        let qualified = if module_name.as_str() == self.current_module_name {
+                        let qualified = if self.merge_mode || module_name.as_str() == self.current_module_name {
                             format!("{}::{}", module_name, type_name)
                         } else {
                             format!("crate::{}::{}", module_name, type_name)
@@ -5218,6 +5238,15 @@ impl RustTrans {
         }
 
         // Normal function call
+        // In merge mode, if callee is a known const name with no args, emit bare const reference
+        if call.args.args.is_empty() {
+            if let Expr::Ident(fn_name) = call.name.as_ref() {
+                if self.const_names.contains(fn_name) {
+                    self.expr(&call.name, out)?;
+                    return Ok(());
+                }
+            }
+        }
         self.expr(&call.name, out)?;
         write!(out, "(")?;
 
@@ -11210,6 +11239,18 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         }
     }
 
+    // Phase 2.5b: Collect const names for merge mode
+    let mut global_const_names: HashSet<AutoStr> = HashSet::new();
+    for (_module, ast) in &parsed_modules {
+        for stmt in &ast.stmts {
+            if let Stmt::Store(store) = stmt {
+                if matches!(store.kind, crate::ast::StoreKind::Const) {
+                    global_const_names.insert(store.name.clone());
+                }
+            }
+        }
+    }
+
     for (_module, ast) in &parsed_modules {
         collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
         collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params);
@@ -11224,6 +11265,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         let mut transpiler = RustTrans::new(AutoStr::from("merged"));
         transpiler.merge_mode = true;
         transpiler.emit_allow_pragma = (idx == 0);
+        transpiler.const_names = global_const_names.clone();
 
         transpiler.module_types = module_types.clone();
         let cur_mod_name = if module.is_dir_module {
@@ -11656,18 +11698,10 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         }
     }
 
-    // === OP_XXX {} -> OP_XXX() (struct init -> fn call) ===
-    let re = regex::Regex::new(r"(OP_[A-Z_0-9]+|BOOL_[A-Z_0-9]+|NATIVE_[A-Z_0-9]+) \{\}").unwrap();
-    content = re.replace_all(&content, "$1()").to_string();
+    // === OP_XXX {} -> OP_XXX() now handled at AST level (is_screaming_case check) ===
 
-    // === Fix crate::ast::ASTNode -> ASTNode (merge mode, all in one file) ===
-    content = content.replace("crate::ast::ASTNode", "ASTNode");
-    content = content.replace("crate::ast::NodeKind", "NodeKind");
-    content = content.replace("crate::pos::Pos", "Pos");
-    content = content.replace("crate::token::Token", "Token");
-    content = content.replace("crate::token::TokenKind", "TokenKind");
-    // Fix crate::typeinfer::TypeEnv -> TypeEnv
-    content = content.replace("crate::typeinfer::TypeEnv", "TypeEnv");
+    // === crate:: path fixes now handled at AST level in qualify_type_name ===
+    // (merge_mode skips crate:: prefix generation)
 
     // === Fix env.scopes type: Vec<String> -> Vec<HashMap<String, String>> (fix_cross_file.py #6) ===
     content = content.replace(
@@ -11678,9 +11712,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     // === Remove use auto_lang::a2r_std::* (unresolved crate in standalone .rs) ===
     content = content.replace("use auto_lang::a2r_std::*;\n", "");
 
-    // === CONST_NAME() -> CONST_NAME (E0618: const used as fn call) ===
-    let re = regex::Regex::new(r"\b([A-Z][A-Z0-9_]+)\(\)").unwrap();
-    content = re.replace_all(&content, "$1").to_string();
+    // === CONST_NAME() -> CONST_NAME now handled at AST level (is_screaming_case check) ===
 
     // === .to_string().cloned().unwrap_or_default() -> .to_string() (E0599: String not iterator) ===
     content = content.replace(".to_string().cloned().unwrap_or_default()", ".to_string()");
