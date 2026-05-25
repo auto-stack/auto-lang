@@ -152,6 +152,8 @@ pub struct RustTrans {
 
     // Track which function params are struct/enum types (need .clone() at call sites)
     fn_struct_param_indices: HashMap<AutoStr, Vec<bool>>,
+    // Track which function params are Int type (need enum→i32 cast at call sites)
+    fn_int_param_indices: HashMap<AutoStr, Vec<bool>>,
     // Track which function params are spec types (need Box::new() at call sites)
     fn_spec_param_indices: HashMap<AutoStr, Vec<bool>>,
     // Track struct→spec mapping: struct_name -> spec_name (for spec array inference)
@@ -205,6 +207,7 @@ impl RustTrans {
             json_value_vars: HashSet::new(),
             fn_param_str_slice: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
+            fn_int_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
             var_spec_map: HashMap::new(),
             fn_spec_param_indices: HashMap::new(),
@@ -248,6 +251,7 @@ impl RustTrans {
             json_value_vars: HashSet::new(),
             fn_param_str_slice: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
+            fn_int_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
             var_spec_map: HashMap::new(),
             fn_spec_param_indices: HashMap::new(),
@@ -3651,11 +3655,13 @@ impl RustTrans {
                 // Plan 204 Phase 5: Complex method translations requiring
                 // non-trivial Rust output (not just a name remap).
                 "char_at" => {
-                    // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0') as i32
+                    // s.char_at(i) -> s.chars().nth((i) as usize).unwrap_or('\0') as i32
                     self.expr(object, out)?;
                     write!(out, ".chars().nth(")?;
                     if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                        write!(out, "(")?;
                         self.expr(arg, out)?;
+                        write!(out, ")")?;
                     }
                     write!(out, " as usize).unwrap_or('\\0') as i32")?;
                     return Ok(());
@@ -5062,6 +5068,13 @@ impl RustTrans {
             None
         };
 
+        // Look up int-param flags for enum→i32 cast at call sites
+        let int_flags = if let Expr::Ident(fn_name) = call.name.as_ref() {
+            self.fn_int_param_indices.get(fn_name).cloned()
+        } else {
+            None
+        };
+
         for (i, arg) in call.args.args.iter().enumerate() {
             let is_str_param = str_flags.as_ref()
                 .and_then(|f| f.get(i))
@@ -5069,6 +5082,18 @@ impl RustTrans {
                 .unwrap_or(false);
             let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg)
                 && !Self::is_str_slice_var(arg, &self.local_var_types);
+
+            // Auto-cast enum→i32 when passing an enum variable to an Int param
+            let is_int_param = int_flags.as_ref()
+                .and_then(|f| f.get(i))
+                .copied()
+                .unwrap_or(false);
+            let needs_enum_cast = is_int_param
+                && if let Arg::Pos(Expr::Ident(name)) = arg {
+                    self.local_var_types.get(name)
+                        .map(|ty| matches!(ty, Type::Enum(_)))
+                        .unwrap_or(false)
+                } else { false };
 
             // Auto-clone when passing a variable to a function that takes a struct param
             let is_struct_param = struct_flags.as_ref()
@@ -5095,6 +5120,11 @@ impl RustTrans {
             // After expression: add .as_str() for String→&str conversion
             if needs_borrow {
                 write!(out, ".as_str()")?;
+            }
+
+            // Enum→i32 cast for int-expecting params
+            if needs_enum_cast {
+                write!(out, " as i32")?;
             }
 
             if is_spec_param {
@@ -6043,9 +6073,13 @@ impl RustTrans {
         }
         self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
 
-        // Cache which params are struct/enum types (need .clone() at call sites)
+        // Cache which params are non-Copy types (need .clone() at call sites)
         let struct_param_flags: Vec<bool> = fn_decl.params.iter()
-            .map(|p| matches!(p.ty, Type::User(_) | Type::Tag(_) | Type::Enum(_)))
+            .map(|p| !matches!(p.ty,
+                Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+                | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+                | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+                | Type::Void | Type::Unknown))
             .collect();
         self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
 
@@ -6054,6 +6088,12 @@ impl RustTrans {
             .map(|p| matches!(p.ty, Type::Spec(_)))
             .collect();
         self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
+
+        // Cache which params are Int type (need enum→i32 cast at call sites)
+        let int_param_flags: Vec<bool> = fn_decl.params.iter()
+            .map(|p| matches!(p.ty, Type::Int))
+            .collect();
+        self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
 
         // Plan 240: If function returns void but body uses .? (ErrorPropagate),
         // auto-wrap return type as Result<(), Box<dyn std::error::Error>>
@@ -9766,9 +9806,18 @@ impl Trans for RustTrans {
                     self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
 
                     let struct_param_flags: Vec<bool> = fn_decl.params.iter()
-                        .map(|p| matches!(p.ty, Type::User(_) | Type::Tag(_) | Type::Enum(_)))
+                        .map(|p| !matches!(p.ty,
+                            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+                            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+                            | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+                            | Type::Void | Type::Unknown))
                         .collect();
                     self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+
+                    let int_param_flags: Vec<bool> = fn_decl.params.iter()
+                        .map(|p| matches!(p.ty, Type::Int))
+                        .collect();
+                    self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
                 }
                 Stmt::TypeDecl(type_decl) => {
                     // Also scan methods inside type declarations
@@ -9784,10 +9833,20 @@ impl Trans for RustTrans {
                         self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
 
                         let struct_param_flags: Vec<bool> = fn_decl.params.iter()
-                            .map(|p| matches!(p.ty, Type::User(_) | Type::Tag(_) | Type::Enum(_)))
+                            .map(|p| !matches!(p.ty,
+                                Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+                                | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+                                | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+                                | Type::Void | Type::Unknown))
                             .collect();
-                        self.fn_struct_param_indices.insert(qualified_key, struct_param_flags.clone());
+                        self.fn_struct_param_indices.insert(qualified_key.clone(), struct_param_flags.clone());
                         self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+
+                        let int_param_flags: Vec<bool> = fn_decl.params.iter()
+                            .map(|p| matches!(p.ty, Type::Int))
+                            .collect();
+                        self.fn_int_param_indices.insert(qualified_key, int_param_flags.clone());
+                        self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
                     }
                 }
                 _ => {}
