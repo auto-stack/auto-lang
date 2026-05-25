@@ -4,6 +4,7 @@
 > **Phase 2 Status: ✅ COMPLETE** — Phase 2.1/2.2/2.3/2.4 all done
 > **Phase 2.1 Status: ✅ COMPLETE** — Primitive type (i64/f64/bool) cdylib FFI 支持
 > **Phase 2.3 Opaque Shims: ✅ COMPLETE** — chrono/base64/hex/sha2/mime_guess 内置 shim
+> **Phase 3 Status: 📋 PLANNED** — 无缝 FFI：自动 shim + 自动注册 + 自动签名推断
 >
 > **Remaining: Phase 2.3 Complex (11 impossible, 11 hard — 远期目标)**
 >
@@ -1191,3 +1192,368 @@ Stmt::MacroCall(macro_call) => {
 3. **VM 侧行为不变**：`#debug(...)` 和 `debug(...)` 在 VM 中产生完全相同的 CALL_NAT
 4. **a2r 侧是核心价值**：`#` 前缀让 a2r 知道这是一个 Rust 宏调用，需要加 `!`
 5. **向后兼容**：`debug("msg")`（不带 `#`）仍然可以在 VM 中工作，但 a2r 会转译为 `debug("msg")`（函数调用，非宏）
+
+---
+
+## Phase 3: 无缝 FFI — 自动 Shim、自动注册、自动签名推断
+
+**日期**: 2026-05-26
+**状态**: 📋 PLANNED
+**前置条件**: Phase 2 完成
+**Related**: [Plan 265 (AutoVM MCP Server)](265-autovm-mcp-server.md), [Plan 266 (VM↔a2r Conformance)](266-vm-a2r-conformance.md)
+
+### 目标
+
+将 Rust FFI 从"能用"提升为"无缝"。具体而言：
+
+| 当前状态 (Phase 2 后) | 目标状态 (Phase 3 后) |
+|---|---|
+| 内置 shim 需要手写（regex/url/semver 等 39 个） | `#[rust_fn]` 宏自动生成绝大多数 shim |
+| 手动 shim 需要 `pop_from_stack` / `push_to_stack` 样板代码 | 只写业务逻辑，marshal 自动生成 |
+| Native ID 手动分配（`pub const NATIVE_FILE_READ_TEXT: u16 = 1000`） | 按名字注册，无需手动 ID |
+| 手动调用 `register_shim_by_name()` 注册 | `inventory::submit!` 编译时自动注册 |
+| 三方 crate 签名需要硬编码在 `known_signatures` 表 | 从 rustdoc JSON 自动推断 |
+| cdylib marshal 只有 40 种固定 pattern | 从 Rust 类型自动生成 marshal 代码 |
+| `use.rust any_crate::any_func` 需要提前配置 | 零配置，任意 crate 任意函数可直接调用 |
+
+### 设计：三层自动化
+
+```
+Layer 3: 签名自动推断 (Signature Inference)
+         dep any_crate → 解析 rustdoc JSON → 自动生成签名
+         零配置调用任意 crate
+
+Layer 2: 动态 Marshal 自动生成
+         从签名自动生成 VM 栈 ↔ Rust 类型的转换代码
+         不再需要 40 种硬编码 pattern
+
+Layer 1: Shim 自动生成 + 自动注册
+         #[rust_fn] 生成 marshal + inventory 注册
+         淘汰手动 shim 和手动 ID
+```
+
+### Phase 3A: Shim 自动生成 + 手动 Shim 迁移
+
+**目标**: 将现有 ~100 个手动 shim 迁移到 `#[rust_fn]`，消除手动 ID 和手动注册。
+
+#### 当前三种 Shim 模式回顾
+
+**模式 1: 手动 Marshal（原始，约 100 个）**
+
+每个函数 10-15 行样板代码：
+```rust
+// 当前: crates/auto-lang/src/vm/ffi/stdlib.rs
+fn shim_file_read_text_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    match fs::read_to_string(&path) {
+        Ok(content) => content.push_to_stack(task, vm)
+            .map_err(|e| VMError::RuntimeError(e.to_string())),
+        Err(_) => {
+            let empty = String::new();
+            empty.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+        }
+    }
+}
+
+// 还需要手动分配 ID + 手动注册
+pub const NATIVE_FILE_READ_TEXT: u16 = 1000;
+// ...
+natives.register_shim_by_name("auto.file.read_text", shim_file_read_text_vm);
+natives.register_shim_by_name("auto.fs.read_text", shim_file_read_text_vm);
+natives.register_shim_by_name("auto.fs.read", shim_file_read_text_vm);  // 别名也要手动
+```
+
+**模式 2: `#[rust_fn]` 宏（半自动，约 30 个）**
+
+只写业务逻辑，宏自动生成 marshal + 注册：
+```rust
+// 当前已在使用: 只需 3 行
+#[auto_macros::rust_fn("File.read_text")]
+pub fn shim_file_read_text(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| format!("File.read_text failed: {} - {}", path, e))
+}
+// 宏自动生成:
+//   1. __shim_File_read_text(task, vm) — 自动 pop/push
+//   2. inventory::submit! { StaticFFIRegistration { name: "File.read_text", shim: ... } }
+```
+
+**模式 3: 动态 cdylib（三方 crate，约 40 种 pattern）**
+
+运行时根据签名自动 marshal：
+```rust
+// crates/auto-lang/src/ffi.rs — 运行时根据 RustSignature 自动生成
+fn create_rust_shim_lazy(&self, signature: RustSignature) -> impl Fn(...) {
+    move |task, vm| {
+        for param_type in signature.params.iter().rev() {
+            match param_type {
+                RustType::Int => args_i32.push(task.ram.pop_i32()),
+                RustType::String => { /* ... */ },
+                // 40+ 种固定 pattern...
+            }
+        }
+    }
+}
+```
+
+#### Phase 3A Tasks
+
+**Task 3A.1: 扩展 `#[rust_fn]` 宏支持更多类型**
+
+当前 `#[rust_fn]` 限制：只支持实现了 `VMConvertible` 的类型。需要扩展：
+
+```rust
+// 当前支持的类型
+impl VMConvertible for i32 { ... }
+impl VMConvertible for i64 { ... }
+impl VMConvertible for String { ... }
+impl VMConvertible for bool { ... }
+impl VMConvertible for f64 { ... }
+
+// 需要新增的支持
+impl VMConvertible for Vec<i32> { ... }         // []int
+impl VMConvertible for Vec<String> { ... }       // []str
+impl VMConvertible for Option<String> { ... }    // Option<str>
+impl VMConvertible for () { ... }                // void
+```
+
+**文件**: `crates/auto-lang/src/vm/ffi/convert.rs`
+
+**Task 3A.2: 支持多名称注册**
+
+当前 `#[rust_fn("File.read_text")]` 只注册一个名字。很多函数需要别名（`auto.file.read_text`, `auto.fs.read_text`, `auto.fs.read`）。
+
+扩展宏支持多名称：
+```rust
+#[auto_macros::rust_fn("File.read_text", "auto.fs.read_text", "auto.fs.read")]
+pub fn shim_file_read_text(path: String) -> Result<String, String> { ... }
+```
+
+宏为每个名称生成一个 `inventory::submit!`。
+
+**文件**: `crates/auto-macros/src/lib.rs`
+
+**Task 3A.3: 迁移 File 系列 shim（手动 → `#[rust_fn]`）**
+
+逐个迁移 `crates/auto-lang/src/vm/ffi/stdlib.rs` 中的 File 函数：
+
+```rust
+// 迁移前: 15 行 + 手动注册
+fn shim_file_read_text_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> { ... }
+
+// 迁移后: 3 行，自动注册
+#[auto_macros::rust_fn("File.read_text", "auto.fs.read_text", "auto.fs.read")]
+pub fn shim_file_read_text(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| format!("File.read_text failed: {}", e))
+}
+```
+
+优先迁移函数列表（按使用频率）：
+1. File: read_text, write_text, exists, delete, create_dir
+2. Env: get, set, remove
+3. Time: now_ms, now_sec, sleep_ms
+4. Process: exit, args, current_dir
+5. Math: abs, min, max, sqrt, floor, ceil
+6. JSON: encode, decode, parse, prettify
+7. URL: encode, decode, parse
+8. Net/HTTP: tcp_bind, tcp_connect, http_server
+
+**Task 3A.4: 清理手动 ID 常量**
+
+迁移完成后，`NATIVE_FILE_READ_TEXT: u16 = 1000` 等手动 ID 常量不再需要。保留 ID range 注释作为文档，但不再通过 ID 注册。
+
+少数无法迁移的函数（如 `str.find` 的 nanbox 兼容 shim）保留手动实现，作为明确标注的例外。
+
+**Task 3A.5: 清理 `register_stdlib_ffi()` 函数**
+
+迁移完成后，`register_stdlib_ffi()` 中的手动 `register_shim_by_name` 调用大幅减少。该函数只保留无法自动注册的例外 shim。
+
+**验收标准**:
+- `#[rust_fn]` 覆盖的 shim ≥ 80%
+- 手动 shim < 10 个（仅 nanbox 兼容、特殊逻辑等）
+- 所有现有 VM 测试通过
+
+### Phase 3B: 动态 Marshal 自动生成
+
+**目标**: cdylib FFI 的 marshal 不再需要 40 种硬编码 pattern，从函数签名自动生成。
+
+#### 当前问题
+
+`ffi.rs` 中的 `create_rust_shim_lazy` 有 40+ 个 `match` arm 处理不同签名组合：
+```rust
+match (signature.params.as_slice(), &signature.returns) {
+    (&[RustType::String], RustType::String) => { /* string→string */ },
+    (&[], RustType::Long) => { /* ()→i64 */ },
+    (&[RustType::Long, RustType::Long], RustType::Long) => { /* i64,i64→i64 */ },
+    (&[RustType::String], RustType::Long) => { /* str→i64 */ },
+    // ... 36 more patterns
+}
+```
+
+每新增一种签名组合，就需要新增一个 arm。
+
+#### 改进方案：参数逐个 marshal + 返回值统一处理
+
+```rust
+fn create_rust_shim_lazy(&self, signature: RustSignature) -> impl Fn(...) {
+    move |task, vm| {
+        // 1. 按 signature 逐个 pop 参数，构建 args buffer
+        let mut args = Vec::new();
+        for param_type in signature.params.iter().rev() {
+            let arg = param_type.pop_from_vm_stack(task, vm)?;
+            args.push(arg);
+        }
+        args.reverse();
+
+        // 2. 通过通用 ABI 调用 cdylib 函数
+        //    使用 libloading 的 Symbol + libc ABI
+        let result = unsafe { call_cdylib_function(&library, &exported_name, &args, &signature)? };
+
+        // 3. 按返回类型 push 到 VM 栈
+        signature.returns.push_to_vm_stack(result, task, vm)?;
+        Ok(())
+    }
+}
+```
+
+核心变化：
+- **参数 marshaling**: `RustType` 实现 `pop_from_vm_stack` / `push_to_vm_stack` 方法，每个类型自己知道怎么和 VM 栈交互
+- **返回值 marshaling**: 同上
+- **函数调用**: 通用 ABI 调用层（不再需要 40 个 match arm）
+
+**文件**: `crates/auto-lang/src/ffi.rs`, `crates/auto-lang/src/vm/ffi/convert.rs`
+
+**验收标准**:
+- `create_rust_shim_lazy` 不再有签名 pattern 的 match arm
+- 新增签名类型不需要修改 marshal 代码
+- 现有 cdylib 测试（serde_json, rand::random）仍然通过
+
+### Phase 3C: 签名自动推断
+
+**目标**: `dep any_crate` + `use.rust any_crate::any_func` 零配置可用。
+
+#### 当前问题
+
+`known_signatures()` 是手动维护的函数签名表。不在表中的函数无法通过 cdylib 调用。
+
+#### 方案：rustdoc JSON 自动解析
+
+```auto
+// 用户代码
+dep serde_json
+use.rust serde_json::{from_str, to_string}
+
+// Auto 自动执行:
+// 1. cargo doc --output-format json (或从 docs.rs 缓存下载)
+// 2. 解析 rustdoc JSON，提取 from_str, to_string 的签名
+// 3. 自动生成 wrapper crate 中正确的 shim 函数
+// 4. 编译 cdylib + 注册
+```
+
+**实现步骤**:
+
+1. **rustdoc JSON 解析器**: 解析 crate 的 rustdoc JSON 输出，提取公开函数签名
+   - 输入: `~/.auto/sandbox/docs/{crate}.json`（或从 docs.rs 下载）
+   - 输出: `Vec<FunctionSignature>` — 函数名、参数类型、返回类型
+
+2. **Wrapper crate 智能生成**: 根据实际签名生成 wrapper，不再只用 `string→string` 模板
+   ```rust
+   // 从 rustdoc 得到签名: from_str(s: &str) -> Result<Value>
+   // 生成 wrapper:
+   #[no_mangle]
+   pub extern "C" fn auto_from_str(ptr: *const c_char) -> *const c_char {
+       let input = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("");
+       match serde_json::from_str(input) {
+           Ok(v) => /* serialize result */,
+           Err(e) => /* serialize error */,
+       }
+   }
+   ```
+
+3. **签名缓存**: 首次解析后缓存到 `~/.auto/sandbox/signatures/{crate}.json`，避免重复解析
+
+4. **Fallback**: rustdoc 不可用时，fallback 到 `known_signatures` 表或 `string→string` 默认签名
+
+**文件**: 新增 `crates/auto-lang/src/ffi/rustdoc.rs`，修改 `crates/auto-cache/src/sandbox.rs`
+
+**验收标准**:
+- `dep url` + `use.rust url::Url::{parse}` 无需手动配置签名即可调用
+- 签名缓存生效（第二次运行不重新解析）
+- docs.rs 网络不可用时 graceful fallback
+
+### Phase 3D: FFI 测试覆盖
+
+**目标**: 系统性测试 FFI 各层，与 Plan 266 conformance 测试集成。
+
+#### 测试矩阵
+
+| FFI 模式 | 类型 | VM 测试 | a2r 测试 | 对偶测试 |
+|---|---|---|---|---|
+| `#[rust_fn]` 内置 shim | File I/O | ✅ | ❌ | Phase 3D |
+| `#[rust_fn]` 内置 shim | Math | ✅ | ❌ | Phase 3D |
+| `#[rust_fn]` 内置 shim | JSON | ✅ | ❌ | Phase 3D |
+| Opaque handle | Regex | ✅ | ✅ | Phase 3D |
+| Opaque handle | Url | ✅ | ✅ | Phase 3D |
+| Opaque handle | chrono | ✅ | ❌ | Phase 3D |
+| cdylib FFI | string→string | ✅ | ❌ | Phase 3D |
+| cdylib FFI | primitive | ✅ | ❌ | Phase 3D |
+| `#macro` 调用 | log | ✅ | ✅ | ✅ |
+| 自动签名推断 | 任意 crate | ❌ | ❌ | Phase 3D |
+
+#### Task 3D.1: FFI 对偶测试基础设施
+
+在 Plan 266 的对偶测试框架中增加 FFI 支持：
+- AutoVM 路径：通过 native shim / cdylib 调用
+- a2r 路径：转译为 `use serde_json::*`，直接 Rust 调用
+- 比较两者的输出
+
+#### Task 3D.2: 核心crate FFI 覆盖测试
+
+为每个已支持的 crate 编写对偶测试：
+1. serde_json: from_str, to_string, prettify
+2. regex: new, is_match, replace_all
+3. url: parse, scheme, host_str
+4. chrono: Local.now, year, format
+5. base64/hex: encode, decode
+
+**验收标准**:
+- 每个 FFI 模式至少 1 个对偶测试
+- 核心crate 对偶测试覆盖率 100%
+
+### Phase 3 实施顺序
+
+```
+Phase 3A: Shim 自动化 (技术债清理)
+  ├── 3A.1: 扩展 VMConvertible 类型
+  ├── 3A.2: #[rust_fn] 多名称注册
+  ├── 3A.3: 迁移手动 shim → #[rust_fn]（分批）
+  ├── 3A.4: 清理手动 ID 常量
+  └── 3A.5: 清理 register_stdlib_ffi()
+
+Phase 3B: 动态 Marshal 自动化
+  ├── 3B.1: RustType 统一 pop/push 接口
+  ├── 3B.2: 通用 cdylib 调用层
+  └── 3B.3: 清理 40+ pattern match
+
+Phase 3C: 签名自动推断
+  ├── 3C.1: rustdoc JSON 解析器
+  ├── 3C.2: Wrapper crate 智能生成
+  ├── 3C.3: 签名缓存机制
+  └── 3C.4: Fallback 策略
+
+Phase 3D: FFI 测试覆盖
+  ├── 3D.1: FFI 对偶测试基础设施
+  └── 3D.2: 核心 crate 对偶测试
+
+建议执行顺序: 3A → 3D.1 → 3B → 3D.2 → 3C
+（3A ROI 最高，3C 最复杂可最后做）
+```
+
+### Phase 3 成功标准
+
+- [ ] `#[rust_fn]` 覆盖 ≥ 80% 的内置 shim
+- [ ] 手动 shim < 10 个
+- [ ] cdylib marshal 不再有硬编码 pattern
+- [ ] `dep any_crate` + `use.rust` 无需手动配置签名（Phase 3C）
+- [ ] FFI 对偶测试覆盖所有已支持的 crate
+- [ ] 现有所有 VM 测试和 a2r 测试通过

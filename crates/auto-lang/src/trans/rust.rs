@@ -155,6 +155,8 @@ pub struct RustTrans {
 
     // Track which function params are struct/enum types (need .clone() at call sites)
     fn_struct_param_indices: HashMap<AutoStr, Vec<bool>>,
+    // In merge mode, track which params use &mut (context types like Parser, TypeEnv)
+    fn_merge_mut_params: HashMap<AutoStr, Vec<bool>>,
     // Track which function params are Int type (need enum→i32 cast at call sites)
     fn_int_param_indices: HashMap<AutoStr, Vec<bool>>,
     // Track which function params are spec types (need Box::new() at call sites)
@@ -219,6 +221,7 @@ impl RustTrans {
             json_value_vars: HashSet::new(),
             fn_param_str_slice: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
+            fn_merge_mut_params: HashMap::new(),
             fn_int_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
             var_spec_map: HashMap::new(),
@@ -266,6 +269,7 @@ impl RustTrans {
             json_value_vars: HashSet::new(),
             fn_param_str_slice: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
+            fn_merge_mut_params: HashMap::new(),
             fn_int_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
             var_spec_map: HashMap::new(),
@@ -855,6 +859,17 @@ impl RustTrans {
             "Map" => Some("HashMap"),
             "Set" => Some("HashSet"),
             _ => None,
+        }
+    }
+
+    /// Check if a type should use `&mut` in merge mode (context types passed through function chains).
+    /// These types are used as mutable state objects in parser/eval/typeinfer chains.
+    fn is_merge_mut_type(ty: &Type) -> bool {
+        match ty {
+            Type::User(usr) => matches!(usr.name.as_str(),
+                "Parser" | "TypeEnv" | "EvalEnv" | "Codegen" | "BVMState"
+            ),
+            _ => false,
         }
     }
 
@@ -5289,6 +5304,15 @@ impl RustTrans {
             None
         };
 
+        // Look up merge-mode &mut flags (context types skip .clone())
+        let merge_mut_flags = if self.merge_mode {
+            if let Expr::Ident(fn_name) = call.name.as_ref() {
+                self.fn_merge_mut_params.get(fn_name).cloned()
+            } else {
+                None
+            }
+        } else { None };
+
         // Look up spec-param flags for auto-boxing at call sites
         let spec_flags = if let Expr::Ident(fn_name) = call.name.as_ref() {
             self.fn_spec_param_indices.get(fn_name).cloned()
@@ -5334,7 +5358,12 @@ impl RustTrans {
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
-            let needs_clone = is_struct_param && matches!(arg, Arg::Pos(Expr::Ident(_)));
+            // Skip .clone() for merge-mode context types (they use &mut instead)
+            let is_merge_mut = merge_mut_flags.as_ref()
+                .and_then(|f| f.get(i))
+                .copied()
+                .unwrap_or(false);
+            let needs_clone = is_struct_param && !is_merge_mut && matches!(arg, Arg::Pos(Expr::Ident(_)));
 
             // Auto-box when passing a value to a function that takes a spec param
             let is_spec_param = spec_flags.as_ref()
@@ -6324,12 +6353,21 @@ impl RustTrans {
             }
         } else {
             for (i, param) in fn_decl.params.iter().enumerate() {
-                write!(
-                    sink.body,
-                    "mut {}: {}",
-                    param.name,
-                    self.rust_param_type_name(&param.ty)
-                )?;
+                if self.merge_mode && Self::is_merge_mut_type(&param.ty) {
+                    write!(
+                        sink.body,
+                        "{}: &mut {}",
+                        param.name,
+                        self.rust_type_name(&param.ty)
+                    )?;
+                } else {
+                    write!(
+                        sink.body,
+                        "mut {}: {}",
+                        param.name,
+                        self.rust_param_type_name(&param.ty)
+                    )?;
+                }
                 if i < fn_decl.params.len() - 1 {
                     write!(sink.body, ", ")?;
                 }
@@ -6359,6 +6397,14 @@ impl RustTrans {
                 | Type::Void | Type::Unknown))
             .collect();
         self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+
+        // In merge mode, track which params are context types (need &mut instead of .clone())
+        if self.merge_mode {
+            let merge_mut_flags: Vec<bool> = fn_decl.params.iter()
+                .map(|p| Self::is_merge_mut_type(&p.ty))
+                .collect();
+            self.fn_merge_mut_params.insert(fn_decl.name.clone(), merge_mut_flags);
+        }
 
         // Cache which params are spec types (need Box::new() at call sites)
         let spec_param_flags: Vec<bool> = fn_decl.params.iter()
@@ -8977,6 +9023,10 @@ impl RustTrans {
         //     and str.split(X).get(i) → str.split(X).nth(i)
         Self::fix_split_methods(&mut content);
 
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
+
         *output = content.into_bytes();
     }
 
@@ -10715,6 +10765,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         type_name: &str,
         struct_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
         int_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+        _merge_mut_map: Option<&mut std::collections::HashMap<AutoStr, Vec<bool>>>,
     ) {
         let generic_methods = [
             "get", "set", "insert", "push", "remove", "contains", "len",
@@ -10783,7 +10834,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
     for (_module, ast) in &parsed_modules {
         collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
-        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params);
+        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, None);
     }
 
     // Phase 3: Transpile each module into its own Sink
@@ -11202,6 +11253,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
     let mut global_fn_struct_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
     let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_merge_mut_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
 
     fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
         let generic_methods = ["get", "set", "insert", "push", "remove", "contains", "len",
@@ -11245,6 +11297,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         type_name: &str,
         struct_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
         int_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+        mut merge_mut_map: Option<&mut std::collections::HashMap<AutoStr, Vec<bool>>>,
     ) {
         let generic_methods = ["get", "set", "insert", "push", "remove", "contains", "len",
             "is_empty", "iter", "keys", "values", "clone", "new", "update", "delete", "find", "index"];
@@ -11272,6 +11325,15 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                         let qualified = format!("{}.{}", parent, fn_decl.name);
                         if has_struct { struct_map.insert(AutoStr::from(&qualified), struct_flags); }
                         if has_int { int_map.insert(AutoStr::from(&qualified), int_flags); }
+                    }
+                }
+                // Pre-scan merge-mut params for correct call-site handling
+                if let Some(ref mut mm) = merge_mut_map {
+                    let merge_flags: Vec<bool> = fn_decl.params.iter()
+                        .map(|p| RustTrans::is_merge_mut_type(&p.ty))
+                        .collect();
+                    if merge_flags.iter().any(|&b| b) {
+                        mm.insert(fn_decl.name.clone(), merge_flags);
                     }
                 }
             }
@@ -11318,7 +11380,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
 
     for (_module, ast) in &parsed_modules {
         collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
-        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params);
+        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, Some(&mut global_merge_mut_params));
     }
 
     // Phase 3: Transpile all modules into a single Sink with merge_mode
@@ -11357,6 +11419,11 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         for (name, flags) in &global_fn_int_params {
             if !transpiler.fn_int_param_indices.contains_key(name) {
                 transpiler.fn_int_param_indices.insert(name.clone(), flags.clone());
+            }
+        }
+        for (name, flags) in &global_merge_mut_params {
+            if !transpiler.fn_merge_mut_params.contains_key(name) {
+                transpiler.fn_merge_mut_params.insert(name.clone(), flags.clone());
             }
         }
 
@@ -11580,27 +11647,8 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         let new = format!("return if left {} right {{ 1 }} else {{ 0 }};", op);
         content = content.replace(&old, &new);
     }
-    // tenv clone at cross-file call sites
-    content = content.replace(
-        "type_infer_expr(tenv, node.left[0 as usize].clone())",
-        "type_infer_expr(tenv.clone(), node.left[0 as usize].clone())",
-    );
-    content = content.replace(
-        "type_infer_expr(tenv, arg_node.clone())",
-        "type_infer_expr(tenv.clone(), arg_node.clone())",
-    );
-    content = content.replace(
-        "type_infer_program(tenv, stmts.clone())",
-        "type_infer_program(tenv.clone(), stmts.clone())",
-    );
-    content = content.replace(
-        "type_infer_expr(tenv, arg.clone())",
-        "type_infer_expr(tenv.clone(), arg.clone())",
-    );
-    content = content.replace(
-        "type_infer_expr(tenv, pa.clone())",
-        "type_infer_expr(tenv.clone(), pa.clone())",
-    );
+    // tenv clone at cross-file call sites: no longer needed in merge mode
+    // since TypeEnv is now &mut TypeEnv (auto-reborrow handles multiple calls)
     // node.name partial move fix
     content = content.replace("let mut callee_name = node.name;", "let mut callee_name = node.name.clone();");
     // str_to_int arithmetic fix
@@ -11962,7 +12010,8 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
     );
 
     // === Fix eval_bind String vs &str (E0308) ===
-    content = content.replace("eval_bind(env.clone(), var_name, i)", "eval_bind(env.clone(), &*var_name, i)");
+    // eval_bind: env is now &mut EvalEnv, no clone needed; just fix var_name borrow
+    content = content.replace("eval_bind(env.clone(), var_name, i)", "eval_bind(env, &*var_name, i)");
 
     // === Fix path = node.name move (E0382) ===
     // Need .clone() since path is used later
@@ -12109,14 +12158,16 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
     content = content.replace("type_is_cmp_op(op)", "type_is_cmp_op(&*op)");
     content = content.replace("block_node(body_str2)", "block_node(&*body_str2)");
     // a2r_struct_init(callee, ...) -> a2r_struct_init(&*callee, ...)
-    content = content.replace("a2r_struct_init(callee, node.params, tenv.clone())", "a2r_struct_init(&*callee, node.params, tenv.clone())");
+    // a2r_struct_init: tenv is now &mut TypeEnv, no clone needed
+    content = content.replace("a2r_struct_init(callee, node.params, tenv.clone())", "a2r_struct_init(&*callee, node.params, tenv)");
     content = content.replace("tenv.struct_fields.contains_key(callee)", "tenv.struct_fields.contains_key(&*callee)");
     // a2r_path_to_rust(path) -> a2r_path_to_rust(&*path)
     content = content.replace("a2r_path_to_rust(path)", "a2r_path_to_rust(&*path)");
     // env.fn_defs.contains_key(callee_name) -> ...(&*callee_name)
     content = content.replace("env.fn_defs.contains_key(callee_name)", "env.fn_defs.contains_key(&*callee_name)");
     // eval_fn_call(env, node, callee_name) -> eval_fn_call(env, node, &*callee_name)
-    content = content.replace("eval_fn_call(env.clone(), node.clone(), callee_name)", "eval_fn_call(env.clone(), node.clone(), &*callee_name)");
+    // eval_fn_call: env is now &mut EvalEnv, no clone needed
+    content = content.replace("eval_fn_call(env.clone(), node.clone(), callee_name)", "eval_fn_call(env, node.clone(), &*callee_name)");
 
     // === E0308: return state.get(X) -> return state.get(X).cloned().unwrap_or_default() ===
     let re = regex::Regex::new(r"return state\.get\((&[^)]+)\);").unwrap();
@@ -12138,6 +12189,69 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
     // Pattern: TokenKind::Break => { p.pos = ...; nil_node() }
     // Should be: TokenKind::Break => { p.pos = ...; Token { kind: ..., pos: ..., text: ... } }
     // Too complex for regex — will need AST-level fix. Leave for now.
+
+    // === E0308: entry-point functions pass owned context types to &mut params ===
+    // In merge mode, context-type params (Parser, TypeEnv, EvalEnv, CodeGen, BVMState)
+    // are &mut, but entry-point functions create owned locals and pass them directly.
+    // Fix: add &mut prefix at these specific call sites.
+    content = content.replace("parse_program(p)", "parse_program(&mut p)");
+    content = content.replace("type_infer_program(tenv,", "type_infer_program(&mut tenv,");
+    content = content.replace("a2r_transpile(stmts.clone(), tenv)", "a2r_transpile(stmts.clone(), &mut tenv)");
+    content = content.replace("eval_program(env,", "eval_program(&mut env,");
+    content = content.replace("codegen_compile(cg.clone(), stmts.clone(), tenv)",
+                               "codegen_compile(cg.clone(), stmts.clone(), &mut tenv)");
+
+    // === E0499/E0502: double mutable borrows of &mut env in eval functions ===
+    // Pattern: some_fn(env, ..., eval_get_last_str(env)...)
+    // Fix: extract inner call to a temp variable before the outer call.
+    {
+        // Helper: extract inner env call to temp variable to avoid double borrow
+        let extract_env_tmp = |content: &str, pattern: &str, tmpl: &str| -> String {
+            let re = regex::Regex::new(pattern).unwrap();
+            re.replace_all(content, tmpl).to_string()
+        };
+
+        // eval_bind_str(env, X, eval_get_last_str(env).as_str())
+        content = extract_env_tmp(&content,
+            r#"eval_bind_str\(env, ([^,]+), eval_get_last_str\(env\)\.as_str\(\)\)"#,
+            r#"let __tmp = eval_get_last_str(env);
+            eval_bind_str(env, $1, __tmp.as_str())"#);
+
+        // eval_set_last_str(env, eval_str_cat(X, eval_get_last_str(env).as_str()).as_str())
+        content = extract_env_tmp(&content,
+            r#"eval_set_last_str\(env, eval_str_cat\(([^,]+), eval_get_last_str\(env\)\.as_str\(\)\)\.as_str\(\)\)"#,
+            r#"let __tmp = eval_get_last_str(env);
+                eval_set_last_str(env, eval_str_cat($1, __tmp.as_str()).as_str())"#);
+
+        // eval_set_last_str(env, eval_lookup_str_var(env, X).as_str())
+        content = extract_env_tmp(&content,
+            r#"eval_set_last_str\(env, eval_lookup_str_var\(env, (.+?)\)\.as_str\(\)\)"#,
+            r#"let __tmp = eval_lookup_str_var(env, $1);
+            eval_set_last_str(env, __tmp.as_str())"#);
+
+        // env.globals.insert(X, (eval_get_last_type(env)).to_string())
+        content = extract_env_tmp(&content,
+            r#"env\.globals\.insert\(([^,]+), \(eval_get_last_type\(env\)\)\.to_string\(\)\)"#,
+            r#"let __tmp = eval_get_last_type(env);
+            env.globals.insert($1, (__tmp).to_string())"#);
+
+        // env.globals.insert(X, (eval_get_last_str(env)).to_string())
+        content = extract_env_tmp(&content,
+            r#"env\.globals\.insert\(([^,]+), \(eval_get_last_str\(env\)\)\.to_string\(\)\)"#,
+            r#"let __tmp = eval_get_last_str(env);
+                env.globals.insert($1, (__tmp).to_string())"#);
+
+        // env.output = eval_str_cat(env.output.as_str(), eval_str_cat(eval_get_last_str(env).as_str(), "\n").as_str())
+        content = extract_env_tmp(&content,
+            r#"env\.output = eval_str_cat\(env\.output\.as_str\(\), eval_str_cat\(eval_get_last_str\(env\)\.as_str\(\), "\\n"\)\.as_str\(\)\)"#,
+            r#"let __tmp = eval_get_last_str(env);
+            env.output = eval_str_cat(env.output.as_str(), eval_str_cat(__tmp.as_str(), "\n").as_str())"#);
+    }
+
+    // Ensure trailing newline
+    if !content.ends_with('\n') {
+        content.push('\n');
+    }
 
     *body = content.into_bytes();
 }

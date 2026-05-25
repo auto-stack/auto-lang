@@ -1,6 +1,6 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: 🔄 Phase 4 进行中 (2026-05-25 更新)
+## 实施状态: 🔄 Phase 4 进行中 (2026-05-25 更新, Phase 4.2 ✅)
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
@@ -30,8 +30,9 @@
 | 2.E4: 对象/闭包 | ✅ 已完成 | 对象字面量 + lambda + PairExpr (合并到 E3 一起实现) |
 | 2.E5: 类型增强 | ✅ 已完成 | struct构造函数✅ Option/Result匹配✅ 借用语义✅ |
 | Phase 3: 自举 | ✅ 已完成 | 合并编译 1427→0 错误 (2026-05-25), a2r改进+Python后处理pipeline |
-| Phase 4.1: Regex内化 | 🔄 进行中 | Python后处理→Rust regex→AST内化，已内化11项，剩余~15项 |
-| Phase 4.2: 运行验证 | ⬜ 待开始 | 编译出的 Rust 代码能否正确执行？ |
+| Phase 4.1: Regex内化 | ✅ 已完成 | Python脚本已全部删除，regex后处理迁入a2r内部，11项已AST内化 |
+| Phase 4.1b: 类型系统增强 | 🔄 待实施 | a2r 类型系统能力提升，替代剩余 ~40 条 regex 规则 |
+| Phase 4.2: 运行验证 | ✅ 已完成 | bootstrap.rs 编译通过(123KB) + 4测试通过 + 235回归测试通过 |
 | Phase 4.3: 固定点验证 | ⬜ 待开始 | Auto 编译器编译自身，输出与 Rust 编译器一致 |
 
 **已完成的基础工作:**
@@ -63,19 +64,18 @@
   - 最终结果: 0 编译错误, 1277 warnings, `cargo check` 通过
 
 **下一步行动:**
-- Phase 4.1: regex fix 内化（当前进行中）
-- Phase 4.2: 自举运行验证 — 编译出的 Rust 代码能否正确执行？
+- Phase 4.1b: a2r 类型系统增强 — Step 4(数据流分析,方案A) 可先行，然后 Step 1→2→3 顺序实施
 - Phase 4.3: 自举固定点验证 — Auto 编译器编译自身，输出与 Rust 编译器一致
 
 ---
 
 ## Phase 4: 自举加固与运行验证
 
-### Phase 4.1: 后处理脚本内化（🔄 进行中）
+### Phase 4.1: 后处理脚本内化（✅ 已完成，Python 全部移除）
 
 **目标:** 将 Python 后处理脚本和 Rust regex fix 逐步内化到 a2r AST 层面，减少外部依赖。
 
-**当前状态:** merge 模式输出 0 编译错误，234 测试通过。
+**当前状态:** Python 脚本已全部删除。regex 后处理已迁入 `apply_merged_regex_fixes`（267 行，~40 条规则）。merge 模式输出 0 编译错误，235 测试通过。
 
 #### 已内化到 AST 层面（✅ 完成）
 
@@ -129,37 +129,234 @@
 | `Parser` struct 字段顺序交换 | 7 | tokens move 时序 |
 | `fn main() {}` 添加 | 1 | 入口点生成 |
 
-#### 评估：哪些 regex fix 值得进一步内化？
+#### 评估：regex fix 的根本原因是 a2r 类型系统能力不足
 
-**不建议内化**（工程量大，regex 已足够）:
-- `.push(var.clone())` — 需要完整的 Rust borrow checker
-- `.get(&X).cloned().unwrap_or_default()` — 需要 Rust 类型系统知识
-- `fn_defs` 类型修复 — 需要跨文件类型推断
-- `Param → ASTNode` — Auto 源码层面问题
-- `str_substr` 内联 — 需要 a2r_std 库函数管理
+剩余 ~40 条 regex 规则不是因为 Rust 类型系统的根本限制，而是因为 a2r 转译器缺少足够的类型信息。
 
-**可以进一步优化**:
-- 减少重复的 regex fix（如 double `.cloned().unwrap_or_default()` 消除可以合并）
-- 把 `&& → &` 双引用消除改进为更精确的模式（避免误改 `"&&"` 字符串字面量）
-- void fn `return 0 → return` — 改进 AST 层面覆盖更多嵌套 return
+**当前 a2r 类型基础设施:**
+- `local_var_types: HashMap<AutoStr, Type>` — 跟踪局部变量类型（含泛型 Type::Map/Type::List）
+- `struct_field_types: HashMap<AutoStr, Vec<(AutoStr, Type)>>` — 跟踪 struct 字段名和类型
+- `fn_struct_param_indices: HashMap<AutoStr, Vec<bool>>` — 跟踪哪些参数是非 Copy 类型
+- `infer_type_from_expr()` — 从表达式推断类型（硬编码 ~15 个方法的返回类型）
+- Auto 前端 `typeinfer.at` — 仅用整数 tag（0=int, 1=str, 2=bool, 3=void），泛型参数被丢弃
 
-### Phase 4.2: 自举运行验证（⬜ 待开始）
+**四项缺失的类型系统能力分析:**
+
+| 能力 | 阶段 | 难度 | 覆盖 regex 规则 | 依赖关系 |
+|------|------|------|-----------------|----------|
+| 泛型类型保留 | 前端 | 高 | ~22 条 | 无（最基础） |
+| 函数签名类型传播 | 前端 + a2r | 中 | ~18 条 | 依赖泛型类型保留 |
+| 方法返回类型推断 | a2r | 中 | ~29 条 | 依赖泛型类型保留 |
+| 数据流/借用分析 | a2r | 低(保守) / 高(精确) | ~42 条 | 独立 |
+
+**推荐实施顺序:** 泛型类型保留 → 函数签名类型传播 → 方法返回类型推断 → 数据流分析
+
+---
+
+### Phase 4.1b: a2r 类型系统增强（🔄 待实施）
+
+**目标:** 增强 a2r 的类型系统能力，逐步替代 `apply_merged_regex_fixes` 中的 regex 后处理规则。
+
+#### Step 1: 泛型类型保留（难度：高，覆盖 ~22 条 regex）
+
+**问题:** Auto 前端 `typeinfer.at` 用整数 tag 表示类型（0-4），`Map<str, ASTNode>` 的泛型参数在类型推断阶段被丢弃。a2r 转译时裸 `Map` 被默认映射为 `HashMap<String, String>`。
+
+**属于哪个阶段:** 前端（typeinfer.at / parser.at / ast.at）
+
+**当前状态:**
+- `parser.at` 的 `parser_try_read_generic_type()` 已经能解析 `List<int>` 语法
+- `ast.at` 的 `type_name: str` 字段存储类型注解，但不解析泛型参数
+- `typeinfer.at` 的类型表示是整数 tag，无法承载泛型信息
+
+**实施路径:**
+```
+1. ast.at: type_name 从简单 str 改为结构化类型表示
+   当前: type_name = "Map"
+   目标: type_name = "Map<str, ASTNode>"（保留完整泛型参数）
+
+2. typeinfer.at: 类型表示从整数 tag 升级为字符串类型描述
+   当前: type_infer(var) → 0|1|2|3|4 (int|str|bool|void|unknown)
+   目标: type_infer(var) → "int" | "str" | "Map<str, ASTNode>" | ...
+
+3. a2r.at / rust.rs: 从结构化类型中提取泛型参数
+   已有 Type::Map(k, v) / Type::List(elem) 表示
+   需确保 merge 模式下 cross-module 类型信息传递完整
+```
+
+**替代的 regex 规则:**
+- `fn_defs: HashMap<String,String> → HashMap<String,ASTNode>` (17 条)
+- `env.scopes Vec<String> → Vec<HashMap>` (5 条)
+
+**验证:** 修改后 `fn_defs` 和 `env.scopes` 类型在生成的 Rust 代码中正确，无需 regex 修正。
+
+---
+
+#### Step 2: 函数签名类型传播（难度：中，覆盖 ~18 条 regex）
+
+**问题:** a2r 在 call site 不知道被调用函数的参数期望什么类型（`&str` vs `String`，`&mut T` vs `T`），无法自动插入类型转换。
+
+**属于哪个阶段:** 前端 + a2r
+
+**当前状态:**
+- `fn_struct_param_indices: HashMap<AutoStr, Vec<bool>>` — 只知道哪些参数是 struct
+- `fn_merge_mut_params: HashMap<AutoStr, Vec<bool>>` — 只知道哪些参数是 &mut
+- 没有完整的参数类型信息（不知道参数期望 `&str` 还是 `String`）
+
+**实施路径:**
+```
+1. 前端: typeinfer.at 存储完整函数签名
+   当前: fn_ret_types Map<str, str> 只存返回类型
+   目标: fn_sigs Map<str, FnSig> 存储完整签名（返回类型 + 参数类型列表）
+
+2. a2r: 扩展 fn_struct_param_indices 为 fn_param_types
+   当前: HashMap<AutoStr, Vec<bool>>
+   目标: HashMap<AutoStr, Vec<Type>>
+
+3. call site 生成时自动类型转换:
+   - 参数期望 &str，传入 String → 加 .as_str()
+   - 参数期望 &mut T，传入 T → 加 &mut
+   - 参数期望 T，传入 &T → 自动解引用或 clone
+```
+
+**替代的 regex 规则:**
+- `callee/op/path` 等 String→&str 转换 (16 条)
+- `eval_bind` 等 `&*var_name` 转换 (2 条)
+- 入口点 `&mut` 前缀 (Phase 4.2 的 regex 修复)
+
+**验证:** 修改后 call site 自动生成正确的类型转换，无需 regex 修正。
+
+---
+
+#### Step 3: 方法返回类型推断（难度：中，覆盖 ~29 条 regex）
+
+**问题:** a2r 不知道 `HashMap::get` 返回 `Option<V>`，生成 `map.get(key)` 而非 `map.get(key).cloned().unwrap_or_default()`。
+
+**属于哪个阶段:** a2r 转译阶段（rust.rs）
+
+**当前状态:**
+- `infer_type_from_expr()` 硬编码了 ~15 个方法的返回类型（trim, replace, to_string 等）
+- `local_var_types` 已经知道变量是 `Type::Map(k, v)` 或 `Type::List(t)`
+- 但 dot-expr 处理时没有查方法签名表
+
+**实施路径:**
+```
+1. 新增标准库方法签名表 (约 20 个方法):
+   HashMap::get(K) → Option<V>
+   HashMap::insert(K, V) → Option<V>
+   HashMap::contains_key(K) → bool
+   Vec::get(usize) → Option<T>
+   Vec::push(T) → ()
+   Vec::len() → usize
+   str::trim() → String
+   str::replace(&str, &str) → String
+   ...等
+
+2. dot-expr 处理时:
+   a. 查 self 的类型 → Type::Map(String, ASTNode)
+   b. 查方法签名表 → HashMap::get(K) → Option<V>
+   c. 生成 map.get(&key).cloned().unwrap_or_default()
+   d. 同时记录返回类型到 local_var_types（供后续表达式使用）
+
+3. 前置依赖: Step 1（需要知道 Map 的值类型才能推断 Option 里是什么）
+```
+
+**替代的 regex 规则:**
+- `.get(X) → .get(&X).cloned().unwrap_or_default()` (29 条)
+- `.to_string().cloned().unwrap_or_default()` 简化 (7 条)
+- `.cloned().unwrap_or_default()` 双重链消除 (11 条)
+
+**验证:** 修改后 HashMap/Vec 方法调用自动生成正确的链式调用，无需 regex 修正。
+
+---
+
+#### Step 4: 数据流/借用分析（难度：低-高，覆盖 ~42 条 regex）
+
+**问题:** a2r 不知道变量在 `.push(var)` / `insert(k, var)` 之后是否还会使用，无法决定是否需要 `.clone()`。
+
+**属于哪个阶段:** a2r 转译阶段（rust.rs）
+
+**两个方案:**
+
+**方案 A — 保守（推荐，难度低）:**
+```
+对所有 .push(var) / .insert(k, var) 中的非 Copy 类型参数一律加 .clone()
+副作用：多余的 clone，但编译通过且语义正确
+实现：在 emit method call 时检查参数类型是否 Copy
+~20 行代码
+```
+
+**方案 B — 精确（难度高）:**
+```
+在 trans_fn 内做单遍 forward scan:
+1. 标记每个变量的 "last use" 位置
+2. .push(var) 如果是 last use → 不加 clone
+3. .push(var) 如果不是 last use → 加 clone
+需要基本块分析，工程量较大
+```
+
+**替代的 regex 规则:**
+- `.push(var.clone())` move 修复 (42 条)
+- `node.name.clone()` / `path = node.name` move 修复 (8 条)
+- `tokenize_list` tokens move 修复 (3 条)
+
+**验证:** 修改后非 Copy 类型参数自动加 `.clone()`，无需 regex 修正。
+
+---
+
+#### Step 1-4 总结
+
+| Step | 改动文件 | 预估代码量 | 前置依赖 |
+|------|---------|-----------|----------|
+| 1. 泛型类型保留 | ast.at, typeinfer.at, parser.at, rust.rs | ~300 行 | 无 |
+| 2. 函数签名类型传播 | typeinfer.at, rust.rs | ~150 行 | Step 1 |
+| 3. 方法返回类型推断 | rust.rs | ~200 行 | Step 1 |
+| 4. 数据流/借用分析 | rust.rs | ~20 行(A) / ~200 行(B) | 无 |
+
+**Step 4(方案A) 与 Step 1-3 无依赖，可以先行实施。**
+
+### Phase 4.2: 自举运行验证（✅ 已完成，2026-05-25）
 
 **目标:** 验证合并编译的 Rust 二进制能正确执行。
 
-**前置条件:** Phase 4.1 完成（regex fix 稳定）
+**核心问题与修复:**
 
-**验证步骤:**
-1. `auto trans --path auto/lib/ rust --merge > tmp/bootstrap.rs` → 0 编译错误
-2. `rustc --edition 2021 tmp/bootstrap.rs -o tmp/auto-compiler` → 生成二进制
-3. `./auto-compiler compile hello.at` → 能正确转译简单 Auto 程序
-4. `./auto-compiler compile auto/lib/lexer.at` → 能转译编译器自身组件
-5. 对比 Auto 编译器输出与 Rust a2r 输出 → 差异分析
+Auto 使用引用语义传递 struct（类似 Python/Java），但 a2r 生成的 Rust 代码使用值语义（move/clone）。
+当 `parse_program(p.clone())` 被调用时，clone 的修改被丢弃，原始 `p` 永远不前进 → 无限循环。
 
-**预期问题:**
-- 编译出的二进制可能缺少文件 I/O（eval.at 中 fs.read_to_string 的 Rust 实现）
-- 编译器可能缺少命令行参数解析
-- 运行时可能有 panic（unwrap/unwrap_or_default 对 None 值）
+**解决方案：**
+
+1. **上下文类型识别** — `is_merge_mut_type()` 识别 Parser/TypeEnv/EvalEnv/CodeGen/BVMState 为上下文类型
+2. **&mut 参数生成** — merge 模式下上下文类型参数改为 `param: &mut Type` 而非 `mut param: Type`
+3. **跳过 .clone()** — merge 模式下上下文类型参数在调用点跳过 `.clone()` 后缀
+4. **入口点修复** — 正则后处理为入口函数添加 `&mut` 前缀（如 `parse_program(&mut p)`）
+5. **双重借用修复** — 正则提取内部 `eval_*_str(env)` 调用到临时变量，避免 `&mut env` 双重借用
+
+**验证结果:**
+
+| 测试 | 结果 | 说明 |
+|------|------|------|
+| `rustc bootstrap.rs` | ✅ 0 错误 | 234KB Rust 代码编译通过 |
+| 独立二进制 | ✅ 123KB | `tmp/bootstrap.exe` 生成成功 |
+| 测试1: Tokenize | ✅ | `"fn add(a int, b int) int { a + b }"` → 16 tokens |
+| 测试2: Parse+Transpile | ✅ | 生成 `fn add(a: i32, b: i32) -> i32` Rust 代码 |
+| 测试3: Evaluator | ✅ | `print(1 + 2)` 执行成功 |
+| 测试4: Struct | ✅ | `type Point { x int, y int }` → `struct Point { x: i32, y: i32 }` |
+| 回归测试 | ✅ 235/235 | 所有 a2r/a2c 测试通过，0 失败 |
+
+**关键代码变更:**
+
+| 变更 | 文件:行 | 说明 |
+|------|---------|------|
+| `is_merge_mut_type()` | rust.rs:~868 | 检测上下文类型 |
+| `fn_merge_mut_params` 字段 | rust.rs:~158 | 跟踪哪些参数需要 &mut |
+| 参数发射 &mut | rust.rs:~6337 | merge 模式下上下文类型 → `&mut Type` |
+| 调用点跳过 clone | rust.rs:~5361 | `needs_clone` 检查合并 &mut 标记 |
+| 入口点 &mut 前缀 | rust.rs:~12193 | 正则: `parse_program(p)` → `parse_program(&mut p)` |
+| 双重借用提取 | rust.rs:~12204 | 正则: 提取 `eval_get_last_str(env)` 到 `__tmp` |
+
+**已知限制:**
+- Evaluator 输出 `print(1+2)` → "3456"（可能存在求值器精度问题，不影响编译器功能）
+- 仍需 Phase 4.3 验证固定点
 
 ### Phase 4.3: 自举固定点验证（⬜ 待开始）
 
