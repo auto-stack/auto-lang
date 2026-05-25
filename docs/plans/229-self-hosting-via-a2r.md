@@ -1,6 +1,6 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: ⏳ Phase 3 自举验证 (2026-05-24 更新)
+## 实施状态: ✅ Phase 3 自举编译通过 (2026-05-25 更新)
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
@@ -29,7 +29,7 @@
 | 2.E3: 表达式补全 | ✅ 已完成 | 数组/错误传播/self字段替换/别名, 测试 094-099 (Plan 237 Phase E3+E4) |
 | 2.E4: 对象/闭包 | ✅ 已完成 | 对象字面量 + lambda + PairExpr (合并到 E3 一起实现) |
 | 2.E5: 类型增强 | ✅ 已完成 | struct构造函数✅ Option/Result匹配✅ 借用语义✅ |
-| Phase 3: 自举 | 🔧 进行中 | 合并编译从1356→929错误, Map/List/field0/重复定义已修复, char/i32等深层问题待解决 |
+| Phase 3: 自举 | ✅ 已完成 | 合并编译 1427→0 错误 (2026-05-25), a2r改进+Python后处理pipeline |
 
 **已完成的基础工作:**
 - [x] a2r 转译器成熟化: step-00（555 行 Auto 程序）从 69 错误降至 0 错误（Apr 30）
@@ -53,15 +53,18 @@
 - [x] Phase 3 进展: 跨模块struct_fields预填充 → 同目录.at文件的struct定义自动共享，field0/field1/field2问题清零
 - [x] Phase 3 进展: auto/lib所有bare List/Map添加泛型参数 (List→List<ASTNode>/List<int>, Map→Map<str,str>)
 - [x] Phase 3 进展: opcode.at从let改为const，codegen.at保留fn形式（VM兼容）
-- [ ] Phase 3 剩余: 合并编译929错误 — 主要是a2r代码生成质量(char vs i32, 动态Map方法不匹配等)
+- [x] Phase 3 自举: 合并编译 1427→0 错误 (2026-05-25)
+  - Python 后处理 pipeline: fix_borrow2/fix_clone/fix_hashmap_get/fix_cross_file 等 12 个脚本
+  - a2r 改进: char_at 括号修复, fn_struct_param_indices 扩展到所有非 Copy 类型, fn_int_param_indices enum→i32 cast
+  - 跨文件类型修复: tenv.clone(), String+String 借用, bool→i32 比较, env.scopes 类型, str_to_int 算术
+  - 最终结果: 0 编译错误, 1277 warnings, `cargo check` 通过
 
 **下一步行动:**
-- Phase 3 深层修复: a2r transpiler代码生成质量
-  - E0308 (442): char vs i32 类型不匹配 — a2r stdlib FFI映射需修复
-  - E0599 (186): 方法不存在 — 动态类型Map方法在HashMap<String,String>上不可用
-  - E0277 (161): trait bound — 需要 Display/Clone 等derive
-  - E0609 (95): 字段不存在 — a2r生成的struct字段名不匹配
-  - E0382 (30): 所有权/借用问题 — Auto的clone语义vs Rust的move语义
+- Phase 4: 自举运行验证 — 编译出的 Rust 代码能否正确执行？
+  - 修复 1277 warnings 中的关键问题（unused_parens, unused_variables 等）
+  - 将 Python 后处理脚本整合进 a2r 编译器内部（消除对外部依赖）
+  - a2r 多文件模式支持：消除跨文件函数调用时的类型信息缺失
+  - 自举固定点验证：Auto 编译器编译自身，输出与 Rust 编译器一致
 
 ---
 
