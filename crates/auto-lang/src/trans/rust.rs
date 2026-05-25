@@ -7900,9 +7900,15 @@ impl RustTrans {
 
         // Plan 204 Phase 2C: Add #[derive(Clone, Debug, PartialEq)] to enums
         // Scalar enums with repr type also need Copy
+        // Heterogeneous enums with all-empty variants (no data) also get Copy
+        let all_variants_empty = matches!(&enum_decl.kind, EnumKind::Heterogeneous { .. })
+            && enum_decl.items.iter().all(|item| {
+                item.fields.is_empty() && item.payload_type.is_none() && item.payload_types.is_empty()
+            });
         let derive_attrs = match &enum_decl.kind {
             EnumKind::Scalar { repr_type: Some(_) } => "#[derive(Clone, Debug, PartialEq, Copy)]",
             EnumKind::Scalar { repr_type: None } => "#[derive(Clone, Debug, PartialEq)]",
+            _ if all_variants_empty => "#[derive(Clone, Copy, Debug, PartialEq)]",
             _ => "#[derive(Clone, Debug, PartialEq)]",
         };
         writeln!(sink.body, "{}", derive_attrs)?;
@@ -11540,7 +11546,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     // Fix int_to_str(X).cloned().unwrap_or_default()
     let re = regex::Regex::new(r"int_to_str\(([^)]+)\)\.cloned\(\)\.unwrap_or_default\(\)").unwrap();
     content = re.replace_all(&content, "int_to_str($1)").to_string();
-    // NodeKind Copy derive
+    // NodeKind Copy derive: now handled at AST level (all_variants_empty check)
     content = content.replace(
         "#[derive(Clone, Debug, PartialEq)]\nenum NodeKind",
         "#[derive(Clone, Copy, Debug, PartialEq)]\nenum NodeKind",
