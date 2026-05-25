@@ -11600,13 +11600,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         content.push_str("\nfn main() {}\n");
     }
 
-    // === fix_contains_key.py ===
-    for name in &["struct_fields", "fn_param_types", "fn_defs", "globals",
-                  "type_aliases", "scopes", "strings", "state"] {
-        let old = format!("{}.contains(", name);
-        let new = format!("{}.contains_key(", name);
-        content = content.replace(&old, &new);
-    }
+    // === fix_contains_key.py: now handled at AST level (contains_rust logic + cross-module struct_field_types) ===
 
     // === fix_vec_get.py ===
     let re = regex::Regex::new(r"p\.tokens\.get\(([^)]+)\)").unwrap();
