@@ -1,6 +1,6 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: ✅ Phase 3 自举编译通过 (2026-05-25 更新)
+## 实施状态: 🔄 Phase 4 进行中 (2026-05-25 更新)
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
@@ -9,7 +9,7 @@
 
 **预估工期:** 16–22 周（4–5.5 个月）
 
-### 进度摘要（2026-05-24 更新）
+### 进度摘要（2026-05-25 更新）
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
@@ -30,6 +30,9 @@
 | 2.E4: 对象/闭包 | ✅ 已完成 | 对象字面量 + lambda + PairExpr (合并到 E3 一起实现) |
 | 2.E5: 类型增强 | ✅ 已完成 | struct构造函数✅ Option/Result匹配✅ 借用语义✅ |
 | Phase 3: 自举 | ✅ 已完成 | 合并编译 1427→0 错误 (2026-05-25), a2r改进+Python后处理pipeline |
+| Phase 4.1: Regex内化 | 🔄 进行中 | Python后处理→Rust regex→AST内化，已内化11项，剩余~15项 |
+| Phase 4.2: 运行验证 | ⬜ 待开始 | 编译出的 Rust 代码能否正确执行？ |
+| Phase 4.3: 固定点验证 | ⬜ 待开始 | Auto 编译器编译自身，输出与 Rust 编译器一致 |
 
 **已完成的基础工作:**
 - [x] a2r 转译器成熟化: step-00（555 行 Auto 程序）从 69 错误降至 0 错误（Apr 30）
@@ -60,11 +63,117 @@
   - 最终结果: 0 编译错误, 1277 warnings, `cargo check` 通过
 
 **下一步行动:**
-- Phase 4: 自举运行验证 — 编译出的 Rust 代码能否正确执行？
-  - 修复 1277 warnings 中的关键问题（unused_parens, unused_variables 等）
-  - 将 Python 后处理脚本整合进 a2r 编译器内部（消除对外部依赖）
-  - a2r 多文件模式支持：消除跨文件函数调用时的类型信息缺失
-  - 自举固定点验证：Auto 编译器编译自身，输出与 Rust 编译器一致
+- Phase 4.1: regex fix 内化（当前进行中）
+- Phase 4.2: 自举运行验证 — 编译出的 Rust 代码能否正确执行？
+- Phase 4.3: 自举固定点验证 — Auto 编译器编译自身，输出与 Rust 编译器一致
+
+---
+
+## Phase 4: 自举加固与运行验证
+
+### Phase 4.1: 后处理脚本内化（🔄 进行中）
+
+**目标:** 将 Python 后处理脚本和 Rust regex fix 逐步内化到 a2r AST 层面，减少外部依赖。
+
+**当前状态:** merge 模式输出 0 编译错误，234 测试通过。
+
+#### 已内化到 AST 层面（✅ 完成）
+
+| # | Fix | AST 实现位置 | Commit |
+|---|-----|-------------|--------|
+| 1 | `crate::module::Type → Type` 路径简化 | `qualify_type_name` merge_mode 跳过 crate:: | 6d0c66d2 |
+| 2 | `CONST_NAME() → CONST_NAME` 括号移除 | `is_screaming_case` 检查 + 单元组括号消除 | 6d0c66d2 |
+| 3 | `.contains → .contains_key` HashMap 方法 | `contains_rust` 逻辑 + cross-module struct_field_types | c5b6b5a5 |
+| 4 | `Vec.get(X) → [X as usize]` 索引 | AST level 大部分覆盖 | 9f28e2ea |
+| 5 | NodeKind Copy derive | all_variants_empty 检查 | 24763387 |
+| 6 | `.drop() → .take()` 方法映射 | method name mapping table | 317bdb6f |
+| 7 | void fn `return 0 → return` | `current_fn_ret_type` 跟踪 + Stmt::Return 处理 | 317bdb6f |
+| 8 | Display trait `fn fmt()` 保留 | `post_process_merged` brace_depth 跟踪 | f0eed560 |
+| 9 | `use auto_lang::a2r_std` 跳过 | merge_mode 跳过 emit | 35bcab1e |
+| 10 | `is_str_slice_var` 修复 | `current_fn_str_params` 替代 `local_var_types` | f32459f7 |
+| 11 | `int_to_str(kind as i32)` enum cast | `infer_type_from_expr` dot-access + `known_enum_names` + `needs_enum_cast` 扩展 | 3c436371 |
+
+#### 保留在 `apply_merged_regex_fixes` 中（text-level fix）
+
+**TYPE_SYSTEM 类（~192行）— Rust 类型系统限制，AST 无法覆盖:**
+
+| Fix | 命中次数 | 原因 |
+|-----|---------|------|
+| `.get(X) → .get(&X).cloned().unwrap_or_default()` HashMap | 29 | a2r 不知道 HashMap::get 返回 Option |
+| `.push(var.clone())` move 修复 | 42 | 需要 SSA/数据流分析 |
+| `.to_string().cloned().unwrap_or_default()` 简化 | 7 | 链式方法调用类型推断 |
+| `&&expr → &expr` 双引用消除 | 13 | borrow 插入过度 |
+| `.insert(arith_expr,) → .insert((arith_expr) as usize,)` | 13 | usize 索引 |
+| `.cloned().unwrap_or_default()` 双重链消除 | 11 | 重复模式 |
+| `state.get()` borrow 冲突修复 | 19 | Rust 借用规则 |
+| `env.scopes` Vec&lt;String&gt; → Vec&lt;HashMap&gt; | 5 | a2r 把 bare List 映射为 Vec&lt;String&gt; |
+
+**SPECIFIC_HARDCODED 类（~107行）— 针对特定变量名:**
+
+| Fix | 命中次数 | 原因 |
+|-----|---------|------|
+| `fn_defs: HashMap&lt;String,String&gt; → HashMap&lt;String,ASTNode&gt;` | 17 | a2r 把所有 Map 值存为 String |
+| `NodeKind::Param` 变体添加 + `Param→ASTNode` 转换 | 9 | 跨文件类型系统问题 |
+| `str_substr` 内联 + `a2r_std::` 前缀替换 | 27 | 外部 crate 函数管理 |
+| `callee/op/path` 等 String→&str 转换 | 16 | 特定变量 borrow |
+| `node.name.clone()` / `path = node.name` move 修复 | 8 | 部分 move 修复 |
+| void fn 嵌套 `return 0 → return` (regex fallback) | 27 | AST 只覆盖顶层 return |
+| `eval_bind` 等 `&*var_name` 转换 | 2 | 特定函数调用 |
+
+**STRUCTURAL 类（~80行）— 结构性代码修改:**
+
+| Fix | 命中次数 | 原因 |
+|-----|---------|------|
+| `tokenize_list/lex_fstr` 返回类型 `→ Vec<Token>` | 3 | a2r 不知道函数返回 Vec |
+| `nil_node()` match arm 分号移除 | 4 | match arm 上下文感知 |
+| `Parser` struct 字段顺序交换 | 7 | tokens move 时序 |
+| `fn main() {}` 添加 | 1 | 入口点生成 |
+
+#### 评估：哪些 regex fix 值得进一步内化？
+
+**不建议内化**（工程量大，regex 已足够）:
+- `.push(var.clone())` — 需要完整的 Rust borrow checker
+- `.get(&X).cloned().unwrap_or_default()` — 需要 Rust 类型系统知识
+- `fn_defs` 类型修复 — 需要跨文件类型推断
+- `Param → ASTNode` — Auto 源码层面问题
+- `str_substr` 内联 — 需要 a2r_std 库函数管理
+
+**可以进一步优化**:
+- 减少重复的 regex fix（如 double `.cloned().unwrap_or_default()` 消除可以合并）
+- 把 `&& → &` 双引用消除改进为更精确的模式（避免误改 `"&&"` 字符串字面量）
+- void fn `return 0 → return` — 改进 AST 层面覆盖更多嵌套 return
+
+### Phase 4.2: 自举运行验证（⬜ 待开始）
+
+**目标:** 验证合并编译的 Rust 二进制能正确执行。
+
+**前置条件:** Phase 4.1 完成（regex fix 稳定）
+
+**验证步骤:**
+1. `auto trans --path auto/lib/ rust --merge > tmp/bootstrap.rs` → 0 编译错误
+2. `rustc --edition 2021 tmp/bootstrap.rs -o tmp/auto-compiler` → 生成二进制
+3. `./auto-compiler compile hello.at` → 能正确转译简单 Auto 程序
+4. `./auto-compiler compile auto/lib/lexer.at` → 能转译编译器自身组件
+5. 对比 Auto 编译器输出与 Rust a2r 输出 → 差异分析
+
+**预期问题:**
+- 编译出的二进制可能缺少文件 I/O（eval.at 中 fs.read_to_string 的 Rust 实现）
+- 编译器可能缺少命令行参数解析
+- 运行时可能有 panic（unwrap/unwrap_or_default 对 None 值）
+
+### Phase 4.3: 自举固定点验证（⬜ 待开始）
+
+**目标:** Auto 编译器编译自身，输出与 Rust 编译器一致。
+
+**前置条件:** Phase 4.2 验证通过
+
+**验证流程:**
+```
+1. Rust a2r 编译 auto/lib/ → bootstrap_v1.rs → rustc → auto-compiler-v1
+2. auto-compiler-v1 编译 auto/lib/ → bootstrap_v2.rs → rustc → auto-compiler-v2
+3. diff bootstrap_v1.rs bootstrap_v2.rs → 应为空（固定点）
+4. 如果不一致：分析差异，修复 a2r 输出确定性
+```
 
 ---
 
