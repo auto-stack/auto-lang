@@ -11375,6 +11375,7 @@ fn post_process_merged(body: &mut Vec<u8>) {
     let mut seen_allow = false;
     let mut seen_uses: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut seen_top_level_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut brace_depth: i32 = 0;
 
     let mut result = String::new();
     let mut i = 0;
@@ -11437,26 +11438,32 @@ fn post_process_merged(body: &mut Vec<u8>) {
         }
 
         // Skip duplicate fn definitions (OP_*, BOOL_*, NATIVE_*, etc.)
-        if trimmed.starts_with("fn ") {
+        // Only at top level (brace_depth == 0), not inside impl blocks
+        if trimmed.starts_with("fn ") && brace_depth == 0 {
             // Extract fn name: "fn OP_POP() -> i32 {" → "OP_POP"
             if let Some(rest) = trimmed.strip_prefix("fn ") {
                 if let Some(paren_pos) = rest.find('(') {
                     let fn_name = &rest[..paren_pos];
                     if seen_top_level_names.contains(fn_name) {
-                        // Skip the entire function body
-                        let mut depth = 0i32;
-                        while i < lines.len() {
+                        // Skip the entire function body and update brace_depth
+                        for ch in trimmed.chars() {
+                            match ch {
+                                '{' => brace_depth += 1,
+                                '}' => brace_depth -= 1,
+                                _ => {}
+                            }
+                        }
+                        while i + 1 < lines.len() && brace_depth > 0 {
+                            i += 1;
                             for ch in lines[i].chars() {
                                 match ch {
-                                    '{' => depth += 1,
-                                    '}' => depth -= 1,
+                                    '{' => brace_depth += 1,
+                                    '}' => brace_depth -= 1,
                                     _ => {}
                                 }
                             }
-                            if depth == 0 { break; }
-                            i += 1;
                         }
-                        i += 1; // skip closing }
+                        i += 1;
                         continue;
                     }
                     seen_top_level_names.insert(fn_name.to_string());
@@ -11464,6 +11471,13 @@ fn post_process_merged(body: &mut Vec<u8>) {
             }
             result.push_str(line);
             result.push('\n');
+            for ch in trimmed.chars() {
+                match ch {
+                    '{' => brace_depth += 1,
+                    '}' => brace_depth -= 1,
+                    _ => {}
+                }
+            }
             i += 1;
             continue;
         }
@@ -11488,6 +11502,14 @@ fn post_process_merged(body: &mut Vec<u8>) {
         // Keep all other lines
         result.push_str(line);
         result.push('\n');
+        // Track brace depth for fn dedup scope detection
+        for ch in trimmed.chars() {
+            match ch {
+                '{' => brace_depth += 1,
+                '}' => brace_depth -= 1,
+                _ => {}
+            }
+        }
         i += 1;
     }
 
@@ -11751,18 +11773,9 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     let re = regex::Regex::new(r"int_to_str\(([^)]+)\)\.cloned\(\)\.unwrap_or_default\(\)").unwrap();
     content = re.replace_all(&content, "int_to_str($1)").to_string();
 
-    // === Fix Display trait missing fmt method (E0046) ===
-    // Replace "impl std::fmt::Display for NodeKind { ... }" with proper implementation
-    if content.contains("impl std::fmt::Display for NodeKind {") {
-        let re = regex::Regex::new(
-            r"impl std::fmt::Display for NodeKind \{[^}]*\}"
-        ).unwrap();
-        content = re.replace_all(&content, r#"impl std::fmt::Display for NodeKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}"#).to_string();
-    }
+    // === Fix Display trait missing fmt method (E0046): now handled at AST level ===
+    // a2r generates Display impl with fmt method for all-unit heterogeneous enums
+    // content = content.replace(...)
 
     // === Fix return; in non-void function: no longer needed ===
     // AST level now correctly emits "return 0;" for non-void functions, "return;" for void functions
