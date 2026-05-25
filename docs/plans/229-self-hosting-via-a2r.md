@@ -31,7 +31,7 @@
 | 2.E5: 类型增强 | ✅ 已完成 | struct构造函数✅ Option/Result匹配✅ 借用语义✅ |
 | Phase 3: 自举 | ✅ 已完成 | 合并编译 1427→0 错误 (2026-05-25), a2r改进+Python后处理pipeline |
 | Phase 4.1: Regex内化 | ✅ 已完成 | Python脚本已全部删除，regex后处理迁入a2r内部，11项已AST内化 |
-| Phase 4.1b: 类型系统增强 | 🔄 待实施 | a2r 类型系统能力提升，替代剩余 ~40 条 regex 规则 |
+| Phase 4.1b: 类型系统增强 | 🔄 进行中 | Step 4(数据流)✅ 已完成，Step 1-3 待实施 |
 | Phase 4.2: 运行验证 | ✅ 已完成 | bootstrap.rs 编译通过(123KB) + 4测试通过 + 235回归测试通过 |
 | Phase 4.3: 固定点验证 | ⬜ 待开始 | Auto 编译器编译自身，输出与 Rust 编译器一致 |
 
@@ -269,50 +269,45 @@
 
 ---
 
-#### Step 4: 数据流/借用分析（难度：低-高，覆盖 ~42 条 regex）
+#### Step 4: 数据流/借用分析 — 方案A（✅ 已完成，2026-05-26）
 
 **问题:** a2r 不知道变量在 `.push(var)` / `insert(k, var)` 之后是否还会使用，无法决定是否需要 `.clone()`。
 
-**属于哪个阶段:** a2r 转译阶段（rust.rs）
+**已实施:** 方案 A — 保守策略
 
-**两个方案:**
+**关键变更（`crates/auto-lang/src/trans/rust.rs`）:**
 
-**方案 A — 保守（推荐，难度低）:**
-```
-对所有 .push(var) / .insert(k, var) 中的非 Copy 类型参数一律加 .clone()
-副作用：多余的 clone，但编译通过且语义正确
-实现：在 emit method call 时检查参数类型是否 Copy
-~20 行代码
-```
+| 变更 | 位置 | 说明 |
+|------|------|------|
+| `is_copy_type()` | ~878 行 | 新增辅助函数，`Type::Unknown` 视为非 Copy |
+| `.push(arg)` auto-clone | ~4637 行, ~5035 行 | 已知方法 + 常规方法两个路径都覆盖 |
+| `.insert(k, arg)` auto-clone | 同上 | 跳过第 1 个参数（key），只 clone value |
+| `store()` struct field clone | ~6239 行 | `let x = obj.field` 从非 Copy struct 自动 clone |
+| `fn_struct_param_indices` 重构 | ~6403 行等 3 处 | 使用 `is_copy_type()` 替代内联 matches! |
 
-**方案 B — 精确（难度高）:**
-```
-在 trans_fn 内做单遍 forward scan:
-1. 标记每个变量的 "last use" 位置
-2. .push(var) 如果是 last use → 不加 clone
-3. .push(var) 如果不是 last use → 加 clone
-需要基本块分析，工程量较大
-```
+**已移除的 regex 规则:**
+- `.push(var.clone())` 硬编码变量名循环（13 个变量名）
+- `path = node.name` move 修复
+- `tok` move 修复（已由通用 auto-clone 覆盖）
 
-**替代的 regex 规则:**
-- `.push(var.clone())` move 修复 (42 条)
-- `node.name.clone()` / `path = node.name` move 修复 (8 条)
-- `tokenize_list` tokens move 修复 (3 条)
+**保留的 regex 规则:**
+- `fix_push_move()` — 兜底处理 AST 层面未覆盖的边缘情况
+- `else_str = else_if.value` — var 重赋值路径不经过 store()，暂用 regex
 
-**验证:** 修改后非 Copy 类型参数自动加 `.clone()`，无需 regex 修正。
+**验证结果:** 235/235 测试通过，bootstrap.rs 编译 0 错误，4/4 运行测试通过。
 
 ---
 
 #### Step 1-4 总结
 
-| Step | 改动文件 | 预估代码量 | 前置依赖 |
-|------|---------|-----------|----------|
-| 1. 泛型类型保留 | ast.at, typeinfer.at, parser.at, rust.rs | ~300 行 | 无 |
-| 2. 函数签名类型传播 | typeinfer.at, rust.rs | ~150 行 | Step 1 |
-| 3. 方法返回类型推断 | rust.rs | ~200 行 | Step 1 |
-| 4. 数据流/借用分析 | rust.rs | ~20 行(A) / ~200 行(B) | 无 |
+| Step | 改动文件 | 预估代码量 | 前置依赖 | 状态 |
+|------|---------|-----------|----------|------|
+| 1. 泛型类型保留 | ast.at, typeinfer.at, parser.at, rust.rs | ~300 行 | 无 | ⬜ 待实施 |
+| 2. 函数签名类型传播 | typeinfer.at, rust.rs | ~150 行 | Step 1 | ⬜ 待实施 |
+| 3. 方法返回类型推断 | rust.rs | ~200 行 | Step 1 | ⬜ 待实施 |
+| 4. 数据流/借用分析(方案A) | rust.rs | ~75 行 | 无 | ✅ 已完成 |
 
-**Step 4(方案A) 与 Step 1-3 无依赖，可以先行实施。**
+**Step 4 已完成。Step 1→2→3 顺序推进，需先实施 Step 1（泛型类型保留）作为基础。**
 
 ### Phase 4.2: 自举运行验证（✅ 已完成，2026-05-25）
 

@@ -873,6 +873,18 @@ impl RustTrans {
         }
     }
 
+    /// Check if a type implements Copy (primitive types, string slices, etc.).
+    /// Non-Copy types (structs, enums, Vec, HashMap, Unknown) need .clone() when moved.
+    /// Unknown is treated as non-Copy for safety (conservative ownership handling).
+    fn is_copy_type(ty: &Type) -> bool {
+        matches!(ty,
+            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+            | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+            | Type::Void
+        )
+    }
+
     /// Escape Rust reserved keywords used as identifiers.
     /// Only applies to variable/parameter binding contexts, NOT type names or module paths.
     fn rust_ident(name: &str) -> std::borrow::Cow<'_, str> {
@@ -4625,6 +4637,18 @@ impl RustTrans {
                                 }
                             }
                         }
+                        // Auto-clone: .push() and .insert() take ownership, clone non-Copy ident args
+                        // Conservative: unknown types are treated as non-Copy (safer for ownership)
+                        if is_push_or_insert {
+                            if let Arg::Pos(Expr::Ident(name)) = arg {
+                                let is_copy = self.local_var_types.get(name)
+                                    .map(|ty| Self::is_copy_type(ty))
+                                    .unwrap_or(false);
+                                if !is_copy {
+                                    write!(out, ".clone()")?;
+                                }
+                            }
+                        }
                         if i < call.args.args.len() - 1 {
                             write!(out, ", ")?;
                         }
@@ -5008,6 +5032,29 @@ impl RustTrans {
                                     .unwrap_or(false)
                                 {
                                     write!(out, ".as_str()")?;
+                                }
+                            }
+                        }
+                        // Auto-clone: .push() takes ownership, clone non-Copy ident args
+                        if method_name.as_str() == "push" {
+                            if let Expr::Ident(name) = expr {
+                                let is_copy = self.local_var_types.get(name)
+                                    .map(|ty| Self::is_copy_type(ty))
+                                    .unwrap_or(false);
+                                if !is_copy {
+                                    write!(out, ".clone()")?;
+                                }
+                            }
+                        }
+                        // Auto-clone: .insert() takes ownership of value (2nd arg), clone non-Copy ident args
+                        // Skip 1st arg (key) — it's usually String/Copy. Only clone the value arg.
+                        if is_insert && i >= 1 {
+                            if let Expr::Ident(name) = expr {
+                                let is_copy = self.local_var_types.get(name)
+                                    .map(|ty| Self::is_copy_type(ty))
+                                    .unwrap_or(false);
+                                if !is_copy {
+                                    write!(out, ".clone()")?;
                                 }
                             }
                         }
@@ -6192,6 +6239,18 @@ impl RustTrans {
             }
         } else {
             self.expr(&store.expr, out)?;
+            // Auto-clone: when assigning from a non-Copy struct field (e.g., let path = node.name)
+            // the struct field is moved, but the struct may still be used later
+            if let Expr::Dot(obj, _field) = &store.expr {
+                if let Expr::Ident(obj_name) = obj.as_ref() {
+                    let obj_is_copy = self.local_var_types.get(obj_name)
+                        .map(|ty| Self::is_copy_type(ty))
+                        .unwrap_or(true);
+                    if !obj_is_copy {
+                        write!(out, ".clone()")?;
+                    }
+                }
+            }
         }
 
         // Add integer cast when assigning json.as_int() result to int/uint variable
@@ -6390,11 +6449,7 @@ impl RustTrans {
 
         // Cache which params are non-Copy types (need .clone() at call sites)
         let struct_param_flags: Vec<bool> = fn_decl.params.iter()
-            .map(|p| !matches!(p.ty,
-                Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
-                | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
-                | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                | Type::Void | Type::Unknown))
+            .map(|p| !Self::is_copy_type(&p.ty))
             .collect();
         self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
 
@@ -10368,11 +10423,7 @@ impl Trans for RustTrans {
                     self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
 
                     let struct_param_flags: Vec<bool> = fn_decl.params.iter()
-                        .map(|p| !matches!(p.ty,
-                            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
-                            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
-                            | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                            | Type::Void | Type::Unknown))
+                        .map(|p| !Self::is_copy_type(&p.ty))
                         .collect();
                     self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
 
@@ -10395,11 +10446,7 @@ impl Trans for RustTrans {
                         self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
 
                         let struct_param_flags: Vec<bool> = fn_decl.params.iter()
-                            .map(|p| !matches!(p.ty,
-                                Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
-                                | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
-                                | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                                | Type::Void | Type::Unknown))
+                            .map(|p| !Self::is_copy_type(&p.ty))
                             .collect();
                         self.fn_struct_param_indices.insert(qualified_key.clone(), struct_param_flags.clone());
                         self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
@@ -11946,23 +11993,9 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
     // This is too broad for regex. The real fix is AST-level.
 
     // === Fix .push(var) where var is ASTNode and used later (E0382) ===
-    // Node constructors: l.push(left) -> l.push(left.clone()) etc.
-    for var in &["left", "right", "operand", "callee", "obj", "expr", "cond", "range",
-                  "inner", "inner2", "inner3", "tok", "path"] {
-        let old = format!(".push({});", var);
-        let new = format!(".push({}.clone());", var);
-        content = content.replace(&old, &new);
-        // Also handle push without semicolon (e.g., in if-else chains)
-        let old2 = format!(".push({})", var);
-        let new2 = format!(".push({}.clone())", var);
-        content = content.replace(&old2, &new2);
-    }
-
-    // === Fix tok move: list.push(tok) then tok.field ===
-    // Replace list.push(tok) with list.push(tok.clone()) to allow later tok.field access
-    content = content.replace("list.push(tok.clone());", "list.push(tok.clone());"); // no-op idempotent guard
-    // The above already handled by push(var.clone()) pattern. But tok also needs
-    // special handling: save fields before push. Let's just clone tok in the push.
+    // NOW HANDLED AT AST LEVEL: is_copy_type() check in method call emission.
+    // .push(ident) automatically gets .clone() for non-Copy type identifiers.
+    // Keeping fix_push_move() as fallback for edge cases.
 
     // === Fix tokens move in parser_new ===
     // fn parser_new(mut tokens: Vec<Token>) -> Parser { ... tokens ... }
@@ -11973,13 +12006,8 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
         "fn parser_new(mut tokens: Vec<Token>) -> Parser",
     ); // placeholder — actual fix needs AST-level changes
 
-    // === Fix path move: path used after assignment to node.name ===
-    // a2r uses path after path = node.name; where node.name is String
-    // Actually path = node.name moves, then path is used later. Need path = node.name.clone()
-    // But .clone() is already handled by push clone. The issue is specific:
-    // path = node.name; ... str_substr(path, ...) ... str_substr(&*path, ...)
-    // Need: path = node.name.clone(); or use &*path everywhere
-    // Already have a2r_path_to_rust(&*path) fix. Let's check path = node.name;
+    // === Fix path move: NOW HANDLED AT AST LEVEL ===
+    // store() auto-appends .clone() when assigning from non-Copy struct field (e.g., node.name).
 
     // === Fix nil_node(); in match arms -> nil_node() (E0308: returns () instead of ASTNode) ===
     // Pattern: TokenKind::Break => { p.pos = ...; nil_node(); }
@@ -12247,6 +12275,12 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
             r#"let __tmp = eval_get_last_str(env);
             env.output = eval_str_cat(env.output.as_str(), eval_str_cat(__tmp.as_str(), "\n").as_str())"#);
     }
+
+    // === Fix partial move: var = struct.field where struct used after (E0382) ===
+    // Pattern: else_str = else_if.value; ... else_if.clone()
+    // The field access moves the String, then clone() tries to borrow the whole struct
+    // Fix: add .clone() to the field access
+    content = content.replace("else_str = else_if.value;", "else_str = else_if.value.clone();");
 
     // Ensure trailing newline
     if !content.ends_with('\n') {
