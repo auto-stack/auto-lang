@@ -1719,12 +1719,6 @@ impl RustTrans {
                     write!(out, "}}")
                 } else {
                     // Regular struct construction
-                    // DEBUG: trace AgentTurn construction
-                    if node.name.as_str() == "AgentTurn" {
-                        for (i, arg) in node.args.args.iter().enumerate() {
-                            eprintln!("[DEBUG Node AgentTurn] arg[{}] = {:?}", i, arg);
-                        }
-                    }
                     write!(out, "{} {{", node.name)?;
                     if !node.args.args.is_empty() || !node.body.stmts.is_empty() {
                         write!(out, " ")?;
@@ -4595,11 +4589,12 @@ impl RustTrans {
                 if matches!(rust_name, "contains" | "contains_key" | "starts_with" | "ends_with") {
                     for (i, arg) in call.args.args.iter().enumerate() {
                         // Only add & for String-typed args, not &str params or literals
+                        // Note: local_var_types has StrSlice for ALL str vars (params AND locals),
+                        // but only fn params declared as `str` are truly &str in Rust.
+                        // Local vars of type str are String in Rust and still need &.
                         let already_borrowed = matches!(arg, Arg::Pos(Expr::Str(_) | Expr::CStr(_)))
                             || if let Arg::Pos(Expr::Ident(name)) = arg {
-                                self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty, Type::StrSlice))
-                                    .unwrap_or(false)
+                                self.current_fn_str_params.contains(name)
                             } else { false };
                         if !already_borrowed {
                             write!(out, "&")?;
@@ -4989,6 +4984,17 @@ impl RustTrans {
             for (i, arg) in call.args.args.iter().enumerate() {
                 match arg {
                     Arg::Pos(expr) => {
+                        // Auto-borrow for HashMap.contains_key(): key arg needs &
+                        if i == 0 && method_name.as_str() == "contains_key" {
+                            if let Expr::Ident(name) = expr {
+                                let is_str_slice = self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false);
+                                if !is_str_slice {
+                                    write!(out, "&")?;
+                                }
+                            }
+                        }
                         self.expr(expr, out)?;
                         // For .get(): auto-borrow handling done via is_str_param below.
                         // Post-processing (fix_vec_i32_index) converts .get(var) to [var as usize]
@@ -5113,7 +5119,6 @@ impl RustTrans {
             // Pattern B: Expr::Dot(object, field) — Type.Variant or module.Type.Variant
             if tag_match.is_none() {
                 if let Expr::Dot(obj, field_name) = call.name.as_ref() {
-                    eprintln!("[DEBUG B] entered Dot branch, field_name={}", field_name);
                     // Two-level: Type.Variant via Dot — only match if type_name is a known tag type
                     if let Expr::Ident(type_name) = obj.as_ref() {
                         if self.tag_types.contains(type_name) {
@@ -9266,7 +9271,8 @@ impl RustTrans {
     /// E.g., 0.as_str() → 0, 100000.as_str() → 100000
     fn fix_numeric_get_as_str(content: &mut String) {
         // Remove .as_str() after any numeric literal (standalone digits)
-        if let Ok(re) = regex::Regex::new(r"(\d+)\.as_str\(\)") {
+        // Use \b to avoid matching trailing digits in identifiers like body_str2.as_str()
+        if let Ok(re) = regex::Regex::new(r"\b(\d+)\.as_str\(\)") {
             let new_content = re.replace_all(content.as_str(), "$1").to_string();
             *content = new_content;
         }
@@ -11939,29 +11945,6 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
     }
 
     // === Fix known &str param functions called with String args (E0308) ===
-    // codegen_extract_method_suffix(callee, ".push") -> codegen_extract_method_suffix(&callee, ".push")
-    let re = regex::Regex::new(r"codegen_extract_method_suffix\(callee,").unwrap();
-    content = re.replace_all(&content, "codegen_extract_method_suffix(&callee,").to_string();
-
-    // Fix block_node, int_node, str_node, etc. called with String where &str expected
-    // These node constructors take &str but callers pass String
-    let str_param_fns = [
-        "int_node", "str_node", "bool_node", "ident_node", "bin_node",
-        "unary_node", "call_node", "dot_node", "fn_node", "store_node",
-        "if_node", "forin_node", "for_node", "block_node", "type_node",
-        "closure_node", "fstr_node", "enum_node", "ext_node", "match_node",
-        "import_node", "keyword_kind",
-    ];
-    for fn_name in &str_param_fns {
-        // Pattern: fn_name(string_var, or fn_name(string_expr,
-        // We need to add &* before String variables passed as &str
-        // Simple approach: fn_name(var_name, -> fn_name(&*var_name, for known String vars
-        // Actually, better to just match fn_name(var, where var is a bare identifier
-    }
-    // The above is too fragile for regex. Instead, fix the function signatures
-    // to accept String instead of &str by changing `mut x: &str` to `mut x: String`
-    // and adding `.as_str()` calls inside the function bodies where needed.
-
     // === Fix .get(...).as_str() (E0599: no method as_str on Option) ===
     // .get(X).as_str() -> .get(X).cloned().unwrap_or_default()
     let re = regex::Regex::new(r"\.get\(([^)]+)\)\.as_str\(\)").unwrap();
@@ -12026,10 +12009,6 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
         "env.fn_defs.get(&*fn_name).cloned().unwrap_or_default()",
         "env.fn_defs.get(&*fn_name).cloned().unwrap_or(ASTNode { kind: NodeKind::NilNode, value: \"\".to_string(), name: \"\".to_string(), children: empty_list(), left: empty_list(), right: empty_list(), op: \"\".to_string(), params: empty_list(), type_name: \"\".to_string(), cond: empty_list(), else_body: empty_list() })",
     );
-
-    // === Fix eval_bind String vs &str (E0308) ===
-    // eval_bind: env is now &mut EvalEnv, no clone needed; just fix var_name borrow
-    content = content.replace("eval_bind(env.clone(), var_name, i)", "eval_bind(env, &*var_name, i)");
 
     // === Fix path = node.name move (E0382) ===
     // Need .clone() since path is used later
@@ -12168,24 +12147,10 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
         format!("state.get({}).cloned().unwrap_or_default()", &caps[1])
     }).to_string();
 
-    // === Fix specific String-where-&str-expected calls (E0308) ===
-    content = content.replace("cg.code.push(b.to_string())", "cg.code.push(b)");
-    content = content.replace("cg.exports.contains_key(callee)", "cg.exports.contains_key(&*callee)");
-    content = content.replace("codegen_extract_var_name(callee)", "codegen_extract_var_name(&*callee)");
-    content = content.replace("codegen_lookup_elem(cg.clone(), vn2)", "codegen_lookup_elem(cg.clone(), &*vn2)");
-    content = content.replace("type_is_cmp_op(op)", "type_is_cmp_op(&*op)");
-    content = content.replace("block_node(body_str2)", "block_node(&*body_str2)");
-    // a2r_struct_init(callee, ...) -> a2r_struct_init(&*callee, ...)
-    // a2r_struct_init: tenv is now &mut TypeEnv, no clone needed
-    content = content.replace("a2r_struct_init(callee, node.params, tenv.clone())", "a2r_struct_init(&*callee, node.params, tenv)");
-    content = content.replace("tenv.struct_fields.contains_key(callee)", "tenv.struct_fields.contains_key(&*callee)");
-    // a2r_path_to_rust(path) -> a2r_path_to_rust(&*path)
-    content = content.replace("a2r_path_to_rust(path)", "a2r_path_to_rust(&*path)");
-    // env.fn_defs.contains_key(callee_name) -> ...(&*callee_name)
-    content = content.replace("env.fn_defs.contains_key(callee_name)", "env.fn_defs.contains_key(&*callee_name)");
-    // eval_fn_call(env, node, callee_name) -> eval_fn_call(env, node, &*callee_name)
-    // eval_fn_call: env is now &mut EvalEnv, no clone needed
-    content = content.replace("eval_fn_call(env.clone(), node.clone(), callee_name)", "eval_fn_call(env, node.clone(), &*callee_name)");
+    // AST-level fn_str_param_indices + .as_str() auto-borrow covers:
+    // contains_key(callee), codegen_lookup_elem(vn2), block_node(body_str2),
+    // a2r_struct_init(callee), a2r_path_to_rust(path), env.fn_defs.contains_key(callee_name),
+    // eval_fn_call(callee_name), codegen_extract_var_name(callee), type_is_cmp_op(op), etc.
 
     // === E0308: return state.get(X) -> return state.get(X).cloned().unwrap_or_default() ===
     let re = regex::Regex::new(r"return state\.get\((&[^)]+)\);").unwrap();
