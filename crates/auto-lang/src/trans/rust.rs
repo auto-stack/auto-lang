@@ -827,11 +827,14 @@ impl RustTrans {
         if self.emit_allow_pragma {
             writeln!(out, "#![allow(dead_code, unreachable_code, unused_imports, unused_mut, unused_parens, unused_assignments, unused_variables)]")?;
         }
-        writeln!(out)?;
-        writeln!(out, "// a2r Standard Library (from crate)")?;
-        writeln!(out, "#[allow(unused_imports)]")?;
-        writeln!(out, "use auto_lang::a2r_std;")?;
-        writeln!(out, "use auto_lang::a2r_std::*;")?;
+        // In merge mode, all code is in one file — no crate imports needed
+        if !self.merge_mode {
+            writeln!(out)?;
+            writeln!(out, "// a2r Standard Library (from crate)")?;
+            writeln!(out, "#[allow(unused_imports)]")?;
+            writeln!(out, "use auto_lang::a2r_std;")?;
+            writeln!(out, "use auto_lang::a2r_std::*;")?;
+        }
         writeln!(out)?;
         Ok(())
     }
@@ -11706,8 +11709,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         "pub scopes: Vec<std::collections::HashMap<String, String>>",
     );
 
-    // === Remove use auto_lang::a2r_std::* (unresolved crate in standalone .rs) ===
-    content = content.replace("use auto_lang::a2r_std::*;\n", "");
+    // === use auto_lang::a2r_std now handled at AST level (merge_mode skips emit) ===
 
     // === CONST_NAME() -> CONST_NAME now handled at AST level (is_screaming_case check) ===
 
