@@ -1,5 +1,7 @@
 # RoadMap to v0.5
 
+## 核心语言特性
+
 ### 生命周期
 
 - 强化生命周期检查器
@@ -31,6 +33,55 @@
 - 链接热重载
 - 基于SDL3实现基础的图形/小游戏框架
 
+### WEB生态
+
+- 完善TypeScript的转译；添加JavaScript的转译（可直接在浏览器运行）
+- 添加对shadcn之外另一个常见组件库的支持
+- 支持React生态；支持shadcn和另一个常见组件库
+- 初步支持最前沿WEB框架中的一个（例如Svelte）
+- 支持Responsive Layout
+
+### Desktop生态
+
+- 完善GPUI后端的支持
+- Auto生成AutoForge桌面端（Rust）
+- 实现“元件市场”
+- 实现“虚拟桌面”
+- 实现“元件启动器”
+- 实现“AI助手”
+
+### Python生态
+
+- 完善Python语法支持
+- 支持Numpy/Pandas
+- 支持Pytorch
+
+### Agent生态
+
+- 完善的CodingAgent
+- 初步的嵌入式开发综合Agent
+- AgentApp定制化系统
+- 更完善的Harness架构（融入ClaudeCode和HermesAgent的特有能力）
+
+## 开发工具
+
+- **性能分析**
+  - CPU/内存 性能分析
+  - 火焰图生成
+  - 内存泄漏检测
+  - 热点路径分析
+
+### 测试框架
+- **单元测试增强**
+  - 测试夹具 (fixtures)
+  - 参数化测试
+  - 模糊测试
+
+- **集成测试**
+  - 端到端测试
+  - 基准测试
+  - 压力测试
+
 # RoadMap to v0.4
 
 ## 核心语言特性
@@ -58,42 +109,29 @@
 - 实现WEB/Desktop常用的后端技术库（HTTP/Redis/SQLite等）
 - 能够通过a2r转译并成功运行AutoForge的后端代码
 
-
 ### WEB生态
 
-- 完善Vue生态；添加对shadcn之外另一个常见组件库的支持
-- 支持React生态；支持shadcn和另一个常见组件库
-- 初步支持最前沿WEB框架中的一个（例如Svelte）
+- 完善Vue生态
 - 支持Responsive Layout
 - 支持常见Blocks
-- 实现AutoRead综合Demo
+- Auto生成AutoForge前端
 
 ### Desktop生态
 
-- 实现iced/gpui的widget gallery
-- 实现“元件市场”
-- 实现“虚拟桌面”
-- 实现“元件启动器”
-- 实现“AI助手”
-- 实现AutoRead综合Demo
+- 完善iced后端的支持，实现iced的widget gallery
+- 完善examples/ui的示例，支持iced
 
-### Python生态
-
-- 完善Python语法支持
-- 支持Numpy/Pandas
-- 支持Pytorch
+### 知识生态
+- AutoDown语法支持
+- AutoDown编辑器（Web版）
+- 基于AutoDown和LLM Wiki架构的知识库
 
 ### Agent生态
 
-- **Agent 基础设施**
-  - Agent 运行时环境
-  - Agent 通信协议
-  - Agent 注册和发现
-
-- **AI 集成**
-  - LLM API 集成
-  - Tool use 框架
-  - Prompt 管理系统
+- AutoForge前端
+- AutoForge后端
+- Relay流程跑通
+- Auto实现前后端
 
 ## 开发工具
 
@@ -126,25 +164,14 @@
   - 调用堆栈查看
   - 单步执行
 
-- **性能分析**
-  - CPU/内存 性能分析
-  - 火焰图生成
-  - 内存泄漏检测
-  - 热点路径分析
-
 ## 测试和质量
 
 ### 测试框架
 - **单元测试增强**
   - 测试覆盖率报告
-  - 测试夹具 (fixtures)
-  - 参数化测试
-  - 模糊测试
+  - 文件级别测试
+  - 模块级别测试
 
-- **集成测试**
-  - 端到端测试
-  - 基准测试
-  - 压力测试
 
 ## 文档和示例
 
@@ -160,7 +187,15 @@
   - 教程和指南
   - 视频教程
 
-## 从 v0.3 的主要变化
+## 官网
+
+- Auto语言简介
+- 完整的语言教程（tapl+luangages）
+- PlayGround（支持100+示例）
+- Auto Tour
+- UI Demos
+
+## 从 v0.3 的主要变化（需要更新）
 
 ### 新增功能
 1. **模式匹配系统** - 完整的 match 表达式和解构模式
