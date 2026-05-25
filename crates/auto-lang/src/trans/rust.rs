@@ -9721,6 +9721,10 @@ impl RustTrans {
                 // Look ahead for assignments to this variable
                 let assign_pat = format!(r"\b{}\s*[.\[]", var_name);
                 let direct_pat = format!(r"\b{}\s*=[^=]", var_name);
+                // Methods that take &mut self (require mut binding)
+                let mut_methods = ["push", "pop", "insert", "remove", "clear", "extend",
+                    "truncate", "retain", "sort", "reverse", "dedup", "swap", "splice",
+                    "drain", "append", "resize"];
                 if let Ok(re) = regex::Regex::new(&assign_pat) {
                     for future_line in lines.iter().skip(i + 1) {
                         // Stop at function boundary
@@ -9744,6 +9748,17 @@ impl RustTrans {
                                     break;
                                 }
                             }
+                            // Check for &mut self method calls: var.push(...), var.insert(...), etc.
+                            for method in &mut_methods {
+                                let method_pat = format!(r"\b{}\.{}\s*\(", var_name, method);
+                                if let Ok(re3) = regex::Regex::new(&method_pat) {
+                                    if re3.is_match(fl) {
+                                        needs_mut.insert(i);
+                                        break;
+                                    }
+                                }
+                            }
+                            if needs_mut.contains(&i) { break; }
                         }
                     }
                 }
