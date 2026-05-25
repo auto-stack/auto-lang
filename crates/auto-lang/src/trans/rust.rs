@@ -8644,6 +8644,15 @@ impl RustTrans {
         // B18: Fix borrowing issues (&Vec → Vec.clone(), etc.)
         Self::fix_borrowing_issues(&mut content);
 
+        // B19: Fix HashMap.keys() used as indexable collection (Auto List → Rust iterator)
+        Self::fix_map_keys_indexing(&mut content);
+
+        // B20: Fix push move errors — add .clone() when pushing reused variables
+        Self::fix_push_move(&mut content);
+
+        // B21: Fix &str params assigned to String fields / pushed to Vec<String>
+        Self::fix_str_to_string_assignments(&mut content);
+
         // B15: Fix enum == "str" comparisons — Auto enums can compare with str, Rust can't
         Self::fix_enum_str_comparisons(&mut content);
 
@@ -9748,6 +9757,203 @@ impl RustTrans {
         let reduced = content.replace(".to_string().to_string()", ".to_string()");
         if reduced != *content {
             *content = reduced;
+        }
+    }
+
+    /// Fix HashMap.keys() used as indexable collection.
+    /// Auto: `var keys = map.keys()` returns List<str>, supports keys[i] and keys.len()
+    /// Rust: keys() returns an iterator — need to collect into Vec first.
+    /// Pattern: `let mut? var = expr.keys()` → `let mut? var: Vec<_> = expr.keys().cloned().collect()`
+    fn fix_map_keys_indexing(content: &mut String) {
+        // Find all .keys() assignments and check if they're used with indexing or .len()
+        if let Ok(re) = regex::Regex::new(r"(?m)^(    let (?:mut )?)(\w+) = (.+?)\.keys\(\)") {
+            let captures: Vec<(usize, String, String, String)> = re.captures_iter(content.as_str())
+                .filter_map(|caps| {
+                    let full = caps.get(0)?;
+                    let indent = caps.get(1)?.as_str().to_string();
+                    let var = caps.get(2)?.as_str().to_string();
+                    let expr = caps.get(3)?.as_str().to_string();
+                    Some((full.start(), indent, var, expr))
+                })
+                .collect();
+
+            // Check which vars are used with indexing [i] or .len()
+            for (_pos, indent, var, expr) in captures.iter().rev() {
+                // Check if var is used with indexing or .len()
+                let idx_pat = format!("{}[", var);
+                let len_pat = format!("{}.len()", var);
+                let needs_fix = content.contains(&idx_pat) || content.contains(&len_pat);
+                if !needs_fix { continue; }
+
+                let old_line = format!("{}{} = {}.keys()", indent, var, expr);
+                let new_line = format!("{}{}: Vec<_> = {}.keys().cloned().collect()", indent, var, expr);
+                *content = content.replace(&old_line, &new_line);
+            }
+        }
+    }
+
+    /// Fix E0382 move errors when pushing a variable that's reused later.
+    /// Pattern: `vec.push(var)` where var is a `let var = expr.clone()` or loop variable
+    /// that gets reassigned in the next iteration.
+    /// Solution: Add .clone() to the push argument.
+    fn fix_push_move(content: &mut String) {
+        // Pattern: within a while loop, a variable declared as `let var = collection[i].clone()`
+        // is pushed to a vec and then reassigned in the next iteration.
+        // The push needs .clone() if the var is used after the push.
+
+        // Strategy: find lines like `result.push(var)` or `goals.push(s)` where
+        // the pushed variable is a local binding used after the push.
+        // We check if the same variable appears on a later line in the same scope.
+
+        let lines: Vec<&str> = content.lines().collect();
+        let mut result = String::with_capacity(content.len());
+        let mut i = 0;
+
+        while i < lines.len() {
+            let line = lines[i];
+            // Check for push patterns: `something.push(varname)`
+            if let Some(rest) = line.trim().strip_suffix(")") {
+                // Match `something.push(varname)` or `something.push(varname.field)`
+                if let Ok(re) = regex::Regex::new(r"^(\s*\S+\.push\()(\w+)(\))$") {
+                    if let Some(caps) = re.captures(line) {
+                        let prefix = caps.get(1).unwrap().as_str();
+                        let var = caps.get(2).unwrap().as_str();
+                        let suffix = caps.get(3).unwrap().as_str();
+
+                        // Skip if already has .clone()
+                        if prefix.contains(".clone()") {
+                            result.push_str(line);
+                            result.push('\n');
+                            i += 1;
+                            continue;
+                        }
+
+                        // Check if var is used after this line in the same or nearby scope
+                        let mut var_used_again = false;
+                        let indent = line.len() - line.trim_start().len();
+                        for j in (i+1)..std::cmp::min(i+20, lines.len()) {
+                            let later = lines[j];
+                            // Stop at lines with less or equal indentation that are closing braces or new statements
+                            let later_indent = later.len() - later.trim_start().len();
+                            if later.trim().starts_with('}') && later_indent <= indent {
+                                break;
+                            }
+                            // Check if var appears as a standalone identifier (not just substring)
+                            // Simple heuristic: var followed by . or = or ( or [ or , or )
+                            if let Ok(var_re) = regex::Regex::new(&format!(r"\b{}\b", regex::escape(var))) {
+                                if var_re.is_match(later) {
+                                    // Exclude the case where var appears in the same push
+                                    if !later.contains(&format!(".push({})", var)) {
+                                        var_used_again = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if var_used_again {
+                            result.push_str(&format!("{}{}.clone(){}\n", prefix, var, suffix));
+                            i += 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            result.push_str(line);
+            result.push('\n');
+            i += 1;
+        }
+
+        if result != *content {
+            // Remove trailing newline if original didn't have one
+            if !content.ends_with('\n') && result.ends_with('\n') {
+                result.pop();
+            }
+            *content = result;
+        }
+    }
+
+    /// Fix &str assigned to String fields and pushed to Vec<String>.
+    /// Pattern 1: `self.field = str_param` where field is String → add .to_string()
+    /// Pattern 2: `vec.push(str_param)` where vec is Vec<String> → add .to_string()
+    /// Pattern 3: `map.insert(&str_key, ...)` → `map.insert(key.to_string(), ...)`
+    fn fix_str_to_string_assignments(content: &mut String) {
+        // Pattern: `somevec.push(param)` where param is a function parameter of type &str
+        // We detect &str params from function signatures and add .to_string() when pushing
+
+        // Find all &str parameters in the file
+        let str_params: std::collections::HashSet<String> = regex_captures(content,
+            r#"fn \w+\((?:[^)]*,\s*)?(\w+):\s*&str"#);
+        // Also capture from multi-line signatures
+        let more_params: std::collections::HashSet<String> = regex_captures(content,
+            r#"^\s+(\w+):\s*&str"#);
+        let all_str_params: std::collections::HashSet<String> = str_params.union(&more_params)
+            .cloned().collect();
+
+        if all_str_params.is_empty() { return; }
+
+        // For each str param, find push/insert/assignment patterns and add .to_string()
+        for param in &all_str_params {
+            // Pattern: vec.push(param) → vec.push(param.to_string())
+            // Only when param is not already followed by .to_string() or .as_str() or .clone()
+            let push_pat = format!(r"\.push\({}\)", regex::escape(param));
+            if let Ok(re) = regex::Regex::new(&push_pat) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!(".push({}.to_string())", param)
+                }).to_string();
+                // Only apply if the param is actually a &str in context (not a struct field with same name)
+                if new != *content {
+                    *content = new;
+                }
+            }
+
+            // Pattern: vec.insert(i, param) → vec.insert(i, param.to_string())
+            let insert_pat = format!(r"\.insert\(([^,]+),\s*{}\)", regex::escape(param));
+            if let Ok(re) = regex::Regex::new(&insert_pat) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!(".insert({}, {}.to_string())", caps.get(1).unwrap().as_str(), param)
+                }).to_string();
+                if new != *content {
+                    *content = new;
+                }
+            }
+
+            // Pattern: map.insert(param, value) → map.insert(param.to_string(), value)
+            let map_insert_pat = format!(r"\.insert\({},\s*([^)]+)\)", regex::escape(param));
+            if let Ok(re) = regex::Regex::new(&map_insert_pat) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!(".insert({}.to_string(), {})", param, caps.get(1).unwrap().as_str())
+                }).to_string();
+                if new != *content {
+                    *content = new;
+                }
+            }
+
+            // Pattern: self.field = param (where param is &str, field is String)
+            let assign_pat = format!(r"self\.(\w+)\s*=\s*{};", regex::escape(param));
+            if let Ok(re) = regex::Regex::new(&assign_pat) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!("self.{} = {}.to_string();", caps.get(1).unwrap().as_str(), param)
+                }).to_string();
+                if new != *content {
+                    *content = new;
+                }
+            }
+
+            // Pattern: var.field = param (where param is &str, field is String)
+            let var_assign_pat = format!(r"(\w+)\.(\w+)\s*=\s*{};", regex::escape(param));
+            if let Ok(re) = regex::Regex::new(&var_assign_pat) {
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let v = caps.get(1).unwrap().as_str();
+                    let f = caps.get(2).unwrap().as_str();
+                    // Don't add .to_string() if var is &str too (e.g., page.content = content)
+                    format!("{}.{} = {}.to_string();", v, f, param)
+                }).to_string();
+                if new != *content {
+                    *content = new;
+                }
+            }
         }
     }
 }
