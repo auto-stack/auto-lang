@@ -3420,11 +3420,13 @@ impl RustTrans {
                             // Fall through — don't intercept, let later code handle it
                         }
                         "char_at" => {
-                            // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0') as i32
+                            // s.char_at(i) -> s.chars().nth((i) as usize).unwrap_or('\0') as i32
                             self.expr(lhs, out)?;
                             write!(out, ".chars().nth(")?;
                             if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                                write!(out, "(")?;
                                 self.expr(arg, out)?;
+                                write!(out, ")")?;
                             }
                             write!(out, " as usize).unwrap_or('\\0') as i32")?;
                             return Ok(());
@@ -9179,15 +9181,31 @@ impl RustTrans {
                 // Pattern: Variant(var, or Variant(var)
                 let pat = format!(r"::{}\({},\s*", regex::escape(variant), regex::escape(var));
                 if let Ok(re) = regex::Regex::new(&pat) {
-                    let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                         format!("::{}({} as i32, ", variant, var)
                     }).to_string();
                     if new != *content { *content = new; }
                 }
                 let pat = format!(r"::{}\(\s*{}\s*\)", regex::escape(variant), regex::escape(var));
                 if let Ok(re) = regex::Regex::new(&pat) {
-                    let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                         format!("::{}({} as i32)", variant, var)
+                    }).to_string();
+                    if new != *content { *content = new; }
+                }
+                // Also handle self.var patterns: Variant(self.var,
+                let self_var = format!("self.{}", var);
+                let pat = format!(r"::{}\({},\s*", regex::escape(variant), regex::escape(&self_var));
+                if let Ok(re) = regex::Regex::new(&pat) {
+                    let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
+                        format!("::{}({} as i32, ", variant, self_var)
+                    }).to_string();
+                    if new != *content { *content = new; }
+                }
+                let pat = format!(r"::{}\(\s*{}\s*\)", regex::escape(variant), regex::escape(&self_var));
+                if let Ok(re) = regex::Regex::new(&pat) {
+                    let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
+                        format!("::{}({} as i32)", variant, self_var)
                     }).to_string();
                     if new != *content { *content = new; }
                 }
