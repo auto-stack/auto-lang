@@ -1,3 +1,4 @@
+#![allow(overflowing_literals)]
 // Phase 3 Bootstrap: Merged auto/lib compilation test
 // Auto-generated from 12 auto/lib/*.a2r.rs files
 
@@ -1263,7 +1264,7 @@ fn cur_char(mut source: &str, mut pos: i32) -> i32 {
     if pos >= (source.len() as i32) {
         return 0;
     }
-    return source.chars().nth(pos as usize).unwrap_or('\0') as i32;
+    return source.chars().nth((pos) as usize).unwrap_or('\0') as i32;
 }
 
 fn skip_ws(mut source: &str, mut pos: i32) -> i32 {
@@ -1552,7 +1553,7 @@ fn lex_operator(mut source: &str, mut pos: i32) -> Token {
             if pi >= (source.len() as i32) {
                 break;
             }
-            let mut ch = source.chars().nth(pi as usize).unwrap_or('\0') as i32;
+            let mut ch = source.chars().nth((pi) as usize).unwrap_or('\0') as i32;
             if ch >= 97 && ch <= 122 || ch >= 65 && ch <= 90 || ch == 95 {
                 next4 = format!("{}{}", next4, source[(pi) as usize..(pi + 1) as usize].to_string())
             } else {
@@ -2084,7 +2085,7 @@ fn parse_fn_decl(mut p: Parser) -> ASTNode {
             if pk != TokenKind::RParen && pk != TokenKind::Comma && pk != TokenKind::Newline {
                 param_type = parser_text(p.clone());
                 p.pos = p.pos + 1;
-                param_type = parser_try_read_generic_type(p.clone(), param_type.as_str())
+                param_type = parser_try_read_generic_type(p.clone(), param_type.clone().as_str())
             }
             params.push(ASTNode { kind: NodeKind::Param, name: param_name.clone(), type_name: param_type.clone(), value: "".to_string(), children: empty_list(), left: empty_list(), right: empty_list(), op: "".to_string(), params: empty_list(), cond: empty_list(), else_body: empty_list() });
             
@@ -2113,7 +2114,7 @@ fn parse_fn_decl(mut p: Parser) -> ASTNode {
         parser_skip_nl_semi(p.clone());
         ret_type = parser_text(p.clone());
         p.pos = p.pos + 1;
-        ret_type = parser_try_read_generic_type(p.clone(), ret_type.as_str())
+        ret_type = parser_try_read_generic_type(p.clone(), ret_type.clone().as_str())
     } else if pk2 == TokenKind::Ident {
         
 
@@ -2122,7 +2123,7 @@ fn parse_fn_decl(mut p: Parser) -> ASTNode {
         if peek == TokenKind::LBrace {
             ret_type = parser_text(p.clone());
             p.pos = p.pos + 1;
-            ret_type = parser_try_read_generic_type(p.clone(), ret_type.as_str())
+            ret_type = parser_try_read_generic_type(p.clone(), ret_type.clone().as_str())
         }    }
 
     parser_skip_nl_semi(p.clone());
@@ -3607,22 +3608,22 @@ fn codegen_lookup_elem(mut cg: CodeGen, mut name: &str) -> i32 {
 }
 
 fn codegen_str_returning_call(mut cg: CodeGen, mut callee: &str) -> i32 {
-    if codegen_extract_method_suffix(&(callee), ".get") == 1 {
-        let mut vn = codegen_extract_var_name(&(callee));
+    if codegen_extract_method_suffix(&(callee.clone()), ".get") == 1 {
+        let mut vn = codegen_extract_var_name(&(callee.clone()));
         let mut et = codegen_lookup_elem(cg.clone(), vn.as_str());
         if et == 1 {
             return 1;
         }    }
-    if codegen_extract_method_suffix(&(callee), ".pop") == 1 {
-        let mut vn2 = codegen_extract_var_name(&(callee));
+    if codegen_extract_method_suffix(&(callee.clone()), ".pop") == 1 {
+        let mut vn2 = codegen_extract_var_name(&(callee.clone()));
         let mut et2 = codegen_lookup_elem(cg.clone(), vn2.as_str());
         if et2 == 1 {
             return 1;
         }    }
-    if codegen_extract_method_suffix(&(callee), ".substr") == 1 {
+    if codegen_extract_method_suffix(&(callee.clone()), ".substr") == 1 {
         return 1;
     }
-    if codegen_extract_method_suffix(&(callee), ".get_str") == 1 {
+    if codegen_extract_method_suffix(&(callee.clone()), ".get_str") == 1 {
         return 1;
     }
     return 0;
@@ -3809,7 +3810,7 @@ fn codegen_binop(mut cg: CodeGen, mut node: ASTNode, mut tenv: TypeEnv) {
     }
 
     if op == "+" {
-        let mut lt = type_infer_expr(tenv, node.left[0 as usize].clone());
+        let mut lt = type_infer_expr(tenv.clone(), node.left[0 as usize].clone());
         if lt == 1 {
             codegen_expr(cg.clone(), node.left[0 as usize].clone(), tenv.clone());
             codegen_expr(cg.clone(), node.right[0 as usize].clone(), tenv.clone());
@@ -3907,7 +3908,7 @@ fn codegen_extract_method_suffix(mut callee: &str, mut suffix: &str) -> i32 {
     let mut start = cn - sn;
     let mut i: i32 = 0;
     while i < sn {
-        if callee.chars().nth(start + i as usize).unwrap_or('\0') as i32 != suffix.chars().nth(i as usize).unwrap_or('\0') as i32 {
+        if callee.chars().nth((start + i) as usize).unwrap_or('\0') as i32 != suffix.chars().nth((i) as usize).unwrap_or('\0') as i32 {
             return 0;
         }
         i = i + 1;
@@ -3919,7 +3920,7 @@ fn codegen_extract_var_name(mut callee: &str) -> String {
 
     let mut i: i32 = (callee.len() as i32) - 1;
     while i >= 0 {
-        if callee.chars().nth(i as usize).unwrap_or('\0') as i32 == 46 {
+        if callee.chars().nth((i) as usize).unwrap_or('\0') as i32 == 46 {
             return a2r_std::str_substr(callee, 0, i);
         }
         i = i - 1;
@@ -4072,7 +4073,7 @@ fn codegen_call(mut cg: CodeGen, mut node: ASTNode, mut tenv: TypeEnv) {
             codegen_emit_u16(cg.clone(), NATIVE_PRINT_STR)
         } else {
             let mut arg_node = node.params[0 as usize].clone();
-            let mut arg_type = type_infer_expr(tenv, arg_node.clone());
+            let mut arg_type = type_infer_expr(tenv.clone(), arg_node.clone());
             
 
             if arg_type == -1 && arg_node.kind == NodeKind::CallExpr {
@@ -4424,7 +4425,7 @@ fn bvm_read_u32(mut code: Vec<i32>, mut state: std::collections::HashMap<String,
 fn bvm_run(mut code: Vec<i32>, mut strings: std::collections::HashMap<String, String>, mut state: std::collections::HashMap<String, String>) -> String {
     let mut running: i32 = 1;
     while running == 1 {
-        running = bvm_step(code.clone(), strings.clone(), state);
+        running = bvm_step(code.clone(), strings.clone(), state.clone());
     }
     return state.get("__output").cloned().unwrap_or_default();
 }
@@ -4734,7 +4735,7 @@ fn bvm_step(mut code: Vec<i32>, mut strings: std::collections::HashMap<String, S
         if nat_id == 1 {
             let mut val = bvm_pop_int(state.clone());
             let mut output = state.get("__output").cloned().unwrap_or_default();
-            state.insert("__output".to_string(), (output + int_to_str(val)).to_string());
+            state.insert("__output".to_string(), (output + &int_to_str(val)).to_string());
         }        
 
         if nat_id == 3 {
@@ -5004,7 +5005,7 @@ fn bvm_step(mut code: Vec<i32>, mut strings: std::collections::HashMap<String, S
         let mut s: String = "".to_string();
         if strings.contains_key(&pool_key) {
             s = strings.get(&*pool_key).cloned().unwrap_or_default()
-        }        bvm_push_int(state.clone(), s.chars().nth(idx as usize).unwrap_or('\0') as i32);
+        }        bvm_push_int(state.clone(), s.chars().nth((idx) as usize).unwrap_or('\0') as i32);
         return 1;
     }
 
@@ -5035,7 +5036,7 @@ fn a2r_find_lt(mut t: &str) -> i32 {
     let mut i: i32 = 0;
     let mut n = (t.len() as i32);
     while i < n {
-        if t.chars().nth(i as usize).unwrap_or('\0') as i32 == 60 {
+        if t.chars().nth((i) as usize).unwrap_or('\0') as i32 == 60 {
             return i;
         }
         i = i + 1;
@@ -5099,7 +5100,7 @@ fn a2r_type(mut t: &str) -> String {
         let mut cn = (inner.len() as i32);
         let mut comma_pos: i32 = -1;
         while ci < cn {
-            if inner.chars().nth(ci as usize).unwrap_or('\0') as i32 == 44 {
+            if inner.chars().nth((ci) as usize).unwrap_or('\0') as i32 == 44 {
                 
 
                 comma_pos = ci;
@@ -5180,7 +5181,7 @@ fn a2r_expr(mut node: ASTNode, mut tenv: TypeEnv) -> String {
 
 
         if op == "+" {
-            let mut lt = type_infer_expr(tenv, node.left[0 as usize].clone());
+            let mut lt = type_infer_expr(tenv.clone(), node.left[0 as usize].clone());
             if lt == 1 {
                 let mut l = a2r_expr(node.left[0 as usize].clone(), tenv.clone());
                 let mut r = a2r_expr(node.right[0 as usize].clone(), tenv.clone());
@@ -5238,7 +5239,7 @@ fn a2r_expr(mut node: ASTNode, mut tenv: TypeEnv) -> String {
                 return "println!()".to_string();
             }            if (node.params.len() as i32) == 1 {
                 let mut arg = node.params[0 as usize].clone();
-                let mut at = type_infer_expr(tenv, arg.clone());
+                let mut at = type_infer_expr(tenv.clone(), arg.clone());
                 
 
                 if arg.kind == NodeKind::StrExpr {
@@ -5257,7 +5258,7 @@ fn a2r_expr(mut node: ASTNode, mut tenv: TypeEnv) -> String {
                     args = format!("{}{}", args, ", ")
                 }
                 let mut pa = node.params[j as usize].clone();
-                let mut pat = type_infer_expr(tenv, pa.clone());
+                let mut pat = type_infer_expr(tenv.clone(), pa.clone());
                 if pa.kind == NodeKind::StrExpr {
                     fmt = format!("{}{}", fmt, a2r_expr(pa.clone(), tenv.clone()))
                 } else {
@@ -5272,7 +5273,7 @@ fn a2r_expr(mut node: ASTNode, mut tenv: TypeEnv) -> String {
 
 
         if tenv.struct_fields.contains_key(&callee) {
-            return a2r_struct_init(callee.as_str(), node.params, tenv.clone());
+            return a2r_struct_init(callee.clone().as_str(), node.params, tenv.clone());
         }        
 
 
@@ -5369,7 +5370,7 @@ fn a2r_expr(mut node: ASTNode, mut tenv: TypeEnv) -> String {
         return a2r_expr(node.left[0 as usize].clone(), tenv.clone());
     }
 
-    return format!("{}{}", format!("{}{}", "/* expr:", int_to_str(kind)), " */");
+    return format!("{}{}", format!("{}{}", "/* expr:", int_to_str(kind as i32)), " */");
 }
 
 fn a2r_body(mut stmts: Vec<ASTNode>, mut tenv: TypeEnv, mut indent: i32) -> String {
@@ -5389,7 +5390,7 @@ fn a2r_stmt(mut node: ASTNode, mut tenv: TypeEnv, mut indent: i32) -> String {
 
     if kind == NodeKind::ExprStmt {
         if (node.left.len() as i32) > 0 {
-            return format!("{}{}", prefix + a2r_expr(node.left[0 as usize].clone(), tenv.clone()), ";\n");
+            return format!("{}{}", prefix + &a2r_expr(node.left[0 as usize].clone(), tenv.clone()), ";\n");
         }        return "".to_string();
     }
 
@@ -5410,7 +5411,7 @@ fn a2r_stmt(mut node: ASTNode, mut tenv: TypeEnv, mut indent: i32) -> String {
         
 
         if node.type_name == "" && (node.left.len() as i32) > 0 {
-            let mut itag = type_infer_expr(tenv, node.left[0 as usize].clone());
+            let mut itag = type_infer_expr(tenv.clone(), node.left[0 as usize].clone());
             type_str = a2r_type_from_tag(itag)
         }        
 
@@ -5494,7 +5495,7 @@ fn a2r_stmt(mut node: ASTNode, mut tenv: TypeEnv, mut indent: i32) -> String {
         return format!("{}{}", format!("{}{}", format!("{}{}", format!("{}{}", format!("{}{}", prefix, "type "), node.name), " = "), a2r_type(node.type_name.as_str())), ";\n");
     }
 
-    return format!("{}{}", format!("{}{}", format!("{}{}", prefix, "/* stmt:"), int_to_str(kind)), " */\n");
+    return format!("{}{}", format!("{}{}", format!("{}{}", prefix, "/* stmt:"), int_to_str(kind as i32)), " */\n");
 }
 
 fn a2r_fn(mut node: ASTNode, mut tenv: TypeEnv, mut indent: i32) -> String {
@@ -5584,7 +5585,7 @@ fn run_a2r(mut source: &str) -> String {
     let mut p = parser_new(tokens.clone());
     let mut stmts = parse_program(p);
     let mut tenv = typeenv_new();
-    type_infer_program(tenv, stmts.clone());
+    type_infer_program(tenv.clone(), stmts.clone());
     return a2r_transpile(stmts.clone(), tenv.clone());
 }
 
@@ -5843,7 +5844,7 @@ fn a2r_struct_init(mut type_name: &str, mut args: Vec<ASTNode>, mut tenv: TypeEn
 #[derive(Clone, Debug, PartialEq)]
 struct EvalEnv {
     pub globals: std::collections::HashMap<String, String>,
-    pub scopes: Vec<String>,
+    pub scopes: Vec<std::collections::HashMap<String, String>>,
     pub fn_defs: std::collections::HashMap<String, ASTNode>,
     pub output: String,
 }
@@ -5944,15 +5945,15 @@ fn str_to_int(mut s: &str) -> i32 {
     if n == 0 {
         return 0;
     }
-    let mut ch = s.chars().nth(0 as usize).unwrap_or('\0') as i32;
+    let mut ch = s.chars().nth((0) as usize).unwrap_or('\0') as i32;
     if ch == 45 {
         neg = 1;
         i = 1
     }
     while i < n {
-        ch = s.chars().nth(i as usize).unwrap_or('\0') as i32;
+        ch = s.chars().nth((i) as usize).unwrap_or('\0') as i32;
         if ch >= 48 && ch <= 57 {
-            result = format!("{}{}", result * 10, ch - 48)
+            result = result * 10 + (ch - 48)
         } else {
             break;
         }
@@ -5995,7 +5996,7 @@ fn str_get_part(mut s: &str, mut index: i32) -> String {
     while i <= n {
         let mut ch: i32 = 0;
         if i < n {
-            ch = s.chars().nth(i as usize).unwrap_or('\0') as i32
+            ch = s.chars().nth((i) as usize).unwrap_or('\0') as i32
         }
         if ch == 44 || i == n {
             if part == index {
@@ -6243,22 +6244,22 @@ fn eval_binop(mut env: EvalEnv, mut node: ASTNode) -> i32 {
     }
 
     if op == "==" {
-        return left == right;
+        return if left == right { 1 } else { 0 };
     }
     if op == "!=" {
-        return left != right;
+        return if left != right { 1 } else { 0 };
     }
     if op == "<" {
-        return left < right;
+        return if left < right { 1 } else { 0 };
     }
     if op == ">" {
-        return left > right;
+        return if left > right { 1 } else { 0 };
     }
     if op == "<=" {
-        return left <= right;
+        return if left <= right { 1 } else { 0 };
     }
     if op == ">=" {
-        return left >= right;
+        return if left >= right { 1 } else { 0 };
     }
 
     if op == "||" {
@@ -6315,7 +6316,7 @@ fn eval_unary(mut env: EvalEnv, mut node: ASTNode) -> i32 {
 }
 
 fn eval_call(mut env: EvalEnv, mut node: ASTNode) -> i32 {
-    let mut callee_name = node.name;
+    let mut callee_name = node.name.clone();
 
 
     if callee_name == "print" {
@@ -6358,7 +6359,7 @@ fn eval_call(mut env: EvalEnv, mut node: ASTNode) -> i32 {
 
 
     if env.fn_defs.contains_key(&callee_name) {
-        return eval_fn_call(env.clone(), node.clone(), callee_name.as_str());
+        return eval_fn_call(env.clone(), node.clone(), callee_name.clone().as_str());
     }
 
     return 0;
@@ -6501,7 +6502,7 @@ fn run_bytecode(mut source: &str) -> String {
     let mut stmts = parse_program(p);
 
     let mut tenv = typeenv_new();
-    type_infer_program(tenv, stmts.clone());
+    type_infer_program(tenv.clone(), stmts.clone());
 
     let mut cg = codegen_new();
     codegen_compile(cg.clone(), stmts.clone(), tenv);
