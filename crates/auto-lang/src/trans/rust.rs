@@ -97,6 +97,9 @@ pub struct RustTrans {
     // Used to add .to_string() when &str is assigned to String field
     struct_field_types: HashMap<AutoStr, Vec<(AutoStr, Type)>>,
 
+    // Set of known enum names (for needs_enum_cast: Type::User may be an enum)
+    known_enum_names: std::collections::HashSet<AutoStr>,
+
     // Cache for enum struct variants: (EnumName, VariantName) -> Vec<field_names>
     // Used to emit correct struct pattern syntax in match arms
     enum_struct_variants: HashMap<(AutoStr, AutoStr), Vec<AutoStr>>,
@@ -196,6 +199,7 @@ impl RustTrans {
             current_fn_err_type: None,
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
+            known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
             enum_struct_variants: HashMap::new(),
             enum_tuple_variants: HashMap::new(),
@@ -242,6 +246,7 @@ impl RustTrans {
             current_fn_err_type: None,
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
+            known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
             enum_struct_variants: HashMap::new(),
             enum_tuple_variants: HashMap::new(),
@@ -5314,7 +5319,13 @@ impl RustTrans {
             let needs_enum_cast = is_int_param
                 && if let Arg::Pos(Expr::Ident(name)) = arg {
                     self.local_var_types.get(name)
-                        .map(|ty| matches!(ty, Type::Enum(_)))
+                        .map(|ty| match ty {
+                            Type::Enum(_) => true,
+                            Type::User(td) => {
+                                self.known_enum_names.contains(&td.name)
+                            }
+                            _ => false,
+                        })
                         .unwrap_or(false)
                 } else { false };
 
@@ -5409,7 +5420,7 @@ impl RustTrans {
     }
 
     /// Infer Rust type from an Auto expression (for let-bound variables without type annotation).
-    fn infer_type_from_expr(expr: &Expr) -> Type {
+    fn infer_type_from_expr(&self, expr: &Expr) -> Type {
         match expr {
             Expr::Call(call) => {
                 if let Expr::Dot(obj, method) = call.name.as_ref() {
@@ -5451,7 +5462,7 @@ impl RustTrans {
             Expr::Array(items) => {
                 // Array literal — infer as List if items exist
                 if let Some(first) = items.first() {
-                    let elem_ty = Self::infer_type_from_expr(first);
+                    let elem_ty = self.infer_type_from_expr(first);
                     Type::List(Box::new(elem_ty))
                 } else {
                     Type::Unknown
@@ -5463,11 +5474,41 @@ impl RustTrans {
             Expr::Bool(_) => Type::Bool,
             Expr::NullCoalesce(lhs, _rhs) => {
                 // ?? unwraps Option — infer the inner type from lhs
-                let lhs_ty = Self::infer_type_from_expr(lhs);
+                let lhs_ty = self.infer_type_from_expr(lhs);
                 match lhs_ty {
                     Type::Option(inner_ty) => *inner_ty,
                     other => other,
                 }
+            }
+            Expr::Dot(obj, field) => {
+                // Infer type from struct field access: obj.field
+                if let Expr::Ident(var_name) = obj.as_ref() {
+                    // Check local variable types first
+                    if let Some(var_ty) = self.local_var_types.get(var_name) {
+                        let type_name = match var_ty {
+                            Type::User(td) => td.name.clone(),
+                            Type::Enum(ed) => ed.borrow().name.clone(),
+                            Type::GenericInstance(inst) => inst.base_name.clone(),
+                            _ => var_ty.unique_name(),
+                        };
+                        if let Some(fields) = self.struct_field_types.get(&type_name) {
+                            for (fname, fty) in fields {
+                                if fname.as_str() == field.as_str() {
+                                    return fty.clone();
+                                }
+                            }
+                        }
+                    }
+                    // Check if variable name matches a known struct (for dot-access on params)
+                    if let Some(fields) = self.struct_field_types.get(var_name.as_str()) {
+                        for (fname, fty) in fields {
+                            if fname.as_str() == field.as_str() {
+                                return fty.clone();
+                            }
+                        }
+                    }
+                }
+                Type::Unknown
             }
             _ => Type::Unknown,
         }
@@ -5919,7 +5960,7 @@ impl RustTrans {
         // Track local variable type for string concat detection
         // When type is Unknown, try to infer from the expression
         let effective_ty = if matches!(store.ty, Type::Unknown) {
-            Self::infer_type_from_expr(&store.expr)
+            self.infer_type_from_expr(&store.expr)
         } else {
             store.ty.clone()
         };
@@ -7901,6 +7942,7 @@ impl RustTrans {
     fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
         // Cache enum name as tag type for construction detection
         self.tag_types.insert(enum_decl.name.clone());
+        self.known_enum_names.insert(enum_decl.name.clone());
 
         // Emit doc comments
         if let Some(ref doc) = enum_decl.doc {
@@ -11524,7 +11566,8 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     let mut content = String::from_utf8(std::mem::take(body)).unwrap();
 
     // === fix_cross_file.py ===
-    // int_to_str(kind) -> int_to_str(kind as i32) for NodeKind variables
+    // int_to_str(kind) -> int_to_str(kind as i32): partially at AST level (needs_enum_cast)
+    // Still needed as fallback for cases where local_var_types has User(NodeKind) instead of Enum
     content = content.replace("int_to_str(kind)", "int_to_str(kind as i32)");
     // String + String: (output + int_to_str(val)) -> (output + &int_to_str(val))
     content = content.replace("(output + int_to_str(val))", "(output + &int_to_str(val))");
