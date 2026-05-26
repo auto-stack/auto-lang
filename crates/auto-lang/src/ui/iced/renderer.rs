@@ -1432,9 +1432,10 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     let converted = convert_view_messages(view);
     let rendered = render_dynamic_view(converted);
-    // Wrap root in scrollable so content keeps its natural height.
-    // When window is short: scrollbar appears. When tall: whitespace below.
-    scrollable(rendered)
+    // Use a plain container (not scrollable) so the root view gets bounded
+    // width/height. scrollable provides unbounded height to its child, which
+    // breaks center_y(Fill) and prevents vertical centering.
+    container(rendered)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
         .into()
@@ -1698,8 +1699,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
             if center_y {
                 if let Some(h) = eff_h {
                     container_widget = container_widget.center_y(h);
+                } else {
+                    container_widget = container_widget.center_y(iced::Length::Fill);
                 }
-                // Without explicit height, skip center_y to avoid Fill in unbounded context
             } else if let Some(h) = eff_h {
                 container_widget = container_widget.height(h);
             }

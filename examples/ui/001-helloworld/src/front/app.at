@@ -1,8 +1,7 @@
 widget App {
     view {
-        col {
+        center {
             text "Hello, World!"
-            class: "w-full h-full justify-center items-center bg-white"
         }
     }
 }

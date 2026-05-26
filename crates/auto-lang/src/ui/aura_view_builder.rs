@@ -366,10 +366,13 @@ impl<'a> AuraViewBuilder<'a> {
             }
         };
 
+        // center defaults to w-full h-full so it fills its parent and centers content
+        let full_style = match style {
+            Some(s) => s.add(StyleClass::Width(SizeValue::Full)).add(StyleClass::Height(SizeValue::Full)),
+            None => Style::default().add(StyleClass::Width(SizeValue::Full)).add(StyleClass::Height(SizeValue::Full)),
+        };
         let mut builder = View::container(child_view).center_x().center_y();
-        if let Some(s) = style {
-            builder = builder.with_style(s);
-        }
+        builder = builder.with_style(full_style);
 
         builder.build()
     }
