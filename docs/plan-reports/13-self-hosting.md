@@ -15,18 +15,18 @@ Self-hosting is the capstone goal for AutoLang: a compiler written in AutoLang t
 | 033 | Self-Hosting Compiler | Planned | AutoLang compiler written in AutoLang, targeting C via a2c transpiler |
 | 037 | Expression and Array Support | Complete | Complex expressions, array indexing, array return types |
 | 095 | Compile-Time Execution Engine (CTEE) | Complete | `#if`, `#for`, `#is`, `#{}` comptime constructs using embedded AutoVM |
-| 229 | Self-Hosting via a2r | Partial Phase 2 | Auto 自举编译器 — Phase 1 fully complete (token+lexer+parser+eval+typeinfer+codegen+vm+BVM string/map/list ops with 74 test dirs), Phase 2 (a2r transpiler in Auto) + Phase 3 (self-bootstrapping) remaining |
+| 229 | Self-Hosting via a2r | Complete | Auto 自举编译器 — All 4 phases complete: Phase 1 (token+lexer+parser+eval+typeinfer+codegen+BVM), Phase 2 (a2r transpiler), Phase 3 (self-bootstrapping, 1427→0 errors), Phase 4 (regex internalization + type system + bootstrap verification). 235 tests, bootstrap.exe passes self-test. |
 | 233 | AAVM Parser P0+P1 | Complete | tokenize_list() + Pratt parser + 20 P0 tests, then 10 P1 features (closure/fstr/is/enum/use/ext/spec/alias/object) for 37 total tests |
 | 234-P1 | AAVM Parser P1 | Complete | 10 high-priority features: closure/fstr/is/enum/use/ext/spec/alias/object |
 | 236 | AAVM Evaluator | Complete | Tree-walking evaluator + AST restructuring + 16 tests |
-| 237 | AAVM Architecture Gap Closure | Partial Phase E | Phase A-D complete (value encoding, type inference, bytecode compiler, BVM string/map/list ops), Phase E (a2r transpiler in Auto) remaining |
+| 237 | AAVM Architecture Gap Closure | Complete | Phase A-E complete (value encoding, type inference, bytecode compiler, BVM string/map/list ops, a2r transpiler) |
 | 239 | AAVM List/Map Bytecode | Complete | BVM heap + 8 opcodes (LIST_NEW/PUSH/GET/LEN, MAP_NEW/INSERT/GET/LEN) |
 
 ## Status
 
-**Implemented**: Plan 037 (expression/array support, completed in ~1 week versus a 6-10 week estimate after discovering most features already worked), Plan 095 (CTEE with lexer tokens, AST nodes, parser support, and VmInterpreter-based evaluation), Plans 233, 234-P1, 236, 239 (AAVM parser, evaluator, and bytecode milestones — self-hosting Phase 1 compiler front-end complete with 74 test directories).
+**Implemented**: Plan 037 (expression/array support, completed in ~1 week versus a 6-10 week estimate after discovering most features already worked), Plan 095 (CTEE with lexer tokens, AST nodes, parser support, and VmInterpreter-based evaluation), Plans 233, 234-P1, 236, 239 (AAVM parser, evaluator, and bytecode milestones — self-hosting Phase 1 compiler front-end complete with 74 test directories), Plan 229 (self-hosting via a2r — all 4 phases complete, bootstrap.exe passes self-test with run_eval + run_a2r, 235 tests), Plan 237 (AAVM architecture gap closure — Phase A-E all complete including a2r transpiler).
 
-**Partial**: Plan 229 (Phase 1 complete, Phase 2 a2r transpiler + Phase 3 self-bootstrapping remaining), Plan 237 (Phase A-D complete, Phase E a2r transpiler remaining).
+**Partial**: None.
 
 **Planned**: Plans 028-031 and 033. These form a deep dependency chain: Plan 028 (generics) is needed by Plans 029, 030, and 033; Plan 031 (bootstrap) must resolve the compiler-stdlib chicken-and-egg problem before Plan 033 can begin. Combined estimated timeline is 30-50 weeks for the planned work alone.
 
