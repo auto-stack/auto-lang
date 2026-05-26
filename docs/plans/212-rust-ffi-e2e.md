@@ -5,6 +5,7 @@
 > **Phase 2.1 Status: ✅ COMPLETE** — Primitive type (i64/f64/bool) cdylib FFI 支持
 > **Phase 2.3 Opaque Shims: ✅ COMPLETE** — chrono/base64/hex/sha2/mime_guess 内置 shim
 > **Phase 3 Status: ✅ COMPLETE** — Phase 3A/3B/3C-v2/3D all done
+> **Phase 4 Status: ✅ COMPLETE** — 技术债清理 + 功能补全
 >
 > **Remaining: Phase 2.3 Complex (11 impossible, 11 hard — 远期目标)**
 >
@@ -44,11 +45,9 @@
 
 | 缺失 | 描述 | Phase |
 |------|------|-------|
-| **Phase 2.3 Complex** | 闭包传递、迭代器适配器、自定义反序列化、多 crate 交互 | 远期 |
-| **更多 known_signatures** | chrono/csv/walkdir/num 等需手动添加到签名表 | 按需 |
-| **缓存 GC** | `~/.auto/sandbox/` 无自动清理 | 远期 |
-| **Feature flags** | `dep serde(features: ["derive"])` | 远期 |
-| **Git deps** | `dep my_lib(git: "...")` | 远期 |
+| **Phase 2.3 Complex** | 闭包传递、迭代器适配器、自定义反序列化、多 crate 交互 | Plan 267 |
+| **更多 known_signatures** | 按需添加 — syn 扫描覆盖自动场景，手动表补充高频 fallback | 按需 |
+| **Git deps** | `dep my_lib(git: "...")` — DepStmt 已有字段，Cargo.toml 生成已支持 | ✅ |
 | **并行编译** | 多个 dep 同时编译 | 远期 |
 
 ---
@@ -1594,7 +1593,7 @@ Phase 3D: FFI 测试覆盖
 ## Phase 4: 技术债清理 + 功能补全
 
 **日期**: 2026-05-26
-**状态**: 🔨 IN PROGRESS
+**状态**: ✅ COMPLETE
 **前置条件**: Phase 3 完成
 **目标**: 清理 Phase 1-3 遗留的临时方案和硬编码，补全缺失的基础功能。
 
@@ -1713,8 +1712,8 @@ lib_rs.push_str("    s.into_raw() as *const c_char\n}\n");
 
 ### Phase 4 成功标准
 
-- [ ] `Math.min(3, 5)` 在 AutoVM 中返回 3（非栈错乱）
-- [ ] `compile_dep()` 中无 `if crate_name == "..."` 硬编码分支
-- [ ] ffi.rs 中无死代码
-- [ ] `lib.rs` 中 `auto_cache` 引用外部 crate 而非本地模块
-- [ ] `dep serde(features: ["derive"])` 生成正确的 Cargo.toml
+- [x] `Math.min(3, 5)` 在 AutoVM 中返回 3（非栈错乱）
+- [x] `compile_dep()` 中无 `if crate_name == "..."` 硬编码分支
+- [x] ffi.rs 中无死代码
+- [x] `lib.rs` 中 `auto_cache` 引用外部 crate 而非本地模块
+- [x] `dep serde(features: ["derive"])` 生成正确的 Cargo.toml

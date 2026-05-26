@@ -27,7 +27,7 @@ pub mod sig_code;
 pub mod scanner;
 
 // Re-export main types for convenience
-pub use sandbox::{CrateMetadata, CrateSource, Sandbox, SandboxError};
+pub use sandbox::{CrateMetadata, CrateSource, DepSource, Sandbox, SandboxError};
 pub use registry::{CrateRegistry, RegistryError};
 
 use rusqlite::Connection;

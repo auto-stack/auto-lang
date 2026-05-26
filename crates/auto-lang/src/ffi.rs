@@ -1091,6 +1091,40 @@ pub fn known_signature(crate_name: &str, func_name: &str) -> Option<RustSignatur
             Some(RustSignature::new().param(RustType::Pointer).returns(RustType::String))
         }
 
+        // toml — same pattern as serde_json
+        ("toml", "from_str") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
+        }
+        ("toml", "to_string") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
+        }
+
+        // percent_encoding
+        ("percent_encoding", "percent_encode") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
+        }
+        ("percent_encoding", "percent_decode_str") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
+        }
+
+        // urlencoding
+        ("urlencoding", "encode") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
+        }
+        ("urlencoding", "decode") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
+        }
+
+        // rand_distr
+        ("rand_distr", "Normal_new") => {
+            Some(RustSignature::new().param(RustType::Double).param(RustType::Double).returns(RustType::Pointer))
+        }
+
+        // ansi_term
+        ("ansi_term", "Color_paint") => {
+            Some(RustSignature::new().param(RustType::String).param(RustType::String).returns(RustType::String))
+        }
+
         _ => None,
     }
 }

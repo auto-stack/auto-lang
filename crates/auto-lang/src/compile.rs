@@ -57,6 +57,16 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 
+/// Source info for a declared dep (git/path/version)
+#[derive(Clone)]
+struct DepSourceInfo {
+    version: Option<String>,
+    git: Option<String>,
+    git_ref: Option<String>,
+    path: Option<String>,
+}
+
+
 
 /// Compilation session using the new AIE architecture
 
@@ -106,6 +116,9 @@ pub struct CompileSession {
 
     /// Features for declared crates (crate_name → feature list)
     dep_features: HashMap<String, Vec<String>>,
+
+    /// Source info for declared crates (git/path/version)
+    dep_sources: HashMap<String, DepSourceInfo>,
 
     /// Plan 167: Tracks modules currently being loaded (for circular dependency detection)
 
@@ -157,6 +170,8 @@ impl Clone for CompileSession {
 
             dep_features: self.dep_features.clone(),
 
+            dep_sources: self.dep_sources.clone(),
+
             loading_stack: Vec::new(),
 
             compiled_modules: Vec::new(),
@@ -202,6 +217,8 @@ impl CompileSession {
             declared_crates: HashSet::new(),
 
             dep_features: HashMap::new(),
+
+            dep_sources: HashMap::new(),
 
             loading_stack: Vec::new(),
 
@@ -641,6 +658,18 @@ impl CompileSession {
                 );
             }
 
+            // Store source info (git/path/version)
+
+            self.dep_sources.insert(
+                dep.name.to_string(),
+                DepSourceInfo {
+                    version: dep.version.as_ref().map(|v| v.to_string()),
+                    git: dep.git.as_ref().map(|g| g.to_string()),
+                    git_ref: dep.git_ref.as_ref().map(|r| r.to_string()),
+                    path: dep.path.as_ref().map(|p| p.to_string()),
+                },
+            );
+
 
 
             // Log the dependency
@@ -750,11 +779,9 @@ impl CompileSession {
                         }
                     }).collect();
 
-                    let crate_features = self.dep_features.get(crate_name)
-                        .map(|f| f.as_slice())
-                        .unwrap_or(&[]);
+                    let dep_source = self.build_dep_source(crate_name);
 
-                    match sandbox.compile_dep(crate_name, &shims, crate_features) {
+                    match sandbox.compile_dep(crate_name, &shims, &dep_source) {
                         Ok(path) => {
                             log::info!("Compiled dep {} -> {}", crate_name, path.display());
                         }
@@ -780,6 +807,21 @@ impl CompileSession {
     ///
 
     /// Returns true if the crate was declared in a `dep` statement.
+
+    /// Build a DepSource for compile_dep from stored dep info.
+    fn build_dep_source(&self, crate_name: &str) -> auto_cache::sandbox::DepSource {
+        let features = self.dep_features.get(crate_name)
+            .map(|f| f.clone())
+            .unwrap_or_default();
+        let src = self.dep_sources.get(crate_name);
+        auto_cache::sandbox::DepSource {
+            version: src.and_then(|s| s.version.clone()),
+            features,
+            git: src.and_then(|s| s.git.clone()),
+            git_ref: src.and_then(|s| s.git_ref.clone()),
+            path: src.and_then(|s| s.path.clone()),
+        }
+    }
 
     pub fn is_dep_declared(&self, crate_name: &str) -> bool {
 

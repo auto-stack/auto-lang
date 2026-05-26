@@ -41,6 +41,44 @@ pub enum ShimType {
     CString,
 }
 
+/// Source specification for a dependency crate.
+/// Determines how the dep line is generated in Cargo.toml.
+#[derive(Clone, Debug, Default)]
+pub struct DepSource {
+    pub version: Option<String>,
+    pub features: Vec<String>,
+    pub git: Option<String>,
+    pub git_ref: Option<String>,
+    pub path: Option<String>,
+}
+
+impl DepSource {
+    /// Generate the Cargo.toml dependency line
+    pub fn to_cargo_line(&self, crate_name: &str) -> String {
+        if let Some(ref path) = self.path {
+            format!(r#"{crate_name} = {{ path = "{path}" }}"#)
+        } else if let Some(ref git) = self.git {
+            let mut parts = vec![format!(r#"git = "{git}""#)];
+            if let Some(ref r) = self.git_ref {
+                parts.push(format!(r#"branch = "{r}""#));
+            }
+            if !self.features.is_empty() {
+                let feats = self.features.iter().map(|f| format!("\"{}\"", f)).collect::<Vec<_>>().join(", ");
+                parts.push(format!("features = [{}]", feats));
+            }
+            format!(r#"{crate_name} = {{ {} }}"#, parts.join(", "))
+        } else {
+            let version = self.version.as_deref().unwrap_or("1");
+            if self.features.is_empty() {
+                format!(r#"{crate_name} = "{version}""#)
+            } else {
+                let feats = self.features.iter().map(|f| format!("\"{}\"", f)).collect::<Vec<_>>().join(", ");
+                format!(r#"{crate_name} = {{ version = "{version}", features = [{feats}] }}"#)
+            }
+        }
+    }
+}
+
 impl ShimType {
     /// C type name for wrapper generation
     pub fn c_type_name(&self) -> &'static str {
@@ -568,7 +606,7 @@ impl Sandbox {
         &self,
         crate_name: &str,
         shims: &[FunctionShim],
-        features: &[String],
+        source: &DepSource,
     ) -> Result<PathBuf> {
         // 1. Try syn scan to upgrade shims with real signatures
         let mut effective_shims = self.enrich_shims_with_syn_scan(crate_name, shims);
@@ -592,12 +630,7 @@ impl Sandbox {
         std::fs::create_dir_all(&src_dir)?;
 
         // Generate Cargo.toml
-        let dep_line = if features.is_empty() {
-            format!(r#"{crate_name} = "1""#)
-        } else {
-            let features_str = features.iter().map(|f| format!("\"{}\"", f)).collect::<Vec<_>>().join(", ");
-            format!(r#"{crate_name} = {{ version = "1", features = [{features_str}] }}"#)
-        };
+        let dep_line = source.to_cargo_line(crate_name);
         let cargo_toml = format!(
             r#"[package]
 name = "{wrapper_name}"
