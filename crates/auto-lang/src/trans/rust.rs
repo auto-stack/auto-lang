@@ -6134,6 +6134,10 @@ impl RustTrans {
             "&str".to_string()
         } else if is_mut_borrow && matches!(store.ty, Type::StrOwned | Type::StrFixed(_)) {
             "&mut str".to_string()
+        } else if is_borrow && !matches!(store.ty, Type::Unknown) {
+            format!("&{}", ty_name)
+        } else if is_mut_borrow && !matches!(store.ty, Type::Unknown) {
+            format!("&mut {}", ty_name)
         } else {
             ty_name
         };
@@ -7467,7 +7471,10 @@ impl RustTrans {
             // Also check nested types: List<EnumType>, Option<EnumType>, etc.
             fn type_contains_enum(ty: &Type) -> bool {
                 match ty {
-                    Type::Tag(_) | Type::Enum(_) | Type::User(_) => true,
+                    Type::Tag(_) | Type::Enum(_) => true,
+                    // Type::User with empty members is a generic type param (T), not a concrete type
+                    Type::User(td) if !td.members.is_empty() || !td.generic_params.is_empty() => true,
+                    Type::GenericInstance(inst) => inst.args.iter().any(|arg| type_contains_enum(arg)),
                     Type::List(inner) | Type::Result(inner) | Type::Option(inner) => type_contains_enum(inner),
                     _ => false,
                 }

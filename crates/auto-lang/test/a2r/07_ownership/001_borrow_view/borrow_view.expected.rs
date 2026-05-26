@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 fn main() {
     let s: String = String::from("hello");
-    let slice: String = &s;
+    let slice: &String = &s;
     println!("{}", slice.len());
     println!("{}", s);
 }

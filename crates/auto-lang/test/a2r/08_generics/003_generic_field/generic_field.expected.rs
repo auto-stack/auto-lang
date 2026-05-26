@@ -5,14 +5,14 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Box<T> {
-    value: T,
+    pub value: T,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Container {
-    data: Box<i32>,
+    pub data: Box<i32>,
 }
 
 fn main() {

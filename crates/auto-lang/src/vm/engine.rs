@@ -4023,6 +4023,29 @@ impl AutoVM {
                         task.ram.push_f32(auto_val::decode_f32(a_nv) + auto_val::decode_f32(b_nv));
                     } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
                         task.ram.push_f64(auto_val::decode_f64(a_nv) + auto_val::decode_f64(b_nv));
+                    } else if auto_val::is_string(a_nv) || auto_val::is_string(b_nv) {
+                        // String concatenation: decode both as strings, concatenate, push new string
+                        let a_str = if auto_val::is_string(a_nv) {
+                            let idx = auto_val::decode_string(a_nv) as usize;
+                            let strings = self.strings.read().unwrap();
+                            strings.get(idx).cloned().unwrap_or_default()
+                        } else {
+                            auto_val::decode_i32(a_nv).to_string().into_bytes()
+                        };
+                        let b_str = if auto_val::is_string(b_nv) {
+                            let idx = auto_val::decode_string(b_nv) as usize;
+                            let strings = self.strings.read().unwrap();
+                            strings.get(idx).cloned().unwrap_or_default()
+                        } else {
+                            auto_val::decode_i32(b_nv).to_string().into_bytes()
+                        };
+                        let mut combined = a_str;
+                        combined.extend_from_slice(&b_str);
+                        let mut strings = self.strings.write().unwrap();
+                        let new_idx = strings.len() as u32;
+                        strings.push(combined);
+                        drop(strings);
+                        task.ram.push_string(new_idx);
                     } else {
                         let a = auto_val::decode_i32(a_nv);
                         let b = auto_val::decode_i32(b_nv);
@@ -4033,7 +4056,34 @@ impl AutoVM {
                     {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(a.wrapping_add(b));
+                    // String concatenation: negative values are string tags (-(idx+1))
+                    let a_is_str = a < 0;
+                    let b_is_str = b < 0;
+                    if a_is_str || b_is_str {
+                        let a_bytes = if a_is_str {
+                            let idx = (-a - 1) as usize;
+                            let strings = self.strings.read().unwrap();
+                            strings.get(idx).cloned().unwrap_or_default()
+                        } else {
+                            a.to_string().into_bytes()
+                        };
+                        let b_bytes = if b_is_str {
+                            let idx = (-b - 1) as usize;
+                            let strings = self.strings.read().unwrap();
+                            strings.get(idx).cloned().unwrap_or_default()
+                        } else {
+                            b.to_string().into_bytes()
+                        };
+                        let mut combined = a_bytes;
+                        combined.extend_from_slice(&b_bytes);
+                        let mut strings = self.strings.write().unwrap();
+                        let new_idx = strings.len();
+                        strings.push(combined);
+                        drop(strings);
+                        task.ram.push_i32(-(new_idx as i32) - 1);
+                    } else {
+                        task.ram.push_i32(a.wrapping_add(b));
+                    }
                     }
                 }
                 OpCode::SUB => {

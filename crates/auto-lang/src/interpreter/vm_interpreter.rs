@@ -118,6 +118,49 @@ impl VmInterpreter {
             if let Some(task_mutex) = vm.tasks.get(&task_id).map(|v| v.value().clone()) {
                 let task = task_mutex.lock().await;
                 if task.ram.sp > 0 {
+                    #[cfg(feature = "nanbox")]
+                    {
+                        let top_nv = task.ram.raw_nv[(task.ram.sp - 1) as usize];
+                        if auto_val::is_string(top_nv) {
+                            let str_idx = auto_val::decode_string(top_nv) as usize;
+                            let strings = vm.strings.read().unwrap();
+                            if let Some(bytes) = strings.get(str_idx) {
+                                if let Ok(s) = String::from_utf8(bytes.clone()) {
+                                    result = Some(Value::Str(s.into()));
+                                }
+                            }
+                        } else if auto_val::is_f64(top_nv) {
+                            result = Some(Value::Double(auto_val::decode_f64(top_nv)));
+                        } else if auto_val::is_f32(top_nv) {
+                            result = Some(Value::Float(auto_val::decode_f32(top_nv) as f64));
+                        } else {
+                            let top_val = auto_val::decode_i32(top_nv);
+                            // Check object/array IDs
+                            if top_val >= 1000000 && top_val < 2000000 {
+                                let id = top_val as u64;
+                                if let Some(obj_arc) = vm.objects.get(&id) {
+                                    let obj = obj_arc.read().unwrap();
+                                    let mut result_obj = auto_val::Obj::new();
+                                    for (key, val) in &obj.fields {
+                                        result_obj.set(key.clone(), val.clone());
+                                    }
+                                    result = Some(Value::Obj(result_obj));
+                                }
+                            } else if top_val >= 2000000 && top_val < 3000000 {
+                                let id = top_val as u64;
+                                if let Some(arr_arc) = vm.arrays.get(&id) {
+                                    let arr = arr_arc.read().unwrap();
+                                    let items: Vec<Value> = arr.iter().cloned().collect();
+                                    result = Some(Value::Array(auto_val::Array::from_vec(items)));
+                                }
+                            }
+                            if result.is_none() {
+                                result = Some(Value::Int(top_val));
+                            }
+                        }
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let top_val = task.ram.raw[(task.ram.sp - 1) as usize];
 
                     // Negative values are tagged string indices: actual index = -(val+1)
@@ -155,6 +198,7 @@ impl VmInterpreter {
                     }
                     if result.is_none() {
                         result = Some(Value::Int(top_val));
+                    }
                     }
                 }
             }

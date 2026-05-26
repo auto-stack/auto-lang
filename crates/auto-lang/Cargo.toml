@@ -353,3 +353,98 @@ path = "examples/a2r_step03.rs"
 [[example]]
 name = "a2r_step04"
 path = "examples/a2r_step04.rs"
+
+[[example]]
+name = "ui_todo"
+path = "examples/ui_todo.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_accordion"
+path = "examples/ui_accordion.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_container"
+path = "examples/ui_container.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_counter"
+path = "examples/ui_counter.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_gallery"
+path = "examples/ui_gallery.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_hello_loader"
+path = "examples/ui_hello_loader.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_input"
+path = "examples/ui_input.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_layout"
+path = "examples/ui_layout.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_list"
+path = "examples/ui_list.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_navigation_rail"
+path = "examples/ui_navigation_rail.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_progress"
+path = "examples/ui_progress.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_radio"
+path = "examples/ui_radio.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_scroll"
+path = "examples/ui_scroll.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_select"
+path = "examples/ui_select.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_sidebar"
+path = "examples/ui_sidebar.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_slider"
+path = "examples/ui_slider.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_table"
+path = "examples/ui_table.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_tabs"
+path = "examples/ui_tabs.rs"
+required-features = ["ui"]
+
+[[example]]
+name = "ui_todos"
+path = "examples/ui_todos.rs"
+required-features = ["ui"]

@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let list = Vec::new();
+    let mut list = Vec::new();
 
 
     let len = (list.len() as i32);

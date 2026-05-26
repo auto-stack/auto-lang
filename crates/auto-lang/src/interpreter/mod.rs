@@ -137,10 +137,9 @@ impl AutoInterpreter {
                 flipped_code.push_str(&line[prefix.len()..]);
                 flipped_code.push('\n');
             } else {
-                // Text line: wrap in F-string backticks
-                // Note: we need to escape existing backticks in the text to be safe
-                let escaped_line = line.replace("`", "\\`");
-                flipped_code.push_str(&format!("__out__ = __out__ + `{}\n`\n", escaped_line));
+                // Text line: wrap in F-string so $variable interpolation works
+                let escaped_line = line.replace("\\", "\\\\").replace("\"", "\\\"");
+                flipped_code.push_str(&format!("__out__ = __out__ + f\"{}\\n\"\n", escaped_line));
             }
         }
 
