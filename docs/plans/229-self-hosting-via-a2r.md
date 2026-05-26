@@ -31,7 +31,7 @@
 | 2.E5: 类型增强 | ✅ 已完成 | struct构造函数✅ Option/Result匹配✅ 借用语义✅ |
 | Phase 3: 自举 | ✅ 已完成 | 合并编译 1427→0 错误 (2026-05-25), a2r改进+Python后处理pipeline |
 | Phase 4.1: Regex内化 | ✅ 已完成 | Python脚本已全部删除，regex后处理迁入a2r内部，11项已AST内化 |
-| Phase 4.1b: 类型系统增强 | 🔄 进行中 | Step 1✅ Step 2✅ Step 4✅ 已完成，Step 3 待实施 |
+| Phase 4.1b: 类型系统增强 | ✅ 基本完成 | Step 1✅ Step 2✅ Step 4✅ 已完成，Step 3 暂缓(regex稳定覆盖) |
 | Phase 4.2: 运行验证 | ✅ 已完成 | bootstrap.rs 编译通过(123KB) + 4测试通过 + 235回归测试通过 |
 | Phase 4.3: 固定点验证 | ⬜ 待开始 | Auto 编译器编译自身，输出与 Rust 编译器一致 |
 
@@ -64,7 +64,6 @@
   - 最终结果: 0 编译错误, 1277 warnings, `cargo check` 通过
 
 **下一步行动:**
-- Phase 4.1b: a2r 类型系统增强 — Step 3(方法返回类型推断) 实施
 - Phase 4.3: 自举固定点验证 — Auto 编译器编译自身，输出与 Rust 编译器一致
 
 ---
@@ -206,45 +205,26 @@
 
 ---
 
-#### Step 3: 方法返回类型推断（难度：中，覆盖 ~29 条 regex）
+#### Step 3: 方法返回类型推断（⏸️ 暂缓，regex 已稳定覆盖）
 
 **问题:** a2r 不知道 `HashMap::get` 返回 `Option<V>`，生成 `map.get(key)` 而非 `map.get(key).cloned().unwrap_or_default()`。
 
 **属于哪个阶段:** a2r 转译阶段（rust.rs）
 
-**当前状态:**
-- `infer_type_from_expr()` 硬编码了 ~15 个方法的返回类型（trim, replace, to_string 等）
-- `local_var_types` 已经知道变量是 `Type::Map(k, v)` 或 `Type::List(t)`
-- 但 dot-expr 处理时没有查方法签名表
+**当前状态:** regex 后处理已稳定覆盖全部 ~8 个 pattern（fix_hashmap_get, fix_borrowing_issues, apply_merged_regex_fixes 等），merge 输出 0 编译错误。
 
-**实施路径:**
+**暂缓原因:**
+- regex fix 涉及 8 个主要 pattern，覆盖 env.field.get / bare field.get / state.get / return/assignment 等多种上下文
+- AST 层面实现需要在每个方法调用生成点做类型查询 + 链式调用追加，工程量大（~200 行）
+- regex fix 已经稳定工作，且维护成本低
+- 当 `fn_param_types` 基础设施稳定后可再评估
+
+**如果未来实施，路径:**
 ```
-1. 新增标准库方法签名表 (约 20 个方法):
-   HashMap::get(K) → Option<V>
-   HashMap::insert(K, V) → Option<V>
-   HashMap::contains_key(K) → bool
-   Vec::get(usize) → Option<T>
-   Vec::push(T) → ()
-   Vec::len() → usize
-   str::trim() → String
-   str::replace(&str, &str) → String
-   ...等
-
-2. dot-expr 处理时:
-   a. 查 self 的类型 → Type::Map(String, ASTNode)
-   b. 查方法签名表 → HashMap::get(K) → Option<V>
-   c. 生成 map.get(&key).cloned().unwrap_or_default()
-   d. 同时记录返回类型到 local_var_types（供后续表达式使用）
-
-3. 前置依赖: Step 1（需要知道 Map 的值类型才能推断 Option 里是什么）
+1. dot-expr 方法调用生成时，检测调用对象类型为 Type::Map
+2. 方法名为 "get" 时，在关闭括号后追加 .cloned().unwrap_or_default()
+3. 参数前加 &（同 contains_key 已有逻辑）
 ```
-
-**替代的 regex 规则:**
-- `.get(X) → .get(&X).cloned().unwrap_or_default()` (29 条)
-- `.to_string().cloned().unwrap_or_default()` 简化 (7 条)
-- `.cloned().unwrap_or_default()` 双重链消除 (11 条)
-
-**验证:** 修改后 HashMap/Vec 方法调用自动生成正确的链式调用，无需 regex 修正。
 
 ---
 
@@ -283,10 +263,10 @@
 |------|---------|-----------|----------|------|
 | 1. 泛型类型保留 | eval.at, a2r.at, rust.rs | ~20 行 | 无 | ✅ 已完成 |
 | 2. 函数签名类型传播 | rust.rs | ~100 行 | Step 1 | ✅ 已完成 |
-| 3. 方法返回类型推断 | rust.rs | ~200 行 | Step 1 | ⬜ 待实施 |
+| 3. 方法返回类型推断 | rust.rs | ~200 行 | Step 1 | ⏸️ 暂缓 |
 | 4. 数据流/借用分析(方案A) | rust.rs | ~75 行 | 无 | ✅ 已完成 |
 
-**Step 1、2、4 已完成。Step 3（方法返回类型推断）为剩余工作。**
+**Step 1、2、4 已完成。Step 3 暂缓（regex 已稳定覆盖）。Phase 4.1b 基本完成。**
 
 ### Phase 4.2: 自举运行验证（✅ 已完成，2026-05-25）
 
