@@ -339,7 +339,7 @@ edition = "2021"
 [features]
 ui-gpui = ["auto-lang/ui-gpui"]
 ui-iced = ["auto-lang/ui-iced"]
-default = ["ui-gpui"]
+default = ["ui-iced"]
 
 [workspace]
 

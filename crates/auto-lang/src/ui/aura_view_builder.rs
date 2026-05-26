@@ -36,7 +36,7 @@ use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraEvent}
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::vm_bridge::VmBridge;
 use crate::ui::view::View;
-use crate::ui::style::Style;
+use crate::ui::style::{Style, StyleClass, SizeValue};
 
 // ============================================================================
 // AuraViewBuilder
