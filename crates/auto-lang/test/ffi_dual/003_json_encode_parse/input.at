@@ -1,0 +1,8 @@
+// FFI Dual Test: JSON encode/parse — #[rust_fn] JSON
+let encoded = Json.encode("hello")
+print(encoded)
+let obj = Json.parse("{\"name\":\"auto\",\"ver\":1}")
+print(Json.get(obj, "name"))
+print(Json.type_of(Json.get(obj, "ver")))
+print(Json.has_key(obj, "name"))
+print(Json.has_key(obj, "missing"))

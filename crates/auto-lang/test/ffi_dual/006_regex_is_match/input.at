@@ -1,0 +1,6 @@
+// FFI Dual Test: Regex.is_match — Opaque handle Regex
+print(Regex.is_match("\\d+", "abc123"))
+print(Regex.is_match("\\d+", "abcdef"))
+print(Regex.is_match("hello\\s+world", "hello world"))
+print(Regex.is_match("^abc", "abcdef"))
+print(Regex.is_match("xyz$", "abcdef"))

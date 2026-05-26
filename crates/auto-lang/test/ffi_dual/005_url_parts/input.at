@@ -1,0 +1,8 @@
+// FFI Dual Test: URL parts — Opaque handle URL
+let url = "https://example.com:8080/path/to/page?name=test#section"
+print(Url.scheme(url))
+print(Url.host(url))
+print(Url.port(url))
+print(Url.path(url))
+print(Url.query(url))
+print(Url.fragment(url))

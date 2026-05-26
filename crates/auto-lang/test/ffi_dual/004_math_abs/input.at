@@ -1,0 +1,4 @@
+// FFI Dual Test: Math operations — #[rust_fn] Math
+print(Math.max(10, 20))
+print(Math.max(0, 100))
+print(Math.max(5, 50))

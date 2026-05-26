@@ -1,0 +1,2 @@
+// FFI Dual Test: File.exists — #[rust_fn] File I/O
+print(File.exists("nonexistent_file_xyz_12345.txt"))

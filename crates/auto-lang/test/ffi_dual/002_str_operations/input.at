@@ -1,0 +1,11 @@
+// FFI Dual Test: String operations — #[rust_fn] String
+print(String.len("hello"))
+print(String.is_empty(""))
+print(String.contains("hello world", "world"))
+print(String.starts_with("hello", "hel"))
+print(String.ends_with("hello", "llo"))
+print(String.trim("  hi  "))
+print(String.repeat("ab", 3))
+print(String.replace("hello world", "world", "auto"))
+print(String.upper("hello"))
+print(String.lower("HELLO"))
