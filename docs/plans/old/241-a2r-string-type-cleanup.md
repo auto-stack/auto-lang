@@ -1,4 +1,4 @@
-# Plan 241: a2r String Type Cleanup
+# Plan 241: a2r String Type Cleanup — COMPLETE
 
 ## Background
 
@@ -87,9 +87,8 @@ the source `.at` from `str` to `Str` is mainly for semantic correctness in Auto.
 **Fix**: Parser improvement to allow `return` followed by newline + expression
 
 ### P3-4: Cargo.toml for examples 01-33 still points to `main.rs`
-**Current**: Examples 01-33 have `path = "src/XX_name/main.rs"` in Cargo.toml
-**Issue**: These compile from hand-written Rust, not a2r-generated code
-**Fix**: After all a2r issues are resolved, switch Cargo.toml to point to `main.a2r.rs`
+**Status**: ⏭ N/A — Referenced numbered examples 01-38 not present in current codebase.
+The a2r test infrastructure uses `crates/auto-lang/test/a2r/` with expected-output comparison, not separate Cargo projects.
 
 ### P3-5: `trans_rust_with_session` writes output file AND returns log string
 **File**: `lib.rs` (~line 1840)
@@ -102,17 +101,32 @@ the source `.at` from `str` to `Str` is mainly for semantic correctness in Auto.
 ### P4-1: Unused variables in generated code
 - Example 38: `prompt` parameter unused in `send_message()`
 - Could add underscore prefix in a2r for unused params
+**Status**: ⏭ N/A — Referenced example not present in current codebase.
+The general improvement (underscore-prefix unused params) is a valid a2r enhancement but would need
+a concrete test case in `crates/auto-lang/test/a2r/` to validate.
 
 ### P4-2: Unused imports in hand-written main.rs files
 - Example 33: unused `PathBuf` import
 - Example 26: unused `json` import
+**Status**: ⏭ N/A — Referenced numbered examples not present in current codebase.
 
 ## Execution Order
 
-1. **Fix P1-1** (get_or for non-string maps) — unblocks example 34 compilation
-2. **Fix P1-2** (Add operator variable detection) — unblocks example 34 compilation
-3. **Fix P2-1/P2-2/P2-3** in `.at` source files — semantic correctness
-4. **Fix P3-5** (CLI double-write bug)
-5. **Re-transpile all 38 examples** and verify compilation
-6. **Switch Cargo.toml** for examples 01-33 to use `main.a2r.rs`
-7. **Clean up warnings** (P4)
+1. **Fix P1-1** (get_or for non-string maps) — ✅ Done (prior commit)
+2. **Fix P1-2** (Add operator variable detection) — ✅ Done (prior commit)
+3. **Fix P2-1/P2-2/P2-3** in `.at` source files — ⏭ N/A (examples 09-38 not in current codebase)
+4. **Fix P3-5** (CLI double-write bug) — ✅ Done (prior commit)
+5. **Fix P3-1** (insert .to_string() heuristic) — ✅ Done (commit: Map value type check)
+6. **Fix P3-3** (return newline support) — ✅ Done (commit: parser skips newlines after return)
+7. **Fix P3-2** (not operator in if) — ✅ Done (prior commit: unary Not in expr_pratt)
+8. **Re-transpile all 38 examples** and verify compilation — ⏭ Deferred (P3-4: Cargo.toml migration)
+9. **Switch Cargo.toml** for examples 01-33 to use `main.a2r.rs` — ⏭ Deferred (P3-4)
+10. **Clean up warnings** (P4) — ⏭ Low priority
+
+## Resolution Summary
+
+All blocking issues (P1) and transpiler improvements (P3-1, P3-2, P3-3, P3-5) are resolved.
+P2 (str→Str in .at files) is N/A — the referenced examples 09-38 are not in the current codebase.
+P3-4 (Cargo.toml migration) and P4 (warning cleanup) are N/A — the referenced numbered examples 01-38
+(test infrastructure with separate Cargo projects and hand-written main.rs) do not exist in the current codebase.
+The a2r transpiler tests live in `crates/auto-lang/test/a2r/` using expected-output comparison instead.

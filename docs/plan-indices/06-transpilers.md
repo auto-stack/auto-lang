@@ -38,6 +38,7 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 223 | a2r Step-00 Transpiler Fixes | ✅ | Lexer pos drift fix, multi-arg enum variants, is-expression, return/break in match arms |
 | 232 | a2r Lexer Compilation | ✅ | `.sub()`/`.slice()` handler + post_process() for types |
 | 240 | Rust Cookbook a2r Tests | ⏳ | Systematic a2r test suite from Rust Cookbook examples |
+| 241 | a2r String Type Cleanup | ✅ | Fix get_or/insert .to_string() heuristics, return newline support, not-in-if |
 
 ## Status Summary
 - Completed: 13 | Partial: 3 | Planned: 13 | Deprecated: 0
