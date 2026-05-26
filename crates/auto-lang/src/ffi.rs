@@ -1020,11 +1020,47 @@ impl RustType {
 /// Returns None for unknown functions (caller should default to String→String).
 pub fn known_signature(crate_name: &str, func_name: &str) -> Option<RustSignature> {
     match (crate_name, func_name) {
-        // rand — primitive returns
+        // rand
         ("rand", "random") => Some(RustSignature::new().returns(RustType::Long)),
+        ("rand", "thread_rng") => Some(RustSignature::new().returns(RustType::Pointer)),
 
-        // chrono — string returns
+        // chrono
         ("chrono", "now") => Some(RustSignature::new().returns(RustType::String)),
+        ("chrono", "year") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
+        }
+        ("chrono", "month") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
+        }
+        ("chrono", "day") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
+        }
+        ("chrono", "hour") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
+        }
+        ("chrono", "minute") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
+        }
+        ("chrono", "second") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
+        }
+        ("chrono", "timestamp") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::Long))
+        }
+
+        // url
+        ("url", "port") => {
+            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
+        }
+
+        // uuid
+        ("uuid", "new_v4") => Some(RustSignature::new().returns(RustType::String)),
+
+        // sha2
+        ("sha2", "Sha256_new") => Some(RustSignature::new().returns(RustType::Pointer)),
+        ("sha2", "Sha256_finalize") => {
+            Some(RustSignature::new().param(RustType::Pointer).returns(RustType::String))
+        }
 
         _ => None,
     }
