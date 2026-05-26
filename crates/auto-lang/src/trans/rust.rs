@@ -535,6 +535,22 @@ impl RustTrans {
         Ok(())
     }
 
+    /// Check if the Map expression's value type is a String type.
+    /// Returns true when Map value type is StrOwned/StrSlice/StrFixed (meaning insert value
+    /// needs .to_string() for &str literals), false for non-string Maps or unknown types.
+    fn expr_map_value_is_string(&self, map_expr: &Expr) -> bool {
+        if let Expr::Ident(name) = map_expr {
+            if let Some(ty) = self.local_var_types.get(name) {
+                if let Type::Map(_, v) = ty {
+                    return matches!(v.as_ref(),
+                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_));
+                }
+            }
+        }
+        // Unknown: conservatively true (matches old behavior for Map<str, str> default)
+        true
+    }
+
     /// Check if current function's return type maps to Rust String (needs &str -> String coercion)
     fn ret_type_needs_string_coercion(&self) -> bool {
         self.current_fn_ret_type.as_ref().map_or(false, |ty| {
@@ -5008,9 +5024,19 @@ impl RustTrans {
                         // For .get(): auto-borrow handling done via is_str_param below.
                         // Post-processing (fix_vec_i32_index) converts .get(var) to [var as usize]
                         // for Vec accesses, so we don't add as usize here.
-                        // For Map.insert(), auto-convert to String for non-primitive types
+                        // For Map.insert(): auto-convert to String based on Map value type.
+                        // - Key (i==0): always add .to_string() for non-primitive types (Map key is String)
+                        // - Value (i==1): only add .to_string() when Map value type is String
                         if is_insert && !matches!(expr, Expr::Int(_) | Expr::Bool(_)) {
-                            write!(out, ".to_string()")?;
+                            let should_to_string = if i == 0 {
+                                true // key arg: Map<String, _> key needs .to_string() for &str literals
+                            } else {
+                                // value arg: check Map value type from local_var_types
+                                self.expr_map_value_is_string(object)
+                            };
+                            if should_to_string {
+                                write!(out, ".to_string()")?;
+                            }
                         }
                         // Auto-borrow: add .as_str() when passing String to &str method param
                         // For module calls (obj_is_type_chain), flags[i] directly maps to arg[i].

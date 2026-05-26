@@ -942,7 +942,11 @@ impl<'a> Parser<'a> {
 
     fn return_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip return keyword
-        if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi)
+        // Skip newlines after 'return' to allow expression on next line
+        while self.is_kind(TokenKind::Newline) {
+            self.next();
+        }
+        if self.is_kind(TokenKind::Semi)
             || self.is_kind(TokenKind::RBrace) || self.is_kind(TokenKind::EOF)
         {
             return Ok(Stmt::Return(Box::new(Expr::Nil)));
@@ -12582,6 +12586,50 @@ widget Test {
         parser.skip_check = true;
         let ast = parser.parse().expect("Failed to parse #is");
         assert!(matches!(&ast.stmts[0], Stmt::HashIs(_)));
+    }
+
+    #[test]
+    fn test_return_with_newline() {
+        // "return\n42" should parse as return(42), not return(nil) + expr(42)
+        let code = "fn test() int {\n    return\n        42\n}";
+        let ast = parse_once(code);
+        let fn_decl = match ast.stmts.first() {
+            Some(Stmt::Fn(f)) => f,
+            _ => panic!("expected fn decl"),
+        };
+        let body = &fn_decl.body.stmts;
+        // Should have exactly one statement: return 42
+        assert_eq!(body.len(), 1, "expected 1 stmt, got {}: {:?}", body.len(), body);
+        match &body[0] {
+            Stmt::Return(expr) => {
+                // Should be Int(42), not Nil
+                assert!(
+                    matches!(expr.as_ref(), Expr::Int(42)),
+                    "expected return Int(42), got: {:?}",
+                    expr
+                );
+            }
+            other => panic!("expected Return stmt, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_return_void_with_newline() {
+        // "return\n}" should parse as return(nil)
+        let code = "fn test() {\n    return\n}";
+        let ast = parse_once(code);
+        let fn_decl = match ast.stmts.first() {
+            Some(Stmt::Fn(f)) => f,
+            _ => panic!("expected fn decl"),
+        };
+        let body = &fn_decl.body.stmts;
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            Stmt::Return(expr) => {
+                assert!(matches!(expr.as_ref(), Expr::Nil));
+            }
+            other => panic!("expected Return stmt, got: {:?}", other),
+        }
     }
 
 
