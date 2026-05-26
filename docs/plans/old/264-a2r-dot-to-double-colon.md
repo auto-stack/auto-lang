@@ -1,4 +1,4 @@
-# Plan: 解决 a2r 转译器中 Auto `.` 路径到 Rust `::` / `.` 的翻译问题
+# Plan 264: a2r Dot to Double Colon — COMPLETE
 
 ## Context
 

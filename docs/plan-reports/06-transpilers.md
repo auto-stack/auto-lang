@@ -40,6 +40,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 232 | a2r Lexer Compilation | Complete | `.sub()`/`.slice()` string method handler + post_process() for type conversion fixes in self-hosting a2r |
 | 240 | Rust Cookbook a2r Tests | Planned | Systematic a2r test suite covering Rust Cookbook examples for comprehensive transpiler validation |
 | 241 | a2r String Type Cleanup | Complete | Fix get_or/insert .to_string() heuristics, return newline support, not-in-if, Add operator variable detection |
+| 264 | a2r Dot to Double Colon | Complete | module_types mapping, qualify_type_name(), expression path handling, use stmt `.` → `::` for cross-module types |
 
 ## Status
 
@@ -110,7 +111,7 @@ The transpiler system extends beyond language targets to UI-specific code genera
 
 ## Source Plans
 
-Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 215, 216, 219, 220, 232, 240, 241.
+Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 215, 216, 219, 220, 232, 240, 241, 264.
 
 - [204-a2r-transpiler-completeness.md](../plans/old/204-a2r-transpiler-completeness.md)
 - [213-a2py-maturation.md](../plans/213-a2py-maturation.md)
@@ -120,3 +121,4 @@ Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171,
 - [220-a2r-transpiler-improvement.md](../plans/220-a2r-transpiler-improvement.md)
 - [223-a2r-step00-transpiler-fixes.md](../plans/223-a2r-step00-transpiler-fixes.md)
 - [241-a2r-string-type-cleanup.md](../plans/old/241-a2r-string-type-cleanup.md)
+- [264-a2r-dot-to-double-colon.md](../plans/old/264-a2r-dot-to-double-colon.md)
