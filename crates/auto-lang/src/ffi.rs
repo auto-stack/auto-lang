@@ -139,8 +139,7 @@ impl CFfiBridge {
 
         // Load the library (for future libloading support)
         if !self.libraries.contains_key(library) {
-            // TODO: Implement actual library loading
-            // For now, just record the path
+            // TODO(Plan-212): Implement real C library loading via libloading
             log::info!("Would load C library from: {}", library_path.display());
 
             // When libloading is implemented:
@@ -176,58 +175,8 @@ impl CFfiBridge {
         Ok(native_id)
     }
 
-    /// Register a Rust function from a Rust-transpiled module
-    ///
-    /// **Plan 081 Phase 5**: Same as C FFI but for Rust functions
-    ///
-    /// Rust FFI is simpler because Rust can expose C-compatible functions directly.
-    ///
-    /// # Arguments
-    /// * `library` - Library name (e.g., "crypto")
-    /// * `function_name` - Rust function name
-    /// * `signature` - Function signature
-    /// * `library_path` - Path to compiled Rust library (.rlib/.dll)
-    pub fn register_rust_function(
-        &mut self,
-        library: &str,
-        function_name: &str,
-        signature: CSignature,
-        library_path: PathBuf,
-    ) -> Result<u16, VMError> {
-        // Check if function already registered
-        let key = (library.to_string(), function_name.to_string());
-        if let Some(&id) = self.functions.get(&key) {
-            return Ok(id);
-        }
-
-        // Reserve IDs 100-199 for Rust FFI
-        let native_id = if self.next_native_id >= 200 {
-            return Err(VMError::RuntimeError(
-                "Rust FFI ID space exhausted (100-199)".to_string(),
-            ));
-        } else {
-            self.next_native_id
-        };
-
-        self.next_native_id += 1;
-
-        // Create native shim for this Rust function
-        let shim = self.create_rust_shim(library, function_name, signature, library_path.clone());
-
-        self.native_interface.register(native_id, shim);
-        self.functions.insert(key, native_id);
-
-        log::info!(
-            "Registered Rust function: {}::{} (native_id={})",
-            library,
-            function_name,
-            native_id
-        );
-
-        Ok(native_id)
-    }
-
     /// Create a native shim for calling a C function
+    // TODO(Plan-212): Implement real C FFI — currently a placeholder
     fn create_c_shim(
         &self,
         _library: &str,
@@ -236,76 +185,19 @@ impl CFfiBridge {
         _library_path: PathBuf,
     ) -> impl Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static {
         let function_name = function_name.to_string();
-        let signature = signature.clone();
 
         move |task: &mut AutoTask, _vm: &AutoVM| {
-            // Pop arguments from AutoVM stack based on signature
-            let args = Self::pop_arguments(task, &signature.params)?;
-
-            // TODO: Call C function via FFI
-            // For now, just return a dummy value
+            // TODO(Plan-212): Call C function via libloading
+            let _ = &signature;
             log::warn!(
-                "C FFI not yet implemented for {} (would take {:?} args)",
+                "C FFI not yet implemented for {}",
                 function_name,
-                args.iter().map(|a| format!("{:?}", a)).collect::<Vec<_>>()
             );
 
-            // Push dummy return value
-            // In real implementation, this would be the C function's return value
-            // converted to AutoVM representation
             task.ram.push_i32(0);
 
             Ok(())
         }
-    }
-
-    /// Create a native shim for calling a Rust function
-    fn create_rust_shim(
-        &self,
-        _library: &str,
-        function_name: &str,
-        signature: CSignature,
-        _library_path: PathBuf,
-    ) -> impl Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static {
-        let function_name = function_name.to_string();
-        let signature = signature.clone();
-
-        move |task: &mut AutoTask, _vm: &AutoVM| {
-            // Pop arguments from AutoVM stack based on signature
-            let args = Self::pop_arguments(task, &signature.params)?;
-
-            // TODO: Call Rust function via FFI
-            // For now, just return a dummy value
-            log::warn!(
-                "Rust FFI not yet implemented for {} (would take {:?} args)",
-                function_name,
-                args.iter().map(|a| format!("{:?}", a)).collect::<Vec<_>>()
-            );
-
-            // Push dummy return value
-            task.ram.push_i32(0);
-
-            Ok(())
-        }
-    }
-
-    /// Pop arguments from AutoVM stack according to parameter types
-    fn pop_arguments(_task: &mut AutoTask, signature: &[CType]) -> Result<Vec<CValue>, VMError> {
-        let mut args = Vec::new();
-
-        // TODO: Actually pop from task.ram based on signature
-        // For now, return dummy values
-        for param_type in signature {
-            let value = match param_type {
-                CType::Int => CValue::Int(0),
-                CType::Float => CValue::Float(0.0),
-                CType::Str => CValue::Str("".to_string()),
-                CType::Void => CValue::Void,
-            };
-            args.push(value);
-        }
-
-        Ok(args)
     }
 
     /// Get the native ID for a registered function

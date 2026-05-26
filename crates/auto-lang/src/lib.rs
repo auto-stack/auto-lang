@@ -36,7 +36,7 @@ pub mod use_scanner;
 pub mod dep_scanner;
 // Plan 085 Phase 5: Module cache for incremental compilation
 pub mod atom_error;
-pub mod auto_cache;
+pub mod module_cache;
 pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub mod compile;
 pub mod config;

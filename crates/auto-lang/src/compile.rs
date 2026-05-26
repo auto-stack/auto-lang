@@ -20,7 +20,7 @@
 
 
 
-use crate::auto_cache::{AutoCache, ModuleCache};
+use crate::module_cache::{AutoCache, ModuleCache};
 
 use crate::database::Database;
 
@@ -41,6 +41,8 @@ use crate::symbols::SymbolLocation;
 use crate::use_scanner::{scan_use_statements, UseStatement};
 
 use crate::util::find_std_lib;
+
+use std::collections::HashMap;
 
 use auto_cache::{Sandbox, CrateMetadata, CrateSource};
 
@@ -102,6 +104,9 @@ pub struct CompileSession {
 
     declared_crates: HashSet<String>,
 
+    /// Features for declared crates (crate_name → feature list)
+    dep_features: HashMap<String, Vec<String>>,
+
     /// Plan 167: Tracks modules currently being loaded (for circular dependency detection)
 
     loading_stack: Vec<String>,
@@ -150,6 +155,8 @@ impl Clone for CompileSession {
 
             declared_crates: self.declared_crates.clone(),
 
+            dep_features: self.dep_features.clone(),
+
             loading_stack: Vec::new(),
 
             compiled_modules: Vec::new(),
@@ -194,6 +201,8 @@ impl CompileSession {
 
             declared_crates: HashSet::new(),
 
+            dep_features: HashMap::new(),
+
             loading_stack: Vec::new(),
 
             compiled_modules: Vec::new(),
@@ -224,7 +233,7 @@ impl CompileSession {
 
     /// Get cache statistics (Plan 085 Phase 5)
 
-    pub fn cache_stats(&self) -> crate::auto_cache::CacheStats {
+    pub fn cache_stats(&self) -> crate::module_cache::CacheStats {
 
         self.auto_cache.stats()
 
@@ -623,6 +632,15 @@ impl CompileSession {
 
             self.declared_crates.insert(dep.name.clone());
 
+            // Store features for compile_dep
+
+            if !dep.features.is_empty() {
+                self.dep_features.insert(
+                    dep.name.to_string(),
+                    dep.features.iter().map(|f| f.to_string()).collect(),
+                );
+            }
+
 
 
             // Log the dependency
@@ -725,13 +743,18 @@ impl CompileSession {
                                     param_types,
                                     return_type,
                                     body_override: None,
+                                    returns_result: false,
                                 }
                             }
                             None => FunctionShim::string_to_string(func),
                         }
                     }).collect();
 
-                    match sandbox.compile_dep(crate_name, &shims) {
+                    let crate_features = self.dep_features.get(crate_name)
+                        .map(|f| f.as_slice())
+                        .unwrap_or(&[]);
+
+                    match sandbox.compile_dep(crate_name, &shims, crate_features) {
                         Ok(path) => {
                             log::info!("Compiled dep {} -> {}", crate_name, path.display());
                         }

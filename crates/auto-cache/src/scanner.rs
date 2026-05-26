@@ -201,9 +201,12 @@ fn extract_fn_signature(
         }
     }
 
-    let return_type = match &sig.output {
-        syn::ReturnType::Default => ShimType::Void,
-        syn::ReturnType::Type(_, ref ty) => syn_type_to_shim(ty),
+    let (return_type, returns_result) = match &sig.output {
+        syn::ReturnType::Default => (ShimType::Void, false),
+        syn::ReturnType::Type(_, ref ty) => {
+            let is_result = is_result_type(ty);
+            (syn_type_to_shim(ty), is_result)
+        }
     };
 
     // Only add if not already present (first definition wins)
@@ -212,7 +215,20 @@ fn extract_fn_signature(
         param_types,
         return_type,
         body_override: None,
+        returns_result,
     });
+}
+
+/// Check if a syn type is `Result<T, E>`.
+fn is_result_type(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(type_path) => {
+            type_path.path.segments.last().map_or(false, |seg| {
+                seg.ident == "Result"
+            })
+        }
+        _ => false,
+    }
 }
 
 /// Map a syn type to ShimType.

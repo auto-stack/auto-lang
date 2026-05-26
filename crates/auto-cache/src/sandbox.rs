@@ -75,6 +75,8 @@ pub struct FunctionShim {
     pub return_type: ShimType,
     /// Override the entire function body (for complex shims)
     pub body_override: Option<String>,
+    /// Whether the original Rust function returns Result<T, E>
+    pub returns_result: bool,
 }
 
 impl FunctionShim {
@@ -84,6 +86,7 @@ impl FunctionShim {
             param_types: vec![ShimType::CString],
             return_type: ShimType::CString,
             body_override: None,
+            returns_result: false,
         }
     }
 
@@ -105,6 +108,7 @@ impl FunctionShim {
             param_types,
             return_type,
             body_override: None,
+            returns_result: false,
         }
     }
 
@@ -379,6 +383,63 @@ impl Sandbox {
         &mut self.registry
     }
 
+    /// Garbage-collect old cached crates and build artifacts.
+    /// Removes files older than `max_age` in both crates/ and builds/ directories.
+    /// Returns the number of files removed.
+    pub fn gc(&self, max_age: std::time::Duration) -> Result<usize> {
+        let now = std::time::SystemTime::now();
+        let mut removed = 0;
+
+        // Clean crates/ directory
+        removed += self.clean_dir(&self.crates_path, &now, &max_age)?;
+
+        // Clean builds/ directory
+        let builds_dir = self.root.join("builds");
+        if builds_dir.exists() {
+            removed += self.clean_dir(&builds_dir, &now, &max_age)?;
+        }
+
+        log::info!("Sandbox GC: removed {} old files", removed);
+        Ok(removed)
+    }
+
+    /// Remove files (not directories) older than max_age from a directory.
+    fn clean_dir(&self, dir: &Path, now: &std::time::SystemTime, max_age: &std::time::Duration) -> Result<usize> {
+        let mut removed = 0;
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return Ok(0),
+        };
+        for entry in entries {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                // Recurse into subdirectories (e.g., builds/wrapper_name/)
+                removed += self.clean_dir(&path, now, max_age)?;
+                // Remove empty directories
+                if std::fs::read_dir(&path).map(|mut d| d.next().is_none()).unwrap_or(false) {
+                    let _ = std::fs::remove_dir(&path);
+                }
+            } else if path.is_file() {
+                if let Ok(metadata) = std::fs::metadata(&path) {
+                    if let Ok(modified) = metadata.modified() {
+                        if let Ok(age) = now.duration_since(modified) {
+                            if age > *max_age {
+                                if std::fs::remove_file(&path).is_ok() {
+                                    removed += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(removed)
+    }
+
     /// Get the path for a specific crate's library
     pub fn crate_library_path(&self, name: &str, version: &str) -> PathBuf {
         let lib_name = self.library_name(name, version);
@@ -507,9 +568,11 @@ impl Sandbox {
         &self,
         crate_name: &str,
         shims: &[FunctionShim],
+        features: &[String],
     ) -> Result<PathBuf> {
         // 1. Try syn scan to upgrade shims with real signatures
-        let effective_shims = self.enrich_shims_with_syn_scan(crate_name, shims);
+        let mut effective_shims = self.enrich_shims_with_syn_scan(crate_name, shims);
+        self.apply_well_known_overrides(crate_name, &mut effective_shims);
 
         // 2. Check cache — include sig hash to invalidate when signatures change
         let wrapper_name = format!("{}_wrapper", crate_name.replace('-', "_"));
@@ -529,6 +592,12 @@ impl Sandbox {
         std::fs::create_dir_all(&src_dir)?;
 
         // Generate Cargo.toml
+        let dep_line = if features.is_empty() {
+            format!(r#"{crate_name} = "1""#)
+        } else {
+            let features_str = features.iter().map(|f| format!("\"{}\"", f)).collect::<Vec<_>>().join(", ");
+            format!(r#"{crate_name} = {{ version = "1", features = [{features_str}] }}"#)
+        };
         let cargo_toml = format!(
             r#"[package]
 name = "{wrapper_name}"
@@ -539,7 +608,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-{crate_name} = "1"
+{dep_line}
 "#
         );
         std::fs::write(build_dir.join("Cargo.toml"), cargo_toml)?;
@@ -554,60 +623,12 @@ crate-type = ["cdylib"]
             lib_rs.push_str("use std::os::raw::c_char;\n\n");
         }
 
+
         for shim in &effective_shims {
             // Use body override if provided
             if let Some(ref body) = shim.body_override {
                 lib_rs.push_str(body);
                 lib_rs.push_str("\n\n");
-                continue;
-            }
-
-            // Special-case serde_json from_str/to_string (backward compat)
-            if crate_name == "serde_json" && shim.name == "from_str" {
-                let sig_code = crate::sig_code::shim_to_sig_code(shim);
-                let exported = crate::sig_code::build_exported_name(&shim.name, &sig_code);
-                lib_rs.push_str(&format!(
-                    r#"#[no_mangle]
-pub extern "C" fn {exported}(input: *const c_char) -> *const c_char {{
-    let input_str = unsafe {{
-        if input.is_null() {{ "" }} else {{ CStr::from_ptr(input).to_str().unwrap_or("") }}
-    }};
-    let result: Result<{crate_name}::Value, _> = {crate_name}::from_str(input_str);
-    let output = match result {{
-        Ok(v) => v.to_string(),
-        Err(e) => format!("ERROR: {{}}", e),
-    }};
-    let c_result = CString::new(output).unwrap();
-    c_result.into_raw() as *const c_char
-}}
-
-"#
-                ));
-                continue;
-            }
-            if crate_name == "serde_json" && shim.name == "to_string" {
-                let sig_code = crate::sig_code::shim_to_sig_code(shim);
-                let exported = crate::sig_code::build_exported_name(&shim.name, &sig_code);
-                lib_rs.push_str(&format!(
-                    r#"#[no_mangle]
-pub extern "C" fn {exported}(input: *const c_char) -> *const c_char {{
-    let input_str = unsafe {{
-        if input.is_null() {{ "" }} else {{ CStr::from_ptr(input).to_str().unwrap_or("") }}
-    }};
-    let value: {crate_name}::Value = match {crate_name}::from_str(input_str) {{
-        Ok(v) => v,
-        Err(e) => {{
-            let err = format!("ERROR: {{}}", e);
-            return CString::new(err).unwrap().into_raw() as *const c_char;
-        }}
-    }};
-    let output = {crate_name}::to_string(&value).unwrap_or_default();
-    let c_result = CString::new(output).unwrap();
-    c_result.into_raw() as *const c_char
-}}
-
-"#
-                ));
                 continue;
             }
 
@@ -618,9 +639,8 @@ pub extern "C" fn {exported}(input: *const c_char) -> *const c_char {{
 
         // Generate sig manifest function at the end of lib.rs
         let manifest_json = crate::sig_code::build_manifest_json(&effective_shims);
-        let manifest_escaped = manifest_json.replace('\\', "\\\\").replace('"', "\\\"");
         lib_rs.push_str("#[no_mangle]\npub extern \"C\" fn auto__sig_manifest() -> *const c_char {\n");
-        lib_rs.push_str(&format!("    let s = CString::new(\"{}\").unwrap();\n", manifest_escaped));
+        lib_rs.push_str(&format!("    let s = CString::new(r#\"{}\"#).unwrap();\n", manifest_json));
         lib_rs.push_str("    s.into_raw() as *const c_char\n}\n");
 
         std::fs::write(src_dir.join("lib.rs"), lib_rs)?;
@@ -692,10 +712,16 @@ pub extern "C" fn {exported}(input: *const c_char) -> *const c_char {{
 
         // Build return handling
         let (ret_annotation, body_end) = match shim.return_type {
+            ShimType::CString if shim.returns_result => (
+                " -> *const std::os::raw::c_char".to_string(),
+                format!(
+                    "let _r = {crate_name}::{func}({call_args_str});\n    let _s = match _r {{ Ok(v) => v.to_string(), Err(e) => format!(\"ERROR: {{:?}}\", e) }};\n    CString::new(_s).unwrap().into_raw() as *const std::os::raw::c_char"
+                ),
+            ),
             ShimType::CString => (
                 " -> *const std::os::raw::c_char".to_string(),
                 format!(
-                    "let result = {crate_name}::{func}({call_args_str});\n    CString::new(result.to_string()).unwrap().into_raw() as *const std::os::raw::c_char"
+                    "let _r = {crate_name}::{func}({call_args_str});\n    CString::new(_r.to_string()).unwrap().into_raw() as *const std::os::raw::c_char"
                 ),
             ),
             ShimType::Void => (
@@ -760,6 +786,21 @@ pub extern "C" fn {exported}({params_str}){ret_annotation} {{
         enriched
     }
 
+    /// Apply well-known body overrides for functions that need custom FFI logic.
+    /// These are functions where the Rust API doesn't map directly to CString FFI.
+    fn apply_well_known_overrides(
+        &self,
+        crate_name: &str,
+        shims: &mut [FunctionShim],
+    ) {
+        for shim in shims.iter_mut() {
+            if let Some(body) = well_known_body_override(crate_name, &shim.name) {
+                log::debug!("well-known override: {}::{}", crate_name, shim.name);
+                shim.body_override = Some(body.to_string());
+            }
+        }
+    }
+
     /// Find the compiled cdylib in a target directory
     fn find_cdylib_in_dir(&self, dir: &Path, expected_name: &str) -> Option<PathBuf> {
         if !dir.exists() {
@@ -807,6 +848,36 @@ pub extern "C" fn {exported}({params_str}){ret_annotation} {{
 impl Default for Sandbox {
     fn default() -> Self {
         Self::new().expect("Failed to create sandbox")
+    }
+}
+
+/// Well-known body overrides for functions that need custom FFI logic.
+/// Returns a complete function body string (including #[no_mangle] and fn signature)
+/// if the function needs special handling beyond the generic shim.
+///
+/// These are functions where the Rust API doesn't map directly to CString FFI,
+/// e.g., serde_json::to_string takes &impl Serialize, not &str.
+fn well_known_body_override(crate_name: &str, func_name: &str) -> Option<&'static str> {
+    match (crate_name, func_name) {
+        ("serde_json", "to_string") => Some(r#""
+#[no_mangle]
+pub extern "C" fn auto_to_string_s_s(input: *const c_char) -> *const c_char {
+    let input_str = unsafe {
+        if input.is_null() { "" } else { CStr::from_ptr(input).to_str().unwrap_or("") }
+    };
+    let value: serde_json::Value = match serde_json::from_str(input_str) {
+        Ok(v) => v,
+        Err(e) => {
+            let err = format!("ERROR: {}", e);
+            return CString::new(err).unwrap().into_raw() as *const c_char;
+        }
+    };
+    let output = serde_json::to_string(&value).unwrap_or_default();
+    let c_result = CString::new(output).unwrap();
+    c_result.into_raw() as *const c_char
+}
+"#),
+        _ => None,
     }
 }
 

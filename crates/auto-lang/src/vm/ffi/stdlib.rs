@@ -1126,17 +1126,17 @@ pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // ============================================================================
 
 #[auto_macros::rust_fn("Math.abs", "auto.math.abs")]
-pub fn shim_math_abs(n: i64) -> i64 {
+pub fn shim_math_abs(n: i32) -> i32 {
     n.abs()
 }
 
 #[auto_macros::rust_fn("Math.min", "auto.math.min")]
-pub fn shim_math_min(a: i64, b: i64) -> i64 {
+pub fn shim_math_min(a: i32, b: i32) -> i32 {
     a.min(b)
 }
 
 #[auto_macros::rust_fn("Math.max", "auto.math.max")]
-pub fn shim_math_max(a: i64, b: i64) -> i64 {
+pub fn shim_math_max(a: i32, b: i32) -> i32 {
     a.max(b)
 }
 

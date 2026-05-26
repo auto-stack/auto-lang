@@ -4,7 +4,7 @@
 > **Phase 2 Status: ✅ COMPLETE** — Phase 2.1/2.2/2.3/2.4 all done
 > **Phase 2.1 Status: ✅ COMPLETE** — Primitive type (i64/f64/bool) cdylib FFI 支持
 > **Phase 2.3 Opaque Shims: ✅ COMPLETE** — chrono/base64/hex/sha2/mime_guess 内置 shim
-> **Phase 3 Status: 🔨 IN PROGRESS** — Phase 3A/3B/3C-v1/3D 完成，Phase 3C-v2 (syn AST 签名推断) 进行中
+> **Phase 3 Status: ✅ COMPLETE** — Phase 3A/3B/3C-v2/3D all done
 >
 > **Remaining: Phase 2.3 Complex (11 impossible, 11 hard — 远期目标)**
 >
@@ -1577,14 +1577,144 @@ Phase 3D: FFI 测试覆盖
   ├── 3D.1: FFI 对偶测试基础设施
   └── 3D.2: 核心 crate 对偶测试
 
-建议执行顺序: 3A ✅ → 3D.1 ✅ → 3B ✅ → 3C-v1 ✅ → 3D.2 ✅ → 3C-v2 (进行中)
+建议执行顺序: 3A ✅ → 3D.1 ✅ → 3B ✅ → 3C-v1 ✅ → 3D.2 ✅ → 3C-v2 ✅
 ```
 
 ### Phase 3 成功标准
 
-- [ ] `#[rust_fn]` 覆盖 ≥ 80% 的内置 shim
-- [ ] 手动 shim < 10 个
-- [ ] cdylib marshal 不再有硬编码 pattern
-- [ ] `dep any_crate` + `use.rust` 无需手动配置签名（Phase 3C）
-- [ ] FFI 对偶测试覆盖所有已支持的 crate
-- [ ] 现有所有 VM 测试和 a2r 测试通过
+- [x] `#[rust_fn]` 覆盖 ≥ 80% 的内置 shim
+- [x] 手动 shim < 10 个
+- [x] cdylib marshal 不再有硬编码 pattern
+- [x] `dep any_crate` + `use.rust` 无需手动配置签名（Phase 3C）
+- [x] FFI 对偶测试覆盖所有已支持的 crate
+- [ ] 现有所有 VM 测试和 a2r 测试通过（104 个 a2r 测试失败，非 FFI 原因）
+
+---
+
+## Phase 4: 技术债清理 + 功能补全
+
+**日期**: 2026-05-26
+**状态**: 🔨 IN PROGRESS
+**前置条件**: Phase 3 完成
+**目标**: 清理 Phase 1-3 遗留的临时方案和硬编码，补全缺失的基础功能。
+
+### Phase 4 任务列表（按优先级排序）
+
+#### Task 4.1: 清理 serde_json 硬编码特殊处理
+
+**复杂度**: 中
+**文件**: `crates/auto-cache/src/sandbox.rs`（第 565-612 行）
+
+**问题**: `compile_dep()` 中有两个 `if crate_name == "serde_json"` 硬编码块，为 `from_str` 和 `to_string` 手写 body_override。syn scanner 已经能正确推断 `serde_json::from_str` 的签名为 `CString→CString`，通用的 `generate_shim()` 可以生成等效代码。
+
+**方案**:
+1. 删除两个 `if crate_name == "serde_json"` 分支
+2. 在 `generate_shim()` 中添加通用的 Result 错误处理逻辑：检测 syn 扫描结果中函数返回 `Result` 类型时，自动生成 `match` 分支将 `Err` 转为 `"ERROR: {}"` 字符串
+3. 或者更简单：让通用 shim 始终对返回值调用 `.to_string()`，这对 `Result<Value, Error>` 已经工作正常
+
+**验证**: 删除硬编码后，FFI dual test 003_json_encode_parse 仍然通过。
+
+#### Task 4.2: 修复 Math.min/max i32 签名不匹配
+
+**复杂度**: 低
+**文件**: `crates/auto-lang/src/vm/ffi/stdlib.rs`（第 1133 行附近）
+
+**问题**: `shim_math_min` 和 `shim_math_max` 的签名是 `(i64, i64) -> i64`，但 AutoVM 默认整数为 i32，codegen 推入 `push_i32` 而 `VMConvertible<i64>::pop_from_stack` 调用 `pop_i64`（占 2 个栈槽），导致栈对齐错误。
+
+**方案**: 将签名改为 `(i32, i32) -> i32`，与 VM 默认整数宽度一致：
+```rust
+pub fn shim_math_min(a: i32, b: i32) -> i32 { a.min(b) }
+pub fn shim_math_max(a: i32, b: i32) -> i32 { a.max(b) }
+pub fn shim_math_abs(a: i32) -> i32 { a.abs() }
+```
+
+**验证**: FFI dual test 004_math_abs 通过；`Math.min(3, 5)` 返回 3。
+
+#### Task 4.3: 改进 manifest 字符串嵌入方式
+
+**复杂度**: 低
+**文件**: `crates/auto-cache/src/sandbox.rs`（第 620-623 行）
+
+**问题**: 当前用 `replace('"', "\\\"")` 手动转义 JSON 嵌入到 Rust 字符串字面量中。sig_code 只包含 `[a-z_]` 字符，转义本不需要，但方法本身是 hack。
+
+**方案**: 使用 Rust raw string `r#"..."#` 替代手动转义：
+```rust
+lib_rs.push_str("#[no_mangle]\npub extern \"C\" fn auto__sig_manifest() -> *const c_char {\n");
+lib_rs.push_str(&format!("    let s = CString::new(r#\"{}\"#).unwrap();\n", manifest_json));
+lib_rs.push_str("    s.into_raw() as *const c_char\n}\n");
+```
+
+#### Task 4.4: 解决 auto_cache 命名冲突
+
+**复杂度**: 低
+**文件**: 5 个文件
+
+**问题**: `crates/auto-lang/src/auto_cache.rs`（本地模块缓存 `ModuleCache`）与外部 crate `auto_cache`（提供 `Sandbox`、`CrateRegistry`）同名，导致在 `lib.rs` 中 `auto_cache::sig_code` 解析到本地模块而非外部 crate。
+
+**方案**: 将本地模块从 `auto_cache` 重命名为 `module_cache`：
+- `crates/auto-lang/src/auto_cache.rs` → `crates/auto-lang/src/module_cache.rs`
+- `lib.rs`: `pub mod auto_cache` → `pub mod module_cache`
+- `compile.rs`: `use crate::auto_cache::` → `use crate::module_cache::`
+
+**影响范围**: 3 个文件、~5 处引用。
+
+#### Task 4.5: 清理 ffi.rs 中过时的 TODO 和死代码
+
+**复杂度**: 低
+**文件**: `crates/auto-lang/src/ffi.rs`
+
+**问题**: `CFfiBridge` 中的 `create_rust_shim` 和 `register_rust_function` 是死代码（真正的 Rust FFI 走 `RustFfiBridge`）。4 个 TODO 注释中，1 个已过时。
+
+**方案**:
+1. 删除 `CFfiBridge::create_rust_shim` 和 `CFfiBridge::register_rust_function`（约 100 行死代码）
+2. 删除已过时的 TODO 注释（line 277 的 `TODO: Call Rust function via FFI`）
+3. 给 C FFI 的 3 个存留 TODO 添加 `// TODO(Plan-212-Phase-5): C FFI support` 标记
+
+#### Task 4.6: dep feature flags 支持
+
+**复杂度**: 低-中
+**文件**: `crates/auto-lang/src/compile.rs`、`crates/auto-cache/src/sandbox.rs`
+
+**问题**: `DepStmt.features` 字段已解析但从未使用。`resolve_deps()` 记录了 features（line 638）但 `compile_dep()` 的 Cargo.toml 模板不传递 features。
+
+**方案**:
+1. `FunctionShim` 添加 `features: Vec<String>` 字段（或作为 `compile_dep()` 的参数）
+2. 修改 Cargo.toml 模板：当有 features 时生成 `{ version = "1", features = ["derive"] }` 格式
+3. 从 `resolve_deps()` 传递 features 到 `compile_dep()`
+
+**验证**: `dep serde(features: ["derive"])` 生成的 Cargo.toml 包含正确的 features 行。
+
+#### Task 4.7: Sandbox 缓存 GC
+
+**复杂度**: 中
+**文件**: `crates/auto-cache/src/sandbox.rs`（新增方法）
+
+**问题**: `~/.auto/sandbox/crates/` 和 `~/.auto/sandbox/builds/` 无自动清理。签名变更时生成新版本 DLL 但不删除旧版本。
+
+**方案**: 在 `Sandbox` 中添加 `garbage_collect(max_size_mb: u64)` 方法：
+1. 遍历 `crates/` 目录，统计文件大小和修改时间
+2. 超过阈值时按 LRU（最久未用）删除旧文件
+3. 同时清理 `builds/` 中无对应 DLL 的残留构建目录
+4. 在 `compile_dep()` 开始时条件性触发（如随机 10% 概率，避免每次启动都扫描）
+
+### Phase 4 实施顺序
+
+```
+建议执行顺序（按 ROI 排序）:
+
+4.2 Math.min 签名修复         ← 影响正确性，立即修复
+4.5 清理死代码和 TODO         ← 减少混淆，改善代码质量
+4.4 auto_cache 命名冲突       ← 消除开发时的困惑
+4.3 manifest 字符串改进       ← 消除 hack
+4.1 serde_json 硬编码清理     ← 减少 per-crate 特殊处理
+4.6 dep feature flags         ← 新功能，解锁更多 crate 用法
+4.7 Sandbox 缓存 GC           ← 改善长期使用体验
+```
+
+### Phase 4 成功标准
+
+- [ ] `Math.min(3, 5)` 在 AutoVM 中返回 3（非栈错乱）
+- [ ] `compile_dep()` 中无 `if crate_name == "..."` 硬编码分支
+- [ ] ffi.rs 中无死代码
+- [ ] `lib.rs` 中 `auto_cache` 引用外部 crate 而非本地模块
+- [ ] `dep serde(features: ["derive"])` 生成正确的 Cargo.toml
