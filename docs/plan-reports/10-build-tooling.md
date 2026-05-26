@@ -111,7 +111,7 @@ Plan 186 replaces npm with bun across all Vue/web project tooling in auto-man. B
 - Plan 146: `docs/plans/146-ash-smartcmd-integration.md`
 - Plan 151: `docs/plans/151-tauri-ipc-mode.md`
 - Plan 186: `docs/plans/186-bun-package-manager.md`
-- [212-rust-ffi-e2e.md](../plans/212-rust-ffi-e2e.md)
+- [212-rust-ffi-e2e.md](../plans/old/212-rust-ffi-e2e.md)
 - [214-python-ffi-use-py.md](../plans/214-python-ffi-use-py.md)
 - [216-cffi-bindgen.md](../plans/216-cffi-bindgen.md)
 - [202-playground-design.md](../plans/old/202-playground-design.md)

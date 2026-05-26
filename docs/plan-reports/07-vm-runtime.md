@@ -156,7 +156,7 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [206-closure-hof-call-closure-api.md](../plans/206-closure-hof-call-closure-api.md)
 - [207-enum-multi-field-destruct-construction.md](../plans/207-enum-multi-field-destruct-construction.md)
 - [208-result-heap-object.md](../plans/208-result-heap-object.md)
-- [212-rust-ffi-e2e.md](../plans/212-rust-ffi-e2e.md)
+- [212-rust-ffi-e2e.md](../plans/old/212-rust-ffi-e2e.md)
 - [221-nanboxing-migration.md](../plans/221-nanboxing-migration.md)
 - [224-vm-async-runtime.md](../plans/old/224-vm-async-runtime.md)
 - [226-auto-byte-text-abt.md](../plans/old/226-auto-byte-text-abt.md)
