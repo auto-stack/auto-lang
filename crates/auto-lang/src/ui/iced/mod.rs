@@ -5,4 +5,4 @@
 
 mod renderer;
 
-pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_dynamic_iced};
+pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_dynamic_iced, last_input_text};

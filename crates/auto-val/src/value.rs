@@ -908,6 +908,12 @@ fn try_promote(a: Value, b: Value) -> (Value, Value) {
         // int => float
         (Value::Int(a), Value::Float(_)) => (Value::Float(*a as f64), b),
         (Value::Float(_), Value::Int(b)) => (a, Value::Float(*b as f64)),
+        // int => double
+        (Value::Int(a), Value::Double(_)) => (Value::Double(*a as f64), b),
+        (Value::Double(_), Value::Int(b)) => (a, Value::Double(*b as f64)),
+        // float => double
+        (Value::Float(a), Value::Double(_)) => (Value::Double(*a as f64), b),
+        (Value::Double(_), Value::Float(b)) => (a, Value::Double(*b as f64)),
         // byte => uint
         (Value::Byte(a), Value::Uint(b)) => (Value::Uint(*a as u32), Value::Uint(*b)),
         (Value::Uint(a), Value::Byte(b)) => (Value::Uint(*a), Value::Uint(*b as u32)),
@@ -923,6 +929,7 @@ pub fn add(a: Value, b: Value) -> Value {
         (Value::Int(left), Value::Int(right)) => Value::Int(left + right),
         (Value::Byte(left), Value::Byte(right)) => Value::Byte(left + right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left + right),
+        (Value::Double(left), Value::Double(right)) => Value::Double(left + right),
 
         (Value::I8(left), Value::I8(right)) => Value::I8(left + right),
         (Value::I8(left), Value::Int(right)) => Value::Int((left as i32) + right),
@@ -950,6 +957,7 @@ pub fn sub(a: Value, b: Value) -> Value {
     match (a, b) {
         (Value::Int(left), Value::Int(right)) => Value::Int(left - right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left - right),
+        (Value::Double(left), Value::Double(right)) => Value::Double(left - right),
         // TODO: what if diff is negative?
         (Value::Byte(left), Value::Byte(right)) => Value::Byte(left - right),
         _ => Value::Nil,
@@ -961,6 +969,7 @@ pub fn mul(a: Value, b: Value) -> Value {
     match (a, b) {
         (Value::Int(left), Value::Int(right)) => Value::Int(left * right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left * right),
+        (Value::Double(left), Value::Double(right)) => Value::Double(left * right),
         // TODO: what if product is bigger than u8?
         (Value::Byte(left), Value::Byte(right)) => Value::Byte(left * right),
         _ => Value::Nil,
@@ -976,6 +985,7 @@ pub fn div(a: Value, b: Value) -> Value {
     match (a, b) {
         (Value::Int(left), Value::Int(right)) => Value::Int(left / right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left / right),
+        (Value::Double(left), Value::Double(right)) => Value::Double(left / right),
         (Value::Byte(left), Value::Byte(right)) => Value::Byte(left / right),
         _ => Value::Nil,
     }

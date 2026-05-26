@@ -73,6 +73,12 @@ pub struct RustGenerator {
 
     /// Loop variables in scope (for generating correct references)
     loop_vars: Vec<String>,
+
+    /// Maps input event variant name to field name for input text parsing
+    input_fields: std::collections::HashMap<String, String>,
+
+    /// State var types for lookup during handler generation
+    state_types: std::collections::HashMap<String, String>,
 }
 
 impl RustGenerator {
@@ -84,12 +90,16 @@ impl RustGenerator {
             needs_imports: true,
             indent: 0,
             loop_vars: Vec::new(),
+            input_fields: std::collections::HashMap::new(),
+            state_types: std::collections::HashMap::new(),
         }
     }
 
     /// Reset state for new widget
     fn reset(&mut self) {
         self.message_variants.clear();
+        self.input_fields.clear();
+        self.state_types.clear();
         self.needs_imports = true;
         self.indent = 0;
         self.loop_vars.clear();
@@ -150,6 +160,11 @@ impl RustGenerator {
         self.current_widget = Some(widget.name.clone());
         self.reset();
 
+        // Populate state_types for handler generation
+        for state in &widget.state_vars {
+            self.state_types.insert(state.name.clone(), self.auto_type_to_rust(&state.type_info));
+        }
+
         // Collect all message variants
         for msg in &widget.messages {
             for variant in &msg.variants {
@@ -181,6 +196,9 @@ impl RustGenerator {
         // Constructor
         code.push_str(&self.generate_constructor(widget));
         code.push('\n');
+
+        // Pre-scan view tree for input event→field mappings
+        self.scan_input_fields(&widget.view_tree);
 
         // Component impl
         code.push_str(&self.generate_component_impl(widget));
@@ -298,6 +316,28 @@ impl RustGenerator {
                 let variant_name = self.extract_variant_name(pattern);
                 let body = self.generate_handler_body(payload);
                 code.push_str(&format!("            Msg::{} => {{\n", variant_name));
+
+                // If this event is from an input, prepend input text parsing
+                if let Some(field_name) = self.input_fields.get(&variant_name) {
+                    let rust_type = self.state_types.get(field_name).map(|s| s.as_str()).unwrap_or("f64");
+                    let parse_method = match rust_type {
+                        "i32" => "parse::<i32>()",
+                        "i64" => "parse::<i64>()",
+                        "u32" => "parse::<u32>()",
+                        "u64" => "parse::<u64>()",
+                        "f32" => "parse::<f32>()",
+                        "f64" => "parse::<f64>()",
+                        _ => "parse::<f64>()",
+                    };
+                    code.push_str(&format!(
+                        "                let _text = auto_lang::ui::iced::last_input_text();\n"
+                    ));
+                    code.push_str(&format!(
+                        "                self.{} = _text.{}.unwrap_or(self.{});\n",
+                        field_name, parse_method, field_name
+                    ));
+                }
+
                 code.push_str(&format!("                {}\n", body));
                 code.push_str("            }\n");
             }
@@ -353,6 +393,28 @@ impl RustGenerator {
         matches!(tag, "text" | "label" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "button")
     }
 
+    /// Pre-scan view tree to find input elements and record event→field mappings
+    fn scan_input_fields(&mut self, node: &AuraNode) {
+        match node {
+            AuraNode::Element { tag, props, events, children } => {
+                if tag == "input" {
+                    if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
+                        for (event, handler) in events {
+                            if matches!(event.as_str(), "oninput" | "onInput" | "onchange" | "onChange") {
+                                let variant = self.extract_variant_name(&handler.handler);
+                                self.input_fields.insert(variant, name.clone());
+                            }
+                        }
+                    }
+                }
+                for child in children {
+                    self.scan_input_fields(child);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Generate view tree code
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
@@ -373,6 +435,45 @@ impl RustGenerator {
                             return format!("View::text(\"{}\")", s);
                         }
                     }
+                }
+
+                // Special handling for input elements — View::input(placeholder).value(...).on_change(...)
+                if tag == "input" {
+                    let placeholder = props.get("placeholder")
+                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_default();
+
+                    let mut builder = format!("View::input(\"{}\")", placeholder);
+
+                    // Value binding: value: .field → .value(format!("{}", self.field))
+                    if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
+                        builder = format!("{}.value(format!(\"{{}}\", self.{}))", builder, name);
+                    } else if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("value") {
+                        builder = format!("{}.value(\"{}\".to_string())", builder, s);
+                    }
+
+                    // Other props (class, style, width — skip placeholder and value)
+                    for (key, value) in props {
+                        if key == "placeholder" || key == "value" { continue; }
+                        builder = self.add_prop_to_builder(&builder, key, value);
+                    }
+
+                    // Events: oninput/onchange → on_change (takes M, not a closure)
+                    for (event, handler) in events {
+                        match event.as_str() {
+                            "oninput" | "onInput" | "onchange" | "onChange" => {
+                                let variant = self.extract_variant_name(&handler.handler);
+                                builder = format!("{}.on_change(Msg::{})", builder, variant);
+                                // Record event→field mapping for handler generation
+                                if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
+                                    self.input_fields.insert(variant, name.clone());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    return format!("{}.build()", builder);
                 }
 
                 // For leaf tags (text, button) with a "text" prop, use it as the initial value.
@@ -694,7 +795,7 @@ impl RustGenerator {
             "onclick" | "onClick" | "on_click" => {
                 format!("{}.on_click({})", builder, handler_fn)
             }
-            "onchange" | "onChange" => {
+            "onchange" | "onChange" | "oninput" | "onInput" => {
                 format!("{}.on_change({})", builder, handler_fn)
             }
             _ => builder.to_string(),
@@ -775,8 +876,14 @@ impl RustGenerator {
             Expr::Int(n) => n.to_string(),
             Expr::U64(n) => n.to_string(),
             Expr::Uint(n) => n.to_string(),
-            Expr::Float(n, _) => format!("{}f32", n),
-            Expr::Double(n, _) => format!("{}f64", n),
+            Expr::Float(n, _) => {
+                let s = format!("{}", n);
+                if s.contains('.') { s } else { format!("{}.0", n) }
+            }
+            Expr::Double(n, _) => {
+                let s = format!("{}", n);
+                if s.contains('.') { s } else { format!("{}.0", n) }
+            }
             Expr::Bool(b) => b.to_string(),
             Expr::Ident(name) => {
                 let s = name.as_str();
@@ -826,7 +933,19 @@ impl RustGenerator {
                     Op::Ge => ">=",
                     _ => "?",
                 };
-                format!("{} {} {}", left_str, op_str, right_str)
+                let my_prec = bin_op_precedence(op);
+                // Wrap child in parens if its precedence is lower (needs grouping)
+                let left_wrapped = if bin_child_needs_parens(left, my_prec) {
+                    format!("({})", left_str)
+                } else {
+                    left_str
+                };
+                let right_wrapped = if bin_child_needs_parens(right, my_prec) {
+                    format!("({})", right_str)
+                } else {
+                    right_str
+                };
+                format!("{} {} {}", left_wrapped, op_str, right_wrapped)
             }
             Expr::Call(call) => {
                 let args: Vec<String> = call.args.args.iter()
@@ -869,7 +988,10 @@ impl RustGenerator {
         match expr {
             AuraExpr::Literal(s) => format!("\"{}\"", s),
             AuraExpr::Int(n) => n.to_string(),
-            AuraExpr::Float(n) => n.to_string(),
+            AuraExpr::Float(n) => {
+                let s = n.to_string();
+                if s.contains('.') { s } else { format!("{}.0", n) }
+            }
             AuraExpr::Bool(b) => b.to_string(),
             AuraExpr::StateRef(name) => format!("self.{}", name),
             AuraExpr::Binary { left, op, right } => {
@@ -975,6 +1097,33 @@ impl RustGenerator {
     }
 }
 
+/// Return precedence level for binary operators (higher = tighter binding)
+fn bin_op_precedence(op: &auto_val::Op) -> u8 {
+    use auto_val::Op;
+    match op {
+        Op::Mul | Op::Div | Op::Mod => 5,
+        Op::Add | Op::Sub => 4,
+        Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge => 3,
+        Op::And => 2,
+        Op::Or => 1,
+        _ => 0,
+    }
+}
+
+/// Check if a child expression needs parentheses when used inside a parent binary op
+fn bin_child_needs_parens(expr: &crate::ast::Expr, parent_prec: u8) -> bool {
+    use crate::ast::Expr;
+    use auto_val::Op;
+    if let Expr::Bina(_, child_op, _) = expr {
+        let child_prec = bin_op_precedence(child_op);
+        // Only needs parens for assignment-like ops or lower precedence
+        !matches!(child_op, Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq)
+            && child_prec < parent_prec
+    } else {
+        false
+    }
+}
+
 impl BackendGenerator for RustGenerator {
     fn generate(&mut self, widget: &AuraWidget) -> GenResult<String> {
         self.generate_rust(widget)
@@ -998,9 +1147,20 @@ impl Default for RustGenerator {
 /// always compiles.
 fn tailwind_to_methods(builder: &str, class_str: &str) -> String {
     let mut result = builder.to_string();
+    let mut residual_classes: Vec<&str> = Vec::new();
 
     for class in class_str.split_whitespace() {
-        result.push_str(&tailwind_single_to_method(class));
+        let method = tailwind_single_to_method(class);
+        if method.is_empty() {
+            residual_classes.push(class);
+        } else {
+            result.push_str(&method);
+        }
+    }
+
+    // Pass through unrecognized classes as a .style() call
+    if !residual_classes.is_empty() {
+        result.push_str(&format!(".style(\"{}\")", residual_classes.join(" ")));
     }
 
     result
@@ -1319,9 +1479,9 @@ mod tests {
     }
 
     #[test]
-    fn test_tailwind_to_methods_unknown_classes_skipped() {
+    fn test_tailwind_to_methods_unknown_classes_passthrough() {
         let result = tailwind_to_methods("View::col()", "p-4 unknown-class gap-2");
-        assert_eq!(result, "View::col().p(4).gap(2)");
+        assert_eq!(result, "View::col().p(4).gap(2).style(\"unknown-class\")");
     }
 
     #[test]

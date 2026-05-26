@@ -18,6 +18,19 @@ use crate::ui::interpreter::DynamicMessage;
 use crate::session::CompilerSession;
 use crate::parser::Parser;
 
+/// Thread-local storage for the last input text value.
+/// Used by the static code path to pass input text from on_input callbacks
+/// to Component::on() handlers, since the generic message type M cannot carry String.
+thread_local! {
+    static INPUT_TEXT: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
+}
+
+/// Retrieve the last input text value captured by an Input's on_input callback.
+/// Called from generated Component::on() handlers to read user input.
+pub fn last_input_text() -> String {
+    INPUT_TEXT.with(|t| t.borrow().clone())
+}
+
 /// Trait for converting abstract View<M> into Iced Element
 ///
 /// This trait enables rendering the abstract view tree using the Iced framework
@@ -438,7 +451,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
 
                 if let Some(msg) = on_change {
-                    input_widget.on_input(move |_| msg.clone()).into()
+                    input_widget.on_input(move |text| {
+                        INPUT_TEXT.with(|t| *t.borrow_mut() = text.to_string());
+                        msg.clone()
+                    }).into()
                 } else {
                     input_widget.into()
                 }
