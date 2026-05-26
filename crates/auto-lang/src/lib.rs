@@ -350,21 +350,23 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
 
         // Try to load the compiled wrapper library
         if let Some(sandbox) = session.sandbox() {
-            // Try v2 cache first (Phase 2.1 with signature-aware naming), then fallback to v1
+            // Try v3 cache first (Phase 3C-v2 with sig_code), then v2, then v1
             let sig_hash_len = functions.len();
-            let cache_version = format!("v2_{}", sig_hash_len);
-            let lib_path = sandbox.crate_library_path(&wrapper_name, &cache_version);
-            let lib_path = if lib_path.exists() {
-                lib_path
+            let v3_version = format!("v3_{}", sig_hash_len);
+            let v3_path = sandbox.crate_library_path(&wrapper_name, &v3_version);
+            let v2_version = format!("v2_{}", sig_hash_len);
+            let v2_path = sandbox.crate_library_path(&wrapper_name, &v2_version);
+            let v1_path = sandbox.crate_library_path(&wrapper_name, "1");
+
+            let (lib_path, cache_gen) = if v3_path.exists() {
+                (v3_path, 3)
+            } else if v2_path.exists() {
+                (v2_path, 2)
+            } else if v1_path.exists() {
+                (v1_path, 1)
             } else {
-                // Fallback to v1 cache (Phase 1 String→String only)
-                let fallback = sandbox.crate_library_path(&wrapper_name, "1");
-                if fallback.exists() {
-                    fallback
-                } else {
-                    log::info!("Wrapper library not found for {} at {} or {}", crate_name, lib_path.display(), fallback.display());
-                    continue;
-                }
+                log::info!("Wrapper library not found for {} (tried v3/v2/v1)", crate_name);
+                continue;
             };
 
             if let Err(e) = bridge.load_rust_library(&crate_name, &lib_path) {
@@ -372,27 +374,70 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                 continue;
             }
 
-            // Register each function with its correct signature
-            for func_name in functions {
-                let signature = crate::ffi::known_signature(&crate_name, func_name)
-                    .unwrap_or_else(|| {
-                        crate::ffi::RustSignature::new()
-                            .param(crate::ffi::RustType::String)
-                            .returns(crate::ffi::RustType::String)
-                    });
+            // Phase 3C-v2: Try to load sig manifest from the DLL
+            let manifest = if cache_gen >= 3 {
+                bridge.load_sig_manifest(&crate_name)
+            } else {
+                None
+            };
 
-                match bridge.register_function(&crate_name, func_name, signature.clone()) {
-                    Ok(native_id) => {
-                        log::info!("Registered Rust FFI: {}::{} (native_id={}, sig={:?})", crate_name, func_name, native_id, signature);
+            if let Some(ref manifest_json) = manifest {
+                // Parse manifest: {"func_name":"sig_code",...}
+                let parsed = crate::ffi::parse_manifest_json(manifest_json);
+                let sig_map: std::collections::HashMap<String, String> = parsed.into_iter().collect();
 
-                        // Also register in BIGVM_NATIVES so codegen can find it
-                        let qualified = format!("rust.{}", func_name);
-                        if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
-                            registry.register_with_id(&qualified, native_id);
+                for func_name in functions {
+                    let (exported_name, signature) = if let Some(sig_code) = sig_map.get(func_name) {
+                        let exported = crate::ffi::build_exported_name(func_name, sig_code);
+                        let sig = crate::ffi::sig_code_to_signature(sig_code);
+                        (exported, sig)
+                    } else {
+                        // Fallback to known_signature or default String→String
+                        let sig = crate::ffi::known_signature(crate_name, func_name)
+                            .unwrap_or_else(|| {
+                                crate::ffi::RustSignature::new()
+                                    .param(crate::ffi::RustType::String)
+                                    .returns(crate::ffi::RustType::String)
+                            });
+                        (format!("auto_{}", func_name), sig)
+                    };
+
+                    match bridge.register_function_with_export(crate_name, func_name, &exported_name, signature.clone()) {
+                        Ok(native_id) => {
+                            log::info!("Registered Rust FFI: {}::{} (native_id={}, sig={:?})", crate_name, func_name, native_id, signature);
+
+                            let qualified = format!("rust.{}", func_name);
+                            if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                                registry.register_with_id(&qualified, native_id);
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to register Rust function {}::{}: {:?}", crate_name, func_name, e);
                         }
                     }
-                    Err(e) => {
-                        log::warn!("Failed to register Rust function {}::{}: {:?}", crate_name, func_name, e);
+                }
+            } else {
+                // No manifest — use known_signature or default (legacy v1/v2 path)
+                for func_name in functions {
+                    let signature = crate::ffi::known_signature(crate_name, func_name)
+                        .unwrap_or_else(|| {
+                            crate::ffi::RustSignature::new()
+                                .param(crate::ffi::RustType::String)
+                                .returns(crate::ffi::RustType::String)
+                        });
+
+                    match bridge.register_function(crate_name, func_name, signature.clone()) {
+                        Ok(native_id) => {
+                            log::info!("Registered Rust FFI: {}::{} (native_id={}, sig={:?})", crate_name, func_name, native_id, signature);
+
+                            let qualified = format!("rust.{}", func_name);
+                            if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                                registry.register_with_id(&qualified, native_id);
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to register Rust function {}::{}: {:?}", crate_name, func_name, e);
+                        }
                     }
                 }
             }

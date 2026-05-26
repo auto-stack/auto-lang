@@ -723,6 +723,90 @@ impl RustFfiBridge {
         Ok(native_id)
     }
 
+    /// Register a function with a custom exported symbol name (Phase 3C-v2 sig_code).
+    ///
+    /// Like `register_function`, but uses `exported_name` instead of `auto_{function_name}`.
+    pub fn register_function_with_export(
+        &mut self,
+        crate_name: &str,
+        function_name: &str,
+        exported_name: &str,
+        signature: RustSignature,
+    ) -> Result<u16, VMError> {
+        let key = format!("{}::{}", crate_name, function_name);
+
+        // Check if already registered
+        if let Some(&id) = self.functions.get(&key) {
+            return Ok(id);
+        }
+
+        let library = self
+            .loaded_libraries
+            .get(crate_name)
+            .ok_or_else(|| VMError::FFI(format!("Crate {} not loaded", crate_name)))?;
+
+        let symbol_name = std::ffi::CString::new(exported_name.as_bytes())
+            .map_err(|e| VMError::FFI(format!("Invalid function name: {}", e)))?;
+
+        // Verify symbol exists
+        let _symbol_ptr: *const () = unsafe {
+            let symbol = library
+                .get::<*const ()>(symbol_name.as_bytes())
+                .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", exported_name, e)))?;
+            let raw = symbol.into_raw();
+            raw.as_raw_ptr() as *const ()
+        };
+
+        let native_id = self.next_native_id;
+        self.next_native_id += 1;
+
+        let shim = self.create_rust_shim_lazy(
+            Arc::clone(library),
+            crate_name,
+            function_name,
+            exported_name,
+            signature.clone(),
+        );
+        self.native_interface.register(native_id, shim);
+        self.functions.insert(key.clone(), native_id);
+
+        log::info!(
+            "Registered Rust function: {} (native_id={}, exported={})",
+            key, native_id, exported_name
+        );
+
+        Ok(native_id)
+    }
+
+    /// Try to load the sig manifest from a loaded crate.
+    ///
+    /// Calls `auto__sig_manifest()` which returns a JSON string
+    /// mapping function names to sig_code strings.
+    pub fn load_sig_manifest(&self, crate_name: &str) -> Option<String> {
+        let library = self.loaded_libraries.get(crate_name)?;
+
+        type ManifestFn = unsafe extern "C" fn() -> *const std::os::raw::c_char;
+
+        let symbol: Result<libloading::Symbol<ManifestFn>, _> = unsafe {
+            library.get(b"auto__sig_manifest\0")
+        };
+
+        match symbol {
+            Ok(sym) => unsafe {
+                let ptr = (*sym)();
+                if ptr.is_null() {
+                    return None;
+                }
+                let cstr = std::ffi::CStr::from_ptr(ptr);
+                let s = cstr.to_str().ok()?.to_string();
+                // Free the CString that was leaked by into_raw()
+                let _ = std::ffi::CString::from_raw(ptr as *mut std::os::raw::c_char);
+                Some(s)
+            },
+            Err(_) => None,
+        }
+    }
+
     /// Get the native ID for a registered function
     pub fn get_function_id(&self, crate_name: &str, function_name: &str) -> Option<u16> {
         let key = format!("{}::{}", crate_name, function_name);
@@ -893,6 +977,59 @@ impl Default for RustSignature {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Decode a sig_code string (from auto-cache's sig_code module) into a RustSignature.
+///
+/// sig_code format: "{params}_{ret}" where chars are:
+///   v=Void, i=i32(Int), l=i64(Long), f=f64(Double), b=bool(Bool), s=String, p=Pointer
+///
+/// Examples: "s_s" → (String)→String, "_l" → ()→Long, "ll_l" → (Long,Long)→Long
+pub fn sig_code_to_signature(sig_code: &str) -> RustSignature {
+    let (params_str, ret_str) = sig_code.split_once('_').unwrap_or(("", "s"));
+    let params: Vec<RustType> = params_str.chars().map(sig_char_to_rust_type).collect();
+    let ret = sig_char_to_rust_type(ret_str.chars().next().unwrap_or('s'));
+    RustSignature { params, returns: ret }
+}
+
+fn sig_char_to_rust_type(c: char) -> RustType {
+    match c {
+        'v' => RustType::Void,
+        'i' => RustType::Int,
+        'l' => RustType::Long,
+        'f' => RustType::Double,
+        'b' => RustType::Bool,
+        's' => RustType::String,
+        'p' => RustType::Pointer,
+        _ => RustType::String,
+    }
+}
+
+/// Build the exported function name from func_name and sig_code.
+/// ("from_str", "s_s") → "auto_from_str_s_s"
+pub fn build_exported_name(func_name: &str, sig_code: &str) -> String {
+    format!("auto_{}_{}", func_name, sig_code)
+}
+
+/// Parse manifest JSON (flat object of string:string pairs) into a vec of (key, value).
+/// Input: {"from_str":"s_s","to_string":"s_s"}
+pub fn parse_manifest_json(json: &str) -> Vec<(String, String)> {
+    let trimmed = json.trim().trim_start_matches('{').trim_end_matches('}');
+    if trimmed.is_empty() {
+        return vec![];
+    }
+    let mut result = vec![];
+    for entry in trimmed.split(',') {
+        let entry = entry.trim();
+        if let Some((key, value)) = entry.split_once(':') {
+            let key = key.trim().trim_matches('"').to_string();
+            let value = value.trim().trim_matches('"').to_string();
+            if !key.is_empty() {
+                result.push((key, value));
+            }
+        }
+    }
+    result
 }
 
 /// Rust type for FFI marshaling

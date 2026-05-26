@@ -4,7 +4,7 @@
 > **Phase 2 Status: ✅ COMPLETE** — Phase 2.1/2.2/2.3/2.4 all done
 > **Phase 2.1 Status: ✅ COMPLETE** — Primitive type (i64/f64/bool) cdylib FFI 支持
 > **Phase 2.3 Opaque Shims: ✅ COMPLETE** — chrono/base64/hex/sha2/mime_guess 内置 shim
-> **Phase 3 Status: 📋 PLANNED** — 无缝 FFI：自动 shim + 自动注册 + 自动签名推断
+> **Phase 3 Status: 🔨 IN PROGRESS** — Phase 3A/3B/3C-v1/3D 完成，Phase 3C-v2 (syn AST 签名推断) 进行中
 >
 > **Remaining: Phase 2.3 Complex (11 impossible, 11 hard — 远期目标)**
 >
@@ -1432,54 +1432,84 @@ fn create_rust_shim_lazy(&self, signature: RustSignature) -> impl Fn(...) {
 
 **目标**: `dep any_crate` + `use.rust any_crate::any_func` 零配置可用。
 
-#### 当前问题
+**状态**:
+- Phase 3C-v1 (硬编码表扩展): ✅ COMPLETE — `known_signature()` 从 2 条扩展到 15 条，覆盖 7 个 crate
+- Phase 3C-v2 (syn AST 自动推断): 📋 PLANNED — 用 syn 解析替代硬编码表
 
-`known_signatures()` 是手动维护的函数签名表。不在表中的函数无法通过 cdylib 调用。
+#### Phase 3C-v2: syn AST 签名自动推断（方案 Y）
 
-#### 方案：rustdoc JSON 自动解析
+**方案 Y**: 编译时用 `syn` AST 扫描 `~/.cargo/registry/src/` 下的 crate 源码，提取 `pub fn` 签名。签名信息编码在 wrapper cdylib 的导出函数名中（如 `auto_from_str_s_s`），运行时从函数名解码，无需额外缓存文件或 `known_signature()` 查询。
 
-```auto
-// 用户代码
-dep serde_json
-use.rust serde_json::{from_str, to_string}
+##### 函数名编码规则（sig_code）
 
-// Auto 自动执行:
-// 1. cargo doc --output-format json (或从 docs.rs 缓存下载)
-// 2. 解析 rustdoc JSON，提取 from_str, to_string 的签名
-// 3. 自动生成 wrapper crate 中正确的 shim 函数
-// 4. 编译 cdylib + 注册
+导出函数名格式：`auto_{func_name}_{sig_code}`
+
+sig_code 每个字符代表一个类型：
+- `v` = Void, `i` = i32(Int), `l` = i64(Long), `f` = f64(Double)
+- `b` = bool(Bool), `s` = String(CString), `p` = Pointer
+- `_` 分隔参数和返回值
+
+示例：
+- `auto_random__l` — () → i64
+- `auto_from_str_s_s` — (String) → String
+- `auto_gen_range_ll_l` — (i64, i64) → i64
+- `auto_year_s_i` — (String) → i32
+
+##### 编译时流程
+
+```
+dep serde_json + use.rust serde_json::{from_str, to_string}
+  ↓
+compile.rs: resolve_deps() 收集 imports
+  ↓
+sandbox.rs: compile_dep()
+  ↓ [NEW] syn_scan("serde_json") → 扫描 ~/.cargo/registry/src/serde_json-*/src/lib.rs
+  ↓ 提取 pub fn from_str(s: &str) -> Result<Value> → 签名 (String) → String
+  ↓ [NEW] 生成 auto_from_str_s_s 而不是 auto_from_str
+  ↓ 编译 wrapper → .dll
 ```
 
-**实现步骤**:
+##### 运行时流程
 
-1. **rustdoc JSON 解析器**: 解析 crate 的 rustdoc JSON 输出，提取公开函数签名
-   - 输入: `~/.auto/sandbox/docs/{crate}.json`（或从 docs.rs 下载）
-   - 输出: `Vec<FunctionSignature>` — 函数名、参数类型、返回类型
+```
+init_rust_ffi()
+  ↓ 加载 DLL，调用 auto__sig_manifest() 获取签名表
+  ↓ {"from_str":"s_s","to_string":"s_s"}
+  ↓ 解码 sig_code → RustSignature
+  ↓ register_function("serde_json", "from_str", decoded_signature)
+  ↓ 不再需要 known_signature() 查询
+```
 
-2. **Wrapper crate 智能生成**: 根据实际签名生成 wrapper，不再只用 `string→string` 模板
-   ```rust
-   // 从 rustdoc 得到签名: from_str(s: &str) -> Result<Value>
-   // 生成 wrapper:
-   #[no_mangle]
-   pub extern "C" fn auto_from_str(ptr: *const c_char) -> *const c_char {
-       let input = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("");
-       match serde_json::from_str(input) {
-           Ok(v) => /* serialize result */,
-           Err(e) => /* serialize error */,
-       }
-   }
-   ```
+注：由于 `libloading` 不支持枚举导出符号，采用 manifest 方案——在 wrapper `lib.rs` 末尾生成 `auto__sig_manifest()` 函数，返回 JSON 签名表。运行时加载后先调用此函数获取签名。
 
-3. **签名缓存**: 首次解析后缓存到 `~/.auto/sandbox/signatures/{crate}.json`，避免重复解析
+##### 实施步骤
 
-4. **Fallback**: rustdoc 不可用时，fallback 到 `known_signatures` 表或 `string→string` 默认签名
+| Step | 内容 | 文件 |
+|------|------|------|
+| 1 | 添加 `syn` 依赖 | `crates/auto-cache/Cargo.toml` |
+| 2 | 创建 `sig_code.rs` — 编码/解码 + manifest 解析 | 新建 `crates/auto-cache/src/sig_code.rs` |
+| 3 | 创建 `scanner.rs` — syn 源码扫描器 | 新建 `crates/auto-cache/src/scanner.rs` |
+| 4 | 修改 `compile_dep()` 集成 scanner + sig_code | `crates/auto-cache/src/sandbox.rs` |
+| 5 | 修改 `init_rust_ffi()` 使用 manifest 解码 | `crates/auto-lang/src/lib.rs` |
+| 6 | 保留 `known_signature()` 作为 fallback | `crates/auto-lang/src/ffi.rs`（不改） |
 
-**文件**: 新增 `crates/auto-lang/src/ffi/rustdoc.rs`，修改 `crates/auto-cache/src/sandbox.rs`
+##### syn 类型映射
 
-**验收标准**:
+| Rust 类型 | ShimType | sig_code |
+|-----------|----------|----------|
+| &str / String / &String | CString | `s` |
+| i32 / u32 | I32 | `i` |
+| i64 / u64 | I64 | `l` |
+| f64 | F64 | `f` |
+| bool | Bool | `b` |
+| () | Void | `v` |
+| 其他（保守回退） | CString | `s` |
+
+##### 验收标准
 - `dep url` + `use.rust url::Url::{parse}` 无需手动配置签名即可调用
-- 签名缓存生效（第二次运行不重新解析）
-- docs.rs 网络不可用时 graceful fallback
+- syn 扫描失败时 graceful fallback 到 `known_signature()` 硬编码表
+- 签名编码在函数名中，无需额外缓存文件
+- 现有 12 个 FFI dual-test 全部通过
 
 ### Phase 3D: FFI 测试覆盖
 
@@ -1535,18 +1565,19 @@ Phase 3B: 动态 Marshal 自动化
   ├── 3B.2: 通用 cdylib 调用层
   └── 3B.3: 清理 40+ pattern match
 
-Phase 3C: 签名自动推断
-  ├── 3C.1: rustdoc JSON 解析器
-  ├── 3C.2: Wrapper crate 智能生成
-  ├── 3C.3: 签名缓存机制
-  └── 3C.4: Fallback 策略
+Phase 3C: 签名自动推断（方案 Y: syn AST + sig_code）
+  ├── 3C-v1: 扩展 known_signature() 硬编码表（✅ 已完成）
+  ├── 3C-v2.1: 添加 syn 依赖 + sig_code 编解码
+  ├── 3C-v2.2: syn 源码扫描器 (scanner.rs)
+  ├── 3C-v2.3: compile_dep() 集成 scanner + sig_code
+  ├── 3C-v2.4: init_rust_ffi() 使用 manifest 解码
+  └── 3C-v2.5: 验证 + fallback 测试
 
 Phase 3D: FFI 测试覆盖
   ├── 3D.1: FFI 对偶测试基础设施
   └── 3D.2: 核心 crate 对偶测试
 
-建议执行顺序: 3A → 3D.1 → 3B → 3D.2 → 3C
-（3A ROI 最高，3C 最复杂可最后做）
+建议执行顺序: 3A ✅ → 3D.1 ✅ → 3B ✅ → 3C-v1 ✅ → 3D.2 ✅ → 3C-v2 (进行中)
 ```
 
 ### Phase 3 成功标准

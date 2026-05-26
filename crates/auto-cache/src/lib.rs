@@ -22,6 +22,10 @@
 pub mod sandbox;
 pub mod registry;
 
+// Plan 212 Phase 3C-v2: sig_code encoding for FFI signatures
+pub mod sig_code;
+pub mod scanner;
+
 // Re-export main types for convenience
 pub use sandbox::{CrateMetadata, CrateSource, Sandbox, SandboxError};
 pub use registry::{CrateRegistry, RegistryError};

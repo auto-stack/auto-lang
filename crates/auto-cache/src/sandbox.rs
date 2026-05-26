@@ -508,10 +508,13 @@ impl Sandbox {
         crate_name: &str,
         shims: &[FunctionShim],
     ) -> Result<PathBuf> {
-        // 1. Check cache — include sig hash to invalidate when signatures change
+        // 1. Try syn scan to upgrade shims with real signatures
+        let effective_shims = self.enrich_shims_with_syn_scan(crate_name, shims);
+
+        // 2. Check cache — include sig hash to invalidate when signatures change
         let wrapper_name = format!("{}_wrapper", crate_name.replace('-', "_"));
-        let sig_hash: String = shims.iter().map(|s| s.sig_str()).collect::<Vec<_>>().join(",");
-        let cache_version = format!("v2_{}", sig_hash.len());
+        let sig_hash: String = effective_shims.iter().map(|s| s.sig_str()).collect::<Vec<_>>().join(",");
+        let cache_version = format!("v3_{}", sig_hash.len());
         let output_path = self.crates_path.join(self.library_name(&wrapper_name, &cache_version));
 
         if output_path.exists() {
@@ -519,7 +522,7 @@ impl Sandbox {
             return Ok(output_path);
         }
 
-        // 2. Generate wrapper crate
+        // 3. Generate wrapper crate
         let build_dir = self.root.join("builds").join(&wrapper_name);
         std::fs::create_dir_all(&build_dir)?;
         let src_dir = build_dir.join("src");
@@ -543,7 +546,7 @@ crate-type = ["cdylib"]
 
         // Generate lib.rs with #[no_mangle] shims
         let mut lib_rs = String::new();
-        let needs_cstring = shims.iter().any(|s| {
+        let needs_cstring = effective_shims.iter().any(|s| {
             s.param_types.contains(&ShimType::CString) || s.return_type == ShimType::CString
         });
         if needs_cstring {
@@ -551,7 +554,7 @@ crate-type = ["cdylib"]
             lib_rs.push_str("use std::os::raw::c_char;\n\n");
         }
 
-        for shim in shims {
+        for shim in &effective_shims {
             // Use body override if provided
             if let Some(ref body) = shim.body_override {
                 lib_rs.push_str(body);
@@ -561,9 +564,11 @@ crate-type = ["cdylib"]
 
             // Special-case serde_json from_str/to_string (backward compat)
             if crate_name == "serde_json" && shim.name == "from_str" {
+                let sig_code = crate::sig_code::shim_to_sig_code(shim);
+                let exported = crate::sig_code::build_exported_name(&shim.name, &sig_code);
                 lib_rs.push_str(&format!(
                     r#"#[no_mangle]
-pub extern "C" fn auto_from_str(input: *const c_char) -> *const c_char {{
+pub extern "C" fn {exported}(input: *const c_char) -> *const c_char {{
     let input_str = unsafe {{
         if input.is_null() {{ "" }} else {{ CStr::from_ptr(input).to_str().unwrap_or("") }}
     }};
@@ -581,9 +586,11 @@ pub extern "C" fn auto_from_str(input: *const c_char) -> *const c_char {{
                 continue;
             }
             if crate_name == "serde_json" && shim.name == "to_string" {
+                let sig_code = crate::sig_code::shim_to_sig_code(shim);
+                let exported = crate::sig_code::build_exported_name(&shim.name, &sig_code);
                 lib_rs.push_str(&format!(
                     r#"#[no_mangle]
-pub extern "C" fn auto_to_string(input: *const c_char) -> *const c_char {{
+pub extern "C" fn {exported}(input: *const c_char) -> *const c_char {{
     let input_str = unsafe {{
         if input.is_null() {{ "" }} else {{ CStr::from_ptr(input).to_str().unwrap_or("") }}
     }};
@@ -604,10 +611,17 @@ pub extern "C" fn auto_to_string(input: *const c_char) -> *const c_char {{
                 continue;
             }
 
-            // Generate shim based on signature
+            // Generate shim based on signature (with sig_code in exported name)
             lib_rs.push_str(&self.generate_shim(crate_name, shim));
             lib_rs.push_str("\n");
         }
+
+        // Generate sig manifest function at the end of lib.rs
+        let manifest_json = crate::sig_code::build_manifest_json(&effective_shims);
+        let manifest_escaped = manifest_json.replace('\\', "\\\\").replace('"', "\\\"");
+        lib_rs.push_str("#[no_mangle]\npub extern \"C\" fn auto__sig_manifest() -> *const c_char {\n");
+        lib_rs.push_str(&format!("    let s = CString::new(\"{}\").unwrap();\n", manifest_escaped));
+        lib_rs.push_str("    s.into_raw() as *const c_char\n}\n");
 
         std::fs::write(src_dir.join("lib.rs"), lib_rs)?;
 
@@ -649,9 +663,12 @@ pub extern "C" fn auto_to_string(input: *const c_char) -> *const c_char {{
     }
 
     /// Generate a single wrapper shim function based on the FunctionShim descriptor.
+    /// Exported name includes sig_code: auto_{func}_{sig_code}
     fn generate_shim(&self, crate_name: &str, shim: &FunctionShim) -> String {
         let func = &shim.name;
         let ret_type = shim.return_type.c_type_name();
+        let sig_code = crate::sig_code::shim_to_sig_code(shim);
+        let exported = crate::sig_code::build_exported_name(func, &sig_code);
 
         // Build parameter list
         let params: Vec<String> = shim.param_types.iter().enumerate().map(|(i, t)| {
@@ -693,11 +710,54 @@ pub extern "C" fn auto_to_string(input: *const c_char) -> *const c_char {{
 
         format!(
             r#"#[no_mangle]
-pub extern "C" fn auto_{func}({params_str}){ret_annotation} {{
+pub extern "C" fn {exported}({params_str}){ret_annotation} {{
     {body_end}
 }}
 "#
         )
+    }
+
+    /// Try to enrich shims with syn-scanned signatures from the crate source.
+    /// Falls back to the original shims if scanning fails.
+    fn enrich_shims_with_syn_scan(
+        &self,
+        crate_name: &str,
+        shims: &[FunctionShim],
+    ) -> Vec<FunctionShim> {
+        // Try syn scan
+        let scanned = match crate::scanner::scan_crate_signatures(crate_name) {
+            Ok(sigs) => sigs,
+            Err(e) => {
+                log::info!("syn scan skipped for {}: {}", crate_name, e);
+                return shims.to_vec();
+            }
+        };
+
+        if scanned.is_empty() {
+            return shims.to_vec();
+        }
+
+        // Merge: use scanned sigs where available, keep original for missing
+        let enriched: Vec<FunctionShim> = shims
+            .iter()
+            .map(|s| {
+                match scanned.get(&s.name) {
+                    Some(scanned_shim) => {
+                        log::debug!(
+                            "syn: {}::{} upgraded from {} to {}",
+                            crate_name,
+                            s.name,
+                            s.sig_str(),
+                            scanned_shim.sig_str()
+                        );
+                        scanned_shim.clone()
+                    }
+                    None => s.clone(),
+                }
+            })
+            .collect();
+
+        enriched
     }
 
     /// Find the compiled cdylib in a target directory
