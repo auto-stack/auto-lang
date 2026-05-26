@@ -280,33 +280,36 @@ pub const NATIVE_RUST_STDLIB_DISPATCH: u16 = 3000;
 // ============================================================================
 
 /// Read text content from a file
-#[auto_macros::rust_fn("File.read_text")]
-pub fn shim_file_read_text(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| format!("File.read_text failed: {} - {}", path, e))
+#[auto_macros::rust_fn("File.read_text", "auto.file.read_text", "auto.fs.read_text", "auto.fs.read")]
+pub fn shim_file_read_text(path: String) -> String {
+    fs::read_to_string(&path).unwrap_or_default()
 }
 
 /// Write text content to a file
-#[auto_macros::rust_fn("File.write_text")]
-pub fn shim_file_write_text(path: String, content: String) -> Result<(), String> {
-    fs::write(&path, &content).map_err(|e| format!("File.write_text failed: {} - {}", path, e))
+#[auto_macros::rust_fn("File.write_text", "auto.file.write_text", "auto.fs.write_text", "auto.fs.write")]
+pub fn shim_file_write_text(path: String, content: String) -> i32 {
+    let _ = fs::write(&path, &content);
+    0
 }
 
 /// Check if a file exists
-#[auto_macros::rust_fn("File.exists")]
-pub fn shim_file_exists(path: String) -> bool {
-    fs::metadata(&path).is_ok()
+#[auto_macros::rust_fn("File.exists", "auto.file.exists", "auto.fs.exists")]
+pub fn shim_file_exists(path: String) -> i32 {
+    if fs::metadata(&path).is_ok() { 1 } else { 0 }
 }
 
 /// Delete a file
-#[auto_macros::rust_fn("File.delete")]
-pub fn shim_file_delete(path: String) -> Result<(), String> {
-    fs::remove_file(&path).map_err(|e| format!("File.delete failed: {} - {}", path, e))
+#[auto_macros::rust_fn("File.delete", "auto.fs.delete")]
+pub fn shim_file_delete(path: String) -> i32 {
+    let _ = fs::remove_file(&path);
+    0
 }
 
 /// Create a directory
-#[auto_macros::rust_fn("File.create_dir")]
-pub fn shim_file_create_dir(path: String) -> Result<(), String> {
-    fs::create_dir_all(&path).map_err(|e| format!("File.create_dir failed: {} - {}", path, e))
+#[auto_macros::rust_fn("File.create_dir", "auto.fs.create_dir")]
+pub fn shim_file_create_dir(path: String) -> i32 {
+    let _ = fs::create_dir_all(&path);
+    0
 }
 
 /// Remove an empty directory
@@ -360,19 +363,11 @@ pub fn shim_file_is_dir(path: String) -> bool {
 }
 
 /// Walk a directory tree, returning all file paths as a JSON array.
-///
-/// Uses walkdir for recursive directory traversal. Returns a JSON string
-/// like `["file1.txt", "dir/file2.rs", ...]`.
-pub fn shim_file_walk(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, _vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+#[auto_macros::rust_fn("auto.file.walk")]
+pub fn shim_file_walk(path: String) -> Result<String, String> {
     let root = Path::new(&path);
     if !root.exists() {
-        return Err(VMError::RuntimeError(format!(
-            "File.walk failed: path not found: {}",
-            path
-        )));
+        return Err(format!("File.walk failed: path not found: {}", path));
     }
 
     let mut files: Vec<String> = Vec::new();
@@ -388,11 +383,7 @@ pub fn shim_file_walk(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
         }
     }
 
-    let json = serde_json::to_string(&files)
-        .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
-
-    json.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    Ok(())
+    serde_json::to_string(&files).map_err(|e| format!("JSON serialization failed: {}", e))
 }
 
 /// Append text content to a file (creates if doesn't exist)
@@ -417,35 +408,23 @@ pub fn shim_file_append_text(path: String, content: String) -> Result<(), String
 }
 
 /// Read file contents as an array of lines (JSON string array)
-pub fn shim_file_read_lines(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, _vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+#[auto_macros::rust_fn("auto.file.read_lines")]
+pub fn shim_file_read_lines(path: String) -> Result<String, String> {
     let content = fs::read_to_string(&path)
-        .map_err(|e| VMError::RuntimeError(format!("File.read_lines failed: {} - {}", path, e)))?;
-
+        .map_err(|e| format!("File.read_lines failed: {} - {}", path, e))?;
     let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
-
-    let json = serde_json::to_string(&lines)
-        .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
-
-    json.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    Ok(())
+    serde_json::to_string(&lines).map_err(|e| format!("JSON serialization failed: {}", e))
 }
 
 /// Check if a file contains null bytes (binary detection). Returns 1 if binary, 0 if text.
-pub fn shim_fs_is_binary(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, _vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let bytes = fs::read(&path)
-        .map_err(|e| VMError::RuntimeError(format!("fs.is_binary failed: {} - {}", path, e)))?;
-
+#[auto_macros::rust_fn("auto.fs.is_binary")]
+pub fn shim_fs_is_binary(path: String) -> i32 {
+    let bytes = match fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
     let check_len = bytes.len().min(8192);
-    let is_binary = bytes[..check_len].contains(&0);
-    let result: i64 = if is_binary { 1 } else { 0 };
-    result.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    Ok(())
+    if bytes[..check_len].contains(&0) { 1 } else { 0 }
 }
 
 // ============================================================================
@@ -1146,33 +1125,19 @@ pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Math Functions (ID 1700-1799)
 // ============================================================================
 
-/// Absolute value of a number
-///
-/// Stack: n (i64) -> abs(n) (i64)
-pub fn shim_math_abs(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let n = task.ram.pop_i64();
-    task.ram.push_i64(n.abs());
-    Ok(())
+#[auto_macros::rust_fn("Math.abs", "auto.math.abs")]
+pub fn shim_math_abs(n: i64) -> i64 {
+    n.abs()
 }
 
-/// Minimum of two numbers
-///
-/// Stack: a (i64), b (i64) -> min(a, b) (i64)
-pub fn shim_math_min(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let b = task.ram.pop_i64();
-    let a = task.ram.pop_i64();
-    task.ram.push_i64(a.min(b));
-    Ok(())
+#[auto_macros::rust_fn("Math.min", "auto.math.min")]
+pub fn shim_math_min(a: i64, b: i64) -> i64 {
+    a.min(b)
 }
 
-/// Maximum of two numbers
-///
-/// Stack: a (i64), b (i64) -> max(a, b) (i64)
-pub fn shim_math_max(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let b = task.ram.pop_i64();
-    let a = task.ram.pop_i64();
-    task.ram.push_i64(a.max(b));
-    Ok(())
+#[auto_macros::rust_fn("Math.max", "auto.math.max")]
+pub fn shim_math_max(a: i64, b: i64) -> i64 {
+    a.max(b)
 }
 
 /// Square root of a number
@@ -3632,51 +3597,6 @@ pub fn shim_ctx_reply(value: i64) -> Result<(), String> {
 // Essential File System VM Shims
 // ============================================================================
 
-fn shim_file_read_text_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    match fs::read_to_string(&path) {
-        Ok(content) => content.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string())),
-        Err(_) => {
-            // Return empty string on failure (matches .at convention: content == "")
-            let empty = String::new();
-            empty.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
-        }
-    }
-}
-
-fn shim_file_write_text_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let content: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    fs::write(&path, &content)
-        .map_err(|e| VMError::RuntimeError(format!("write_text failed: {} - {}", path, e)))?;
-    0i64.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
-}
-
-fn shim_file_exists_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let exists = fs::metadata(&path).is_ok();
-    let result: i64 = if exists { 1 } else { 0 };
-    result.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
-}
-
-fn shim_fs_create_dir_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let _ = fs::create_dir_all(&path);
-    0i64.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
-}
-
-fn shim_fs_delete_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let _ = fs::remove_file(&path);
-    0i64.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
-}
-
 // ============================================================================
 // Registration Function
 // ============================================================================
@@ -3687,22 +3607,7 @@ fn shim_fs_delete_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// #[rust_fn]-annotated functions are auto-registered via inventory (build_from_inventory).
 /// This function only registers the ~54 manual shims that need special handling.
 pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
-    // File functions (manual shims only)
-    natives.register_shim_by_name("auto.file.walk", shim_file_walk);
-    natives.register_shim_by_name("auto.file.read_lines", shim_file_read_lines);
-    natives.register_shim_by_name("auto.fs.is_binary", shim_fs_is_binary);
-
-    // File read_text/write_text — essential for settings/config loading
-    natives.register_shim_by_name("auto.file.read_text", shim_file_read_text_vm);
-    natives.register_shim_by_name("auto.fs.read_text", shim_file_read_text_vm);
-    natives.register_shim_by_name("auto.fs.read", shim_file_read_text_vm);
-    natives.register_shim_by_name("auto.file.write_text", shim_file_write_text_vm);
-    natives.register_shim_by_name("auto.fs.write_text", shim_file_write_text_vm);
-    natives.register_shim_by_name("auto.fs.write", shim_file_write_text_vm);
-    natives.register_shim_by_name("auto.file.exists", shim_file_exists_vm);
-    natives.register_shim_by_name("auto.fs.exists", shim_file_exists_vm);
-    natives.register_shim_by_name("auto.fs.create_dir", shim_fs_create_dir_vm);
-    natives.register_shim_by_name("auto.fs.delete", shim_fs_delete_vm);
+    // File utility functions (walk/read_lines/is_binary now via #[rust_fn] registration)
 
     // String method — manual shim for nanbox compatibility
     natives.register_shim_by_name("auto.str.find", shim_str_find_manual);
@@ -3717,11 +3622,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("Option.or", shim_option_or);
     natives.register_shim_by_name("Option.unwrap_or", shim_option_or);
 
-    // Math functions (manual shims only — polymorphic over i64/f64)
-    natives.register_shim_by_name("auto.math.abs", shim_math_abs);
-    natives.register_shim_by_name("auto.math.min", shim_math_min);
-    natives.register_shim_by_name("auto.math.max", shim_math_max);
-    // auto.math.sqrt now registered in native.rs register_std_shims() (Plan 240 VM-1)
+    // Math functions (abs/min/max now via #[rust_fn] multi-name registration)
 
     // Net/TCP functions (manual shims — use heap objects for TCP state)
     // Note: registry uses underscores in method portion (auto.net.tcp_bind, not auto.net.tcp.bind)

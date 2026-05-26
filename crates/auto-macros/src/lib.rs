@@ -708,13 +708,23 @@ fn handle_interpolated_value(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-use syn::{parse_macro_input, ItemFn, LitStr};
+use syn::{parse::Parser, parse_macro_input, ItemFn, LitStr};
 
 #[proc_macro_attribute]
 pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
-    // Parse the attribute (e.g., "File.read_text")
-    let name_attr = parse_macro_input!(attr as LitStr);
-    let name = name_attr.value();
+    // Parse comma-separated names (e.g., "File.read_text", "auto.fs.read_text", "auto.fs.read")
+    let names: Vec<String> = syn::punctuated::Punctuated::<LitStr, syn::Token![,]>::parse_terminated
+        .parse2(attr.into())
+        .expect("rust_fn attribute expects one or more comma-separated string literals")
+        .iter()
+        .map(|lit| lit.value())
+        .collect();
+
+    if names.is_empty() {
+        panic!("rust_fn attribute requires at least one name");
+    }
+
+    let primary_name = &names[0];
 
     // Parse the function
     let func = parse_macro_input!(item as ItemFn);
@@ -722,9 +732,9 @@ pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
     let _func_vis = &func.vis;
     let _doc_attrs = &func.attrs;
 
-    // Generate a unique shim name based on the FFI name
+    // Generate a unique shim name based on the primary FFI name
     // e.g., "File.read_text" -> "__shim_File_read_text"
-    let shim_name_str = format!("__shim_{}", name.replace(".", "_"));
+    let shim_name_str = format!("__shim_{}", primary_name.replace(".", "_"));
     let shim_name = syn::Ident::new(&shim_name_str, proc_macro2::Span::call_site());
 
     // Extract argument types and generate stack popping code
@@ -745,7 +755,7 @@ pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
                 });
 
                 // The argument to pass to the original function
-                // Wait, we reversed the iteration, so we must insert at the front of call_args
+                // We reversed the iteration, so we must insert at the front of call_args
                 call_args.insert(0, quote! { #arg_name });
             } else {
                 panic!("rust_fn macro only supports simple identifier arguments");
@@ -756,6 +766,19 @@ pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     // Now call_args is in the correct order for the function call
+
+    // Generate inventory::submit! for each name
+    let inventory_submits: Vec<_> = names.iter().map(|name| {
+        let name_str = name.as_str();
+        quote! {
+            inventory::submit! {
+                crate::vm::ffi::StaticFFIRegistration {
+                    name: #name_str,
+                    shim: #shim_name,
+                }
+            }
+        }
+    }).collect();
 
     // Generate the expanded code
     let expanded = quote! {
@@ -777,13 +800,8 @@ pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
             Ok(())
         }
 
-        // Plan 198: Static registration via inventory
-        inventory::submit! {
-            crate::vm::ffi::StaticFFIRegistration {
-                name: #name,
-                shim: #shim_name,
-            }
-        }
+        // Static registration via inventory (one per name for alias support)
+        #(#inventory_submits)*
     };
 
     expanded.into()
