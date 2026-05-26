@@ -359,6 +359,10 @@ impl GpuiStyle {
                 self.border = false;
                 self.border_width = Some(0.0);
             }
+            StyleClass::BorderWidth(width) => {
+                self.border = true;
+                self.border_width = Some(*width);
+            }
             StyleClass::BorderColor(color) => {
                 self.border = true;
                 self.border_color = Some(convert_color(color));

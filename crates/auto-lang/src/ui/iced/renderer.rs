@@ -38,17 +38,6 @@ fn effective_spacing(legacy: u16, style: Option<&Style>) -> f32 {
     legacy as f32
 }
 
-/// Helper to compute effective padding: style.padding takes priority, then legacy padding.
-fn effective_padding(legacy: u16, style: Option<&Style>) -> f32 {
-    if let Some(s) = style {
-        let iced_style = IcedStyle::from_style(s);
-        if let Some(padding) = iced_style.padding {
-            return padding;
-        }
-    }
-    legacy as f32
-}
-
 /// Compute iced Padding (per-axis) from style, falling back to legacy u16.
 /// Handles px/py separately from uniform padding.
 fn iced_padding(legacy: u16, style: Option<&Style>) -> iced::Padding {
@@ -222,6 +211,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     if let Some(ref weight) = iced_style.font_weight {
                         text_widget = text_widget.font(font_weight_to_iced(weight));
                     }
+                    if let Some(ref align) = iced_style.text_align {
+                        use crate::ui::style::iced_adapter::IcedTextAlign;
+                        text_widget = text_widget.width(iced::Length::Fill);
+                        match align {
+                            IcedTextAlign::Center => {
+                                text_widget = text_widget.align_x(iced::alignment::Horizontal::Center);
+                            }
+                            IcedTextAlign::Right => {
+                                text_widget = text_widget.align_x(iced::alignment::Horizontal::Right);
+                            }
+                            IcedTextAlign::Left => {}
+                        }
+                    }
                 }
 
                 text_widget.into()
@@ -262,6 +264,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         let px_y = is.padding_y.unwrap_or(4.0);
                         btn = btn.padding([px_y, px_x]);
                     }
+                    if let Some(ref w) = is.width { btn = btn.width(iced_length(w)); }
+                    if let Some(ref h) = is.height { btn = btn.height(iced_length(h)); }
                 }
 
                 btn.into()
@@ -269,12 +273,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             AbstractView::Row { children, spacing, padding, style } => {
                 let eff_spacing = effective_spacing(spacing, style.as_ref());
-                let eff_padding = effective_padding(padding, style.as_ref());
                 let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
+
+                let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
+                let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
+                let wraps_in_container = needs_justify || has_visual;
 
                 let mut row_widget = row([]);
                 row_widget = row_widget.spacing(eff_spacing);
-                row_widget = row_widget.padding(eff_padding);
 
                 // Apply width/height and cross-axis alignment
                 if let Some(ref is) = iced_style {
@@ -294,15 +300,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     row_widget = row_widget.push(child.into_iced());
                 }
 
-                // Check if we need to wrap in a container for visual styling
-                let needs_justify = iced_style.as_ref()
-                    .and_then(|is| is.justify_content)
-                    .is_some();
-                let has_visual = iced_style.as_ref()
-                    .map_or(false, |is| needs_visual_wrap(is));
-
-                if needs_justify || has_visual {
+                if wraps_in_container {
+                    let pad = iced_padding(padding, style.as_ref());
                     let mut cont = container(row_widget);
+                    // Apply padding on the container so it shows between the
+                    // border (visual style) and the row content.
+                    cont = cont.padding(pad);
                     if let Some(ref is) = iced_style {
                         if let Some(justify) = is.justify_content {
                             if matches!(justify, IcedJustify::Center) {
@@ -324,17 +327,28 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     return cont.into();
                 }
 
+                // No container wrapper — apply padding directly on the row
+                let pad = iced_padding(padding, style.as_ref());
+                row_widget = row_widget.padding(pad);
                 row_widget.into()
             }
 
             AbstractView::Column { children, spacing, padding, style } => {
                 let eff_spacing = effective_spacing(spacing, style.as_ref());
-                let eff_padding = effective_padding(padding, style.as_ref());
                 let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
+
+                let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
+                let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
+                let justify_is_center = iced_style.as_ref()
+                    .and_then(|is| is.justify_content)
+                    .map_or(false, |j| matches!(j, IcedJustify::Center));
+                let wraps_in_container = needs_justify || has_visual;
 
                 let mut col_widget = column([]);
                 col_widget = col_widget.spacing(eff_spacing);
-                col_widget = col_widget.padding(eff_padding);
+
+                // Track whether Fill height was skipped for centering
+                let mut height_skipped_for_center = false;
 
                 // Apply width/height and cross-axis alignment
                 if let Some(ref is) = iced_style {
@@ -342,7 +356,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         col_widget = col_widget.width(iced_length(w));
                     }
                     if let Some(ref h) = is.height {
-                        col_widget = col_widget.height(iced_length(h));
+                        // Skip height(Fill) when justify_center — let the wrapper container handle vertical centering
+                        let skip = justify_is_center && matches!(h, IcedSize::Full);
+                        if !skip {
+                            col_widget = col_widget.height(iced_length(h));
+                        } else {
+                            height_skipped_for_center = true;
+                        }
                     }
                     // Column align_x = cross-axis alignment (items_center → horizontal center)
                     if let Some(align) = is.align_items {
@@ -354,21 +374,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     col_widget = col_widget.push(child.into_iced());
                 }
 
-                // Check if we need to wrap in a container for visual styling
-                let needs_justify = iced_style.as_ref()
-                    .and_then(|is| is.justify_content)
-                    .is_some();
-                let has_visual = iced_style.as_ref()
-                    .map_or(false, |is| needs_visual_wrap(is));
-
-                if needs_justify || has_visual {
+                if wraps_in_container {
+                    let pad = iced_padding(padding, style.as_ref());
                     let mut cont = container(col_widget);
-                    if let Some(ref is) = iced_style {
-                        if let Some(justify) = is.justify_content {
-                            if matches!(justify, IcedJustify::Center) {
-                                cont = cont.center_y(iced::Length::Fill);
-                            }
-                        }
+                    cont = cont.padding(pad);
+                    if height_skipped_for_center {
+                        cont = cont.center_y(iced::Length::Fill);
                     }
                     if let Some(ref is) = iced_style {
                         if has_visual {
@@ -384,6 +395,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     return cont.into();
                 }
 
+                let pad = iced_padding(padding, style.as_ref());
+                col_widget = col_widget.padding(pad);
                 col_widget.into()
             }
 
@@ -469,61 +482,50 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 use iced::widget::container;
 
                 let mut container_widget = container(child.into_iced());
+                let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
                 // Apply padding from style or legacy
-                let eff_padding = if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    iced_style.padding.or(if padding > 0 { Some(padding as f32) } else { None })
-                } else if padding > 0 {
-                    Some(padding as f32)
-                } else {
-                    None
-                };
+                let eff_padding = if let Some(ref is) = iced_style {
+                    is.padding.or(if padding > 0 { Some(padding as f32) } else { None })
+                } else if padding > 0 { Some(padding as f32) } else { None };
                 if let Some(p) = eff_padding {
                     container_widget = container_widget.padding(p);
                 }
 
-                // Apply width from style or legacy
-                let eff_width = if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    iced_style.width.map(|w| match w {
-                        crate::ui::style::iced_adapter::IcedSize::Fixed(f) => iced::Length::Fixed(f),
-                        crate::ui::style::iced_adapter::IcedSize::Full => iced::Length::Fill,
-                    }).or(width.map(|w| iced::Length::Fixed(w as f32)))
-                } else {
-                    width.map(|w| iced::Length::Fixed(w as f32))
-                };
-                if let Some(w) = eff_width {
+                // Determine effective width/height from explicit fields or style
+                let eff_w = width.map(|w| iced::Length::Fixed(w as f32))
+                    .or_else(|| iced_style.as_ref().and_then(|is| is.width.map(|w| iced_length(&w))));
+                let eff_h = height.map(|h| iced::Length::Fixed(h as f32))
+                    .or_else(|| iced_style.as_ref().and_then(|is| is.height.map(|h| iced_length(&h))));
+
+                // Centering: only apply center_x/y when there's an explicit dimension
+                // or the parent provides bounded space. Using Fill inside a scrollable
+                // (unbounded) causes stack overflow / layout collapse.
+                if center_x {
+                    if let Some(w) = eff_w {
+                        container_widget = container_widget.center_x(w);
+                    } else {
+                        container_widget = container_widget.width(iced::Length::Fill);
+                        container_widget = container_widget.center_x(iced::Length::Fill);
+                    }
+                } else if let Some(w) = eff_w {
                     container_widget = container_widget.width(w);
                 }
-
-                // Apply height from style or legacy
-                let eff_height = if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    iced_style.height.map(|h| match h {
-                        crate::ui::style::iced_adapter::IcedSize::Fixed(f) => iced::Length::Fixed(f),
-                        crate::ui::style::iced_adapter::IcedSize::Full => iced::Length::Fill,
-                    }).or(height.map(|h| iced::Length::Fixed(h as f32)))
-                } else {
-                    height.map(|h| iced::Length::Fixed(h as f32))
-                };
-                if let Some(h) = eff_height {
+                if center_y {
+                    if let Some(h) = eff_h {
+                        container_widget = container_widget.center_y(h);
+                    } else {
+                        container_widget = container_widget.height(iced::Length::Fill);
+                        container_widget = container_widget.center_y(iced::Length::Fill);
+                    }
+                } else if let Some(h) = eff_h {
                     container_widget = container_widget.height(h);
                 }
 
-                // Apply centering
-                if center_x {
-                    container_widget = container_widget.center_x(iced::Length::Fill);
-                }
-                if center_y {
-                    container_widget = container_widget.center_y(iced::Length::Fill);
-                }
-
                 // Apply visual styling (background, border, rounded, shadow)
-                if let Some(ref s) = style {
-                    let is = IcedStyle::from_style(s);
-                    if needs_visual_wrap(&is) {
-                        let cs = build_container_style(&is);
+                if let Some(ref is) = iced_style {
+                    if needs_visual_wrap(is) {
+                        let cs = build_container_style(is);
                         container_widget = container_widget.style(move |_| cs);
                     }
                 }
@@ -1447,194 +1449,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 /// the `on_input` callback captures the typed text and includes it in the `IcedMessage`.
 fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static, IcedMessage> {
     match view {
-        AbstractView::Empty => text("").into(),
-
-        AbstractView::Text { content, style } => {
-            let mut text_widget = text(content);
-            if let Some(ref s) = style {
-                let iced_style = IcedStyle::from_style(s);
-                if let Some(ref font_size) = iced_style.font_size {
-                    text_widget = text_widget.size(font_size_to_f32(font_size));
-                }
-                if let Some(color) = iced_style.text_color {
-                    text_widget = text_widget.color(color);
-                }
-                if let Some(ref weight) = iced_style.font_weight {
-                    text_widget = text_widget.font(font_weight_to_iced(weight));
-                }
-                // text-center: fill width so text wraps and centers within parent
-                if let Some(ref align) = iced_style.text_align {
-                    use crate::ui::style::iced_adapter::IcedTextAlign;
-                    text_widget = text_widget.width(iced::Length::Fill);
-                    match align {
-                        IcedTextAlign::Center => {
-                            text_widget = text_widget.align_x(iced::alignment::Horizontal::Center);
-                        }
-                        IcedTextAlign::Right => {
-                            text_widget = text_widget.align_x(iced::alignment::Horizontal::Right);
-                        }
-                        IcedTextAlign::Left => {}
-                    }
-                }
-            }
-            text_widget.into()
-        }
-
-        AbstractView::Button { label, onclick, style } => {
-            let mut text_widget = text(label);
-            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
-            if let Some(ref is) = iced_style {
-                if let Some(ref font_size) = is.font_size {
-                    text_widget = text_widget.size(font_size_to_f32(font_size));
-                }
-                if let Some(color) = is.text_color {
-                    text_widget = text_widget.color(color);
-                }
-                if let Some(ref weight) = is.font_weight {
-                    text_widget = text_widget.font(font_weight_to_iced(weight));
-                }
-            }
-            let mut btn = button(text_widget).on_press(onclick);
-            if let Some(ref is) = iced_style {
-                let has_visual = is.background_color.is_some()
-                    || is.border || is.rounded || is.border_radius.is_some()
-                    || is.shadow;
-                if has_visual {
-                    let bs = build_button_style(is);
-                    btn = btn.style(move |_, _| bs);
-                }
-                if let Some(px) = is.padding {
-                    btn = btn.padding(px);
-                } else if is.padding_x.is_some() || is.padding_y.is_some() {
-                    let px_x = is.padding_x.unwrap_or(8.0);
-                    let px_y = is.padding_y.unwrap_or(4.0);
-                    btn = btn.padding([px_y, px_x]);
-                }
-                if let Some(ref w) = is.width { btn = btn.width(iced_length(w)); }
-                if let Some(ref h) = is.height { btn = btn.height(iced_length(h)); }
-            }
-            btn.into()
-        }
-
-        AbstractView::Column { children, spacing, padding, style } => {
-            let eff_spacing = effective_spacing(spacing, style.as_ref());
-            let pad = iced_padding(padding, style.as_ref());
-            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
-
-            let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
-            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
-            let justify_is_center = iced_style.as_ref()
-                .and_then(|is| is.justify_content)
-                .map_or(false, |j| matches!(j, IcedJustify::Center));
-
-            let mut col_widget = column([]);
-            col_widget = col_widget.spacing(eff_spacing);
-            col_widget = col_widget.padding(pad);
-
-            // Track whether Fill height was skipped for centering,
-            // so center_y(Fill) is only applied when it was.
-            let mut height_skipped_for_center = false;
-
-            if let Some(ref is) = iced_style {
-                if let Some(ref w) = is.width { col_widget = col_widget.width(iced_length(w)); }
-                if let Some(ref h) = is.height {
-                    let skip = justify_is_center && matches!(h, IcedSize::Full);
-                    if !skip {
-                        col_widget = col_widget.height(iced_length(h));
-                    } else {
-                        height_skipped_for_center = true;
-                    }
-                }
-                if let Some(align) = is.align_items {
-                    col_widget = col_widget.align_x(iced_alignment_horizontal(align));
-                }
-            }
-
-            for child in children {
-                col_widget = col_widget.push(render_dynamic_view(child));
-            }
-
-            if needs_justify || has_visual {
-                let mut cont = container(col_widget);
-                // Only apply center_y(Fill) when Fill height was skipped.
-                // center_y(Fill) in an unbounded parent (scrollable) collapses,
-                // which breaks Fixed-height columns like icon placeholders.
-                if height_skipped_for_center {
-                    cont = cont.center_y(iced::Length::Fill);
-                }
-                if let Some(ref is) = iced_style {
-                    if has_visual {
-                        let cs = build_container_style(is);
-                        cont = cont.style(move |_| cs);
-                    } else if let Some(bg) = is.background_color {
-                        cont = cont.style(move |_| container::Style {
-                            background: Some(iced::Background::Color(bg)),
-                            ..Default::default()
-                        });
-                    }
-                }
-                return cont.into();
-            }
-
-            col_widget.into()
-        }
-
-        AbstractView::Row { children, spacing, padding, style } => {
-            let eff_spacing = effective_spacing(spacing, style.as_ref());
-            let pad = iced_padding(padding, style.as_ref());
-            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
-
-            let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
-            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
-            let wraps_in_container = needs_justify || has_visual;
-
-            let mut row_widget = row([]);
-            row_widget = row_widget.spacing(eff_spacing);
-
-            if let Some(ref is) = iced_style {
-                if let Some(ref w) = is.width { row_widget = row_widget.width(iced_length(w)); }
-                if let Some(ref h) = is.height { row_widget = row_widget.height(iced_length(h)); }
-                if let Some(align) = is.align_items {
-                    row_widget = row_widget.align_y(iced_alignment_vertical(align));
-                }
-            }
-
-            for child in children {
-                row_widget = row_widget.push(render_dynamic_view(child));
-            }
-
-            if wraps_in_container {
-                let mut cont = container(row_widget);
-                // Apply padding on the container so it shows between the
-                // border (visual style) and the row content.
-                cont = cont.padding(pad);
-                if let Some(ref is) = iced_style {
-                    if let Some(justify) = is.justify_content {
-                        if matches!(justify, IcedJustify::Center) {
-                            cont = cont.center_x(iced::Length::Fill);
-                        }
-                    }
-                }
-                if let Some(ref is) = iced_style {
-                    if has_visual {
-                        let cs = build_container_style(is);
-                        cont = cont.style(move |_| cs);
-                    } else if let Some(bg) = is.background_color {
-                        cont = cont.style(move |_| container::Style {
-                            background: Some(iced::Background::Color(bg)),
-                            ..Default::default()
-                        });
-                    }
-                }
-                return cont.into();
-            }
-
-            // No container wrapper — apply padding directly on the row
-            row_widget = row_widget.padding(pad);
-            row_widget.into()
-        }
-
-        // KEY: Input with text capture — on_input carries the typed text
+        // Input needs IcedMessage-specific text capture — on_input constructs a new
+        // IcedMessage with the typed text included, which the generic IntoIcedElement
+        // trait cannot do since it's generic over M.
         AbstractView::Input { placeholder, value, on_change, width, password: _, style } => {
             let mut input_widget = text_input(&placeholder, &value);
 
@@ -1657,7 +1474,6 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
             }
 
             if let Some(msg) = on_change {
-                // Capture the typed text and include it in the message
                 let msg_clone = msg.clone();
                 input_widget.on_input(move |text| {
                     IcedMessage {
@@ -1671,79 +1487,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
             }
         }
 
-        AbstractView::Container { child, padding, width, height, center_x, center_y, style } => {
-            use iced::widget::container;
-            let mut container_widget = container(render_dynamic_view(*child));
-            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
-            let eff_padding = if let Some(ref is) = iced_style {
-                is.padding.or(if padding > 0 { Some(padding as f32) } else { None })
-            } else if padding > 0 { Some(padding as f32) } else { None };
-            if let Some(p) = eff_padding { container_widget = container_widget.padding(p); }
-            // Determine effective width/height from explicit fields or style
-            let eff_w = width.map(|w| iced::Length::Fixed(w as f32))
-                .or_else(|| iced_style.as_ref().and_then(|is| is.width.map(|w| iced_length(&w))));
-            let eff_h = height.map(|h| iced::Length::Fixed(h as f32))
-                .or_else(|| iced_style.as_ref().and_then(|is| is.height.map(|h| iced_length(&h))));
-            // Centering: only apply center_x/y when there's an explicit dimension
-            // or the parent provides bounded space. Using Fill inside a scrollable
-            // (unbounded) causes stack overflow / layout collapse.
-            if center_x {
-                if let Some(w) = eff_w {
-                    container_widget = container_widget.center_x(w);
-                } else {
-                    container_widget = container_widget.center_x(iced::Length::Fill);
-                }
-            } else if let Some(w) = eff_w {
-                container_widget = container_widget.width(w);
-            }
-            if center_y {
-                if let Some(h) = eff_h {
-                    container_widget = container_widget.center_y(h);
-                } else {
-                    container_widget = container_widget.center_y(iced::Length::Fill);
-                }
-            } else if let Some(h) = eff_h {
-                container_widget = container_widget.height(h);
-            }
-            // Apply visual styling
-            if let Some(ref is) = iced_style {
-                if needs_visual_wrap(is) {
-                    let cs = build_container_style(is);
-                    container_widget = container_widget.style(move |_| cs);
-                }
-            }
-            container_widget.into()
-        }
-
-        AbstractView::Scrollable { child, width, height, style: _ } => {
-            use iced::widget::scrollable;
-            let mut scrollable_widget = scrollable(render_dynamic_view(*child));
-            if let Some(w) = width { scrollable_widget = scrollable_widget.width(iced::Length::Fixed(w as f32)); }
-            if let Some(h) = height { scrollable_widget = scrollable_widget.height(iced::Length::Fixed(h as f32)); }
-            scrollable_widget.into()
-        }
-
-        AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
-            let checkbox_widget = checkbox(is_checked);
-            let checkbox_with_handler = if let Some(msg) = on_toggle {
-                let msg = msg.clone();
-                checkbox_widget.on_toggle(move |_| msg.clone())
-            } else { checkbox_widget };
-            let mut label_widget = text(label);
-            if let Some(ref s) = style {
-                let iced_style = IcedStyle::from_style(s);
-                if let Some(ref fs) = iced_style.font_size { label_widget = label_widget.size(font_size_to_f32(fs)); }
-                if let Some(c) = iced_style.text_color { label_widget = label_widget.color(c); }
-            }
-            row![checkbox_with_handler, label_widget].spacing(4).into()
-        }
-
-        // Fall back to the generic renderer for other variants
-        _ => {
-            // For variants not handled above (Radio, Select, Slider, etc.),
-            // use the generic renderer
-            view.into_iced()
-        }
+        // Everything else delegates to the unified IntoIcedElement renderer
+        _ => view.into_iced(),
     }
 }
 

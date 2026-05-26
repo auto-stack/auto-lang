@@ -900,6 +900,19 @@ impl<M: Clone + Debug> View<M> {
         }
     }
 
+    /// Create a centering container (center_x + center_y)
+    pub fn center(child: View<M>) -> ViewContainerBuilder<M> {
+        ViewContainerBuilder {
+            child,
+            padding: 0,
+            width: None,
+            height: None,
+            center_x: true,
+            center_y: true,
+            style: None,
+        }
+    }
+
     /// Create a scrollable container
     pub fn scrollable(child: View<M>) -> ViewScrollableBuilder<M> {
         ViewScrollableBuilder {
@@ -1264,6 +1277,12 @@ impl<M: Clone + Debug> ViewContainerBuilder<M> {
         self
     }
 
+    /// Set child (replaces existing child)
+    pub fn child(mut self, child: View<M>) -> Self {
+        self.child = child;
+        self
+    }
+
     /// Set width
     pub fn width(mut self, width: u16) -> Self {
         self.width = Some(width);
@@ -1608,6 +1627,15 @@ impl<M: Clone + Debug> ButtonArg<M> for () {
     type Output = ViewBuilder<M>;
     fn into_button(self) -> ViewBuilder<M> {
         ViewBuilder::button()
+    }
+}
+
+impl<M: Clone + Debug> ButtonArg<M> for &str {
+    type Output = ViewBuilder<M>;
+    fn into_button(self) -> ViewBuilder<M> {
+        let mut b = ViewBuilder::button();
+        b.button_label = self.to_string();
+        b
     }
 }
 
