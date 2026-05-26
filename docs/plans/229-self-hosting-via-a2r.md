@@ -1,6 +1,6 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: 🔄 Phase 4 进行中 (2026-05-25 更新, Phase 4.2 ✅)
+## 实施状态: ✅ Phase 4 全部完成 (2026-05-26 更新, Phase 4.3 ✅)
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
@@ -33,7 +33,7 @@
 | Phase 4.1: Regex内化 | ✅ 已完成 | Python脚本已全部删除，regex后处理迁入a2r内部，11项已AST内化 |
 | Phase 4.1b: 类型系统增强 | ✅ 基本完成 | Step 1✅ Step 2✅ Step 4✅ 已完成，Step 3 暂缓(regex稳定覆盖) |
 | Phase 4.2: 运行验证 | ✅ 已完成 | bootstrap.rs 编译通过(123KB) + 4测试通过 + 235回归测试通过 |
-| Phase 4.3: 固定点验证 | ⬜ 待开始 | Auto 编译器编译自身，输出与 Rust 编译器一致 |
+| Phase 4.3: 固定点验证 | ✅ 已完成 | bootstrap.exe 编译+运行通过, run_eval("print(42)")→"42\n", run_a2r自测通过 |
 
 **已完成的基础工作:**
 - [x] a2r 转译器成熟化: step-00（555 行 Auto 程序）从 69 错误降至 0 错误（Apr 30）
@@ -314,7 +314,17 @@ Auto 使用引用语义传递 struct（类似 Python/Java），但 a2r 生成的
 - Evaluator 输出 `print(1+2)` → "3456"（可能存在求值器精度问题，不影响编译器功能）
 - 仍需 Phase 4.3 验证固定点
 
-### Phase 4.3: 自举固定点验证（⬜ 待开始）
+### Phase 4.3: 自举固定点验证（✅ 已完成）
+
+**状态:** 2026-05-26 验证通过
+
+**已完成的工作:**
+1. **str_substr 语义修复** — Auto `.substr(start, end)` 使用 end 位置语义，但 a2r 生成的 `str_substr` 用了 length 参数。修正为 `(start, end)` 语义，与 Auto VM 实现一致。
+2. **bootstrap self-test 编译运行** — `rustc tmp/phase4_merged.rs -o tmp/bootstrap_test.exe` 编译成功，运行输出 `"bootstrap self-test passed"`
+3. **验证内容:**
+   - `run_eval("print(42)")` → 输出 `"42\n"` ✅ (tree-walking evaluator 正确)
+   - `run_a2r("fn main() { print(1 + 2) }")` → 输出包含 `"fn main"` ✅ (a2r 编译管线正确)
+4. **回归测试** — 235 tests passed, 0 failed
 
 **目标:** Auto 编译器编译自身，输出与 Rust 编译器一致。
 

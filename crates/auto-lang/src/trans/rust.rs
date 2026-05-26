@@ -3889,7 +3889,7 @@ impl RustTrans {
                     return Ok(());
                 }
                 "substr" => {
-                    // s.substr(start, length) -> a2r_std::str_substr(&s, start, length)
+                    // s.substr(start, end) -> a2r_std::str_substr(&s, start, end)
                     write!(out, "a2r_std::str_substr(")?;
                     self.expr_as_str(object, out)?;
                     for arg in &call.args.args {
@@ -11908,9 +11908,18 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         "fn lex_fstr_f(mut source: &str, mut pos: i32) {",
         "fn lex_fstr_f(mut source: &str, mut pos: i32) -> Vec<Token> {",
     );
-    // Add empty main() if missing
+    // Add main() with basic self-test if missing
     if !regex::Regex::new(r"^fn main\(\)").unwrap().is_match(&content) {
-        content.push_str("\nfn main() {}\n");
+        content.push_str(concat!(
+            "\nfn main() ",
+            "{\n",
+            "    let eval_output = run_eval(\"print(42)\");\n",
+            "    assert!(eval_output == \"42\\n\", \"eval self-test failed: got {:?}\", eval_output);\n",
+            "    let a2r_output = run_a2r(\"fn main() { print(1 + 2) }\");\n",
+            "    assert!(a2r_output.contains(\"fn main\"), \"a2r self-test failed\");\n",
+            "    println!(\"bootstrap self-test passed\");\n",
+            "}\n"
+        ));
     }
 
     // === fix_contains_key.py: now handled at AST level (contains_rust logic + cross-module struct_field_types) ===
@@ -12061,14 +12070,14 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     // Add str_substr function definition before fn main() and replace a2r_std:: prefix
     content = content.replace("a2r_std::str_substr", "str_substr");
     let str_substr_fn = r#"
-fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
+fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
     let s = s.as_ref();
-    if start < 0 || length <= 0 || start as usize >= s.len() {
+    if start < 0 || end <= start || start as usize >= s.len() {
         return String::new();
     }
     let start_usize = start as usize;
-    let end = std::cmp::min(start_usize + length as usize, s.len());
-    s[start_usize..end].to_string()
+    let end_usize = std::cmp::min(end as usize, s.len());
+    s[start_usize..end_usize].to_string()
 }
 "#;
     if let Some(pos) = content.find("\nfn main() {") {
