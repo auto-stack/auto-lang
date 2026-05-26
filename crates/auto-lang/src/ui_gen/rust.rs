@@ -95,6 +95,35 @@ impl RustGenerator {
         self.loop_vars.clear();
     }
 
+    /// Convert a string containing `${.field}` markers to a Rust `format!()` call
+    fn interpolate_str(&self, s: &str) -> String {
+        let mut format_str = s.to_string();
+        let mut format_args = Vec::new();
+
+        // Extract ${.field} and ${field} patterns
+        let re = regex::Regex::new(r"\$\{\.?(\w+)\}").unwrap();
+        for cap in re.captures_iter(s) {
+            let binding = &cap[1];
+            let arg = if self.is_loop_var(binding) {
+                binding.to_string()
+            } else {
+                format!("self.{}", binding)
+            };
+            if !format_args.contains(&arg) {
+                format_args.push(arg);
+            }
+        }
+
+        // Replace ${.field} and ${field} with {}
+        format_str = re.replace_all(&format_str, "{}").to_string();
+
+        if format_args.is_empty() {
+            format!("\"{}\"", s)
+        } else {
+            format!("format!(\"{}\", {})", format_str, format_args.join(", "))
+        }
+    }
+
     /// Check if a name is a loop variable
     fn is_loop_var(&self, name: &str) -> bool {
         self.loop_vars.contains(&name.to_string())
@@ -331,32 +360,52 @@ impl RustGenerator {
                 let view_fn = self.tag_to_view_fn(tag);
 
                 // For text elements with a "text" prop and no extra styling/events,
-                // emit View::text("content") directly (returns View, not ViewBuilder).
+                // emit View::text("content") or View::text(format!(...)) directly.
                 if tag == "text" && children.is_empty() && events.is_empty() {
                     let style_count = props.keys()
                         .filter(|k| *k != "text")
                         .count();
                     if style_count == 0 {
                         if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("text") {
+                            if s.contains("${") {
+                                return format!("View::text({})", self.interpolate_str(s));
+                            }
                             return format!("View::text(\"{}\")", s);
                         }
                     }
                 }
 
-                // Leaf tags (text, button) use ViewBuilder pattern: View::text(()).build()
-                // Layout tags (col, row) use View::col() directly (returns ViewBuilder)
+                // For leaf tags (text, button) with a "text" prop, use it as the initial value.
+                // For buttons: View::button("-") instead of View::button(())
+                let text_prop = props.get("text")
+                    .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None });
+
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
-                    format!("View::{}(())", view_fn)
+                    if let Some(label) = &text_prop {
+                        if tag == "button" {
+                            format!("View::{}(\"{}\")", view_fn, label)
+                        } else if label.contains("${") {
+                            format!("View::{}({})", view_fn, self.interpolate_str(label))
+                        } else {
+                            format!("View::{}(\"{}\")", view_fn, label)
+                        }
+                    } else {
+                        format!("View::{}(())", view_fn)
+                    }
                 } else {
                     format!("View::{}()", view_fn)
                 };
+
+                // Whether the "text" prop was consumed as a constructor arg
+                let text_prop_consumed = self.is_leaf_tag(tag.as_str()) && text_prop.is_some();
 
                 if children.is_empty() {
                     // Single element without children
                     let mut builder = builder_start;
 
-                    // Add props
+                    // Add props (skip "text" if already used as constructor arg)
                     for (key, value) in props {
+                        if text_prop_consumed && key == "text" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
 
@@ -370,8 +419,9 @@ impl RustGenerator {
                     // Element with children
                     let mut builder = builder_start;
 
-                    // Add props and events
+                    // Add props (skip "text" if already used as constructor arg)
                     for (key, value) in props {
+                        if text_prop_consumed && key == "text" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
 
@@ -538,6 +588,7 @@ impl RustGenerator {
             "grid" => "grid",
             "scroll" => "scroll",
             "container" => "container",
+            "center" => "center",
 
             // Content
             "button" => "button",
@@ -687,12 +738,103 @@ impl RustGenerator {
                     .collect();
                 bodies.join(";\n                ")
             }
-            LogicPayload::AstStmts(_) => {
-                "// TODO: a2ts delegation not yet supported for Rust backend".to_string()
+            LogicPayload::AstStmts(stmts) => {
+                let bodies: Vec<String> = stmts.iter()
+                    .map(|s| self.ast_stmt_to_rust(s))
+                    .collect();
+                bodies.join(";\n                ")
             }
             LogicPayload::Bytecode(_) => {
                 "// bytecode handler".to_string()
             }
+        }
+    }
+
+    /// Convert a crate::ast::Stmt to Rust code (for on-handler bodies)
+    fn ast_stmt_to_rust(&self, stmt: &crate::ast::Stmt) -> String {
+        match stmt {
+            crate::ast::Stmt::Store(store) => {
+                let name = store.name.as_str();
+                let value = self.ast_expr_to_rust(&store.expr);
+                format!("self.{} = {}", name, value)
+            }
+            crate::ast::Stmt::Expr(expr) => {
+                self.ast_expr_to_rust(expr)
+            }
+            _ => format!("/* unhandled stmt */"),
+        }
+    }
+
+    /// Convert a crate::ast::Expr to Rust code (for on-handler bodies)
+    fn ast_expr_to_rust(&self, expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
+        use auto_val::Op;
+        match expr {
+            Expr::Str(s) => format!("\"{}\".to_string()", s),
+            Expr::I64(n) => n.to_string(),
+            Expr::Int(n) => n.to_string(),
+            Expr::U64(n) => n.to_string(),
+            Expr::Uint(n) => n.to_string(),
+            Expr::Float(n, _) => format!("{}f32", n),
+            Expr::Double(n, _) => format!("{}f64", n),
+            Expr::Bool(b) => b.to_string(),
+            Expr::Ident(name) => {
+                let s = name.as_str();
+                if s.starts_with('.') {
+                    format!("self.{}", &s[1..])
+                } else {
+                    s.to_string()
+                }
+            }
+            Expr::Dot(obj, field) => {
+                let obj_str = self.ast_expr_to_rust(obj);
+                format!("{}.{}", obj_str, field)
+            }
+            Expr::Bina(left, op, right) => {
+                // Assignment: .count = expr → self.count = expr
+                if matches!(op, Op::Asn) {
+                    let target = self.ast_expr_to_rust(left);
+                    let value = self.ast_expr_to_rust(right);
+                    return format!("{} = {}", target, value);
+                }
+                // Compound assignment: .count += expr → self.count += expr
+                if matches!(op, Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq) {
+                    let target = self.ast_expr_to_rust(left);
+                    let value = self.ast_expr_to_rust(right);
+                    let op_str = match op {
+                        Op::AddEq => "+=",
+                        Op::SubEq => "-=",
+                        Op::MulEq => "*=",
+                        Op::DivEq => "/=",
+                        _ => unreachable!(),
+                    };
+                    return format!("{} {} {}", target, op_str, value);
+                }
+                let left_str = self.ast_expr_to_rust(left);
+                let right_str = self.ast_expr_to_rust(right);
+                let op_str = match op {
+                    Op::Add => "+",
+                    Op::Sub => "-",
+                    Op::Mul => "*",
+                    Op::Div => "/",
+                    Op::Mod => "%",
+                    Op::Eq => "==",
+                    Op::Neq => "!=",
+                    Op::Lt => "<",
+                    Op::Le => "<=",
+                    Op::Gt => ">",
+                    Op::Ge => ">=",
+                    _ => "?",
+                };
+                format!("{} {} {}", left_str, op_str, right_str)
+            }
+            Expr::Call(call) => {
+                let args: Vec<String> = call.args.args.iter()
+                    .map(|a| self.ast_expr_to_rust(&a.get_expr()))
+                    .collect();
+                format!("{}({})", call.name, args.join(", "))
+            }
+            _ => format!("/* expr */"),
         }
     }
 
