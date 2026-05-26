@@ -65,3 +65,28 @@ fn ffi_dual_006_regex_is_match() {
 fn ffi_dual_007_path_join() {
     test_ffi_dual("007_path_join").unwrap();
 }
+
+#[test]
+fn ffi_dual_008_json_array() {
+    test_ffi_dual("008_json_array").unwrap();
+}
+
+#[test]
+fn ffi_dual_009_json_keys() {
+    test_ffi_dual("009_json_keys").unwrap();
+}
+
+#[test]
+fn ffi_dual_010_env_get_set() {
+    test_ffi_dual("010_env_get_set").unwrap();
+}
+
+#[test]
+fn ffi_dual_011_char_operations() {
+    test_ffi_dual("011_char_operations").unwrap();
+}
+
+#[test]
+fn ffi_dual_012_str_find_replace() {
+    test_ffi_dual("012_str_find_replace").unwrap();
+}

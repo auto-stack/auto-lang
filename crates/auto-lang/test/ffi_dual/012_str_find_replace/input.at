@@ -1,0 +1,6 @@
+// FFI Dual Test: String find/replace — #[rust_fn] String
+print(String.find("hello world", "world"))
+print(String.find("hello world", "xyz"))
+print(String.replace("hello world", "world", "auto"))
+print(String.replace_first("aaa", "a", "b"))
+print(String.match_count("ababab", "ab"))

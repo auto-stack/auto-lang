@@ -1,0 +1,6 @@
+// FFI Dual Test: Env get/set — #[rust_fn] Env
+Env.set("AUTO_DUAL_TEST", "hello")
+let val = Env.get("AUTO_DUAL_TEST")
+print(val)
+Env.remove("AUTO_DUAL_TEST")
+print(Env.get("AUTO_DUAL_TEST"))

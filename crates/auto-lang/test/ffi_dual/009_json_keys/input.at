@@ -1,0 +1,5 @@
+// FFI Dual Test: JSON keys — #[rust_fn] JSON
+let obj = Json.parse("{\"a\":1,\"b\":2}")
+print(Json.has_key(obj, "a"))
+print(Json.has_key(obj, "b"))
+print(Json.has_key(obj, "c"))

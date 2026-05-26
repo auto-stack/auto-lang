@@ -1,0 +1,7 @@
+// FFI Dual Test: Char operations — #[rust_fn] Char
+print(Char.is_alpha('a'))
+print(Char.is_digit('5'))
+print(Char.is_alphanum('z'))
+print(Char.is_whitespace(' '))
+print(Char.to_lower('A'))
+print(Char.to_upper('a'))

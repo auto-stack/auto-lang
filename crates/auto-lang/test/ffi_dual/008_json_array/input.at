@@ -1,0 +1,6 @@
+// FFI Dual Test: JSON array operations — #[rust_fn] JSON
+let arr = Json.parse("[10,20,30]")
+print(Json.len(arr))
+print(Json.is_valid(arr))
+let obj = Json.parse("{\"x\":1,\"y\":2}")
+print(Json.len(obj))
