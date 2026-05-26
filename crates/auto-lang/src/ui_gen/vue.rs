@@ -1568,9 +1568,9 @@ impl VueGenerator {
 
         // Wrapper div with Tailwind classes
         let classes = if self.wrapper_classes.is_empty() {
-            "flex flex-col pb-8".to_string()
+            "flex flex-col w-full h-full min-h-screen".to_string()
         } else {
-            format!("flex flex-col pb-8 {}", self.wrapper_classes)
+            format!("flex flex-col w-full h-full min-h-screen {}", self.wrapper_classes)
         };
 
         // Dark mode: add :class binding for isDark state
@@ -2731,7 +2731,7 @@ impl VueGenerator {
                 "grid" => classes.push("grid".to_string()),
                 "scroll" => classes.push("overflow-auto".to_string()),
                 "container" => classes.push("max-w-7xl mx-auto".to_string()),
-                "center" => classes.push("flex items-center justify-center".to_string()),
+                "center" => classes.push("flex items-center justify-center w-full h-full".to_string()),
 
                 // HTML5 semantic elements (only add defaults if user hasn't provided class)
                 "header" => classes.push("w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60".to_string()),
@@ -3843,8 +3843,8 @@ impl VueGenerator {
             }
 
             "center" => {
-                // Default: flex items-center justify-center + user style
-                let mut classes = vec!["flex".to_string(), "items-center".to_string(), "justify-center".to_string()];
+                // Default: flex items-center justify-center w-full h-full + user style
+                let mut classes = vec!["flex".to_string(), "items-center".to_string(), "justify-center".to_string(), "w-full".to_string(), "h-full".to_string()];
                 if let Some(value) = self.get_style_class(props) {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {

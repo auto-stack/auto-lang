@@ -504,6 +504,10 @@ fn generate_index_css() -> String {
   * {
     @apply border-border;
   }
+  html, body, #app {
+    height: 100%;
+    margin: 0;
+  }
   body {
     @apply bg-background text-foreground;
   }
