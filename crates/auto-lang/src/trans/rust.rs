@@ -152,9 +152,14 @@ pub struct RustTrans {
     json_value_vars: HashSet<AutoStr>,
     // Track function params declared as &str (StrSlice) — safe to pass without .as_str()
     fn_param_str_slice: HashSet<AutoStr>,
+    // Track current function's &mut params (merge mode context types) — skip &mut at call sites
+    current_fn_mut_params: HashSet<AutoStr>,
 
     // Track which function params are struct/enum types (need .clone() at call sites)
     fn_struct_param_indices: HashMap<AutoStr, Vec<bool>>,
+    // Full parameter types per function: fn_name -> Vec<Type>
+    // Used for precise type-aware call site generation (&mut, &str, etc.)
+    fn_param_types: HashMap<AutoStr, Vec<Type>>,
     // In merge mode, track which params use &mut (context types like Parser, TypeEnv)
     fn_merge_mut_params: HashMap<AutoStr, Vec<bool>>,
     // Track which function params are Int type (need enum→i32 cast at call sites)
@@ -220,7 +225,9 @@ impl RustTrans {
             local_var_types: HashMap::new(),
             json_value_vars: HashSet::new(),
             fn_param_str_slice: HashSet::new(),
+            current_fn_mut_params: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
+            fn_param_types: HashMap::new(),
             fn_merge_mut_params: HashMap::new(),
             fn_int_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
@@ -268,7 +275,9 @@ impl RustTrans {
             local_var_types: HashMap::new(),
             json_value_vars: HashSet::new(),
             fn_param_str_slice: HashSet::new(),
+            current_fn_mut_params: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
+            fn_param_types: HashMap::new(),
             fn_merge_mut_params: HashMap::new(),
             fn_int_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
@@ -5379,6 +5388,13 @@ impl RustTrans {
             None
         };
 
+        // Look up full param types for type-aware call site generation
+        let param_types = if let Expr::Ident(fn_name) = call.name.as_ref() {
+            self.fn_param_types.get(fn_name).cloned()
+        } else {
+            None
+        };
+
         for (i, arg) in call.args.args.iter().enumerate() {
             let is_str_param = str_flags.as_ref()
                 .and_then(|f| f.get(i))
@@ -5415,7 +5431,21 @@ impl RustTrans {
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
-            let needs_clone = is_struct_param && !is_merge_mut && matches!(arg, Arg::Pos(Expr::Ident(_)));
+            // Check param type from fn_param_types for auto &mut insertion
+            // Skip if the variable is already a &mut param of the current function
+            let is_already_mut_param = if let Arg::Pos(Expr::Ident(name)) = arg {
+                self.current_fn_mut_params.contains(name)
+            } else { false };
+            let needs_mut_borrow = if self.merge_mode && matches!(arg, Arg::Pos(Expr::Ident(_)))
+                && !is_already_mut_param
+            {
+                param_types.as_ref()
+                    .and_then(|pts| pts.get(i))
+                    .map(|pt| Self::is_merge_mut_type(pt))
+                    .unwrap_or(false)
+            } else { false };
+            let needs_clone = is_struct_param && !is_merge_mut && !needs_mut_borrow
+                && matches!(arg, Arg::Pos(Expr::Ident(_)));
 
             // Auto-box when passing a value to a function that takes a spec param
             let is_spec_param = spec_flags.as_ref()
@@ -5425,6 +5455,11 @@ impl RustTrans {
 
             if is_spec_param {
                 write!(out, "Box::new(")?;
+            }
+
+            // Auto &mut for context-type params in merge mode
+            if needs_mut_borrow {
+                write!(out, "&mut ")?;
             }
 
             self.arg(arg, out)?;
@@ -6445,6 +6480,7 @@ impl RustTrans {
 
         // Cache which params are str (&str) type for auto-borrow at call sites
         self.current_fn_str_params.clear();
+        self.current_fn_mut_params.clear();
         let str_param_flags: Vec<bool> = fn_decl.params.iter()
             .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit))
             .collect();
@@ -6452,6 +6488,10 @@ impl RustTrans {
             if matches!(param.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit) {
                 self.current_fn_str_params.insert(param.name.clone());
                 self.fn_param_str_slice.insert(param.name.clone());
+            }
+            // Track &mut params (merge mode context types) — skip &mut at call sites
+            if self.merge_mode && Self::is_merge_mut_type(&param.ty) {
+                self.current_fn_mut_params.insert(param.name.clone());
             }
         }
         self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
@@ -6461,6 +6501,14 @@ impl RustTrans {
             .map(|p| !Self::is_copy_type(&p.ty))
             .collect();
         self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+
+        // Cache full parameter types for type-aware call site generation
+        let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+        self.fn_param_types.insert(fn_decl.name.clone(), param_types.clone());
+        if let Some(parent) = &fn_decl.parent {
+            let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
+            self.fn_param_types.insert(qualified, param_types);
+        }
 
         // In merge mode, track which params are context types (need &mut instead of .clone())
         if self.merge_mode {
@@ -10459,6 +10507,9 @@ impl Trans for RustTrans {
                         .map(|p| matches!(p.ty, Type::Int))
                         .collect();
                     self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
+
+                    let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+                    self.fn_param_types.insert(fn_decl.name.clone(), param_types);
                 }
                 Stmt::TypeDecl(type_decl) => {
                     // Also scan methods inside type declarations
@@ -10482,8 +10533,12 @@ impl Trans for RustTrans {
                         let int_param_flags: Vec<bool> = fn_decl.params.iter()
                             .map(|p| matches!(p.ty, Type::Int))
                             .collect();
-                        self.fn_int_param_indices.insert(qualified_key, int_param_flags.clone());
+                        self.fn_int_param_indices.insert(qualified_key.clone(), int_param_flags.clone());
                         self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
+
+                        let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+                        self.fn_param_types.insert(qualified_key, param_types.clone());
+                        self.fn_param_types.insert(fn_decl.name.clone(), param_types);
                     }
                 }
                 _ => {}
@@ -10787,6 +10842,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
     let mut global_fn_struct_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
     let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_fn_param_types: std::collections::HashMap<AutoStr, Vec<Type>> = std::collections::HashMap::new();
 
     // Helper: collect Fn declarations from statements, including methods inside TypeDecl
     fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
@@ -10841,6 +10897,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         struct_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
         int_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
         _merge_mut_map: Option<&mut std::collections::HashMap<AutoStr, Vec<bool>>>,
+        mut param_types_map: Option<&mut std::collections::HashMap<AutoStr, Vec<Type>>>,
     ) {
         let generic_methods = [
             "get", "set", "insert", "push", "remove", "contains", "len",
@@ -10876,6 +10933,17 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         for stmt in stmts {
             if let Stmt::Fn(fn_decl) = stmt {
                 process_fn(fn_decl, type_name, struct_map, int_map);
+                if let Some(ptm) = param_types_map.as_mut() {
+                    let pt: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+                    if !generic_methods.contains(&fn_decl.name.as_str()) {
+                        ptm.insert(fn_decl.name.clone(), pt.clone());
+                    }
+                    if !type_name.is_empty() || fn_decl.parent.is_some() {
+                        let parent = fn_decl.parent.as_ref().map(|p: &crate::ast::Name| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                        let qualified = format!("{}.{}", parent, fn_decl.name);
+                        ptm.insert(AutoStr::from(&qualified), pt);
+                    }
+                }
             }
             if let Stmt::TypeDecl(type_decl) = stmt {
                 let type_name_str = type_decl.name.to_string();
@@ -10902,6 +10970,14 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         if has_struct { struct_map.insert(AutoStr::from(&qualified), struct_flags); }
                         if has_int { int_map.insert(AutoStr::from(&qualified), int_flags); }
                     }
+                    if let Some(ptm) = param_types_map.as_mut() {
+                        let pt: Vec<Type> = method.params.iter().map(|p| p.ty.clone()).collect();
+                        if !generic_methods.contains(&method.name.as_str()) {
+                            ptm.insert(method.name.clone(), pt.clone());
+                        }
+                        let qualified = format!("{}.{}", type_name_str, method.name);
+                        ptm.insert(AutoStr::from(&qualified), pt);
+                    }
                 }
             }
         }
@@ -10909,7 +10985,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
     for (_module, ast) in &parsed_modules {
         collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
-        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, None);
+        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, None, Some(&mut global_fn_param_types));
     }
 
     // Phase 3: Transpile each module into its own Sink
@@ -10953,6 +11029,12 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         for (name, flags) in &global_fn_int_params {
             if !transpiler.fn_int_param_indices.contains_key(name) {
                 transpiler.fn_int_param_indices.insert(name.clone(), flags.clone());
+            }
+        }
+        // Pre-populate fn_param_types for cross-module type-aware call site generation
+        for (name, ptypes) in &global_fn_param_types {
+            if !transpiler.fn_param_types.contains_key(name) {
+                transpiler.fn_param_types.insert(name.clone(), ptypes.clone());
             }
         }
 
@@ -11328,6 +11410,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
     let mut global_fn_struct_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
     let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_fn_param_types: std::collections::HashMap<AutoStr, Vec<Type>> = std::collections::HashMap::new();
     let mut global_merge_mut_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
 
     fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
@@ -11373,6 +11456,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         struct_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
         int_map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
         mut merge_mut_map: Option<&mut std::collections::HashMap<AutoStr, Vec<bool>>>,
+        mut param_types_map: Option<&mut std::collections::HashMap<AutoStr, Vec<Type>>>,
     ) {
         let generic_methods = ["get", "set", "insert", "push", "remove", "contains", "len",
             "is_empty", "iter", "keys", "values", "clone", "new", "update", "delete", "find", "index"];
@@ -11411,6 +11495,18 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                         mm.insert(fn_decl.name.clone(), merge_flags);
                     }
                 }
+                // Collect full param types for type-aware call site generation
+                if let Some(ref mut ptm) = param_types_map {
+                    let pt: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+                    if !generic_methods.contains(&fn_decl.name.as_str()) {
+                        ptm.insert(fn_decl.name.clone(), pt.clone());
+                    }
+                    if !type_name.is_empty() || fn_decl.parent.is_some() {
+                        let parent = fn_decl.parent.as_ref().map(|p| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                        let qualified = format!("{}.{}", parent, fn_decl.name);
+                        ptm.insert(AutoStr::from(&qualified), pt);
+                    }
+                }
             }
             if let Stmt::TypeDecl(type_decl) = stmt {
                 let type_name_str = type_decl.name.to_string();
@@ -11436,6 +11532,14 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                         if has_struct { struct_map.insert(AutoStr::from(&qualified), struct_flags); }
                         if has_int { int_map.insert(AutoStr::from(&qualified), int_flags); }
                     }
+                    if let Some(ref mut ptm) = param_types_map {
+                        let pt: Vec<Type> = method.params.iter().map(|p| p.ty.clone()).collect();
+                        if !generic_methods.contains(&method.name.as_str()) {
+                            ptm.insert(method.name.clone(), pt.clone());
+                        }
+                        let qualified = format!("{}.{}", type_name_str, method.name);
+                        ptm.insert(AutoStr::from(&qualified), pt);
+                    }
                 }
             }
         }
@@ -11455,7 +11559,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
 
     for (_module, ast) in &parsed_modules {
         collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
-        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, Some(&mut global_merge_mut_params));
+        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, Some(&mut global_merge_mut_params), Some(&mut global_fn_param_types));
     }
 
     // Phase 3: Transpile all modules into a single Sink with merge_mode
@@ -11494,6 +11598,11 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         for (name, flags) in &global_fn_int_params {
             if !transpiler.fn_int_param_indices.contains_key(name) {
                 transpiler.fn_int_param_indices.insert(name.clone(), flags.clone());
+            }
+        }
+        for (name, ptypes) in &global_fn_param_types {
+            if !transpiler.fn_param_types.contains_key(name) {
+                transpiler.fn_param_types.insert(name.clone(), ptypes.clone());
             }
         }
         for (name, flags) in &global_merge_mut_params {
@@ -11744,10 +11853,10 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     // Fix int_to_str(X).cloned().unwrap_or_default()
     let re = regex::Regex::new(r"int_to_str\(([^)]+)\)\.cloned\(\)\.unwrap_or_default\(\)").unwrap();
     content = re.replace_all(&content, "int_to_str($1)").to_string();
-    // NodeKind Copy derive: now handled at AST level (all_variants_empty check)
+    // NodeKind derives: Copy from AST level, Eq/Ord for ASTNode derive compatibility
     content = content.replace(
         "#[derive(Clone, Debug, PartialEq)]\nenum NodeKind",
-        "#[derive(Clone, Copy, Debug, PartialEq)]\nenum NodeKind",
+        "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]\nenum NodeKind",
     );
     // else_if.value partial move fix
     content = content.replace(
@@ -12196,15 +12305,8 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
     // Too complex for regex — will need AST-level fix. Leave for now.
 
     // === E0308: entry-point functions pass owned context types to &mut params ===
-    // In merge mode, context-type params (Parser, TypeEnv, EvalEnv, CodeGen, BVMState)
-    // are &mut, but entry-point functions create owned locals and pass them directly.
-    // Fix: add &mut prefix at these specific call sites.
-    content = content.replace("parse_program(p)", "parse_program(&mut p)");
-    content = content.replace("type_infer_program(tenv,", "type_infer_program(&mut tenv,");
-    content = content.replace("a2r_transpile(stmts.clone(), tenv)", "a2r_transpile(stmts.clone(), &mut tenv)");
-    content = content.replace("eval_program(env,", "eval_program(&mut env,");
-    content = content.replace("codegen_compile(cg.clone(), stmts.clone(), tenv)",
-                               "codegen_compile(cg.clone(), stmts.clone(), &mut tenv)");
+    // ✅ Now handled at AST level via fn_param_types + is_merge_mut_type()
+    // No regex needed — call sites auto-insert &mut for context-type params.
 
     // === E0499/E0502: double mutable borrows of &mut env in eval functions ===
     // Pattern: some_fn(env, ..., eval_get_last_str(env)...)

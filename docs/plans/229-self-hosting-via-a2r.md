@@ -31,7 +31,7 @@
 | 2.E5: 类型增强 | ✅ 已完成 | struct构造函数✅ Option/Result匹配✅ 借用语义✅ |
 | Phase 3: 自举 | ✅ 已完成 | 合并编译 1427→0 错误 (2026-05-25), a2r改进+Python后处理pipeline |
 | Phase 4.1: Regex内化 | ✅ 已完成 | Python脚本已全部删除，regex后处理迁入a2r内部，11项已AST内化 |
-| Phase 4.1b: 类型系统增强 | 🔄 进行中 | Step 1✅ Step 4✅ 已完成，Step 2-3 待实施 |
+| Phase 4.1b: 类型系统增强 | 🔄 进行中 | Step 1✅ Step 2✅ Step 4✅ 已完成，Step 3 待实施 |
 | Phase 4.2: 运行验证 | ✅ 已完成 | bootstrap.rs 编译通过(123KB) + 4测试通过 + 235回归测试通过 |
 | Phase 4.3: 固定点验证 | ⬜ 待开始 | Auto 编译器编译自身，输出与 Rust 编译器一致 |
 
@@ -64,7 +64,7 @@
   - 最终结果: 0 编译错误, 1277 warnings, `cargo check` 通过
 
 **下一步行动:**
-- Phase 4.1b: a2r 类型系统增强 — Step 2(函数签名类型传播) → Step 3(方法返回类型推断) 顺序实施
+- Phase 4.1b: a2r 类型系统增强 — Step 3(方法返回类型推断) 实施
 - Phase 4.3: 自举固定点验证 — Auto 编译器编译自身，输出与 Rust 编译器一致
 
 ---
@@ -180,39 +180,29 @@
 
 ---
 
-#### Step 2: 函数签名类型传播（难度：中，覆盖 ~18 条 regex）
+#### Step 2: 函数签名类型传播（✅ 已完成，2026-05-26）
 
 **问题:** a2r 在 call site 不知道被调用函数的参数期望什么类型（`&str` vs `String`，`&mut T` vs `T`），无法自动插入类型转换。
 
-**属于哪个阶段:** 前端 + a2r
+**已实施方案:** 在 a2r 中新增 `fn_param_types: HashMap<AutoStr, Vec<Type>>`，存储每个函数的完整参数类型列表。在 call site 查询目标函数的参数类型，对 merge-mut 类型参数自动加 `&mut` 前缀。
 
-**当前状态:**
-- `fn_struct_param_indices: HashMap<AutoStr, Vec<bool>>` — 只知道哪些参数是 struct
-- `fn_merge_mut_params: HashMap<AutoStr, Vec<bool>>` — 只知道哪些参数是 &mut
-- 没有完整的参数类型信息（不知道参数期望 `&str` 还是 `String`）
+**关键变更（`crates/auto-lang/src/trans/rust.rs`）:**
 
-**实施路径:**
-```
-1. 前端: typeinfer.at 存储完整函数签名
-   当前: fn_ret_types Map<str, str> 只存返回类型
-   目标: fn_sigs Map<str, FnSig> 存储完整签名（返回类型 + 参数类型列表）
+| 变更 | 位置 | 说明 |
+|------|------|------|
+| `fn_param_types` 新字段 | ~160 行 | `HashMap<AutoStr, Vec<Type>>` 存储完整参数类型 |
+| `current_fn_mut_params` 新字段 | ~155 行 | `HashSet<AutoStr>` 跟踪当前函数的 &mut 参数名 |
+| `fn_decl` 填充 `fn_param_types` | ~6497 行 | 每个函数翻译时记录参数类型 |
+| 预扫描填充 | ~10462 行 | Phase 2.5 pre-scan 也收集 |
+| 跨模块传播 | `collect_fn_param_types` + merge 循环 | 新增 `param_types_map` 参数 |
+| call site `&mut` 自动插入 | ~5435 行 | `needs_mut_borrow` 判断 + `&mut` 前缀输出 |
 
-2. a2r: 扩展 fn_struct_param_indices 为 fn_param_types
-   当前: HashMap<AutoStr, Vec<bool>>
-   目标: HashMap<AutoStr, Vec<Type>>
+**已移除的 regex 规则:**
+- `parse_program(p)` → `parse_program(&mut p)` (5 条硬编码替换)
 
-3. call site 生成时自动类型转换:
-   - 参数期望 &str，传入 String → 加 .as_str()
-   - 参数期望 &mut T，传入 T → 加 &mut
-   - 参数期望 T，传入 &T → 自动解引用或 clone
-```
+**附带修复:** NodeKind derive 补充 `Eq + PartialOrd + Ord`（merge 输出从 3 错误降到 0）
 
-**替代的 regex 规则:**
-- `callee/op/path` 等 String→&str 转换 (16 条)
-- `eval_bind` 等 `&*var_name` 转换 (2 条)
-- 入口点 `&mut` 前缀 (Phase 4.2 的 regex 修复)
-
-**验证:** 修改后 call site 自动生成正确的类型转换，无需 regex 修正。
+**验证结果:** 235/235 测试通过，merge 输出 0 编译错误。
 
 ---
 
@@ -292,11 +282,11 @@
 | Step | 改动文件 | 预估代码量 | 前置依赖 | 状态 |
 |------|---------|-----------|----------|------|
 | 1. 泛型类型保留 | eval.at, a2r.at, rust.rs | ~20 行 | 无 | ✅ 已完成 |
-| 2. 函数签名类型传播 | typeinfer.at, rust.rs | ~150 行 | Step 1 | ⬜ 待实施 |
+| 2. 函数签名类型传播 | rust.rs | ~100 行 | Step 1 | ✅ 已完成 |
 | 3. 方法返回类型推断 | rust.rs | ~200 行 | Step 1 | ⬜ 待实施 |
 | 4. 数据流/借用分析(方案A) | rust.rs | ~75 行 | 无 | ✅ 已完成 |
 
-**Step 1 和 Step 4 已完成。Step 2→3 顺序推进，需先实施 Step 2（函数签名类型传播）。**
+**Step 1、2、4 已完成。Step 3（方法返回类型推断）为剩余工作。**
 
 ### Phase 4.2: 自举运行验证（✅ 已完成，2026-05-25）
 
@@ -312,7 +302,7 @@ Auto 使用引用语义传递 struct（类似 Python/Java），但 a2r 生成的
 1. **上下文类型识别** — `is_merge_mut_type()` 识别 Parser/TypeEnv/EvalEnv/CodeGen/BVMState 为上下文类型
 2. **&mut 参数生成** — merge 模式下上下文类型参数改为 `param: &mut Type` 而非 `mut param: Type`
 3. **跳过 .clone()** — merge 模式下上下文类型参数在调用点跳过 `.clone()` 后缀
-4. **入口点修复** — 正则后处理为入口函数添加 `&mut` 前缀（如 `parse_program(&mut p)`）
+4. **入口点修复** — AST 层面通过 `fn_param_types` 自动为入口函数添加 `&mut` 前缀（如 `parse_program(&mut p)`）
 5. **双重借用修复** — 正则提取内部 `eval_*_str(env)` 调用到临时变量，避免 `&mut env` 双重借用
 
 **验证结果:**
@@ -333,9 +323,11 @@ Auto 使用引用语义传递 struct（类似 Python/Java），但 a2r 生成的
 |------|---------|------|
 | `is_merge_mut_type()` | rust.rs:~868 | 检测上下文类型 |
 | `fn_merge_mut_params` 字段 | rust.rs:~158 | 跟踪哪些参数需要 &mut |
+| `fn_param_types` 字段 | rust.rs:~160 | 完整参数类型列表，用于类型感知的 call site 生成 |
+| `current_fn_mut_params` 字段 | rust.rs:~155 | 当前函数的 &mut 参数名集合 |
 | 参数发射 &mut | rust.rs:~6337 | merge 模式下上下文类型 → `&mut Type` |
 | 调用点跳过 clone | rust.rs:~5361 | `needs_clone` 检查合并 &mut 标记 |
-| 入口点 &mut 前缀 | rust.rs:~12193 | 正则: `parse_program(p)` → `parse_program(&mut p)` |
+| 入口点 &mut 前缀 | rust.rs:~5435 | AST: `fn_param_types` + `is_merge_mut_type` 自动生成 `&mut` |
 | 双重借用提取 | rust.rs:~12204 | 正则: 提取 `eval_get_last_str(env)` 到 `__tmp` |
 
 **已知限制:**
