@@ -18,9 +18,12 @@ AutoLang's testing infrastructure matured from inline Rust unit tests to a compr
 | 209 | ac-examples Modernization | ✅ | 33/33 examples pass; Phase 0 complete |
 | 210 | Book Listing Test Harness | ✅ | Auto-discovery test harness for 1136 code listings |
 | 211 | Stdlib Test Coverage 80%+ | ✅ | VM + a2r tests for all stdlib modules (~60 new tests) |
+| 260 | Auto Test Framework | ✅ | `auto test` CLI command, discovers and runs `#[test]` functions in .at files |
+| 262 | File-Based Test Framework | ✅ | Auto-discover VM file-based tests in `test/vm/` (~427 tests) |
+| 263 | A2R Transpiler Test Runner | ✅ | Declarative test discovery via `tests/*.at` for a2r, vm, a2c, a2ts (~900 tests) |
 
 ## Status Summary
-- Completed: 4 | Partial: 3 | Planned: 3 | Deprecated: 0
+- Completed: 7 | Partial: 3 | Planned: 3 | Deprecated: 0
 
 ## Key Achievements
 - All three transpiler test suites (a2r, a2c, a2ts) reorganized into consistent categorized directory structures with clear numbering
