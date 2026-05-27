@@ -6,10 +6,10 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let mut entries = Vec::new();
-    entries.push("file1.txt");
-    entries.push("file2.txt");
-    entries.push("subdir/file3.txt");
+    let mut entries: Vec<String> = Vec::new();
+    entries.push("file1.txt".to_string());
+    entries.push("file2.txt".to_string());
+    entries.push("subdir/file3.txt".to_string());
     assert!((entries.len() as i32) == 3);
 
     let mut count: i32 = 0;

@@ -7,14 +7,14 @@ use auto_lang::a2r_std::*;
 
 use crossbeam::channel;
 fn main() {
-    let mut queue = Vec::new();
+    let mut queue: Vec<String> = Vec::new();
 
-    queue.push("msg1");
-    queue.push("msg2");
-    queue.push("msg3");
+    queue.push("msg1".to_string());
+    queue.push("msg2".to_string());
+    queue.push("msg3".to_string());
     assert!((queue.len() as i32) == 3);
 
-    assert!(queue.get(0) == "msg1");
-    assert!(queue.get(1) == "msg2");
-    assert!(queue.get(2) == "msg3");
+    assert!(queue[0 as usize].clone() == "msg1");
+    assert!(queue[1 as usize].clone() == "msg2");
+    assert!(queue[2 as usize].clone() == "msg3");
 }

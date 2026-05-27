@@ -7,9 +7,9 @@ use auto_lang::a2r_std::*;
 
 fn main() {
 
-    let mut output_lines = Vec::new();
-    output_lines.push("hello");
-    output_lines.push("world");
+    let mut output_lines: Vec<String> = Vec::new();
+    output_lines.push("hello".to_string());
+    output_lines.push("world".to_string());
     assert!((output_lines.len() as i32) == 2);
-    assert!(output_lines.get(0) == "hello");
+    assert!(output_lines[0 as usize].clone() == "hello");
 }

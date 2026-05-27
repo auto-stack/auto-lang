@@ -6,12 +6,12 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let mut entries = Vec::new();
-    entries.push("backup/file1.txt");
-    entries.push("backup/file2.txt");
-    entries.push("backup/subdir/file3.txt");
+    let mut entries: Vec<String> = Vec::new();
+    entries.push("backup/file1.txt".to_string());
+    entries.push("backup/file2.txt".to_string());
+    entries.push("backup/subdir/file3.txt".to_string());
     assert!((entries.len() as i32) == 3);
 
-    assert!(entries.get(0) == "backup/file1.txt");
-    assert!(entries.get(2) == "backup/subdir/file3.txt");
+    assert!(entries[0 as usize].clone() == "backup/file1.txt");
+    assert!(entries[2 as usize].clone() == "backup/subdir/file3.txt");
 }

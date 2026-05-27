@@ -2,7 +2,7 @@
 // Tests the concept of spawning a process and capturing output
 fn main() {
     // Simulate process output capture (VM Command API limited on Windows)
-    var output_lines = List.new()
+    var output_lines List<Str> = List.new()
     output_lines.push("hello")
     output_lines.push("world")
     assert(output_lines.len() == 2)

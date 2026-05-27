@@ -4,7 +4,7 @@ dep flate2
 // Tar + gzip decompression — simplified for VM (no tar/flate2 shims yet)
 // Tests the concept of extracting and listing archive entries
 fn main() {
-    var entries = List.new()
+    var entries List<Str> = List.new()
     entries.push("file1.txt")
     entries.push("file2.txt")
     entries.push("subdir/file3.txt")

@@ -5,7 +5,7 @@
 Code generation is substantially implemented across multiple backends:
 
 - **C transpiler (a2c)** (`trans/c.rs`): Mature. Supports functions, structs, enums, imports via `use c <header>`, type mappings. Full test suite in `test/a2c/`.
-- **Rust transpiler (a2r)** (`trans/rust.rs`): Active. Used for self-hosting compilation paths.
+- **Rust transpiler (a2r)** (`trans/rust.rs`): Active. ~12000 lines. Maps Auto to idiomatic Rust with string ownership conversion, method remapping, and 20+ post-processing passes. Used for self-hosting compilation paths.
 - **ArkTS generator (a2ark)** (`ui_gen/ark/`): Complete. 5 modules (generator, modifier, project, state, mod) with 12+ widget test cases. Maps AURA widgets to HarmonyOS ArkTS components.
 - **Jetpack Compose generator (a2jet)** (`ui_gen/jet/`): Complete. 11 modules (generator, components, form, layout, list, modifier, navigation, state, project, theme, mod) with full Material3 support and Android project generation.
 - **Vue generator** (`ui_gen/vue.rs`): Implemented for web target.
@@ -14,6 +14,56 @@ Code generation is substantially implemented across multiple backends:
 Not yet implemented: ASTL unified syntax tree, AutoGen template engine, a2c+LVGL embedded UI backend, Token Compiler.
 
 ## Design
+
+### Rust Transpiler (a2r)
+
+The Rust transpiler (`trans/rust.rs`, ~12000 lines) converts Auto source to idiomatic Rust code. The most complex aspect is string type handling — Auto's unified string model must map to Rust's `&str` / `String` ownership distinction.
+
+#### String Type Mapping
+
+Auto has three string types (`str`, `Str`, StrLit) that map differently depending on context (see [02-type-system.md](02-type-system.md#string-type-system) for full rules). The transpiler uses three mapping functions:
+
+**`rust_type_name()`** — variable/field/container type annotation:
+| Auto Internal | Rust Output | Notes |
+|--------------|-------------|-------|
+| `StrSlice` (str) | `String` | Storage context: avoid lifetime issues |
+| `StrOwned` (Str) | `String` | Direct mapping |
+| `StrFixed`/`CStrLit` (literals) | `String` | Not used in type annotations |
+
+**`rust_param_type_name()`** — function parameter type:
+| Auto Internal | Rust Output | Notes |
+|--------------|-------------|-------|
+| All string types | `&str` | Idiomatic Rust parameter borrowing |
+
+**`rust_return_type_name()`** — return type:
+| Auto Internal | Rust Output | Notes |
+|--------------|-------------|-------|
+| `StrSlice`/`CStrLit` | `String` | Return owned to avoid dangling references |
+| `StrOwned` | `String` | Direct mapping |
+
+#### `.to_string()` Injection
+
+When a string literal (`"hello"`) or `str` variable is assigned to a `String`-typed slot, the transpiler inserts `.to_string()`. This happens at:
+
+1. **Variable declaration**: `let x str = "hello"` → `let x: String = "hello".to_string()`
+2. **Container push**: `entries.push("hello")` → `entries.push("hello".to_string())` (when container is `Vec<String>`)
+3. **Map insert**: `map.set("key", "val")` → `map.insert("key".to_string(), "val".to_string())` (when key/value is `String`)
+4. **Return expression**: `return "ok"` → `return "ok".to_string()` (when function returns `String`)
+5. **Struct field init**: `Point { name: "origin" }` → `Point { name: "origin".to_string() }` (when field is `String`)
+
+The transpiler has 13+ injection sites and 20+ post-processing passes to clean up redundant conversions (e.g., `.to_string().as_str()` → `.as_str()`, double `.to_string()` → single).
+
+#### Known Issues (as of 2026-05)
+
+The string conversion logic has grown organically and has several rough edges:
+- `.to_string()` is sometimes injected when not needed (e.g., `Command.args(vec!["-la"])`)
+- `.clone()` is added to function arguments that should be borrowed by default
+- `OsStr::to_str()` is incorrectly mapped to `.to_string()` (should stay `.to_str()`)
+- `File.delete()` is confused with `HashMap.remove()` due to method name collision
+- `list.get(N)` is replaced with `list[N as usize].clone()` instead of keeping `.get(N)`
+- Char literals get unnecessary `(char as i32)` cast in a2r context
+
+These are tracked as a2r test failures and will be fixed incrementally.
 
 ### C Transpiler (a2c)
 

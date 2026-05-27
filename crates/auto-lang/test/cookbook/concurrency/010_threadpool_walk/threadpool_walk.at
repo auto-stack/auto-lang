@@ -4,7 +4,7 @@ use.rust walkdir::WalkDir
 // Thread pool directory walk — simplified for VM (WalkDir shim returns entries)
 // Tests the pattern of collecting directory entries for parallel processing
 fn main() {
-    var dirs = List.new()
+    var dirs List<Str> = List.new()
     dirs.push("src/")
     dirs.push("docs/")
     dirs.push("test/")

@@ -109,6 +109,70 @@ fn map(iter I, f T=>U) MapIter<I, T, U> {
 
 The `TypeParam` struct in the AST already has an optional `constraint` field ready for this syntax.
 
+### String Type System
+
+AutoLang has three string-related types with distinct ownership semantics, mapping to Rust's `&str` / `String` distinction.
+
+#### Three String Types
+
+| Auto Keyword | Compiler Internal | Rust Equivalent | Semantics |
+|-------------|-------------------|-----------------|-----------|
+| `str` | `StrSlice` | `&str` | Borrowed string slice. Default type for string variables and function parameters. |
+| `Str` | `StrOwned` | `String` | Owned heap-allocated string. Required inside containers. |
+| (literal) `"hello"` | `StrFixed(N)` / `CStrLit` | `"hello"` | String literal. Not a named type — cannot be used in type annotations. Auto-converts to `str` or `Str` as needed. |
+
+#### Auto Conversion Rules
+
+Conversions flow in one direction: from smaller to larger ownership scope.
+
+```
+StrLit ──auto──> StrSlice ──auto──> StrOwned
+("hello")         (str)             (Str)
+```
+
+| # | Rule | Auto Example | Effect |
+|---|------|-------------|--------|
+| 1 | StrLit → StrSlice | `let s = "hello"` | Literal automatically becomes `str` |
+| 2 | StrLit → StrOwned | `entries.push("hello")` | Literal auto-adapts to `Str` where needed |
+| 3 | StrSlice → StrOwned | `entries.push(s)` where `s: str` | `str` auto-adapts to `Str` (equivalent to `s.to(Str)`) |
+
+Reverse conversions require explicit syntax: `s.to(str)` or `s.as_str()` in Rust terms.
+
+#### Container Restriction
+
+**Slice types (`str`) are not allowed as container element types.** Containers require owned data to avoid lifetime issues.
+
+```auto
+// WRONG — str in container not allowed
+var entries List<str> = List.new()
+var seen HashSet<str> = HashSet.new()
+
+// CORRECT — use Str (owned)
+var entries List<Str> = List.new()
+var seen HashSet<Str> = HashSet.new()
+```
+
+When the type parameter is omitted, containers default to `Str`:
+
+```auto
+var entries = List.new()     // defaults to List<Str> → Vec<String>
+var scores = HashMap.new()   // defaults to HashMap<Str, Str> → HashMap<String, String>
+```
+
+#### Rust Transpilation Mapping (a2r)
+
+The a2r transpiler maps Auto string types to Rust according to context:
+
+| Context | Auto `str` | Auto `Str` |
+|---------|-----------|------------|
+| Function parameter | `&str` | `String` |
+| Return type | `String` | `String` |
+| Variable/field | `String` | `String` |
+| Container element | `String` | `String` |
+| Literal expression | `"hello"` | `"hello".to_string()` |
+
+This means `str` maps to `String` in most storage contexts (variables, fields, containers) to avoid Rust lifetime issues, but maps to `&str` in parameter position where borrowing is idiomatic. The transpiler inserts `.to_string()` only when the Rust type system requires it (StrLit/StrSlice assigned to a `String`-typed slot).
+
 ### Unified Enum System
 
 AutoLang merges traditional enums and tagged unions into a single `enum` keyword with three physical forms:

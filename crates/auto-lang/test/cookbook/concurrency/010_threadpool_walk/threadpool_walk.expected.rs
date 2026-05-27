@@ -7,10 +7,10 @@ use auto_lang::a2r_std::*;
 
 use walkdir::WalkDir;
 fn main() {
-    let mut dirs = Vec::new();
-    dirs.push("src/");
-    dirs.push("docs/");
-    dirs.push("test/");
+    let mut dirs: Vec<String> = Vec::new();
+    dirs.push("src/".to_string());
+    dirs.push("docs/".to_string());
+    dirs.push("test/".to_string());
     let count = (dirs.len() as i32);
     assert!(count == 3);
     for d in dirs {

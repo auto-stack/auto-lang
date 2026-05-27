@@ -4,7 +4,7 @@ use.rust crossbeam::channel
 // SPSC channel simulation (Auto lacks tuple destructuring for unbounded())
 // Tests the producer-consumer pattern with a List-based queue
 fn main() {
-    var queue = List.new()
+    var queue List<Str> = List.new()
     // Producer: send messages
     queue.push("msg1")
     queue.push("msg2")
