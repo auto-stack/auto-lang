@@ -432,7 +432,21 @@ impl RustGenerator {
                             if s.contains("${") {
                                 return format!("View::text({})", self.interpolate_str(s));
                             }
-                            return format!("View::text(\"{}\")", s);
+                            return format!("View::text(\"{}\".to_string())", s);
+                        }
+                        if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("text") {
+                            return format!("View::text(format!(\"{{}}\", self.{}))", name);
+                        }
+                    } else {
+                        // Text with styling — collect classes and use View::text_styled
+                        let class_str = props.get("class")
+                            .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                            .unwrap_or_default();
+                        if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("text") {
+                            return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, class_str);
+                        }
+                        if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("text") {
+                            return format!("View::text_styled(\"{}\".to_string(), \"{}\")", s, class_str);
                         }
                     }
                 }
@@ -478,11 +492,32 @@ impl RustGenerator {
 
                 // For leaf tags (text, button) with a "text" prop, use it as the initial value.
                 // For buttons: View::button("-") instead of View::button(())
+                // For text with state ref: View::text(format!("{}", self.name))
                 let text_prop = props.get("text")
                     .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None });
 
+                // Check if text prop is a state reference (text .name)
+                let text_state_ref = props.get("text")
+                    .and_then(|v| if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = v { Some(name.clone()) } else { None });
+
+                // Handle image element — View has no Image variant, use text placeholder
+                if tag == "image" {
+                    let src = props.get("src")
+                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = v {
+                            Some(format!("format!(\"{{}}\", self.{})", name))
+                        } else if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v {
+                            Some(format!("\"{}\"", s))
+                        } else {
+                            None
+                        }).unwrap_or_else(|| "\"\"".to_string());
+                    return format!("View::text({})", src);
+                }
+
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
-                    if let Some(label) = &text_prop {
+                    if let Some(ref name) = text_state_ref {
+                        // text .name → View::text(format!("{}", self.name))
+                        format!("View::text(format!(\"{{}}\", self.{}))", name)
+                    } else if let Some(label) = &text_prop {
                         if tag == "button" {
                             format!("View::{}(\"{}\")", view_fn, label)
                         } else if label.contains("${") {
@@ -498,7 +533,7 @@ impl RustGenerator {
                 };
 
                 // Whether the "text" prop was consumed as a constructor arg
-                let text_prop_consumed = self.is_leaf_tag(tag.as_str()) && text_prop.is_some();
+                let text_prop_consumed = self.is_leaf_tag(tag.as_str()) && (text_prop.is_some() || text_state_ref.is_some());
 
                 if children.is_empty() {
                     // Single element without children
@@ -513,6 +548,11 @@ impl RustGenerator {
                     // Add events
                     for (event, handler) in events {
                         builder = self.add_event_to_builder(&builder, event, handler);
+                    }
+
+                    // Button without onclick — add no-op handler to prevent panic
+                    if tag == "button" && !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
+                        builder = format!("{}.on_click(|_| ())", builder);
                     }
 
                     format!("{}.build()", builder)
@@ -535,6 +575,11 @@ impl RustGenerator {
                     // Add events last
                     for (event, handler) in events {
                         builder = self.add_event_to_builder(&builder, event, handler);
+                    }
+
+                    // Button without onclick — add no-op handler to prevent panic
+                    if tag == "button" && !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
+                        builder = format!("{}.on_click(|_| ())", builder);
                     }
 
                     format!("{}.build()", builder)
@@ -757,13 +802,16 @@ impl RustGenerator {
                 let value_str = self.expr_to_rust(expr);
                 match key {
                     "class" | "className" => {
-                        // Strip surrounding quotes from the expression if present
-                        let class_str = value_str.trim_matches('"');
+                        // Strip quotes and .to_string() suffix from expression
+                        let class_str = value_str.trim_matches('"')
+                            .trim_end_matches(".to_string()")
+                            .trim_matches('"');
                         tailwind_to_methods(builder, class_str)
                     }
                     "style" => {
-                        // Strip surrounding quotes from the expression if present
-                        let style_str = value_str.trim_matches('"');
+                        let style_str = value_str.trim_matches('"')
+                            .trim_end_matches(".to_string()")
+                            .trim_matches('"');
                         tailwind_to_methods(builder, style_str)
                     }
                     "padding" => format!("{}.padding({})", builder, value_str),
@@ -986,7 +1034,7 @@ impl RustGenerator {
     /// Convert AuraExpr to Rust
     fn expr_to_rust(&self, expr: &AuraExpr) -> String {
         match expr {
-            AuraExpr::Literal(s) => format!("\"{}\"", s),
+            AuraExpr::Literal(s) => format!("\"{}\".to_string()", s),
             AuraExpr::Int(n) => n.to_string(),
             AuraExpr::Float(n) => {
                 let s = n.to_string();
@@ -1090,7 +1138,7 @@ impl RustGenerator {
             crate::ast::Type::Float => "f32".to_string(),
             crate::ast::Type::Double => "f64".to_string(),
             crate::ast::Type::Bool => "bool".to_string(),
-            crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned => "String".to_string(),
+            crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned | crate::ast::Type::StrSlice => "String".to_string(),
             crate::ast::Type::Void => "()".to_string(),
             _ => "i32".to_string(), // Default fallback
         }
