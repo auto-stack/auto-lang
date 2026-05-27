@@ -3,7 +3,7 @@
 **Status**: Phase 1 Complete
 **Created**: 2026-05-25
 **Related**: [Plan 265 (AutoVM MCP Server)](265-autovm-mcp-server.md)
-**Scope**: `docs/spec/`, `crates/auto-lang/test/a2r/conformance/`, `crates/auto-lang/src/trans/rust.rs`
+**Scope**: `docs/conformance/`, `crates/auto-lang/test/a2r/conformance/`, `crates/auto-lang/src/trans/rust.rs`
 
 ## Problem Statement
 
@@ -57,8 +57,8 @@ Layer 1: 语义规范 (Semantic Specification)
 ### Directory Structure
 
 ```
-docs/spec/
-├── README.md                    # 规范索引和阅读指南
+docs/conformance/
+├── README.md                    # 一致性规范索引和阅读指南
 ├── 01-arithmetic.md             # 算术运算语义
 ├── 02-strings.md                # 字符串操作语义
 ├── 03-collections.md            # 数组/List/Map 操作语义
@@ -279,12 +279,12 @@ cargo test -p auto-lang -- conformance_differential --count 1000
 
 ## Implementation Phases
 
-### Phase 1: Semantic Specification Skeleton (1-2 days) — ✅ COMPLETE
+### Phase 1: Semantic Conformance Specification Skeleton (1-2 days) — ✅ COMPLETE
 
 **Goal**: 前 20 个最常用操作有精确语义定义。
 
 **Tasks**:
-1. ✅ 创建 `docs/spec/` 目录和 `README.md` 索引
+1. ✅ 创建 `docs/conformance/` 目录和 `README.md` 索引
 2. ✅ 编写 `01-arithmetic.md` — int/float 算术、溢出行为
 3. ✅ 编写 `02-strings.md` — 拼接、索引、f-string
 4. ✅ 编写 `03-collections.md` — 数组创建、索引、切片
@@ -334,7 +334,7 @@ cargo test -p auto-lang -- conformance_differential --count 1000
    - 嵌套函数调用
    - 递归
 3. 更新特性覆盖率矩阵至 ≥ 80%
-4. 每发现不一致，修复后补充语义规范
+4. 每发现不一致，修复后补充一致性规范
 
 **Deliverable**: 30 对偶测试用例，覆盖核心特性
 
@@ -359,33 +359,33 @@ cargo test -p auto-lang -- conformance_differential --count 1000
 - `crates/auto-lang/src/test_util/program_generator.rs`
 - `crates/auto-lang/src/test_util/mod.rs`
 
-### Phase 5: Spec-Driven Development (ongoing) — ✅ ESTABLISHED
+### Phase 5: Conformance-Driven Development (ongoing) — ✅ ESTABLISHED
 
-**Goal**: 语义规范成为新特性的开发流程的一部分。
+**Goal**: 一致性规范成为新特性的开发流程的一部分。
 
 **Tasks**:
-1. ✅ 新特性开发流程定义并写入 `docs/spec/README.md`：
-   - 先写语义规范（`docs/spec/`）
+1. ✅ 新特性开发流程定义并写入 `docs/conformance/README.md`：
+   - 先写一致性规范（`docs/conformance/`）
    - 再写对偶测试用例
    - 然后实现 AutoVM 支持
    - 最后实现 a2r 支持
    - 对偶测试自动验证两者一致
 2. ✅ Checklist 模板写入 README.md
-3. ⏳ 逐步完善已有特性的语义规范（05-functions ~ 09-error-handling 待补充）
+3. ⏳ 逐步完善已有特性的一致性规范（05-functions ~ 09-error-handling 待补充）
 
 ## Success Metrics
 
-1. **Layer 1**: 核心操作（算术、比较、字符串、数组、控制流）100% 有语义规范
+1. **Layer 1**: 核心操作（算术、比较、字符串、数组、控制流）100% 有一致性规范
 2. **Layer 2**: 语言特性对偶测试覆盖率 ≥ 90%
 3. **Layer 3**: 差分测试引擎每次 CI 跑 500+ 随机程序，0 不一致
 4. **回归测试集**: 累计 20+ 历史不一致的回归用例
-5. **新特性流程**: 每个新 a2r 特性都有对应的规范和对偶测试
+5. **新特性流程**: 每个新 a2r 特性都有对应的一致性规范和对偶测试
 
 ## Risks and Mitigations
 
 | 风险 | 影响 | 缓解措施 |
 |------|------|---------|
-| 语义规范与实际实现不一致 | 规范失去权威性 | 规范由对偶测试验证；发现不一致时以测试结果为准更新规范 |
+| 语义规范与实际实现不一致 | 规范失去权威性 | 一致性规范由对偶测试验证；发现不一致时以测试结果为准更新规范 |
 | 差分测试生成器产生无效程序 | 浪费 CI 时间 | 生成器保证类型正确；无效程序跳过不计 |
 | a2r 尚不支持某些特性 | 对偶测试无法运行 | 对偶测试标记为 `#[ignore]`，跟踪在特性矩阵中 |
 | Minimizer 无法缩小某些用例 | 回归测试包含冗余代码 | 手动审查；设置代码行数上限 |
