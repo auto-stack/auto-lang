@@ -16,5 +16,5 @@ fn process(data: std::collections::HashMap<String, i32>) -> i32 {
 
 fn main() {
     let m: std::collections::HashMap<String, i32> = {count: 10, total: 100};
-    let result = process(m);
+    let result = process(m.clone());
 }

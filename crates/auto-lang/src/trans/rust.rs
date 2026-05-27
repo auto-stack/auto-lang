@@ -6311,13 +6311,16 @@ impl RustTrans {
             self.expr(&store.expr, out)?;
             // Auto-clone: when assigning from a non-Copy struct field (e.g., let path = node.name)
             // the struct field is moved, but the struct may still be used later
-            if let Expr::Dot(obj, _field) = &store.expr {
-                if let Expr::Ident(obj_name) = obj.as_ref() {
-                    let obj_is_copy = self.local_var_types.get(obj_name)
-                        .map(|ty| Self::is_copy_type(ty))
-                        .unwrap_or(true);
-                    if !obj_is_copy {
-                        write!(out, ".clone()")?;
+            // Skip for pointer types — *mut T / *const T are Copy
+            if !matches!(store.ty, Type::Ptr(_)) {
+                if let Expr::Dot(obj, _field) = &store.expr {
+                    if let Expr::Ident(obj_name) = obj.as_ref() {
+                        let obj_is_copy = self.local_var_types.get(obj_name)
+                            .map(|ty| Self::is_copy_type(ty))
+                            .unwrap_or(true);
+                        if !obj_is_copy {
+                            write!(out, ".clone()")?;
+                        }
                     }
                 }
             }
