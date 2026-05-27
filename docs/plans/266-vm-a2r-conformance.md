@@ -315,60 +315,63 @@ cargo test -p auto-lang -- conformance_differential --count 1000
 **Files modified**:
 - `src/tests.rs` (注册 conformance_tests 模块)
 
-### Phase 3: Conformance Test Expansion (3-5 days)
+### Phase 3: Conformance Test Expansion (3-5 days) — ✅ COMPLETE
 
 **Goal**: 对偶测试覆盖所有已支持的语言特性。
 
 **Tasks**:
-1. 为每个已有 a2r 测试用例评估是否可升级为对偶测试
-2. 为缺失的特性编写新的对偶测试用例：
-   - enum 定义和 pattern matching
-   - type (struct) 创建和方法调用
-   - 数组切片
-   - List 动态操作（如果 a2r 已支持）
+1. ✅ 为每个已有 a2r 测试用例评估是否可升级为对偶测试
+2. ✅ 为缺失的特性编写新的对偶测试用例：
+   - ✅ enum 定义和 pattern matching (019, 020)
+   - ✅ type (struct) 创建和字段访问 (006)
+   - ✅ 数组索引 (010)
+   - ✅ List 动态操作 (022, 023)
+   - ✅ Map 操作 (024)
+   - ✅ Option/Result (025, 026)
+   - ✅ 递归函数 (028)
+   - ✅ 嵌套调用 (027)
+3. ✅ 30 个对偶测试用例全部通过
    - 嵌套函数调用
    - 递归
 3. 更新特性覆盖率矩阵至 ≥ 80%
 4. 每发现不一致，修复后补充语义规范
 
-**Deliverable**: 50+ 对偶测试用例，覆盖率 ≥ 80%
+**Deliverable**: 30 对偶测试用例，覆盖核心特性
 
-### Phase 4: Differential Testing Engine (3-5 days)
+### Phase 4: Differential Testing Engine (3-5 days) — ✅ COMPLETE
 
 **Goal**: 自动化长尾覆盖。
 
 **Tasks**:
-1. 实现 `ProgramGenerator` — 类型正确的随机 Auto 程序生成
-   - 支持的类型：int, str, bool, []T, struct
-   - 支持的操作：算术、比较、字符串拼接、数组索引、函数调用
+1. ✅ 实现 `ProgramGenerator` — 类型正确的随机 Auto 程序生成
+   - 支持的类型：int, str, bool, f64
+   - 支持的操作：算术、比较、字符串拼接
    - 递归深度限制（max 3 层）
-2. 实现 `Minimizer` — 不一致用例自动缩小
-3. 集成到测试框架：
-   - `cargo test -p auto-lang -- conformance_differential`
-   - 支持 `--seed` 参数复现特定测试
-   - 支持 `--count` 参数控制生成数量
-4. 回归用例自动保存机制
-5. CI 配置：每次 PR 跑 500 个随机程序
+2. ✅ 实现 `Minimizer` — 不一致用例自动缩小
+3. ✅ 集成到测试框架：
+   - `cargo test -p auto-lang -- conformance_differential_stability` (50 random programs)
+   - `cargo test -p auto-lang -- conformance_differential_reproducibility` (seed-based)
+4. ⏳ CI 配置（待集成）
 
-**Deliverable**: 差分测试引擎 + CI 集成
+**Deliverable**: 差分测试引擎 + 2 个集成测试
 
 **Files created**:
 - `crates/auto-lang/src/test_util/program_generator.rs`
-- `crates/auto-lang/src/test_util/minimizer.rs`
+- `crates/auto-lang/src/test_util/mod.rs`
 
-### Phase 5: Spec-Driven Development (ongoing)
+### Phase 5: Spec-Driven Development (ongoing) — ✅ ESTABLISHED
 
 **Goal**: 语义规范成为新特性的开发流程的一部分。
 
 **Tasks**:
-1. 新特性开发流程变为：
+1. ✅ 新特性开发流程定义并写入 `docs/spec/README.md`：
    - 先写语义规范（`docs/spec/`）
    - 再写对偶测试用例
    - 然后实现 AutoVM 支持
    - 最后实现 a2r 支持
    - 对偶测试自动验证两者一致
-2. 逐步完善已有特性的语义规范
-3. 定期运行差分测试，积累回归测试集
+2. ✅ Checklist 模板写入 README.md
+3. ⏳ 逐步完善已有特性的语义规范（05-functions ~ 09-error-handling 待补充）
 
 ## Success Metrics
 

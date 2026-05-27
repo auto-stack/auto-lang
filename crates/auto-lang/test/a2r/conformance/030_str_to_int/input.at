@@ -1,0 +1,8 @@
+// Conformance 030: Type conversion and to_string
+fn main() {
+    let x = 42
+    print(x.to_string())
+    let s = "hello"
+    print(s.len())
+    print(42.to_string())
+}

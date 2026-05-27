@@ -1,0 +1,11 @@
+// Conformance 022: List push and pop
+fn main() {
+    let list = List.new()
+    list.push(10)
+    list.push(20)
+    list.push(30)
+    print(list.len())
+    print(list.get(0))
+    print(list.get(1))
+    print(list.get(2))
+}

@@ -1,0 +1,12 @@
+// Conformance 019: Scalar enum with values
+enum Color {
+    RED = 1
+    GREEN = 2
+    BLUE = 3
+}
+
+fn main() {
+    print(Color.RED)
+    print(Color.GREEN)
+    print(Color.BLUE)
+}

@@ -1,0 +1,11 @@
+// Conformance 024: Map basic operations
+fn main() {
+    let scores Map<str, int> = Map.new()
+    scores.set("alice", 95)
+    scores.set("bob", 87)
+    print(scores.len())
+    print(scores.get("alice"))
+    print(scores.get("bob"))
+    print(scores.contains_key("alice"))
+    print(scores.contains_key("charlie"))
+}

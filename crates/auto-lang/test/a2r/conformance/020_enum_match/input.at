@@ -1,0 +1,18 @@
+// Conformance 020: Enum with pattern matching
+enum Shape {
+    Circle(f64)
+    Rect(int, int)
+}
+
+fn main() {
+    let s = Shape.Circle(3.0)
+    is s {
+        Shape.Circle(r) -> print(r),
+        Shape.Rect(w, h) -> print(w)
+    }
+    let r = Shape.Rect(4, 5)
+    is r {
+        Shape.Circle(r) -> print(r),
+        Shape.Rect(w, h) -> print(w)
+    }
+}

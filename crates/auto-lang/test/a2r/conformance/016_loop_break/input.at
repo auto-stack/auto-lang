@@ -1,0 +1,12 @@
+// Conformance 016: loop with break
+fn main() {
+    var i = 0
+    loop {
+        if i >= 3 {
+            break
+        }
+        print(i)
+        i += 1
+    }
+    print("done")
+}

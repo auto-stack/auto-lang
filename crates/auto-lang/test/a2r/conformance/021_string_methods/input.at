@@ -1,0 +1,7 @@
+// Conformance 021: String methods
+fn main() {
+    print("hello".len())
+    print("  hi  ".trim())
+    print("a-b-c".replace("-", "_"))
+    print("hello world".contains("world"))
+}

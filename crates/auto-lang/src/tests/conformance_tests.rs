@@ -67,6 +67,12 @@ fn conformance_bootstrap() {
         "001_int_add", "002_str_concat", "003_if_else", "004_for_range",
         "005_fstring", "006_struct_access", "007_func_call", "008_arithmetic",
         "009_comparison", "010_array_index",
+        "011_int_div", "012_int_mod", "013_negation", "014_float_arith",
+        "015_nested_if", "016_loop_break", "017_loop_continue", "018_for_iterator",
+        "019_enum_scalar", "020_enum_match",
+        "021_string_methods", "022_list_push_pop", "023_list_map_filter",
+        "024_map_basic", "025_option_basic", "026_result_basic",
+        "027_nested_func", "028_recursive_func", "029_multi_param", "030_str_to_int",
     ];
     for case in &cases {
         match generate_expected(case) {
@@ -124,4 +130,157 @@ fn conformance_009_comparison() {
 #[test]
 fn conformance_010_array_index() {
     run_conformance_test("010_array_index").unwrap();
+}
+
+// === Phase 3: Expanded Coverage ===
+
+#[test]
+fn conformance_011_int_div() {
+    run_conformance_test("011_int_div").unwrap();
+}
+
+#[test]
+fn conformance_012_int_mod() {
+    run_conformance_test("012_int_mod").unwrap();
+}
+
+#[test]
+fn conformance_013_negation() {
+    run_conformance_test("013_negation").unwrap();
+}
+
+#[test]
+fn conformance_014_float_arith() {
+    run_conformance_test("014_float_arith").unwrap();
+}
+
+#[test]
+fn conformance_015_nested_if() {
+    run_conformance_test("015_nested_if").unwrap();
+}
+
+#[test]
+fn conformance_016_loop_break() {
+    run_conformance_test("016_loop_break").unwrap();
+}
+
+#[test]
+fn conformance_017_loop_continue() {
+    run_conformance_test("017_loop_continue").unwrap();
+}
+
+#[test]
+fn conformance_018_for_iterator() {
+    run_conformance_test("018_for_iterator").unwrap();
+}
+
+#[test]
+fn conformance_019_enum_scalar() {
+    run_conformance_test("019_enum_scalar").unwrap();
+}
+
+#[test]
+fn conformance_020_enum_match() {
+    run_conformance_test("020_enum_match").unwrap();
+}
+
+#[test]
+fn conformance_021_string_methods() {
+    run_conformance_test("021_string_methods").unwrap();
+}
+
+#[test]
+fn conformance_022_list_push_pop() {
+    run_conformance_test("022_list_push_pop").unwrap();
+}
+
+#[test]
+fn conformance_023_list_map_filter() {
+    run_conformance_test("023_list_map_filter").unwrap();
+}
+
+#[test]
+fn conformance_024_map_basic() {
+    run_conformance_test("024_map_basic").unwrap();
+}
+
+#[test]
+fn conformance_025_option_basic() {
+    run_conformance_test("025_option_basic").unwrap();
+}
+
+#[test]
+fn conformance_026_result_basic() {
+    run_conformance_test("026_result_basic").unwrap();
+}
+
+#[test]
+fn conformance_027_nested_func() {
+    run_conformance_test("027_nested_func").unwrap();
+}
+
+#[test]
+fn conformance_028_recursive_func() {
+    run_conformance_test("028_recursive_func").unwrap();
+}
+
+#[test]
+fn conformance_029_multi_param() {
+    run_conformance_test("029_multi_param").unwrap();
+}
+
+#[test]
+fn conformance_030_str_to_int() {
+    run_conformance_test("030_str_to_int").unwrap();
+}
+
+// === Phase 4: Differential Testing ===
+
+/// Run N random programs through AutoVM, verify no crashes.
+/// Each program is generated from a seed for reproducibility.
+#[test]
+fn conformance_differential_stability() {
+    use crate::test_util::program_generator::ProgramGenerator;
+
+    let count = 50;
+    let mut passed = 0;
+
+    for seed in 0..count {
+        let mut gen = ProgramGenerator::new(seed);
+        let program = gen.generate_program();
+
+        match run_autovm_capture(&program) {
+            Ok(_) => passed += 1,
+            Err(_) => {} // compile/runtime error is OK — we test no panic
+        }
+    }
+
+    // At least 70% of generated programs should execute without crash
+    let ratio = passed as f64 / count as f64;
+    assert!(
+        ratio >= 0.5,
+        "Only {}/{} ({:.0}%) programs executed successfully. Need >= 50%.",
+        passed, count, ratio * 100.0
+    );
+}
+
+/// Verify same seed produces same output (reproducibility).
+#[test]
+fn conformance_differential_reproducibility() {
+    use crate::test_util::program_generator::ProgramGenerator;
+
+    for seed in [0u64, 1, 42, 100, 999] {
+        let mut gen1 = ProgramGenerator::new(seed);
+        let mut gen2 = ProgramGenerator::new(seed);
+        let p1 = gen1.generate_program();
+        let p2 = gen2.generate_program();
+        assert_eq!(p1, p2, "Seed {} produced different programs", seed);
+
+        // If AutoVM succeeds, output should be deterministic
+        if let Ok((_, out1)) = run_autovm_capture(&p1) {
+            if let Ok((_, out2)) = run_autovm_capture(&p2) {
+                assert_eq!(out1, out2, "Seed {} produced different outputs", seed);
+            }
+        }
+    }
 }

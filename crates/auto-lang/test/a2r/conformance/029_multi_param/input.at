@@ -1,0 +1,9 @@
+// Conformance 029: Multi-parameter function
+fn make_pair(x int, y int, sep str) str {
+    return f"$x$sep$y"
+}
+
+fn main() {
+    print(make_pair(1, 2, "-"))
+    print(make_pair(10, 20, ", "))
+}

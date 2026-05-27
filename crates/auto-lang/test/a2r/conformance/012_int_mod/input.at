@@ -1,0 +1,8 @@
+// Conformance 012: Integer modulo
+fn main() {
+    print(7 % 3)
+    print(-7 % 3)
+    print(7 % -3)
+    print(10 % 5)
+    print(3 % 7)
+}

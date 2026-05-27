@@ -1,0 +1,7 @@
+// Conformance 018: for-in iterator over array
+fn main() {
+    let items = [10, 20, 30]
+    for item in items {
+        print(item)
+    }
+}

@@ -1,0 +1,8 @@
+// Conformance 023: List map and filter (with closures)
+fn main() {
+    let nums = [1, 2, 3, 4, 5]
+    let doubled = nums.map(x => x * 2)
+    print(doubled.get(0))
+    print(doubled.get(1))
+    print(doubled.get(2))
+}

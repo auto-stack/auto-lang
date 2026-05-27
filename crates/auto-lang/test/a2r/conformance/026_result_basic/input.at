@@ -1,0 +1,20 @@
+// Conformance 026: Result type basics
+fn divide(a int, b int) Result<int, str> {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    return Ok(a / b)
+}
+
+fn main() {
+    let r1 = divide(10, 3)
+    let r2 = divide(10, 0)
+    is r1 {
+        Ok(v) -> print(v),
+        Err(e) -> print(e)
+    }
+    is r2 {
+        Ok(v) -> print(v),
+        Err(e) -> print(e)
+    }
+}
