@@ -38,6 +38,7 @@ pub mod dep_scanner;
 pub mod atom_error;
 pub mod module_cache;
 pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
+pub mod mcp; // Plan 265: MCP server for AI agent interaction
 pub mod compile;
 pub mod config;
 pub mod database;

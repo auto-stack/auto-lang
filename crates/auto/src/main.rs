@@ -379,6 +379,10 @@ enum Commands {
         #[arg(long)]
         header: Option<String>,
     },
+
+    // ========== MCP Server (Plan 265) ==========
+    #[command(about = "Start AutoVM MCP server (stdio transport for AI agents)")]
+    Mcp,
 }
 
 fn main() -> Result<()> {
@@ -1255,6 +1259,12 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!();
                 println!("Use --header <name> to see functions for a specific header.");
             }
+        }
+
+        // ========== MCP Server (Plan 265) ==========
+        Some(Commands::Mcp) => {
+            let mut server = auto_lang::mcp::McpServer::new();
+            server.run();
         }
 
         // ========== Debug (Plan 199) ==========
