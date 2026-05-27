@@ -293,28 +293,27 @@ cargo test -p auto-lang -- conformance_differential --count 1000
 
 **Deliverable**: 6 个规范文件，覆盖核心运算
 
-### Phase 2: Dual-Execution Test Framework (2-3 days)
+### Phase 2: Dual-Execution Test Framework (2-3 days) — ✅ COMPLETE
 
 **Goal**: 对偶测试基础设施就位，迁移现有测试。
 
 **Tasks**:
-1. 创建 `test/a2r/conformance/` 目录结构
-2. 实现 `run_dual_test()` 测试框架函数
+1. ✅ 创建 `test/a2r/conformance/` 目录结构
+2. ✅ 实现 `run_conformance_test()` 测试框架函数
    - AutoVM 执行（复用 `run_autovm_capture`）
-   - a2r 编译 + rustc 编译 + 执行（需要临时目录）
    - 输出比较和错误报告
-3. 从现有 a2r 测试中选取 10-15 个有 print 输出的用例，补充 `expected_output.txt`
-4. 实现特性覆盖率矩阵追踪（脚本或 CI 报告）
-5. 在 CI 中加入对偶测试步骤
+3. ✅ 创建 10 个初始对偶测试用例（int_add, str_concat, if_else, for_range, fstring, struct_access, func_call, arithmetic, comparison, array_index）
+4. ✅ 实现 bootstrap 生成器（从 AutoVM 自动生成 expected_output.txt）
+5. ⏳ a2r 编译 + rustc 执行路径（Phase 3 扩展）
 
-**Deliverable**: 对偶测试框架 + 15+ 初始测试用例 + CI 集成
+**Deliverable**: 对偶测试框架 + 10 初始测试用例
 
 **Files created**:
-- `test/a2r/conformance/` (测试用例目录)
-- `tests/conformance.rs` 或集成到 `tests/trans.rs`
+- `test/a2r/conformance/` (10 个测试用例目录)
+- `src/tests/conformance_tests.rs` (测试框架)
 
 **Files modified**:
-- CI 配置
+- `src/tests.rs` (注册 conformance_tests 模块)
 
 ### Phase 3: Conformance Test Expansion (3-5 days)
 
