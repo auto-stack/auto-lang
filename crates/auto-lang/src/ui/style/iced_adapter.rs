@@ -36,6 +36,8 @@ pub struct IcedStyle {
     // Sizing (L1)
     pub width: Option<IcedSize>,
     pub height: Option<IcedSize>,
+    pub max_width: Option<f32>,  // pixels
+    pub max_height: Option<f32>, // pixels
 
     // Border Radius (L1 + L2)
     pub rounded: bool,
@@ -172,6 +174,8 @@ impl IcedStyle {
             gradient_to: None,
             width: None,
             height: None,
+            max_width: None,
+            max_height: None,
             rounded: false,
             border_radius: None,
             border: false,
@@ -273,6 +277,12 @@ impl IcedStyle {
             }
             StyleClass::Height(size) => {
                 self.height = Some(convert_size(size));
+            }
+            StyleClass::MaxWidth(px) => {
+                self.max_width = Some(*px);
+            }
+            StyleClass::MaxHeight(px) => {
+                self.max_height = Some(*px);
             }
 
             // ========== Border Radius (L1 + L2) ==========

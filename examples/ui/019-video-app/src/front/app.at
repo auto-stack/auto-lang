@@ -30,101 +30,101 @@ widget App {
     view {
         col {
             row {
-                text "VideoApp" { class: "text-xl font-bold text-pink-500 px-4" }
-                input { placeholder: "Search videos...", class: "flex-1 px-4 py-2 border rounded-full text-sm mx-4" }
-                text "User" { class: "text-sm text-gray-600 px-4" }
-                class: "w-full items-center py-3 border-b"
+                text "VideoApp" { style: "text-xl font-bold text-pink-500 px-4" }
+                input { placeholder: "Search videos...", style: "flex-1 px-4 py-2 border rounded-full text-sm mx-4" }
+                text "User" { style: "text-sm text-gray-600 px-4" }
+                style: "w-full items-center py-3 border-b"
             }
             row {
-                text .chip1 { class: "px-4 py-1 text-sm bg-pink-500 text-white rounded-full" }
-                text .chip2 { class: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
-                text .chip3 { class: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
-                text .chip4 { class: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
-                text .chip5 { class: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
-                class: "w-full gap-2 px-4 py-3 overflow-x-auto"
+                text .chip1 { style: "px-4 py-1 text-sm bg-pink-500 text-white rounded-full" }
+                text .chip2 { style: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
+                text .chip3 { style: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
+                text .chip4 { style: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
+                text .chip5 { style: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
+                style: "w-full gap-2 px-4 py-3 overflow-x-auto"
             }
             tabs {
                 tab "Recommend" { }
                 tab "Trending" { }
                 tab "Following" { }
-                class: "px-4"
+                style: "px-4"
             }
             grid {
                 grid-item {
                     col {
                         row {
-                            text "12:34" { class: "text-xs text-white bg-black bg-opacity-70 px-1 rounded" }
-                            class: "absolute bottom-2 right-2"
+                            text "12:34" { style: "text-xs text-white bg-black bg-opacity-70 px-1 rounded" }
+                            style: "absolute bottom-2 right-2"
                         }
-                        text .vid1_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        text .vid1_title { style: "text-sm font-medium text-gray-800 mt-2" }
                         row {
-                            text .vid1_author { class: "text-xs text-gray-500" }
-                            text .vid1_views { class: "text-xs text-gray-400" }
-                            class: "gap-2"
+                            text .vid1_author { style: "text-xs text-gray-500" }
+                            text .vid1_views { style: "text-xs text-gray-400" }
+                            style: "gap-2"
                         }
-                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
                     }
                 }
                 grid-item {
                     col {
-                        text .vid2_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        text .vid2_title { style: "text-sm font-medium text-gray-800 mt-2" }
                         row {
-                            text .vid2_author { class: "text-xs text-gray-500" }
-                            text .vid2_views { class: "text-xs text-gray-400" }
-                            class: "gap-2"
+                            text .vid2_author { style: "text-xs text-gray-500" }
+                            text .vid2_views { style: "text-xs text-gray-400" }
+                            style: "gap-2"
                         }
-                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
                     }
                 }
                 grid-item {
                     col {
-                        text .vid3_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        text .vid3_title { style: "text-sm font-medium text-gray-800 mt-2" }
                         row {
-                            text .vid3_author { class: "text-xs text-gray-500" }
-                            text .vid3_views { class: "text-xs text-gray-400" }
-                            class: "gap-2"
+                            text .vid3_author { style: "text-xs text-gray-500" }
+                            text .vid3_views { style: "text-xs text-gray-400" }
+                            style: "gap-2"
                         }
-                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
                     }
                 }
                 grid-item {
                     col {
-                        text .vid4_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        text .vid4_title { style: "text-sm font-medium text-gray-800 mt-2" }
                         row {
-                            text .vid4_author { class: "text-xs text-gray-500" }
-                            text .vid4_views { class: "text-xs text-gray-400" }
-                            class: "gap-2"
+                            text .vid4_author { style: "text-xs text-gray-500" }
+                            text .vid4_views { style: "text-xs text-gray-400" }
+                            style: "gap-2"
                         }
-                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
                     }
                 }
                 grid-item {
                     col {
-                        text .vid5_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        text .vid5_title { style: "text-sm font-medium text-gray-800 mt-2" }
                         row {
-                            text .vid5_author { class: "text-xs text-gray-500" }
-                            text .vid5_views { class: "text-xs text-gray-400" }
-                            class: "gap-2"
+                            text .vid5_author { style: "text-xs text-gray-500" }
+                            text .vid5_views { style: "text-xs text-gray-400" }
+                            style: "gap-2"
                         }
-                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
                     }
                 }
                 grid-item {
                     col {
-                        text .vid6_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        text .vid6_title { style: "text-sm font-medium text-gray-800 mt-2" }
                         row {
-                            text .vid6_author { class: "text-xs text-gray-500" }
-                            text .vid6_views { class: "text-xs text-gray-400" }
-                            class: "gap-2"
+                            text .vid6_author { style: "text-xs text-gray-500" }
+                            text .vid6_views { style: "text-xs text-gray-400" }
+                            style: "gap-2"
                         }
-                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
                     }
                 }
                 cols: 3
                 gap: 4
-                class: "w-full p-4"
+                style: "w-full p-4"
             }
-            class: "w-full h-screen bg-white"
+            style: "w-full h-screen bg-white"
         }
     }
 

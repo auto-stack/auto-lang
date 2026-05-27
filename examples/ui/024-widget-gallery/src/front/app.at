@@ -59,9 +59,9 @@ widget App {
                     span "Avatar"
                     span "Tabs"
                     span "Divider"
-                    class: "gap-1 text-sm"
+                    style: "gap-1 text-sm"
                 }
-                class: "w-48 bg-gray-50 p-4 border-r border-gray-200 h-full gap-4"
+                style: "w-48 bg-gray-50 p-4 border-r border-gray-200 h-full gap-4"
             }
 
             // Content area
@@ -73,20 +73,20 @@ widget App {
                         row {
                             button .btn_text
                             button "Primary" {
-                                class: "px-4 py-2 bg-blue-500 text-white rounded-lg"
+                                style: "px-4 py-2 bg-blue-500 text-white rounded-lg"
                             }
                             button "Secondary" {
-                                class: "px-4 py-2 bg-gray-200 text-gray-700 rounded-lg"
+                                style: "px-4 py-2 bg-gray-200 text-gray-700 rounded-lg"
                             }
                             button "Danger" {
-                                class: "px-4 py-2 bg-red-500 text-white rounded-lg"
+                                style: "px-4 py-2 bg-red-500 text-white rounded-lg"
                             }
                             button "Outline" {
-                                class: "px-4 py-2 border border-gray-300 rounded-lg"
+                                style: "px-4 py-2 border border-gray-300 rounded-lg"
                             }
-                            class: "gap-3 items-center mt-4"
+                            style: "gap-3 items-center mt-4"
                         }
-                        class: "p-6 gap-2"
+                        style: "p-6 gap-2"
                     }
                 }
 
@@ -97,14 +97,14 @@ widget App {
                         col {
                             span "Name"
                             input { placeholder: "Enter your name", value: .input_val }
-                            class: "gap-1"
+                            style: "gap-1"
                         }
                         col {
                             span "Email"
                             input { placeholder: "you@example.com", value: .email_val }
-                            class: "gap-1"
+                            style: "gap-1"
                         }
-                        class: "p-6 gap-4"
+                        style: "p-6 gap-4"
                     }
                 }
 
@@ -113,7 +113,7 @@ widget App {
                         h2 "Textarea"
                         span "Multi-line text input for longer content."
                         textarea { placeholder: "Enter your message here..." }
-                        class: "p-6 gap-2"
+                        style: "p-6 gap-2"
                     }
                 }
 
@@ -125,16 +125,16 @@ widget App {
                             col {
                                 span "Notifications"
                                 toggle { value: .toggle_on, onchange: .ToggleNotif }
-                                class: "gap-1"
+                                style: "gap-1"
                             }
                             col {
                                 span "Dark Mode"
                                 toggle { value: .dark_mode, onchange: .ToggleDark }
-                                class: "gap-1"
+                                style: "gap-1"
                             }
-                            class: "gap-6"
+                            style: "gap-6"
                         }
-                        class: "p-6 gap-2"
+                        style: "p-6 gap-2"
                     }
                 }
 
@@ -144,7 +144,7 @@ widget App {
                         span "Dropdown selection component."
                         select { value: .selected }
                         span "Selected: "
-                        class: "p-6 gap-2"
+                        style: "p-6 gap-2"
                     }
                 }
 
@@ -154,7 +154,7 @@ widget App {
                         span "Progress bar indicator."
                         progress (value: .progress_val, max: 100)
                         span "65%"
-                        class: "p-6 gap-4"
+                        style: "p-6 gap-4"
                     }
                 }
 
@@ -166,27 +166,27 @@ widget App {
                             span "Name"
                             span "Role"
                             span "Status"
-                            class: "font-semibold text-sm"
+                            style: "font-semibold text-sm"
                         }
                         row {
                             span .t1_name
                             span .t1_role
                             span .t1_status
-                            class: "text-sm border-b border-gray-100 py-2"
+                            style: "text-sm border-b border-gray-100 py-2"
                         }
                         row {
                             span .t2_name
                             span .t2_role
                             span .t2_status
-                            class: "text-sm border-b border-gray-100 py-2"
+                            style: "text-sm border-b border-gray-100 py-2"
                         }
                         row {
                             span .t3_name
                             span .t3_role
                             span .t3_status
-                            class: "text-sm py-2"
+                            style: "text-sm py-2"
                         }
-                        class: "p-6 gap-4"
+                        style: "p-6 gap-4"
                     }
                 }
 
@@ -199,9 +199,9 @@ widget App {
                             span .badge2
                             span .badge3
                             span .badge4
-                            class: "gap-3 items-center mt-4"
+                            style: "gap-3 items-center mt-4"
                         }
-                        class: "p-6 gap-2"
+                        style: "p-6 gap-2"
                     }
                 }
 
@@ -213,9 +213,9 @@ widget App {
                             h3 .card_title
                             span .card_desc
                             button "Learn More"
-                            class: "bg-white rounded-xl border border-gray-200 p-6 gap-3"
+                            style: "bg-white rounded-xl border border-gray-200 p-6 gap-3"
                         }
-                        class: "p-6 gap-2"
+                        style: "p-6 gap-2"
                     }
                 }
 
@@ -225,20 +225,20 @@ widget App {
                         span "User profile image component."
                         row {
                             avatar {
-                                class: "w-8 h-8 rounded-full bg-blue-100"
+                                style: "w-8 h-8 rounded-full bg-blue-100"
                             }
                             avatar {
-                                class: "w-10 h-10 rounded-full bg-green-100"
+                                style: "w-10 h-10 rounded-full bg-green-100"
                             }
                             avatar {
-                                class: "w-12 h-12 rounded-full bg-purple-100"
+                                style: "w-12 h-12 rounded-full bg-purple-100"
                             }
                             avatar {
-                                class: "w-16 h-16 rounded-full bg-orange-100"
+                                style: "w-16 h-16 rounded-full bg-orange-100"
                             }
-                            class: "gap-4 items-center mt-4"
+                            style: "gap-4 items-center mt-4"
                         }
-                        class: "p-6 gap-2"
+                        style: "p-6 gap-2"
                     }
                 }
 
@@ -250,10 +250,10 @@ widget App {
                             span "Tab 1"
                             span "Tab 2"
                             span "Tab 3"
-                            class: "gap-2 text-sm border-b border-gray-200 pb-2"
+                            style: "gap-2 text-sm border-b border-gray-200 pb-2"
                         }
                         span "Content for Tab 1 goes here."
-                        class: "p-6 gap-2"
+                        style: "p-6 gap-2"
                     }
                 }
 
@@ -266,13 +266,13 @@ widget App {
                         span "Section Two"
                         divider
                         span "Section Three"
-                        class: "p-6 gap-4"
+                        style: "p-6 gap-4"
                     }
                 }
 
-                class: "flex-1 p-6"
+                style: "flex-1 p-6"
             }
-            class: "flex flex-row w-full h-screen"
+            style: "flex flex-row w-full h-screen"
         }
     }
 

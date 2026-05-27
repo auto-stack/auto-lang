@@ -144,6 +144,13 @@ pub enum StyleClass {
     /// Height: h-{size}
     Height(SizeValue),
 
+    // ========== Max Sizing (L1 Core) ==========
+    /// Max width: max-w-{named|numeric} (pixels)
+    MaxWidth(f32),
+
+    /// Max height: max-h-{named|numeric} (pixels)
+    MaxHeight(f32),
+
     // ========== Border Radius (L1 Core + L2) ==========
     /// Border radius: rounded (default)
     Rounded,
@@ -499,6 +506,22 @@ impl StyleClass {
             return Ok(StyleClass::Height(size));
         }
 
+        // ========== Max Sizing (L1) ==========
+
+        // Parse max-width: max-w-{named|numeric}
+        if let Some(rest) = class.strip_prefix("max-w-") {
+            if let Some(px) = parse_max_size_value(rest) {
+                return Ok(StyleClass::MaxWidth(px));
+            }
+        }
+
+        // Parse max-height: max-h-{named|numeric}
+        if let Some(rest) = class.strip_prefix("max-h-") {
+            if let Some(px) = parse_max_size_value(rest) {
+                return Ok(StyleClass::MaxHeight(px));
+            }
+        }
+
         // ========== Border Radius (L1 + L2) ==========
 
         // Parse rounded-*
@@ -687,6 +710,36 @@ fn parse_size_value(input: &str) -> Result<SizeValue, String> {
             let value: u16 = input.parse()
                 .map_err(|_| format!("Invalid size value: {}", input))?;
             Ok(SizeValue::Fixed(value))
+        }
+    }
+}
+
+/// Helper to parse max-width/height named sizes to pixels.
+/// Tailwind: none=0, xs=320, sm=384, md=448, lg=512, xl=576, 2xl=672, 3xl=768, 4xl=896, full=∞
+/// Numeric values (e.g. max-w-96) use Tailwind spacing units (N * 4px).
+fn parse_max_size_value(input: &str) -> Option<f32> {
+    match input {
+        "none" | "0" => None, // No constraint
+        "xs" => Some(320.0),
+        "sm" => Some(384.0),
+        "md" => Some(448.0),
+        "lg" => Some(512.0),
+        "xl" => Some(576.0),
+        "2xl" => Some(672.0),
+        "3xl" => Some(768.0),
+        "4xl" => Some(896.0),
+        "5xl" => Some(1024.0),
+        "6xl" => Some(1152.0),
+        "7xl" => Some(1280.0),
+        "full" => None, // No max constraint (fills parent)
+        "screen-sm" => Some(640.0),
+        "screen-md" => Some(768.0),
+        "screen-lg" => Some(1024.0),
+        "screen-xl" => Some(1280.0),
+        "screen-2xl" => Some(1536.0),
+        _ => {
+            // Numeric: max-w-96 → 96 * 4 = 384px
+            input.parse::<u16>().ok().map(|n| n as f32 * 4.0)
         }
     }
 }

@@ -25,72 +25,72 @@ widget App {
         col {
             col {
                 row {
-                    button "Back" { class: "text-sm text-gray-600" }
-                    text "Now Playing" { class: "text-sm font-medium text-gray-800 flex-1 text-center" }
-                    button "Menu" { class: "text-sm text-gray-600" }
-                    class: "w-full items-center px-4 py-2"
+                    button "Back" { style: "text-sm text-gray-600" }
+                    text "Now Playing" { style: "text-sm font-medium text-gray-800 flex-1 text-center" }
+                    button "Menu" { style: "text-sm text-gray-600" }
+                    style: "w-full items-center px-4 py-2"
                 }
                 col {
                     row {
                         col {
-                            class: "w-64 h-64 bg-gradient-to-br from-purple-400 to-indigo-600 rounded-2xl shadow-xl"
+                            style: "w-64 h-64 bg-gradient-to-br from-purple-400 to-indigo-600 rounded-2xl shadow-xl"
                         }
-                        class: "justify-center"
+                        style: "justify-center"
                     }
-                    text .track_title { class: "text-2xl font-bold text-gray-800 mt-8 text-center" }
-                    text .track_artist { class: "text-sm text-gray-500 text-center" }
-                    text .album_art { class: "text-xs text-gray-400 text-center" }
-                    class: "items-center px-8 pt-4"
+                    text .track_title { style: "text-2xl font-bold text-gray-800 mt-8 text-center" }
+                    text .track_artist { style: "text-sm text-gray-500 text-center" }
+                    text .album_art { style: "text-xs text-gray-400 text-center" }
+                    style: "items-center px-8 pt-4"
                 }
                 col {
                     row {
-                        text .current_time { class: "text-xs text-gray-400" }
-                        text .total_time { class: "text-xs text-gray-400" }
-                        class: "w-full justify-between px-4"
+                        text .current_time { style: "text-xs text-gray-400" }
+                        text .total_time { style: "text-xs text-gray-400" }
+                        style: "w-full justify-between px-4"
                     }
-                    progress { value: .progress_val, max: 100, class: "w-full px-4" }
-                    class: "px-4"
+                    progress { value: .progress_val, max: 100, style: "w-full px-4" }
+                    style: "px-4"
                 }
                 row {
-                    button "Shuffle" { class: "text-gray-400" }
-                    button "Prev" { onclick: .PrevTrack, class: "text-gray-700 text-xl" }
-                    button .is_playing { onclick: .PlayPause, class: "w-14 h-14 bg-purple-500 text-white rounded-full flex items-center justify-center text-2xl" }
-                    button "Next" { onclick: .NextTrack, class: "text-gray-700 text-xl" }
-                    button "Repeat" { class: "text-gray-400" }
-                    class: "w-full items-center justify-center gap-8 py-4"
+                    button "Shuffle" { style: "text-gray-400" }
+                    button "Prev" { onclick: .PrevTrack, style: "text-gray-700 text-xl" }
+                    button .is_playing { onclick: .PlayPause, style: "w-14 h-14 bg-purple-500 text-white rounded-full flex items-center justify-center text-2xl" }
+                    button "Next" { onclick: .NextTrack, style: "text-gray-700 text-xl" }
+                    button "Repeat" { style: "text-gray-400" }
+                    style: "w-full items-center justify-center gap-8 py-4"
                 }
-                class: "flex-1"
+                style: "flex-1"
             }
             col {
-                text "Up Next" { class: "text-sm font-semibold text-gray-600 px-4 py-2 border-t" }
+                text "Up Next" { style: "text-sm font-semibold text-gray-600 px-4 py-2 border-t" }
                 row {
-                    text .track1 { class: "text-sm font-medium text-purple-700" }
-                    text .artist1 { class: "text-xs text-gray-400 ml-auto" }
-                    class: "w-full items-center px-4 py-2 bg-purple-50"
+                    text .track1 { style: "text-sm font-medium text-purple-700" }
+                    text .artist1 { style: "text-xs text-gray-400 ml-auto" }
+                    style: "w-full items-center px-4 py-2 bg-purple-50"
                 }
                 row {
-                    text .track2 { class: "text-sm text-gray-700" }
-                    text .artist2 { class: "text-xs text-gray-400 ml-auto" }
-                    class: "w-full items-center px-4 py-2"
+                    text .track2 { style: "text-sm text-gray-700" }
+                    text .artist2 { style: "text-xs text-gray-400 ml-auto" }
+                    style: "w-full items-center px-4 py-2"
                 }
                 row {
-                    text .track3 { class: "text-sm text-gray-700" }
-                    text .artist3 { class: "text-xs text-gray-400 ml-auto" }
-                    class: "w-full items-center px-4 py-2"
+                    text .track3 { style: "text-sm text-gray-700" }
+                    text .artist3 { style: "text-xs text-gray-400 ml-auto" }
+                    style: "w-full items-center px-4 py-2"
                 }
                 row {
-                    text .track4 { class: "text-sm text-gray-700" }
-                    text .artist4 { class: "text-xs text-gray-400 ml-auto" }
-                    class: "w-full items-center px-4 py-2"
+                    text .track4 { style: "text-sm text-gray-700" }
+                    text .artist4 { style: "text-xs text-gray-400 ml-auto" }
+                    style: "w-full items-center px-4 py-2"
                 }
                 row {
-                    text .track5 { class: "text-sm text-gray-700" }
-                    text .artist5 { class: "text-xs text-gray-400 ml-auto" }
-                    class: "w-full items-center px-4 py-2"
+                    text .track5 { style: "text-sm text-gray-700" }
+                    text .artist5 { style: "text-xs text-gray-400 ml-auto" }
+                    style: "w-full items-center px-4 py-2"
                 }
-                class: "w-full border-t border-gray-100"
+                style: "w-full border-t border-gray-100"
             }
-            class: "w-full h-screen bg-white"
+            style: "w-full h-screen bg-white"
         }
     }
 

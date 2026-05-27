@@ -36,7 +36,7 @@ use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraEvent}
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::vm_bridge::VmBridge;
 use crate::ui::view::View;
-use crate::ui::style::{Style, StyleClass, SizeValue};
+use crate::ui::style::{Style, StyleClass, SizeValue, Color};
 
 // ============================================================================
 // AuraViewBuilder
@@ -377,29 +377,14 @@ impl<'a> AuraViewBuilder<'a> {
         builder.build()
     }
 
-    /// Convert an image element: show a placeholder container (no Image variant in View).
+    /// Convert an image element: create View::Image for actual rendering.
     fn convert_image(
         &self,
         props: &HashMap<String, AuraPropValue>,
     ) -> View<DynamicMessage> {
         let style = self.extract_style(props);
-
-        // Placeholder: show a colored circle as avatar fallback
-        let child = View::Text {
-            content: "".to_string(),
-            style: None,
-        };
-        let mut builder = View::container(child);
-        builder = builder.center_x().center_y();
-        if let Some(s) = style {
-            builder = builder.with_style(s);
-        } else {
-            // Default placeholder style: gray circle
-            builder = builder.with_style(
-                Style::parse("bg-gray-300 rounded-full").unwrap()
-            );
-        }
-        builder.build()
+        let src = self.extract_string(props, "src").unwrap_or_default();
+        View::Image { src, style }
     }
 
     /// Convert a progress element: shows a progress bar from 0.0 to 1.0.

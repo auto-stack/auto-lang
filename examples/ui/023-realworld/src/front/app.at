@@ -42,9 +42,9 @@ widget App {
                     span "Home"
                     span "About"
                     span "Write"
-                    class: "gap-4 items-center text-sm"
+                    style: "gap-4 items-center text-sm"
                 }
-                class: "w-full items-center p-4 border-b border-gray-200"
+                style: "w-full items-center p-4 border-b border-gray-200"
             }
 
             if .current_view == "home" {
@@ -53,84 +53,84 @@ widget App {
                     col {
                         h1 "Home"
                         span "Your personal feed"
-                        class: "gap-1 items-center"
+                        style: "gap-1 items-center"
                     }
                     // Article 1
                     col {
                         row {
                             span .art1_tag {
-                                class: "text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full"
+                                style: "text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full"
                             }
                             span .art1_date {
-                                class: "text-xs text-gray-400"
+                                style: "text-xs text-gray-400"
                             }
-                            class: "gap-2 items-center"
+                            style: "gap-2 items-center"
                         }
                         h2 .art1_title {
-                            class: "text-2xl font-bold text-gray-900 mt-2"
+                            style: "text-2xl font-bold text-gray-900 mt-2"
                         }
                         p .art1_excerpt {
-                            class: "text-gray-600 mt-2"
+                            style: "text-gray-600 mt-2"
                         }
                         row {
                             span .art1_author {
-                                class: "text-sm text-gray-500"
+                                style: "text-sm text-gray-500"
                             }
-                            class: "items-center"
+                            style: "items-center"
                         }
-                        class: "border-b border-gray-100 pb-6 mb-6"
+                        style: "border-b border-gray-100 pb-6 mb-6"
                     }
                     // Article 2
                     col {
                         row {
                             span .art2_tag {
-                                class: "text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full"
+                                style: "text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full"
                             }
                             span .art2_date {
-                                class: "text-xs text-gray-400"
+                                style: "text-xs text-gray-400"
                             }
-                            class: "gap-2 items-center"
+                            style: "gap-2 items-center"
                         }
                         h2 .art2_title {
-                            class: "text-2xl font-bold text-gray-900 mt-2"
+                            style: "text-2xl font-bold text-gray-900 mt-2"
                         }
                         p .art2_excerpt {
-                            class: "text-gray-600 mt-2"
+                            style: "text-gray-600 mt-2"
                         }
                         row {
                             span .art2_author {
-                                class: "text-sm text-gray-500"
+                                style: "text-sm text-gray-500"
                             }
-                            class: "items-center"
+                            style: "items-center"
                         }
-                        class: "border-b border-gray-100 pb-6 mb-6"
+                        style: "border-b border-gray-100 pb-6 mb-6"
                     }
                     // Article 3
                     col {
                         row {
                             span .art3_tag {
-                                class: "text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full"
+                                style: "text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full"
                             }
                             span .art3_date {
-                                class: "text-xs text-gray-400"
+                                style: "text-xs text-gray-400"
                             }
-                            class: "gap-2 items-center"
+                            style: "gap-2 items-center"
                         }
                         h2 .art3_title {
-                            class: "text-2xl font-bold text-gray-900 mt-2"
+                            style: "text-2xl font-bold text-gray-900 mt-2"
                         }
                         p .art3_excerpt {
-                            class: "text-gray-600 mt-2"
+                            style: "text-gray-600 mt-2"
                         }
                         row {
                             span .art3_author {
-                                class: "text-sm text-gray-500"
+                                style: "text-sm text-gray-500"
                             }
-                            class: "items-center"
+                            style: "items-center"
                         }
-                        class: "pb-6"
+                        style: "pb-6"
                     }
-                    class: "w-full max-w-2xl p-6"
+                    style: "w-full max-w-2xl p-6"
                 }
             }
 
@@ -138,36 +138,36 @@ widget App {
                 col {
                     row {
                         span "< Home"
-                        class: "text-sm text-gray-500"
+                        style: "text-sm text-gray-500"
                     }
                     row {
                         span .art1_tag {
-                            class: "text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full"
+                            style: "text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full"
                         }
-                        class: "gap-2 items-center"
+                        style: "gap-2 items-center"
                     }
                     h1 .art1_title {
-                        class: "text-3xl font-bold text-gray-900 mt-4"
+                        style: "text-3xl font-bold text-gray-900 mt-4"
                     }
                     row {
                         avatar {
-                            class: "w-10 h-10 rounded-full bg-gray-200"
+                            style: "w-10 h-10 rounded-full bg-gray-200"
                         }
                         col {
                             span .art1_author {
-                                class: "font-medium text-sm text-gray-900"
+                                style: "font-medium text-sm text-gray-900"
                             }
                             span .art1_date {
-                                class: "text-xs text-gray-400"
+                                style: "text-xs text-gray-400"
                             }
-                            class: "gap-0"
+                            style: "gap-0"
                         }
-                        class: "gap-3 items-center mt-4"
+                        style: "gap-3 items-center mt-4"
                     }
                     p .art1_body {
-                        class: "text-gray-700 leading-relaxed mt-6"
+                        style: "text-gray-700 leading-relaxed mt-6"
                     }
-                    class: "w-full max-w-2xl p-6"
+                    style: "w-full max-w-2xl p-6"
                 }
             }
 
@@ -175,53 +175,53 @@ widget App {
                 col {
                     row {
                         avatar {
-                            class: "w-20 h-20 rounded-full bg-gray-200"
+                            style: "w-20 h-20 rounded-full bg-gray-200"
                         }
                         col {
                             h2 .profile_name {
-                                class: "text-xl font-bold text-gray-900"
+                                style: "text-xl font-bold text-gray-900"
                             }
                             p .profile_bio {
-                                class: "text-sm text-gray-500 mt-1"
+                                style: "text-sm text-gray-500 mt-1"
                             }
                             row {
                                 span .profile_followers {
-                                    class: "text-sm font-semibold"
+                                    style: "text-sm font-semibold"
                                 }
                                 span "followers"
                                 span "·"
                                 span .profile_articles
                                 span "articles"
-                                class: "text-sm text-gray-500 gap-1 items-center mt-2"
+                                style: "text-sm text-gray-500 gap-1 items-center mt-2"
                             }
-                            class: "gap-0"
+                            style: "gap-0"
                         }
-                        class: "gap-4 items-start p-6 border-b border-gray-100"
+                        style: "gap-4 items-start p-6 border-b border-gray-100"
                     }
                     h3 "Posts"
                     col {
                         h4 .art1_title {
-                            class: "font-semibold text-gray-900"
+                            style: "font-semibold text-gray-900"
                         }
                         p .art1_excerpt {
-                            class: "text-sm text-gray-500"
+                            style: "text-sm text-gray-500"
                         }
-                        class: "py-3 border-b border-gray-100"
+                        style: "py-3 border-b border-gray-100"
                     }
                     col {
                         h4 .art2_title {
-                            class: "font-semibold text-gray-900"
+                            style: "font-semibold text-gray-900"
                         }
                         p .art2_excerpt {
-                            class: "text-sm text-gray-500"
+                            style: "text-sm text-gray-500"
                         }
-                        class: "py-3 border-b border-gray-100"
+                        style: "py-3 border-b border-gray-100"
                     }
-                    class: "w-full max-w-2xl"
+                    style: "w-full max-w-2xl"
                 }
             }
 
-            class: "w-full min-h-screen bg-white"
+            style: "w-full min-h-screen bg-white"
         }
     }
 }

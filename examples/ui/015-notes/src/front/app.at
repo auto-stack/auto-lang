@@ -18,41 +18,41 @@ widget App {
     view {
         col {
             row {
-                h2 "Notes" { class: "text-xl font-bold text-gray-800" }
-                button "+ New Note" { onclick: .NewNote, class: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm" }
-                class: "w-full items-center p-4 border-b border-gray-200"
+                h2 "Notes" { style: "text-xl font-bold text-gray-800" }
+                button "+ New Note" { onclick: .NewNote, style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm" }
+                style: "w-full items-center p-4 border-b border-gray-200"
             }
             row {
                 col {
-                    input { placeholder: "Search...", value: .search, oninput: .SearchChanged, class: "w-full px-3 py-2 text-sm border rounded-lg" }
+                    input { placeholder: "Search...", value: .search, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg" }
                     col {
-                        text .note1_title { class: "text-sm font-semibold text-blue-600" }
-                        text .note1_time { class: "text-xs text-gray-400" }
-                        class: "p-3 hover:bg-gray-50 rounded-lg"
+                        text .note1_title { style: "text-sm font-semibold text-blue-600" }
+                        text .note1_time { style: "text-xs text-gray-400" }
+                        style: "p-3 hover:bg-gray-50 rounded-lg"
                     }
                     col {
-                        text .note2_title { class: "text-sm font-medium text-gray-700" }
-                        text .note2_time { class: "text-xs text-gray-400" }
-                        class: "p-3 hover:bg-gray-50 rounded-lg"
+                        text .note2_title { style: "text-sm font-medium text-gray-700" }
+                        text .note2_time { style: "text-xs text-gray-400" }
+                        style: "p-3 hover:bg-gray-50 rounded-lg"
                     }
                     col {
-                        text .note3_title { class: "text-sm font-medium text-gray-700" }
-                        text .note3_time { class: "text-xs text-gray-400" }
-                        class: "p-3 hover:bg-gray-50 rounded-lg"
+                        text .note3_title { style: "text-sm font-medium text-gray-700" }
+                        text .note3_time { style: "text-xs text-gray-400" }
+                        style: "p-3 hover:bg-gray-50 rounded-lg"
                     }
-                    class: "w-64 border-r border-gray-200 p-3 flex-shrink-0 gap-1"
+                    style: "w-64 border-r border-gray-200 p-3 flex-shrink-0 gap-1"
                 }
                 col {
-                    text .note1_title { class: "text-lg font-semibold p-6" }
-                    text .note1_body { class: "text-gray-700 px-6" }
-                    text .note2_body { class: "text-gray-500 px-6 text-xs" }
-                    text .note3_body { class: "text-gray-500 px-6 text-xs" }
-                    text .note_count { class: "text-xs text-gray-400 p-2 border-t border-gray-100" }
-                    class: "flex-1"
+                    text .note1_title { style: "text-lg font-semibold p-6" }
+                    text .note1_body { style: "text-gray-700 px-6" }
+                    text .note2_body { style: "text-gray-500 px-6 text-xs" }
+                    text .note3_body { style: "text-gray-500 px-6 text-xs" }
+                    text .note_count { style: "text-xs text-gray-400 p-2 border-t border-gray-100" }
+                    style: "flex-1"
                 }
-                class: "flex-1"
+                style: "flex-1"
             }
-            class: "w-full h-screen bg-white flex-col"
+            style: "w-full h-screen bg-white flex-col"
         }
     }
 

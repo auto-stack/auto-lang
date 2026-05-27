@@ -58,15 +58,15 @@ widget App {
             row {
                 col {
                     h2 .dashboard_title {
-                        class: "text-2xl font-bold text-gray-900"
+                        style: "text-2xl font-bold text-gray-900"
                     }
                     span .dashboard_subtitle {
-                        class: "text-sm text-gray-500"
+                        style: "text-sm text-gray-500"
                     }
-                    class: "gap-1"
+                    style: "gap-1"
                 }
                 spacer
-                class: "w-full items-center justify-between"
+                style: "w-full items-center justify-between"
             }
 
             // Stat Cards Row
@@ -74,76 +74,76 @@ widget App {
                 col {
                     row {
                         col {
-                            class: "w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center text-red-500 text-xl font-bold"
+                            style: "w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center text-red-500 text-xl font-bold"
                         }
                         col {
                             span .stat1_title {
-                                class: "text-sm text-gray-500"
+                                style: "text-sm text-gray-500"
                             }
                             span .stat1_value {
-                                class: "text-2xl font-bold text-gray-900"
+                                style: "text-2xl font-bold text-gray-900"
                             }
-                            class: "gap-0"
+                            style: "gap-0"
                         }
-                        class: "gap-3 items-center"
+                        style: "gap-3 items-center"
                     }
-                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                 }
                 col {
                     row {
                         col {
-                            class: "w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center text-blue-500 text-xl font-bold"
+                            style: "w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center text-blue-500 text-xl font-bold"
                         }
                         col {
                             span .stat2_title {
-                                class: "text-sm text-gray-500"
+                                style: "text-sm text-gray-500"
                             }
                             span .stat2_value {
-                                class: "text-2xl font-bold text-gray-900"
+                                style: "text-2xl font-bold text-gray-900"
                             }
-                            class: "gap-0"
+                            style: "gap-0"
                         }
-                        class: "gap-3 items-center"
+                        style: "gap-3 items-center"
                     }
-                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                 }
                 col {
                     row {
                         col {
-                            class: "w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center text-green-500 text-xl font-bold"
+                            style: "w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center text-green-500 text-xl font-bold"
                         }
                         col {
                             span .stat3_title {
-                                class: "text-sm text-gray-500"
+                                style: "text-sm text-gray-500"
                             }
                             span .stat3_value {
-                                class: "text-2xl font-bold text-gray-900"
+                                style: "text-2xl font-bold text-gray-900"
                             }
-                            class: "gap-0"
+                            style: "gap-0"
                         }
-                        class: "gap-3 items-center"
+                        style: "gap-3 items-center"
                     }
-                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                 }
                 col {
                     row {
                         col {
-                            class: "w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center text-purple-500 text-xl font-bold"
+                            style: "w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center text-purple-500 text-xl font-bold"
                         }
                         col {
                             span .stat4_title {
-                                class: "text-sm text-gray-500"
+                                style: "text-sm text-gray-500"
                             }
                             span .stat4_value {
-                                class: "text-2xl font-bold text-gray-900"
+                                style: "text-2xl font-bold text-gray-900"
                             }
-                            class: "gap-0"
+                            style: "gap-0"
                         }
-                        class: "gap-3 items-center"
+                        style: "gap-3 items-center"
                     }
-                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                 }
-                class: "gap-4"
+                style: "gap-4"
             }
 
             // Middle Row: Campaign Performance + Campaign Targets
@@ -151,76 +151,76 @@ widget App {
                 // Campaign Performance
                 col {
                     h3 "Campaign Performance" {
-                        class: "text-lg font-semibold text-gray-900"
+                        style: "text-lg font-semibold text-gray-900"
                     }
                     col {
                         row {
                             span "All Traffic"
                             spacer
                             span .perf_all_traffic {
-                                class: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900"
                             }
-                            class: "w-full items-center py-3 border-b border-gray-100"
+                            style: "w-full items-center py-3 border-b border-gray-100"
                         }
                         row {
                             span "Instagram"
                             spacer
                             span .perf_instagram {
-                                class: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900"
                             }
-                            class: "w-full items-center py-3 border-b border-gray-100"
+                            style: "w-full items-center py-3 border-b border-gray-100"
                         }
                         row {
                             span "LinkedIn"
                             spacer
                             span .perf_linkedin {
-                                class: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900"
                             }
-                            class: "w-full items-center py-3 border-b border-gray-100"
+                            style: "w-full items-center py-3 border-b border-gray-100"
                         }
                         row {
                             span "Google"
                             spacer
                             span .perf_google {
-                                class: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900"
                             }
-                            class: "w-full items-center py-3 border-b border-gray-100"
+                            style: "w-full items-center py-3 border-b border-gray-100"
                         }
                         row {
                             span "X"
                             spacer
                             span .perf_x {
-                                class: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900"
                             }
-                            class: "w-full items-center py-3"
+                            style: "w-full items-center py-3"
                         }
-                        class: "w-full"
+                        style: "w-full"
                     }
-                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex-1 gap-4"
+                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex-1 gap-4"
                 }
 
                 // Campaign Targets
                 col {
                     h3 "Campaign Targets" {
-                        class: "text-lg font-semibold text-gray-900"
+                        style: "text-lg font-semibold text-gray-900"
                     }
                     col {
                         row {
                             span "Overall Progress"
                             spacer
                             span "85.7%"
-                            class: "w-full items-center"
+                            style: "w-full items-center"
                         }
                         progress (value: .target_progress, max: 100) {
-                            class: "mt-2 mb-4"
+                            style: "mt-2 mb-4"
                         }
                         row {
                             span .target_current
                             span "/"
                             span .target_goal
-                            class: "text-sm text-gray-500 gap-1"
+                            style: "text-sm text-gray-500 gap-1"
                         }
-                        class: "w-full"
+                        style: "w-full"
                     }
                     divider
                     col {
@@ -228,179 +228,179 @@ widget App {
                             span .kpi1
                             spacer
                             span .kpi1_value {
-                                class: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900"
                             }
-                            class: "w-full items-center py-2 border-b border-gray-100"
+                            style: "w-full items-center py-2 border-b border-gray-100"
                         }
                         row {
                             span .kpi2
                             spacer
                             span .kpi2_value {
-                                class: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900"
                             }
-                            class: "w-full items-center py-2 border-b border-gray-100"
+                            style: "w-full items-center py-2 border-b border-gray-100"
                         }
                         row {
                             span .kpi3
                             spacer
                             span .kpi3_value {
-                                class: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900"
                             }
-                            class: "w-full items-center py-2 border-b border-gray-100"
+                            style: "w-full items-center py-2 border-b border-gray-100"
                         }
                         row {
                             span .kpi4
                             spacer
                             span .kpi4_value {
-                                class: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900"
                             }
-                            class: "w-full items-center py-2"
+                            style: "w-full items-center py-2"
                         }
-                        class: "w-full"
+                        style: "w-full"
                     }
-                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex-1 gap-4"
+                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex-1 gap-4"
                 }
-                class: "gap-4"
+                style: "gap-4"
             }
 
             // Team Performance
             col {
                 h3 "Team Performance" {
-                    class: "text-lg font-semibold text-gray-900"
+                    style: "text-lg font-semibold text-gray-900"
                 }
                 row {
                     col {
                         row {
                             avatar {
-                                class: "w-10 h-10 rounded-full bg-blue-100"
+                                style: "w-10 h-10 rounded-full bg-blue-100"
                             }
                             col {
                                 span .member1_name {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
                                 span .member1_role {
-                                    class: "text-xs text-gray-500"
+                                    style: "text-xs text-gray-500"
                                 }
-                                class: "gap-0"
+                                style: "gap-0"
                             }
-                            class: "gap-3 items-center"
+                            style: "gap-3 items-center"
                         }
                         row {
                             col {
                                 span "Posts"
                                 span .member1_posts {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
-                                class: "gap-0 items-center"
+                                style: "gap-0 items-center"
                             }
                             col {
                                 span "Followers"
                                 span .member1_followers {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
-                                class: "gap-0 items-center"
+                                style: "gap-0 items-center"
                             }
                             col {
                                 span "Engagement"
                                 span .member1_engagement {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
-                                class: "gap-0 items-center"
+                                style: "gap-0 items-center"
                             }
-                            class: "gap-4 mt-3"
+                            style: "gap-4 mt-3"
                         }
-                        class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                        style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                     }
                     col {
                         row {
                             avatar {
-                                class: "w-10 h-10 rounded-full bg-green-100"
+                                style: "w-10 h-10 rounded-full bg-green-100"
                             }
                             col {
                                 span .member2_name {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
                                 span .member2_role {
-                                    class: "text-xs text-gray-500"
+                                    style: "text-xs text-gray-500"
                                 }
-                                class: "gap-0"
+                                style: "gap-0"
                             }
-                            class: "gap-3 items-center"
+                            style: "gap-3 items-center"
                         }
                         row {
                             col {
                                 span "Posts"
                                 span .member2_posts {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
-                                class: "gap-0 items-center"
+                                style: "gap-0 items-center"
                             }
                             col {
                                 span "Followers"
                                 span .member2_followers {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
-                                class: "gap-0 items-center"
+                                style: "gap-0 items-center"
                             }
                             col {
                                 span "Engagement"
                                 span .member2_engagement {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
-                                class: "gap-0 items-center"
+                                style: "gap-0 items-center"
                             }
-                            class: "gap-4 mt-3"
+                            style: "gap-4 mt-3"
                         }
-                        class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                        style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                     }
                     col {
                         row {
                             avatar {
-                                class: "w-10 h-10 rounded-full bg-purple-100"
+                                style: "w-10 h-10 rounded-full bg-purple-100"
                             }
                             col {
                                 span .member3_name {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
                                 span .member3_role {
-                                    class: "text-xs text-gray-500"
+                                    style: "text-xs text-gray-500"
                                 }
-                                class: "gap-0"
+                                style: "gap-0"
                             }
-                            class: "gap-3 items-center"
+                            style: "gap-3 items-center"
                         }
                         row {
                             col {
                                 span "Posts"
                                 span .member3_posts {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
-                                class: "gap-0 items-center"
+                                style: "gap-0 items-center"
                             }
                             col {
                                 span "Followers"
                                 span .member3_followers {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
-                                class: "gap-0 items-center"
+                                style: "gap-0 items-center"
                             }
                             col {
                                 span "Engagement"
                                 span .member3_engagement {
-                                    class: "font-semibold text-gray-900 text-sm"
+                                    style: "font-semibold text-gray-900 text-sm"
                                 }
-                                class: "gap-0 items-center"
+                                style: "gap-0 items-center"
                             }
-                            class: "gap-4 mt-3"
+                            style: "gap-4 mt-3"
                         }
-                        class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                        style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                     }
-                    class: "gap-4"
+                    style: "gap-4"
                 }
-                class: "w-full gap-4"
+                style: "w-full gap-4"
             }
 
-            class: "w-full p-6 gap-6 bg-gray-50 min-h-screen"
+            style: "w-full p-6 gap-6 bg-gray-50 min-h-screen"
         }
     }
 }

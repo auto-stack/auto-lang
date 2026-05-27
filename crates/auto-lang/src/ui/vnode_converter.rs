@@ -285,6 +285,13 @@ where
                 content: "[NavigationRail 暂不支持]".to_string(),
             },
         ),
+
+        View::Image { .. } => (
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "[Image]".to_string(),
+            },
+        ),
     }
 }
 

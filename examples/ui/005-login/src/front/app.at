@@ -12,55 +12,55 @@ widget App {
         center {
             col {
                 h2 "Sign In"
-                class: "text-3xl font-extrabold text-gray-900"
+                style: "text-3xl font-extrabold text-gray-900"
 
                 text "Welcome back! Please enter your credentials."
-                class: "text-gray-500 mt-3"
+                style: "text-gray-500 mt-3"
 
                 col {
                     text "Email"
-                    class: "text-sm font-medium text-gray-700 mt-6"
+                    style: "text-sm font-medium text-gray-700 mt-6"
                     input (value: .email) {
                         oninput: .EmailChanged
                         placeholder: "you@example.com"
-                        class: "w-full px-3 py-2 border rounded-lg mt-2"
+                        style: "w-full px-3 py-2 border rounded-lg mt-2"
                     }
                     if .email_error != "" {
                         text .email_error
-                        class: "text-red-500 text-xs mt-1"
+                        style: "text-red-500 text-xs mt-1"
                     }
                 }
 
                 col {
                     text "Password"
-                    class: "text-sm font-medium text-gray-700 mt-6"
+                    style: "text-sm font-medium text-gray-700 mt-6"
                     input (value: .password) {
                         oninput: .PasswordChanged
                         placeholder: "Enter your password"
                         type: "password"
-                        class: "w-full px-3 py-2 border rounded-lg mt-2"
+                        style: "w-full px-3 py-2 border rounded-lg mt-2"
                     }
                     if .password_error != "" {
                         text .password_error
-                        class: "text-red-500 text-xs mt-1"
+                        style: "text-red-500 text-xs mt-1"
                     }
                 }
 
                 button "Sign In" {
                     onclick: .Submit
-                    class: "w-full py-2.5 bg-blue-500 text-white rounded-lg font-semibold mt-6"
+                    style: "w-full py-2.5 bg-blue-500 text-white rounded-lg font-semibold mt-6"
                 }
 
                 row {
                     text "Don't have an account? "
-                    class: "text-sm text-gray-500 mt-4"
+                    style: "text-sm text-gray-500 mt-4"
                     a "Sign up" {
-                        class: "text-sm text-blue-500 font-semibold underline px-3"
+                        style: "text-sm text-blue-500 font-semibold underline px-3"
                     }
-                    class: "justify-center items-center"
+                    style: "justify-center items-center"
                 }
 
-                class: "bg-white rounded-xl shadow-lg border border-gray-200 p-8 max-w-md mx-auto w-full"
+                style: "bg-white rounded-xl shadow-lg border border-gray-200 p-8 max-w-md mx-auto w-full"
             }
         }
     }

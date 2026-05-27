@@ -10,12 +10,12 @@ widget App {
             col {
                 row {
                     input { placeholder: "Add todo", value: .input, oninput: .InputChanged }
-                    button "Add" { onclick: .AddTodo, class: "px-4 py-2 bg-blue-500 text-white rounded" }
-                    class: "w-full gap-2 items-center"
+                    button "Add" { onclick: .AddTodo, style: "px-4 py-2 bg-blue-500 text-white rounded" }
+                    style: "w-full gap-2 items-center"
                 }
                 text "__TODO_LIST__"
                 text `Active: ${.active_count}`
-                class: "w-full max-w-lg p-8 bg-white"
+                style: "w-full max-w-lg p-8 bg-white"
             }
         }
     }

@@ -11,7 +11,7 @@ use crate::ui::app::AppResult;
 use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedShadowSize};
 use crate::ui::style::Style;
 use std::fmt::Debug;
-use iced::widget::{button, checkbox, column, container, pick_list, row, scrollable, text, text_input};
+use iced::widget::{button, checkbox, column, container, pick_list, row, scrollable, svg, text, text_input};
 
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::interpreter::DynamicMessage;
@@ -325,6 +325,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 cont = cont.center_x(iced::Length::Fill);
                             }
                         }
+                        if let Some(mw) = is.max_width {
+                            cont = cont.max_width(mw);
+                        }
                     }
                     if let Some(ref is) = iced_style {
                         if has_visual {
@@ -367,6 +370,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 if let Some(ref is) = iced_style {
                     if let Some(ref w) = is.width {
                         col_widget = col_widget.width(iced_length(w));
+                    } else if let Some(mw) = is.max_width {
+                        col_widget = col_widget.width(iced::Length::Fill).max_width(mw);
                     }
                     if let Some(ref h) = is.height {
                         // Skip height(Fill) when justify_center — let the wrapper container handle vertical centering
@@ -393,6 +398,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     cont = cont.padding(pad);
                     if height_skipped_for_center {
                         cont = cont.center_y(iced::Length::Fill);
+                    }
+                    if let Some(ref is) = iced_style {
+                        if let Some(mw) = is.max_width {
+                            cont = cont.max_width(mw);
+                        }
                     }
                     if let Some(ref is) = iced_style {
                         if has_visual {
@@ -536,6 +546,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                 } else if let Some(h) = eff_h {
                     container_widget = container_widget.height(h);
+                }
+
+                // Apply max_width/max_height from style
+                if let Some(ref is) = iced_style {
+                    if let Some(mw) = is.max_width {
+                        container_widget = container_widget.max_width(mw);
+                    }
+                    if let Some(mh) = is.max_height {
+                        container_widget = container_widget.max_height(mh);
+                    }
                 }
 
                 // Apply visual styling (background, border, rounded, shadow)
@@ -861,8 +881,111 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .padding(10)
                     .into()
             }
+
+            AbstractView::Image { src, style } => {
+                let bytes = load_image_bytes(&src);
+                let is = style.as_ref().map(|s| IcedStyle::from_style(s));
+                let eff_w = is.as_ref().and_then(|is| is.width.map(|w| iced_length(&w)));
+                let eff_h = is.as_ref().and_then(|is| is.height.map(|h| iced_length(&h)));
+                let border_radius = is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
+                let border_width = is.as_ref().and_then(|is| is.border_width).unwrap_or(0.0);
+                let border_color = is.as_ref().and_then(|is| is.border_color)
+                    .unwrap_or(iced::Color::TRANSPARENT);
+                let shadow = is.as_ref().map_or(false, |is| is.shadow);
+
+                if let Some(data) = bytes {
+                    let data = if border_radius > 100.0 && (src.ends_with(".svg") || src.contains("/svg")) {
+                        String::from_utf8(data)
+                            .map(|mut s| { s = s.replace("rx=\"0\" ry=\"0\"", "rx=\"140\" ry=\"140\""); s.into_bytes() })
+                            .unwrap_or_else(|e| e.into_bytes())
+                    } else {
+                        data
+                    };
+                    let inner: iced::Element<'static, M> = if src.ends_with(".svg") || src.contains("/svg") {
+                        let handle = svg::Handle::from_memory(data);
+                        let mut svg_widget = svg(handle);
+                        if let Some(w) = eff_w { svg_widget = svg_widget.width(w); }
+                        if let Some(h) = eff_h { svg_widget = svg_widget.height(h); }
+                        svg_widget.into()
+                    } else {
+                        let handle = iced::widget::image::Handle::from_bytes(data);
+                        let mut img_widget = iced::widget::image(handle);
+                        if let Some(w) = eff_w { img_widget = img_widget.width(w); }
+                        if let Some(h) = eff_h { img_widget = img_widget.height(h); }
+                        img_widget.into()
+                    };
+
+                    let mut cont = container(inner).clip(true);
+                    if let Some(w) = eff_w { cont = cont.width(w); }
+                    if let Some(h) = eff_h { cont = cont.height(h); }
+                    if border_radius > 0.0 || border_width > 0.0 || shadow {
+                        let br = border_radius;
+                        let bw = border_width;
+                        let bc = border_color;
+                        cont = cont.style(move |_| container::Style {
+                            background: Some(iced::Background::Color(iced::Color::WHITE)),
+                            border: iced::Border::default().rounded(br).width(bw).color(bc),
+                            shadow: if shadow {
+                                iced::Shadow { offset: iced::Vector::new(0.0, 2.0), blur_radius: 8.0, color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.15) }
+                            } else {
+                                iced::Shadow { offset: iced::Vector::ZERO, blur_radius: 0.0, color: iced::Color::TRANSPARENT }
+                            },
+                            ..Default::default()
+                        });
+                    }
+                    cont.into()
+                } else {
+                    // Fallback: show a colored placeholder with initials
+                    let initials = extract_initials(&src);
+                    let child = text(initials).size(14).color(iced::Color::WHITE);
+                    let mut cont = container(child)
+                        .center_x(iced::Length::Fill)
+                        .center_y(iced::Length::Fill);
+                    let bg = iced::Color::from_rgb(0.24, 0.47, 0.85);
+                    let br = border_radius.max(9999.0);
+                    let bw = border_width;
+                    let bc = border_color;
+                    if let Some(w) = eff_w { cont = cont.width(w); }
+                    if let Some(h) = eff_h { cont = cont.height(h); }
+                    cont = cont.style(move |_| container::Style {
+                        background: Some(iced::Background::Color(bg)),
+                        border: iced::Border::default().rounded(br).width(bw).color(bc),
+                        ..Default::default()
+                    });
+                    cont.into()
+                }
+            }
         }
     }
+}
+
+/// Download image bytes from a URL using blocking HTTP.
+/// Returns None on failure.
+fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        reqwest::blocking::get(url).ok()?.bytes().ok().map(|b| b.to_vec())
+    } else {
+        // Try loading from local file path
+        std::fs::read(url).ok()
+    }
+}
+
+/// Extract initials from a URL (e.g. seed name) for placeholder display.
+fn extract_initials(src: &str) -> String {
+    if let Some(query) = src.split('?').nth(1) {
+        for param in query.split('&') {
+            if let Some(value) = param.strip_prefix("seed=") {
+                let initials: String = value.split(|c: char| !c.is_alphanumeric())
+                    .filter(|s| !s.is_empty())
+                    .filter_map(|p| p.chars().next())
+                    .map(|c| c.to_ascii_uppercase())
+                    .take(2)
+                    .collect();
+                if !initials.is_empty() { return initials; }
+            }
+        }
+    }
+    "?".to_string()
 }
 
 /// Convert IcedFontSize to f32 pixel value
@@ -1196,6 +1319,10 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
 
         AbstractView::ProgressBar { progress, style } => {
             AbstractView::ProgressBar { progress, style }
+        }
+
+        AbstractView::Image { src, style } => {
+            AbstractView::Image { src, style }
         }
 
         // Select, Slider, Accordion, Sidebar, Tabs, NavigationRail use

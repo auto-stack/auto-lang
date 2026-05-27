@@ -18,30 +18,30 @@ widget App {
             col {
                 col {
                     text .time_display {
-                        class: "text-7xl font-mono font-bold text-gray-900 tracking-wider"
+                        style: "text-7xl font-mono font-bold text-gray-900 tracking-wider"
                     }
                     text .ms_display {
-                        class: "text-3xl font-mono text-gray-400"
+                        style: "text-3xl font-mono text-gray-400"
                     }
-                    class: "items-center gap-1 py-12"
+                    style: "items-center gap-1 py-12"
                 }
                 row {
                     if .running == "true" {
-                        button "Stop" { onclick: .Stop, class: "px-10 py-4 bg-red-500 text-white rounded-full text-lg font-semibold" }
-                        button "Lap" { onclick: .Lap, class: "px-10 py-4 bg-gray-200 text-gray-700 rounded-full text-lg font-semibold" }
+                        button "Stop" { onclick: .Stop, style: "px-10 py-4 bg-red-500 text-white rounded-full text-lg font-semibold" }
+                        button "Lap" { onclick: .Lap, style: "px-10 py-4 bg-gray-200 text-gray-700 rounded-full text-lg font-semibold" }
                     } else {
-                        button "Start" { onclick: .Start, class: "px-10 py-4 bg-green-500 text-white rounded-full text-lg font-semibold" }
+                        button "Start" { onclick: .Start, style: "px-10 py-4 bg-green-500 text-white rounded-full text-lg font-semibold" }
                     }
-                    class: "gap-4 items-center"
+                    style: "gap-4 items-center"
                 }
                 col {
-                    text "Laps" { class: "text-sm font-semibold text-gray-400 uppercase" }
-                    text .lap1 { class: "text-gray-700 font-mono py-2" }
-                    text .lap2 { class: "text-gray-700 font-mono py-2" }
-                    text .lap3 { class: "text-gray-700 font-mono py-2" }
-                    class: "w-full max-w-xs mt-8 gap-2 items-center"
+                    text "Laps" { style: "text-sm font-semibold text-gray-400 uppercase" }
+                    text .lap1 { style: "text-gray-700 font-mono py-2" }
+                    text .lap2 { style: "text-gray-700 font-mono py-2" }
+                    text .lap3 { style: "text-gray-700 font-mono py-2" }
+                    style: "w-full max-w-xs mt-8 gap-2 items-center"
                 }
-                class: "w-full max-w-md p-8 bg-white min-h-screen items-center"
+                style: "w-full max-w-md p-8 bg-white min-h-screen items-center"
             }
         }
     }

@@ -378,6 +378,12 @@ pub enum View<M: Clone + Debug> {
         on_select: Option<NavigationRailSelectCallback<M>>,
         style: Option<Style>,
     },
+
+    /// Image from URL with optional styling
+    Image {
+        src: String,
+        style: Option<Style>,
+    },
 }
 
 /// View builder for fluent layout construction

@@ -24,61 +24,61 @@ widget App {
     view {
         col {
             row {
-                text "My Blog" { class: "text-xl font-bold text-gray-800" }
-                text .blog_count { class: "text-sm text-gray-400 ml-auto" }
-                class: "w-full items-center p-4 border-b"
+                text "My Blog" { style: "text-xl font-bold text-gray-800" }
+                text .blog_count { style: "text-sm text-gray-400 ml-auto" }
+                style: "w-full items-center p-4 border-b"
             }
             row {
                 col {
                     col {
-                        text .blog1_title { class: "text-base font-semibold text-gray-800" }
+                        text .blog1_title { style: "text-base font-semibold text-gray-800" }
                         row {
-                            text .blog1_author { class: "text-xs text-gray-500" }
-                            text .blog1_date { class: "text-xs text-gray-400" }
-                            class: "gap-2"
+                            text .blog1_author { style: "text-xs text-gray-500" }
+                            text .blog1_date { style: "text-xs text-gray-400" }
+                            style: "gap-2"
                         }
-                        text .blog1_summary { class: "text-sm text-gray-600 mt-1" }
-                        button "Read More" { onclick: .SelectArticle, class: "text-sm text-blue-500 mt-2" }
-                        class: "p-4 border-b hover:bg-gray-50 cursor-pointer"
+                        text .blog1_summary { style: "text-sm text-gray-600 mt-1" }
+                        button "Read More" { onclick: .SelectArticle, style: "text-sm text-blue-500 mt-2" }
+                        style: "p-4 border-b hover:bg-gray-50 cursor-pointer"
                     }
                     col {
-                        text .blog2_title { class: "text-base font-semibold text-gray-800" }
+                        text .blog2_title { style: "text-base font-semibold text-gray-800" }
                         row {
-                            text .blog2_author { class: "text-xs text-gray-500" }
-                            text .blog2_date { class: "text-xs text-gray-400" }
-                            class: "gap-2"
+                            text .blog2_author { style: "text-xs text-gray-500" }
+                            text .blog2_date { style: "text-xs text-gray-400" }
+                            style: "gap-2"
                         }
-                        text .blog2_summary { class: "text-sm text-gray-600 mt-1" }
-                        class: "p-4 border-b hover:bg-gray-50 cursor-pointer"
+                        text .blog2_summary { style: "text-sm text-gray-600 mt-1" }
+                        style: "p-4 border-b hover:bg-gray-50 cursor-pointer"
                     }
                     col {
-                        text .blog3_title { class: "text-base font-semibold text-gray-800" }
+                        text .blog3_title { style: "text-base font-semibold text-gray-800" }
                         row {
-                            text .blog3_author { class: "text-xs text-gray-500" }
-                            text .blog3_date { class: "text-xs text-gray-400" }
-                            class: "gap-2"
+                            text .blog3_author { style: "text-xs text-gray-500" }
+                            text .blog3_date { style: "text-xs text-gray-400" }
+                            style: "gap-2"
                         }
-                        text .blog3_summary { class: "text-sm text-gray-600 mt-1" }
-                        class: "p-4 border-b hover:bg-gray-50 cursor-pointer"
+                        text .blog3_summary { style: "text-sm text-gray-600 mt-1" }
+                        style: "p-4 border-b hover:bg-gray-50 cursor-pointer"
                     }
-                    class: "w-96 border-r border-gray-200 overflow-y-auto"
+                    style: "w-96 border-r border-gray-200 overflow-y-auto"
                 }
                 col {
-                    text .blog1_title { class: "text-2xl font-bold text-gray-900 p-6" }
+                    text .blog1_title { style: "text-2xl font-bold text-gray-900 p-6" }
                     row {
-                        text .blog1_author { class: "text-sm text-gray-600" }
-                        text .blog1_date { class: "text-sm text-gray-400" }
-                        class: "gap-3 px-6"
+                        text .blog1_author { style: "text-sm text-gray-600" }
+                        text .blog1_date { style: "text-sm text-gray-400" }
+                        style: "gap-3 px-6"
                     }
-                    text .blog1_body { class: "text-base leading-relaxed text-gray-700 px-6 py-4" }
-                    text .blog2_body { class: "text-sm text-gray-500 px-6 py-2" }
-                    text .blog3_body { class: "text-sm text-gray-400 px-6 py-2" }
-                    button "Back to List" { onclick: .BackToList, class: "mx-6 mt-4 text-sm text-blue-500" }
-                    class: "flex-1 overflow-y-auto"
+                    text .blog1_body { style: "text-base leading-relaxed text-gray-700 px-6 py-4" }
+                    text .blog2_body { style: "text-sm text-gray-500 px-6 py-2" }
+                    text .blog3_body { style: "text-sm text-gray-400 px-6 py-2" }
+                    button "Back to List" { onclick: .BackToList, style: "mx-6 mt-4 text-sm text-blue-500" }
+                    style: "flex-1 overflow-y-auto"
                 }
-                class: "flex-1"
+                style: "flex-1"
             }
-            class: "w-full h-screen bg-white"
+            style: "w-full h-screen bg-white"
         }
     }
 

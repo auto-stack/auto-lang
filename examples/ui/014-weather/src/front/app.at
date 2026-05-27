@@ -15,38 +15,38 @@ widget App {
         center {
             col {
                 row {
-                    text .city { class: "text-2xl font-bold text-gray-800" }
-                    button "Refresh" { onclick: .Refresh, class: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm" }
-                    class: "w-full items-center"
+                    text .city { style: "text-2xl font-bold text-gray-800" }
+                    button "Refresh" { onclick: .Refresh, style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm" }
+                    style: "w-full items-center"
                 }
                 col {
-                    text .condition { class: "text-lg text-blue-100" }
-                    text .temp { class: "text-8xl font-thin text-white" }
-                    text .info { class: "text-sm text-blue-200" }
-                    class: "bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl p-6 mt-4 items-center gap-2 py-6"
+                    text .condition { style: "text-lg text-blue-100" }
+                    text .temp { style: "text-8xl font-thin text-white" }
+                    text .info { style: "text-sm text-blue-200" }
+                    style: "bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl p-6 mt-4 items-center gap-2 py-6"
                 }
                 row {
-                    button "Daily" { onclick: .TabDaily, class: "px-4 py-2 rounded-lg text-sm font-medium" }
-                    button "Hourly" { onclick: .TabHourly, class: "px-4 py-2 rounded-lg text-sm font-medium" }
-                    class: "gap-2 mt-6"
+                    button "Daily" { onclick: .TabDaily, style: "px-4 py-2 rounded-lg text-sm font-medium" }
+                    button "Hourly" { onclick: .TabHourly, style: "px-4 py-2 rounded-lg text-sm font-medium" }
+                    style: "gap-2 mt-6"
                 }
                 if .tab == "daily" {
                     col {
-                        text "5-Day Forecast" { class: "text-sm font-semibold text-gray-400 uppercase mt-2" }
+                        text "5-Day Forecast" { style: "text-sm font-semibold text-gray-400 uppercase mt-2" }
                         divider {}
-                        text .forecast { class: "text-gray-700 py-2" }
-                        class: "w-full"
+                        text .forecast { style: "text-gray-700 py-2" }
+                        style: "w-full"
                     }
                 }
                 if .tab == "hourly" {
                     col {
-                        text "Today" { class: "text-sm font-semibold text-gray-400 uppercase mt-2" }
+                        text "Today" { style: "text-sm font-semibold text-gray-400 uppercase mt-2" }
                         divider {}
-                        text .hourly { class: "text-gray-700 py-2" }
-                        class: "w-full"
+                        text .hourly { style: "text-gray-700 py-2" }
+                        style: "w-full"
                     }
                 }
-                class: "w-full max-w-md p-6 bg-gray-50 min-h-screen"
+                style: "w-full max-w-md p-6 bg-gray-50 min-h-screen"
             }
         }
     }

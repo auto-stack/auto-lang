@@ -14,58 +14,58 @@ widget App {
                 // Display
                 col {
                     text .display {
-                        class: "text-5xl font-light text-white text-right w-full"
+                        style: "text-5xl font-light text-white text-right w-full"
                     }
                     text .operator {
-                        class: "text-sm text-gray-400 text-right w-full"
+                        style: "text-sm text-gray-400 text-right w-full"
                     }
-                    class: "w-full p-6 bg-gray-900 rounded-t-2xl"
+                    style: "w-full p-6 bg-gray-900 rounded-t-2xl"
                 }
 
                 // Button grid: 4 columns
                 col {
                     // Row 1: C, %, /, *
                     row {
-                        button "C" { onclick: .Clear, class: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
-                        button "%" { onclick: .Percent, class: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
-                        button "/" { onclick: .Div, class: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        button "*" { onclick: .Mul, class: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        class: "w-full"
+                        button "C" { onclick: .Clear, style: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
+                        button "%" { onclick: .Percent, style: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
+                        button "/" { onclick: .Div, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
+                        button "*" { onclick: .Mul, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
+                        style: "w-full"
                     }
                     // Row 2: 7, 8, 9, -
                     row {
-                        button "7" { onclick: .Digit7, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "8" { onclick: .Digit8, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "9" { onclick: .Digit9, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "-" { onclick: .Sub, class: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        class: "w-full"
+                        button "7" { onclick: .Digit7, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "8" { onclick: .Digit8, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "9" { onclick: .Digit9, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "-" { onclick: .Sub, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
+                        style: "w-full"
                     }
                     // Row 3: 4, 5, 6, +
                     row {
-                        button "4" { onclick: .Digit4, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "5" { onclick: .Digit5, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "6" { onclick: .Digit6, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "+" { onclick: .Add, class: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        class: "w-full"
+                        button "4" { onclick: .Digit4, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "5" { onclick: .Digit5, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "6" { onclick: .Digit6, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "+" { onclick: .Add, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
+                        style: "w-full"
                     }
                     // Row 4: 1, 2, 3, =
                     row {
-                        button "1" { onclick: .Digit1, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "2" { onclick: .Digit2, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "3" { onclick: .Digit3, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "=" { onclick: .Equals, class: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        class: "w-full"
+                        button "1" { onclick: .Digit1, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "2" { onclick: .Digit2, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "3" { onclick: .Digit3, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "=" { onclick: .Equals, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
+                        style: "w-full"
                     }
                     // Row 5: 0 (wide), .
                     row {
-                        button "0" { onclick: .Digit0, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "." { onclick: .Dot, class: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        class: "w-full"
+                        button "0" { onclick: .Digit0, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "." { onclick: .Dot, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        style: "w-full"
                     }
-                    class: "w-full p-2 bg-gray-800 rounded-b-2xl gap-1"
+                    style: "w-full p-2 bg-gray-800 rounded-b-2xl gap-1"
                 }
 
-                class: "w-80 bg-gray-900 rounded-2xl overflow-hidden shadow-xl"
+                style: "w-80 bg-gray-900 rounded-2xl overflow-hidden shadow-xl"
             }
         }
     }

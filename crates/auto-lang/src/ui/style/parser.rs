@@ -17,7 +17,7 @@ impl StyleParser {
     }
 
     /// Parse a space-separated string of style classes.
-    /// Unknown classes (e.g. hover:, max-w-*, leading-*) are silently skipped.
+    /// Unknown classes (e.g. hover:, leading-*) are silently skipped.
     ///
     /// Example: "p-4 gap-2 bg-white flex items-center"
     pub fn parse(&self, input: &str) -> Result<Vec<StyleClass>, String> {
