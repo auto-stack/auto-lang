@@ -1,6 +1,6 @@
 # Plan 266: AutoVM ↔ a2r Semantic Conformance
 
-**Status**: Draft
+**Status**: Phase 1 Complete
 **Created**: 2026-05-25
 **Related**: [Plan 265 (AutoVM MCP Server)](265-autovm-mcp-server.md)
 **Scope**: `docs/spec/`, `crates/auto-lang/test/a2r/conformance/`, `crates/auto-lang/src/trans/rust.rs`
@@ -279,17 +279,17 @@ cargo test -p auto-lang -- conformance_differential --count 1000
 
 ## Implementation Phases
 
-### Phase 1: Semantic Specification Skeleton (1-2 days)
+### Phase 1: Semantic Specification Skeleton (1-2 days) — ✅ COMPLETE
 
 **Goal**: 前 20 个最常用操作有精确语义定义。
 
 **Tasks**:
-1. 创建 `docs/spec/` 目录和 `README.md` 索引
-2. 编写 `01-arithmetic.md` — int/float 算术、溢出行为
-3. 编写 `02-strings.md` — 拼接、索引、f-string
-4. 编写 `03-collections.md` — 数组创建、索引、切片
-5. 编写 `04-control-flow.md` — if/for/loop 基本语义
-6. 编写 `10-builtins.md` — print/len/str/类型转换
+1. ✅ 创建 `docs/spec/` 目录和 `README.md` 索引
+2. ✅ 编写 `01-arithmetic.md` — int/float 算术、溢出行为
+3. ✅ 编写 `02-strings.md` — 拼接、索引、f-string
+4. ✅ 编写 `03-collections.md` — 数组创建、索引、切片
+5. ✅ 编写 `04-control-flow.md` — if/for/loop 基本语义
+6. ✅ 编写 `10-builtins.md` — print/len/str/类型转换
 
 **Deliverable**: 6 个规范文件，覆盖核心运算
 
