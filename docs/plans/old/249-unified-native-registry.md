@@ -1,5 +1,7 @@
 # Plan 249: Unify Dual Registry — Single-Registration Architecture + Lazy Registration
 
+## Status: COMPLETE
+
 ## Context
 
 Auto VM 有两套独立的 native 函数注册系统：

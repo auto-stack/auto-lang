@@ -48,9 +48,10 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 231 | Nested mut fn Stack Fix | ✅ | SET_GENERIC_FIELD Void marking + BUILD_FSTR formatting |
 | 265 | AutoVM MCP Server | ✅ | AI-first VM interaction: 7 MCP tools (session, evaluate, typecheck, patch, snapshot, inspect, reset) |
 | 266 | VM ↔ a2r Conformance | ✅ | Semantic conformance specs, 30 dual-execution tests, differential testing engine |
+| 249 | Unify Dual Registry | ✅ | Single-registration architecture with lazy native function registration, catalog macros |
 
 ## Status Summary
-- Completed: 28 | Partial: 4 | Planned: 0 | Deprecated: 0
+- Completed: 29 | Partial: 4 | Planned: 0 | Deprecated: 0
 
 ## Key Achievements
 - AutoVM fully replaced the tree-walking Evaluator with 1.00-1.10x performance improvement and feature parity

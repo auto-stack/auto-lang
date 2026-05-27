@@ -24,10 +24,11 @@ AutoLang's standard library is built on an AutoLang-first architecture where all
 | 191 | Assert Builtins | Complete | Add assert/assert_eq/assert_ne as native intrinsics |
 | 195 | HTTP Client + auto.http Unification | Partial | Upgrade to reqwest, unify http_stream, add async HTTP support |
 | 211 | Stdlib Test Coverage 80%+ | Complete | VM + a2r tests for all stdlib modules (~85 new tests across 12 categories) |
+| 250 | Auto Stdlib Enhancement | Complete | 11 new stdlib modules: cmp, clone, default, fmt, result, sort, random, duration, datetime, encoding (base64/hex/csv), fs, test, format, hash |
 
 ## Status
 
-**Implemented**: Plan 020, 027, 041, 051, 052, 053, 102, 160 (8 plans fully complete)
+**Implemented**: Plan 020, 027, 041, 051, 052, 053, 102, 160, 191, 211, 250 (11 plans fully complete)
 
 **Partial**: Plan 042 (dstr has core byte-level API but lacks from_str/to_str/iteration), Plan 054 (core infrastructure complete -- storage types, target detection, environment injection -- but config block syntax and startup code generation are not started), Plan 119 (HTTP server/client FFI done for VM; Redis and SQLite are design-only, no Rust implementations yet)
 
@@ -114,3 +115,4 @@ Plan 143 defines the migration of approximately 45 UI components from `examples/
 - [191-assert-and-precise-linker-errors.md](../plans/191-assert-and-precise-linker-errors.md)
 - [195-http-client-async-unification.md](../plans/195-http-client-async-unification.md)
 - [211-stdlib-test-coverage.md](../plans/211-stdlib-test-coverage.md)
+- [250-auto-stdlib-enhancement.md](../plans/old/250-auto-stdlib-enhancement.md)

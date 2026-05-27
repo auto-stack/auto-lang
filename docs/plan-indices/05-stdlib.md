@@ -23,9 +23,10 @@ AutoLang's standard library is built on an AutoLang-first architecture where all
 | 191 | Assert Builtins | ✅ | Add assert/assert_eq/assert_ne as native intrinsics |
 | 195 | HTTP Client + auto.http Unification | 🔧 | Upgrade to reqwest, unify http_stream, add async HTTP (Phase 3.2 blocked by Plan 196) |
 | 211 | Stdlib Test Coverage 80%+ | ✅ | VM + a2r tests for all stdlib modules (~60 new tests) |
+| 250 | Auto Stdlib Enhancement | ✅ | 11 new stdlib modules (cmp, clone, default, fmt, result, sort, random, datetime, encoding, fs, hash) |
 
 ## Status Summary
-- Completed: 8 | Partial: 2 | Planned: 5 | Deprecated: 0
+- Completed: 9 | Partial: 2 | Planned: 5 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform ext architecture enabling .at (interface) / .vm.at (VM impl) / .c.at (C impl) separation
