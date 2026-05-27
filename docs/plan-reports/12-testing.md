@@ -22,6 +22,7 @@ AutoLang's testing infrastructure evolved from inline Rust unit tests embedded i
 | 225 | Playground Interactive Debugger | Complete | Browser-based VM debugger with breakpoints, step controls, stack/locals panels |
 | 260 | Auto Test Framework | Complete | `auto test` CLI command for discovering and running `#[test]` functions in .at files |
 | 262 | File-Based Test Framework | Complete | Auto-discover VM file-based tests in `test/vm/` (~427 tests); FileTestCase, discover_vm_tests() |
+| 261 | Migrate Rust Tests to Auto `#[test]` | Complete | 8 test files migrated from Rust inline tests to `tests/auto/` (dstr, infer, list, field_access, memory, list_growth, mem, may) |
 | 263 | A2R Transpiler Test Runner | Complete | Declarative test discovery via `tests/*.at` for a2r, vm, a2c, a2ts (~900 tests total) |
 
 ## Status
@@ -96,5 +97,6 @@ The linker error precision improvement addresses the problem where "Undefined sy
 - `docs/plans/210-book-listing-test-harness-design.md`
 - `docs/plans/211-stdlib-test-coverage.md`
 - `docs/plans/old/260-auto-test-framework.md`
+- `docs/plans/old/261-migrate-rust-tests-to-auto.md`
 - `docs/plans/old/262-file-based-tests.md`
 - `docs/plans/old/263-transpiler-tests.md`

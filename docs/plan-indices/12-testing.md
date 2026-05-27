@@ -20,10 +20,11 @@ AutoLang's testing infrastructure matured from inline Rust unit tests to a compr
 | 211 | Stdlib Test Coverage 80%+ | ✅ | VM + a2r tests for all stdlib modules (~60 new tests) |
 | 260 | Auto Test Framework | ✅ | `auto test` CLI command, discovers and runs `#[test]` functions in .at files |
 | 262 | File-Based Test Framework | ✅ | Auto-discover VM file-based tests in `test/vm/` (~427 tests) |
+| 261 | Migrate Rust Tests to Auto `#[test]` | ✅ | 8 test files migrated to `tests/auto/` (dstr, infer, list, field_access, memory, etc.) |
 | 263 | A2R Transpiler Test Runner | ✅ | Declarative test discovery via `tests/*.at` for a2r, vm, a2c, a2ts (~900 tests) |
 
 ## Status Summary
-- Completed: 7 | Partial: 3 | Planned: 3 | Deprecated: 0
+- Completed: 8 | Partial: 3 | Planned: 3 | Deprecated: 0
 
 ## Key Achievements
 - All three transpiler test suites (a2r, a2c, a2ts) reorganized into consistent categorized directory structures with clear numbering

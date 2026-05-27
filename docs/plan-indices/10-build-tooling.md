@@ -24,9 +24,10 @@ AutoLang's build infrastructure evolved from a file-based full-compilation archi
 | 214 | Python FFI (use.py) | ✅ | Embed Python interpreter in AutoVM |
 | 216 | C FFI Build Pipeline Integration | ✅ | CLI integration for C FFI bindgen into build pipeline (Phase 4 of Plan 216) |
 | 219 | Playground Source Map | ✅ | Source mapping for transpiler output to enable clickable error locations |
+| 243 | LSP & VSCode Modernization | 🔧 | Rewrite auto-lsp over Database+QueryEngine; Phase 1 (compiles), Phase 2-6 pending |
 
 ## Status Summary
-- Completed: 6 | Partial: 0 | Planned: 7 | Deprecated: 0
+- Completed: 6 | Partial: 1 | Planned: 7 | Deprecated: 0
 
 ## Key Achievements
 - AIE incremental compilation architecture delivered with file hashing, dirty tracking, and transpiler caching achieving 2-3x speedups

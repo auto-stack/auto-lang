@@ -26,11 +26,12 @@ AutoLang's build infrastructure spans two major domains: the compiler-internal A
 | 212a | LSP + VSCode Extension Modernization | Complete | TextMate grammar rewrite, LSP completion sync, Document Symbols, code snippets |
 | 219 | Playground Source Map | Complete | Source map generation for playground editor with AST-to-output position mapping |
 | 225 | Playground Interactive Debugger | Complete | Browser-based VM debugger with breakpoints, step controls, stack/locals panels via WebSocket |
+| 243 | LSP & VSCode Modernization | Partial | Rewrite auto-lsp as compiler-native wrapper over Database+QueryEngine; Phase 1 (compiles), Phase 2-6 pending |
 
 ## Status
 
 **Implemented**: 063 (partial), 064, 065, 066, 092, 146, 202, 212a, 212b, 214, 216, 219, 225
-**Partial**: 063 (MCU phases deferred)
+**Partial**: 063 (MCU phases deferred), 243 (Phase 1 only)
 **Planned**: 093, 111, 112, 151, 186
 
 ## Design
@@ -118,3 +119,4 @@ Plan 186 replaces npm with bun across all Vue/web project tooling in auto-man. B
 - [212-lsp-vscode-modernization.md](../plans/212-lsp-vscode-modernization.md)
 - [219-playground-source-map.md](../plans/219-playground-source-map.md)
 - [225-playground-interactive-debugger.md](../plans/old/225-playground-interactive-debugger.md)
+- [243-lsp-vscode-modernization.md](../plans/243-lsp-vscode-modernization.md)

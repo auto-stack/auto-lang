@@ -1,5 +1,7 @@
 # Plan 261: Migrate Rust AutoVM Tests to Auto `#[test]`
 
+## Status: COMPLETE
+
 ## Context
 
 The Auto language has ~150 Rust inline tests that run Auto code through the VM and assert on results. With Plan 260's `auto test` framework now working, these tests can be expressed directly in Auto as `#[test]` functions — eliminating the Rust wrapper boilerplate and letting tests live in the language they test.
