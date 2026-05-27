@@ -130,6 +130,41 @@ impl McpServer {
                     }
                 }),
             },
+            ToolDefinition {
+                name: "auto_typecheck".into(),
+                description: "Validate Auto code syntax without executing it. Returns parse errors, defined symbols, and import information. Useful for AI agents to verify code before execution.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "required": ["code"],
+                    "properties": {
+                        "code": { "type": "string", "description": "Auto code to validate" }
+                    }
+                }),
+            },
+            ToolDefinition {
+                name: "auto_patch".into(),
+                description: "Replace a single definition (fn, type, enum) in an existing session. Rebuilds the session from accumulated source with the patched definition. Returns rebuild status.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "required": ["session_id", "old_name", "new_code"],
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "old_name": { "type": "string", "description": "Name of the definition to replace" },
+                        "new_code": { "type": "string", "description": "Complete new definition code" }
+                    }
+                }),
+            },
+            ToolDefinition {
+                name: "auto_snapshot".into(),
+                description: "Export all accumulated source code in a session as a single .at file. Useful for persisting session state or sharing with others.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "required": ["session_id"],
+                    "properties": {
+                        "session_id": { "type": "string" }
+                    }
+                }),
+            },
         ]
     }
 
@@ -139,6 +174,9 @@ impl McpServer {
             "auto_evaluate" => self.tool_evaluate(args),
             "auto_session_reset" => self.tool_session_reset(args),
             "auto_inspect" => self.tool_inspect(args),
+            "auto_typecheck" => self.tool_typecheck(args),
+            "auto_patch" => self.tool_patch(args),
+            "auto_snapshot" => self.tool_snapshot(args),
             _ => ToolResult::error(format!("Unknown tool: {}", name)),
         }
     }
@@ -173,6 +211,9 @@ impl McpServer {
             Ok(output) => {
                 let result_value = session.format_last_result()
                     .or_else(|| session.get_last_result().map(|v| v.to_string()));
+
+                // Record successful source for patch/snapshot
+                self.sessions.append_source(&session_id, &code);
 
                 ToolResult::text(serde_json::to_string(&json!({
                     "status": "ok",
@@ -262,4 +303,240 @@ impl McpServer {
 
         ToolResult::text(serde_json::to_string(&result).unwrap())
     }
+
+    // ── Phase 2: auto_typecheck ──
+
+    fn tool_typecheck(&self, args: serde_json::Value) -> ToolResult {
+        let code = match args.get("code").and_then(|v| v.as_str()) {
+            Some(c) => c.to_string(),
+            None => return ToolResult::error("Missing required parameter: code"),
+        };
+
+        match crate::parse_preserve_error(&code) {
+            Ok(ast) => {
+                let mut symbols = Vec::new();
+                let mut imports = Vec::new();
+                for stmt in &ast.stmts {
+                    match stmt {
+                        crate::ast::Stmt::Fn(f) => {
+                            symbols.push(json!({
+                                "kind": "function",
+                                "name": f.name.to_string(),
+                                "params": f.params.len(),
+                                "return_type": f.ret.to_string()
+                            }));
+                        }
+                        crate::ast::Stmt::TypeDecl(t) => {
+                            symbols.push(json!({
+                                "kind": "type",
+                                "name": t.name.to_string(),
+                                "fields": t.members.len()
+                            }));
+                        }
+                        crate::ast::Stmt::EnumDecl(e) => {
+                            symbols.push(json!({
+                                "kind": "enum",
+                                "name": e.name.to_string(),
+                                "variants": e.items.len()
+                            }));
+                        }
+                        crate::ast::Stmt::Use(u) => {
+                            let module = if let Some(ref mp) = u.module_path {
+                                mp.to_string()
+                            } else {
+                                u.paths.join("::")
+                            };
+                            imports.push(module);
+                        }
+                        _ => {}
+                    }
+                }
+
+                ToolResult::text(serde_json::to_string(&json!({
+                    "status": "ok",
+                    "valid": true,
+                    "symbols": symbols,
+                    "imports": imports,
+                    "diagnostics": []
+                })).unwrap())
+            }
+            Err(e) => {
+                ToolResult::text(serde_json::to_string(&json!({
+                    "status": "error",
+                    "valid": false,
+                    "symbols": [],
+                    "imports": [],
+                    "diagnostics": [{
+                        "severity": "error",
+                        "message": format!("{}", e)
+                    }]
+                })).unwrap())
+            }
+        }
+    }
+
+    // ── Phase 3: auto_patch ──
+
+    fn tool_patch(&mut self, args: serde_json::Value) -> ToolResult {
+        let session_id = match args.get("session_id").and_then(|v| v.as_str()) {
+            Some(id) => id.to_string(),
+            None => return ToolResult::error("Missing required parameter: session_id"),
+        };
+        let old_name = match args.get("old_name").and_then(|v| v.as_str()) {
+            Some(n) => n.to_string(),
+            None => return ToolResult::error("Missing required parameter: old_name"),
+        };
+        let new_code = match args.get("new_code").and_then(|v| v.as_str()) {
+            Some(c) => c.to_string(),
+            None => return ToolResult::error("Missing required parameter: new_code"),
+        };
+
+        if !self.sessions.exists(&session_id) {
+            return ToolResult::error(format!("Session not found: {}", session_id));
+        }
+
+        // Get current source
+        let source = match self.sessions.get_source(&session_id) {
+            Some(s) => s,
+            None => return ToolResult::error("No source history for session"),
+        };
+
+        // Find and replace the definition block
+        let patched = patch_replace_definition(&source, &old_name, &new_code);
+
+        // Validate the patched source parses correctly
+        if let Err(e) = crate::parse_preserve_error(&patched) {
+            return ToolResult::text(serde_json::to_string(&json!({
+                "status": "error",
+                "message": "Patched code has syntax errors",
+                "diagnostics": [{"severity": "error", "message": format!("{}", e)}]
+            })).unwrap());
+        }
+
+        // Rebuild session with patched source
+        self.sessions.rebuild_with_source(&session_id, &patched);
+
+        // Re-execute the patched source
+        let session = match self.sessions.get(&session_id) {
+            Some(s) => s,
+            None => return ToolResult::error("Session lost during rebuild"),
+        };
+
+        match session.run(&patched) {
+            Ok(output) => ToolResult::text(serde_json::to_string(&json!({
+                "status": "ok",
+                "message": format!("Patched '{}' and rebuilt session", old_name),
+                "output": output,
+                "diagnostics": []
+            })).unwrap()),
+            Err(e) => ToolResult::text(serde_json::to_string(&json!({
+                "status": "error",
+                "message": "Patch parsed OK but execution failed",
+                "output": null,
+                "diagnostics": [{"severity": "error", "message": format!("{}", e)}]
+            })).unwrap()),
+        }
+    }
+
+    // ── Phase 3: auto_snapshot ──
+
+    fn tool_snapshot(&self, args: serde_json::Value) -> ToolResult {
+        let session_id = match args.get("session_id").and_then(|v| v.as_str()) {
+            Some(id) => id.to_string(),
+            None => return ToolResult::error("Missing required parameter: session_id"),
+        };
+
+        match self.sessions.get_source(&session_id) {
+            Some(source) => {
+                if source.is_empty() {
+                    return ToolResult::text(serde_json::to_string(&json!({
+                        "status": "ok",
+                        "source": "",
+                        "lines": 0,
+                        "message": "Session is empty (no code executed yet)"
+                    })).unwrap());
+                }
+
+                let lines = source.lines().count();
+                ToolResult::text(serde_json::to_string(&json!({
+                    "status": "ok",
+                    "source": source,
+                    "lines": lines
+                })).unwrap())
+            }
+            None => ToolResult::error(format!("Session not found: {}", session_id)),
+        }
+    }
+}
+
+/// Replace a top-level definition named `old_name` with `new_code` in source.
+/// Finds the definition by matching `fn old_name`, `type old_name`, or `enum old_name`
+/// at the start of a line, then replaces the entire block (up to matching braces).
+fn patch_replace_definition(source: &str, old_name: &str, new_code: &str) -> String {
+    let lines: Vec<&str> = source.lines().collect();
+    let keywords = ["fn", "type", "enum", "spec", "ext"];
+
+    let mut start_line = None;
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        for kw in &keywords {
+            let prefix = format!("{} {}", kw, old_name);
+            if trimmed.starts_with(&prefix) {
+                // Check that old_name is followed by a word boundary
+                let after = &trimmed[prefix.len()..];
+                if after.is_empty() || after.starts_with('(') || after.starts_with(' ') || after.starts_with('{') || after.starts_with('<') {
+                    start_line = Some(i);
+                    break;
+                }
+            }
+        }
+        if start_line.is_some() {
+            break;
+        }
+    }
+
+    let start = match start_line {
+        Some(i) => i,
+        None => {
+            // Definition not found — append new code at end
+            return format!("{}\n\n{}", source, new_code);
+        }
+    };
+
+    // Find end of definition: count braces from start line
+    let mut depth = 0i32;
+    let mut end_line = start;
+    let mut found_open = false;
+    for i in start..lines.len() {
+        for ch in lines[i].chars() {
+            match ch {
+                '{' => { depth += 1; found_open = true; }
+                '}' => { depth -= 1; }
+                _ => {}
+            }
+        }
+        if found_open && depth <= 0 {
+            end_line = i;
+            break;
+        }
+        // Single-line definitions without braces (e.g., `type Alias = X`)
+        if !found_open && i > start {
+            // Next definition starts
+            break;
+        }
+    }
+
+    // Rebuild: lines before start + new_code + lines after end
+    let mut result = String::new();
+    for line in &lines[..start] {
+        result.push_str(line);
+        result.push('\n');
+    }
+    result.push_str(new_code);
+    result.push('\n');
+    for line in &lines[end_line + 1..] {
+        result.push_str(line);
+        result.push('\n');
+    }
+    result.trim_end().to_string()
 }

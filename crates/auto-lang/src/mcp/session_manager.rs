@@ -25,6 +25,8 @@ struct VmSession {
     created_at: Instant,
     last_active: Instant,
     sandbox: bool,
+    /// Accumulated source code for auto_snapshot and auto_patch
+    source_history: Vec<String>,
 }
 
 impl SessionManager {
@@ -40,6 +42,7 @@ impl SessionManager {
             created_at: now,
             last_active: now,
             sandbox,
+            source_history: Vec::new(),
         });
         id
     }
@@ -75,5 +78,31 @@ impl SessionManager {
 
     pub fn session_count(&self) -> usize {
         self.sessions.len()
+    }
+
+    /// Record source code that was successfully executed in a session
+    pub fn append_source(&mut self, id: &str, code: &str) {
+        if let Some(entry) = self.sessions.get_mut(id) {
+            entry.source_history.push(code.to_string());
+            entry.last_active = Instant::now();
+        }
+    }
+
+    /// Get the accumulated source code for a session (for snapshot)
+    pub fn get_source(&self, id: &str) -> Option<String> {
+        self.sessions.get(id).map(|entry| entry.source_history.join("\n\n"))
+    }
+
+    /// Rebuild a session from scratch with patched source.
+    /// Returns false if session not found.
+    pub fn rebuild_with_source(&mut self, id: &str, new_source: &str) -> bool {
+        let entry = match self.sessions.get_mut(id) {
+            Some(e) => e,
+            None => return false,
+        };
+        entry.session = AutovmReplSession::new();
+        entry.source_history = vec![new_source.to_string()];
+        entry.last_active = Instant::now();
+        true
     }
 }
