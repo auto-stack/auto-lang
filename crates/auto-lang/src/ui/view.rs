@@ -897,6 +897,11 @@ impl<M: Clone + Debug> View<M> {
         }
     }
 
+    /// Create a progress bar (alias for progress_bar, used by a2r transpiler)
+    pub fn progress() -> ViewBuilder<M> {
+        ViewBuilder::row() // placeholder builder; a2r generates progress_bar() directly
+    }
+
     /// Create a styled progress bar
     ///
     /// # Example
@@ -909,6 +914,21 @@ impl<M: Clone + Debug> View<M> {
             progress: progress.clamp(0.0, 1.0),
             style: Some(Style::parse(style_str).expect("Invalid style")),
         }
+    }
+
+    /// Create a spacer (flexible empty space in row/column layouts)
+    pub fn spacer() -> Self {
+        View::Empty
+    }
+
+    /// Create a horizontal divider line
+    pub fn divider() -> Self {
+        View::Empty
+    }
+
+    /// Create an avatar placeholder
+    pub fn avatar() -> ViewBuilder<M> {
+        ViewBuilder::col()
     }
 
     /// Create a container with a child
@@ -1170,9 +1190,39 @@ impl<M: Clone + Debug> ViewInputBuilder<M> {
         self
     }
 
+    /// Set full width
+    pub fn w_full(self) -> Self {
+        self.width(u16::MAX)
+    }
+
+    /// Set horizontal padding (stored in style)
+    pub fn px(self, _n: u16) -> Self {
+        // Padding is handled by the renderer via style
+        self
+    }
+
+    /// Set vertical padding (stored in style)
+    pub fn py(self, _n: u16) -> Self {
+        self
+    }
+
+    /// Add border (stored in style)
+    pub fn border(self) -> Self {
+        self
+    }
+
+    /// Set rounded-lg (stored in style)
+    pub fn rounded_lg(self) -> Self {
+        self
+    }
+
     /// Set style using Tailwind CSS class string
     pub fn style(mut self, style_str: &str) -> Self {
-        self.style = Some(Style::parse(style_str).expect("Invalid style string"));
+        let existing = self.style.take().unwrap_or_default();
+        let parsed = Style::parse(style_str).expect("Invalid style string");
+        let mut merged = existing;
+        for c in parsed.classes { merged = merged.add(c); }
+        self.style = Some(merged);
         self
     }
 
@@ -1659,6 +1709,15 @@ impl<M: Clone + Debug> ButtonArg<M> for &str {
     fn into_button(self) -> ViewBuilder<M> {
         let mut b = ViewBuilder::button();
         b.button_label = self.to_string();
+        b
+    }
+}
+
+impl<M: Clone + Debug> ButtonArg<M> for String {
+    type Output = ViewBuilder<M>;
+    fn into_button(self) -> ViewBuilder<M> {
+        let mut b = ViewBuilder::button();
+        b.button_label = self;
         b
     }
 }

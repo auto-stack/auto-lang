@@ -84,6 +84,9 @@ pub enum StyleClass {
     /// Margin Y: my-{0-12} (L2)
     MarginY(SizeValue),
 
+    /// Margin Top: mt-{0-12} (L2)
+    MarginTop(SizeValue),
+
     /// Gap: gap-{0-12} (gap-0, gap-1, ..., gap-12)
     Gap(SizeValue),
 
@@ -210,6 +213,9 @@ pub enum StyleClass {
 
     /// Font size: text-3xl (30px) - L2
     Text3Xl,
+
+    /// Font size: text-4xl (36px) - L2
+    Text4Xl,
 
     /// Font weight: font-bold (L2)
     FontBold,
@@ -372,6 +378,12 @@ impl StyleClass {
             return Ok(StyleClass::MarginY(size));
         }
 
+        // Parse margin top: mt-{0-12}
+        if let Some(rest) = class.strip_prefix("mt-") {
+            let size = parse_size_value(rest)?;
+            return Ok(StyleClass::MarginTop(size));
+        }
+
         // Parse gap: gap-{0-12}
         if let Some(rest) = class.strip_prefix("gap-") {
             let size = parse_size_value(rest)?;
@@ -427,6 +439,7 @@ impl StyleClass {
             "text-xl" => return Ok(StyleClass::TextXl),
             "text-2xl" => return Ok(StyleClass::Text2Xl),
             "text-3xl" => return Ok(StyleClass::Text3Xl),
+            "text-4xl" => return Ok(StyleClass::Text4Xl),
             _ => {}
         }
 

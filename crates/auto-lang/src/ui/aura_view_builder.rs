@@ -497,7 +497,17 @@ impl<'a> AuraViewBuilder<'a> {
                     .join("")
             });
 
-        let style = self.extract_style(props);
+        let mut style = self.extract_style(props);
+
+        // Apply default heading styles if no explicit style was provided
+        if style.is_none() {
+            style = match tag {
+                "h1" => Style::parse("text-4xl font-bold").ok(),
+                "h2" => Style::parse("text-3xl font-bold").ok(),
+                "h3" => Style::parse("text-xl font-semibold").ok(),
+                _ => None,
+            };
+        }
 
         // Map heading tags to styled text
         let styled_content = match tag {

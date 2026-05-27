@@ -320,29 +320,46 @@ impl RustGenerator {
                 // If this event is from an input, prepend input text parsing
                 if let Some(field_name) = self.input_fields.get(&variant_name) {
                     let rust_type = self.state_types.get(field_name).map(|s| s.as_str()).unwrap_or("f64");
-                    let parse_method = match rust_type {
-                        "i32" => "parse::<i32>()",
-                        "i64" => "parse::<i64>()",
-                        "u32" => "parse::<u32>()",
-                        "u64" => "parse::<u64>()",
-                        "f32" => "parse::<f32>()",
-                        "f64" => "parse::<f64>()",
-                        _ => "parse::<f64>()",
-                    };
                     code.push_str(&format!(
                         "                let _text = auto_lang::ui::iced::last_input_text();\n"
                     ));
-                    code.push_str(&format!(
-                        "                self.{} = _text.{}.unwrap_or(self.{});\n",
-                        field_name, parse_method, field_name
-                    ));
+                    if rust_type == "String" {
+                        code.push_str(&format!(
+                            "                self.{} = _text;\n",
+                            field_name
+                        ));
+                    } else {
+                        let parse_method = match rust_type {
+                            "i32" => "parse::<i32>()",
+                            "i64" => "parse::<i64>()",
+                            "u32" => "parse::<u32>()",
+                            "u64" => "parse::<u64>()",
+                            "f32" => "parse::<f32>()",
+                            "f64" => "parse::<f64>()",
+                            "bool" => "parse::<bool>()",
+                            _ => "parse::<f64>()",
+                        };
+                        code.push_str(&format!(
+                            "                self.{} = _text.{}.unwrap_or(self.{});\n",
+                            field_name, parse_method, field_name
+                        ));
+                    }
+
+                    // Skip redundant self-assignment body (e.g. `.email = .email`)
+                    let self_assign = format!("self.{} = self.{}", field_name, field_name);
+                    if !body.trim().eq(&self_assign) && !body.trim().is_empty() {
+                        code.push_str(&format!("                {}\n", body));
+                    }
+                } else {
+                    code.push_str(&format!("                {}\n", body));
                 }
 
-                code.push_str(&format!("                {}\n", body));
                 code.push_str("            }\n");
             }
 
-            code.push_str("            _ => {}\n");
+            if self.message_variants.len() > widget.handlers.len() {
+                code.push_str("            _ => {}\n");
+            }
             code.push_str("        }\n");
         }
 
@@ -467,9 +484,16 @@ impl RustGenerator {
                         builder = format!("{}.value(\"{}\".to_string())", builder, s);
                     }
 
-                    // Other props (class, style, width — skip placeholder and value)
+                    // Password mode: type: "password"
+                    if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("type") {
+                        if s == "password" {
+                            builder = format!("{}.password()", builder);
+                        }
+                    }
+
+                    // Other props (class, style, width — skip placeholder, value, type)
                     for (key, value) in props {
-                        if key == "placeholder" || key == "value" { continue; }
+                        if key == "placeholder" || key == "value" || key == "type" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
 
@@ -522,10 +546,48 @@ impl RustGenerator {
                     }
                 }
 
+                // Handle spacer — returns View directly, no builder
+                if tag == "spacer" {
+                    return "View::spacer()".to_string();
+                }
+
+                // Handle divider — returns View directly, no builder
+                if tag == "divider" {
+                    return "View::divider()".to_string();
+                }
+
+                // Handle progress — View::progress_bar(value / max)
+                if tag == "progress" {
+                    let value_expr = if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
+                        format!("self.{}", name)
+                    } else if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("value") {
+                        s.clone()
+                    } else {
+                        "0".to_string()
+                    };
+                    let max_val = if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("max") {
+                        s.clone()
+                    } else {
+                        "100".to_string()
+                    };
+                    let style_str = props.get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_default();
+                    if style_str.is_empty() {
+                        return format!("View::progress_bar({} as f32 / {} as f32)", value_expr, max_val);
+                    } else {
+                        return format!("View::progress_bar_styled({} as f32 / {} as f32, \"{}\")", value_expr, max_val, style_str);
+                    }
+                }
+
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
                     if let Some(ref name) = text_state_ref {
-                        // text .name → View::text(format!("{}", self.name))
-                        format!("View::text(format!(\"{{}}\", self.{}))", name)
+                        if tag == "button" {
+                            format!("View::button(format!(\"{{}}\", self.{}))", name)
+                        } else {
+                            format!("View::text(format!(\"{{}}\", self.{}))", name)
+                        }
                     } else if let Some(label) = &text_prop {
                         if tag == "button" {
                             format!("View::{}(\"{}\")", view_fn, label)
@@ -541,8 +603,45 @@ impl RustGenerator {
                     format!("View::{}()", view_fn)
                 };
 
+                // Check if any styling props exist (class/style)
+                let has_styling = props.keys().any(|k| k == "style" || k == "class");
+
+                // For non-button leaf tags with text content and styling but no children,
+                // use View::text_styled() to avoid builder pattern issues
+                // (View::text("str") returns View, not ViewBuilder, so chaining won't work)
+                if self.is_leaf_tag(tag.as_str()) && tag != "button" && children.is_empty() && has_styling {
+                    let style_str = props.get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_default();
+
+                    if let Some(ref name) = text_state_ref {
+                        return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, style_str);
+                    }
+                    if let Some(label) = &text_prop {
+                        return format!("View::text_styled(\"{}\".to_string(), \"{}\")", label, style_str);
+                    }
+                }
+
                 // Whether the "text" prop was consumed as a constructor arg
                 let text_prop_consumed = self.is_leaf_tag(tag.as_str()) && (text_prop.is_some() || text_state_ref.is_some());
+
+                // Non-button leaf tags with text and no styling/children:
+                // View::text("str") returns View<M> directly, NOT a builder.
+                // Skip .build() to avoid compile error.
+                if self.is_leaf_tag(tag.as_str()) && tag != "button" && children.is_empty() && !has_styling {
+                    if let Some(ref name) = text_state_ref {
+                        return format!("View::text(format!(\"{{}}\", self.{}))", name);
+                    }
+                    if let Some(label) = &text_prop {
+                        if label.contains("${") {
+                            return format!("View::text({})", self.interpolate_str(label));
+                        }
+                        return format!("View::text(\"{}\".to_string())", label);
+                    }
+                    // Leaf tag without text content but no styling — e.g. avatar
+                    // These go through the builder path
+                }
 
                 if children.is_empty() {
                     // Single element without children
@@ -668,7 +767,7 @@ impl RustGenerator {
                         .collect();
                     format!("if {} {{ {} }} else {{ {} }}", rust_condition, then_code.join("\n"), else_code.join("\n"))
                 } else {
-                    format!("if {} {{ {} }}", rust_condition, then_code.join("\n"))
+                    format!("if {} {{ {} }} else {{ View::empty() }}", rust_condition, then_code.join("\n"))
                 }
             }
 
@@ -1005,10 +1104,21 @@ impl RustGenerator {
                 format!("{} {} {}", left_wrapped, op_str, right_wrapped)
             }
             Expr::Call(call) => {
+                let fn_name: String = call.get_name_text_safe()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| self.ast_expr_to_rust(&call.name));
                 let args: Vec<String> = call.args.args.iter()
                     .map(|a| self.ast_expr_to_rust(&a.get_expr()))
                     .collect();
-                format!("{}({})", call.name, args.join(", "))
+                match fn_name.as_str() {
+                    "print" => {
+                        let print_args: Vec<String> = args.iter()
+                            .map(|a| a.trim_end_matches(".to_string()").to_string())
+                            .collect();
+                        format!("println!({})", print_args.join(", "))
+                    }
+                    _ => format!("{}({})", fn_name, args.join(", ")),
+                }
             }
             _ => format!("/* expr */"),
         }

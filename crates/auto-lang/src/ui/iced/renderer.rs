@@ -202,6 +202,27 @@ fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
     }
 }
 
+/// Wrap an iced element with top padding if margin_top (from mt-* classes) is set.
+fn wrap_with_margin_top<M: Clone + Debug + 'static>(
+    el: iced::Element<'static, M>,
+    is: &IcedStyle,
+) -> iced::Element<'static, M> {
+    use iced::widget::container;
+    if is.padding_top.is_some() {
+        let top_pad = is.padding_top.unwrap();
+        container(el)
+            .padding(iced::Padding {
+                top: top_pad,
+                right: 0.0,
+                bottom: 0.0,
+                left: 0.0,
+            })
+            .into()
+    } else {
+        el
+    }
+}
+
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -239,7 +260,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                 }
 
-                text_widget.into()
+                let el: iced::Element<'static, M> = text_widget.into();
+                if let Some(ref s) = style {
+                    let iced_style = IcedStyle::from_style(s);
+                    wrap_with_margin_top(el, &iced_style)
+                } else {
+                    el
+                }
             }
 
             AbstractView::Button { label, onclick, style } => {
@@ -281,7 +308,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     if let Some(ref h) = is.height { btn = btn.height(iced_length(h)); }
                 }
 
-                btn.into()
+                // Wrap in container if margin_top (from mt-*) needs to be applied
+                let el: iced::Element<'static, M> = btn.into();
+                if let Some(ref is) = iced_style {
+                    wrap_with_margin_top(el, is)
+                } else {
+                    el
+                }
             }
 
             AbstractView::Row { children, spacing, padding, style } => {
@@ -999,6 +1032,7 @@ fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) ->
         IcedFontSize::Xl => 20.0,
         IcedFontSize::Xxl => 24.0,
         IcedFontSize::X3xl => 30.0,
+        IcedFontSize::X4xl => 36.0,
     }
 }
 

@@ -24,6 +24,7 @@ pub struct IcedStyle {
     pub margin: Option<f32>,        // Not supported by Iced
     pub margin_x: Option<f32>,       // Not supported by Iced
     pub margin_y: Option<f32>,       // Not supported by Iced
+    pub margin_top: Option<f32>,      // Converted to top padding
     pub gap: Option<f32>,
 
     // Colors (L1)
@@ -136,6 +137,7 @@ pub enum IcedFontSize {
     Xl,   // 20px
     Xxl,  // 24px
     X3xl, // 30px
+    X4xl, // 36px
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -166,6 +168,7 @@ impl IcedStyle {
             margin: None,      // Not supported by Iced
             margin_x: None,    // Not supported by Iced
             margin_y: None,    // Not supported by Iced
+            margin_top: None,
             gap: None,
             background_color: None,
             text_color: None,
@@ -207,6 +210,11 @@ impl IcedStyle {
             iced_style.apply_class(class);
         }
 
+        // Merge margin_top into padding_top (Iced doesn't have real margin)
+        if let Some(mt) = iced_style.margin_top {
+            iced_style.padding_top = Some(iced_style.padding_top.unwrap_or(0.0) + mt);
+        }
+
         iced_style
     }
 
@@ -246,6 +254,9 @@ impl IcedStyle {
             StyleClass::MarginY(size) => {
                 // Iced doesn't support margin - store but will be ignored
                 self.margin_y = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginTop(size) => {
+                self.margin_top = Some(size.to_pixels() as f32);
             }
             StyleClass::Gap(size) => {
                 self.gap = Some(size.to_pixels() as f32);
@@ -357,6 +368,9 @@ impl IcedStyle {
             }
             StyleClass::Text3Xl => {
                 self.font_size = Some(IcedFontSize::X3xl);
+            }
+            StyleClass::Text4Xl => {
+                self.font_size = Some(IcedFontSize::X4xl);
             }
             StyleClass::FontBold => {
                 self.font_weight = Some(IcedFontWeight::Bold);
