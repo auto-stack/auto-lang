@@ -1,0 +1,6 @@
+// Conformance 002: String concatenation
+fn main() {
+    print("hello" + " " + "world")
+    print("a" + "b")
+    print("" + "x")
+}

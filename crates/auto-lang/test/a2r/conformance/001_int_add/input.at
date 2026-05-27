@@ -1,0 +1,7 @@
+// Conformance 001: Integer addition
+fn main() {
+    print(1 + 2)
+    print(10 + 20)
+    print(0 + 0)
+    print(-5 + 3)
+}

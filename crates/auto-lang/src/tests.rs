@@ -44,3 +44,4 @@ mod autodown_tests;
 mod book_listing_tests;
 mod vm_file_tests; // Plan 177: VM file-based test framework
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
+mod conformance_tests; // Plan 266: AutoVM ↔ a2r semantic conformance tests

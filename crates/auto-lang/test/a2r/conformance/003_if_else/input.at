@@ -1,0 +1,22 @@
+// Conformance 003: if/else
+fn main() {
+    let x = 10
+    if x > 5 {
+        print("big")
+    } else {
+        print("small")
+    }
+    if x < 5 {
+        print("small")
+    } else {
+        print("big")
+    }
+    let y = 0
+    if y == 0 {
+        print("zero")
+    } else if y == 1 {
+        print("one")
+    } else {
+        print("other")
+    }
+}

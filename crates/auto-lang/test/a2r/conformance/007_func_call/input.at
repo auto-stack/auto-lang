@@ -1,0 +1,13 @@
+// Conformance 007: function definition and call
+fn add(a int, b int) int {
+    return a + b
+}
+
+fn greet(name str) str {
+    return f"hello $name"
+}
+
+fn main() {
+    print(add(3, 4))
+    print(greet("world"))
+}

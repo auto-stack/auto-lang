@@ -1,0 +1,7 @@
+// Conformance 005: f-string interpolation
+fn main() {
+    let name = "Auto"
+    let x = 10
+    print(f"hello $name")
+    print(f"$x + 1 = ${x + 1}")
+}

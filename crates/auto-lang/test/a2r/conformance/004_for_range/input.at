@@ -1,0 +1,9 @@
+// Conformance 004: for range loops
+fn main() {
+    for i in 0..3 {
+        print(i)
+    }
+    for j in 0..=2 {
+        print(j)
+    }
+}
