@@ -439,7 +439,8 @@ impl RustGenerator {
                         }
                     } else {
                         // Text with styling — collect classes and use View::text_styled
-                        let class_str = props.get("class")
+                        let class_str = props.get("style")
+                            .or_else(|| props.get("class"))
                             .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
                             .unwrap_or_default();
                         if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("text") {
@@ -500,7 +501,7 @@ impl RustGenerator {
                 let text_state_ref = props.get("text")
                     .and_then(|v| if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = v { Some(name.clone()) } else { None });
 
-                // Handle image element — View has no Image variant, use text placeholder
+                // Handle image element — generate View::image() or View::image_styled()
                 if tag == "image" {
                     let src = props.get("src")
                         .and_then(|v| if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = v {
@@ -510,7 +511,15 @@ impl RustGenerator {
                         } else {
                             None
                         }).unwrap_or_else(|| "\"\"".to_string());
-                    return format!("View::text({})", src);
+                    let style_str = props.get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_default();
+                    if style_str.is_empty() {
+                        return format!("View::image({})", src);
+                    } else {
+                        return format!("View::image_styled({}, \"{}\")", src, style_str);
+                    }
                 }
 
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {

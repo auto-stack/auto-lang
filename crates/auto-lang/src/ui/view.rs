@@ -516,7 +516,12 @@ impl<M: Clone + Debug> ViewBuilder<M> {
     ///     .build()
     /// ```
     pub fn style(mut self, style_str: &str) -> Self {
-        self.style = Some(Style::parse(style_str).expect("Invalid style string"));
+        let parsed = Style::parse(style_str).expect("Invalid style string");
+        let existing = self.style.take().unwrap_or_default();
+        // Merge: keep existing builder-method classes, then add parsed classes
+        let mut merged = existing;
+        for c in parsed.classes { merged = merged.add(c); }
+        self.style = Some(merged);
         self
     }
 
@@ -752,6 +757,19 @@ impl<M: Clone + Debug> View<M> {
     pub fn text_styled(content: impl Into<String>, style_str: &str) -> Self {
         View::Text {
             content: content.into(),
+            style: Some(Style::parse(style_str).expect("Invalid style")),
+        }
+    }
+
+    /// Create image view
+    pub fn image(src: impl Into<String>) -> Self {
+        View::Image { src: src.into(), style: None }
+    }
+
+    /// Create styled image view
+    pub fn image_styled(src: impl Into<String>, style_str: &str) -> Self {
+        View::Image {
+            src: src.into(),
             style: Some(Style::parse(style_str).expect("Invalid style")),
         }
     }
