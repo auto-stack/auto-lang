@@ -46,10 +46,11 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 229a | IS_VARIANT Primitive Fix | Complete | Engine-level i32 Option compatibility fix for IS_VARIANT opcode on primitive values |
 | 230 | f64 Struct Literal Fix | Complete | PROMOTE_F64 emission in 5 codegen paths for correct f64 struct literal handling |
 | 231 | Nested mut fn Stack Fix | Complete | SET_GENERIC_FIELD Void marking + BUILD_FSTR formatting to fix stack corruption in nested mut fn + for loops |
+| 265 | AutoVM MCP Server | Complete | AI-first VM interaction: JSON-RPC stdio server with 7 tools (session create/reset, evaluate, typecheck, patch, snapshot, inspect) |
 
 ## Status
 
-**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231
+**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231, 265
 
 **Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing)
 
@@ -163,3 +164,4 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [229a-vmtest-08-is-pattern-on-primitive.md](../plans/old/229a-vmtest-08-is-pattern-on-primitive.md)
 - [230-vmtest-17-f64-struct-literal.md](../plans/old/230-vmtest-17-f64-struct-literal.md)
 - [231-nested-mut-fn-stack-corruption.md](../plans/old/231-nested-mut-fn-stack-corruption.md)
+- [265-autovm-mcp-server.md](../plans/old/265-autovm-mcp-server.md)

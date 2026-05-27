@@ -1,6 +1,6 @@
-# Plan 265: AutoVM MCP Server — AI-First VM Interaction Protocol
+# Plan 265: AutoVM MCP Server — AI-First VM Interaction Protocol — COMPLETE
 
-**Status**: Draft
+**Status**: Complete
 **Created**: 2026-05-25
 **Related**: [Plan 266 (VM ↔ a2r Conformance)](266-vm-a2r-conformance.md)
 **Scope**: `crates/auto-lang/src/mcp/`, `crates/auto-lang/src/autovm_persistent.rs`
