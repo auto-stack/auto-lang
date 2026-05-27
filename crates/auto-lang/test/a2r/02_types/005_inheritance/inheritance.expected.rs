@@ -32,7 +32,7 @@ impl Dog {
 }
 
 fn main() {
-    let dog = Dog {};
+    let mut dog = Dog {};
     dog.name = "Buddy";
     dog.breed = "Labrador";
 

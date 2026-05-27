@@ -23,6 +23,16 @@ impl std::fmt::Display for Pet {
         }
     }
 }
+impl Pet {
+    pub fn from_id(id: &str) -> Self {
+        match id {
+            "Dog" | "dog" => Pet::Dog,
+            "Cat" | "cat" => Pet::Cat,
+            "Bird" | "bird" => Pet::Bird,
+            _ => Pet::Dog
+        }
+    }
+}
 
 fn random_pet() -> Pet {
     let mut rng = rand::thread_rng();

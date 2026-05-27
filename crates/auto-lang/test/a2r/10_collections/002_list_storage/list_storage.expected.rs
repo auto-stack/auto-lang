@@ -23,7 +23,7 @@ struct InlineInt64 {
     buffer: Vec<i32>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct List<T, S> {
     len: u32,
     store: S,
@@ -40,5 +40,5 @@ fn main() {
     let inline_len = (inline_list.len() as i32);
     let inline_cap = inline_list.capacity();
 
-    return 0;
+    return;
 }

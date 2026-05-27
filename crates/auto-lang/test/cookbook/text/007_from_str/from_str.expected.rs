@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn parse_parts(s: &str) {
-    let mut parts = s.split(",");
+    let mut parts = s.split(",").collect::<Vec<_>>();
     assert!((parts.len() as i32) == 2);
 }
 

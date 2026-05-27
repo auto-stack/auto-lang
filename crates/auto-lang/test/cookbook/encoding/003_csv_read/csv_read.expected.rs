@@ -8,7 +8,7 @@ use auto_lang::a2r_std::*;
 fn main() {
     let csv_str: String = "name,age\nAlice,30\nBob,25".to_string();
 
-    let mut lines = csv_str.split("\n");
+    let mut lines = csv_str.split("\n").collect::<Vec<_>>();
     assert!((lines.len() as i32) == 3);
     println!("Name: Alice, Age: 30");
     println!("Name: Bob, Age: 25");

@@ -6490,9 +6490,11 @@ impl RustTrans {
                         self.rust_type_name(&param.ty)
                     )?;
                 } else {
+                    let mut_prefix = if param.mode == crate::ast::ParamMode::Mut { "mut " } else { "" };
                     write!(
                         sink.body,
-                        "mut {}: {}",
+                        "{}{}: {}",
+                        mut_prefix,
                         param.name,
                         self.rust_param_type_name(&param.ty)
                     )?;
@@ -7658,10 +7660,10 @@ impl RustTrans {
                     write!(sink.body, "#[{}]\n", attr)?;
                 }
                 self.print_indent(&mut sink.body)?;
-                // pub type → all fields pub; non-pub types also need pub for cross-module access
+                // Fields default to private (Rust semantics)
                 write!(
                     sink.body,
-                    "pub {}: {},",
+                    "{}: {},",
                     member.name,
                     self.rust_type_name(&member.ty)
                 )?;

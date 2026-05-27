@@ -8,7 +8,7 @@ use auto_lang::a2r_std::*;
 type List<T> = List<T>;
 
 fn main() {
-    let list = Vec::new();
+    let mut list = Vec::new();
     list.push(1);
     list.push(2);
 }

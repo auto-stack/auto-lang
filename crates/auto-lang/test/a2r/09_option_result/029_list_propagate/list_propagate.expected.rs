@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let list = Vec::new();
+    let mut list = Vec::new();
     list.push(10);
     list.push(20);
     list.push(30);

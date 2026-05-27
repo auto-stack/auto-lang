@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 use semver::Version;
 fn main() {
-    let v = Version::parse("1.2.3").unwrap();
+    let mut v = Version::parse("1.2.3").unwrap();
     assert!(v.major == 1);
     assert!(v.minor == 2);
     assert!(v.patch == 3);

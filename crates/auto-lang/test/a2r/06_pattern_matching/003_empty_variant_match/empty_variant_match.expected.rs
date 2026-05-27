@@ -23,6 +23,17 @@ impl std::fmt::Display for Coin {
         }
     }
 }
+impl Coin {
+    pub fn from_id(id: &str) -> Self {
+        match id {
+            "Penny" | "penny" => Coin::Penny,
+            "Nickel" | "nickel" => Coin::Nickel,
+            "Dime" | "dime" => Coin::Dime,
+            "Quarter" | "quarter" => Coin::Quarter,
+            _ => Coin::Penny
+        }
+    }
+}
 
 fn main() {
     let c = Coin::Penny;

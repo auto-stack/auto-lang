@@ -21,6 +21,16 @@ impl std::fmt::Display for Color {
         }
     }
 }
+impl Color {
+    pub fn from_id(id: &str) -> Self {
+        match id {
+            "RED" | "red" => Color::RED,
+            "GREEN" | "green" => Color::GREEN,
+            "BLUE" | "blue" => Color::BLUE,
+            _ => Color::RED
+        }
+    }
+}
 
 fn main() {
     let color: Color = Color::BLUE;

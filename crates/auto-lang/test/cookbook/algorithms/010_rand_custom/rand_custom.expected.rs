@@ -23,6 +23,16 @@ impl std::fmt::Display for Color {
         }
     }
 }
+impl Color {
+    pub fn from_id(id: &str) -> Self {
+        match id {
+            "Red" | "red" => Color::Red,
+            "Green" | "green" => Color::Green,
+            "Blue" | "blue" => Color::Blue,
+            _ => Color::Red
+        }
+    }
+}
 
 fn random_color() -> Color {
     let mut rng = rand::thread_rng();

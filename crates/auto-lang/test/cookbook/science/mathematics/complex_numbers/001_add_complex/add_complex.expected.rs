@@ -14,7 +14,7 @@ struct Complex {
 fn main() {
     let a = Complex { real: 1.0, imag: 2.0 };
     let b = Complex { real: 3.0, imag: 4.0 };
-    let sum = Complex { real: a.real + b.real, imag: a.imag + b.imag };
+    let mut sum = Complex { real: a.real + b.real, imag: a.imag + b.imag };
     assert!(sum.real == 4.0);
     assert!(sum.imag == 6.0);
 }

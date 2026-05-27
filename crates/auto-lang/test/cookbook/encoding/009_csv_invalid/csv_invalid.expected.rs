@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 fn main() {
     let data: String = "name,age\nAlice,30\nBob,twenty-five\nCharlie,35".to_string();
-    let mut lines = data.split("\n");
+    let mut lines = data.split("\n").collect::<Vec<_>>();
     assert!((lines.len() as i32) == 4);
 
     assert!(a2r_std::str_contains(data.as_str(), "twenty-five"));
