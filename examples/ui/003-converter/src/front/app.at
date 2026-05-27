@@ -8,8 +8,9 @@ widget App {
 
     view {
         col {
-            text "Temperature Converter"
-            style: "text-2xl font-bold mb-4"
+            text "Temperature Converter" {
+                style: "text-2xl font-bold mb-4"
+            }
 
             row {
                 col {

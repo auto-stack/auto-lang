@@ -11,29 +11,34 @@ widget App {
     view {
         center {
             col {
-                h2 "Sign In"
-                style: "text-3xl font-extrabold text-gray-900"
+                h2 "Sign In" {
+                    style: "text-3xl font-extrabold text-gray-900"
+                }
 
-                text "Welcome back! Please enter your credentials."
-                style: "text-gray-500 mt-3"
+                text "Welcome back! Please enter your credentials." {
+                    style: "text-gray-500 mt-3"
+                }
 
                 col {
-                    text "Email"
-                    style: "text-sm font-medium text-gray-700 mt-6"
+                    text "Email" {
+                        style: "text-sm font-medium text-gray-700 mt-6"
+                    }
                     input (value: .email) {
                         oninput: .EmailChanged
                         placeholder: "you@example.com"
                         style: "w-full px-3 py-2 border rounded-lg mt-2"
                     }
                     if .email_error != "" {
-                        text .email_error
-                        style: "text-red-500 text-xs mt-1"
+                        text .email_error {
+                            style: "text-red-500 text-xs mt-1"
+                        }
                     }
                 }
 
                 col {
-                    text "Password"
-                    style: "text-sm font-medium text-gray-700 mt-6"
+                    text "Password" {
+                        style: "text-sm font-medium text-gray-700 mt-6"
+                    }
                     input (value: .password) {
                         oninput: .PasswordChanged
                         placeholder: "Enter your password"
@@ -41,8 +46,9 @@ widget App {
                         style: "w-full px-3 py-2 border rounded-lg mt-2"
                     }
                     if .password_error != "" {
-                        text .password_error
-                        style: "text-red-500 text-xs mt-1"
+                        text .password_error {
+                            style: "text-red-500 text-xs mt-1"
+                        }
                     }
                 }
 
@@ -52,8 +58,9 @@ widget App {
                 }
 
                 row {
-                    text "Don't have an account? "
-                    style: "text-sm text-gray-500 mt-4"
+                    text "Don't have an account? " {
+                        style: "text-sm text-gray-500 mt-4"
+                    }
                     a "Sign up" {
                         style: "text-sm text-blue-500 font-semibold underline px-3"
                     }
