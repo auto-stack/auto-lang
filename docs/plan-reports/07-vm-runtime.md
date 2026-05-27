@@ -47,10 +47,11 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 230 | f64 Struct Literal Fix | Complete | PROMOTE_F64 emission in 5 codegen paths for correct f64 struct literal handling |
 | 231 | Nested mut fn Stack Fix | Complete | SET_GENERIC_FIELD Void marking + BUILD_FSTR formatting to fix stack corruption in nested mut fn + for loops |
 | 265 | AutoVM MCP Server | Complete | AI-first VM interaction: JSON-RPC stdio server with 7 tools (session create/reset, evaluate, typecheck, patch, snapshot, inspect) |
+| 266 | VM ↔ a2r Conformance | Complete | Semantic conformance specs (docs/conformance/), 30 dual-execution tests, differential testing engine, conformance-driven development flow |
 
 ## Status
 
-**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231, 265
+**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231, 265, 266
 
 **Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing)
 
@@ -165,3 +166,4 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [230-vmtest-17-f64-struct-literal.md](../plans/old/230-vmtest-17-f64-struct-literal.md)
 - [231-nested-mut-fn-stack-corruption.md](../plans/old/231-nested-mut-fn-stack-corruption.md)
 - [265-autovm-mcp-server.md](../plans/old/265-autovm-mcp-server.md)
+- [266-vm-a2r-conformance.md](../plans/old/266-vm-a2r-conformance.md)
