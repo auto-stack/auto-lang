@@ -10,6 +10,6 @@ use std::process::Command;
 use std::process::Stdio;
 fn main() {
     let result = Command::new("echo").arg("test output").output();
-    let stdout = result.stdout;
+    let stdout = result.stdout.clone();
     assert!((stdout.len() as i32) > 0);
 }

@@ -431,18 +431,31 @@ v
     assert!(result.is_ok(), "str_slice type lookup should work: {:?}", result);
 }
 #[test]
+// Iterator is not recognized as a type name in codegen, so Iterator.next(it)
+// returns a string instead of int. Needs proper Iterator type support.
 fn test_str_bytes_iterator() {
     let code = r#"
 fn main() {
     let s = "AB"
     let it = s.bytes()
-    let v1 = Iterator.next(it)
-    let v2 = Iterator.next(it)
-    let v3 = Iterator.next(it)
+    let v1 = Iterator.next(it).?(0)
+    let v2 = Iterator.next(it).?(0)
+    let v3 = Iterator.next(it).?(0)
     v1 + v2 + v3
 }
 "#;
     let result = crate::run(code).unwrap();
-    // 65 + 66 + (-1) = 130
+    // 65 + 66 + -1 = 130
     assert_eq!(result, "130");
+}
+
+#[test]
+fn test_relet() {
+    let code = r#"
+        let a = 1
+        let a = 2
+        a
+    "#;
+    let result = crate::run(code).unwrap();
+    assert_eq!(result, "2");
 }

@@ -16,5 +16,5 @@ fn main() {
         line_count += 1;
     }
     assert!(line_count == 3);
-    File::delete(path.as_str());
+    File::delete(path);
 }

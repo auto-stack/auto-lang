@@ -13,7 +13,7 @@ AutoLang implements an Actor-based concurrency model using Task/Msg primitives, 
 | 124 | Async Future/Await System | ✅ | `~T` syntax, `.await`, CREATE_FUTURE/AWAIT_FUTURE opcodes, backpressure |
 | 125 | Phase 3 - Polymorphic Routing | ✅ | Implicit union types, MessageContext runtime, pattern matcher integration |
 | 126 | Phase 4 - Micro-Concurrency Engine | ✅ | `.go` suffix operator, implicit worker pool, ownership-safe capture semantics |
-| 127 | AutoVM TaskSystem Execution | ✅ | Bytecode compilation for Task/Msg systems, on-block compilation, ctx.reply() |
+| 127 | AutoVM TaskSystem Execution | 🔧 | Bytecode compilation for Task/Msg systems, on-block compilation, ctx.reply() |
 | 128 | Scheduler Message Dispatch Loop | ✅ | Zero-shared-mutable-state scheduler with Tokio async, Arc + mpsc channels |
 | 195 | HTTP Client + auto.http Unification | 🔧 | Upgrade to reqwest, unify http_stream, add async HTTP (Phase 3.2 blocked by Plan 196) |
 

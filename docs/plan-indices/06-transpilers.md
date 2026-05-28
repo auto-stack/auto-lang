@@ -11,7 +11,7 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 022 | Python Transpiler (a2p) | ✅ | Complete 10-phase implementation: expressions, control flow, functions, pattern matching, classes |
 | 023 | JavaScript Transpiler (a2j) | ✅ | Complete 11-phase implementation: all JS features in single phase, 9/9 tests passing |
 | 062 | C Transpiler Generics | ✅ | Monomorphization for a2c: type specialization, array tests, miette error messages (127 tests) |
-| 067 | Strengthen Rust Transpiler | ⏳ | Gap analysis to bring a2r to feature parity with a2c (34 vs 161 tests) |
+| 067 | Strengthen Rust Transpiler | 🔧 | Gap analysis to bring a2r to feature parity with a2c (34 vs 161 tests) |
 | 083 | a2r with .rs.at and #[rs] | 🔧 | Platform-specific Rust implementation files and #[rs] annotation support |
 | 100 | a2js to a2ts Migration | 🔧 | Upgrade JavaScript generator to TypeScript with ArkTS variant support |
 | 161 | a2r List + Auto Features | ✅ | #[rs] target selector, .as(Type) cast, and a2r List<T> support |

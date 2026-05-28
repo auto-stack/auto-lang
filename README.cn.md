@@ -1,213 +1,344 @@
-# Auto 编程语言
+
 
 ![icon](docs/icon.png)
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![License](https://img.shields.io/badge/license-MIT-blue)]()
-![Gitcode star](https://gitcode.com/auto-stack/auto-lang/star/badge.svg)
-[![Gitee stars](https://gitee.com/auto-stack/auto-lang/badge/star.svg)](https://gitee.com/auto-stack/auto-lang)
+AutoLang is a programming language designed for automation and flexibility.
 
-Auto 是一门面向自动化开发的多场景编程语言，致力于成为"万物自动化"的统一解决方案。
+- **Automation**: AutoLang is designed for automation of many development tasks.
 
-> **One Lang to Rule Them All**
+- **Flexible**: AutoLang supports multiple syntaxes, each tailored to a particular scenario.
+    - AutoLang: AutoLang itself is a static/dynamic mixed language, and can be transpiled to C and Rust.
+    - AutoScript: AutoLang can be used as a dynamic scripting language, and be embedded into Rust/C projects as a scripting engine.
+    - AutoConfig: AutoLang is a superset of JSON, and can be used as a dynamic configuration language.
+    - AutoDSL: AutoLang can be used as a DSL for UI applications.
+    - AutoShell: AutoLang can be used as a cross-platform shell script.
+    - Auto2C: AutoLang can be transpiled to C, and work with C in a mixed project managed by AutoMan.
 
+- **Simplicity & Efficiency**:
+    - As a scripting language, AutoLang provides simplicity and ease of use on par with Python.
+    - As a static language, AutoLang is transpiled to C and Rust, providing similar performance to C and Rust.
 
----
+- **Fullstack**: AutoLang is part of AutoStack, a fullstack platform for development.
+    - Standard Library: A customizable standard library that supports BareMetal, RTOS and Linux/Windows/MacOS/Web.
+    - Builder & Package Manager: AutoMan is a builder that supports Auto/C/Rust mixed projects. It's configured with AutoConfig.
+    - UI Framework: AutoUI is a cross-platform UI framework based on Rust/GPUI, similar to Jetpack Compose. It now supports Windows/Linux/Mac, and will be extended to Web, Bevy and HarmonyOS.
+    - Code Gen: AutoGen is a powerful code generation tool that supports C/Rust/HTML and more. See [Tutorial](docs/tutorials/autogen-tutorial.md).
+    - IDE: As AutoUI is based on Zed/GPUI, a plugin system will be built with AutoLang, and provide an IDE.
 
-## 目录
+## Execution Modes
 
-- [特性](#特性)
-- [快速开始](#快速开始)
-- [应用场景](#应用场景)
-- [语法概览](#语法概览)
-- [使用与安装](#使用与安装)
-- [开发路线图](#开发路线图)
-- [相关项目](#相关项目)
-- [许可证](#许可证)
+**AutoVM** is the default execution engine for AutoLang (Plan 081). AutoVM is a fast bytecode VM that provides consistent behavior across all platforms.
 
----
+### Mode Selection
 
-## 特性
+AutoLang supports multiple execution and transpilation modes:
 
-### 多场景支持
+- **Script Execution** (default) - `auto <file.at>` to run scripts directly via AutoVM
+- **Project Management** - Use subcommands like `auto build`, `auto run`, `auto fetch`
+- **REPL** - Run `auto` without arguments to enter the interactive shell
 
-Auto 采用**场景导向（Scenario Oriented）**的设计理念，针对不同场景提供专门的语言特性：
+#### Script Execution
 
-- **Auto2C** - 作为"Better C"，转译为 C 源码，支持 Auto/C 混合工程
-- **AutoConfig** - 作为配置语言，替代 JSON/XML/YAML，支持可编程配置
-- **AutoScript** - 作为脚本语言，替代 Python/JavaScript，提供动态解释执行
-- **AutoShell** - 作为跨平台 Shell，替代 Bash/PowerShell
-- **AutoTemplate** - 作为模板语言，替代 Jinja2/Mustache。参看[教程](docs/tutorials/autogen-tutorial.cn.md)
-- **AutoUI** - 作为 UI 描述语言，替代 QML/XAML/Vue
-
-### 设计理念
-
-- **语言即系统** - 微内核、模块化、多外设
-- **动静结合** - 动态和静态类型相辅相成，动态解释和静态编译有机结合
-- **生态融合** - 面向 C、Rust、JavaScript、Python 等多个生态
-- **简单高效** - 脚本模式下简单易用（媲美 Python），静态模式下性能卓越（媲美 C/Rust）
-
----
-
-## 快速开始
-
-### 安装
-
-**前置条件：** 需要安装 Rust 和 Cargo
-
-```bash
-# 克隆仓库
-git clone https://gitee.com/auto-stack/auto-lang.git
-cd auto-lang
-
-# 运行 REPL（交互式解释器）
-cargo run
-
-# 运行测试
-cargo test
-
-# 构建发布版本
-cargo build --release
-```
-
-### 运行
-
-你可以直接运行一个 AutoLang 脚本：
+You can run an AutoLang script directly:
 
 ```bash
 auto hello.at
 ```
 
-#### 工程管理 (AutoMan 集成)
+#### Project Management (AutoMan Integration)
 
-AutoMan 的功能现在已集成到 `auto` 命令中：
-
-```bash
-auto new myapp    # 创建新工程
-auto build         # 构建当前工程
-auto run           # 运行构建后的工程
-auto fetch         # 下载依赖
-```
-
-你也可以使用 REPL（交互式解释器）：
+AutoMan functionalities are now integrated into the `auto` command:
 
 ```bash
-auto
+auto new myapp    # Create a new project
+auto build         # Build the current project
+auto run           # Run the built project
+auto fetch         # Download dependencies
 ```
 
----
+You can specify the execution mode in your `pac.at` file:
 
-## 应用场景
+```auto
+// pac.at
+name: "myapp"
+version: "1.0.0"
+mode: "autovm"  // Options: "autovm", "c", "rust", "evaluator"
 
-### 1️⃣ Auto2C - 转译为 C 源码
+app("myapp") {
+    dependencies: [
+        "std:core",
+        ("hal", mode: "c"),      # HAL in C
+        ("crypto", mode: "rust"), # Crypto in Rust
+    ]
+}
+```
 
-将 Auto 代码转译为高质量的 C 源码，用于嵌入式和高性能场景。
+### Mixed-Mode Projects
 
-**源码**（`math.at`）：
+Different parts of your project can use different execution modes:
+
+```auto
+mode: "autovm"  # Main app uses AutoVM
+
+app("mixed_app") {
+    dependencies: [
+        ("hal", mode: "c"),       # Hardware layer in C
+        ("crypto", mode: "rust"),  # Crypto library in Rust
+        "utils",                   # Utilities in AutoVM (default)
+    ]
+}
+```
+
+AutoVM bytecode can call C and Rust functions via the FFI layer, enabling seamless integration between modes.
+
+### Environment Variable Override
+
+You can override the execution mode at runtime:
+
+```bash
+# Force Evaluator mode (for debugging)
+export AUTO_EXECUTION_ENGINE=evaluator
+auto run myapp.at
+
+# Force AutoVM mode
+export AUTO_EXECUTION_ENGINE=autovm
+auto run myapp.at
+```
+
+**Note**: The `use-bigvm` feature flag is deprecated. AutoVM is now the default and no feature flags are required.
+
+### Learn More
+
+- [Mode Selection Guide](docs/guides/mode-selection-guide.md)
+- [FFI Usage Guide](docs/guides/ffi-usage-guide.md)
+- [Migration Guide](docs/guides/migration-guide.md)
+- [Plan 081: AutoVM as Default](docs/plans/081-autovm-default-mode.md)
+
+## Language Tour
+
+#### Hello World
+
 ```rust
+// Script mode
+print("Hello, world!")
+
+// Static mode
+fn main {
+    println("Hello, world!")
+}
+```
+
+#### 基本类型和存量
+
+AutoLang supports basic types: int(i32), uint(u32), byte(u8), float(f64), bool, nil.
+
+```rust
+// normal storage value, not mutable
+let a int = 1
+a = 2 // Error! a is not mutable
+
+// variable storage value, with type inference
+var b = 2.2
+b = 3.3
+
+// const storage value, usually used as global constants
+const PI = 3.14
+PI = 3.15 // Error! PI is not mutable
+
+// variant storage value, used in script mode (dynamic typing)
+var c = true
+// vars can mutate its value
+c = false
+// and its type!
+c = "hello"
+
+// nil is a special type, it's a zero-size type
+c = nil
+
+// operations that includes nil will always return nil
+let d = nil + 1 // d is nil
+```
+
+TODO: translate more syntax overview examples into Language Tour
+
+## Scenarios and Usages
+
+### 1. Auto2C
+
+A function in AutoLang:
+
+```rust
+// math.a
 pub fn add(a int, b int) int {
     a + b
 }
 ```
 
-**源码**（`main.at`）：
 ```rust
+// main.a
 use math::add
 
-fn main() {
+fn main {
     println(add(1, 2))
 }
 ```
 
-**生成的 C 代码**：
+Transpiles to three C files: math.h, math.c and main.c:
+
 ```c
 // math.h
 #pragma once
 #include <stdint.h>
-int32_t add(int32_t a, int32_t b);
 
+int32_t add(int32_t a, int32_t b);
+```
+
+```c
 // math.c
-#include "stdint.h"
+#include <stdint.h>
 #include "math.h"
+
 int32_t add(int32_t a, int32_t b) {
     return a + b;
 }
 ```
 
-### 2️⃣ AutoConfig - 可编程配置
+```c
+#include <stdio.h>
+#include <stdint.h>
+#include "math.h"
 
-作为 JSON 的超集，支持动态计算和函数调用。
-
-```rust
-use std.fs::list, is_dir
-
-var dir = "~/code/auto"
-
-// 支持函数调用
-src: dir.join("src")
-assets: `$dir/assets`
-
-// 支持循环和条件
-subs: dir.list().filter(is_dir)
-
-// 支持嵌套对象
-project: {
-    name: "auto"
-    skip: [".git", ".auto"]
+int main(void) {
+    printf("%d\n", add(1, 2));
+    return 0;
 }
 ```
 
-### 3️⃣ AutoMan - 构建工具
+### 2. AutoConfig
 
-Auto 语言的构建系统和包管理器，可作为 CMake 的替代品。
+AutoConfig is a superset of JSON, and can use scripting abilities of AutoLang.
 
 ```rust
-project: "myproject"
-version: "v1.0.0"
+// use Standard library
+use std::str::upper;
 
-// 依赖管理
+// Variable
+var dir = "/home/user/data"
+
+// {key : value} pairs
+root: dir
+// Function call
+root_upper: root.upper()
+
+// String interpolation
+views: f"${dir}/views"
+// Find key in config
+styles: f"${views}/styles"
+
+// Object
+attrs: {
+    prefix: "auto"
+    // Array
+    excludes: [".git", ".auto"]
+}
+```
+
+This dynamic config is evaluated to a big JSON object.
+
+
+### 3. AutoMan
+
+AutoConfig is used to configure AutoMan, the builder for Auto and C projects.
+
+```rust
+project: "osal"
+version: "v0.0.1"
+
+// Dependencies, can specify parameters
 dep(FreeRTOS, "v0.0.3") {
     heap: "heap_5"
+    config_inc: "demo/inc"
 }
 
-// 库配置
-lib mylib {
-    dir src
-    dir tests
+// Libraries in this project
+lib(osal) {
+    pac(hsm) {
+        skip: ["hsm_test.h", "hsm_test.c"]
+    }
+    pac(log)
+    link: FreeRTOS
 }
 
-// 多平台支持
-port("cmake", "win32") {}
-port("iar", "stm32") {}
+// Ports to different platforms with support for multiple toolchains/IDEs
+port(windows, cmake, x64, win32, "v1.0.0")
+port(stm32, iar, arm_cortex_m4, f103RE, "v1.0.0")
+
+// Executables
+exe(demo) {
+    // Static link
+    link: osal
+    // Specify output file name
+    outfile: "demo.bin"
+}
 ```
 
-### 4️⃣ AutoShell - 跨平台脚本
-
-统一的跨平台 Shell 脚本语法。
+### 4. AutoShell
 
 ```rust
 #!auto
-
+// Built-in common libraries in script mode
 print "Hello, world!"
 
-# 转换为 mkdir("src/app", p=true)
+// The following command will be converted to function call: `mkdir("src/app", p=true)`
 mkdir -p src/app
 
-# 支持变量和函数
+cd src/app
+touch main.rs
+
+// Define variables and functions as usual scripting language
 let ext = ".c"
-fn find_files(dir) {
-    ls(dir).filter(|f| f.endswith(ext))
+fn find_c_files(dir) {
+    ls(dir).filter(|f| f.endswith(ext)).sort()
 }
 
-# 支持循环
-for f in find_files("src") {
-    print(f)
+// Call commands in a loop
+touch "merged.txt"
+for f in find_c_files("src/app") {
+    cat f >> "merged.txt"
 }
+
+// Call async commands in a loop
+let downloads = for f in readlines("remote_files.txt").map(trim) {
+    async curl f"http://database.com/download?file=${f}"
+}
+
+// Wait for all downloads to complete
+await downloads.join()
 ```
 
-### 5️⃣ AutoTemplate - 代码生成模板
+AutoShell is implemented by adding a special rule to AutoLang:
 
-支持任意文本格式的模板引擎。
+- When in shell scenarios, all `first level` statements will support a shell like call syntax.
+
+
+For example:
+
+```bash
+grep -Hirn TODO .
+```
+
+will be converted to this normal Auto function call:
+
+```rust
+grep(key:"TODO", dir:".", H, i, r, n)
+```
+
+And if `grep()` is defined in `std::shell`, it will be called directly.
+If not found, a compile error will be reported.
+
+These Auto shell functions are actually implemented by Rust code, e.g.: [coreutils](https://github.com/uutils/coreutils)
+
+### 5. AutoTemplate
 
 ```html
 <html>
@@ -219,154 +350,507 @@ for f in find_files("src") {
     <ul>
     $ for n in 1..10 {
         <li>Item $n</li>
-    $ }
+    }
     </ul>
 </body>
 </html>
 ```
 
-### 6️⃣ AutoUI - UI 框架
+An Auto Template is actually a normal code embedded with Auto snippets.
 
-基于 Zed/GPUI 的跨平台 UI 框架，类似 Jetpack Compose。
+We do a translation from the above HTML code into normal Auto code:
 
 ```rust
-widget Counter {
+`<html>`
+`<head>`
+`    <title>${title}</title>`
+`</head>`
+`<body>`
+`    <h1>${title}</h1>`
+`    <ul>`
+for n in 1..10 {
+`        <li>Item $n</li>`
+}
+`   </ul>`
+`</body>`
+`</html>`
+```
+
+These are lines of strings (potentially with `$` interpolation), some of which are wrapped by `for` blocks;
+
+In Template scenario, these lines are treated as string expression statements, and will be concatenated into a big string.
+
+As a comparison, statements in normal Auto code are executed one by one, but only the last statement is returned.
+
+AutoTemplate can work with any type of text.
+
+AutoTemplate is the basis of `AutoGen`, which can generate many types of code.
+
+### 6. AutoUI
+
+[`AutoUI`](https://github.com/auto-stack/auto-ui) is a UI framework based on `Zed/GPUI`, supporting Windows/Linux/MacOS/Web.
+
+AutoLang works as a DSL to describe UI components.
+
+The syntax is similar to Kotlin, and the code organization is similar to Vue.js.
+
+```rust
+// Define a component
+widget counter {
+    // Model that stores reactive data
     model {
         var count: i32 = 0
-    }
 
-    view {
-        col {
-            button("➕") { on_click: => count += 1 }
-            text(f"Count: {count}")
-            button("➖") { on_click: => count -= 1 }
+        fn reset() {
+            count = 0
         }
     }
+
+    // View that describes UI layout
+    view {
+        cols {
+            button("➕") {
+                // callback function that works with data in the model
+                on_click: => count += 1
+            }
+            text(f"Count: {count}")
+            button("➖") {
+                on_click: => count -= 1
+            }
+            icon("🔄") {
+                on_click: => reset()
+            }
+            style {gap-2 w-full}
+        }
+    }
+
+    style {
+        // Style currently supports Tailwind CSS syntax
+        "w-24 h-24 border-1 border-color-gray-300"
+    }
 }
 ```
 
----
+A widget described above will be parsed into a `DynamicWidget` object, which can be directly drawn in `AutoUI`.
 
-## 语法概览
+In this dynamic mode, widgets support live reloading.
 
-### 存量类型
+Later, a static mode will be provided that transpiles the Auto code into Rust code, and the output UI executable could be as performant as native GPUI applications (like the Zed Editor).
 
-Auto 提供四种存量类型用于存储和访问数据：
+## Syntax Overview
 
-| 类型 | 关键字 | 可变性 | 类型可变性 | 用途 |
-|------|--------|--------|-----------|------|
-| 定量 | `let` | ❌ 不可变 | ❌ 不可变 | 默认选项，类似 Rust 的 `let` |
-| 变量 | `var` | ✅ 可变 | ❌ 不可变 | 需要修改值的场景 |
-| 常量 | `const` | ❌ 不可变 | ❌ 不可变 | 全局常量 |
-| 幻量 | (已移除) | - | - | 已合并到变量类型 |
+TODO: translate into English
+
+### 存量
+
+在AutoLang语言中，有三种类型的“存量”用于存储和访问数据：
+
+- - 定量（`let`）：定量声明后不可修改，类似于Rust中的`let`。
+- - 变量（`var`）：值可以自由改变，但类型确定后不能再改变。类似于C/C++中的普通变量，或Rust中的`let mut`。
+- - 常量（`const`）：声明后不可修改，用于全局常量。类似于Rust中的`const`。
 
 ```rust
-// 定量 - 不可变
-let a = 1
+// Let - immutable
+let b = 1
+// Error! let cannot be modified
+b = 2
+// Can be used to compute new values
+let f = e + 4
+// A let can be redeclared, but the type cannot change
+let b = b * 2
 
-// 变量 - 值可变，类型不可变
-var b = 2
-b = 3
+// Var definition, type can be inferred by the compiler
+var a = 1
+// Var definition with explicit type
+var b bool = false
+// Declare multiple variables
+var c, d = 2, 3
+
+// Var can be modified, also called "assignment"
+a = 10
+// Swap two variables
+c, d = d, c
+
+// Const definition: const can only be global
+const PI = 3.14
 ```
 
-### 基本类型
+### 数组
 
 ```rust
-// 数值类型
-let a int = 42
-let b float = 3.14
-let c bool = true
-
-// 数组
+// Array
 let arr = [1, 2, 3, 4, 5]
-println(arr[0])   // 1
-println(arr[-1])  // 5（最后一个元素）
 
-// 切片
-let slice = arr[1..3]  // [2, 3]
+// Indexing
+println(arr[0])
+println(arr[-1]) // Last element
 
-// 对象
+// Slicing
+let slice = arr[1..3] // [2, 3]
+let slice1 = arr[..4] // [1, 2, 3, 4]
+let slice2 = arr[3..] // [4, 5]
+let slice3 = arr[..] // [1, 2, 3, 4, 5]
+
+// Range
+let r = 0..10  // 0 <= r < 10
+let r1 = 0..=10 // 0 <= r <= 10
+```
+
+### 对象
+
+```rust
+// Object
 var obj = {
     name: "John",
-    age: 30
+    age: 30,
+    is_student: false
 }
-println(obj.name)  // "John"
 
-// Grid（二维数组）
-let grid = grid(a, b, c) {
+// Access object member
+println(obj.name)
+// Member assignment
+obj.name = "Tom"
+
+// get or else
+println(obj.get_or("name", "Unknown"))
+// get or insert
+println(obj.get_or_insert("name", 10))
+
+// All members
+println(obj.keys())
+println(obj.values())
+println(obj.items())
+
+// Iterate object
+for k, v in obj {
+    println(f"obj[{k}] = {v}")
+}
+
+// Delete
+obj.remove("name")
+```
+
+### Grid（二维数组）
+
+Grid是AutoLang的二维数组，可以用于表格数据。Grid可以扩展为类似DataFrame/Tensor的多维结构，用于和Python交互，进行AI相关的开发。
+
+```rust
+// Define a Grid
+let grid = grid(a:"first", b:"second", c:"third") {
     [1, 2, 3]
     [4, 5, 6]
+    [7, 8, 9]
 }
-println(grid(0))  // [1, 4]
+
+// Convert to JSON
+var json = grid.to_json()
+
+// Equivalent to
+var grid = {
+    "cols": [
+        {id: "a", name: "first"},
+        {id: "b", name: "second"},
+        {id: "c", name: "third"},
+    ],
+    "data": [
+        {"a": 1, "b": 2, "c": 3},
+        {"a": 4, "b": 5, "c": 6},
+        {"a": 7, "b": 8, "c": 9},
+    ]
+}
 ```
+
 
 ### 函数
 
 ```rust
-// 函数定义
+// Function definition
 fn add(a int, b int) int {
     a + b
 }
 
-// Lambda 表达式
+// Lambda
 let mul = |a int, b int| a * b
 
-// 高阶函数
+// Function as parameter
 fn calc(op |int, int| int, a int, b int) int {
     op(a, b)
 }
 
-// 函数调用
-calc(add, 2, 3)     // 5
-calc(mul, 2, 3)     // 6
-calc(|a, b| a/b, 6, 3)  // 2
+// Function call
+calc(add, 2, 3)
+calc(mul, 2, 3)
+```
+
+### 值的传递
+
+在AutoLang中，值的传递有以下几种方式：
+
+- 拷贝（copy）：直接拷贝数据。
+- 引用（ref）：通过引用传递，不拷贝数据，但不能修改原始数据。
+- 转移（move）：将所有权转移到目标存量，转移后原始存量不能再使用。
+- 指针（ptr）：创建指向同一地址的指针。用于底层操作。指针仅用于底层系统编程，必须放在`sys`代码块中。
+
+引用比拷贝节省了内存和复制时间，但因为引用通过地址间接访问数据，访问时间略慢于拷贝。
+
+对于较小的数据（如`int`、`float`、`bool`，或简单类型如`Point{x, y}`），拷贝代价很小，拷贝往往更合适。
+这类类型称为“数值类型”。
+
+对于较大的数据（如`Vec<T>`、`HashMap<K, V>`、`String`），拷贝代价较大，引用往往更合适。
+这类类型称为“引用类型”。
+
+因此，AutoLang针对不同的数据采用不同的传递策略：
+
+1. 较小的“数值类型”默认使用拷贝传递。
+2. 较大的“引用类型”默认使用引用传递。
+
+示例：
+
+```rust
+// Value type: default copy passing
+let a = 1
+let b = a // b is a copy of a
+var c = a // c is a copy of a, and c is mutable
+c = 2
+println(c) // 2
+println(a) // 1 - a is unchanged
+```
+
+```rust
+// Reference type: default reference passing
+let a = [1, 2, 3, 4, 5] // Arrays are reference types by default
+let b = a // b is a reference to a; using b is the same as using a. Only one array exists in memory.
+var c = a // Error! Since a is immutable, mutable c cannot reference it.
+var d = copy a // To modify, explicitly copy it.
+d[0] = 9 // d = [9, 2, 3, 4, 5]
+println(a) // a = [1, 2, 3, 4, 5], the array is unchanged
+```
+
+上面的例子中使用了`copy`关键字显式地进行拷贝。
+但这样效率不高，因此有更好的方式：**转移（move）**。
+
+```rust
+// Move passing
+let a = [1, 2, 3, 4, 5]
+let b = move a // After the move, a can no longer be used
+println(a) // Error! a can no longer be used
+var c = move b // b is moved to c; since it is a move, c can choose to be mutable
+c[0] = 9 // c = [9, 2, 3, 4, 5]
+println(b) // Error! b can no longer be used
+```
+
+当`a`的值转移到`b`后，`a`的生命周期就结束了。
+存量`a`不再存在，但数据继续在`b`中存活。
+
+同样，当`b`转移到`c`时，由于转移操作转移了所有权，
+`c`可以拥有与`b`不同的属性，例如`var`。
+
+转移结合了拷贝和引用的优点，但代价是什么？
+编译器需要能够逐行分析每个存量的生命周期，
+程序员也需要能够判断某个存量何时已经被消耍。
+
+很多Rust程序员与编译器斗争，就是因为没有完全理解每个存量的生命周期。
+
+由于转移和指针都是高级功能，AutoLang的早期版本暂不实现；
+它们仅作为设计规范记录在此。
+
+### 引用和指针
+
+拷贝和转移直接操作数据，而引用和指针则间接操作数据。
+
+引用和指针的主要区别：
+
+1. 引用主要用于避免拷贝（例如函数传参时），方便访问。尽管引用实际上是间接访问，但编译器优化了体验，使其看起来和直接使用一样。
+2. 指针提供更多底层功能：可以获取地址、甚至进行地址运算。这些操作仅用于系统级底层代码，必须在`sys`代码块中执行（类似于Rust的`unsafe`块）。
+
+
+```rust
+// Reference
+let a = [0..99999] // A very large array
+let b = a // If a new value for b is created directly, the value of a would be copied
+let c = ref a // c is a "reference view" of a; it does not store data itself and no copy is performed.
+b = 2  // Error: references cannot modify the original value
+
+// The `buf` parameter here is actually a reference
+fn read_buffer(buf Buffer) {
+    for n in buf.data {
+        println(n)
+    }
+}
+
+// var ref can be used to modify a variable:
+
+var x = 1
+fn inc(a var ref int) {
+    a += 1
+}
+inc(x)
+println(x) // 2
+```
+
+```rust
+// Pointer
+
+// Unlike references, pointers point to the same address as the original value, so the original value can be modified.
+
+var x = 1
+sys {
+    var p = ptr x
+    p.target += 1 // Indirectly modify x's value; note that unlike C, `.target` is used.
+}
+println(x) // 2
+
+// When calling functions, pointer-type parameters can modify the original value
+var m = 10
+fn inc(a ptr int) {
+    a += 10
+}
+inc(m)
+println(m) // 20
+
+// Pointers can also perform address arithmetic directly
+sys { // Note: address arithmetic must be in a sys block
+    var arr = [1, 2, 3, 4, 5]
+    var p = ptr arr // p's type is Ptr<[5]int>
+    println(p) // [1, 2, 3, 4, 5]
+    p[0] = 101 // Directly modify arr[0]'s value
+    println(arr) // [101, 2, 3, 4, 5]
+
+    var o = p // Remember p's address
+
+    p.inc(2) // Increment address by 2; now p points to arr[2]
+    println(p) // [3, 4, 5]
+
+    println(o[0]) // 101
+    p.jump(o) // Jump back to o
+    println(p) // [101, 2, 3, 4, 5]
+}
 ```
 
 ### 控制流
 
 ```rust
-// 条件判断
+// Conditional
 if a > 0 {
-    println("positive")
+    println("a is positive")
 } else if a == 0 {
-    println("zero")
+    println("a is zero")
 } else {
-    println("negative")
+    println("a is negative")
 }
 
-// 循环
+// Iterate array
+for n in [1, 2, 3] {
+    println(n)
+}
+
+// Iterate and modify array values
+var arr = [1, 2, 3, 4, 5]
+for ref n in arr {
+    n = n * n
+}
+println(arr) // [1, 4, 9, 16, 25]
+
+// Iterate a range
 for n in 0..5 {
     println(n)
 }
 
-// 遍历数组
+// Iterate with index
 for i, n in arr {
     println(f"arr[{i}] = {n}")
 }
 
-// 模式匹配
+// Infinite loop
+var i = 0
+loop {
+    println("loop")
+    if i > 10 {
+        break
+    }
+    i += 1
+}
+
+// Pattern matching, similar to switch/match
 is a {
-    1 => println("one")
-    in 2..9 => println("small")
-    if a > 10 => println("big")
-    as str => println("string")
-    else => println("other")
+    // Exact match
+    41 -> println("a is 41"),
+    // as is used for type checking
+    as str -> println("a is a string"),
+    // in is used for range matching
+    in 0..9 -> println("a is a single digit"),
+    // if is used for conditional matching
+    if a > 10 -> println("a is a big number"),
+    // Default case
+    else x-> println("a is a weird number")
 }
 ```
 
-### 面向对象编程
-
-Auto 提供完整的面向对象编程支持，包括类型定义、继承、组合和特征系统。
-
-#### 类型定义
+### 枚举（计划中）
 
 ```rust
-// 定义类型
+enum Axis {
+    Vertical   // 0
+    Horizontal // 1
+}
+
+// Enum with members
+enum Scale {
+    name str
+
+    S("Small")
+    M("Medium")
+    L("Large")
+}
+
+// Enum variable
+var a = Scale.M
+
+// Access enum member
+println(a.name)
+
+// Enum matching
+is a {
+    Scale::S -> println("a is small")
+    Scale::M -> println("a is medium")
+    Scale::L -> println("a is large")
+    else -> println("a is not a Scale")
+}
+
+
+// Union enum
+enum Shape union {
+    Point(x int, y int)
+    Rect(x int, y int, w int, h int)
+    Circle(x int, y int, r int)
+}
+
+// Union enum matching
+var s = get_shape(/*...*/)
+is s as Shape {
+    Point(x, y) -> println(f"Point($x, $y)")
+    Rect(x, y, w, h) -> println(f"Rect($x, $y, $w, $h)")
+    Circle(x, y, r) -> println(f"Circle($x, $y, $r)")
+    else -> println("not a shape")
+}
+// Access union enum data
+var p = s as Shape::Point
+println(p.x, p.y)
+```
+
+### Object-Oriented Programming
+
+Auto provides complete object-oriented programming support, including type definitions, inheritance, composition, and the spec system.
+
+#### Type Definitions
+
+```rust
+// Define a type
 type Point {
     x int
     y int
 
-    // 实例方法
+    // Instance method
     fn distance(other Point) float {
         sqrt((.x - other.x) ** 2 + (.y - other.y) ** 2)
     }
@@ -376,7 +860,7 @@ type Point {
     }
 }
 
-// 构造实例
+// Create instance
 var p = Point()
 p.x = 1
 p.y = 2
@@ -384,12 +868,12 @@ println(p.info())        // "Point(1, 2)"
 println(p.distance(p))   // 0.0
 ```
 
-#### 单继承（Inheritance）
+#### Single Inheritance
 
-使用 `is` 关键字实现单继承，子类自动获得父类的所有字段和方法：
+Use the `is` keyword for single inheritance. Child types automatically inherit all fields and methods from the parent:
 
 ```rust
-// 父类
+// Parent class
 type Animal {
     name str
 
@@ -402,16 +886,16 @@ type Animal {
     }
 }
 
-// 子类继承父类
+// Child class inherits from parent
 type Dog is Animal {
     breed str
 
-    // 可以重写父类方法
+    // Can override parent methods
     fn speak() {
         print("Woof!")
     }
 
-    // 可以添加新方法
+    // Can add new methods
     fn fetch() {
         print("Fetching...")
     }
@@ -422,26 +906,26 @@ fn main() {
     dog.name = "Buddy"
     dog.breed = "Labrador"
 
-    // 访问继承的字段
+    // Access inherited fields
     print(dog.name)
 
-    // 调用继承的方法（被重写）
+    // Call inherited method (overridden)
     dog.speak()  // "Woof!"
 
-    // 调用自己的方法
+    // Call own method
     dog.fetch()
 }
 ```
 
-**继承特性**：
-- ✅ 字段继承：子类自动包含父类的所有字段
-- ✅ 方法继承：子类自动获得父类的所有方法
-- ✅ 方法重写：子类可以重写父类方法
-- ✅ 类型检查：继承关系在编译时验证
+**Inheritance Features**:
+- ✅ Field inheritance: Child types automatically include all parent fields
+- ✅ Method inheritance: Child types automatically get all parent methods
+- ✅ Method overriding: Child types can override parent methods
+- ✅ Type checking: Inheritance relationships are verified at compile time
 
-#### 组合（Composition）
+#### Composition
 
-使用 `has` 关键字实现组合，将其他类型的功能集成到当前类型：
+Use the `has` keyword for composition to integrate functionality from other types:
 
 ```rust
 type Engine {
@@ -462,12 +946,12 @@ type Car {
 }
 ```
 
-#### 特征系统（Spec）
+#### Spec System
 
-Spec 定义接口契约，类型可以实现多个 spec：
+Specs define interface contracts. Types can implement multiple specs:
 
 ```rust
-// 定义 spec
+// Define spec
 spec Reader {
     fn read() str
     fn is_eof() bool
@@ -478,28 +962,28 @@ spec Writer {
     fn flush()
 }
 
-// 实现 spec（使用 as 关键字）
+// Implement spec (using 'as' keyword)
 type File as Reader, Writer {
     path str
 
     fn read() str {
-        // 读取文件
+        // Read file
     }
 
     fn is_eof() bool {
-        // 检查是否结束
+        // Check if end of file
     }
 
     fn write(s str) {
-        // 写入文件
+        // Write to file
     }
 
     fn flush() {
-        // 刷新缓冲
+        // Flush buffer
     }
 }
 
-// 多态函数
+// Polymorphic function
 fn copy(src Reader, dst Writer) {
     while !src.is_eof() {
         let line = src.read()
@@ -509,15 +993,15 @@ fn copy(src Reader, dst Writer) {
 }
 ```
 
-#### 转译器支持
+#### Transpiler Support
 
-Auto 的 OOP 特性同时支持 C 和 Rust 转译：
+Auto's OOP features are supported by both C and Rust transpilers:
 
-**C 转译**（扁平结构体 + 方法前缀）：
+**C Transpilation** (flat struct + method prefix):
 ```c
 struct Dog {
-    char* name;      // 继承的字段
-    char* breed;     // 自己的字段
+    char* name;      // inherited field
+    char* breed;     // own field
 };
 
 void Dog_Speak(struct Dog *self) {
@@ -525,11 +1009,11 @@ void Dog_Speak(struct Dog *self) {
 }
 ```
 
-**Rust 转译**（扁平结构体 + impl 块）：
+**Rust Transpilation** (flat struct + impl block):
 ```rust
 struct Dog {
-    name: String,      // 继承的字段
-    breed: String,     // 自己的字段
+    name: String,      // inherited field
+    breed: String,     // own field
 }
 
 impl Dog {
@@ -539,122 +1023,345 @@ impl Dog {
 }
 ```
 
-> 📖 **更多 OOP 特性**？查看 [单继承实现文档](docs/plans/021-single-inheritance.md) 和 [Spec 多态文档](docs/plans/020-stdlib-io-expansion.md)
+> 📖 **More OOP Features**? See [Single Inheritance Implementation](docs/plans/021-single-inheritance.md) and [Spec Polymorphism Documentation](docs/plans/020-stdlib-io-expansion.md)
 
----
+### 生成器（计划中）
+
+```rust
+// Generator
+fn fib() {
+    var a, b = 0, 1
+    loop {
+        yield b
+        a, b = b, a + b
+    }
+}
+
+// Using a generator
+for n in fib() {
+    println(n)
+}
+
+// Or in functional style
+fib().take(10).foreach(|n| println(n))
+```
+
+### 异步（计划中）
+
+```rust
+// Any function
+fn fetch(url str) str {
+    // ...
+}
+
+// The `do` keyword indicates an async call
+let r = do fetch("https://api.github.com")
+
+// Returns a Future; wait for the result
+println(wait r)
+
+// Multiple async calls
+let tasks = for i in 1..10 {
+    do fetch(f"https://api.github.com/$i")
+}
+// Wait for all tasks to complete (or timeout)
+let results = wait tasks
+println(results)
+```
+
+### 节点
+
+```rust
+// Node
+node button(id) {
+    text str
+    scale Scale
+    onclick fn()
+}
+
+// Create a node
+button("btn1") {
+    text: "Click me"
+    scale: Scale.M
+    onclick: => println("button clicked")
+}
+
+// Multi-level nodes
+node div(id) {
+    kids: []any
+}
+
+node li(id) {
+    text str
+    kids: []div
+}
+
+node ul(id=nil) {
+    kids: []li
+}
+
+node label(content) {
+}
+
+ul {
+    li {
+        label("Item 1: ")
+        button("btn1") {
+            text: "Click me"
+            onclick: => println("button clicked")
+        }
+        div { label("div1")}
+    }
+    li { label("Item 2") }
+    li { label("Item 3") }
+}
+```
 
 ## 使用与安装
 
-### 系统要求
-
-- **Rust** 1.70 或更高版本
-- **Cargo**（随 Rust 一起安装）
-- **CMake** 3.15+（可选，用于 C 版本构建）
-- **Visual Studio** 或 **MinGW**（Windows 可选）
-
-### 安装步骤
+AutoLang编译器仅依赖于Rust和Cargo。
 
 ```bash
-# 1. 克隆仓库
-git clone https://gitee.com/auto-stack/auto-lang.git
-cd auto-lang
-
-# 2. 构建并运行 REPL
-cargo run
-
-# 3. 运行示例
-cargo run -- examples/hello.at
-
-# 4. 运行测试
-cargo test
-
-# 5. 构建 C 版本（可选）
-cd autoc
-mkdir build && cd build
-cmake ..
-cmake --build .
+> git clone git@gitee.com:auto-stack/auto-lang.git
+> cd auto-lang
+> cargo build --release
+> cargo run --release
 ```
 
-### 编辑器支持
+## 架构说明
 
-- **VS Code** - 即将支持
-- **Zed** - 计划中（基于 GPUI）
-- **其他编辑器** - 欢迎贡献语法高亮配置
+AutoLang有一个主要实现（Rust编译器），支持五种执行模式：
+
+1. **解释执行**: 直接运行AutoLang代码（REPL、脚本执行）
+2. **转译到 C (a2c)**: 将AutoLang转译为C代码，用于嵌入式系统
+3. **转译到 Rust (a2r)**: 将AutoLang转译为Rust代码，用于原生应用
+4. **转译到 Python (a2p)**: 将AutoLang转译为Python代码，用于快速原型和Python生态集成
+5. **转译到 JavaScript (a2j)**: 将AutoLang转译为JavaScript (ES6+) 代码，用于Web开发和Node.js
+
+测试目录：
+- `crates/auto-lang/test/a2c/` - Auto到C转译器测试
+- `crates/auto-lang/test/a2r/` - Auto到Rust转译器测试
+- `crates/auto-lang/test/a2p/` - Auto到Python转译器测试
+- `crates/auto-lang/test/a2j/` - Auto到JavaScript转译器测试
+
+## Python Transpiler (a2p)
+
+AutoLang支持转译到 Python 3.10+，具备以下特性：
+
+### 核心特性
+
+- ✅ **完美 F-string 映射**: AutoLang和Python的f-string语法几乎相同
+- ✅ **模式匹配**: 完整支持`match/case`语句（需要Python 3.10+）
+- ✅ **智能类生成**: 自动检测`@dataclass`和普通类
+- ✅ **类型支持**: 结构体、枚举、方法和继承
+- ✅ **零依赖**: 生成的Python代码仅需标准库
+
+### 使用方法
+
+```bash
+# Transpile AutoLang to Python
+auto python hello.at
+
+# Run the generated Python
+python hello.py
+```
+
+### 代码示例
+
+**AutoLang代码:**
+```auto
+type Point {
+    x int
+    y int
+
+    fn modulus() int {
+        .x * .x + .y * .y
+    }
+}
+
+fn main() {
+    let p = Point{x: 0, y: 0}
+    print(f"Modulus: ${p.modulus()}")
+}
+```
+
+**生成的Python代码:**
+```python
+class Point:
+    def __init__(self, x: int, y: int):
+        self.x = x
+        self.y = y
+
+    def modulus(self):
+        return self.x * self.x + self.y * self.y
+
+def main():
+    p = Point(x=0, y=0)
+    print(f"Modulus: {p.modulus()}")
+
+if __name__ == "__main__":
+    main()
+```
+
+### 语言映射
+
+| AutoLang | Python | 说明 |
+|----------|--------|------|
+| `type Point { x int }` | `@dataclass\nclass Point:` | 无方法时使用@dataclass |
+| `type Point { fn m() {} }` | `class Point:\n def __init__...` | 有方法时使用普通类 |
+| `enum Color { Red }` | `class Color(Enum)` | 使用enum.Enum |
+| `is x { 0 => print() }` | `match x:\n case 0:` | Python 3.10+ |
+| `for i in 0..10` | `for i in range(0, 10)` | 范围转换为range() |
+| `f"hello $name"` | `f"hello {name}"` | 自动转换变量语法 |
+
+### 测试覆盖
+
+当前支持 10 个测试用例，全部通过 ✅：
+
+1. `000_hello` - 基础打印
+2. `002_array` - 数组和索引
+3. `003_func` - 函数
+4. `006_struct` - 结构体定义 (@dataclass)
+5. `007_enum` - 枚举定义 (class Enum)
+6. `008_method` - 类方法
+7. `010_if` - if/else语句
+8. `011_for` - for循环
+9. `012_is` - 模式匹配 (match/case)
+10. `015_str` - F-strings
+
+### 文档
+
+完整的Python转译器文档请参考：[Python Transpiler Documentation](docs/python-transpiler.md)
+
+### 限制
+
+以下特性尚未实现：
+
+- Lambda函数
+- 块表达式
+- If表达式（三元运算符）
+- 枚举变体访问（如`Color.Red`）
+- 结构体构造语法（如`Point{x: 1, y: 2}`）
+- for循环中的enumerate
+
+### Python 版本要求
+
+- **最低版本**: Python 3.10+
+- **原因**: `match/case`语句需要Python 3.10或更高版本
+
+## JavaScript Transpiler (a2j)
+
+AutoLang支持转译到 JavaScript ES6+，具备以下特性：
+
+### 核心特性
+
+- ✅ **完美 Template Literal 映射**: AutoLang的f-string语法与JavaScript模板字符串几乎相同
+- ✅ **ES6+ 类**: 使用现代ES6 class语法生成结构体
+- ✅ **模式匹配**: 完整支持`switch/case`语句
+- ✅ **方法支持**: 自动将`.x`转换为`this.x`
+- ✅ **动态类型**: JavaScript的动态类型与AutoLang完美匹配
+- ✅ **零依赖**: 生成的JavaScript代码无需任何polyfills
+
+### 使用方法
+
+```bash
+# Transpile AutoLang to JavaScript
+auto java-script hello.at
+
+# Run the generated JavaScript (requires Node.js)
+node hello.js
+```
+
+### 代码示例
+
+**AutoLang代码:**
+```auto
+type Point {
+    x int
+    y int
+
+    fn modulus() int {
+        .x * .x + .y * .y
+    }
+}
+
+fn main() {
+    let p = Point{x: 3, y: 4}
+    let m = p.modulus()
+    print(f"Modulus: $m")
+}
+```
+
+**Generated JavaScript code:**
+```javascript
+class Point {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    modulus() {
+        return this.x * this.x + this.y * this.y;
+    }
+}
+
+function main() {
+    const p = new Point(3, 4);
+    const m = p.modulus();
+    console.log(`Modulus: ${m}`);
+}
+
+main();
+```
+
+### 语言映射
+
+| AutoLang | JavaScript | 说明 |
+|----------|-----------|------|
+| `let x = 1` | `const x = 1` | 不可变变量使用const |
+| `var x = 1` | `let x = 1` | 可变变量使用let |
+| `type Point { x int }` | `class Point { constructor... }` | ES6类语法 |
+| `enum Color { Red }` | `const Color = Object.freeze({...})` | 冻结对象防止修改 |
+| `is x { 0 => print() }` | `switch (x) { case 0: ... }` | switch/case语句 |
+| `for i in 0..10` | `for (let i = 0; i < 10; i++)` | 传统for循环 |
+| `f"hello $name"` | `` `hello ${name}` `` | 模板字符串（反引号） |
+| `.x` (方法内) | `this.x` | 自动转换self为this |
+| `print(...)` | `console.log(...)` | 自动转换函数名 |
+
+### 测试覆盖
+
+当前支持 9 个测试用例，全部通过 ✅：
+
+1. `000_hello` - 基础打印
+2. `002_array` - 数组和索引
+3. `003_func` - 函数声明和调用
+4. `006_struct` - 结构体定义 (ES6 class)
+5. `007_enum` - 枚举定义 (Object.freeze)
+6. `008_method` - 类方法 (this conversion)
+7. `010_if` - if/else语句
+8. `011_for` - for循环
+9. `012_is` - Pattern matching (switch/case)
+
+### 文档
+
+完整的JavaScript转译器文档请参考：[JavaScript Transpiler Documentation](docs/javascript-transpiler.md)
+
+### 限制
+
+以下特性尚未实现：
+
+- Lambda函数 (arrow functions)
+- If表达式（三元运算符`? :`）
+- ES6模块 (import/export)
+- 异步支持 (async/await)
+- 生成器函数
+
+### 环境要求
+
+- **Node.js**: v12.0.0或更高版本（支持ES6+）
+- **浏览器**: 任意现代浏览器（Chrome 51+, Firefox 54+, Safari 10+, Edge 15+）
+- **原因**: 需要支持ES6+特性（class、模板字符串、箭头函数等）
 
 ---
 
-## 开发路线图
-
-### 当前进度
-
-| 功能 | 状态 | 备注 |
-|------|------|------|
-| **Auto2C** | 🟡 v0.1 | 基础功能可用，v0.2 计划支持完整特性 |
-| **AutoConfig** | 🟢 已完成 | 静态版（Atom）和动态版都已实现 |
-| **AutoScript** | 🟡 可用 | 基础解释器完成，生态集成待实现 |
-| **AutoUI** | 🟡 基础版 | 支持组件、样式、事件响应 |
-| **AutoTemplate** | 🟢 已完成 | 已在实际项目中使用 |
-| **AutoShell** | 🔵 开发中 | 核心语法支持，内置命令完善中 |
-| **自举编译器** | 🔵 早期阶段 | `auto/` 目录，刚开始实现 |
-
-### 计划中的功能
-
-- [ ] 完整的 Auto2C 转译器（v0.2）
-- [ ] Rust 生态集成（FFI）
-- [ ] Python/JavaScript 生态集成
-- [ ] 异步支持（async/await）
-- [ ] 生成器（yield）
-- [ ] IDE 和插件系统
-- [ ] 包管理器（AutoPM）
-- [ ] WebAssembly 支持
-
----
-
-## 相关项目
-
-Auto 是 [AutoStack](https://gitee.com/auto-stack) 生态系统的一部分：
-
-- **[AutoMan](https://gitee.com/auto-stack/auto-man)** - 构建工具和包管理器
-- **[AutoUI](https://gitee.com/auto-stack/auto-ui)** - 跨平台 UI 框架
-- **[AutoGen](https://gitee.com/auto-stack/auto-gen)** - 代码生成工具
-- **[AutoShell](https://gitee.com/auto-stack/auto-shell)** - 跨平台 Shell
-
----
-
-## 贡献
-
-欢迎贡献代码、报告问题或提出建议！
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-### 开发指南
-
-- 代码规范：待补充
-- 提交规范：使用清晰的提交信息
-- 测试要求：所有新功能需要添加测试
-
----
-
-## 许可证
-
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
-
----
-
-## 联系方式
-
-- **Gitee**: https://gitee.com/auto-stack/auto-lang
-- **Issues**: https://gitee.com/auto-stack/auto-lang/issues
-- **讨论**: 欢迎在 Issues 中提出问题或建议
-
----
-
-## 致谢
-
-Auto 语言由 Soutek 公司开发并开源，感谢所有贡献者的支持！
-
-**Soutek AutoStack** - 让自动化开发更简单
+**[English](README.md)**

@@ -9,6 +9,6 @@ fn main() {
     let s: String = "hello world".to_string();
     let upper = s.to_uppercase();
     let trimmed = "  hello  ".trim().to_string();
-    let parts = "a,b,c".split(",");
+    let parts = "a,b,c".split(",").collect::<Vec<_>>();
     let x: i32 = 42;
 }

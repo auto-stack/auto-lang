@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let entry = entry?;
         let name = entry.file_name();
         let name_str = name.to_str().unwrap();
-        if !(name_str.starts_with(&".")) {
+        if !(name_str.starts_with(".")) {
             non_dot += 1
         }
     }

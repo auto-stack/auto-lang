@@ -8,8 +8,8 @@ Plans covering documentation infrastructure, example projects, component galleri
 | Plan | Title | Status | Summary |
 |------|-------|--------|---------|
 | 032 | Source Mapping for Self-Hosting | ⏳ | Source-to-C mapping for IDE-grade error messages in transpiled code |
-| 097 | TodoMVC Example | ⏳ | Multi-backend TodoMVC in AutoLang (Vue, Iced, GPUI) |
-| 103 | AutoUI Component Gallery Documentation Site | ⏳ | shadcn-vue style docs site with live preview and code copy |
+| 097 | TodoMVC Example | ✅ | Multi-backend TodoMVC in AutoLang (Vue, Iced, GPUI) |
+| 103 | AutoUI Component Gallery Documentation Site | ✅ | shadcn-vue style docs site with live preview and code copy |
 | 104 | Add shadcn-vue Components | ⏳ | Full shadcn-vue component support in AURA transpilation |
 | 105 | Auto Router | ⏳ | URL-driven routing with `routes` block, `outlet` and `link` elements |
 | 106 | Router `use` Syntax Improvement | ⏳ | Cleaner routing definition using `use` keyword and module path conventions |
@@ -23,7 +23,7 @@ Plans covering documentation infrastructure, example projects, component galleri
 | 145 | Jet Gallery (Android Compose) | ✅ | Standalone Jetpack Compose reference app with widget registry |
 | 148 | 05-Nav Navigation | ✅ | Page-level navigation within tabs for QuickStart examples |
 | 149 | KnowledgeMap Data Loading | ⏳ | Replace static placeholder content with real JSON-loaded data |
-| 150 | AI Mode (--ai flag) | ⏳ | JSON output mode for AI-friendly compiler interaction |
+| 150 | AI Mode (--ai flag) | ✅ | JSON output mode for AI-friendly compiler interaction |
 | 157 | Login Quickstart Example | ⏳ | 06-Login example design for quickstart tutorial series |
 | 183 | Unified UI Examples | ⏳ | Progressive cross-platform UI examples for all 6 targets |
 | 188 | Tier 3 Blocker Resolution | ⏳ | Fix prerequisites blocking Tier 3 mini-app examples (011-016) |

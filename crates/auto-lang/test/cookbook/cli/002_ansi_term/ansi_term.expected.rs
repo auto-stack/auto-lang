@@ -12,7 +12,7 @@ fn main() {
     let err = Red::paint("Error: something went wrong");
     let ok = Green::paint("Success: operation completed");
     let warn = Yellow::paint("Warning: check your input");
-    assert!(err.contains(&"Error"));
-    assert!(ok.contains(&"Success"));
-    assert!(warn.contains(&"Warning"));
+    assert!(err.contains("Error"));
+    assert!(ok.contains("Success"));
+    assert!(warn.contains("Warning"));
 }
