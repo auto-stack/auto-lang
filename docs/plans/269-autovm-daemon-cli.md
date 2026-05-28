@@ -1,7 +1,8 @@
 # Plan 269: AutoVM Daemon + Stateful CLI (`auto serve` / `auto req`)
 
-**Status**: Draft
+**Status**: Done (Step 1-6 complete, named pipe IPC working)
 **Created**: 2026-05-28
+**Updated**: 2026-05-28
 **Related**: [Plan 265 (MCP Server)](../old/265-autovm-mcp-server.md)
 
 ## Context

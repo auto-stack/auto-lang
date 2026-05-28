@@ -393,6 +393,9 @@ enum Commands {
         /// Run in stdio mode (used internally by auto req)
         #[arg(long)]
         stdio: bool,
+        /// Named pipe name (Windows) or socket name (Unix)
+        #[arg(short, long, default_value = "autovm")]
+        pipe_name: String,
     },
 
     #[command(about = "Send request to AutoVM daemon (eval code, inspect sessions)")]
@@ -400,6 +403,9 @@ enum Commands {
         /// Session ID to use
         #[arg(short, long)]
         session: Option<String>,
+        /// Named pipe name (must match daemon)
+        #[arg(short = 'p', long, default_value = "autovm")]
+        pipe_name: String,
         /// Create a new session and print its ID
         #[arg(long)]
         new_session: bool,
@@ -1309,13 +1315,12 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== AutoVM Daemon (Plan 269) ==========
-        Some(Commands::Serve { foreground, stdio }) => {
+        Some(Commands::Serve { foreground, stdio, pipe_name }) => {
             let mut daemon = auto_lang::autovm_daemon::AutovmDaemon::new();
             if stdio {
                 daemon.run_stdio();
             } else if foreground {
-                eprintln!("AutoVM daemon: foreground mode (stdin/stdout)");
-                daemon.run_stdio();
+                daemon.run_pipe(&pipe_name);
             } else {
                 // Background mode: spawn self with --stdio flag
                 let exe = std::env::current_exe().map_err(|e| miette::miette!("Cannot find auto executable: {}", e))?;
@@ -1333,15 +1338,15 @@ fn real_main(cli: Cli) -> Result<()> {
                     .args(["serve", "--stdio"])
                     .spawn()
                     .map_err(|e| miette::miette!("Failed to start daemon: {}", e))?;
-                println!("AutoVM daemon started");
+                println!("AutoVM daemon started (stdio mode)");
             }
         }
 
         // ========== AutoVM Client (Plan 269) ==========
-        Some(Commands::Req { session, new_session, inspect, reset, delete, snapshot, list, json, code }) => {
+        Some(Commands::Req { session, pipe_name, new_session, inspect, reset, delete, snapshot, list, json, code }) => {
             use auto_lang::autovm_client::AutovmClient;
 
-            let mut client = AutovmClient::connect().map_err(|e| miette::miette!("{}", e))?;
+            let mut client = AutovmClient::connect(&pipe_name).map_err(|e| miette::miette!("{}", e))?;
 
             if list {
                 let resp = client.list().map_err(|e| miette::miette!("{}", e))?;
