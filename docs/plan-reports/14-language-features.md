@@ -10,7 +10,7 @@ AutoLang's language features span a wide range of syntax enhancements, type syst
 |------|-------|--------|---------|
 | 035 | ext Statement | Done | OOP-style method extension for existing types |
 | 036 | Unified Auto Section | Done | Multi-file stdlib loading with .at/.vm.at/.c.at split |
-| 040 | Tag Types Summary | Partial | Tag variant construction and matching (4/5 tasks done) |
+| 040 | Tag Types Summary | Done | Tag variant construction, matching, and transpilation (C/Rust/TS/Python) -- all 5/5 tasks complete |
 | 044 | ext Enhanced Multiplatform Architecture | Planned | Interface contract + physical completion for platform-specific stdlib |
 | 045 | AutoLang-AutoUI Integration | Planned | EvalMode::Config for parsing UI scripts |
 | 050 | Auto Prelude System | Planned | Auto-importing common symbols into every module |
@@ -36,9 +36,9 @@ AutoLang's language features span a wide range of syntax enhancements, type syst
 
 ## Status
 
-**Implemented**: Plans 035, 036, 084, 156, 168, 169, 193, 194, 197, 206, 207, 208, 228 (thirteen plans fully complete).
+**Implemented**: Plans 035, 036, 040, 084, 156, 168, 169, 193, 194, 197, 206, 207, 208, 228 (fourteen plans fully complete).
 
-**Partial**: Plans 040 (tag method parsing deferred, ext workaround works), 086 (parser/AST done, WidgetLoader not yet built).
+**Partial**: Plan 086 (parser/AST done, WidgetLoader not yet built).
 
 **Planned**: Plans 044, 045, 050, 082, 139, 155, 182, 185, 190.
 

@@ -104,6 +104,7 @@ fn test_cookbook(case: &str) -> AutoResult<()> {
 #[test] fn test_06_pattern_matching_005_generic_hetero_enum() { test_a2r("06_pattern_matching/005_generic_hetero_enum").unwrap(); }
 #[test] fn test_06_pattern_matching_006_enum_fn_param() { test_a2r("06_pattern_matching/006_enum_fn_param").unwrap(); }
 #[test] fn test_06_pattern_matching_007_is_in_ext() { test_a2r("06_pattern_matching/007_is_in_ext").unwrap(); }
+#[test] fn test_06_pattern_matching_008_hetero_enum_multistmt() { test_a2r("06_pattern_matching/008_hetero_enum_multistmt").unwrap(); }
 
 // === 07_ownership ===
 #[test] fn test_07_ownership_001_borrow_view() { test_a2r("07_ownership/001_borrow_view").unwrap(); }

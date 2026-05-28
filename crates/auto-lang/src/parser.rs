@@ -5886,6 +5886,7 @@ impl<'a> Parser<'a> {
                                     expr: Expr::Uncover(TagUncover {
                                         src: tgt.repr(),
                                         cover: cover.clone(),
+                                        binding: binding.clone(),
                                     }),
                                 }));
                             }
@@ -6048,6 +6049,7 @@ impl<'a> Parser<'a> {
                                         expr: Expr::Uncover(TagUncover {
                                             src: tgt.repr(),
                                             cover: cover.clone(),
+                                            binding: binding.clone(),
                                         }),
                                     }),
                                 );

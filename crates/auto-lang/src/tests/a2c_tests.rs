@@ -254,6 +254,7 @@ fn test_05_expressions_002_field_access() { test_a2c("05_expressions/002_field_a
 #[test] #[ignore] fn test_06_pattern_matching_004_enum_smoke_2var() { test_a2c("06_pattern_matching/004_enum_smoke_2var").unwrap(); }
 #[test] #[ignore] fn test_06_pattern_matching_005_enum_smoke_3var() { test_a2c("06_pattern_matching/005_enum_smoke_3var").unwrap(); }
 #[test] #[ignore] fn test_06_pattern_matching_006_enum_with_functions() { test_a2c("06_pattern_matching/006_enum_with_functions").unwrap(); }
+#[test] #[ignore] fn test_06_pattern_matching_007_tag_types() { test_a2c("06_pattern_matching/007_tag_types").unwrap(); }
 
 // === 07_ownership ===
 #[test] #[ignore] fn test_07_ownership_001_borrow_view() { test_a2c("07_ownership/001_borrow_view").unwrap(); }

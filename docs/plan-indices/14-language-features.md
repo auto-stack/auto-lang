@@ -9,17 +9,17 @@ Plans covering core language syntax additions and enhancements, from the ext sta
 |------|-------|--------|---------|
 | 035 | ext Statement | ✅ | OOP-style method extension for existing types |
 | 036 | Unified Auto Section | ✅ | Auto language implements its own standard library modules |
-| 040 | Tag Types Summary | 🔧 | Tag variant construction and matching -- partially complete (4/5 tasks) |
+| 040 | Tag Types Summary | ✅ | Tag variant construction, matching, and transpilation (C/Rust/TS/Python) -- all 5/5 tasks complete |
 | 044 | ext Enhanced Multiplatform Architecture | ⏳ | Interface contract + physical completion pattern for platform-specific stdlib |
 | 045 | AutoLang-AutoUI Integration | ⏳ | EvalMode::Config for parsing UI scripts, runtime + transpilation paths |
 | 050 | Auto Prelude System | ⏳ | Rust-inspired prelude auto-importing common symbols into every module |
 | 072 | Logical Operators `and`/`or` | ❌ | Deprecated -- reverted to `&&`/`||` symbols for consistency |
 | 082 | AutoCache -- Global Build Cache | ⏳ | Content-addressable store for cross-project compilation artifact reuse |
-| 084 | Unified Type Context | ⏳ | Consolidate scattered type information into a single shared TypeStore |
+| 084 | Unified Type Context | ✅ | Consolidate scattered type information into a single shared TypeStore |
 | 086 | Widget Registry from Stdlib | 🔧 | Load widget specs from .at files instead of hardcoded Rust defaults |
 | 139 | Atom Serialization System | ⏳ | Serde-like Auto-Atom serialization/deserialization with compile-time codegen |
 | 155 | String Type Refactoring | ⏳ | Three-tier string system: StrLit, StrSlice, and owned String |
-| 156 | Unified Enum Migration | ⏳ | Merge enum (scalar) and tag (ADT) into single `enum` keyword with three forms |
+| 156 | Unified Enum Migration | ✅ | Merge enum (scalar) and tag (ADT) into single `enum` keyword with three forms |
 | 168 | shared Variable + pub Keyword Migration | ✅ | `shared` as static storage modifier, `pub` keyword prefix (replacing `#[pub]`) |
 | 169 | Multi-Line Strings (`"""..."""`) | ✅ | Triple-quote strings for embedded newlines in prompts and templates |
 | 182 | Debug Mode for Rust Desktop UI | ⏳ | Chrome DevTools-inspired debug overlay for GPUI/iced desktop frameworks |

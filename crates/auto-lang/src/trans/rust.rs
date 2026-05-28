@@ -899,7 +899,8 @@ impl RustTrans {
     }
 
     /// Check if a type implements Copy (primitive types, string slices, etc.).
-    /// Non-Copy types (structs, enums, Vec, HashMap, Unknown) need .clone() when moved.
+    /// Non-Copy types (structs, enums, HashMap, Unknown) need .clone() when moved.
+    /// Slice/Array/List are treated as Copy for call-site purposes (passed by reference in Rust).
     /// Unknown is treated as non-Copy for safety (conservative ownership handling).
     fn is_copy_type(ty: &Type) -> bool {
         matches!(ty,
@@ -907,6 +908,7 @@ impl RustTrans {
             | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
             | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
             | Type::Void
+            | Type::Slice(_) | Type::Array(_) | Type::List(_)
         )
     }
 
@@ -1559,8 +1561,9 @@ impl RustTrans {
             }
 
             Expr::Uncover(uncover) => {
-                // Uncover expression for pattern matching
-                write!(out, "/* TagUncover: {} */", uncover.src).map_err(Into::into)
+                // Tag pattern matching: the binding was already created in the match arm pattern
+                // (e.g., Atom::Int(i)), so just emit the binding variable name
+                write!(out, "{}", uncover.binding).map_err(Into::into)
             }
 
             // Plan 120/159: Option/Result uncover (extract inner value)
@@ -2830,6 +2833,12 @@ impl RustTrans {
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
+                                ("fs", "delete") | ("File", "delete") => {
+                                    write!(out, "File::delete(")?;
+                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
                                 ("http", "post") => {
                                     // auto.http.post(url, body, key) → wraps a2r_std::http::post into HttpResponse
                                     write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
@@ -3501,13 +3510,11 @@ impl RustTrans {
                             // Fall through — don't intercept, let later code handle it
                         }
                         "char_at" => {
-                            // s.char_at(i) -> s.chars().nth((i) as usize).unwrap_or('\0') as i32
+                            // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0')
                             self.expr(lhs, out)?;
                             write!(out, ".chars().nth(")?;
                             if let Some(Arg::Pos(arg)) = call.args.args.first() {
-                                write!(out, "(")?;
                                 self.expr(arg, out)?;
-                                write!(out, ")")?;
                             }
                             write!(out, " as usize).unwrap_or('\\0')")?;
                             return Ok(());
@@ -3707,8 +3714,8 @@ impl RustTrans {
                     write!(out, ".is_null())")?;
                     return Ok(());
                 }
-                // list.get(i) -> list[i as usize].clone() for Vec-like collections
-                // HashMap get falls through to generic method call handler
+                // list.get(i) -> list[i as usize].clone() for Auto List only
+                // Rust Vec/HashMap .get() falls through to generic method call handler
                 "get" => {
                     if call.args.args.len() == 1 {
                         if let Some(Arg::Pos(arg)) = call.args.args.first() {
@@ -3718,11 +3725,16 @@ impl RustTrans {
                                         .map(|ty| matches!(ty, Type::Int | Type::Uint | Type::I64 | Type::U64))
                                         .unwrap_or(true)
                                 } else if let Expr::Dot(_, field) = arg {
-                                    // Field access like p.pos — assume numeric if field name suggests it
                                     field.as_str().chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
                                         && !field.as_str().starts_with('"')
                                 } else { false };
-                            if is_numeric {
+                            // Only replace for Auto List type, not Rust Vec
+                            let is_auto_list = if let Expr::Ident(var_name) = object.as_ref() {
+                                self.local_var_types.get(var_name)
+                                    .map(|ty| matches!(ty, Type::List(_)))
+                                    .unwrap_or(false)
+                            } else { false };
+                            if is_numeric && is_auto_list {
                                 self.expr(object, out)?;
                                 write!(out, "[")?;
                                 self.expr(arg, out)?;
@@ -3731,18 +3743,15 @@ impl RustTrans {
                             }
                         }
                     }
-                    // Non-numeric get (HashMap): fall through to generic method call handler
                 }
                 // Plan 204 Phase 5: Complex method translations requiring
                 // non-trivial Rust output (not just a name remap).
                 "char_at" => {
-                    // s.char_at(i) -> s.chars().nth((i) as usize).unwrap_or('\0') as i32
+                    // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0')
                     self.expr(object, out)?;
                     write!(out, ".chars().nth(")?;
                     if let Some(Arg::Pos(arg)) = call.args.args.first() {
-                        write!(out, "(")?;
                         self.expr(arg, out)?;
-                        write!(out, ")")?;
                     }
                     write!(out, " as usize).unwrap_or('\\0')")?;
                     return Ok(());
@@ -4082,6 +4091,33 @@ impl RustTrans {
                 _ => {} // fall through to regular method handling
             }
 
+            // env.get_or() and env.args() must work regardless of whether env is
+            // a local variable (it could be shadowed by a local var named "env").
+            // These always route to the a2r_std::env module.
+            // Note: env.set() is NOT handled here — it goes through Bina dispatch "set"
+            // which correctly generates env.insert("key".to_string(), "val".to_string())
+            // because HashMap<String,String> requires String arguments.
+            if let Expr::Ident(type_name) = object.as_ref() {
+                if type_name == "env" {
+                    match method_name.as_str() {
+                        "get_or" => {
+                            write!(out, "a2r_std::env::get_or(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 { write!(out, ", ")?; }
+                                self.arg(arg, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        "args" => {
+                            write!(out, "a2r_std::env::args()")?;
+                            return Ok(());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
             // Check for type name / stdlib module BEFORE the remap table.
             // This ensures json.len(), shell.exec(), etc. are intercepted
             // instead of falling into the simple name-remap (which would generate
@@ -4367,6 +4403,15 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
+                    ("fs", "delete") | ("File", "delete") => {
+                        write!(out, "File::delete(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            self.arg(arg, out)?;
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     ("env", "get") => {
                         write!(out, "a2r_std::env::get(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
@@ -4375,19 +4420,6 @@ impl RustTrans {
                     }
                     ("io", "read_line") => {
                         write!(out, "a2r_std::io::read_line()")?;
-                        return Ok(());
-                    }
-                    ("env", "args") => {
-                        write!(out, "a2r_std::env::args()")?;
-                        return Ok(());
-                    }
-                    ("env", "get_or") => {
-                        write!(out, "a2r_std::env::get_or(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            self.arg(arg, out)?;
-                        }
-                        write!(out, ")")?;
                         return Ok(());
                     }
                     ("Map", "new") => {
@@ -4682,8 +4714,9 @@ impl RustTrans {
                 if matches!(method_name.as_str(), "trim" | "trim_left" | "trim_right") {
                     write!(out, ".to_string()")?;
                 }
-                // split returns iterator in Rust, but Auto treats it as Vec.
-                // Collect into Vec so .len() and .get() work.
+                // split returns iterator in Rust, collect into Vec so .len()/.get() work.
+                // If the Auto source needs raw iterator semantics, it should use split() without
+                // assigning to a variable that later uses Vec operations.
                 if method_name.as_str() == "split" {
                     write!(out, ".collect::<Vec<_>>()")?;
                 }
@@ -9319,19 +9352,9 @@ impl RustTrans {
         }
 
         // Pattern 3: .get(0) or .get(NUM) → [NUM] for Vec-like collections
-        // Only for simple var.get(NUM) not map.get("key")
-        if let Ok(re) = regex::Regex::new(r"(\w+)\.get\((\d+)\)") {
-            let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let vec_name = caps.get(1).unwrap().as_str();
-                let num = caps.get(2).unwrap().as_str();
-                if hash_map_names.contains(&vec_name) {
-                    format!("{}.get({})", vec_name, num)
-                } else {
-                    format!("{}[{}]", vec_name, num)
-                }
-            }).to_string();
-            if new_content != *content { *content = new_content; }
-        }
+        // DISABLED: AST-level handling now correctly converts Auto List.get(N) → [N as usize].clone()
+        // This pattern was incorrectly converting Rust Vec::get(N) (returns Option) to [N] (returns T)
+        // For use.rust code, .get(NUM) should remain as-is.
 
         // Pattern 4: expr.field.get(var) → expr.field[var as usize] for Vec fields
         // Handles cases like goal.items.get(gii), plan.sections.get(pi), etc.
@@ -10132,15 +10155,19 @@ impl RustTrans {
     fn fix_map_get_as_str(content: &mut String) {
         // Step 1: Replace `let VAR = EXPR.get(KEY);` with
         //         `let VAR = EXPR.get(KEY).cloned().unwrap_or_default();`
-        //         for HashMap<String, String> patterns (params, headers, etc.)
+        //         ONLY for bootstrap compiler env/state variables (env.*, params.*, state.*)
+        //         NOT for use.rust HashMap (those should keep native Option<&V> semantics)
         if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*(\w+\.get\([^)]+\));") {
             let mut replacements = Vec::new();
             for caps in re.captures_iter(content) {
                 let var = caps.get(1).unwrap().as_str();
                 let get_expr = caps.get(2).unwrap().as_str();
-                // Skip if this is a Vec/Array .get() (e.g., route_list.get(i))
-                // We only want to unwrap HashMap .get() with string keys
-                if get_expr.contains(".get(\"") || get_expr.contains(".get(\"") {
+                // Only apply to known bootstrap env variables: env.*, params.*, headers.*, state.*
+                let is_bootstrap_env = get_expr.starts_with("env.")
+                    || get_expr.starts_with("params.")
+                    || get_expr.starts_with("headers.")
+                    || get_expr.starts_with("state.");
+                if is_bootstrap_env && (get_expr.contains(".get(\"") || get_expr.contains(".get(\"")) {
                     replacements.push((var.to_string(), get_expr.to_string()));
                 }
             }
@@ -10940,7 +10967,8 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
                     | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
                     | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                    | Type::Void | Type::Unknown))
+                    | Type::Void | Type::Unknown
+                    | Type::Slice(_) | Type::Array(_) | Type::List(_)))
                 .collect();
             let int_flags: Vec<bool> = fn_decl.params.iter()
                 .map(|p| matches!(p.ty, Type::Int))
@@ -10984,7 +11012,8 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                             Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
                             | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
                             | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                            | Type::Void | Type::Unknown))
+                            | Type::Void | Type::Unknown
+                            | Type::Slice(_) | Type::Array(_) | Type::List(_)))
                         .collect();
                     let int_flags: Vec<bool> = method.params.iter()
                         .map(|p| matches!(p.ty, Type::Int))
@@ -11497,7 +11526,8 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                         Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
                         | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
                         | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                        | Type::Void | Type::Unknown))
+                        | Type::Void | Type::Unknown
+                        | Type::Slice(_) | Type::Array(_) | Type::List(_)))
                     .collect();
                 let int_flags: Vec<bool> = fn_decl.params.iter()
                     .map(|p| matches!(p.ty, Type::Int))
@@ -11546,7 +11576,8 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                             Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
                             | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
                             | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                            | Type::Void | Type::Unknown))
+                            | Type::Void | Type::Unknown
+                            | Type::Slice(_) | Type::Array(_) | Type::List(_)))
                         .collect();
                     let int_flags: Vec<bool> = method.params.iter()
                         .map(|p| matches!(p.ty, Type::Int))

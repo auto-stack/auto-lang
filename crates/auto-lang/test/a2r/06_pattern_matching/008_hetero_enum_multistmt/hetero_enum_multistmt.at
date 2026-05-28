@@ -1,0 +1,30 @@
+enum Message {
+    Quit
+    Move int
+    Write str
+}
+
+fn handle(msg Message) int {
+    is msg {
+        Message.Quit -> 0
+        Message.Move(dist) -> {
+            print("Moving:")
+            print(dist)
+            return dist
+        }
+        Message.Write(text) -> {
+            print(text)
+            return text.len()
+        }
+    }
+}
+
+fn main() {
+    let m1 = Message.Move(10)
+    let r1 = handle(m1)
+    print(r1)
+
+    let m2 = Message.Write("hello")
+    let r2 = handle(m2)
+    print(r2)
+}

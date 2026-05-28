@@ -18,6 +18,7 @@ pub struct TagCover {
 pub struct TagUncover {
     pub src: AutoStr,
     pub cover: TagCover,
+    pub binding: AutoStr,
 }
 
 // Plan 120: Option and Result pattern matching
@@ -214,6 +215,7 @@ impl ToNode for TagUncover {
     fn to_node(&self) -> AutoNode {
         let mut node = AutoNode::new("tag-uncover");
         node.set_prop("src", Value::Str(self.src.clone()));
+        node.set_prop("binding", Value::Str(self.binding.clone()));
         node.add_kid(self.cover.to_node());
         node
     }
