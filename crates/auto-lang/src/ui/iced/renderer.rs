@@ -11,7 +11,7 @@ use crate::ui::app::AppResult;
 use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedShadowSize};
 use crate::ui::style::Style;
 use std::fmt::Debug;
-use iced::widget::{button, checkbox, column, container, pick_list, row, scrollable, svg, text, text_input};
+use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_input};
 
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::interpreter::DynamicMessage;
@@ -1388,6 +1388,28 @@ fn widget_tick(interval_ms: u32) -> iced::Subscription<IcedMessage> {
     })
 }
 
+/// Keyboard listener for F12 debug mode toggle.
+fn debug_keyboard_sub() -> iced::Subscription<IcedMessage> {
+    iced::event::listen_with(|event, _status, _window_id| match event {
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) => {
+            if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
+                Some(IcedMessage {
+                    widget: String::new(),
+                    event: DEBUG_TOGGLE_EVENT.to_string(),
+                    input_value: None,
+                })
+            } else {
+                None
+            }
+        }
+        _ => None,
+    })
+}
+
+const DEBUG_TOGGLE_EVENT: &str = "__toggle_debug";
+const DEBUG_HOVER_ENTER: &str = "__hover_enter";
+const DEBUG_HOVER_EXIT: &str = "__hover_exit";
+
 /// Wrapper holding `DynamicComponent` as iced's application state.
 struct DynamicState {
     component: DynamicComponent,
@@ -1397,6 +1419,10 @@ struct DynamicState {
     /// Dynamic todo items, managed outside VM state since __todos is not
     /// declared in the .at model and thus cannot use read_state/write_state.
     todos: Vec<TodoItem>,
+    /// Debug mode: toggled by F12. When on, hovering highlights containers.
+    debug_mode: bool,
+    /// ID of the currently hovered container element (for debug highlight).
+    hovered_widget: Option<String>,
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -1436,10 +1462,29 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             component: comp,
             input_values: std::collections::HashMap::new(),
             todos: initial_todos,
+            debug_mode: false,
+            hovered_widget: None,
         }
     };
 
     let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+        // Handle debug mode messages
+        if msg.event == DEBUG_TOGGLE_EVENT {
+            state.debug_mode = !state.debug_mode;
+            if !state.debug_mode {
+                state.hovered_widget = None;
+            }
+            return iced::Task::none();
+        }
+        if msg.event == DEBUG_HOVER_EXIT {
+            state.hovered_widget = None;
+            return iced::Task::none();
+        }
+        if let Some(id) = msg.event.strip_prefix(DEBUG_HOVER_ENTER) {
+            state.hovered_widget = Some(id.to_string());
+            return iced::Task::none();
+        }
+
         if msg.event == HOT_RELOAD_EVENT {
             if let Ok(Some(_)) = state.component.check_file_changed() {
                 if let Some(path) = state.component.source_path() {
@@ -1574,19 +1619,17 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
     iced::application(boot, update, dynamic_view)
         .title(title_fn)
         .window_size(iced::Size::new(1024.0, 768.0))
-        .subscription(|state: &DynamicState| {
+        .subscription(|_state: &DynamicState| {
             let mut subs = vec![];
-            if state.component.source_path().is_some() {
+            if _state.component.source_path().is_some() {
                 subs.push(hot_reload_tick());
             }
-            if let Some(interval_ms) = state.component.tick_interval() {
+            if let Some(interval_ms) = _state.component.tick_interval() {
                 subs.push(widget_tick(interval_ms));
             }
-            if subs.is_empty() {
-                iced::Subscription::none()
-            } else {
-                iced::Subscription::batch(subs)
-            }
+            // F12 keyboard listener for debug mode toggle
+            subs.push(debug_keyboard_sub());
+            iced::Subscription::batch(subs)
         })
         .run()?;
 
@@ -1610,21 +1653,76 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     }
 
     let converted = convert_view_messages(view);
-    let rendered = render_dynamic_view(converted);
-    // Use a plain container (not scrollable) so the root view gets bounded
-    // width/height. scrollable provides unbounded height to its child, which
-    // breaks center_y(Fill) and prevents vertical centering.
-    container(rendered)
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fill)
-        .into()
+
+    let debug_ctx = if state.debug_mode {
+        Some(DebugRenderCtx {
+            hovered_id: state.hovered_widget.clone(),
+            counter: std::cell::RefCell::new(0),
+        })
+    } else {
+        None
+    };
+
+    let rendered = render_dynamic_view(converted, debug_ctx.as_ref());
+
+    if state.debug_mode {
+        // Build main content + debug info bar at bottom
+        let info_text = match &state.hovered_widget {
+            Some(id) => format!("Debug ON | Hovered: {}", id),
+            None => "Debug ON | Hover over elements to inspect".to_string(),
+        };
+        let bar = container(
+            text(info_text).size(12).color(iced::Color::WHITE)
+        )
+            .style(|_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgb(0.1, 0.1, 0.1))),
+                ..Default::default()
+            })
+            .padding(4.0)
+            .width(iced::Length::Fill);
+
+        let mut layout = column([]);
+        layout = layout.push(rendered);
+        layout = layout.push(bar);
+        container(layout)
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .into()
+    } else {
+        container(rendered)
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .into()
+    }
 }
 
-/// Render a `View<IcedMessage>` tree into Iced elements, with input text capture.
+/// Debug rendering context: tracks hovered widget and generates unique IDs.
+struct DebugRenderCtx {
+    hovered_id: Option<String>,
+    counter: std::cell::RefCell<usize>,
+}
+
+impl DebugRenderCtx {
+    /// Allocate the next unique debug ID.
+    fn next_id(&self, kind: &str) -> String {
+        let mut c = self.counter.borrow_mut();
+        let id = format!("{}_{}", kind, *c);
+        *c += 1;
+        id
+    }
+
+    /// Check if the given ID is currently hovered.
+    fn is_hovered(&self, id: &str) -> bool {
+        self.hovered_id.as_deref() == Some(id)
+    }
+}
+
+/// Render a `View<IcedMessage>` tree into Iced elements, with input text capture
+/// and optional debug hover highlights.
 ///
-/// This is similar to `IntoIcedElement` but handles the `Input` variant specially:
-/// the `on_input` callback captures the typed text and includes it in the `IcedMessage`.
-fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static, IcedMessage> {
+/// When `debug_ctx` is `Some`, container elements (Column, Row, Container, Scrollable)
+/// get wrapped in `MouseArea` for hover detection and a blue border overlay when hovered.
+fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&DebugRenderCtx>) -> iced::Element<'static, IcedMessage> {
     match view {
         // Input needs IcedMessage-specific text capture — on_input constructs a new
         // IcedMessage with the typed text included, which the generic IntoIcedElement
@@ -1662,6 +1760,59 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>) -> iced::Element<'static
             } else {
                 input_widget.into()
             }
+        }
+
+        // Container variants: wrap with MouseArea for debug hover when debug mode is on
+        AbstractView::Column { .. } | AbstractView::Row { .. }
+        | AbstractView::Container { .. } | AbstractView::Scrollable { .. }
+            if debug_ctx.is_some() =>
+        {
+            let ctx = debug_ctx.unwrap();
+            let kind = match &view {
+                AbstractView::Column { .. } => "col",
+                AbstractView::Row { .. } => "row",
+                AbstractView::Container { .. } => "container",
+                AbstractView::Scrollable { .. } => "scrollable",
+                _ => unreachable!(),
+            };
+            let debug_id = ctx.next_id(kind);
+            let is_hovered = ctx.is_hovered(&debug_id);
+
+            let el: iced::Element<'static, IcedMessage> = view.into_iced();
+
+            // If hovered, wrap in a container with blue border
+            let el = if is_hovered {
+                let boxed: iced::Element<'static, IcedMessage> = container(el)
+                    .style(move |_: &iced::Theme| container::Style {
+                        border: iced::Border {
+                            color: iced::Color::from_rgb(0.24, 0.47, 0.94),
+                            width: 2.0,
+                            radius: 2.0.into(),
+                        },
+                        ..Default::default()
+                    })
+                    .into();
+                boxed
+            } else {
+                el
+            };
+
+            // Wrap in MouseArea for hover detection
+            let enter_id = debug_id.clone();
+            let exit_msg = IcedMessage {
+                widget: String::new(),
+                event: DEBUG_HOVER_EXIT.to_string(),
+                input_value: None,
+            };
+            let enter_msg = IcedMessage {
+                widget: String::new(),
+                event: format!("{}{}", DEBUG_HOVER_ENTER, enter_id),
+                input_value: None,
+            };
+            mouse_area(el)
+                .on_enter(enter_msg)
+                .on_exit(exit_msg)
+                .into()
         }
 
         // Everything else delegates to the unified IntoIcedElement renderer
