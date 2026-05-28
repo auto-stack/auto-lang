@@ -873,19 +873,6 @@ impl RustTrans {
         Ok(())
     }
 
-    /// Plan 270: Emit a2r_std import if any a2r_std symbols were used during transpilation.
-    /// Must be called AFTER trans() so a2r_std_used is accurate.
-    fn emit_a2r_stdlib_import(&self, out: &mut impl Write) -> AutoResult<()> {
-        if !self.merge_mode && self.a2r_std_used.get() {
-            writeln!(out, "// a2r Standard Library (from crate)")?;
-            writeln!(out, "#[allow(unused_imports)]")?;
-            writeln!(out, "use auto_lang::a2r_std;")?;
-            writeln!(out, "use auto_lang::a2r_std::*;")?;
-            writeln!(out)?;
-        }
-        Ok(())
-    }
-
     // is_enum_type() moved to unified helper methods (line 83)
     // Old implementation removed in Phase 066
 
