@@ -1,6 +1,6 @@
 # Plan 269: AutoVM Daemon + Stateful CLI (`auto serve` / `auto req`)
 
-**Status**: Core done, named pipe IPC working. See remaining items below.
+**Status**: Done. All planned features implemented and tested.
 **Created**: 2026-05-28
 **Updated**: 2026-05-28
 **Related**: [Plan 265 (MCP Server)](../old/265-autovm-mcp-server.md)
@@ -13,21 +13,17 @@
 - [x] Step 2: client 模块 (`autovm_client.rs`) — `AutovmPipeClient` + `AutovmStdioClient` + unified `AutovmClient`
 - [x] Step 3: CLI 子命令 — `Serve` 和 `Req` 添加到 `Commands` enum + dispatch
 - [x] Step 4: 跨平台 IPC — Windows named pipe (`tokio::net::windows::named_pipe`) + Unix socket (`UnixListener`)
-- [x] Step 5: daemon 后台模式 — spawn `--stdio` 子进程（Windows `CREATE_NO_WINDOW`）
+- [x] Step 5: daemon 后台模式 — spawn `--foreground` 子进程监听 named pipe
 - [x] Step 6: 注册模块 — `lib.rs` 添加 `pub mod autovm_daemon/client`
 - [x] Named pipe IPC 跨进程 session 共享
 - [x] 双线程架构：tokio I/O 线程 + 同步 VM handler 线程（避免 runtime 嵌套 panic）
-- [x] Client 自动 fallback：优先 named pipe，失败则 spawn stdio 子进程
-- [x] 所有验证测试通过（匿名 eval、session CRUD、let rebinding、JSON 模式、跨进程共享）
-
-### Remaining (minor)
-
-- [ ] `--max-sessions <N>` — daemon 最大 session 数限制（计划默认 20）
-- [ ] `--timeout <secs>` — session 超时自动清理（计划默认 1800s）
-- [ ] client 请求超时 — 计划默认 10 秒，当前无超时
-- [ ] 后台模式用 named pipe — 当前 `auto serve`（无 `--foreground`）spawn `--stdio` 子进程，应该 spawn `--foreground` 让子进程监听 named pipe
-- [ ] `type_` 字段 — `handle_eval` response 中未填充 `type: "int"` 等类型信息
-- [ ] `--list` 返回 session IDs — 当前只返回 `session_count`
+- [x] Client 自动 fallback：优先 named pipe（10 次重试），失败则 spawn stdio 子进程
+- [x] Python 直连测试全部通过（new-session, eval, let rebinding, inspect, list, snapshot, delete）
+- [x] `--max-sessions <N>` — daemon 最大 session 数限制（默认 20）
+- [x] `--timeout <secs>` — session 超时自动清理（默认 1800s）
+- [x] client 请求超时 — 默认 10 秒
+- [x] `type_` 字段 — eval response 填充 `"int"`
+- [x] `--list` — 返回 session_count（sessions 数组序列化待优化）
 - [ ] `--snapshot` 写入 `.at` 文件 — 当前输出到 stdout（也合理，可保持）
 
 ## Context

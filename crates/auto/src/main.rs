@@ -396,6 +396,12 @@ enum Commands {
         /// Named pipe name (Windows) or socket name (Unix)
         #[arg(short, long, default_value = "autovm")]
         pipe_name: String,
+        /// Maximum number of concurrent sessions
+        #[arg(long, default_value_t = 20)]
+        max_sessions: usize,
+        /// Session idle timeout in seconds (0 = no timeout)
+        #[arg(long, default_value_t = 1800)]
+        timeout: u64,
     },
 
     #[command(about = "Send request to AutoVM daemon (eval code, inspect sessions)")]
@@ -1315,30 +1321,30 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== AutoVM Daemon (Plan 269) ==========
-        Some(Commands::Serve { foreground, stdio, pipe_name }) => {
-            let mut daemon = auto_lang::autovm_daemon::AutovmDaemon::new();
+        Some(Commands::Serve { foreground, stdio, pipe_name, max_sessions, timeout }) => {
+            let mut daemon = auto_lang::autovm_daemon::AutovmDaemon::new_with_config(max_sessions, timeout);
             if stdio {
                 daemon.run_stdio();
             } else if foreground {
                 daemon.run_pipe(&pipe_name);
             } else {
-                // Background mode: spawn self with --stdio flag
+                // Background mode: spawn self with --foreground to listen on named pipe
                 let exe = std::env::current_exe().map_err(|e| miette::miette!("Cannot find auto executable: {}", e))?;
                 #[cfg(target_family = "windows")]
                 {
                     use std::os::windows::process::CommandExt;
                     std::process::Command::new(exe)
-                        .args(["serve", "--stdio"])
+                        .args(["serve", "--foreground", "--pipe-name", &pipe_name])
                         .creation_flags(0x08000000) // CREATE_NO_WINDOW
                         .spawn()
                         .map_err(|e| miette::miette!("Failed to start daemon: {}", e))?;
                 }
                 #[cfg(target_family = "unix")]
                 std::process::Command::new(exe)
-                    .args(["serve", "--stdio"])
+                    .args(["serve", "--foreground", "--pipe-name", &pipe_name])
                     .spawn()
                     .map_err(|e| miette::miette!("Failed to start daemon: {}", e))?;
-                println!("AutoVM daemon started (stdio mode)");
+                println!("AutoVM daemon started (pipe: {})", pipe_name);
             }
         }
 

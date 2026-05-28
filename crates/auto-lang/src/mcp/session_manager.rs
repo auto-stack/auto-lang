@@ -80,6 +80,10 @@ impl SessionManager {
         self.sessions.len()
     }
 
+    pub fn session_ids(&self) -> Vec<String> {
+        self.sessions.keys().cloned().collect()
+    }
+
     /// Record source code that was successfully executed in a session
     pub fn append_source(&mut self, id: &str, code: &str) {
         if let Some(entry) = self.sessions.get_mut(id) {

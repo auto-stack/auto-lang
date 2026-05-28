@@ -23,16 +23,30 @@ type PipeStream = tokio::net::UnixStream;
 
 impl AutovmPipeClient {
     /// Connect to a running daemon via named pipe.
+    /// Retries up to 10 times with 200ms delays to handle daemon startup timing.
     pub fn connect(pipe_name: &str) -> Result<Self, String> {
         let runtime = tokio::runtime::Runtime::new().map_err(|e| format!("Runtime error: {}", e))?;
-        let stream = runtime.block_on(crate::autovm_daemon::connect_to_pipe(pipe_name))?;
-        let (read, write) = tokio::io::split(stream);
-        Ok(Self {
-            runtime,
-            writer: tokio::io::BufWriter::new(write),
-            reader: tokio::io::BufReader::new(read),
-            next_id: 1,
-        })
+        let mut last_err = String::new();
+        for attempt in 0..10 {
+            match runtime.block_on(crate::autovm_daemon::connect_to_pipe(pipe_name)) {
+                Ok(stream) => {
+                    let (read, write) = tokio::io::split(stream);
+                    return Ok(Self {
+                        runtime,
+                        writer: tokio::io::BufWriter::new(write),
+                        reader: tokio::io::BufReader::new(read),
+                        next_id: 1,
+                    });
+                }
+                Err(e) => {
+                    last_err = e;
+                    if attempt < 9 {
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                    }
+                }
+            }
+        }
+        Err(format!("Pipe connect failed after retries: {}", last_err))
     }
 
     fn next_id(&mut self) -> u64 {
@@ -55,7 +69,11 @@ impl AutovmPipeClient {
         let mut line = String::new();
         self.runtime.block_on(async {
             use tokio::io::AsyncBufReadExt;
-            self.reader.read_line(&mut line).await.map_err(|e| format!("Read error: {}", e))
+            let read_future = self.reader.read_line(&mut line);
+            tokio::time::timeout(std::time::Duration::from_secs(10), read_future)
+                .await
+                .map_err(|_| "Timeout: daemon did not respond within 10 seconds".to_string())?
+                .map_err(|e| format!("Read error: {}", e))
         })?;
         let line = line.trim();
         if line.is_empty() {

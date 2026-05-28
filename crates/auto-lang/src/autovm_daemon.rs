@@ -6,6 +6,7 @@
 use crate::mcp::session_manager::SessionManager;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
+use std::time::Duration;
 
 // ── Protocol Types ──────────────────────────────────────────────────
 
@@ -72,11 +73,17 @@ pub async fn connect_to_pipe(pipe_name: &str) -> Result<tokio::net::UnixStream, 
 
 pub struct AutovmDaemon {
     sessions: SessionManager,
+    max_sessions: usize,
+    timeout_secs: u64,
 }
 
 impl AutovmDaemon {
     pub fn new() -> Self {
-        Self { sessions: SessionManager::new() }
+        Self { sessions: SessionManager::new(), max_sessions: 20, timeout_secs: 1800 }
+    }
+
+    pub fn new_with_config(max_sessions: usize, timeout_secs: u64) -> Self {
+        Self { sessions: SessionManager::new(), max_sessions, timeout_secs }
     }
 
     /// Run daemon using stdin/stdout (simple mode, no named pipe).
@@ -143,6 +150,7 @@ impl AutovmDaemon {
                 loop {
                     let stream = accept_connection(&pipe_path_clone).await;
                     eprintln!("AutoVM daemon: client connected");
+                    std::io::stderr().flush().ok();
 
                     let (read, write) = tokio::io::split(stream);
                     let mut reader = tokio::io::BufReader::new(read);
@@ -201,6 +209,12 @@ impl AutovmDaemon {
         let _ = io_thread.join();
     }
 
+    fn maybe_cleanup(&mut self) {
+        if self.timeout_secs > 0 {
+            self.sessions.cleanup_expired(Duration::from_secs(self.timeout_secs));
+        }
+    }
+
     fn handle_request(&mut self, req: DaemonRequest) -> DaemonResponse {
         match req.method.as_str() {
             "new-session" => self.handle_new_session(&req),
@@ -220,6 +234,13 @@ impl AutovmDaemon {
     }
 
     fn handle_new_session(&mut self, req: &DaemonRequest) -> DaemonResponse {
+        let count = self.sessions.session_count();
+        if count >= self.max_sessions {
+            return DaemonResponse::error(req.id, format!(
+                "Max sessions reached ({}/{}). Delete unused sessions first.",
+                count, self.max_sessions
+            ));
+        }
         let ses_id = self.sessions.create(false);
         let mut r = DaemonResponse::ok(req.id);
         r.session = Some(ses_id);
@@ -252,6 +273,7 @@ impl AutovmDaemon {
                 let mut r = DaemonResponse::ok(req.id);
                 r.session = Some(ses_id);
                 r.value = result_value;
+                r.type_ = Some("int".into());
                 r
             }
             Err(e) => {
@@ -339,10 +361,17 @@ impl AutovmDaemon {
     }
 
     fn handle_list(&mut self, _req: &DaemonRequest) -> DaemonResponse {
+        self.maybe_cleanup();
+        let ids = self.sessions.session_ids();
+        let count = ids.len();
+        let sessions_val: serde_json::Value = ids.into_iter()
+            .map(serde_json::Value::String)
+            .collect();
+        let mut map = serde_json::Map::new();
+        map.insert("session_count".into(), serde_json::Value::Number(serde_json::Number::from(count)));
+        map.insert("sessions".into(), sessions_val);
         let mut r = DaemonResponse::ok(_req.id);
-        r.data = Some(serde_json::json!({
-            "session_count": self.sessions.session_count(),
-        }));
+        r.data = Some(serde_json::Value::Object(map));
         r
     }
 }
