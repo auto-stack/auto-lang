@@ -7,12 +7,12 @@ use auto_lang::a2r_std::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Box<T> {
-    pub value: T,
+    value: T,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Container {
-    pub data: Box<i32>,
+    data: Box<i32>,
 }
 
 fn main() {

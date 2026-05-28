@@ -961,21 +961,21 @@ impl RustTrans {
             }
             Expr::Bool(b) => write!(out, "{}", b).map_err(Into::into),
             Expr::Char(c) => {
-                // Auto char is int (i32) — emit as Rust char cast to i32
+                // In a2r, Auto char maps to Rust char (not i32)
                 if *c == '\n' {
-                    write!(out, "('\\n' as i32)")
+                    write!(out, "'\\n'")
                 } else if *c == '\t' {
-                    write!(out, "('\\t' as i32)")
+                    write!(out, "'\\t'")
                 } else if *c == '\r' {
-                    write!(out, "('\\r' as i32)")
+                    write!(out, "'\\r'")
                 } else if *c == '\0' {
-                    write!(out, "('\\0' as i32)")
+                    write!(out, "'\\0'")
                 } else if *c == '\\' {
-                    write!(out, "('\\\\' as i32)")
+                    write!(out, "'\\\\'")
                 } else if *c == '\'' {
-                    write!(out, "('\\'' as i32)")
+                    write!(out, "'\\''")
                 } else {
-                    write!(out, "('{}' as i32)", c)
+                    write!(out, "'{}'", c)
                 }
             }
             .map_err(Into::into),
@@ -3509,7 +3509,7 @@ impl RustTrans {
                                 self.expr(arg, out)?;
                                 write!(out, ")")?;
                             }
-                            write!(out, " as usize).unwrap_or('\\0') as i32")?;
+                            write!(out, " as usize).unwrap_or('\\0')")?;
                             return Ok(());
                         }
                         "sub" => {
@@ -3634,7 +3634,7 @@ impl RustTrans {
                         "starts_with" => Some("starts_with"),
                         "ends_with" => Some("ends_with"),
                         "find_last" => Some("rfind"),
-                        "to_str" => Some("to_string"),
+                        "to_str" => Some("to_str"),
                         "append" => Some("push_str"),
                         // Collection methods
                         "push" => Some("push"),
@@ -3744,7 +3744,7 @@ impl RustTrans {
                         self.expr(arg, out)?;
                         write!(out, ")")?;
                     }
-                    write!(out, " as usize).unwrap_or('\\0') as i32")?;
+                    write!(out, " as usize).unwrap_or('\\0')")?;
                     return Ok(());
                 }
                 "sub" => {
@@ -4582,7 +4582,7 @@ impl RustTrans {
                 "starts_with" => Some("starts_with"),
                 "ends_with" => Some("ends_with"),
                 "find_last" => Some("rfind"),
-                "to_str" => Some("to_string"),
+                "to_str" => Some("to_str"),
                 "append" => Some("push_str"),
                 // Collection methods
                 "push" => Some("push"),
@@ -6024,15 +6024,14 @@ impl RustTrans {
                     // Check if the return expression is trivially void-compatible
                     let is_void_expr = matches!(expr.as_ref(),
                         Expr::Nil | Expr::None | Expr::Null
-                        | Expr::Int(_) | Expr::Bool(_)
+                        | Expr::Bool(_)
                     );
                     if is_void_expr {
                         sink.body.write(b"return;")?;
                         return Ok(true);
                     }
-                    // Non-trivial expr in void function: still emit return; (discard value)
-                    // But only if we're confident the expr has no side effects worth keeping
-                    // For now, let expr through and let regex fix handle edge cases
+                    // Int literals in return: keep as-is (e.g., "return 0;" in main)
+                    // Only Nil/None/Null/Bool are truly void-compatible
                 }
                 sink.body.write(b"return ")?;
                 // Plan 232: If returning a &str parameter, add .to_string()

@@ -79,7 +79,7 @@ fn shim_walkdir_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 }
 ```
 
-**Native ID**: 2751 (`auto.walkdir.collect`)
+**Native ID**: 2891 (`auto.walkdir.collect`)
 
 #### Step 2: Codegen 路由 — 迭代器自动转换
 
@@ -148,12 +148,14 @@ fn shim_csv_read_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
 #### Step 4: Native ID 分配
 
+> **注意**: 原计划 2750-2782 范围已被 Plan 250 占用，更新为 2890+。
+
 | ID | Name | 功能 |
 |----|------|------|
-| 2750 | `auto.walkdir.new` | `WalkDir::new(path)` → `List<String>` |
-| 2751 | `auto.walkdir.collect` | handle → `List<String>`（备用） |
-| 2760 | `auto.csv.read_all` | `Reader::from_path()` → `List<List<String>>` |
-| 2761 | `auto.csv.headers` | 读取 CSV header → `List<String>` |
+| 2890 | `auto.walkdir.new` | `WalkDir::new(path)` → `List<String>` |
+| 2891 | `auto.walkdir.collect` | handle → `List<String>`（备用） |
+| 2892 | `auto.csv.read_all` | `Reader::from_path()` → `List<List<String>>` |
+| 2893 | `auto.csv.headers` | 读取 CSV header → `List<String>` |
 
 ### 涉及的测试文件
 
@@ -254,13 +256,13 @@ fn shim_tarextract_unpack(task, vm) { ... }
 
 | ID | Name | 功能 |
 |----|------|------|
-| 2770 | `auto.targzip.create` | 创建 tar.gz 压缩文件 |
-| 2771 | `auto.targzip.add_string` | 添加字符串内容到 archive |
-| 2772 | `auto.targzip.add_file` | 添加文件到 archive |
-| 2773 | `auto.targzip.finish` | 完成压缩 |
-| 2780 | `auto.tarextract.open` | 打开 tar.gz 文件 |
-| 2781 | `auto.tarextract.list` | 列出文件名 |
-| 2782 | `auto.tarextract.unpack` | 解压到目录 |
+| 2900 | `auto.targzip.create` | 创建 tar.gz 压缩文件 |
+| 2901 | `auto.targzip.add_string` | 添加字符串内容到 archive |
+| 2902 | `auto.targzip.add_file` | 添加文件到 archive |
+| 2903 | `auto.targzip.finish` | 完成压缩 |
+| 2910 | `auto.tarextract.open` | 打开 tar.gz 文件 |
+| 2911 | `auto.tarextract.list` | 列出文件名 |
+| 2912 | `auto.tarextract.unpack` | 解压到目录 |
 
 #### Step 4: Codegen 路由
 

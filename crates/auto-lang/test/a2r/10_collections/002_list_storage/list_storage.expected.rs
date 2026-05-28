@@ -40,5 +40,5 @@ fn main() {
     let inline_len = (inline_list.len() as i32);
     let inline_cap = inline_list.capacity();
 
-    return;
+    return 0;
 }
