@@ -24,6 +24,98 @@ use crate::AutoResult;
 
 /// Generate Rust UI code from .at files in a project directory.
 ///
+/// Resolve the front/ source directory for a project.
+fn find_front_dir(project_dir: &Path) -> PathBuf {
+    if project_dir.join("src").join("front").exists() {
+        project_dir.join("src").join("front")
+    } else if project_dir.join("source").join("front").exists() {
+        project_dir.join("source").join("front")
+    } else if project_dir.join("front").exists() {
+        project_dir.join("front")
+    } else {
+        project_dir.join("src").join("front")
+    }
+}
+
+/// Check if the generated Rust project needs to be regenerated.
+/// Returns (needs_full_regen, needs_code_regen).
+fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
+    let cargo_toml = rust_dir.join("Cargo.toml");
+    let main_rs = rust_dir.join("src").join("main.rs");
+
+    if !cargo_toml.exists() || !main_rs.exists() {
+        return (true, true);
+    }
+
+    // Check if any .at source file is newer than main.rs
+    let front_dir = find_front_dir(project_dir);
+    if let Ok(at_files) = collect_at_files(&front_dir) {
+        if let Ok(main_meta) = fs::metadata(&main_rs) {
+            if let Ok(main_time) = main_meta.modified() {
+                for at_file in &at_files {
+                    if let Ok(at_meta) = fs::metadata(at_file) {
+                        if let Ok(at_time) = at_meta.modified() {
+                            if at_time > main_time {
+                                return (false, true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check if default feature in Cargo.toml matches expected
+    if let Ok(content) = fs::read_to_string(&cargo_toml) {
+        if !content.contains("default = [\"ui-iced\"]") {
+            return (true, true);
+        }
+    }
+
+    (false, false)
+}
+
+/// Regenerate only main.rs (skip Cargo.toml to preserve cargo cache).
+fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
+    let front_dir = find_front_dir(project_dir);
+    let at_files = collect_at_files(&front_dir)?;
+    if at_files.is_empty() {
+        return Ok(());
+    }
+
+    let pac_path = project_dir.join("pac.at");
+    let project_name = if pac_path.exists() {
+        parse_pac_name(&pac_path).unwrap_or_else(|| "MyApp".to_string())
+    } else {
+        "MyApp".to_string()
+    };
+
+    let mut all_components = String::new();
+    for at_path in &at_files {
+        match compile_at_file(at_path) {
+            Ok(code) => {
+                all_components.push_str(&code);
+                all_components.push('\n');
+            }
+            Err(e) => {
+                let file_name = at_path.file_name().unwrap_or_default().to_string_lossy();
+                println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), file_name, e);
+            }
+        }
+    }
+
+    if all_components.trim().is_empty() {
+        return Ok(());
+    }
+
+    let full_code = wrap_example(&project_name, &all_components);
+    let main_rs = rust_dir.join("src").join("main.rs");
+    fs::write(&main_rs, &full_code)
+        .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
+
+    Ok(())
+}
+
 /// `project_dir` is the workspace root (where pac.at lives).
 /// `output_dir` overrides the default `rust/` output directory.
 /// `_project` is reserved for future full-project scaffolding.
@@ -34,16 +126,7 @@ pub fn generate_rust_ui(
 ) -> AutoResult<()> {
     println!("{}", "Generating Rust UI code".bright_cyan());
 
-    // Determine the front/ source directory
-    let front_dir = if project_dir.join("src").join("front").exists() {
-        project_dir.join("src").join("front")
-    } else if project_dir.join("source").join("front").exists() {
-        project_dir.join("source").join("front")
-    } else if project_dir.join("front").exists() {
-        project_dir.join("front")
-    } else {
-        project_dir.join("src").join("front")
-    };
+    let front_dir = find_front_dir(project_dir);
 
     if !front_dir.exists() {
         return Err(format!(
@@ -388,11 +471,14 @@ fn find_auto_lang_path(project_dir: &Path) -> String {
 /// Run the generated Rust UI project.
 pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     let rust_dir = project_dir.join("gen").join("rust");
+    let (full, code) = needs_regeneration(project_dir, &rust_dir);
 
-    if !rust_dir.join("Cargo.toml").exists() {
-        // Auto-generate first
+    if full {
         println!("{}", "Generating Rust UI project...".bright_cyan());
         generate_rust_ui(project_dir, None, false)?;
+    } else if code {
+        println!("{}", "Regenerating Rust UI code (source changed)...".bright_cyan());
+        regenerate_code_only(project_dir, &rust_dir)?;
     }
 
     println!("{}", "Running Rust UI app (backend: rust-ui)".bright_cyan());
