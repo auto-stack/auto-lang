@@ -40,6 +40,7 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 207 | Enum Multi-Field Destructuring | Complete | Multi-binding destructuring and named arg construction for enum variants |
 | 208 | Result Heap Object | Complete | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
 | 212b | Rust FFI E2E Dynamic Loading | Complete | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
+| 216 | C FFI Build Pipeline Integration | Complete | CLI integration for C FFI bindgen into build pipeline (Phase 4 of Plan 216) |
 | 221 | Nanboxing Migration | Complete | Migrate VM value representation to NaN-boxing for improved memory and performance |
 | 224 | VM Async Runtime | Complete | TaskSystem.run bridge, AWAIT_FUTURE reentrant execution, async FFI shim support |
 | 226 | ABT Bytecode Text Format | Complete | ABC↔ABT assembler/disassembler with Playground bytecode tab integration |
@@ -48,11 +49,12 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 231 | Nested mut fn Stack Fix | Complete | SET_GENERIC_FIELD Void marking + BUILD_FSTR formatting to fix stack corruption in nested mut fn + for loops |
 | 265 | AutoVM MCP Server | Complete | AI-first VM interaction: JSON-RPC stdio server with 7 tools (session create/reset, evaluate, typecheck, patch, snapshot, inspect) |
 | 266 | VM ↔ a2r Conformance | Complete | Semantic conformance specs (docs/conformance/), 30 dual-execution tests, differential testing engine, conformance-driven development flow |
+| 269 | AutoVM Daemon + Stateful CLI | Complete | `auto serve` / `auto req` — named pipe daemon with cross-process session sharing, max-sessions, timeout |
 | 249 | Unify Dual Registry | Complete | Single-registration architecture with lazy native function registration, catalog macros, opaque dispatch tables |
 
 ## Status
 
-**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231, 249, 265, 266
+**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231, 249, 265, 266, 269
 
 **Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing)
 
@@ -169,3 +171,4 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [265-autovm-mcp-server.md](../plans/old/265-autovm-mcp-server.md)
 - [266-vm-a2r-conformance.md](../plans/old/266-vm-a2r-conformance.md)
 - [249-unified-native-registry.md](../plans/old/249-unified-native-registry.md)
+- [269-autovm-daemon-cli.md](../plans/old/269-autovm-daemon-cli.md)
