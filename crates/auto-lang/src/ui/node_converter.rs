@@ -90,6 +90,7 @@ pub fn convert_node(node: &Node) -> ConversionResult<View<String>> {
         "text" | "label" => convert_text(node),
         "button" => convert_button(node),
         "input" => convert_input(node),
+        "textarea" => convert_textarea(node),
         "checkbox" => convert_checkbox(node),
         "radio" => convert_radio(node),
         "select" => convert_select(node),
@@ -308,6 +309,29 @@ fn convert_input(node: &Node) -> ConversionResult<View<String>> {
     }
     if let Some(w) = width {
         builder = builder.width(w);
+    }
+    if let Some(style) = style {
+        builder = builder.with_style(style);
+    }
+
+    Ok(builder.build())
+}
+
+/// Convert Textarea node: `textarea { placeholder: "Enter text", value: .msg, on_change: "changed" }`
+fn convert_textarea(node: &Node) -> ConversionResult<View<String>> {
+    let placeholder = extract_main_arg_str(node).unwrap_or_default();
+    let value = extract_prop_str(node, "value").unwrap_or_default();
+    let on_change = extract_prop_opt_str(node, "on_change");
+    let height = extract_prop_opt_u16(node, "height");
+    let style = extract_style(node)?;
+
+    let mut builder = View::textarea(placeholder).value(value);
+
+    if let Some(msg) = on_change {
+        builder = builder.on_change(msg);
+    }
+    if let Some(h) = height {
+        builder = builder.height(h);
     }
     if let Some(style) = style {
         builder = builder.with_style(style);
@@ -839,6 +863,7 @@ pub fn convert_node_dynamic(
         "text" | "label" => convert_text_dynamic(node),
         "button" => convert_button_dynamic(node, metadata),
         "input" => convert_input_dynamic(node, metadata),
+        "textarea" => convert_textarea_dynamic(node, metadata),
         "checkbox" => convert_checkbox_dynamic(node, metadata),
         "radio" => convert_radio_dynamic(node, metadata),
         "select" => convert_select_dynamic(node, metadata),
@@ -1051,6 +1076,23 @@ fn convert_input_dynamic(
     let password = extract_prop_bool(node, "password").unwrap_or(false);
     let style = extract_style(node)?;
     Ok(View::Input { placeholder, value, on_change: Some(on_change), width, password, style })
+}
+
+#[cfg(feature = "interpreter")]
+fn convert_textarea_dynamic(
+    node: &Node,
+    metadata: Option<(&str, &auto_lang::Universe)>,
+) -> ConversionResult<View<DynamicMessage>> {
+    let placeholder = extract_main_arg_str(node).unwrap_or_default();
+    let on_change = extract_event_handler(node, "onchange", metadata.map(|(name, _)|name))
+        .or_else(|_| extract_event_handler(node, "oninput", metadata.map(|(name, _)|name)))
+        .or_else(|_| extract_event_handler(node, "change", metadata.map(|(name, _)|name)))
+        .or_else(|_| extract_event_handler(node, "input", metadata.map(|(name, _)|name)))
+        .ok();
+    let value = extract_prop_str(node, "value").unwrap_or_default();
+    let height = extract_prop_u32(node, "height").map(|h| h as u16);
+    let style = extract_style(node)?;
+    Ok(View::Textarea { placeholder, value, on_change, height, style })
 }
 
 #[cfg(feature = "interpreter")]

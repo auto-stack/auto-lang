@@ -201,6 +201,7 @@ impl<'a> AuraViewBuilder<'a> {
 
             // Input widgets (Phase 2 basic support)
             "input" => self.convert_input(props, events),
+            "textarea" => self.convert_textarea(props, events),
             "checkbox" | "check" => self.convert_checkbox(props, events),
             "container" | "div" => self.convert_container(props, children),
 
@@ -580,6 +581,40 @@ impl<'a> AuraViewBuilder<'a> {
         }
         if let Some(w) = width {
             builder = builder.width(w);
+        }
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        }
+
+        builder.build()
+    }
+
+    /// Convert a textarea element.
+    fn convert_textarea(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+    ) -> View<DynamicMessage> {
+        let placeholder = self.extract_string(props, "placeholder")
+            .unwrap_or_default();
+
+        let value = self.extract_string(props, "value").unwrap_or_default();
+
+        let style = self.extract_style(props);
+        let height = self.extract_u16(props, "height");
+
+        let on_change = events.get("onchange")
+            .or_else(|| events.get("change"))
+            .or_else(|| events.get("oninput"))
+            .or_else(|| events.get("input"))
+            .map(|event| self.event_to_message(&event.handler));
+
+        let mut builder = View::<DynamicMessage>::textarea(placeholder).value(value);
+        if let Some(msg) = on_change {
+            builder = builder.on_change(msg);
+        }
+        if let Some(h) = height {
+            builder = builder.height(h);
         }
         if let Some(s) = style {
             builder = builder.with_style(s);

@@ -376,6 +376,14 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 input_div.into_any()
             }
 
+            View::Textarea { placeholder, value, style, .. } => {
+                let mut div_el = div().child(if value.is_empty() { placeholder.clone() } else { value.clone() });
+                if let Some(style) = style {
+                    div_el = apply_style_to_div(div_el, &style);
+                }
+                div_el.into_any()
+            }
+
             View::Checkbox { is_checked, label, style, .. } => {
                 let mut checkbox_div = div().child(format!("{} [{}]", if is_checked { "✓" } else { " " }, label));
                 // Apply unified styling if present
@@ -853,6 +861,14 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                     input_div = apply_style_to_div(input_div, &style);
                 }
                 input_div.into_any()
+            }
+
+            View::Textarea { placeholder, value, style, .. } => {
+                let mut div_el = div().child(if value.is_empty() { placeholder.clone() } else { value.clone() });
+                if let Some(style) = style {
+                    div_el = apply_style_to_div(div_el, &style);
+                }
+                div_el.into_any()
             }
 
             View::Checkbox { is_checked, label, style, .. } => {

@@ -177,6 +177,18 @@ where
             },
         ),
 
+        View::Textarea {
+            placeholder,
+            value,
+            ..
+        } => (
+            VNodeKind::Textarea,
+            VNodeProps::Textarea {
+                placeholder: placeholder.clone(),
+                value: value.clone(),
+            },
+        ),
+
         View::Checkbox {
             label, is_checked, ..
         } => (

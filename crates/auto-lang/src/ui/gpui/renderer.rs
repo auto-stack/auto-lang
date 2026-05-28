@@ -157,6 +157,24 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 input_div.into_any()
             }
 
+            AbstractView::Textarea {
+                placeholder,
+                value,
+                on_change: _,
+                height: _,
+                style,
+            } => {
+                let mut textarea_div = div().child(if value.is_empty() {
+                    placeholder.clone()
+                } else {
+                    value.clone()
+                });
+                if let Some(style) = style {
+                    textarea_div = apply_gpui_style_to_div(textarea_div, &style);
+                }
+                textarea_div.into_any()
+            }
+
             AbstractView::Checkbox {
                 is_checked,
                 label,

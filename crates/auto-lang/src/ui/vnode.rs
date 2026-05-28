@@ -79,6 +79,9 @@ pub enum VNodeKind {
     /// 文本输入框
     Input,
 
+    /// 多行文本输入框
+    Textarea,
+
     /// 复选框
     Checkbox,
 
@@ -125,6 +128,7 @@ impl fmt::Display for VNodeKind {
             VNodeKind::Text => write!(f, "Text"),
             VNodeKind::Button => write!(f, "Button"),
             VNodeKind::Input => write!(f, "Input"),
+            VNodeKind::Textarea => write!(f, "Textarea"),
             VNodeKind::Checkbox => write!(f, "Checkbox"),
             VNodeKind::Radio => write!(f, "Radio"),
             VNodeKind::Select => write!(f, "Select"),
@@ -159,6 +163,12 @@ pub enum VNodeProps {
         placeholder: String,
         value: String,
         password: bool,
+    },
+
+    /// 多行文本输入框属性
+    Textarea {
+        placeholder: String,
+        value: String,
     },
 
     /// 复选框属性

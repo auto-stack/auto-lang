@@ -11,7 +11,7 @@ use crate::ui::app::AppResult;
 use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedShadowSize};
 use crate::ui::style::Style;
 use std::fmt::Debug;
-use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_input};
+use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_editor, text_input};
 
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::interpreter::DynamicMessage;
@@ -23,6 +23,39 @@ use crate::parser::Parser;
 /// to Component::on() handlers, since the generic message type M cannot carry String.
 thread_local! {
     static INPUT_TEXT: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
+}
+
+/// Static storage for textarea editor contents.
+/// Required because iced's `text_editor` widget needs `&'static Content<Renderer>`.
+use std::sync::Mutex;
+lazy_static::lazy_static! {
+    static ref TEXTAREA_CONTENTS: Mutex<std::collections::HashMap<String, &'static mut text_editor::Content>> =
+        Mutex::new(std::collections::HashMap::new());
+}
+
+/// Get or create a `&'static text_editor::Content` for the given key, synced to `value`.
+fn get_textarea_content(key: &str, value: &str) -> &'static text_editor::Content {
+    let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+    let content = map.entry(key.to_string()).or_insert_with(|| {
+        Box::leak(Box::new(text_editor::Content::with_text(value)))
+    });
+    if content.text() != value {
+        **content = text_editor::Content::with_text(value);
+    }
+    // SAFETY: The leaked Box lives for 'static. We return a shared reference
+    // while the Mutex guards exclusive access for mutation.
+    unsafe { std::mem::transmute::<&mut text_editor::Content, &'static text_editor::Content>(&mut **content) }
+}
+
+/// Perform an action on a textarea content and return the resulting text.
+fn textarea_perform_action(key: &str, action: text_editor::Action) -> String {
+    let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+    if let Some(content) = map.get_mut(key) {
+        content.perform(action);
+        content.text()
+    } else {
+        String::new()
+    }
 }
 
 /// Retrieve the last input text value captured by an Input's on_input callback.
@@ -500,6 +533,27 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }).into()
                 } else {
                     input_widget.into()
+                }
+            }
+
+            AbstractView::Textarea { placeholder, value, on_change, height, style: _ } => {
+                let key = format!("__textarea_{}", placeholder.len());
+
+                let content = get_textarea_content(&key, &value);
+                let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
+                let mut editor = text_editor(content)
+                    .placeholder(ph);
+
+                if let Some(h) = height {
+                    editor = editor.height(iced::Length::Fixed(h as f32));
+                } else {
+                    editor = editor.height(iced::Length::Fixed(100.0));
+                }
+
+                if let Some(msg) = on_change {
+                    editor.on_action(move |_action| msg.clone()).into()
+                } else {
+                    editor.into()
                 }
             }
 
@@ -1267,6 +1321,20 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             style,
         },
 
+        AbstractView::Textarea {
+            placeholder,
+            value,
+            on_change,
+            height,
+            style,
+        } => AbstractView::Textarea {
+            placeholder,
+            value,
+            on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
+            height,
+            style,
+        },
+
         AbstractView::Checkbox {
             is_checked,
             label,
@@ -1762,57 +1830,158 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             }
         }
 
-        // Container variants: wrap with MouseArea for debug hover when debug mode is on
-        AbstractView::Column { .. } | AbstractView::Row { .. }
-        | AbstractView::Container { .. } | AbstractView::Scrollable { .. }
-            if debug_ctx.is_some() =>
-        {
-            let ctx = debug_ctx.unwrap();
-            let kind = match &view {
-                AbstractView::Column { .. } => "col",
-                AbstractView::Row { .. } => "row",
-                AbstractView::Container { .. } => "container",
-                AbstractView::Scrollable { .. } => "scrollable",
-                _ => unreachable!(),
-            };
-            let debug_id = ctx.next_id(kind);
-            let is_hovered = ctx.is_hovered(&debug_id);
+        AbstractView::Textarea { placeholder, value, on_change, height, style: _ } => {
+            let key = on_change.as_ref()
+                .map(|m| format!("{}_{}", m.widget, m.event))
+                .unwrap_or_else(|| format!("__textarea_{}", placeholder.len()));
 
-            let el: iced::Element<'static, IcedMessage> = view.into_iced();
+            let content = get_textarea_content(&key, &value);
 
-            // If hovered, wrap in a container with blue border
-            let el = if is_hovered {
-                let boxed: iced::Element<'static, IcedMessage> = container(el)
-                    .style(move |_: &iced::Theme| container::Style {
+            // text_editor::placeholder borrows with the element's lifetime;
+            // since content is &'static, we need a &'static str for placeholder too.
+            let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
+            let mut editor = text_editor(content)
+                .placeholder(ph);
+
+            if let Some(h) = height {
+                editor = editor.height(iced::Length::Fixed(h as f32));
+            } else {
+                editor = editor.height(iced::Length::Fixed(100.0));
+            }
+
+            if let Some(msg) = on_change {
+                let msg_clone = msg.clone();
+                editor.on_action(move |action| {
+                    let action_key = format!("{}_{}", msg_clone.widget, msg_clone.event);
+                    let text = textarea_perform_action(&action_key, action);
+                    IcedMessage {
+                        widget: msg_clone.widget.clone(),
+                        event: msg_clone.event.clone(),
+                        input_value: Some(text),
+                    }
+                }).into()
+            } else {
+                editor.into()
+            }
+        }
+
+        // Layout containers: recursively render children through render_dynamic_view
+        // so Input/Textarea get proper IcedMessage text capture.
+        AbstractView::Column { children, spacing, padding, style } => {
+            let mut col_w = column([]);
+            let sp = effective_spacing(spacing, style.as_ref());
+            let pd = iced_padding(padding, style.as_ref());
+            col_w = col_w.spacing(sp).padding(pd);
+            if let Some(ref s) = style {
+                let is = IcedStyle::from_style(s);
+                if let Some(ref w) = is.width {
+                    match w {
+                        IcedSize::Fixed(f) => col_w = col_w.width(iced::Length::Fixed(*f as f32)),
+                        IcedSize::Full => col_w = col_w.width(iced::Length::Fill),
+                    }
+                }
+                if let Some(ref a) = is.align_items {
+                    match a {
+                        IcedAlign::Start => col_w = col_w.align_x(iced::alignment::Horizontal::Left),
+                        IcedAlign::Center => col_w = col_w.align_x(iced::alignment::Horizontal::Center),
+                        IcedAlign::End => col_w = col_w.align_x(iced::alignment::Horizontal::Right),
+                    }
+                }
+            }
+            for child in children {
+                col_w = col_w.push(render_dynamic_view(child, debug_ctx));
+            }
+            col_w.into()
+        }
+
+        AbstractView::Row { children, spacing, padding, style } => {
+            let mut row_w = row([]);
+            let sp = effective_spacing(spacing, style.as_ref());
+            let pd = iced_padding(padding, style.as_ref());
+            row_w = row_w.spacing(sp).padding(pd);
+            if let Some(ref s) = style {
+                let is = IcedStyle::from_style(s);
+                if let Some(ref w) = is.width {
+                    match w {
+                        IcedSize::Fixed(f) => row_w = row_w.width(iced::Length::Fixed(*f as f32)),
+                        IcedSize::Full => row_w = row_w.width(iced::Length::Fill),
+                    }
+                }
+                if let Some(ref a) = is.align_items {
+                    match a {
+                        IcedAlign::Start => row_w = row_w.align_y(iced::alignment::Vertical::Top),
+                        IcedAlign::Center => row_w = row_w.align_y(iced::alignment::Vertical::Center),
+                        IcedAlign::End => row_w = row_w.align_y(iced::alignment::Vertical::Bottom),
+                    }
+                }
+            }
+            for child in children {
+                row_w = row_w.push(render_dynamic_view(child, debug_ctx));
+            }
+            row_w.into()
+        }
+
+        AbstractView::Container { child, padding, width, height, center_x, center_y, style } => {
+            let child_el = render_dynamic_view(*child, debug_ctx);
+            let mut c = container(child_el);
+            c = c.padding(iced_padding(padding, style.as_ref()));
+            if let Some(ref s) = style {
+                let is = IcedStyle::from_style(s);
+                if let Some(ref ws) = is.width {
+                    match ws {
+                        IcedSize::Fixed(f) => c = c.width(iced::Length::Fixed(*f as f32)),
+                        IcedSize::Full => c = c.width(iced::Length::Fill),
+                    }
+                } else if let Some(w) = width {
+                    if w > 0 { c = c.width(iced::Length::Fixed(w as f32)); }
+                }
+                match is.height {
+                    Some(IcedSize::Fixed(f)) => { c = c.height(iced::Length::Fixed(f as f32)); }
+                    Some(IcedSize::Full) => { c = c.height(iced::Length::Fill); }
+                    None => { if let Some(h) = height { if h > 0 { c = c.height(iced::Length::Fixed(h as f32)); } } }
+                }
+                let bg = is.background_color;
+                let bc = is.border_color;
+                let bw = is.border_width.unwrap_or(0.0);
+                let rd = is.border_radius.unwrap_or(if is.rounded { 4.0 } else { 0.0 });
+                if bg.is_some() || bc.is_some() || bw > 0.0 || rd > 0.0 {
+                    c = c.style(move |_: &iced::Theme| container::Style {
+                        background: bg.map(iced::Background::Color),
                         border: iced::Border {
-                            color: iced::Color::from_rgb(0.24, 0.47, 0.94),
-                            width: 2.0,
-                            radius: 2.0.into(),
+                            color: bc.unwrap_or(iced::Color::TRANSPARENT),
+                            width: bw,
+                            radius: rd.into(),
                         },
                         ..Default::default()
-                    })
-                    .into();
-                boxed
+                    });
+                }
             } else {
-                el
-            };
+                if let Some(w) = width { if w > 0 { c = c.width(iced::Length::Fixed(w as f32)); } }
+                if let Some(h) = height { if h > 0 { c = c.height(iced::Length::Fixed(h as f32)); } }
+            }
+            if center_x { c = c.center_x(iced::Length::Fill); }
+            if center_y { c = c.center_y(iced::Length::Fill); }
+            c.into()
+        }
 
-            // Wrap in MouseArea for hover detection
-            let enter_id = debug_id.clone();
-            let exit_msg = IcedMessage {
-                widget: String::new(),
-                event: DEBUG_HOVER_EXIT.to_string(),
-                input_value: None,
-            };
-            let enter_msg = IcedMessage {
-                widget: String::new(),
-                event: format!("{}{}", DEBUG_HOVER_ENTER, enter_id),
-                input_value: None,
-            };
-            mouse_area(el)
-                .on_enter(enter_msg)
-                .on_exit(exit_msg)
-                .into()
+        AbstractView::Scrollable { child, width, height, style } => {
+            let child_el = render_dynamic_view(*child, debug_ctx);
+            let mut s = scrollable(child_el);
+            if let Some(ref st) = style {
+                let is = IcedStyle::from_style(st);
+                if let Some(ref ws) = is.width {
+                    match ws { IcedSize::Fixed(f) => s = s.width(iced::Length::Fixed(*f as f32)), IcedSize::Full => s = s.width(iced::Length::Fill) }
+                } else if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
+                match is.height {
+                    Some(IcedSize::Fixed(f)) => { s = s.height(iced::Length::Fixed(f as f32)); }
+                    Some(IcedSize::Full) => { s = s.height(iced::Length::Fill); }
+                    None => { if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } } }
+                }
+            } else {
+                if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
+                if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } }
+            }
+            s.into()
         }
 
         // Everything else delegates to the unified IntoIcedElement renderer
@@ -1823,7 +1992,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 /// Recursively patch input View values with tracked user-typed text.
 fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &std::collections::HashMap<String, String>) {
     match view {
-        AbstractView::Input { value, on_change, .. } => {
+        AbstractView::Input { value, on_change, .. } | AbstractView::Textarea { value, on_change, .. } => {
             if let Some(msg) = on_change {
                 let event_name = match msg {
                     DynamicMessage::Typed { event_name, .. } => event_name.clone(),

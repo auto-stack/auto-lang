@@ -100,6 +100,7 @@ impl VNodeEntity {
             VNodeKind::Container => self.render_container(node, cx),
             VNodeKind::Scrollable => self.render_scrollable(node, cx),
             VNodeKind::Input => self.render_input(node, cx),
+            VNodeKind::Textarea => self.render_textarea(node, cx),
             VNodeKind::Checkbox => self.render_checkbox(node, cx),
             VNodeKind::Radio => self.render_radio(node, cx),
             VNodeKind::Select => self.render_select(node),
@@ -260,6 +261,26 @@ impl VNodeEntity {
             .border_color(rgb(0x4a4a4a))
             .rounded_md()
             .text_sm()
+            .child(display_text)
+            .into_any()
+    }
+
+    /// 渲染多行文本输入框节点
+    fn render_textarea(&self, node: &crate::ui::vnode::VNode, _cx: &mut Context<Self>) -> AnyElement {
+        let (placeholder, value) = match &node.props {
+            VNodeProps::Textarea { placeholder, value } => (placeholder.clone(), value.clone()),
+            _ => (String::new(), String::new()),
+        };
+        let display_text = if value.is_empty() { placeholder } else { value };
+        div()
+            .px_3()
+            .py_2()
+            .bg(rgb(0x2a2a2a))
+            .border_1()
+            .border_color(rgb(0x4a4a4a))
+            .rounded_md()
+            .text_sm()
+            .min_h(px(80.0))
             .child(display_text)
             .into_any()
     }

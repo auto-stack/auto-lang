@@ -263,6 +263,15 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,  // ✅ NEW: Unified styling support
     },
 
+    /// Multi-line text input with optional styling
+    Textarea {
+        placeholder: String,
+        value: String,
+        on_change: Option<M>,
+        height: Option<u16>,
+        style: Option<Style>,
+    },
+
     /// Checkbox with optional styling
     Checkbox {
         is_checked: bool,
@@ -813,6 +822,17 @@ impl<M: Clone + Debug> View<M> {
         }
     }
 
+    /// Create textarea (multi-line text input) with placeholder
+    pub fn textarea(placeholder: impl Into<String>) -> ViewTextareaBuilder<M> {
+        ViewTextareaBuilder {
+            placeholder: placeholder.into(),
+            value: String::new(),
+            on_change: None,
+            height: None,
+            style: None,
+        }
+    }
+
     /// Create checkbox
     pub fn checkbox(is_checked: bool, label: impl Into<String>) -> Self {
         View::Checkbox {
@@ -1240,6 +1260,47 @@ impl<M: Clone + Debug> ViewInputBuilder<M> {
             on_change: self.on_change,
             width: self.width,
             password: self.password,
+            style: self.style,
+        }
+    }
+}
+
+/// Builder for Textarea with fluent API
+pub struct ViewTextareaBuilder<M: Clone + Debug> {
+    placeholder: String,
+    value: String,
+    on_change: Option<M>,
+    height: Option<u16>,
+    style: Option<Style>,
+}
+
+impl<M: Clone + Debug> ViewTextareaBuilder<M> {
+    pub fn value(mut self, val: impl Into<String>) -> Self {
+        self.value = val.into();
+        self
+    }
+
+    pub fn on_change(mut self, msg: M) -> Self {
+        self.on_change = Some(msg);
+        self
+    }
+
+    pub fn height(mut self, height: u16) -> Self {
+        self.height = Some(height);
+        self
+    }
+
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    pub fn build(self) -> View<M> {
+        View::Textarea {
+            placeholder: self.placeholder,
+            value: self.value,
+            on_change: self.on_change,
+            height: self.height,
             style: self.style,
         }
     }
