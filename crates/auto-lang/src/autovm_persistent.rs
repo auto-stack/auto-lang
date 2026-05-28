@@ -306,17 +306,10 @@ impl AutovmReplSession {
         codegen.relocs.clear();
 
         // Plan 118 Phase 7: Emit FN_PROLOG and RESERVE_STACK for proper local variable support
-        // This matches what execute_autovm does in lib.rs
-        let n_locals = 16; // Reserve space for up to 16 locals
-
-        // Emit FN_PROLOG to set up BP
-        codegen.code.push(OpCode::FN_PROLOG as u8);
-        codegen.code.push(0); // n_args
-        codegen.code.push(n_locals); // n_locals
-
-        // Emit RESERVE_STACK to reserve space for locals
-        codegen.code.push(OpCode::RESERVE_STACK as u8);
-        codegen.code.push(n_locals);
+        // Record the starting position of codegen.code (should be 0 after clear).
+        // We compile statements first, then prepend FN_PROLOG + optional RESERVE_STACK
+        // so that relocs offsets remain valid.
+        let code_start = codegen.code.len(); // 0 after clear
 
         // 3. Compile new statements (reuses locals, exports, strings, etc.)
         // Plan 080: Ensure codegen is returned even on compilation failure
@@ -332,6 +325,37 @@ impl AutovmReplSession {
             self.codegen = Some(codegen);
             return Err(e);
         }
+
+        // 3b. Prepend FN_PROLOG + optional RESERVE_STACK before the compiled code.
+        // After compilation, max_locals reflects the true high-water mark of variable slots.
+        let actual_n_locals = codegen.max_locals as u8;
+
+        // Build prologue bytes
+        let mut prologue = vec![
+            OpCode::FN_PROLOG as u8,
+            0,                  // n_args
+            actual_n_locals,    // n_locals
+        ];
+        if actual_n_locals > 0 {
+            prologue.push(OpCode::RESERVE_STACK as u8);
+            prologue.push(actual_n_locals);
+        }
+
+        // Adjust relocs: shift all offsets by prologue length
+        let shift = prologue.len() as u32;
+        for reloc in &mut codegen.relocs {
+            reloc.offset += shift;
+        }
+
+        // Adjust export addresses: shift by prologue length
+        for addr in codegen.exports.values_mut() {
+            *addr += shift;
+        }
+
+        // Prepend prologue before compiled code
+        let compiled = codegen.code.split_off(code_start);
+        codegen.code.extend_from_slice(&prologue);
+        codegen.code.extend_from_slice(&compiled);
 
         // 4. Add HALT at the end
         codegen.code.push(OpCode::HALT as u8);
@@ -600,11 +624,14 @@ impl AutovmReplSession {
         // Local variables occupy bp+1 to bp+num_locals
         // Stack temps MUST start AFTER all locals: at bp + 1 + num_locals
         // NOT at bp + num_locals (which would overlap with the last variable!)
+        // IMPORTANT: Use max_locals (high-water mark of variable slots), not scope.len().
+        // When `let a` shadows a previous `let a`, the scope map has 1 entry but
+        // the new variable might be at slot 1, not slot 0. max_locals tracks the
+        // actual highest slot used.
         let num_locals = self
             .codegen
             .as_ref()
-            .and_then(|c| c.scope_stack.last())
-            .map(|scope| scope.len())
+            .map(|c| c.max_locals)
             .unwrap_or(0);
         task.num_locals = num_locals; // Store on task for native shims to access
         task.ram.sp = task.bp + 1 + num_locals;
@@ -647,11 +674,13 @@ impl AutovmReplSession {
         );
 
         // Plan 080: Get number of local variables
+        // IMPORTANT: Use max_locals (high-water mark of variable slots), not scope.len().
+        // When `let a` shadows a previous `let a`, the scope map has 1 entry but
+        // the new variable is at a higher slot. max_locals tracks the actual highest slot.
         let num_locals = self
             .codegen
             .as_ref()
-            .and_then(|c| c.scope_stack.last())
-            .map(|scope| scope.len())
+            .map(|c| c.max_locals)
             .unwrap_or(0);
 
         // Calculate target stack pointer (bp + 1 + num_locals)
@@ -1017,5 +1046,31 @@ mod tests {
             println!("DEBUG: Error on get: {}", e);
         }
         assert!(r2.is_ok());
+    }
+
+    /// Regression test: `let a = 1` then `let a = 3` then `a` should return 3, not 0.
+    /// Bug: RESERVE_STACK(16) was hardcoded and overwrote stored variable values.
+    /// Also scope.len() was used instead of max_locals for SP reset.
+    #[test]
+    fn test_autovm_repl_let_rebinding() {
+        let mut session = AutovmReplSession::new();
+
+        let r1 = session.run("let a = 1");
+        assert!(r1.is_ok(), "let a = 1 should succeed: {:?}", r1);
+
+        // Verify a is 1
+        let r1a = session.run("a");
+        assert!(r1a.is_ok(), "a should succeed: {:?}", r1a);
+        println!("DEBUG: after 'a', last_result={:?}", session.last_result);
+
+        let r2 = session.run("let a = 3");
+        assert!(r2.is_ok(), "let a = 3 should succeed: {:?}", r2);
+
+        // After rebinding, a should be 3
+        let r3 = session.run("a");
+        assert!(r3.is_ok(), "a should succeed after rebinding: {:?}", r3);
+        println!("DEBUG: after second 'a', last_result={:?}", session.last_result);
+        let val = session.last_result.expect("a should produce a result");
+        assert_eq!(val, 3, "a should be 3 after let rebinding");
     }
 }
