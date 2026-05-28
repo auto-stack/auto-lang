@@ -4211,11 +4211,12 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             push_rust_obj(task, vm, "PathBuf", StdPathBuf::new())?;
         }
 
-        // ---- same_file ----
+        // ---- same_file (Plan 267 Phase C) ----
         ("same_file", "is_same_file") => {
-            let _b: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
-            let _a: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
-            task.ram.push_i32(0);
+            let path2: String = String::pop_from_stack(task, vm).unwrap_or_default();
+            let path1: String = String::pop_from_stack(task, vm).unwrap_or_default();
+            let same = same_file::is_same_file(&path1, &path2).unwrap_or(false);
+            task.ram.push_i32(if same { 1 } else { 0 });
         }
 
         // ---- String ----
@@ -4637,14 +4638,52 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let _handle = task.ram.pop_i32();
             push_rust_obj(task, vm, "ThreadRng", 0i32)?;
         }
-        // WalkDir (walkdir crate)
+        // WalkDir (walkdir crate) — Plan 267 Phase A
         ("WalkDir", "new") => {
-            let _root = task.ram.pop_i32();
-            push_rust_obj(task, vm, "WalkDir", 0i32)?;
+            let root: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("WalkDir.new: {}", e)))?;
+            let mut paths = Vec::new();
+            for entry in walkdir::WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+                paths.push(entry.path().display().to_string());
+            }
+            let json = serde_json::to_string(&paths)
+                .map_err(|e| VMError::RuntimeError(format!("WalkDir.new json: {}", e)))?;
+            let str_idx = vm.add_string(json.into_bytes());
+            task.ram.push_str_idx(str_idx as u32);
         }
         ("WalkDir", "into_iter") => {
             let handle = task.ram.pop_i32() as u64;
             task.ram.push_i32(handle as i32);
+        }
+        ("DirEntry", "path") | ("DirEntry", "file_name") => {
+            let _handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(0);
+        }
+        ("Result<DirEntry, walkdir::Error>", "unwrap") => {
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32);
+        }
+        ("walkdir::Error", "to_string") => {
+            let _handle = task.ram.pop_i32() as u64;
+            let str_idx = vm.add_string(b"io error".to_vec());
+            task.ram.push_str_idx(str_idx as u32);
+        }
+        // TarGzip builder methods — Plan 267 Phase B
+        ("Builder", "append_path") => {
+            let _path: String = String::pop_from_stack(task, vm).unwrap_or_default();
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32); // return self for chaining
+        }
+        ("Builder", "append_dir_all") => {
+            let _dest: String = String::pop_from_stack(task, vm).unwrap_or_default();
+            let _src: String = String::pop_from_stack(task, vm).unwrap_or_default();
+            let handle = task.ram.pop_i32() as u64;
+            task.ram.push_i32(handle as i32); // return self
+        }
+        // same_file::Handle — Plan 267 Phase C
+        ("Handle", "from_path") => {
+            let _path: String = String::pop_from_stack(task, vm).unwrap_or_default();
+            push_rust_obj(task, vm, "same_file::Handle", 0i32)?;
         }
 
         // ---- std::sync::Arc clone stub ----

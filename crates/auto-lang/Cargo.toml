@@ -84,6 +84,11 @@ md-5 = "0.10"
 hmac = "0.12"
 mime_guess = "2"
 csv = "1.3"
+# Plan 267 Phase B: TarGzip multi-crate composition
+tar = "0.4"
+flate2 = "1"
+# Plan 267 Phase C: same_file handle comparison
+same-file = "1"
 ansi_term = "0.12"
 # Plan 152: SSE 解析（保留可选依赖用于高级流式场景）
 tokio-util = { version = "0.7", features = ["io"], optional = true }

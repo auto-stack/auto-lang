@@ -1,6 +1,6 @@
 # Plan 267: FFI Complex Patterns — 外部迭代器与多 Crate 组合
 
-> **状态**: 📋 PLANNED
+> **状态**: ✅ COMPLETE
 > **前置**: Plan 212 Phase 1-4 已完成
 > **范围**: 解决 Plan 212 遗留的 "Hard" 复杂 FFI 场景（约 12 个测试）
 >

@@ -15,7 +15,7 @@ AutoLang's build infrastructure evolved from a file-based full-compilation archi
 | 093 | AutoMan Redesign for Rust Support | ⏳ | Extend auto-man to support Auto/Rust mixed projects alongside existing Auto/C projects |
 | 111 | Auto CLI Refactor and Unification | ⏳ | Merge auto-man CLI into universal auto CLI with standardized command structure |
 | 112 | AutoMan B.P.B.E Architecture Refactor | ⏳ | Redesign AutoMan around Backend, Port, Builder, Export architecture for multi-target builds |
-| 146 | AutoShell SmartCmd Integration | ⏳ | Integrate nushell/uutils libraries for structured shell command output and cross-platform support |
+| 146 | AutoShell SmartCmd Integration | ✅ | Integrate nushell/uutils libraries for structured shell command output and cross-platform support |
 | 151 | Tauri IPC Mode for api-example | ⏳ | Generate complete Tauri IPC backend by transpiling api.at + db.at to Rust |
 | 186 | Switch from npm to bun for Vue/Web Projects | ⏳ | Replace npm with bun for faster installs via global cache hard-linking |
 | 202 | Auto Playground | ✅ | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
@@ -24,10 +24,12 @@ AutoLang's build infrastructure evolved from a file-based full-compilation archi
 | 214 | Python FFI (use.py) | ✅ | Embed Python interpreter in AutoVM |
 | 216 | C FFI Build Pipeline Integration | ✅ | CLI integration for C FFI bindgen into build pipeline (Phase 4 of Plan 216) |
 | 219 | Playground Source Map | ✅ | Source mapping for transpiler output to enable clickable error locations |
+| 225 | Playground Interactive Debugger | ✅ | Browser-based VM debugger with breakpoints, step controls, stack/locals panels via WebSocket |
 | 243 | LSP & VSCode Modernization | 🔧 | Rewrite auto-lsp over Database+QueryEngine; Phase 1 (compiles), Phase 2-6 pending |
+| 267 | FFI Complex Patterns | ✅ | WalkDir iterator, same_file real impl, TarGzip/tar+flate2 composition shims |
 
 ## Status Summary
-- Completed: 6 | Partial: 1 | Planned: 7 | Deprecated: 0
+- Completed: 7 | Partial: 1 | Planned: 7 | Deprecated: 0
 
 ## Key Achievements
 - AIE incremental compilation architecture delivered with file hashing, dirty tracking, and transpiler caching achieving 2-3x speedups
