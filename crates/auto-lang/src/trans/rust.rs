@@ -189,6 +189,12 @@ pub struct RustTrans {
     // Types defined in the current module don't need crate:: prefix.
     current_module_name: String,
 
+    // Plan 270: Track whether any a2r_std symbol was actually emitted.
+    // When false, skip the `use auto_lang::a2r_std::*;` import so the
+    // generated Rust code can compile without depending on auto_lang.
+    // Uses Cell for interior mutability (avoids borrow conflicts with &self writes).
+    a2r_std_used: std::cell::Cell<bool>,
+
 }
 
 impl RustTrans {
@@ -238,6 +244,7 @@ impl RustTrans {
             const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
+            a2r_std_used: std::cell::Cell::new(false),
         }
     }
 
@@ -288,6 +295,7 @@ impl RustTrans {
             const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
+            a2r_std_used: std::cell::Cell::new(false),
         }
     }
 
@@ -861,15 +869,20 @@ impl RustTrans {
         if self.emit_allow_pragma {
             writeln!(out, "#![allow(dead_code, unreachable_code, unused_imports, unused_mut, unused_parens, unused_assignments, unused_variables)]")?;
         }
-        // In merge mode, all code is in one file — no crate imports needed
-        if !self.merge_mode {
-            writeln!(out)?;
+        writeln!(out)?;
+        Ok(())
+    }
+
+    /// Plan 270: Emit a2r_std import if any a2r_std symbols were used during transpilation.
+    /// Must be called AFTER trans() so a2r_std_used is accurate.
+    fn emit_a2r_stdlib_import(&self, out: &mut impl Write) -> AutoResult<()> {
+        if !self.merge_mode && self.a2r_std_used.get() {
             writeln!(out, "// a2r Standard Library (from crate)")?;
             writeln!(out, "#[allow(unused_imports)]")?;
             writeln!(out, "use auto_lang::a2r_std;")?;
             writeln!(out, "use auto_lang::a2r_std::*;")?;
+            writeln!(out)?;
         }
-        writeln!(out)?;
         Ok(())
     }
 
@@ -2407,6 +2420,7 @@ impl RustTrans {
                             if obj_name.as_str() == "http" && (m == "post_sync" || m == "post_bearer" || m == "post_bearer_sync") {
                                 // http.post_sync/post_bearer/post_bearer_sync with .await: generate with .as_str() for str args
                                 let func_name = format!("a2r_std::http::{}", m);
+                                self.a2r_std_used.set(true);
                                 let needs_await = m == "post_bearer"; // only post_bearer is async
                                 write!(out, "{{ let __resp = {}(", func_name)?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
@@ -2647,6 +2661,7 @@ impl RustTrans {
                 }
                 "http_post" => {
                     // http_post(url, body, api_key) → async { let (s,b,e,k) = a2r_std::http_post(...).await; HttpResponse { ... } }
+                    self.a2r_std_used.set(true);
                     write!(out, "async {{ let (status, body, error, kind) = a2r_std::http_post(")?;
                     for (i, arg) in call.args.args.iter().enumerate() {
                         if i > 0 { write!(out, ", ")?; }
@@ -2667,7 +2682,7 @@ impl RustTrans {
                     return Ok(());
                 }
                 "simple_hash" => {
-                    write!(out, "a2r_std::simple_hash(")?;
+                    self.a2r_std_used.set(true); write!(out, "a2r_std::simple_hash(")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
                         self.expr_as_str(a, out)?;
                     }
@@ -2675,7 +2690,7 @@ impl RustTrans {
                     return Ok(());
                 }
                 "time_now" => {
-                    write!(out, "a2r_std::time_now()")?;
+                    self.a2r_std_used.set(true); write!(out, "a2r_std::time_now()")?;
                     return Ok(());
                 }
                 _ => {}
@@ -2688,6 +2703,7 @@ impl RustTrans {
             if let Expr::Ident(obj_name) = obj.as_ref() {
                 match (obj_name.as_str(), method.as_str()) {
                     ("http", "post_sync") => {
+                        self.a2r_std_used.set(true);
                         write!(out, "{{ let __resp = a2r_std::http::post_sync(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
@@ -2709,10 +2725,11 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("http", "last_status") => {
-                        write!(out, "a2r_std::http::last_status()")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::http::last_status()")?;
                         return Ok(());
                     }
                     ("http", "post_bearer") => {
+                        self.a2r_std_used.set(true);
                         write!(out, "{{ let __resp = a2r_std::http::post_bearer(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
@@ -2733,6 +2750,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("http", "post_bearer_sync") => {
+                        self.a2r_std_used.set(true);
                         write!(out, "{{ let __resp = a2r_std::http::post_bearer_sync(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
@@ -2753,6 +2771,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("http", "post") => {
+                        self.a2r_std_used.set(true);
                         write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
@@ -2783,21 +2802,21 @@ impl RustTrans {
                         if auto_name == "auto" {
                             match (module.as_str(), method.as_str()) {
                                 ("env", "get") => {
-                                    write!(out, "a2r_std::env::get(")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::env::get(")?;
                                     if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("env", "args") => {
-                                    write!(out, "a2r_std::env::args()")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::env::args()")?;
                                     return Ok(());
                                 }
                                 ("io", "read_line") => {
-                                    write!(out, "a2r_std::io::read_line()")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::io::read_line()")?;
                                     return Ok(());
                                 }
                                 ("env", "set") => {
-                                    write!(out, "a2r_std::env::set(")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::env::set(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
                                         if i > 0 { write!(out, ", ")?; }
                                         self.arg(arg, out)?;
@@ -2806,19 +2825,19 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 ("fs", "read_text") => {
-                                    write!(out, "a2r_std::fs::read_text(")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_text(")?;
                                     if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("fs", "read_to_string") => {
-                                    write!(out, "a2r_std::fs::read_to_string(")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_to_string(")?;
                                     if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("fs", "write") => {
-                                    write!(out, "a2r_std::fs::write(")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
                                         if i > 0 { write!(out, ", ")?; }
                                         if i == 1 { write!(out, "&")?; }
@@ -2828,7 +2847,7 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 ("fs", "exists") => {
-                                    write!(out, "a2r_std::fs::exists(")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::exists(")?;
                                     if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                     write!(out, ")")?;
                                     return Ok(());
@@ -2841,6 +2860,7 @@ impl RustTrans {
                                 }
                                 ("http", "post") => {
                                     // auto.http.post(url, body, key) → wraps a2r_std::http::post into HttpResponse
+                                    self.a2r_std_used.set(true);
                                     write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
                                         if i > 0 { write!(out, ", ")?; }
@@ -2860,6 +2880,7 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 ("http", "post_sync") => {
+                                    self.a2r_std_used.set(true);
                                     write!(out, "{{ let __resp = a2r_std::http::post_sync(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
                                         if i > 0 { write!(out, ", ")?; }
@@ -2881,17 +2902,17 @@ impl RustTrans {
                                 }
                                 ("http", "last_status") => {
                                     // http.last_status() → a2r_std::http::last_status()
-                                    write!(out, "a2r_std::http::last_status()")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::http::last_status()")?;
                                     return Ok(());
                                 }
                                 ("json", "parse") => {
-                                    write!(out, "a2r_std::json::parse(")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
                                     if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "get") => {
-                                    write!(out, "a2r_std::json::get(&")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::get(&")?;
                                     if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                     write!(out, ", ")?;
                                     if call.args.args.len() > 1 {
@@ -2901,7 +2922,7 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 ("json", "get_str") => {
-                                    write!(out, "a2r_std::json::get_str(&")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_str(&")?;
                                     if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                     write!(out, ", ")?;
                                     if call.args.args.len() > 1 {
@@ -2911,13 +2932,13 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 ("json", "as_int") => {
-                                    write!(out, "a2r_std::json::as_int(&")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
                                     if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "is_null") => {
-                                    write!(out, "a2r_std::json::is_null(&")?;
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
                                     if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                     write!(out, ")")?;
                                     return Ok(());
@@ -2931,13 +2952,13 @@ impl RustTrans {
                     match obj.as_str() {
                         "env" => match method.as_str() {
                             "get" => {
-                                write!(out, "a2r_std::env::get(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::env::get(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "set" => {
-                                write!(out, "a2r_std::env::set(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::env::set(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     self.arg(arg, out)?;
@@ -2949,19 +2970,19 @@ impl RustTrans {
                         },
                         "fs" => match method.as_str() {
                             "read_to_string" => {
-                                write!(out, "a2r_std::fs::read_to_string(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_to_string(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "read_text" => {
-                                write!(out, "a2r_std::fs::read_text(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_text(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "write" => {
-                                write!(out, "a2r_std::fs::write(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     if i == 1 { write!(out, "&")?; }
@@ -2971,19 +2992,19 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "exists" => {
-                                write!(out, "a2r_std::fs::exists(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::exists(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "create_dir" => {
-                                write!(out, "a2r_std::fs::create_dir(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::create_dir(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "write_text" => {
-                                write!(out, "a2r_std::fs::write_text(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     if i == 1 { write!(out, "&")?; }
@@ -2993,7 +3014,7 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "append_text" => {
-                                write!(out, "a2r_std::fs::append_text(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::append_text(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     if i == 1 { write!(out, "&")?; }
@@ -3003,43 +3024,43 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "is_dir" => {
-                                write!(out, "a2r_std::fs::is_dir(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::is_dir(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "is_binary" => {
-                                write!(out, "a2r_std::fs::is_binary(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::is_binary(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "file_size" => {
-                                write!(out, "a2r_std::fs::file_size(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::file_size(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "walk" => {
-                                write!(out, "a2r_std::fs::walk(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::walk(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "mkdir_all" => {
-                                write!(out, "a2r_std::fs::mkdir_all(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::mkdir_all(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "remove_file" => {
-                                write!(out, "a2r_std::fs::remove_file(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::remove_file(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "copy" => {
-                                write!(out, "a2r_std::fs::copy(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::copy(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     self.arg(arg, out)?;
@@ -3052,7 +3073,7 @@ impl RustTrans {
                         // time module: time.sleep(n) → a2r_std::sleep_ms(n as u64)
                         "time" => match method.as_str() {
                             "sleep" => {
-                                write!(out, "a2r_std::sleep_ms(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::sleep_ms(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                     write!(out, " as u64")?;
@@ -3061,15 +3082,15 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "now" => {
-                                write!(out, "a2r_std::time_now()")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::time_now()")?;
                                 return Ok(());
                             }
                             "now_secs" => {
-                                write!(out, "a2r_std::time::now_sec().to_string()")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::time::now_sec().to_string()")?;
                                 return Ok(());
                             }
                             "now_ms" => {
-                                write!(out, "a2r_std::time::now_ms()")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::time::now_ms()")?;
                                 return Ok(());
                             }
                             _ => {}
@@ -3077,7 +3098,7 @@ impl RustTrans {
                         // str module: str.uuid() → a2r_std::uuid(), str.from_uint(x) → x.to_string()
                         "str" => match method.as_str() {
                             "uuid" => {
-                                write!(out, "a2r_std::uuid()")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::uuid()")?;
                                 return Ok(());
                             }
                             "from_uint" | "from_int" => {
@@ -3093,7 +3114,7 @@ impl RustTrans {
                         "Json" => match method.as_str() {
                             "parse" => {
                                 // Json.parse(text) -> a2r_std::json::parse(text)
-                                write!(out, "a2r_std::json::parse(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -3102,7 +3123,7 @@ impl RustTrans {
                             }
                             "get" => {
                                 // Json.get(val, key) -> a2r_std::json::get(&val, key)
-                                write!(out, "a2r_std::json::get(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -3117,7 +3138,7 @@ impl RustTrans {
                             }
                             "get_str" => {
                                 // Json.get_str(val, key) -> a2r_std::json::get_str(&val, key)
-                                write!(out, "a2r_std::json::get_str(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_str(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -3132,7 +3153,7 @@ impl RustTrans {
                             }
                             "as_string" => {
                                 // Json.as_string(val) -> a2r_std::json::as_string(val)
-                                write!(out, "a2r_std::json::as_string(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -3141,7 +3162,7 @@ impl RustTrans {
                             }
                             "get_at" => {
                                 // Json.get_at(val, idx) -> a2r_std::json::get_at(&val, idx as usize)
-                                write!(out, "a2r_std::json::get_at(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_at(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -3157,7 +3178,7 @@ impl RustTrans {
                             }
                             "get_u64" => {
                                 // Json.get_u64(val, key) -> a2r_std::json::get_u64(&val, key)
-                                write!(out, "a2r_std::json::get_u64(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_u64(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -3172,7 +3193,7 @@ impl RustTrans {
                             }
                             "as_int" => {
                                 // Json.as_int(val) -> a2r_std::json::as_int(&val) as i32
-                                write!(out, "a2r_std::json::as_int(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -3181,7 +3202,7 @@ impl RustTrans {
                             }
                             "is_null" => {
                                 // Json.is_null(val) -> a2r_std::json::is_null(&val)
-                                write!(out, "a2r_std::json::is_null(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -3192,13 +3213,13 @@ impl RustTrans {
                         },
                         "json" => match method.as_str() {
                             "parse" => {
-                                write!(out, "a2r_std::json::parse(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "get" => {
-                                write!(out, "a2r_std::json::get(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ", ")?;
                                 if call.args.args.len() > 1 {
@@ -3208,7 +3229,7 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "get_str" => {
-                                write!(out, "a2r_std::json::get_str(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_str(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ", ")?;
                                 if call.args.args.len() > 1 {
@@ -3218,13 +3239,13 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "as_string" => {
-                                write!(out, "a2r_std::json::as_string(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "get_at" => {
-                                write!(out, "a2r_std::json::get_at(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_at(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ", ")?;
                                 if call.args.args.len() > 1 {
@@ -3234,7 +3255,7 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "keys" => {
-                                write!(out, "a2r_std::json::keys(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::keys(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
@@ -3250,9 +3271,9 @@ impl RustTrans {
                                         matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
                                     };
                                     if is_str_type {
-                                        write!(out, "a2r_std::json::len_str(")?;
+                                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::len_str(")?;
                                     } else {
-                                        write!(out, "a2r_std::json::len(")?;
+                                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::len(")?;
                                     }
                                     self.expr(expr, out)?;
                                 }
@@ -3270,9 +3291,9 @@ impl RustTrans {
                                         matches!(first, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
                                     };
                                     if use_str {
-                                        write!(out, "a2r_std::json::has_key_str(")?;
+                                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::has_key_str(")?;
                                     } else {
-                                        write!(out, "a2r_std::json::has_key(&")?;
+                                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::has_key(&")?;
                                     }
                                     self.expr(first, out)?;
                                 }
@@ -3284,13 +3305,13 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "as_int" => {
-                                write!(out, "a2r_std::json::as_int(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ") as i32")?;
                                 return Ok(());
                             }
                             "is_null" => {
-                                write!(out, "a2r_std::json::is_null(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
@@ -3299,6 +3320,7 @@ impl RustTrans {
                         },
                         "http" => match method.as_str() {
                             "post" => {
+                                self.a2r_std_used.set(true);
                                 write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
@@ -3316,6 +3338,7 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "post_sync" => {
+                                self.a2r_std_used.set(true);
                                 write!(out, "{{ let __resp = a2r_std::http::post_sync(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
@@ -3333,10 +3356,11 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "last_status" => {
-                                write!(out, "a2r_std::http::last_status()")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::http::last_status()")?;
                                 return Ok(());
                             }
                             "post_bearer" => {
+                                self.a2r_std_used.set(true);
                                 write!(out, "{{ let __resp = a2r_std::http::post_bearer(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
@@ -3357,7 +3381,7 @@ impl RustTrans {
                         },
                         "shell" => match method.as_str() {
                             "exec" => {
-                                write!(out, "a2r_std::shell::exec(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::shell::exec(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     if let Arg::Pos(expr) = arg {
@@ -3374,7 +3398,7 @@ impl RustTrans {
                         },
                         "regex" => match method.as_str() {
                             "match" => {
-                                write!(out, "a2r_std::re::r#match(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::re::r#match(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     if let Arg::Pos(expr) = arg {
@@ -3409,7 +3433,7 @@ impl RustTrans {
                     match module.as_str() {
                         "str" => match method_name.as_str() {
                             "uuid" => {
-                                write!(out, "a2r_std::uuid()")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::uuid()")?;
                                 return Ok(());
                             }
                             "from_uint" | "from_int" => {
@@ -3595,7 +3619,7 @@ impl RustTrans {
                         "find" => {
                             // s.find(needle, start_pos?) -> a2r_std::str_find(s, needle, start_pos?)
                             // Returns i32 (-1 if not found), matching Auto semantics
-                            write!(out, "a2r_std::str_find(")?;
+                            self.a2r_std_used.set(true); write!(out, "a2r_std::str_find(")?;
                             self.expr(lhs, out)?;
                             for arg in &call.args.args {
                                 write!(out, ", ")?;
@@ -3847,7 +3871,7 @@ impl RustTrans {
                         _ => false,
                     };
                     if use_value_helper {
-                        write!(out, "a2r_std::value_to_int(&")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::value_to_int(&")?;
                         self.expr(object, out)?;
                         write!(out, ")")?;
                     } else {
@@ -3883,7 +3907,7 @@ impl RustTrans {
                             _ => false,
                         };
                         if use_value_helper {
-                            write!(out, "a2r_std::value_len(&")?;
+                            self.a2r_std_used.set(true); write!(out, "a2r_std::value_len(&")?;
                             self.expr(object, out)?;
                             write!(out, ")")?;
                             return Ok(());
@@ -3893,7 +3917,7 @@ impl RustTrans {
                 }
                 "match_count" => {
                     // s.match_count(pattern) -> a2r_std::str::match_count(s, pattern)
-                    write!(out, "a2r_std::str::match_count(")?;
+                    self.a2r_std_used.set(true); write!(out, "a2r_std::str::match_count(")?;
                     self.expr(object, out)?;
                     for arg in &call.args.args {
                         write!(out, ", ")?;
@@ -3904,7 +3928,7 @@ impl RustTrans {
                 }
                 "replace_first" => {
                     // s.replace_first(from, to) -> a2r_std::str::replace_first(s, from, to)
-                    write!(out, "a2r_std::str::replace_first(")?;
+                    self.a2r_std_used.set(true); write!(out, "a2r_std::str::replace_first(")?;
                     self.expr(object, out)?;
                     for arg in &call.args.args {
                         write!(out, ", ")?;
@@ -3915,7 +3939,7 @@ impl RustTrans {
                 }
                 "substr" => {
                     // s.substr(start, end) -> a2r_std::str_substr(&s, start, end)
-                    write!(out, "a2r_std::str_substr(")?;
+                    self.a2r_std_used.set(true); write!(out, "a2r_std::str_substr(")?;
                     self.expr_as_str(object, out)?;
                     for arg in &call.args.args {
                         write!(out, ", ")?;
@@ -3935,7 +3959,7 @@ impl RustTrans {
                     };
                     if obj_is_string {
                         // s.contains(needle) -> a2r_std::str_contains(&s, &needle)
-                        write!(out, "a2r_std::str_contains(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::str_contains(")?;
                         self.expr_as_str(object, out)?;
                         for arg in &call.args.args {
                             write!(out, ", ")?;
@@ -3952,7 +3976,7 @@ impl RustTrans {
                 }
                 "ends_with" => {
                     // s.ends_with(suffix) -> a2r_std::str_ends_with(&s, &suffix) returns i32
-                    write!(out, "a2r_std::str_ends_with(")?;
+                    self.a2r_std_used.set(true); write!(out, "a2r_std::str_ends_with(")?;
                     self.expr_as_str(object, out)?;
                     for arg in &call.args.args {
                         write!(out, ", ")?;
@@ -3969,7 +3993,7 @@ impl RustTrans {
                     // Check if object is 'env' — env.get_or("KEY", default) -> a2r_std::env::get_or("KEY", default)
                     if let Expr::Ident(type_name) = object.as_ref() {
                         if type_name == "env" {
-                            write!(out, "a2r_std::env::get_or(")?;
+                            self.a2r_std_used.set(true); write!(out, "a2r_std::env::get_or(")?;
                             for (i, arg) in call.args.args.iter().enumerate() {
                                 if i > 0 { write!(out, ", ")?; }
                                 self.arg(arg, out)?;
@@ -4018,7 +4042,7 @@ impl RustTrans {
                 "find" => {
                     // s.find(needle, start_pos?) -> a2r_std::str_find(&s, &needle, start_pos)
                     // Auto's .find() is only for strings; always intercept.
-                    write!(out, "a2r_std::str_find(")?;
+                    self.a2r_std_used.set(true); write!(out, "a2r_std::str_find(")?;
                     self.expr_as_str(object, out)?;
                     for (i, arg) in call.args.args.iter().enumerate() {
                         write!(out, ", ")?;
@@ -4101,7 +4125,7 @@ impl RustTrans {
                 if type_name == "env" {
                     match method_name.as_str() {
                         "get_or" => {
-                            write!(out, "a2r_std::env::get_or(")?;
+                            self.a2r_std_used.set(true); write!(out, "a2r_std::env::get_or(")?;
                             for (i, arg) in call.args.args.iter().enumerate() {
                                 if i > 0 { write!(out, ", ")?; }
                                 self.arg(arg, out)?;
@@ -4110,7 +4134,7 @@ impl RustTrans {
                             return Ok(());
                         }
                         "args" => {
-                            write!(out, "a2r_std::env::args()")?;
+                            self.a2r_std_used.set(true); write!(out, "a2r_std::env::args()")?;
                             return Ok(());
                         }
                         _ => {}
@@ -4128,7 +4152,7 @@ impl RustTrans {
                 if !is_local_var {
                 match (type_name.as_str(), method_name.as_str()) {
                     ("json", "parse") => {
-                        write!(out, "a2r_std::json::parse(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
                             self.expr_as_str(a, out)?;
                         }
@@ -4136,7 +4160,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "get") => {
-                        write!(out, "a2r_std::json::get(&")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::get(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ", ")?;
                         if call.args.args.len() > 1 {
@@ -4146,7 +4170,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "get_str") => {
-                        write!(out, "a2r_std::json::get_str(&")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_str(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ", ")?;
                         if call.args.args.len() > 1 {
@@ -4156,19 +4180,19 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "as_string") => {
-                        write!(out, "a2r_std::json::as_string(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
                     ("json", "to_string") => {
-                        write!(out, "a2r_std::json::to_string(&")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::to_string(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
                     ("json", "get_at") => {
-                        write!(out, "a2r_std::json::get_at(&")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_at(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ", ")?;
                         if call.args.args.len() > 1 {
@@ -4178,7 +4202,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "get_u64") => {
-                        write!(out, "a2r_std::json::get_u64(&")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_u64(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ", ")?;
                         if call.args.args.len() > 1 {
@@ -4188,7 +4212,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "keys") => {
-                        write!(out, "a2r_std::json::keys(&")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::keys(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
@@ -4204,10 +4228,12 @@ impl RustTrans {
                                 matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
                             };
                             if is_str_type {
+                                self.a2r_std_used.set(true);
                                 write!(out, "(a2r_std::json::len_str(")?;
                                 self.expr_as_str(expr, out)?;
                                 write!(out, ") as i32)")?;
                             } else {
+                                self.a2r_std_used.set(true);
                                 write!(out, "(a2r_std::json::len(")?;
                                 self.expr(expr, out)?;
                                 write!(out, ") as i32)")?;
@@ -4228,10 +4254,10 @@ impl RustTrans {
                             };
                             write!(out, "if ")?;
                             if use_str {
-                                write!(out, "a2r_std::json::has_key_str(")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::has_key_str(")?;
                                 self.expr_as_str(first, out)?;
                             } else {
-                                write!(out, "a2r_std::json::has_key(&")?;
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::has_key(&")?;
                                 self.expr(first, out)?;
                             }
                             write!(out, ", ")?;
@@ -4244,19 +4270,19 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "as_int") => {
-                        write!(out, "a2r_std::json::as_int(&")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ") as i32")?;
                         return Ok(());
                     }
                     ("json", "is_null") => {
-                        write!(out, "a2r_std::json::is_null(&")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
                     ("shell", "exec") => {
-                        write!(out, "a2r_std::shell::exec(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::shell::exec(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
@@ -4276,7 +4302,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("regex", "match") => {
-                        write!(out, "a2r_std::re::r#match(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::re::r#match(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
@@ -4289,7 +4315,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("regex", "find_all") => {
-                        write!(out, "a2r_std::re::find_all(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::re::find_all(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
@@ -4302,7 +4328,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("fs", "exists") => {
-                        write!(out, "a2r_std::fs::exists(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::exists(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
                             self.expr(a, out)?;
                             if let Expr::Ident(name) = a {
@@ -4318,13 +4344,13 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("fs", "create_dir") => {
-                        write!(out, "a2r_std::fs::create_dir(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::create_dir(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
                     ("fs", "write_text") => {
-                        write!(out, "a2r_std::fs::write_text(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
@@ -4337,7 +4363,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("fs", "append_text") => {
-                        write!(out, "a2r_std::fs::append_text(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::append_text(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
@@ -4350,32 +4376,32 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("fs", "is_dir") => {
-                        write!(out, "a2r_std::fs::is_dir(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::is_dir(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
                     ("fs", "is_binary") => {
-                        write!(out, "a2r_std::fs::is_binary(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::is_binary(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
                     ("fs", "file_size") => {
-                        write!(out, "a2r_std::fs::file_size(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::file_size(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
                     ("fs", "walk") => {
-                        write!(out, "a2r_std::fs::walk(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::walk(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
                     ("fs", "read_to_string") | ("fs", "read_text") => {
                         let fn_name = method_name;
-                        write!(out, "a2r_std::fs::{}(", fn_name)?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::{}(", fn_name)?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
                             let needs_as_str = if let Expr::Ident(name) = a {
                                 !self.local_var_types.get(name)
@@ -4391,7 +4417,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("fs", "write") => {
-                        write!(out, "a2r_std::fs::write(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
@@ -4413,13 +4439,13 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("env", "get") => {
-                        write!(out, "a2r_std::env::get(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::env::get(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
                     ("io", "read_line") => {
-                        write!(out, "a2r_std::io::read_line()")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::io::read_line()")?;
                         return Ok(());
                     }
                     ("Map", "new") => {
@@ -5306,7 +5332,7 @@ impl RustTrans {
             match fn_name.as_str() {
                 "min" => {
                     // min(a, b) -> a2r_std::math::min(a, b)
-                    write!(out, "a2r_std::math::min(")?;
+                    self.a2r_std_used.set(true); write!(out, "a2r_std::math::min(")?;
                     for (i, arg) in call.args.args.iter().enumerate() {
                         self.arg(arg, out)?;
                         if i < call.args.args.len() - 1 {
@@ -5318,7 +5344,7 @@ impl RustTrans {
                 }
                 "max" => {
                     // max(a, b) -> a2r_std::math::max(a, b)
-                    write!(out, "a2r_std::math::max(")?;
+                    self.a2r_std_used.set(true); write!(out, "a2r_std::math::max(")?;
                     for (i, arg) in call.args.args.iter().enumerate() {
                         self.arg(arg, out)?;
                         if i < call.args.args.len() - 1 {
@@ -7251,6 +7277,7 @@ impl RustTrans {
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net" | "url"
                             | "process" | "sys" | "sse" | "may" | "regex" => {
+                                self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", rest)
                             }
                             _ => format!("crate::{}", rest),
@@ -7264,6 +7291,7 @@ impl RustTrans {
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net" | "url"
                             | "process" | "sys" | "sse" | "may" | "regex" => {
+                                self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", mod_name)
                             }
                             _ => format!("crate::{}", mod_name),
@@ -7278,6 +7306,7 @@ impl RustTrans {
                             | "process" | "sys" | "sse" | "may" | "regex"
                         );
                         if is_stdlib {
+                            self.a2r_std_used.set(true);
                             format!("a2r_std::{}", full_path)
                         } else if self.module_types.contains_key(first_seg)
                             || self.dep_crates.contains(&AutoStr::from(first_seg))
@@ -10722,6 +10751,26 @@ impl Trans for RustTrans {
         // Add final newline only if not already ending with one
         if !sink.body.is_empty() && !sink.body.ends_with(b"\n") {
             sink.body.write(b"\n")?;
+        }
+
+        // Plan 270: Insert a2r_std import at file header if any a2r_std symbols were used.
+        // Must be done AFTER all transpilation so a2r_std_used is accurate.
+        if !self.merge_mode && self.a2r_std_used.get() {
+            let import = b"// a2r Standard Library (from crate)\n#[allow(unused_imports)]\nuse auto_lang::a2r_std;\nuse auto_lang::a2r_std::*;\n\n";
+            // Find the header boundary: after "#![allow]" line + blank line
+            let body = &sink.body;
+            let mut insert_pos = 0;
+            for (i, line) in body.split(|&b| b == b'\n').enumerate() {
+                insert_pos += line.len() + 1;
+                if line.is_empty() && i > 0 {
+                    break;
+                }
+            }
+            let mut new_body = Vec::with_capacity(sink.body.len() + import.len());
+            new_body.extend_from_slice(&sink.body[..insert_pos]);
+            new_body.extend_from_slice(import);
+            new_body.extend_from_slice(&sink.body[insert_pos..]);
+            sink.body = new_body;
         }
 
         Ok(())

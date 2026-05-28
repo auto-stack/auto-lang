@@ -1,0 +1,15 @@
+use.rust std::collections::HashMap
+
+fn main() {
+    let x = 42
+    let y = x + 8
+    print(f"Answer: $y")
+
+    var scores HashMap<str, int> = HashMap.new()
+    scores.insert("alice", 100)
+    scores.insert("bob", 95)
+
+    for (k, v) in scores {
+        print(f"$k: $v")
+    }
+}

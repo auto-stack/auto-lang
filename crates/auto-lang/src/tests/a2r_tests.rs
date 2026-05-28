@@ -269,6 +269,10 @@ fn test_14_modules_005_multi_file() {
 #[test] fn test_18_rust_std_016_cmp_ordering() { test_a2r("17_rust_std/016_cmp_ordering").unwrap(); }
 #[test] fn test_18_rust_std_017_hash_map_ops() { test_a2r("17_rust_std/017_hash_map_ops").unwrap(); }
 
+// === 18_pure_rust: Pure Rust output (no a2r_std dependency) ===
+
+#[test] fn test_19_pure_rust_001_pure() { test_a2r("18_pure_rust/001_pure").unwrap(); }
+
 // === 17_autocode: Real-world integration tests ===
 
 fn autocode_src(name: &str) -> String {
