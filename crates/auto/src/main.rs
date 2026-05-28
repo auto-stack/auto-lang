@@ -383,6 +383,47 @@ enum Commands {
     // ========== MCP Server (Plan 265) ==========
     #[command(about = "Start AutoVM MCP server (stdio transport for AI agents)")]
     Mcp,
+
+    // ========== Daemon + CLI (Plan 269) ==========
+    #[command(about = "Start AutoVM daemon server (stateful VM, persistent sessions)")]
+    Serve {
+        /// Run in foreground (don't daemonize)
+        #[arg(long)]
+        foreground: bool,
+        /// Run in stdio mode (used internally by auto req)
+        #[arg(long)]
+        stdio: bool,
+    },
+
+    #[command(about = "Send request to AutoVM daemon (eval code, inspect sessions)")]
+    Req {
+        /// Session ID to use
+        #[arg(short, long)]
+        session: Option<String>,
+        /// Create a new session and print its ID
+        #[arg(long)]
+        new_session: bool,
+        /// Inspect session state
+        #[arg(long)]
+        inspect: bool,
+        /// Reset session
+        #[arg(long)]
+        reset: bool,
+        /// Delete session
+        #[arg(long)]
+        delete: bool,
+        /// Export session as .at source
+        #[arg(long)]
+        snapshot: bool,
+        /// List active sessions
+        #[arg(long)]
+        list: bool,
+        /// Output as JSON (machine-readable)
+        #[arg(long)]
+        json: bool,
+        /// Auto code to evaluate
+        code: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -1265,6 +1306,129 @@ fn real_main(cli: Cli) -> Result<()> {
         Some(Commands::Mcp) => {
             let mut server = auto_lang::mcp::McpServer::new();
             server.run();
+        }
+
+        // ========== AutoVM Daemon (Plan 269) ==========
+        Some(Commands::Serve { foreground, stdio }) => {
+            let mut daemon = auto_lang::autovm_daemon::AutovmDaemon::new();
+            if stdio {
+                daemon.run_stdio();
+            } else if foreground {
+                eprintln!("AutoVM daemon: foreground mode (stdin/stdout)");
+                daemon.run_stdio();
+            } else {
+                // Background mode: spawn self with --stdio flag
+                let exe = std::env::current_exe().map_err(|e| miette::miette!("Cannot find auto executable: {}", e))?;
+                #[cfg(target_family = "windows")]
+                {
+                    use std::os::windows::process::CommandExt;
+                    std::process::Command::new(exe)
+                        .args(["serve", "--stdio"])
+                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                        .spawn()
+                        .map_err(|e| miette::miette!("Failed to start daemon: {}", e))?;
+                }
+                #[cfg(target_family = "unix")]
+                std::process::Command::new(exe)
+                    .args(["serve", "--stdio"])
+                    .spawn()
+                    .map_err(|e| miette::miette!("Failed to start daemon: {}", e))?;
+                println!("AutoVM daemon started");
+            }
+        }
+
+        // ========== AutoVM Client (Plan 269) ==========
+        Some(Commands::Req { session, new_session, inspect, reset, delete, snapshot, list, json, code }) => {
+            use auto_lang::autovm_client::AutovmClient;
+
+            let mut client = AutovmClient::connect().map_err(|e| miette::miette!("{}", e))?;
+
+            if list {
+                let resp = client.list().map_err(|e| miette::miette!("{}", e))?;
+                if json {
+                    println!("{}", serde_json::to_string(&resp).unwrap());
+                } else {
+                    match &resp.data {
+                        Some(d) => println!("Sessions: {}", d),
+                        None => println!("No sessions"),
+                    }
+                }
+                return Ok(());
+            }
+
+            if new_session {
+                let ses_id = client.new_session().map_err(|e| miette::miette!("{}", e))?;
+                println!("{}", ses_id);
+                return Ok(());
+            }
+
+            let ses_id = match &session {
+                Some(s) => s.clone(),
+                None => {
+                    // Anonymous mode: create temp session, eval, delete
+                    if let Some(code) = &code {
+                        let (value, ok) = auto_lang::autovm_client::eval_one_shot(code);
+                        if json {
+                            let status = if ok { "ok" } else { "error" };
+                            println!("{}", serde_json::json!({"status": status, "value": value}));
+                        } else {
+                            if ok { println!("{}", value); } else { eprintln!("{}", value); }
+                        }
+                        return Ok(());
+                    }
+                    eprintln!("Error: provide --session <id>, --new-session, or code to evaluate");
+                    std::process::exit(1);
+                }
+            };
+
+            if inspect {
+                let resp = client.inspect(&ses_id).map_err(|e| miette::miette!("{}", e))?;
+                if json {
+                    println!("{}", serde_json::to_string(&resp).unwrap());
+                } else {
+                    if resp.status == "ok" {
+                        if let Some(data) = &resp.data {
+                            println!("{}", serde_json::to_string_pretty(data).unwrap());
+                        }
+                    } else {
+                        eprintln!("Error: {}", resp.message.unwrap_or_default());
+                    }
+                }
+            } else if reset {
+                let resp = client.reset(&ses_id).map_err(|e| miette::miette!("{}", e))?;
+                if json { println!("{}", serde_json::to_string(&resp).unwrap()); }
+                else { println!("Session {} reset", ses_id); }
+            } else if delete {
+                let resp = client.delete(&ses_id).map_err(|e| miette::miette!("{}", e))?;
+                if json { println!("{}", serde_json::to_string(&resp).unwrap()); }
+                else { println!("Session {} deleted", ses_id); }
+            } else if snapshot {
+                let resp = client.snapshot(&ses_id).map_err(|e| miette::miette!("{}", e))?;
+                if json {
+                    println!("{}", serde_json::to_string(&resp).unwrap());
+                } else {
+                    match &resp.value {
+                        Some(src) => println!("{}", src),
+                        None => eprintln!("Error: {}", resp.message.unwrap_or_default()),
+                    }
+                }
+            } else if let Some(code) = &code {
+                let resp = client.eval(&ses_id, code).map_err(|e| miette::miette!("{}", e))?;
+                if json {
+                    println!("{}", serde_json::to_string(&resp).unwrap());
+                } else {
+                    if resp.status == "ok" {
+                        if let Some(val) = &resp.value {
+                            println!("{}", val);
+                        }
+                    } else {
+                        eprintln!("Error: {}", resp.message.unwrap_or_default());
+                    }
+                }
+            } else {
+                eprintln!("Error: provide code to evaluate or an action flag (--inspect, --reset, --delete, --snapshot)");
+                std::process::exit(1);
+            }
         }
 
         // ========== Debug (Plan 199) ==========

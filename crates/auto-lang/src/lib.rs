@@ -39,6 +39,8 @@ pub mod atom_error;
 pub mod module_cache;
 pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub mod mcp; // Plan 265: MCP server for AI agent interaction
+pub mod autovm_daemon; // Plan 269: AutoVM daemon (serve/req)
+pub mod autovm_client; // Plan 269: AutoVM client for req command
 #[cfg(test)]
 mod test_util; // Plan 266 Phase 4: Differential testing utilities
 pub mod compile;
