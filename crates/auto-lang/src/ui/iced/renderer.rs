@@ -8,10 +8,10 @@
 use crate::ui::view::View as AbstractView;
 use crate::ui::component::Component;
 use crate::ui::app::AppResult;
-use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedShadowSize};
+use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedFontSize, IcedShadowSize};
 use crate::ui::style::Style;
 use std::fmt::Debug;
-use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_editor, text_input};
+use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_editor, text_input, tooltip};
 
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::interpreter::DynamicMessage;
@@ -1494,6 +1494,8 @@ struct DynamicState {
     /// Accumulated hover candidates during a single frame. Resolved in view() by picking
     /// the smallest counter (= deepest element). Cleared after each view() call.
     pending_hovers: std::cell::RefCell<Vec<(usize, String)>>,
+    /// Style metadata per debug element, collected during rendering.
+    debug_element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -1536,6 +1538,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             debug_mode: false,
             hovered_widget: std::cell::RefCell::new(None),
             pending_hovers: std::cell::RefCell::new(Vec::new()),
+            debug_element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     };
 
@@ -1750,6 +1753,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         Some(DebugRenderCtx {
             hovered_id: state.hovered_widget.borrow().clone(),
             counter: std::cell::RefCell::new(0),
+            element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
         })
     } else {
         None
@@ -1757,11 +1761,18 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     let rendered = render_dynamic_view(converted, debug_ctx.as_ref());
 
+    // Copy element style metadata from DebugRenderCtx to DynamicState
+    if let Some(ref ctx) = debug_ctx {
+        let styles = ctx.element_styles.borrow();
+        *state.debug_element_styles.borrow_mut() = styles.clone();
+    }
+
     if state.debug_mode {
-        // Build main content + debug info bar at bottom
-        let info_text = match &*state.hovered_widget.borrow() {
-            Some(id) => format!("Debug ON | Hovered: {}", id),
-            None => "Debug ON | Hover over elements to inspect".to_string(),
+        // Fixed-height info bar — tooltip on hovered element shows details
+        let hovered_id = state.hovered_widget.borrow().clone();
+        let info_text = match &hovered_id {
+            Some(id) => format!("Debug ON | {}", id),
+            None => "Debug ON".to_string(),
         };
         let bar = container(
             text(info_text).size(12).color(iced::Color::WHITE)
@@ -1793,6 +1804,15 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 struct DebugRenderCtx {
     hovered_id: Option<String>,
     counter: std::cell::RefCell<usize>,
+    /// Style metadata per element: id -> (kind, props).
+    element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
+}
+
+/// Debug metadata for a single UI element.
+#[derive(Clone)]
+struct DebugElementInfo {
+    kind: String,
+    props: Vec<(String, String)>,
 }
 
 impl DebugRenderCtx {
@@ -1809,17 +1829,27 @@ impl DebugRenderCtx {
         self.hovered_id.as_deref() == Some(id)
     }
 
-    /// Wrap any element (container or leaf) with mouse_area for hover detection.
-    /// Uses counter-based competition: deeper elements have higher counter values
-    /// and win over shallower ones when both trigger.
-    fn wrap_debug(&self, kind: &str, el: iced::Element<'static, IcedMessage>) -> iced::Element<'static, IcedMessage> {
+    /// Wrap any element with mouse_area for hover detection + store style metadata.
+    fn wrap_debug(
+        &self, kind: &str, el: iced::Element<'static, IcedMessage>,
+        props: Vec<(String, String)>,
+    ) -> iced::Element<'static, IcedMessage> {
         let counter_val = *self.counter.borrow();
         let id = self.next_id(kind);
-        let hovered = self.is_hovered(&id);
 
+        // Store metadata for tooltip lookup in dynamic_view
+        if !props.is_empty() {
+            self.element_styles.borrow_mut().insert(id.clone(), DebugElementInfo {
+                kind: kind.to_string(),
+                props,
+            });
+        }
+
+        let hovered = self.is_hovered(&id);
+        let move_id = format!("{}{}:{}", DEBUG_HOVER_MOVE, counter_val, id);
         let enter_msg = IcedMessage {
             widget: String::new(),
-            event: format!("{}{}:{}", DEBUG_HOVER_MOVE, counter_val, id),
+            event: move_id.clone(),
             input_value: None,
         };
         let exit_msg = IcedMessage {
@@ -1827,7 +1857,6 @@ impl DebugRenderCtx {
             event: format!("{}{}", DEBUG_HOVER_EXIT, counter_val),
             input_value: None,
         };
-        let move_id = format!("{}{}:{}", DEBUG_HOVER_MOVE, counter_val, id);
         let ma = mouse_area(el)
             .on_enter(enter_msg)
             .on_exit(exit_msg)
@@ -1838,7 +1867,35 @@ impl DebugRenderCtx {
             });
 
         if hovered {
-            container(ma)
+            // Build tooltip content from stored metadata
+            let info = self.element_styles.borrow().get(&id).cloned();
+            let header_text = format!("{} #{}", kind, id);
+            let mut tip_col = column![text(header_text).size(10).color(iced::Color::from_rgb(0.4, 0.7, 1.0))].spacing(1);
+            if let Some(ref elem_info) = info {
+                if !elem_info.props.is_empty() {
+                    let mut line = String::new();
+                    for (k, v) in &elem_info.props {
+                        if !line.is_empty() { line.push(' '); }
+                        line.push_str(k);
+                        line.push(':');
+                        line.push_str(v);
+                    }
+                    tip_col = tip_col.push(text(line).size(9).color(iced::Color::from_rgb(0.7, 0.7, 0.7)));
+                }
+            }
+            let tip_content = container(tip_col)
+                .style(|_: &iced::Theme| container::Style {
+                    background: Some(iced::Background::Color(iced::Color::from_rgba(0.15, 0.15, 0.18, 0.95))),
+                    border: iced::Border {
+                        color: iced::Color::from_rgb(0.3, 0.5, 0.8),
+                        width: 1.0,
+                        radius: 4.0.into(),
+                    },
+                    ..Default::default()
+                })
+                .padding(iced::Padding::new(6.0));
+
+            let bordered = container(ma)
                 .style(|_: &iced::Theme| container::Style {
                     border: iced::Border {
                         color: iced::Color::from_rgb(0.2, 0.5, 1.0),
@@ -1846,7 +1903,10 @@ impl DebugRenderCtx {
                         radius: 0.0.into(),
                     },
                     ..Default::default()
-                })
+                });
+
+            tooltip(bordered, tip_content, tooltip::Position::Top)
+                .gap(4.0)
                 .into()
         } else {
             ma.into()
@@ -1859,6 +1919,72 @@ impl DebugRenderCtx {
 ///
 /// When `debug_ctx` is `Some`, container elements (Column, Row, Container, Scrollable)
 /// get wrapped in `MouseArea` for hover detection and a blue border overlay when hovered.
+/// Extract style properties from an IcedStyle for debug tooltip display.
+fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
+    let Some(s) = style else { return vec![] };
+    let is = IcedStyle::from_style(s);
+    let mut props = Vec::new();
+    if let Some(ref w) = is.width {
+        props.push(("w".into(), match w { IcedSize::Full => "fill".into(), IcedSize::Fixed(f) => format!("{}px", *f as u16) }));
+    }
+    if let Some(ref h) = is.height {
+        props.push(("h".into(), match h { IcedSize::Full => "fill".into(), IcedSize::Fixed(f) => format!("{}px", *f as u16) }));
+    }
+    if let Some(p) = is.padding { props.push(("pad".into(), format!("{}", p as u16))); }
+    if let Some(g) = is.gap { props.push(("gap".into(), format!("{}", g as u16))); }
+    if let Some(c) = is.background_color {
+        props.push(("bg".into(), format!("#{:02x}{:02x}{:02x}", (c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8)));
+    }
+    if let Some(c) = is.text_color {
+        props.push(("fg".into(), format!("#{:02x}{:02x}{:02x}", (c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8)));
+    }
+    if let Some(ref fs) = is.font_size {
+        let px = match fs {
+            IcedFontSize::Xs => 12, IcedFontSize::Sm => 14, IcedFontSize::Base => 16,
+            IcedFontSize::Lg => 18, IcedFontSize::Xl => 20, IcedFontSize::Xxl => 24,
+            IcedFontSize::X3xl => 30, IcedFontSize::X4xl => 36,
+        };
+        props.push(("font".into(), format!("{}px", px)));
+    }
+    if let Some(r) = is.border_radius { props.push(("radius".into(), format!("{}", r as u16))); }
+    if let Some(w) = is.border_width { props.push(("border".into(), format!("{}", w as u16))); }
+    if let Some(ref a) = is.align_items {
+        props.push(("align".into(), match a { IcedAlign::Start => "start", IcedAlign::Center => "center", IcedAlign::End => "end" }.into()));
+    }
+    if let Some(ref j) = is.justify_content {
+        props.push(("justify".into(), match j { IcedJustify::Start => "start", IcedJustify::Center => "center", IcedJustify::End => "end", IcedJustify::Between => "between" }.into()));
+    }
+    props
+}
+
+/// Extract style reference from any AbstractView variant.
+fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Option<&Style> {
+    match view {
+        AbstractView::Empty => None,
+        AbstractView::Text { style, .. } => style.as_ref(),
+        AbstractView::Button { style, .. } => style.as_ref(),
+        AbstractView::Checkbox { style, .. } => style.as_ref(),
+        AbstractView::Slider { style, .. } => style.as_ref(),
+        AbstractView::ProgressBar { style, .. } => style.as_ref(),
+        AbstractView::Image { style, .. } => style.as_ref(),
+        AbstractView::Radio { style, .. } => style.as_ref(),
+        AbstractView::Select { style, .. } => style.as_ref(),
+        AbstractView::Tabs { style, .. } => style.as_ref(),
+        AbstractView::List { style, .. } => style.as_ref(),
+        AbstractView::Table { style, .. } => style.as_ref(),
+        AbstractView::Accordion { style, .. } => style.as_ref(),
+        AbstractView::Sidebar { style, .. } => style.as_ref(),
+        AbstractView::NavigationRail { style, .. } => style.as_ref(),
+        // Container variants handled separately in render_dynamic_view
+        AbstractView::Column { style, .. } => style.as_ref(),
+        AbstractView::Row { style, .. } => style.as_ref(),
+        AbstractView::Container { style, .. } => style.as_ref(),
+        AbstractView::Scrollable { style, .. } => style.as_ref(),
+        AbstractView::Input { style, .. } => style.as_ref(),
+        AbstractView::Textarea { style, .. } => style.as_ref(),
+    }
+}
+
 /// Short tag for a View variant, used as debug hover ID prefix.
 fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str {
     match view {
@@ -1890,6 +2016,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // IcedMessage with the typed text included, which the generic IntoIcedElement
         // trait cannot do since it's generic over M.
         AbstractView::Input { placeholder, value, on_change, width, password: _, style } => {
+            let dbg_props = debug_style_props(style.as_ref());
             let mut input_widget = text_input(&placeholder, &value);
 
             if let Some(ref s) = style {
@@ -1922,7 +2049,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 input_widget.into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("input", el) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug("input", el, dbg_props) } else { el }
         }
 
         AbstractView::Textarea { placeholder, value, on_change, height, style: _ } => {
@@ -1958,12 +2085,19 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 editor.into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("textarea", el) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug("textarea", el, vec![]) } else { el }
         }
 
         // Layout containers: recursively render children through render_dynamic_view
         // so Input/Textarea get proper IcedMessage text capture.
         AbstractView::Column { children, spacing, padding, style } => {
+            let mut dbg_props = debug_style_props(style.as_ref());
+            if spacing > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
+                dbg_props.insert(0, ("gap".into(), spacing.to_string()));
+            }
+            if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
+                dbg_props.insert(0, ("pad".into(), padding.to_string()));
+            }
             let mut col_w = column([]);
             let sp = effective_spacing(spacing, style.as_ref());
             let pd = iced_padding(padding, style.as_ref());
@@ -2020,10 +2154,17 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 col_w.into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("col", el) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug("col", el, dbg_props) } else { el }
         }
 
         AbstractView::Row { children, spacing, padding, style } => {
+            let mut dbg_props = debug_style_props(style.as_ref());
+            if spacing > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
+                dbg_props.insert(0, ("gap".into(), spacing.to_string()));
+            }
+            if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
+                dbg_props.insert(0, ("pad".into(), padding.to_string()));
+            }
             let mut row_w = row([]);
             let sp = effective_spacing(spacing, style.as_ref());
             let pd = iced_padding(padding, style.as_ref());
@@ -2048,10 +2189,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 row_w = row_w.push(render_dynamic_view(child, debug_ctx));
             }
             let el: iced::Element<'static, IcedMessage> = row_w.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("row", el) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug("row", el, dbg_props) } else { el }
         }
 
         AbstractView::Container { child, padding, width, height, center_x, center_y, style } => {
+            let mut dbg_props = debug_style_props(style.as_ref());
+            if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
+                dbg_props.insert(0, ("pad".into(), padding.to_string()));
+            }
+            if let Some(w) = width { dbg_props.push(("w".into(), format!("{}px", w))); }
+            if let Some(h) = height { dbg_props.push(("h".into(), format!("{}px", h))); }
+            if center_x { dbg_props.push(("center_x".into(), "true".into())); }
+            if center_y { dbg_props.push(("center_y".into(), "true".into())); }
             let child_el = render_dynamic_view(*child, debug_ctx);
             let mut c = container(child_el);
             c = c.padding(iced_padding(padding, style.as_ref()));
@@ -2092,10 +2241,13 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if center_x { c = c.center_x(iced::Length::Fill); }
             if center_y { c = c.center_y(iced::Length::Fill); }
             let el: iced::Element<'static, IcedMessage> = c.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("container", el) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug("container", el, dbg_props) } else { el }
         }
 
         AbstractView::Scrollable { child, width, height, style } => {
+            let mut dbg_props = debug_style_props(style.as_ref());
+            if let Some(w) = width { dbg_props.push(("w".into(), format!("{}px", w))); }
+            if let Some(h) = height { dbg_props.push(("h".into(), format!("{}px", h))); }
             let child_el = render_dynamic_view(*child, debug_ctx);
             let mut s = scrollable(child_el);
             if let Some(ref st) = style {
@@ -2113,14 +2265,15 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } }
             }
             let el: iced::Element<'static, IcedMessage> = s.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("scroll", el) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug("scroll", el, dbg_props) } else { el }
         }
 
         // Everything else delegates to the unified IntoIcedElement renderer
         _ => {
             let kind = view_kind(&view);
+            let dbg_props = debug_style_props(extract_view_style(&view));
             let el: iced::Element<'static, IcedMessage> = view.into_iced();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(kind, el) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(kind, el, dbg_props) } else { el }
         }
     }
 }
