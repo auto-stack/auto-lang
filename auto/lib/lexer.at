@@ -1,3 +1,11 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM Sync Snapshot                                       ║
+// ║ Component: lexer.at (Lexer)                              ║
+// ║ Rust ref:  src/lexer.rs                                  ║
+// ║ Baseline:  fe666a6f (2026-05-26)                         ║
+// ║ Coverage:  129 TokenKinds, f-string, ownership ops       ║
+// ║ Missing:   raw strings, byte strings, advanced unicode   ║
+// ╚═══════════════════════════════════════════════════════════╝
 // Lexer for the Auto self-hosted compiler
 // Converts source text into a list of Tokens
 // char_at returns UTF-32 codepoint (int), matching char literal comparison

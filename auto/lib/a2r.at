@@ -1,3 +1,12 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM Sync Snapshot                                       ║
+// ║ Component: a2r.at (Auto-to-Rust Transpiler)              ║
+// ║ Rust ref:  src/trans/rust.rs (12,677 lines)              ║
+// ║ Baseline:  7cc484b1 (2026-05-28)                         ║
+// ║ Coverage:  expr/fn/var/if/for/struct/enum/impl/trait/    ║
+// ║            match/fstr/closure/array/object/option/borrow  ║
+// ║ Missing:   multi-file, type coercion, dep scan, merge    ║
+// ╚═══════════════════════════════════════════════════════════╝
 // AA2R — Auto-to-Rust Transpiler (Auto A2R)
 // Transpiles Auto AST to Rust source code string
 // Phase E1: basic expressions, functions, variables, if/else, for loops

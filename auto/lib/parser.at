@@ -1,3 +1,11 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM Sync Snapshot                                       ║
+// ║ Component: parser.at (Parser)                            ║
+// ║ Rust ref:  src/parser.rs                                 ║
+// ║ Baseline:  ddbb161a (2026-05-28)                         ║
+// ║ Coverage:  43 NodeKinds, Pratt expr, generics params     ║
+// ║ Missing:   comptime, UI nodes, tasks, advanced generics  ║
+// ╚═══════════════════════════════════════════════════════════╝
 // Parser for the Auto self-hosted compiler
 // Converts List<Token> into AST nodes
 // Uses Pratt parsing for expressions, recursive descent for statements

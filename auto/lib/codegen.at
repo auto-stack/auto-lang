@@ -1,3 +1,11 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM Sync Snapshot                                       ║
+// ║ Component: codegen.at (Bytecode Generator)               ║
+// ║ Rust ref:  src/vm/codegen.rs, src/vm/compiler.rs         ║
+// ║ Baseline:  fe666a6f (2026-05-26)                         ║
+// ║ Coverage:  ~35 opcodes emitted, basic expr/stmt/fn       ║
+// ║ Missing:   float, closures, Option/Result, generics code ║
+// ╚═══════════════════════════════════════════════════════════╝
 // Bytecode Codegen for AAVM self-hosted compiler
 // Compiles AST to List<int> bytecode + Map-based string pool
 // Uses % 256 and / 256 instead of & 0xFF and >> 8 (Auto has no bitwise ops)

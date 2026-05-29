@@ -1,0 +1,56 @@
+// Test: generics.at generic type registry
+// Verifies registration, lookup, and instantiation of generic types
+
+fn main() {
+    // Test 1: Register and lookup
+    var reg = generic_new()
+    generic_register(reg, "Pair", "K,V", "key:K,val:V")
+    var has_pair = generic_has(reg, "Pair")
+    if has_pair == 1 {
+        print("t1:ok")
+    } else {
+        print("t1:fail:lookup failed")
+    }
+
+    // Test 2: Instantiate Pair<int, str>
+    // K→i32, V→String → "key:i32,val:String"
+    var result2 = generic_instantiate(reg, "Pair", "int,str")
+    var has_i32 = result2.find("i32")
+    var has_string = result2.find("String")
+    if has_i32 >= 0 && has_string >= 0 {
+        print("t2:ok")
+    } else {
+        print("t2:fail:" + result2)
+    }
+
+    // Test 3: Register Container<T> and instantiate Container<bool>
+    // T→bool → "value:bool,count:int"
+    // Note: "int" is NOT a generic param, so it stays as "int"
+    generic_register(reg, "Container", "T", "value:T,count:int")
+    var result3 = generic_instantiate(reg, "Container", "bool")
+    var has_bool = result3.find("bool")
+    var has_count_int = result3.find("count:int")
+    if has_bool >= 0 && has_count_int >= 0 {
+        print("t3:ok")
+    } else {
+        print("t3:fail:" + result3)
+    }
+
+    // Test 4: Lookup nonexistent type returns empty
+    var has_nothing = generic_has(reg, "NotExist")
+    if has_nothing == 0 {
+        print("t4:ok")
+    } else {
+        print("t4:fail:should not exist")
+    }
+
+    // Test 5: Mono name generation
+    // "Pair" + "int,str" → "Pair_i32_String"
+    var mono = generic_mono_name("Pair", "int,str")
+    var has_pair_prefix = mono.find("Pair_i32_String")
+    if has_pair_prefix >= 0 {
+        print("t5:ok")
+    } else {
+        print("t5:fail:" + mono)
+    }
+}

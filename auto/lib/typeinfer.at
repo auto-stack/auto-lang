@@ -1,3 +1,11 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM Sync Snapshot                                       ║
+// ║ Component: typeinfer.at (Type Inference)                 ║
+// ║ Rust ref:  src/type_inference/                           ║
+// ║ Baseline:  fe666a6f (2026-05-26)                         ║
+// ║ Coverage:  literal→var→fn signature type propagation     ║
+// ║ Missing:   unification, generic constraints, inference   ║
+// ╚═══════════════════════════════════════════════════════════╝
 // Type Inference for the Auto self-hosted compiler
 // Records types during evaluation for use by codegen
 // Type tags: 0=int, 1=str, 2=bool, 3=void, -1=unknown

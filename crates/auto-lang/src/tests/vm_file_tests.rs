@@ -492,6 +492,7 @@ const AUTO_LIB_FILES: &[&str] = &[
     "auto/lib/codegen.at",
     "auto/lib/vm.at",
     "auto/lib/a2r.at",
+    "auto/lib/generics.at",
     "auto/lib/eval.at",
 ];
 
@@ -794,3 +795,4 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_aavm_99_bootstrap_108_a2r_ownership() { test_aavm("99_bootstrap/108_a2r_ownership").unwrap(); }
 #[test] #[ignore] fn test_aavm_99_bootstrap_110_a2r_phase3() { test_aavm("99_bootstrap/110_a2r_phase3").unwrap(); }
 #[test] #[ignore] fn test_aavm_99_bootstrap_111_a2r_real_source() { test_aavm("99_bootstrap/111_a2r_real_source").unwrap(); }
+#[test] #[ignore] fn test_aavm_99_bootstrap_112_a2r_generic_registry() { test_aavm("99_bootstrap/112_a2r_generic_registry").unwrap(); }

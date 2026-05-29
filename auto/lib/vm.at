@@ -1,3 +1,11 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM Sync Snapshot                                       ║
+// ║ Component: vm.at (Bytecode Interpreter)                  ║
+// ║ Rust ref:  src/vm/engine.rs, opcode.rs                   ║
+// ║ Baseline:  fe666a6f (2026-05-26)                         ║
+// ║ Coverage:  35/~100 opcodes (35%)                         ║
+// ║ Missing:   float, async, closures, generics, concurrency ║
+// ╚═══════════════════════════════════════════════════════════╝
 // Bytecode Interpreter for AAVM self-hosted compiler
 // Uses a single Map for all state (ints, strings, emulated arrays)
 // List/Map heap stored in state Map<str, str> via key conventions:

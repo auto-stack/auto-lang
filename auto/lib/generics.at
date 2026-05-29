@@ -1,0 +1,310 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM Sync Snapshot                                       ║
+// ║ Component: generics.at (Generic Registry)                ║
+// ║ Rust ref:  src/vm/generic_registry.rs (1,687 lines)      ║
+// ║ Baseline:  fe666a6f (2026-05-26)                         ║
+// ║ Coverage:  register/lookup/instantiate, string replace   ║
+// ║ Missing:   ClassTemplate, method mono, field access       ║
+// ╚═══════════════════════════════════════════════════════════╝
+// generics.at — Generic Type Registry for AAVM
+// Plan 237-D2: Records generic type definitions, does type string substitution at use sites
+// Minimal implementation: string-based type replacement, no codegen monomorphization
+
+// ---- Data Structures ----
+
+type GenericEntry {
+    name str
+    params str
+    fields str
+}
+
+type GenericRegistry {
+    entries List<GenericEntry>
+}
+
+// ---- Constructor ----
+
+fn generic_new() GenericRegistry {
+    GenericRegistry(List.new())
+}
+
+// ---- Register ----
+
+fn generic_register(reg GenericRegistry, name str, params str, fields str) {
+    var entry = GenericEntry(name, params, fields)
+    reg.entries.push(entry)
+}
+
+// ---- Lookup ----
+
+fn generic_lookup(reg GenericRegistry, name str) GenericEntry {
+    var i = 0
+    var n = reg.entries.len()
+    for i < n {
+        var e = reg.entries.get(i)
+        if e.name == name {
+            return e
+        }
+        i = i + 1
+    }
+    return GenericEntry("", "", "")
+}
+
+fn generic_has(reg GenericRegistry, name str) int {
+    var i = 0
+    var n = reg.entries.len()
+    for i < n {
+        var e = reg.entries.get(i)
+        if e.name == name {
+            return 1
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+// ---- String Helpers ----
+
+// Split string by delimiter, return part at index
+// str_split_part("K,V", ",", 0) => "K"
+// str_split_part("K,V", ",", 1) => "V"
+fn str_split_part(s str, delim str, idx int) str {
+    var i = 0
+    var n = s.len()
+    var d = delim.char_at(0)
+    var part_idx = 0
+    var start = 0
+
+    for i <= n {
+        var is_end = 0
+        if i == n {
+            is_end = 1
+        } else {
+            if s.char_at(i) == d {
+                is_end = 1
+            }
+        }
+        if is_end == 1 {
+            if part_idx == idx {
+                return s.substr(start, i)
+            }
+            part_idx = part_idx + 1
+            start = i + 1
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+// Count occurrences of delimiter in string
+fn str_count_delim(s str, delim str) int {
+    var i = 0
+    var n = s.len()
+    var count = 0
+    var d = delim.char_at(0)
+    for i < n {
+        if s.char_at(i) == d {
+            count = count + 1
+        }
+        i = i + 1
+    }
+    return count + 1
+}
+
+// Replace all occurrences of old substring with new in string s
+// Simple char-by-char approach for single-char patterns
+fn str_replace_char(s str, old_ch int, new_s str) str {
+    var result = ""
+    var i = 0
+    var n = s.len()
+    for i < n {
+        if s.char_at(i) == old_ch {
+            result = result + new_s
+        } else {
+            result = result + s.substr(i, i + 1)
+        }
+        i = i + 1
+    }
+    return result
+}
+
+// Replace all occurrences of word old with word new in string s
+// A "word" is delimited by non-alphanumeric characters
+fn str_replace_word(s str, old str, new_s str) str {
+    var result = ""
+    var i = 0
+    var n = s.len()
+    var old_len = old.len()
+
+    for i < n {
+        // Try to match old at position i
+        var match = 1
+        var j = 0
+        for j < old_len {
+            var pos = i + j
+            if pos >= n {
+                match = 0
+                j = old_len
+            } else {
+                if s.char_at(pos) != old.char_at(j) {
+                    match = 0
+                    j = old_len
+                } else {
+                    j = j + 1
+                }
+            }
+        }
+
+        if match == 1 {
+            // Check word boundary: char before and after must be non-alphanumeric
+            var before_ok = 1
+            if i > 0 {
+                var bc = s.char_at(i - 1)
+                if bc >= 48 && bc <= 57 {
+                    before_ok = 0
+                }
+                if bc >= 65 && bc <= 90 {
+                    before_ok = 0
+                }
+                if bc >= 97 && bc <= 122 {
+                    before_ok = 0
+                }
+                if bc == 95 {
+                    before_ok = 0
+                }
+            }
+            var after_ok = 1
+            var after_pos = i + old_len
+            if after_pos < n {
+                var ac = s.char_at(after_pos)
+                if ac >= 48 && ac <= 57 {
+                    after_ok = 0
+                }
+                if ac >= 65 && ac <= 90 {
+                    after_ok = 0
+                }
+                if ac >= 97 && ac <= 122 {
+                    after_ok = 0
+                }
+                if ac == 95 {
+                    after_ok = 0
+                }
+            }
+
+            if before_ok == 1 && after_ok == 1 {
+                result = result + new_s
+                i = i + old_len
+            } else {
+                result = result + s.substr(i, i + 1)
+                i = i + 1
+            }
+        } else {
+            result = result + s.substr(i, i + 1)
+            i = i + 1
+        }
+    }
+    return result
+}
+
+// ---- Instantiate ----
+
+// Instantiate a generic type with concrete type arguments.
+// Example: generic_instantiate(reg, "Pair", "int,str")
+//   → looks up Pair<K,V> with fields "key:K,val:V"
+//   → replaces K→i32, V→String (via a2r_type)
+//   → returns "key:i32,val:String"
+fn generic_instantiate(reg GenericRegistry, name str, type_args str) str {
+    var entry = generic_lookup(reg, name)
+    if entry.name == "" {
+        return ""
+    }
+
+    // Count params and args
+    var param_count = str_count_delim(entry.params, ",")
+    var fields_result = entry.fields
+
+    // For each param, get the type arg and replace
+    var i = 0
+    for i < param_count {
+        var param = str_split_part(entry.params, ",", i)
+        var arg = str_split_part(type_args, ",", i)
+
+        // Trim spaces from param
+        var trimmed_param = str_trim(param)
+        var trimmed_arg = str_trim(arg)
+
+        // Convert arg to Rust type via a2r_type
+        var rust_type = a2r_type(trimmed_arg)
+
+        // Replace param with rust_type in fields
+        fields_result = str_replace_word(fields_result, trimmed_param, rust_type)
+
+        i = i + 1
+    }
+
+    return fields_result
+}
+
+// Trim leading/trailing spaces from string
+fn str_trim(s str) str {
+    var n = s.len()
+    if n == 0 { return "" }
+
+    // Find first non-space position
+    var start = 0
+    var found_start = 0
+    for start < n {
+        if s.char_at(start) != 32 {
+            found_start = 1
+            start = n
+        } else {
+            start = start + 1
+        }
+    }
+    // All spaces
+    if found_start == 0 { return "" }
+    // real_start = last value of start before we set start = n
+    // We need to track it differently
+    var rs = 0
+    var j = 0
+    for j < n {
+        if s.char_at(j) != 32 {
+            rs = j
+            j = n
+        } else {
+            j = j + 1
+        }
+    }
+
+    // Find last non-space position (exclusive end)
+    var re = n
+    var k = n - 1
+    for k >= 0 {
+        if s.char_at(k) != 32 {
+            re = k + 1
+            k = -1
+        } else {
+            k = k - 1
+        }
+    }
+
+    return s.substr(rs, re)
+}
+
+// ---- Mono Name Generation ----
+
+// Generate monomorphic name for specific type arguments.
+// Example: "Pair" + "int,str" → "Pair_i32_String"
+fn generic_mono_name(name str, type_args str) str {
+    var result = name
+    var count = str_count_delim(type_args, ",")
+    var i = 0
+    for i < count {
+        var arg = str_split_part(type_args, ",", i)
+        var trimmed = str_trim(arg)
+        var rust_type = a2r_type(trimmed)
+        result = result + "_" + rust_type
+        i = i + 1
+    }
+    return result
+}

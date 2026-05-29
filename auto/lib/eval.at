@@ -1,3 +1,11 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM Sync Snapshot                                       ║
+// ║ Component: eval.at (Tree-Walking Evaluator)              ║
+// ║ Rust ref:  src/eval.rs, src/interpreter/                 ║
+// ║ Baseline:  fe666a6f (2026-05-26)                         ║
+// ║ Coverage:  int/str/bool/nil, scope, fn calls, basic ops  ║
+// ║ Missing:   float, closures, pattern match, generics, FFI ║
+// ╚═══════════════════════════════════════════════════════════╝
 // Tree-Walking Evaluator for the Auto self-hosted compiler
 // Evaluates structured AST nodes directly using heap object traversal
 
