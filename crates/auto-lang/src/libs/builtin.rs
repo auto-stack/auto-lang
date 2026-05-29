@@ -7,6 +7,28 @@ thread_local! {
     static TEST_OUTPUT_CAPTURE: RefCell<Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>> = RefCell::new(None);
 }
 
+// UI console capture: used by DevTools Console tab to show print() output
+thread_local! {
+    static UI_CONSOLE_BUFFER: RefCell<Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>> = RefCell::new(None);
+}
+
+/// Enable UI console capture and return a shared buffer for reading print() output.
+pub fn enable_ui_console() -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    use std::sync::{Arc, Mutex};
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    UI_CONSOLE_BUFFER.with(|buf| {
+        *buf.borrow_mut() = Some(buffer.clone());
+    });
+    buffer
+}
+
+/// Disable UI console capture.
+pub fn disable_ui_console() {
+    UI_CONSOLE_BUFFER.with(|buf| {
+        *buf.borrow_mut() = None;
+    });
+}
+
 /// Enable test mode and return a buffer for capturing output
 #[cfg(test)]
 pub fn enable_test_capture() -> std::sync::Arc<std::sync::Mutex<Vec<u8>>> {
@@ -236,44 +258,38 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
 
 // TODO: fix for named args
 pub fn print(args: &Args) -> Value {
+    // Build the output string (shared by all paths)
+    let mut output = String::new();
+    for (i, arg) in args.args.iter().enumerate() {
+        let value = arg.get_val();
+        output.push_str(&value.repr());
+        if i < args.args.len() - 1 {
+            output.push(' ');
+        }
+    }
+
     // Check if we're in test mode
     let test_capture = TEST_OUTPUT_CAPTURE.with(|capture| capture.borrow().clone());
 
     if let Some(buffer) = test_capture {
         // Test mode: write to buffer
-        let mut output = String::new();
-        for (i, arg) in args.args.iter().enumerate() {
-            // Get the value from the Arg
-            let value = arg.get_val();
-            // Use repr() for strings to avoid quotes
-            output.push_str(&value.repr());
-            if i < args.args.len() - 1 {
-                output.push(' ');
-            }
-        }
         output.push('\n');
-
-        // Write to buffer
         let mut buf = buffer.lock().unwrap();
         buf.extend_from_slice(output.as_bytes());
     } else {
         // Normal mode: write to stdout
         use std::io::{self, Write};
-
         let stdout = io::stdout();
         let mut handle = stdout.lock();
-
-        for (i, arg) in args.args.iter().enumerate() {
-            // Get the value from the Arg
-            let value = arg.get_val();
-            // Use repr() for strings to avoid quotes
-            write!(handle, "{}", value.repr()).ok();
-            if i < args.args.len() - 1 {
-                write!(handle, " ").ok();
-            }
-        }
+        write!(handle, "{}", output).ok();
         writeln!(handle).ok();
         handle.flush().ok();
+    }
+
+    // Also write to UI console buffer if enabled (for DevTools Console tab)
+    let ui_buf = UI_CONSOLE_BUFFER.with(|buf| buf.borrow().clone());
+    if let Some(buffer) = ui_buf {
+        buffer.lock().unwrap().push(output);
     }
 
     Value::Void

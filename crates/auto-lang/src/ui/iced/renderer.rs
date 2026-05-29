@@ -1477,6 +1477,15 @@ fn debug_keyboard_sub() -> iced::Subscription<IcedMessage> {
 const DEBUG_TOGGLE_EVENT: &str = "__toggle_debug";
 const DEBUG_HOVER_MOVE: &str = "__hover_";
 const DEBUG_HOVER_EXIT: &str = "__hover_exit_";
+const DEBUG_SELECT_PREFIX: &str = "__select_";
+
+/// DevTools panel tab selector.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DevToolsTab {
+    Source,
+    Properties,
+    Console,
+}
 
 /// Wrapper holding `DynamicComponent` as iced's application state.
 struct DynamicState {
@@ -1496,6 +1505,18 @@ struct DynamicState {
     pending_hovers: std::cell::RefCell<Vec<(usize, String)>>,
     /// Style metadata per debug element, collected during rendering.
     debug_element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
+    /// ID of the currently selected element (click-to-select, orange highlight).
+    selected_widget: std::cell::RefCell<Option<String>>,
+    /// Whether the DevTools panel is open on the right side.
+    devtools_open: std::cell::RefCell<bool>,
+    /// Currently active DevTools tab.
+    devtools_tab: std::cell::RefCell<DevToolsTab>,
+    /// Captured console output from print() calls.
+    console_output: std::cell::RefCell<Vec<String>>,
+    /// Cached source code of the current .at file.
+    source_code: std::cell::RefCell<Option<String>>,
+    /// Shared console buffer — written to by print() via UI_CONSOLE_BUFFER.
+    console_buffer: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -1539,6 +1560,12 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             hovered_widget: std::cell::RefCell::new(None),
             pending_hovers: std::cell::RefCell::new(Vec::new()),
             debug_element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
+            selected_widget: std::cell::RefCell::new(None),
+            devtools_open: std::cell::RefCell::new(false),
+            devtools_tab: std::cell::RefCell::new(DevToolsTab::Properties),
+            console_output: std::cell::RefCell::new(Vec::new()),
+            source_code: std::cell::RefCell::new(None),
+            console_buffer: crate::libs::builtin::enable_ui_console(),
         }
     };
 
@@ -1548,9 +1575,53 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             state.debug_mode = !state.debug_mode;
             if !state.debug_mode {
                 *state.hovered_widget.borrow_mut() = None;
+                *state.selected_widget.borrow_mut() = None;
+                *state.devtools_open.borrow_mut() = false;
                 state.pending_hovers.borrow_mut().clear();
             }
             return iced::Task::none();
+        }
+        // Handle click-to-select: set selected element and open DevTools panel
+        if let Some(id) = msg.event.strip_prefix(DEBUG_SELECT_PREFIX) {
+            let id = id.to_string();
+            // Toggle: if clicking the same element, deselect
+            if state.selected_widget.borrow().as_deref() == Some(id.as_str()) {
+                *state.selected_widget.borrow_mut() = None;
+                // Don't close panel on deselect — user may want to inspect other tabs
+            } else {
+                *state.selected_widget.borrow_mut() = Some(id);
+                *state.devtools_open.borrow_mut() = true;
+                *state.devtools_tab.borrow_mut() = DevToolsTab::Properties;
+                // Cache source code for the Source tab
+                if state.source_code.borrow().is_none() {
+                    if let Some(path) = state.component.source_path() {
+                        if let Ok(code) = std::fs::read_to_string(path) {
+                            *state.source_code.borrow_mut() = Some(code);
+                        }
+                    }
+                }
+            }
+            return iced::Task::none();
+        }
+        // Handle DevTools panel tab switching and close
+        match msg.event.as_str() {
+            "__tab_source" => {
+                *state.devtools_tab.borrow_mut() = DevToolsTab::Source;
+                return iced::Task::none();
+            }
+            "__tab_properties" => {
+                *state.devtools_tab.borrow_mut() = DevToolsTab::Properties;
+                return iced::Task::none();
+            }
+            "__tab_console" => {
+                *state.devtools_tab.borrow_mut() = DevToolsTab::Console;
+                return iced::Task::none();
+            }
+            "__close_devtools" => {
+                *state.devtools_open.borrow_mut() = false;
+                return iced::Task::none();
+            }
+            _ => {}
         }
         // Accumulate hover move messages — resolved in view() by picking smallest counter
         if let Some(payload) = msg.event.strip_prefix(DEBUG_HOVER_MOVE) {
@@ -1570,6 +1641,9 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             if let Ok(Some(_)) = state.component.check_file_changed() {
                 if let Some(path) = state.component.source_path() {
                     if let Ok(code) = std::fs::read_to_string(path) {
+                        // Refresh cached source code for DevTools Source tab
+                        *state.source_code.borrow_mut() = Some(code.clone());
+
                         let session = CompilerSession::ui();
                         let mut parser = Parser::from(&code).with_session(session);
                         if let Ok(ast) = parser.parse() {
@@ -1749,9 +1823,18 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     let converted = convert_view_messages(view);
 
+    // Sync console buffer → console_output for DevTools Console tab
+    {
+        let buf = state.console_buffer.lock().unwrap();
+        if !buf.is_empty() {
+            state.console_output.borrow_mut().extend_from_slice(&buf);
+        }
+    }
+
     let debug_ctx = if state.debug_mode {
         Some(DebugRenderCtx {
             hovered_id: state.hovered_widget.borrow().clone(),
+            selected_id: state.selected_widget.borrow().clone(),
             counter: std::cell::RefCell::new(0),
             element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
         })
@@ -1768,11 +1851,13 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     }
 
     if state.debug_mode {
-        // Fixed-height info bar — tooltip on hovered element shows details
+        // Fixed-height info bar — shows hovered/selected element info
         let hovered_id = state.hovered_widget.borrow().clone();
-        let info_text = match &hovered_id {
-            Some(id) => format!("Debug ON | {}", id),
-            None => "Debug ON".to_string(),
+        let selected_id = state.selected_widget.borrow().clone();
+        let info_text = match (&selected_id, &hovered_id) {
+            (Some(sel), _) => format!("Debug ON | selected: {}", sel),
+            (None, Some(hov)) => format!("Debug ON | hover: {}", hov),
+            (None, None) => "Debug ON".to_string(),
         };
         let bar = container(
             text(info_text).size(12).color(iced::Color::WHITE)
@@ -1784,14 +1869,27 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             .padding(4.0)
             .width(iced::Length::Fill);
 
-        let mut layout = column([]);
-        layout = layout.push(rendered);
-        layout = layout.push(bar);
-        layout = layout.width(iced::Length::Fill).height(iced::Length::Fill);
-        container(layout)
-            .width(iced::Length::Fill)
-            .height(iced::Length::Fill)
-            .into()
+        let mut main_col = column([]);
+        main_col = main_col.push(rendered);
+        main_col = main_col.push(bar);
+        main_col = main_col.width(iced::Length::Fill).height(iced::Length::Fill);
+
+        if *state.devtools_open.borrow() {
+            // Row layout: [main area] [DevTools panel]
+            let panel = render_devtools_panel(state);
+            let layout = row![main_col, panel]
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill);
+            container(layout)
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .into()
+        } else {
+            container(main_col)
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .into()
+        }
     } else {
         container(rendered)
             .width(iced::Length::Fill)
@@ -1800,9 +1898,242 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     }
 }
 
-/// Debug rendering context: tracks hovered widget and generates unique IDs.
+/// Render the DevTools panel on the right side of the window.
+fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    let current_tab = *state.devtools_tab.borrow();
+
+    // Tab bar: [源码] [属性] [控制台] [×]
+    let tab_source_style = tab_style_fn(current_tab == DevToolsTab::Source);
+    let tab_props_style = tab_style_fn(current_tab == DevToolsTab::Properties);
+    let tab_console_style = tab_style_fn(current_tab == DevToolsTab::Console);
+
+    let tab_source = container(
+        mouse_area(text("源码").size(11))
+            .on_press(IcedMessage {
+                widget: String::new(),
+                event: "__tab_source".to_string(),
+                input_value: None,
+            })
+    )
+        .style(tab_source_style)
+        .padding(iced::Padding::new(4.0));
+
+    let tab_props = container(
+        mouse_area(text("属性").size(11))
+            .on_press(IcedMessage {
+                widget: String::new(),
+                event: "__tab_properties".to_string(),
+                input_value: None,
+            })
+    )
+        .style(tab_props_style)
+        .padding(iced::Padding::new(4.0));
+
+    let tab_console = container(
+        mouse_area(text("控制台").size(11))
+            .on_press(IcedMessage {
+                widget: String::new(),
+                event: "__tab_console".to_string(),
+                input_value: None,
+            })
+    )
+        .style(tab_console_style)
+        .padding(iced::Padding::new(4.0));
+
+    let close_btn = container(
+        mouse_area(text("✕").size(11).color(iced::Color::from_rgb(0.7, 0.7, 0.7)))
+            .on_press(IcedMessage {
+                widget: String::new(),
+                event: "__close_devtools".to_string(),
+                input_value: None,
+            })
+    )
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgb(0.2, 0.2, 0.22))),
+            border: iced::Border {
+                radius: 3.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .padding(iced::Padding::new(4.0));
+
+    let tab_bar = row![tab_source, tab_props, tab_console]
+        .spacing(2)
+        .width(iced::Length::Fill);
+    let header = row![tab_bar, close_btn]
+        .spacing(4)
+        .width(iced::Length::Fill)
+        .align_y(iced::Alignment::Center);
+
+    // Tab content
+    let content: iced::Element<'static, IcedMessage> = match current_tab {
+        DevToolsTab::Properties => render_properties_tab(state),
+        DevToolsTab::Console => render_console_tab(state),
+        DevToolsTab::Source => render_source_tab(state),
+    };
+
+    let panel_col = column![header, container(
+        scrollable(content)
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+    )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)]
+        .spacing(4)
+        .width(300)
+        .height(iced::Length::Fill);
+
+    container(panel_col)
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgb(0.14, 0.14, 0.16))),
+            border: iced::Border {
+                color: iced::Color::from_rgb(0.3, 0.3, 0.35),
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        })
+        .padding(iced::Padding::new(6.0))
+        .width(300)
+        .height(iced::Length::Fill)
+        .into()
+}
+
+fn tab_style_fn(active: bool) -> Box<dyn Fn(&iced::Theme) -> container::Style> {
+    Box::new(move |_: &iced::Theme| {
+        if active {
+            container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgb(0.25, 0.25, 0.28))),
+                border: iced::Border {
+                    color: iced::Color::from_rgb(0.4, 0.6, 1.0),
+                    width: 1.0,
+                    radius: 3.0.into(),
+                },
+                text_color: Some(iced::Color::WHITE),
+                ..Default::default()
+            }
+        } else {
+            container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgb(0.2, 0.2, 0.22))),
+                border: iced::Border {
+                    color: iced::Color::from_rgb(0.3, 0.3, 0.35),
+                    width: 1.0,
+                    radius: 3.0.into(),
+                },
+                text_color: Some(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+                ..Default::default()
+            }
+        }
+    })
+}
+
+/// Render the Properties tab: show selected element's style properties.
+fn render_properties_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    let selected_id = state.selected_widget.borrow().clone();
+    let styles = state.debug_element_styles.borrow();
+
+    let info = selected_id.as_ref().and_then(|id| styles.get(id));
+
+    match info {
+        Some(elem_info) => {
+            let title = format!("{} #{}", elem_info.kind, selected_id.as_deref().unwrap_or("?"));
+            let mut col = column![
+                text(title).size(12).color(iced::Color::from_rgb(0.4, 0.7, 1.0))
+            ]
+                .spacing(2);
+
+            if !elem_info.props.is_empty() {
+                col = col.push(
+                    text("Styles").size(10).color(iced::Color::from_rgb(0.5, 0.8, 0.5))
+                );
+                for (k, v) in &elem_info.props {
+                    col = col.push(
+                        row![
+                            text(format!("{}:", k)).size(11)
+                                .color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
+                            text(v.clone()).size(11)
+                                .color(iced::Color::WHITE),
+                        ]
+                            .spacing(4)
+                    );
+                }
+            }
+
+            col.into()
+        }
+        None => {
+            column![
+                text("无选中元素").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+                text("点击元素以查看属性").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
+            ]
+                .spacing(4)
+                .into()
+        }
+    }
+}
+
+/// Render the Console tab: show captured print() output.
+fn render_console_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    let output = state.console_output.borrow();
+
+    if output.is_empty() {
+        return column![
+            text("暂无输出").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+        ]
+            .into();
+    }
+
+    let mut col = column![].spacing(1);
+    for line in output.iter().rev().take(100) {
+        col = col.push(
+            text(line.clone()).size(10).color(iced::Color::from_rgb(0.85, 0.85, 0.85))
+        );
+    }
+    col.into()
+}
+
+/// Render the Source tab: show source code of the current .at file.
+fn render_source_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    let source = state.source_code.borrow().clone();
+    let path_display = state.component.source_path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    match source {
+        Some(code) => {
+            let mut col = column![
+                text(path_display).size(9).color(iced::Color::from_rgb(0.4, 0.6, 0.8))
+            ]
+                .spacing(0);
+
+            for (i, line) in code.lines().enumerate() {
+                let line_num = format!("{:>4}", i + 1);
+                col = col.push(
+                    row![
+                        text(line_num).size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
+                        text(line.to_string()).size(10).color(iced::Color::from_rgb(0.8, 0.8, 0.8)),
+                    ]
+                        .spacing(4)
+                );
+            }
+            col.into()
+        }
+        None => {
+            column![
+                text("源码不可用").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+                text("源码将在点击元素时加载").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
+            ]
+                .spacing(4)
+                .into()
+        }
+    }
+}
+
+/// Debug rendering context: tracks hovered/selected widget and generates unique IDs.
 struct DebugRenderCtx {
     hovered_id: Option<String>,
+    selected_id: Option<String>,
     counter: std::cell::RefCell<usize>,
     /// Style metadata per element: id -> (kind, props).
     element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
@@ -1829,7 +2160,7 @@ impl DebugRenderCtx {
         self.hovered_id.as_deref() == Some(id)
     }
 
-    /// Wrap any element with mouse_area for hover detection + store style metadata.
+    /// Wrap any element with mouse_area for hover/click detection + store style metadata.
     fn wrap_debug(
         &self, kind: &str, el: iced::Element<'static, IcedMessage>,
         props: Vec<(String, String)>,
@@ -1837,7 +2168,7 @@ impl DebugRenderCtx {
         let counter_val = *self.counter.borrow();
         let id = self.next_id(kind);
 
-        // Store metadata for tooltip lookup in dynamic_view
+        // Store metadata for tooltip/panel lookup in dynamic_view
         if !props.is_empty() {
             self.element_styles.borrow_mut().insert(id.clone(), DebugElementInfo {
                 kind: kind.to_string(),
@@ -1846,6 +2177,7 @@ impl DebugRenderCtx {
         }
 
         let hovered = self.is_hovered(&id);
+        let selected = self.selected_id.as_deref() == Some(&id);
         let move_id = format!("{}{}:{}", DEBUG_HOVER_MOVE, counter_val, id);
         let enter_msg = IcedMessage {
             widget: String::new(),
@@ -1857,6 +2189,11 @@ impl DebugRenderCtx {
             event: format!("{}{}", DEBUG_HOVER_EXIT, counter_val),
             input_value: None,
         };
+        let press_msg = IcedMessage {
+            widget: String::new(),
+            event: format!("{}{}", DEBUG_SELECT_PREFIX, id),
+            input_value: None,
+        };
         let ma = mouse_area(el)
             .on_enter(enter_msg)
             .on_exit(exit_msg)
@@ -1864,9 +2201,52 @@ impl DebugRenderCtx {
                 widget: String::new(),
                 event: move_id.clone(),
                 input_value: None,
-            });
+            })
+            .on_press(press_msg);
 
-        if hovered {
+        if selected {
+            // Selected element: orange border + tooltip
+            let info = self.element_styles.borrow().get(&id).cloned();
+            let header_text = format!("{} #{}", kind, id);
+            let mut tip_col = column![text(header_text).size(10).color(iced::Color::from_rgb(1.0, 0.7, 0.3))].spacing(1);
+            if let Some(ref elem_info) = info {
+                if !elem_info.props.is_empty() {
+                    let mut line = String::new();
+                    for (k, v) in &elem_info.props {
+                        if !line.is_empty() { line.push(' '); }
+                        line.push_str(k);
+                        line.push(':');
+                        line.push_str(v);
+                    }
+                    tip_col = tip_col.push(text(line).size(9).color(iced::Color::from_rgb(0.7, 0.7, 0.7)));
+                }
+            }
+            let tip_content = container(tip_col)
+                .style(|_: &iced::Theme| container::Style {
+                    background: Some(iced::Background::Color(iced::Color::from_rgba(0.15, 0.15, 0.18, 0.95))),
+                    border: iced::Border {
+                        color: iced::Color::from_rgb(0.8, 0.5, 0.2),
+                        width: 1.0,
+                        radius: 4.0.into(),
+                    },
+                    ..Default::default()
+                })
+                .padding(iced::Padding::new(6.0));
+
+            let bordered = container(ma)
+                .style(|_: &iced::Theme| container::Style {
+                    border: iced::Border {
+                        color: iced::Color::from_rgb(1.0, 0.6, 0.2),
+                        width: 2.0,
+                        radius: 0.0.into(),
+                    },
+                    ..Default::default()
+                });
+
+            tooltip(bordered, tip_content, tooltip::Position::Top)
+                .gap(4.0)
+                .into()
+        } else if hovered {
             // Build tooltip content from stored metadata
             let info = self.element_styles.borrow().get(&id).cloned();
             let header_text = format!("{} #{}", kind, id);
