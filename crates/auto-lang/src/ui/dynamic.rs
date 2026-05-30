@@ -250,6 +250,14 @@ impl DynamicComponent {
         self.tick_interval
     }
 
+    /// Collect source spans from the view template via DFS traversal.
+    /// Returns a Vec of spans in the same order as the rendering DFS would visit them.
+    pub fn collect_view_spans(&self) -> Vec<Option<(usize, usize)>> {
+        let mut spans = Vec::new();
+        collect_spans_dfs(&self.view_template, &mut spans);
+        spans
+    }
+
     // ========================================================================
     // Hot Reload (Plan 205 Phase 4)
     // ========================================================================
@@ -484,7 +492,7 @@ fn extract_input_state_map(view_tree: &crate::aura::AuraNode) -> HashMap<String,
 fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, String>) {
     use crate::aura::{AuraNode, AuraPropValue, AuraExpr};
     match node {
-        AuraNode::Element { tag, props, events, children } => {
+        AuraNode::Element { tag, props, events, children, .. } => {
             if tag == "input" {
                 // Find value prop that is a StateRef
                 let state_field = props.get("value").and_then(|v| match v {
@@ -522,6 +530,47 @@ fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, 
             }
         }
         _ => {}
+    }
+}
+
+/// DFS traversal of AuraNode tree to collect source spans in render order.
+fn collect_spans_dfs(node: &crate::aura::AuraNode, spans: &mut Vec<Option<(usize, usize)>>) {
+    use crate::aura::AuraNode;
+    match node {
+        AuraNode::Element { children, span, .. } => {
+            spans.push(*span);
+            for child in children {
+                collect_spans_dfs(child, spans);
+            }
+        }
+        AuraNode::Text(_) => {} // Text nodes don't get wrapped by wrap_debug
+        AuraNode::ForLoop { body, span, .. } => {
+            spans.push(*span);
+            for child in body {
+                collect_spans_dfs(child, spans);
+            }
+        }
+        AuraNode::Conditional { then_body, else_body, span, .. } => {
+            spans.push(*span);
+            for child in then_body {
+                collect_spans_dfs(child, spans);
+            }
+            if let Some(else_nodes) = else_body {
+                for child in else_nodes {
+                    collect_spans_dfs(child, spans);
+                }
+            }
+        }
+        AuraNode::Component { span, .. } => {
+            spans.push(*span);
+        }
+        AuraNode::Outlet => {}
+        AuraNode::Link { children, span, .. } => {
+            spans.push(*span);
+            for child in children {
+                collect_spans_dfs(child, spans);
+            }
+        }
     }
 }
 

@@ -622,6 +622,7 @@ mod tests {
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             },
             handlers: HashMap::new(),
             props: vec![],

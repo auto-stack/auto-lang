@@ -232,6 +232,9 @@ pub enum ViewNode {
 
         /// Child nodes
         children: Vec<ViewNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
     },
 
     /// Text node (literal or with interpolations)
@@ -250,6 +253,9 @@ pub enum ViewNode {
 
         /// Loop body nodes
         body: Vec<ViewNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
     },
 
     /// Conditional: if condition { then_body } else { else_body }
@@ -262,6 +268,9 @@ pub enum ViewNode {
 
         /// Optional else body
         else_body: Option<Vec<ViewNode>>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
     },
 
     /// Component instantiation: TodoItem (todo: .todo, onToggle: .Toggle)
@@ -274,25 +283,15 @@ pub enum ViewNode {
 
         /// Event handlers
         events: Vec<ViewEvent>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
     },
 
     /// Router outlet: renders the matched child route (Plan 105)
-    ///
-    /// ```auto
-    /// outlet
-    /// ```
     Outlet,
 
     /// Navigation link: anchor with routing (Plan 105)
-    ///
-    /// ```auto
-    /// link (to: "/user/123") { "View Profile" }
-    /// ```
-    ///
-    /// Also supports shorthand form:
-    /// ```auto
-    /// link (text: "Forgot password?", href: "#")
-    /// ```
     Link {
         /// Target path for router-link (e.g., "/user/123")
         to: String,
@@ -305,6 +304,9 @@ pub enum ViewNode {
 
         /// Child content
         children: Vec<ViewNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
     },
 }
 
@@ -431,6 +433,7 @@ impl ViewNode {
             props: Vec::new(),
             events: Vec::new(),
             children: Vec::new(),
+            span: None,
         }
     }
 

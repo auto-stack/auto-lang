@@ -10153,6 +10153,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a single view node
     fn parse_view_node(&mut self) -> AutoResult<ViewNode> {
+        let start_pos = self.cur.pos;
         self.skip_empty_lines();
 
         // Check for "for" keyword: for item in .list { body }
@@ -10450,6 +10451,7 @@ impl<'a> Parser<'a> {
                 props: merged_props,
                 events,
                 children,
+                span: Some((start_pos.pos, self.cur.pos.pos - start_pos.pos)),
             })
         } else {
             Ok(ViewNode::Element {
@@ -10457,6 +10459,7 @@ impl<'a> Parser<'a> {
                 props,
                 events,
                 children,
+                span: Some((start_pos.pos, self.cur.pos.pos - start_pos.pos)),
             })
         }
     }
@@ -10511,6 +10514,7 @@ impl<'a> Parser<'a> {
 
     /// Parse for loop in view: for item in .list { body }
     fn parse_view_for_loop(&mut self) -> AutoResult<ViewNode> {
+        let start_pos = self.cur.pos;
         self.expect_ident("for")?;
 
         // Parse loop variable (and optional index)
@@ -10607,11 +10611,13 @@ impl<'a> Parser<'a> {
             index,
             iterable,
             body,
+            span: Some((start_pos.pos, self.prev.pos.pos + self.prev.pos.len - start_pos.pos)),
         })
     }
 
     /// Parse conditional in view: if condition { then_body } else { else_body }
     fn parse_view_conditional(&mut self) -> AutoResult<ViewNode> {
+        let start_pos = self.cur.pos;
         self.expect_ident("if")?;
 
         // Parse condition expression (until we hit '{')
@@ -10659,12 +10665,14 @@ impl<'a> Parser<'a> {
             condition,
             then_body,
             else_body,
+            span: Some((start_pos.pos, self.prev.pos.pos + self.prev.pos.len - start_pos.pos)),
         })
     }
 
     /// Parse navigation link in view: link (to: "/path") { children } (Plan 105)
     /// Also supports: link (text: "label", href: "#") {} for external links
     fn parse_view_link(&mut self) -> AutoResult<ViewNode> {
+        let start_pos = self.cur.pos;
         self.expect(TokenKind::Link)?;
 
         // Parse props in parentheses: (to: "/path") or (text: "label", href: "#")
@@ -10730,7 +10738,7 @@ impl<'a> Parser<'a> {
             children.push(ViewNode::Text(ViewText::Literal(text.clone())));
         }
 
-        Ok(ViewNode::Link { to, text, href, children })
+        Ok(ViewNode::Link { to, text, href, children, span: Some((start_pos.pos, self.prev.pos.pos + self.prev.pos.len - start_pos.pos)) })
     }
 
     /// Parse condition expression (until '{')

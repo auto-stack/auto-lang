@@ -410,19 +410,19 @@ fun {}Preview() {{
         let ind = "    ".repeat(indent);
 
         match node {
-            AuraNode::Element { tag, props, events, children } => {
+            AuraNode::Element { tag, props, events, children, .. } => {
                 self.element_to_compose(tag, props, events, children, indent)
             }
             AuraNode::Text(content) => {
                 self.text_to_compose(content, indent)
             }
-            AuraNode::ForLoop { var, index, iterable, body } => {
+            AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 self.for_loop_to_compose(var, index, iterable, body, indent)
             }
-            AuraNode::Conditional { condition, then_body, else_body } => {
+            AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 self.conditional_to_compose(condition, then_body, else_body, indent)
             }
-            AuraNode::Component { name, props, events } => {
+            AuraNode::Component { name, props, events, .. } => {
                 self.component_to_compose(name, props, events, indent)
             }
             AuraNode::Outlet => {
@@ -431,7 +431,7 @@ fun {}Preview() {{
                 // Note: weight is available via .* import from androidx.compose.foundation.layout
                 Ok(format!("{}AppNavHost(navController, modifier = Modifier.weight(1f))\n", ind))
             }
-            AuraNode::Link { to, text, href, children } => {
+            AuraNode::Link { to, text, href, children, .. } => {
                 self.link_to_compose(to, text, href, children, indent)
             }
         }
@@ -2843,6 +2843,7 @@ mod tests {
             props: card_props,
             events: HashMap::new(),
             children: vec![AuraNode::Text(AuraTextContent::Literal("Elevated Card".to_string()))],
+            span: None,
         };
 
         let widget = AuraWidget {
@@ -2885,6 +2886,7 @@ mod tests {
             props: card_props,
             events: HashMap::new(),
             children: vec![AuraNode::Text(AuraTextContent::Literal("Outlined Card".to_string()))],
+            span: None,
         };
 
         let widget = AuraWidget {
@@ -2923,6 +2925,7 @@ mod tests {
             props: card_props,
             events: HashMap::new(),
             children: vec![AuraNode::Text(AuraTextContent::Literal("Default Card".to_string()))],
+            span: None,
         };
 
         let widget = AuraWidget {
@@ -3045,6 +3048,7 @@ widget TestCardVariant {
             props: inner_card_props,
             events: HashMap::new(),
             children: vec![AuraNode::Text(AuraTextContent::Literal("Default Card".to_string()))],
+            span: None,
         };
 
         let inner_card2 = AuraNode::Element {
@@ -3052,6 +3056,7 @@ widget TestCardVariant {
             props: outlined_card_props,
             events: HashMap::new(),
             children: vec![AuraNode::Text(AuraTextContent::Literal("Outlined Card".to_string()))],
+            span: None,
         };
 
         let col_node = AuraNode::Element {
@@ -3059,6 +3064,7 @@ widget TestCardVariant {
             props: HashMap::new(),
             events: HashMap::new(),
             children: vec![inner_card1, inner_card2],
+            span: None,
         };
 
         let outer_card = AuraNode::Element {
@@ -3066,6 +3072,7 @@ widget TestCardVariant {
             props: outer_card_props,
             events: HashMap::new(),
             children: vec![col_node],
+            span: None,
         };
 
         let widget = AuraWidget {
@@ -3124,6 +3131,7 @@ fn test_text_with_flex_style() {
         props: text_props,
         events: HashMap::new(),
         children: vec![AuraNode::Text(AuraTextContent::Literal("Hello".to_string()))],
+        span: None,
     };
 
     let widget = AuraWidget {

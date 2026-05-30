@@ -94,7 +94,7 @@ impl<'a> AuraViewBuilder<'a> {
     /// Dispatch an AuraNode to the appropriate converter.
     fn convert_node(&self, node: &AuraNode) -> View<DynamicMessage> {
         match node {
-            AuraNode::Element { tag, props, events, children } => {
+            AuraNode::Element { tag, props, events, children, .. } => {
                 self.convert_element(tag, props, events, children)
             }
             AuraNode::Text(text_content) => {
@@ -115,7 +115,7 @@ impl<'a> AuraViewBuilder<'a> {
                     style: None,
                 }
             }
-            AuraNode::Conditional { condition, then_body, else_body } => {
+            AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let is_true = self.eval_condition(condition);
                 let empty = Vec::new();
                 let body = if is_true {

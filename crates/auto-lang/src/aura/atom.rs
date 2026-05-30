@@ -127,7 +127,7 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
     let ind = "    ".repeat(indent);
 
     match node {
-        AuraNode::Element { tag, props, events, children } => {
+        AuraNode::Element { tag, props, events, children, .. } => {
             output.push_str(&format!("Node {{\n"));
             output.push_str(&format!("{}    tag: \"{}\",\n", ind, tag));
 
@@ -202,7 +202,7 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             }
         }
 
-        AuraNode::ForLoop { var, index, iterable, body } => {
+        AuraNode::ForLoop { var, index, iterable, body, .. } => {
             output.push_str(&format!("ForLoop {{\n"));
             output.push_str(&format!("{}    var: \"{}\",\n", ind, var));
             if let Some(idx) = index {
@@ -221,7 +221,7 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             output.push_str(&format!("{}}}", ind));
         }
 
-        AuraNode::Conditional { condition, then_body, else_body } => {
+        AuraNode::Conditional { condition, then_body, else_body, .. } => {
             output.push_str(&format!("Conditional {{\n"));
             output.push_str(&format!("{}    condition: \"{}\",\n", ind, condition));
             output.push_str(&format!("{}    then_body: [\n", ind));
@@ -245,7 +245,7 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             output.push_str(&format!("{}}}", ind));
         }
 
-        AuraNode::Component { name, props, events } => {
+        AuraNode::Component { name, props, events, .. } => {
             output.push_str(&format!("Component {{\n"));
             output.push_str(&format!("{}    name: \"{}\",\n", ind, name));
             if !props.is_empty() {
@@ -277,7 +277,7 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             output.push_str(&format!("Outlet"));
         }
 
-        AuraNode::Link { to, text, href, children } => {
+        AuraNode::Link { to, text, href, children, .. } => {
             output.push_str(&format!("Link {{\n"));
             output.push_str(&format!("{}    to: \"{}\",\n", ind, to));
             if !text.is_empty() {

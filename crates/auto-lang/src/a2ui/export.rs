@@ -103,6 +103,7 @@ fn export_node(
             props,
             events,
             children,
+            ..
         } => {
             let id = id_gen.next(tag, path);
             let body = export_element(tag, props, events, children, id_gen, path)?;
@@ -121,6 +122,7 @@ fn export_node(
             index: _,
             iterable,
             body,
+            ..
         } => {
             let id = id_gen.next("list", path);
             let items_value = A2UIValue::path(format!("/{}", iterable.trim_start_matches('.')));
@@ -147,6 +149,7 @@ fn export_node(
             condition: _,
             then_body,
             else_body: _,
+            ..
         } => {
             // A2UI does not have a native conditional component.
             // Export the then_body only, with a warning logged implicitly.
@@ -159,7 +162,7 @@ fn export_node(
             }
             Ok(result)
         }
-        AuraNode::Component { name, props, events } => {
+        AuraNode::Component { name, props, events, .. } => {
             let id = id_gen.next(&name.to_lowercase(), path);
             let body = export_component(name, props, events)?;
             Ok(vec![A2UIComponent::new(id, body)])
@@ -173,6 +176,7 @@ fn export_node(
             text: _,
             href: _,
             children,
+            ..
         } => {
             // Map Link to a Navigation component if it has children, otherwise skip
             if children.is_empty() {
@@ -447,6 +451,7 @@ mod tests {
                     },
                     events: HashMap::new(),
                     children: vec![],
+                    span: None,
                 },
                 AuraNode::Element {
                     tag: "button".to_string(),
@@ -461,8 +466,10 @@ mod tests {
                         m
                     },
                     children: vec![],
+                    span: None,
                 },
             ],
+            span: None,
         };
 
         AuraWidget {
@@ -530,6 +537,7 @@ mod tests {
             props: HashMap::new(),
             events: HashMap::new(),
             children: vec![],
+            span: None,
         };
 
         let widget = AuraWidget {

@@ -1606,7 +1606,7 @@ impl VueGenerator {
         let ind = "  ".repeat(indent);
 
         match node {
-            AuraNode::Element { tag, props, events, children } => {
+            AuraNode::Element { tag, props, events, children, .. } => {
                 // Special handling for previewcard element (supports both previewcard and preview-card)
                 if tag == "previewcard" || tag == "preview-card" {
                     return self.generate_previewcard_html(props, events, children, indent);
@@ -1808,7 +1808,7 @@ impl VueGenerator {
                 }
             }
 
-            AuraNode::ForLoop { var, index, iterable, body } => {
+            AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Generate v-for directive
                 // Auto syntax: for idx, item in list (index first, value second)
                 // Vue syntax: v-for="(item, index) in list" (value first, index second)
@@ -1843,7 +1843,7 @@ impl VueGenerator {
                 Ok(format!("{}<div {}>\n{}{}</div>\n", ind, v_for, body_html, ind))
             }
 
-            AuraNode::Conditional { condition, then_body, else_body } => {
+            AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 // Convert condition to Vue expression
                 let vue_condition = self.convert_condition(condition);
 
@@ -1866,7 +1866,7 @@ impl VueGenerator {
                 }
             }
 
-            AuraNode::Component { name, props, events } => {
+            AuraNode::Component { name, props, events, .. } => {
                 // Build props as bindings
                 let mut attrs = Vec::new();
                 for (key, value) in props {
@@ -1901,7 +1901,7 @@ impl VueGenerator {
                 Ok(format!("{}<router-view />\n", ind))
             }
 
-            AuraNode::Link { to, text, href, children } => {
+            AuraNode::Link { to, text, href, children, .. } => {
                 // Handle different link types:
                 // 1. External link with href: <a href="...">
                 // 2. Router link with to: <router-link to="...">
@@ -2213,7 +2213,7 @@ impl VueGenerator {
         let ind = "    ".repeat(indent);
 
         match node {
-            AuraNode::Element { tag, props, events, children } => {
+            AuraNode::Element { tag, props, events, children, .. } => {
                 let mut result = String::new();
 
                 // Build props string
@@ -2273,7 +2273,7 @@ impl VueGenerator {
                 }
             }
 
-            AuraNode::Conditional { condition, then_body, else_body } => {
+            AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let mut result = String::new();
                 result.push_str(&format!("{}if {} {{\n", ind, condition));
                 for child in then_body {
@@ -2290,7 +2290,7 @@ impl VueGenerator {
                 result
             }
 
-            AuraNode::ForLoop { var, index, iterable, body } => {
+            AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 let mut result = String::new();
                 let loop_header = if let Some(idx) = index {
                     format!("for ({}, {}) in {}", var, idx, iterable)
@@ -2305,7 +2305,7 @@ impl VueGenerator {
                 result
             }
 
-            AuraNode::Component { name, props, events } => {
+            AuraNode::Component { name, props, events, .. } => {
                 let mut result = String::new();
 
                 let mut props_parts = Vec::new();
@@ -2332,7 +2332,7 @@ impl VueGenerator {
                 format!("{}outlet\n", ind)
             }
 
-            AuraNode::Link { to, text, href, children } => {
+            AuraNode::Link { to, text, href, children, .. } => {
                 let mut result = String::new();
                 // Generate appropriate link syntax based on which props are provided
                 if !href.is_empty() {
@@ -7854,6 +7854,7 @@ mod tests {
             },
             events: HashMap::new(),
             children: vec![],
+            span: None,
         };
 
         let widget = AuraWidget {

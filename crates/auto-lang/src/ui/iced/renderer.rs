@@ -1515,6 +1515,8 @@ struct DynamicState {
     console_output: std::cell::RefCell<Vec<String>>,
     /// Cached source code of the current .at file.
     source_code: std::cell::RefCell<Option<String>>,
+    /// Byte offset of each line start (computed when source is loaded).
+    source_line_offsets: std::cell::RefCell<Vec<usize>>,
     /// Shared console buffer — written to by print() via UI_CONSOLE_BUFFER.
     console_buffer: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     /// Component tree for DevTools Elements tab, rebuilt each frame.
@@ -1567,6 +1569,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             devtools_tab: std::cell::RefCell::new(DevToolsTab::Inspector),
             console_output: std::cell::RefCell::new(Vec::new()),
             source_code: std::cell::RefCell::new(None),
+            source_line_offsets: std::cell::RefCell::new(Vec::new()),
             console_buffer: crate::libs::builtin::enable_ui_console(),
             component_tree: std::cell::RefCell::new(None),
         }
@@ -1599,10 +1602,18 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                 *state.selected_widget.borrow_mut() = Some(id);
                 *state.devtools_open.borrow_mut() = true;
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
-                // Cache source code for the Source tab
+                // Cache source code for the Inspector tab
                 if state.source_code.borrow().is_none() {
                     if let Some(path) = state.component.source_path() {
                         if let Ok(code) = std::fs::read_to_string(path) {
+                            // Compute line byte offsets for span→line mapping
+                            let mut offsets = vec![0usize];
+                            for (i, ch) in code.char_indices() {
+                                if ch == '\n' {
+                                    offsets.push(i + 1);
+                                }
+                            }
+                            *state.source_line_offsets.borrow_mut() = offsets;
                             *state.source_code.borrow_mut() = Some(code);
                         }
                     }
@@ -1648,7 +1659,14 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             if let Ok(Some(_)) = state.component.check_file_changed() {
                 if let Some(path) = state.component.source_path() {
                     if let Ok(code) = std::fs::read_to_string(path) {
-                        // Refresh cached source code for DevTools Source tab
+                        // Refresh cached source code and line offsets for DevTools
+                        let mut offsets = vec![0usize];
+                        for (i, ch) in code.char_indices() {
+                            if ch == '\n' {
+                                offsets.push(i + 1);
+                            }
+                        }
+                        *state.source_line_offsets.borrow_mut() = offsets;
                         *state.source_code.borrow_mut() = Some(code.clone());
 
                         let session = CompilerSession::ui();
@@ -1839,6 +1857,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     }
 
     let debug_ctx = if state.debug_mode {
+        let source_spans = state.component.collect_view_spans();
         Some(DebugRenderCtx {
             hovered_id: state.hovered_widget.borrow().clone(),
             selected_id: state.selected_widget.borrow().clone(),
@@ -1846,6 +1865,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
             tree_stack: std::cell::RefCell::new(Vec::new()),
             component_tree: std::cell::RefCell::new(None),
+            source_spans,
         })
     } else {
         None
@@ -2234,6 +2254,19 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
+    // Determine highlighted line range from selected element's span
+    let highlight_range = info.and_then(|elem_info| {
+        elem_info.span.and_then(|(offset, len)| {
+            let line_offsets = state.source_line_offsets.borrow();
+            // Find start line (first line_offset <= offset)
+            let start_line = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
+            // Find end line (first line_offset >= offset + len)
+            let end_offset = offset + len;
+            let end_line = line_offsets.partition_point(|&pos| pos < end_offset);
+            Some((start_line, end_line.max(start_line)))
+        })
+    });
+
     // Divider line with "源码" label
     col = col.push(
         container(
@@ -2254,13 +2287,34 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
             );
             for (i, line) in code.lines().enumerate() {
                 let line_num = format!("{:>4}", i + 1);
-                col = col.push(
-                    row![
-                        text(line_num).size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
-                        highlight_line(line),
-                    ]
-                        .spacing(4)
-                );
+                let is_highlighted = highlight_range
+                    .map(|(start, end)| i >= start && i < end)
+                    .unwrap_or(false);
+                if is_highlighted {
+                    col = col.push(
+                        container(
+                            row![
+                                text(line_num).size(10).color(iced::Color::from_rgb(0.8, 0.4, 0.1)),
+                                highlight_line(line),
+                            ]
+                                .spacing(4)
+                        )
+                            .style(|_: &iced::Theme| container::Style {
+                                background: Some(iced::Background::Color(iced::Color::from_rgb(1.0, 0.95, 0.85))),
+                                ..Default::default()
+                            })
+                            .padding(iced::Padding::new(1.0))
+                            .width(iced::Length::Fill)
+                    );
+                } else {
+                    col = col.push(
+                        row![
+                            text(line_num).size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
+                            highlight_line(line),
+                        ]
+                            .spacing(4)
+                    );
+                }
             }
         }
         None => {}
@@ -2302,12 +2356,14 @@ struct DebugRenderCtx {
     hovered_id: Option<String>,
     selected_id: Option<String>,
     counter: std::cell::RefCell<usize>,
-    /// Style metadata per element: id -> (kind, props).
+    /// Style metadata per element: id -> (kind, props, span).
     element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
     /// Component tree stack: tracks parent-child relationships during DFS traversal.
     tree_stack: std::cell::RefCell<Vec<DebugTreeNode>>,
     /// The final component tree root, set after rendering completes.
     component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
+    /// Pre-collected source spans from AuraNode DFS, indexed by render order.
+    source_spans: Vec<Option<(usize, usize)>>,
 }
 
 /// Debug metadata for a single UI element.
@@ -2315,6 +2371,8 @@ struct DebugRenderCtx {
 struct DebugElementInfo {
     kind: String,
     props: Vec<(String, String)>,
+    /// Source span: (byte_offset, byte_length) in the .at file
+    span: Option<(usize, usize)>,
 }
 
 impl DebugRenderCtx {
@@ -2366,9 +2424,13 @@ impl DebugRenderCtx {
         self.tree_enter(id.clone(), kind.to_string());
 
         // Always store metadata (even with empty props) for component tree lookup
+        // Get span for this element from pre-collected spans (indexed by counter_val)
+        let span = self.source_spans.get(counter_val).copied().flatten();
+
         self.element_styles.borrow_mut().insert(id.clone(), DebugElementInfo {
             kind: kind.to_string(),
             props,
+            span,
         });
 
         let hovered = self.is_hovered(&id);

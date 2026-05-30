@@ -413,7 +413,7 @@ impl RustGenerator {
     /// Pre-scan view tree to find input elements and record event→field mappings
     fn scan_input_fields(&mut self, node: &AuraNode) {
         match node {
-            AuraNode::Element { tag, props, events, children } => {
+            AuraNode::Element { tag, props, events, children, .. } => {
                 if tag == "input" {
                     if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
                         for (event, handler) in events {
@@ -435,7 +435,7 @@ impl RustGenerator {
     /// Generate view tree code
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
-            AuraNode::Element { tag, props, events, children } => {
+            AuraNode::Element { tag, props, events, children, .. } => {
                 let view_fn = self.tag_to_view_fn(tag);
 
                 // For text elements with a "text" prop and no extra styling/events,
@@ -729,7 +729,7 @@ impl RustGenerator {
                 }
             }
 
-            AuraNode::ForLoop { var, index, iterable, body } => {
+            AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Generate iterator-based view construction
                 let iter_expr = if iterable.starts_with('.') {
                     format!("self.{}", iterable.trim_start_matches('.'))
@@ -755,7 +755,7 @@ impl RustGenerator {
                 }
             }
 
-            AuraNode::Conditional { condition, then_body, else_body } => {
+            AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let rust_condition = self.convert_condition(condition);
                 let then_code: Vec<String> = then_body.iter()
                     .map(|child| self.generate_view_tree(child))
@@ -771,7 +771,7 @@ impl RustGenerator {
                 }
             }
 
-            AuraNode::Component { name, props, events } => {
+            AuraNode::Component { name, props, events, .. } => {
                 // Generate component instantiation
                 let mut builder = format!("{}::new()", name);
 
@@ -792,7 +792,7 @@ impl RustGenerator {
                 "View::outlet()".to_string()
             }
 
-            AuraNode::Link { to, text, href, children } => {
+            AuraNode::Link { to, text, href, children, .. } => {
                 // Rust router link or external link
                 let children_code: Vec<String> = children.iter()
                     .map(|child| self.generate_view_tree(child))

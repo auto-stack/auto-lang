@@ -928,6 +928,7 @@ impl ArkGenerator {
                 props,
                 events,
                 children,
+                ..
             } => {
                 // Special handling for root col when routes exist - wrap in Navigation
                 if tag.to_lowercase() == "col" && has_routes {
@@ -1071,6 +1072,7 @@ impl ArkGenerator {
                 props,
                 events,
                 children,
+                ..
             } => self.generate_element(tag, props, events, children),
             AuraNode::Text(text_content) => self.generate_text(text_content),
             AuraNode::ForLoop {
@@ -1078,13 +1080,15 @@ impl ArkGenerator {
                 index,
                 iterable,
                 body,
+                ..
             } => self.generate_for_loop(var, index.as_deref(), iterable, body),
             AuraNode::Conditional {
                 condition,
                 then_body,
                 else_body,
+                ..
             } => self.generate_conditional(condition, then_body, else_body.as_deref()),
-            AuraNode::Component { name, props, events } => {
+            AuraNode::Component { name, props, events, .. } => {
                 self.generate_component(name, props, events)
             }
             AuraNode::Outlet => Ok("// Outlet - router placeholder".to_string()),
@@ -1093,6 +1097,7 @@ impl ArkGenerator {
                 text,
                 href,
                 children,
+                ..
             } => self.generate_link(to, text, href, children),
         }
     }
@@ -1134,6 +1139,7 @@ impl ArkGenerator {
                 props: props.clone(),
                 events: events.clone(),
                 children: children.to_vec(),
+                span: None,
             };
 
             return self.generate_tabs_component(&tabs_node, &tab_items);
@@ -2130,6 +2136,7 @@ mod tests {
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2170,6 +2177,7 @@ mod tests {
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2216,6 +2224,7 @@ mod tests {
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children: vec![AuraNode::Text(AuraTextContent::Literal("Hello".to_string()))],
+                span: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2256,6 +2265,7 @@ mod tests {
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2319,6 +2329,7 @@ mod tests {
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children: vec![AuraNode::Text(AuraTextContent::Literal("Hello, World!".to_string()))],
+                span: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2375,6 +2386,7 @@ mod tests {
                 text: "Go to Counter".to_string(),
                 href: String::new(),
                 children: vec![],
+                span: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2434,6 +2446,7 @@ mod tests {
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2477,6 +2490,7 @@ mod tests {
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             },
             handlers: HashMap::new(),
             props: vec![],

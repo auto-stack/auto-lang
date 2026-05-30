@@ -61,6 +61,7 @@ fn import_surface_update(
             props: HashMap::new(),
             events: HashMap::new(),
             children: nodes,
+            span: None,
         }
     };
 
@@ -117,6 +118,7 @@ fn import_component_body(
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children: child_nodes,
+                span: None,
             }
         }
         A2UIComponentBody::Row { children } => {
@@ -129,6 +131,7 @@ fn import_component_body(
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children: child_nodes,
+                span: None,
             }
         }
         A2UIComponentBody::Column { children } => {
@@ -141,6 +144,7 @@ fn import_component_body(
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children: child_nodes,
+                span: None,
             }
         }
         A2UIComponentBody::ScrollView { child } => {
@@ -156,6 +160,7 @@ fn import_component_body(
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children,
+                span: None,
             }
         }
         A2UIComponentBody::Text { text } => {
@@ -204,6 +209,7 @@ fn import_component_body(
                 props,
                 events,
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::TextInput { value, hint } => {
@@ -223,6 +229,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::NumberInput { value, min, max } => {
@@ -249,6 +256,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::DateTimeInput { value } => {
@@ -263,6 +271,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::Checkbox { value, label } => {
@@ -282,6 +291,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::Radio { value, label } => {
@@ -301,6 +311,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::Select { value, options } => {
@@ -317,6 +328,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::Slider { value, min, max, step } => {
@@ -349,6 +361,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::Image { src } => {
@@ -363,6 +376,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::Icon { name } => {
@@ -377,6 +391,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::Divider {} => AuraNode::Element {
@@ -384,12 +399,14 @@ fn import_component_body(
             props: HashMap::new(),
             events: HashMap::new(),
             children: vec![],
+            span: None,
         },
         A2UIComponentBody::Spacer {} => AuraNode::Element {
             tag: "spacer".to_string(),
             props: HashMap::new(),
             events: HashMap::new(),
             children: vec![],
+            span: None,
         },
         A2UIComponentBody::List { items, template } => {
             let (items_expr, mut sv) = import_value(items);
@@ -411,6 +428,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children,
+                span: None,
             }
         }
         A2UIComponentBody::Table { columns, items } => {
@@ -426,6 +444,7 @@ fn import_component_body(
                 props,
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
             }
         }
         A2UIComponentBody::Tabs { tabs } => {
@@ -446,6 +465,7 @@ fn import_component_body(
                     },
                     events: HashMap::new(),
                     children: vec![tab_node],
+                    span: None,
                 });
                 state_vars.extend(tab_s);
                 handlers.extend(tab_h);
@@ -455,6 +475,7 @@ fn import_component_body(
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children,
+                span: None,
             }
         }
         A2UIComponentBody::Navigation { items } => {
@@ -475,6 +496,7 @@ fn import_component_body(
                     },
                     events: HashMap::new(),
                     children: vec![],
+                    span: None,
                 });
             }
             AuraNode::Element {
@@ -482,6 +504,7 @@ fn import_component_body(
                 props: HashMap::new(),
                 events: HashMap::new(),
                 children,
+                span: None,
             }
         }
     };

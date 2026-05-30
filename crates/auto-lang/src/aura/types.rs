@@ -337,6 +337,9 @@ pub enum AuraNode {
 
         /// Child nodes
         children: Vec<AuraNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
     },
 
     /// Text node (literal or interpolated)
@@ -355,6 +358,9 @@ pub enum AuraNode {
 
         /// Loop body nodes
         body: Vec<AuraNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
     },
 
     /// Conditional: if condition { then_body } else { else_body }
@@ -367,6 +373,9 @@ pub enum AuraNode {
 
         /// Optional else body
         else_body: Option<Vec<AuraNode>>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
     },
 
     /// Component instantiation
@@ -379,6 +388,9 @@ pub enum AuraNode {
 
         /// Event handlers
         events: HashMap<String, AuraEvent>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
     },
 
     /// Router outlet: renders matched child route (Plan 105)
@@ -397,6 +409,9 @@ pub enum AuraNode {
 
         /// Child content
         children: Vec<AuraNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
     },
 }
 
@@ -425,6 +440,7 @@ impl AuraNode {
             props: HashMap::new(),
             events: HashMap::new(),
             children: Vec::new(),
+            span: None,
         }
     }
 

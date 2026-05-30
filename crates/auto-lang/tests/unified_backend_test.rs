@@ -43,8 +43,10 @@ fn create_test_widget() -> AuraWidget {
             },
             events: HashMap::new(),
             children: vec![
+
                 AuraNode::Text(AuraTextContent::Literal("Count: ".to_string())),
             ],
+            span: None,
         },
         handlers: HashMap::new(),
         props: vec![],
@@ -147,6 +149,7 @@ fn test_tailwind_classes_converted_for_each_backend() {
             },
             events: HashMap::new(),
             children: vec![],
+            span: None,
         },
         handlers: HashMap::new(),
         props: vec![],

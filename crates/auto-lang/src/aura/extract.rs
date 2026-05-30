@@ -401,6 +401,7 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                 props,
                 events,
                 children,
+                span: None,
             })
         }
 
@@ -447,6 +448,7 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                 props,
                 events,
                 children,
+                span: None,
             })
         }
 
@@ -792,7 +794,7 @@ fn extract_view_block(view: &ViewBlock) -> ExtractResult<AuraNode> {
 /// Extract view node from parsed ViewNode
 fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
     match node {
-        ViewNode::Element { tag, props, events, children } => {
+        ViewNode::Element { tag, props, events, children, span } => {
             let aura_props: HashMap<String, AuraPropValue> = props.iter()
                 .map(|p| {
                     let value = match &p.value {
@@ -834,6 +836,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 props: aura_props,
                 events: aura_events,
                 children: aura_children,
+                span: *span,
             })
         }
         ViewNode::Text(content) => {
@@ -850,7 +853,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             };
             Ok(AuraNode::Text(text_content))
         }
-        ViewNode::ForLoop { var, index, iterable, body } => {
+        ViewNode::ForLoop { var, index, iterable, body, span } => {
             let aura_body: Vec<AuraNode> = body.iter()
                 .map(|c| extract_view_node(c))
                 .collect::<ExtractResult<_>>()?;
@@ -860,9 +863,10 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 index: index.clone(),
                 iterable: iterable.clone(),
                 body: aura_body,
+                span: *span,
             })
         }
-        ViewNode::Conditional { condition, then_body, else_body } => {
+        ViewNode::Conditional { condition, then_body, else_body, span } => {
             let aura_then: Vec<AuraNode> = then_body.iter()
                 .map(|c| extract_view_node(c))
                 .collect::<ExtractResult<_>>()?;
@@ -880,9 +884,10 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 condition: condition.clone(),
                 then_body: aura_then,
                 else_body: aura_else,
+                span: *span,
             })
         }
-        ViewNode::Component { name, props, events } => {
+        ViewNode::Component { name, props, events, span } => {
             let aura_props: HashMap<String, AuraExpr> = props.iter()
                 .filter_map(|p| {
                     match &p.value {
@@ -911,11 +916,12 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 name: name.clone(),
                 props: aura_props,
                 events: aura_events,
+                span: *span,
             })
         }
         // Plan 105: Router outlet and link
         ViewNode::Outlet => Ok(AuraNode::Outlet),
-        ViewNode::Link { to, text, href, children } => {
+        ViewNode::Link { to, text, href, children, span } => {
             let aura_children: Vec<AuraNode> = children.iter()
                 .map(|c| extract_view_node(c))
                 .collect::<ExtractResult<_>>()?;
@@ -924,6 +930,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 text: text.clone(),
                 href: href.clone(),
                 children: aura_children,
+                span: *span,
             })
         }
     }
