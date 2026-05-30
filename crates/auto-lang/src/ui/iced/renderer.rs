@@ -2285,36 +2285,68 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
             col = col.push(
                 text(path_display).size(9).color(iced::Color::from_rgb(0.4, 0.6, 0.8))
             );
-            for (i, line) in code.lines().enumerate() {
-                let line_num = format!("{:>4}", i + 1);
-                let is_highlighted = highlight_range
-                    .map(|(start, end)| i >= start && i < end)
-                    .unwrap_or(false);
-                if is_highlighted {
-                    col = col.push(
-                        container(
+            let all_lines: Vec<&str> = code.lines().collect();
+            let total = all_lines.len();
+
+            // Determine visible range: highlight area ± context, or first 50 lines
+            let (start_line, end_line) = match highlight_range {
+                Some((hs, he)) => {
+                    let ctx = 15; // 15 lines context around highlight
+                    let s = hs.saturating_sub(ctx);
+                    let e = (he + ctx + 1).min(total);
+                    (s, e)
+                }
+                None => (0, total.min(50)),
+            };
+
+            // Show "..." if skipping lines at start
+            if start_line > 0 {
+                col = col.push(
+                    text(format!("  ... ({} lines hidden)", start_line))
+                        .size(9).color(iced::Color::from_rgb(0.6, 0.6, 0.6))
+                );
+            }
+
+            for i in start_line..end_line {
+                if let Some(line) = all_lines.get(i) {
+                    let line_num = format!("{:>4}", i + 1);
+                    let is_highlighted = highlight_range
+                        .map(|(hs, he)| i >= hs && i < he)
+                        .unwrap_or(false);
+                    if is_highlighted {
+                        col = col.push(
+                            container(
+                                row![
+                                    text(line_num).size(10).color(iced::Color::from_rgb(0.8, 0.4, 0.1)),
+                                    highlight_line(line),
+                                ]
+                                    .spacing(4)
+                            )
+                                .style(|_: &iced::Theme| container::Style {
+                                    background: Some(iced::Background::Color(iced::Color::from_rgb(1.0, 0.95, 0.85))),
+                                    ..Default::default()
+                                })
+                                .padding(iced::Padding::new(1.0))
+                                .width(iced::Length::Fill)
+                        );
+                    } else {
+                        col = col.push(
                             row![
-                                text(line_num).size(10).color(iced::Color::from_rgb(0.8, 0.4, 0.1)),
-                                highlight_line(line),
+                                text(line_num).size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
+                                text(line.to_string()).size(10).color(iced::Color::from_rgb(0.35, 0.35, 0.35)),
                             ]
                                 .spacing(4)
-                        )
-                            .style(|_: &iced::Theme| container::Style {
-                                background: Some(iced::Background::Color(iced::Color::from_rgb(1.0, 0.95, 0.85))),
-                                ..Default::default()
-                            })
-                            .padding(iced::Padding::new(1.0))
-                            .width(iced::Length::Fill)
-                    );
-                } else {
-                    col = col.push(
-                        row![
-                            text(line_num).size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
-                            highlight_line(line),
-                        ]
-                            .spacing(4)
-                    );
+                        );
+                    }
                 }
+            }
+
+            // Show "..." if skipping lines at end
+            if end_line < total {
+                col = col.push(
+                    text(format!("  ... ({} lines hidden)", total - end_line))
+                        .size(9).color(iced::Color::from_rgb(0.6, 0.6, 0.6))
+                );
             }
         }
         None => {}
