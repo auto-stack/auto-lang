@@ -655,9 +655,9 @@ fn collect_all_spans_global_dfs(
     use crate::aura::AuraNode;
     match node {
         AuraNode::Element { tag, children, span, .. } => {
-            let idx = counters.entry(tag.clone()).or_insert(0);
+            let idx = *counters.entry(tag.clone()).or_insert(0);
             if let Some(s) = *span {
-                lookup.insert((tag.clone(), *idx), s);
+                lookup.insert((tag.clone(), idx), s);
                 // Add aliases for tags that get renamed in AuraViewBuilder
                 for alias in tag_aliases(tag) {
                     let alias_idx = counters.entry(alias.to_string()).or_insert(0);
@@ -665,7 +665,7 @@ fn collect_all_spans_global_dfs(
                     *alias_idx += 1;
                 }
             }
-            *idx += 1;
+            *counters.get_mut(tag).unwrap() += 1;
             for child in children {
                 collect_all_spans_global_dfs(child, lookup, counters);
             }
