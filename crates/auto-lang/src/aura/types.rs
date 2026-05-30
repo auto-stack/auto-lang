@@ -11,6 +11,31 @@ pub use crate::ast::Type;
 use crate::ast::{RouteDef, RoutesBlock};
 
 // ============================================================================
+// Stable Node ID (Plan 273)
+// ============================================================================
+
+/// 稳定唯一 ID，在 AuraNode 提取时分配，用于 DevTools 源码↔组件双向映射
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AuraNodeId(pub u32);
+
+impl fmt::Display for AuraNodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "aura_{}", self.0)
+    }
+}
+
+/// 源码位置信息，用于 DevTools 双向映射
+#[derive(Debug, Clone)]
+pub struct SpanInfo {
+    /// 源码字节偏移和长度
+    pub span: Option<(usize, usize)>,
+    /// 原始 AuraNode tag（如 "center", "button"）
+    pub aura_tag: String,
+    /// 用户指定的 id 属性（如 id: "my-btn"）
+    pub user_id: Option<String>,
+}
+
+// ============================================================================
 // AURA Widget - Core Component Definition
 // ============================================================================
 
@@ -58,6 +83,9 @@ pub struct AuraWidget {
     /// Handler parameter names: maps handler pattern to parameter list
     /// e.g., ".AddItem" -> ["text"] for .AddItem(text) -> { ... }
     pub handler_params: HashMap<String, Vec<String>>,
+
+    /// Span map: AuraNodeId → source info for DevTools (Plan 273)
+    pub span_map: HashMap<AuraNodeId, SpanInfo>,
 }
 
 // ============================================================================
@@ -340,6 +368,9 @@ pub enum AuraNode {
 
         /// Source span: (byte_offset, byte_length) in the .at file
         span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
     },
 
     /// Text node (literal or interpolated)
@@ -361,6 +392,9 @@ pub enum AuraNode {
 
         /// Source span: (byte_offset, byte_length) in the .at file
         span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
     },
 
     /// Conditional: if condition { then_body } else { else_body }
@@ -376,6 +410,9 @@ pub enum AuraNode {
 
         /// Source span: (byte_offset, byte_length) in the .at file
         span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
     },
 
     /// Component instantiation
@@ -391,6 +428,9 @@ pub enum AuraNode {
 
         /// Source span: (byte_offset, byte_length) in the .at file
         span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
     },
 
     /// Router outlet: renders matched child route (Plan 105)
@@ -412,6 +452,9 @@ pub enum AuraNode {
 
         /// Source span: (byte_offset, byte_length) in the .at file
         span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
     },
 }
 
@@ -441,6 +484,7 @@ impl AuraNode {
             events: HashMap::new(),
             children: Vec::new(),
             span: None,
+            debug_id: None,
         }
     }
 
@@ -849,6 +893,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         assert_eq!(widget.name, "Counter");

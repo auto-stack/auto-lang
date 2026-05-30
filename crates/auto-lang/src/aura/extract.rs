@@ -402,6 +402,7 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                 events,
                 children,
                 span: None,
+                debug_id: None,
             })
         }
 
@@ -449,6 +450,7 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                 events,
                 children,
                 span: None,
+                debug_id: None,
             })
         }
 
@@ -739,6 +741,10 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         None
     };
 
+    // Assign stable debug IDs to AuraNode tree (Plan 274)
+    let mut view_tree = view_tree;
+    let span_map = assign_node_ids(&mut view_tree);
+
     Ok(AuraWidget {
         name: decl.name.as_str().to_string(),
         state_vars,
@@ -751,6 +757,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         lifecycle: vec![],  // TODO: Extract lifecycle methods from WidgetDecl
         tick_interval,
         handler_params,
+        span_map,
     })
 }
 
@@ -837,6 +844,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 events: aura_events,
                 children: aura_children,
                 span: *span,
+                debug_id: None,
             })
         }
         ViewNode::Text(content) => {
@@ -864,6 +872,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 iterable: iterable.clone(),
                 body: aura_body,
                 span: *span,
+                debug_id: None,
             })
         }
         ViewNode::Conditional { condition, then_body, else_body, span } => {
@@ -885,6 +894,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 then_body: aura_then,
                 else_body: aura_else,
                 span: *span,
+                debug_id: None,
             })
         }
         ViewNode::Component { name, props, events, span } => {
@@ -917,6 +927,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 props: aura_props,
                 events: aura_events,
                 span: *span,
+                debug_id: None,
             })
         }
         // Plan 105: Router outlet and link
@@ -931,7 +942,98 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 href: href.clone(),
                 children: aura_children,
                 span: *span,
+                debug_id: None,
             })
+        }
+    }
+}
+
+/// Assign stable AuraNodeIds to the AuraNode tree via DFS traversal.
+/// Returns a SpanMap mapping each AuraNodeId to its source info.
+/// Called once after extraction, before constructing AuraWidget.
+fn assign_node_ids(root: &mut AuraNode) -> std::collections::HashMap<AuraNodeId, SpanInfo> {
+    let mut next_id: u32 = 0;
+    let mut span_map = std::collections::HashMap::new();
+    assign_node_ids_recursive(root, &mut next_id, &mut span_map);
+    span_map
+}
+
+fn assign_node_ids_recursive(
+    node: &mut AuraNode,
+    next_id: &mut u32,
+    span_map: &mut std::collections::HashMap<AuraNodeId, SpanInfo>,
+) {
+    let id = AuraNodeId(*next_id);
+    *next_id += 1;
+
+    match node {
+        AuraNode::Element { tag, props, children, span, debug_id, .. } => {
+            *debug_id = Some(id);
+            // Extract user_id from props if present
+            let user_id = props.get("id").and_then(|v| match v {
+                crate::aura::types::AuraPropValue::Expr(crate::aura::types::AuraExpr::Literal(s)) => Some(s.clone()),
+                _ => None,
+            });
+            span_map.insert(id, SpanInfo {
+                span: *span,
+                aura_tag: tag.clone(),
+                user_id,
+            });
+            for child in children.iter_mut() {
+                assign_node_ids_recursive(child, next_id, span_map);
+            }
+        }
+        AuraNode::Text(_) => {
+            // Text nodes don't get a debug_id — they have no span field
+        }
+        AuraNode::ForLoop { var: _, index: _, iterable: _, body, span, debug_id } => {
+            *debug_id = Some(id);
+            span_map.insert(id, SpanInfo {
+                span: *span,
+                aura_tag: "for".to_string(),
+                user_id: None,
+            });
+            for child in body.iter_mut() {
+                assign_node_ids_recursive(child, next_id, span_map);
+            }
+        }
+        AuraNode::Conditional { condition: _, then_body, else_body, span, debug_id } => {
+            *debug_id = Some(id);
+            span_map.insert(id, SpanInfo {
+                span: *span,
+                aura_tag: "if".to_string(),
+                user_id: None,
+            });
+            for child in then_body.iter_mut() {
+                assign_node_ids_recursive(child, next_id, span_map);
+            }
+            if let Some(else_children) = else_body {
+                for child in else_children.iter_mut() {
+                    assign_node_ids_recursive(child, next_id, span_map);
+                }
+            }
+        }
+        AuraNode::Component { name, props: _, events: _, span, debug_id } => {
+            *debug_id = Some(id);
+            span_map.insert(id, SpanInfo {
+                span: *span,
+                aura_tag: name.clone(),
+                user_id: None,
+            });
+        }
+        AuraNode::Outlet => {
+            // Outlet doesn't get a debug_id
+        }
+        AuraNode::Link { to: _, text: _, href: _, children, span, debug_id } => {
+            *debug_id = Some(id);
+            span_map.insert(id, SpanInfo {
+                span: *span,
+                aura_tag: "link".to_string(),
+                user_id: None,
+            });
+            for child in children.iter_mut() {
+                assign_node_ids_recursive(child, next_id, span_map);
+            }
         }
     }
 }

@@ -452,6 +452,7 @@ mod tests {
                     events: HashMap::new(),
                     children: vec![],
                     span: None,
+                    debug_id: None,
                 },
                 AuraNode::Element {
                     tag: "button".to_string(),
@@ -467,9 +468,11 @@ mod tests {
                     },
                     children: vec![],
                     span: None,
+                    debug_id: None,
                 },
             ],
             span: None,
+            debug_id: None,
         };
 
         AuraWidget {
@@ -489,6 +492,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         }
     }
 
@@ -538,6 +542,7 @@ mod tests {
             events: HashMap::new(),
             children: vec![],
             span: None,
+            debug_id: None,
         };
 
         let widget = AuraWidget {
@@ -552,6 +557,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let result = export_widget(&widget);

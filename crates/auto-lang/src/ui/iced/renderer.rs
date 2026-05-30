@@ -15,6 +15,8 @@ use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, r
 
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::interpreter::DynamicMessage;
+use crate::ui::debug_id_map::DebugIdMap;
+use crate::aura::{AuraNodeId, SpanInfo};
 use crate::session::CompilerSession;
 use crate::parser::Parser;
 
@@ -1481,6 +1483,7 @@ const DEBUG_SELECT_PREFIX: &str = "__select_";
 const DEBUG_EDIT_PREFIX: &str = "__edit_";
 const DEBUG_EDIT_APPLY: &str = "__edit_apply";
 const DEBUG_EDIT_CANCEL: &str = "__edit_cancel";
+const SRC_CLICK_PREFIX: &str = "__src_click_";
 
 /// DevTools panel tab selector.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1534,7 +1537,6 @@ struct DynamicState {
     edit_error: std::cell::RefCell<Option<String>>,
     /// Cached span lookup from view_template. Rebuilt only after hot-reload.
     /// Key: (kind, occurrence_index) → span (offset, len).
-    span_lookup_cache: std::cell::RefCell<Option<std::collections::HashMap<(String, usize), (usize, usize)>>>,
     /// Whether the AbstractView needs rebuilding (set in update, cleared in dynamic_view).
     /// When false, cached_converted_view is reused instead of rebuilding from AuraNode.
     view_dirty: std::cell::RefCell<bool>,
@@ -1557,6 +1559,12 @@ struct DynamicState {
     window_size: std::cell::RefCell<iced::Size>,
     /// True when user is dragging the DevTools divider handle.
     dragging_divider: std::cell::RefCell<bool>,
+    /// Line number (0-based) → list of AuraNodeIds whose spans cover that line.
+    /// Built from span_map + source code for source-click → component-highlight.
+    line_to_aura_ids: std::cell::RefCell<std::collections::HashMap<usize, Vec<AuraNodeId>>>,
+    /// Cache of AuraNodeId → debug element ID, copied from DebugRenderCtx after each render.
+    /// Used to resolve source-click → selected_widget without holding a reference to DebugRenderCtx.
+    aura_to_id_cache: std::cell::RefCell<std::collections::HashMap<AuraNodeId, String>>,
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -1612,7 +1620,6 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             edit_textarea_key: std::cell::RefCell::new(None),
             edit_span: std::cell::RefCell::new(None),
             edit_error: std::cell::RefCell::new(None),
-            span_lookup_cache: std::cell::RefCell::new(None),
             view_dirty: std::cell::RefCell::new(true),
             cached_converted_view: std::cell::RefCell::new(None),
             cached_rendered: std::cell::RefCell::new(None),
@@ -1622,6 +1629,8 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             devtools_panel_width: std::cell::RefCell::new(420.0),
             window_size: std::cell::RefCell::new(iced::Size::new(1024.0, 768.0)),
             dragging_divider: std::cell::RefCell::new(false),
+            line_to_aura_ids: std::cell::RefCell::new(std::collections::HashMap::new()),
+            aura_to_id_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     };
 
@@ -1678,6 +1687,13 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                             if let Some(ref c) = *state.source_code.borrow() {
                                 *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
                             }
+                            // Build line → AuraNodeId index for source-click → component-highlight
+                            {
+                                let span_map = state.component.span_map().clone();
+                                if let Some(ref src) = *state.source_code.borrow() {
+                                    *state.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, src);
+                                }
+                            }
                         }
                     }
                 }
@@ -1715,6 +1731,36 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             }
             "__close_devtools" => {
                 *state.devtools_open.borrow_mut() = false;
+                ui_changed = true;
+                return iced::Task::none();
+            }
+            // Source line click in Inspector: reverse-lookup AuraNodeId → debug element ID
+            e if e.starts_with(SRC_CLICK_PREFIX) => {
+                if let Ok(line) = e[SRC_CLICK_PREFIX.len()..].parse::<usize>() {
+                    let line_map = state.line_to_aura_ids.borrow();
+                    if let Some(aura_ids) = line_map.get(&line) {
+                        // Pick the last (innermost) AuraNodeId for this line
+                        if let Some(&aura_id) = aura_ids.last() {
+                            let cache = state.aura_to_id_cache.borrow();
+                            if let Some(debug_id) = cache.get(&aura_id) {
+                                drop(cache);
+                                drop(line_map);
+                                *state.selected_widget.borrow_mut() = Some(debug_id.clone());
+                                *state.devtools_open.borrow_mut() = true;
+                                *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
+                                // Scroll source to the selected element's span
+                                let styles = state.debug_element_styles.borrow();
+                                if let Some(elem_info) = styles.get(debug_id) {
+                                    if let Some((offset, _len)) = elem_info.span {
+                                        let line_offsets = state.source_line_offsets.borrow();
+                                        let line_idx = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
+                                        *state.pending_scroll_to_center.borrow_mut() = Some(line_idx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 ui_changed = true;
                 return iced::Task::none();
             }
@@ -1843,9 +1889,15 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                                     if let Ok(widget) = crate::aura::extract_widget_from_decl(decl) {
                                         let _ = state.component.reload(&widget);
                                         // Invalidate caches since view_template changed
-                                        *state.span_lookup_cache.borrow_mut() = None;
                                         *state.cached_converted_view.borrow_mut() = None;
                                         *state.cached_rendered.borrow_mut() = None;
+                                        // Rebuild line → AuraNodeId index after hot-reload
+                                        {
+                                            let span_map = state.component.span_map().clone();
+                                            if let Some(ref src) = *state.source_code.borrow() {
+                                                *state.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, src);
+                                            }
+                                        }
                                     }
                                     break;
                                 }
@@ -2073,7 +2125,15 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     // Full rebuild path: state changed or cache empty.
     // Build the converted AbstractView tree, render to iced Element, and cache the result.
-    let mut view = state.component.view();
+    //
+    // In debug mode, use view_with_debug() to get both the view and the DebugIdMap.
+    // In non-debug mode, use the simpler view() since we don't need the debug sideband.
+    let (mut view, debug_id_map) = if state.debug_mode {
+        let (v, id_map) = state.component.view_with_debug();
+        (v, Some(id_map))
+    } else {
+        (state.component.view(), None)
+    };
     inject_todo_list(&mut view, &state.todos, state.component.widget_name());
     if !state.input_values.is_empty() {
         patch_input_values(&mut view, &state.input_values);
@@ -2089,30 +2149,26 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         }
     }
 
-    let debug_ctx = if state.debug_mode {
-        // Rebuild span lookup only if cache is empty (first frame or after hot-reload)
-        let mut cache = state.span_lookup_cache.borrow_mut();
-        if cache.is_none() {
-            *cache = Some(state.component.build_span_lookup());
-        }
-        let span_lookup = cache.as_ref().unwrap().clone();
-        drop(cache); // release borrow before creating DebugRenderCtx
-
+    let debug_ctx = if let Some(id_map) = debug_id_map {
+        let span_map = state.component.span_map().clone();
         Some(DebugRenderCtx {
             hovered_id: state.hovered_widget.borrow().clone(),
             selected_id: state.selected_widget.borrow().clone(),
-            counter: std::cell::RefCell::new(0),
-            kind_counters: std::cell::RefCell::new(std::collections::HashMap::new()),
+            wrapper_counter: std::cell::RefCell::new(0),
+            span_map,
+            debug_id_map: id_map,
+            id_to_aura: std::cell::RefCell::new(std::collections::HashMap::new()),
+            aura_to_id: std::cell::RefCell::new(std::collections::HashMap::new()),
             element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
             tree_stack: std::cell::RefCell::new(Vec::new()),
             component_tree: std::cell::RefCell::new(None),
-            span_lookup,
         })
     } else {
         None
     };
 
-    let rendered = render_dynamic_view(converted, debug_ctx.as_ref());
+    let mut path = Vec::new();
+    let rendered = render_dynamic_view(converted, debug_ctx.as_ref(), &mut path);
 
     // Copy element style metadata and component tree from DebugRenderCtx to DynamicState
     if let Some(ref ctx) = debug_ctx {
@@ -2120,6 +2176,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         *state.debug_element_styles.borrow_mut() = styles.clone();
         let tree = ctx.component_tree.borrow();
         *state.component_tree.borrow_mut() = tree.clone();
+        // Cache aura_to_id mapping for source-click → component-highlight reverse lookup
+        let aura_map = ctx.aura_to_id.borrow();
+        *state.aura_to_id_cache.borrow_mut() = aura_map.clone();
     }
 
     let result: iced::Element<'static, IcedMessage> = if state.debug_mode {
@@ -2562,11 +2621,14 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
             let all_lines: Vec<&str> = code.lines().collect();
             let total = all_lines.len();
 
+            // Pre-check which lines have associated AuraNodeIds (for hover cursor style)
+            let line_map = state.line_to_aura_ids.borrow();
             for i in 0..total {
                 let line_num = format!("{:>4}", i + 1);
                 let is_highlighted = highlight_range
                     .map(|(hs, he)| i >= hs && i < he)
                     .unwrap_or(false);
+                let has_aura = line_map.contains_key(&i);
 
                 // Build line content from cached highlight spans
                 let mut line_row = row![].spacing(0);
@@ -2594,20 +2656,38 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
                     }
                 }
 
-                if is_highlighted {
-                    col = col.push(
-                        container(line_row.spacing(4))
-                            .style(|_: &iced::Theme| container::Style {
-                                background: Some(iced::Background::Color(iced::Color::from_rgb(1.0, 0.95, 0.85))),
-                                ..Default::default()
-                            })
-                            .padding(iced::Padding::new(1.0))
-                            .width(iced::Length::Fill)
-                    );
+                // Determine background color for the line
+                let bg_color = if is_highlighted {
+                    iced::Color::from_rgb(1.0, 0.95, 0.85) // selected element highlight
+                } else if has_aura {
+                    iced::Color::from_rgb(0.94, 0.96, 1.0) // subtle blue for clickable lines
                 } else {
-                    col = col.push(line_row.spacing(4));
+                    iced::Color::TRANSPARENT
+                };
+
+                let line_container = container(line_row.spacing(4))
+                    .style(move |_: &iced::Theme| container::Style {
+                        background: Some(iced::Background::Color(bg_color)),
+                        ..Default::default()
+                    })
+                    .padding(iced::Padding::new(1.0))
+                    .width(iced::Length::Fill);
+
+                // Wrap clickable lines in mouse_area for source-click → component-highlight
+                if has_aura {
+                    let line_idx = i;
+                    let ma = mouse_area(line_container)
+                        .on_press(IcedMessage {
+                            widget: String::new(),
+                            event: format!("{}{}", SRC_CLICK_PREFIX, line_idx),
+                            input_value: None,
+                        });
+                    col = col.push(ma);
+                } else {
+                    col = col.push(line_container);
                 }
             }
+            drop(line_map);
 
             // Add edit button when element has a span and is selected
             if info.is_some() && highlight_range.is_some() {
@@ -2738,12 +2818,18 @@ fn apply_edit(state: &mut DynamicState) {
                         *state.source_line_offsets.borrow_mut() = offsets;
                         *state.source_code.borrow_mut() = Some(new_code);
                         // Invalidate caches since source file changed
-                        *state.span_lookup_cache.borrow_mut() = None;
                         *state.cached_converted_view.borrow_mut() = None;
                         *state.cached_rendered.borrow_mut() = None;
                         // Rebuild syntax highlight cache after edit
                         if let Some(ref c) = *state.source_code.borrow() {
                             *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
+                        }
+                        // Rebuild line → AuraNodeId index after edit
+                        {
+                            let span_map = state.component.span_map().clone();
+                            if let Some(ref src) = *state.source_code.borrow() {
+                                *state.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, src);
+                            }
                         }
                         // Clear edit state on success
                         *state.editing_element.borrow_mut() = None;
@@ -2760,6 +2846,44 @@ fn apply_edit(state: &mut DynamicState) {
             }
         }
     }
+}
+
+/// Build a mapping from line number (0-based) to the list of AuraNodeIds whose spans cover that line.
+/// Used for source-click → component-highlight reverse lookup.
+fn build_line_to_aura_ids(
+    span_map: &std::collections::HashMap<AuraNodeId, SpanInfo>,
+    source: &str,
+) -> std::collections::HashMap<usize, Vec<AuraNodeId>> {
+    let mut result = std::collections::HashMap::new();
+    // Pre-compute byte offset of each line start
+    let mut line_offsets = Vec::new();
+    line_offsets.push(0);
+    for (i, ch) in source.char_indices() {
+        if ch == '\n' {
+            line_offsets.push(i + 1);
+        }
+    }
+    // For each AuraNodeId with a span, find the line range it covers
+    for (aura_id, info) in span_map {
+        if let Some((offset, len)) = info.span {
+            let end = offset + len;
+            // Find start line (0-based)
+            let start_line = match line_offsets.binary_search(&offset) {
+                Ok(line) => line,
+                Err(pos) => pos.saturating_sub(1),
+            };
+            // Find end line
+            let end_line = match line_offsets.binary_search(&end) {
+                Ok(line) => line,
+                Err(pos) => pos.saturating_sub(1),
+            };
+            let last_line = line_offsets.len().saturating_sub(1);
+            for line in start_line..=end_line.min(last_line) {
+                result.entry(line).or_insert_with(Vec::new).push(*aura_id);
+            }
+        }
+    }
+    result
 }
 
 /// Render the Console tab: show captured print() output.
@@ -2794,18 +2918,22 @@ struct DebugTreeNode {
 struct DebugRenderCtx {
     hovered_id: Option<String>,
     selected_id: Option<String>,
-    counter: std::cell::RefCell<usize>,
-    /// Per-kind counter for span_lookup matching (matches AuraNode DFS per-tag counter).
-    kind_counters: std::cell::RefCell<std::collections::HashMap<String, usize>>,
+    /// Counter for wrapper/synthetic nodes that have no AuraNodeId.
+    wrapper_counter: std::cell::RefCell<usize>,
+    /// AuraNodeId → SpanInfo (source location data).
+    span_map: std::collections::HashMap<AuraNodeId, SpanInfo>,
+    /// View path → AuraNodeId (built during AuraViewBuilder conversion).
+    debug_id_map: DebugIdMap,
+    /// debug element id → AuraNodeId.
+    id_to_aura: std::cell::RefCell<std::collections::HashMap<String, AuraNodeId>>,
+    /// AuraNodeId → debug element id (reverse).
+    aura_to_id: std::cell::RefCell<std::collections::HashMap<AuraNodeId, String>>,
     /// Style metadata per element: id -> (kind, props, span).
     element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
     /// Component tree stack: tracks parent-child relationships during DFS traversal.
     tree_stack: std::cell::RefCell<Vec<DebugTreeNode>>,
     /// The final component tree root, set after rendering completes.
     component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
-    /// Pre-computed span lookup: (kind, occurrence_index) → span.
-    /// Built once per frame via build_span_lookup() to avoid O(n²) per-element DFS.
-    span_lookup: std::collections::HashMap<(String, usize), (usize, usize)>,
 }
 
 /// Debug metadata for a single UI element.
@@ -2818,14 +2946,6 @@ struct DebugElementInfo {
 }
 
 impl DebugRenderCtx {
-    /// Allocate the next unique debug ID.
-    fn next_id(&self, kind: &str) -> String {
-        let mut c = self.counter.borrow_mut();
-        let id = format!("{}_{}", kind, *c);
-        *c += 1;
-        id
-    }
-
     /// Check if the given ID is currently hovered.
     fn is_hovered(&self, id: &str) -> bool {
         self.hovered_id.as_deref() == Some(id)
@@ -2856,24 +2976,45 @@ impl DebugRenderCtx {
 
     /// Wrap any element with mouse_area for hover/click detection + store style metadata.
     fn wrap_debug(
-        &self, kind: &str, el: iced::Element<'static, IcedMessage>,
+        &self, view_path: &[usize], kind: &str, el: iced::Element<'static, IcedMessage>,
         props: Vec<(String, String)>,
     ) -> iced::Element<'static, IcedMessage> {
-        let counter_val = *self.counter.borrow();
-        let id = self.next_id(kind);
+        // Try to get AuraNodeId from debug_id_map
+        let aura_id = self.debug_id_map.get(view_path);
+
+        // Allocate a frame-unique counter for hover message disambiguation.
+        // Also used as the fallback id index for synthetic wrapper nodes.
+        let counter_val = {
+            let mut c = self.wrapper_counter.borrow_mut();
+            let val = *c;
+            *c += 1;
+            val
+        };
+
+        let (id, span) = if let Some(aura_id) = aura_id {
+            // Use AuraNodeId-based ID
+            let span_info = self.span_map.get(&aura_id);
+            let id_str = if let Some(info) = span_info {
+                if let Some(ref user_id) = info.user_id {
+                    format!("aura_{}_{}", aura_id.0, user_id)
+                } else {
+                    format!("aura_{}", aura_id.0)
+                }
+            } else {
+                format!("aura_{}", aura_id.0)
+            };
+            let span = span_info.and_then(|info| info.span);
+            // Record bidirectional mapping
+            self.id_to_aura.borrow_mut().insert(id_str.clone(), aura_id);
+            self.aura_to_id.borrow_mut().insert(aura_id, id_str.clone());
+            (id_str, span)
+        } else {
+            // Fallback: synthetic wrapper node
+            (format!("wrap_{}", counter_val), None)
+        };
 
         // Track this node in the component tree
         self.tree_enter(id.clone(), kind.to_string());
-
-        // Look up source span using per-kind counter (matches AuraNode per-tag counter).
-        let kind_idx = {
-            let mut kc = self.kind_counters.borrow_mut();
-            let idx = kc.entry(kind.to_string()).or_insert(0);
-            let result = *idx;
-            *idx += 1;
-            result
-        };
-        let span = self.span_lookup.get(&(kind.to_string(), kind_idx)).copied();
 
         // Always store metadata (even with empty props) for component tree lookup
         self.element_styles.borrow_mut().insert(id.clone(), DebugElementInfo {
@@ -3099,7 +3240,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
     }
 }
 
-fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&DebugRenderCtx>) -> iced::Element<'static, IcedMessage> {
+fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&DebugRenderCtx>, path: &mut Vec<usize>) -> iced::Element<'static, IcedMessage> {
     match view {
         // Input needs IcedMessage-specific text capture — on_input constructs a new
         // IcedMessage with the typed text included, which the generic IntoIcedElement
@@ -3138,7 +3279,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 input_widget.into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("input", el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props) } else { el }
         }
 
         AbstractView::Textarea { placeholder, value, on_change, height, style: _ } => {
@@ -3174,7 +3315,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 editor.into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("textarea", el, vec![]) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![]) } else { el }
         }
 
         // Layout containers: recursively render children through render_dynamic_view
@@ -3228,8 +3369,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     }
                 }
             }
-            for child in children {
-                col_w = col_w.push(render_dynamic_view(child, debug_ctx));
+            for (i, child) in children.into_iter().enumerate() {
+                path.push(i);
+                col_w = col_w.push(render_dynamic_view(child, debug_ctx, path));
+                path.pop();
             }
             // iced Column has no align_y — wrap in Container for vertical centering
             let el: iced::Element<'static, IcedMessage> = if justify_center {
@@ -3243,7 +3386,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 col_w.into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("col", el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props) } else { el }
         }
 
         AbstractView::Row { children, spacing, padding, style } => {
@@ -3274,11 +3417,13 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     }
                 }
             }
-            for child in children {
-                row_w = row_w.push(render_dynamic_view(child, debug_ctx));
+            for (i, child) in children.into_iter().enumerate() {
+                path.push(i);
+                row_w = row_w.push(render_dynamic_view(child, debug_ctx, path));
+                path.pop();
             }
             let el: iced::Element<'static, IcedMessage> = row_w.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("row", el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props) } else { el }
         }
 
         AbstractView::Container { child, padding, width, height, center_x, center_y, style } => {
@@ -3290,7 +3435,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(h) = height { dbg_props.push(("h".into(), format!("{}px", h))); }
             if center_x { dbg_props.push(("center_x".into(), "true".into())); }
             if center_y { dbg_props.push(("center_y".into(), "true".into())); }
-            let child_el = render_dynamic_view(*child, debug_ctx);
+            path.push(0);
+            let child_el = render_dynamic_view(*child, debug_ctx, path);
+            path.pop();
             let mut c = container(child_el);
             c = c.padding(iced_padding(padding, style.as_ref()));
             if let Some(ref s) = style {
@@ -3330,14 +3477,16 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if center_x { c = c.center_x(iced::Length::Fill); }
             if center_y { c = c.center_y(iced::Length::Fill); }
             let el: iced::Element<'static, IcedMessage> = c.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("container", el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props) } else { el }
         }
 
         AbstractView::Scrollable { child, width, height, style } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if let Some(w) = width { dbg_props.push(("w".into(), format!("{}px", w))); }
             if let Some(h) = height { dbg_props.push(("h".into(), format!("{}px", h))); }
-            let child_el = render_dynamic_view(*child, debug_ctx);
+            path.push(0);
+            let child_el = render_dynamic_view(*child, debug_ctx, path);
+            path.pop();
             let mut s = scrollable(child_el);
             if let Some(ref st) = style {
                 let is = IcedStyle::from_style(st);
@@ -3354,7 +3503,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } }
             }
             let el: iced::Element<'static, IcedMessage> = s.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug("scroll", el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props) } else { el }
         }
 
         // Everything else delegates to the unified IntoIcedElement renderer
@@ -3362,7 +3511,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let kind = view_kind(&view);
             let dbg_props = debug_style_props(extract_view_style(&view));
             let el: iced::Element<'static, IcedMessage> = view.into_iced();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(kind, el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, kind, el, dbg_props) } else { el }
         }
     }
 }

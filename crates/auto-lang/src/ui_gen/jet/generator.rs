@@ -2175,6 +2175,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2227,6 +2228,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2259,6 +2261,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2364,6 +2367,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2421,6 +2425,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2844,6 +2849,7 @@ mod tests {
             events: HashMap::new(),
             children: vec![AuraNode::Text(AuraTextContent::Literal("Elevated Card".to_string()))],
             span: None,
+            debug_id: None,
         };
 
         let widget = AuraWidget {
@@ -2858,6 +2864,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2887,6 +2894,7 @@ mod tests {
             events: HashMap::new(),
             children: vec![AuraNode::Text(AuraTextContent::Literal("Outlined Card".to_string()))],
             span: None,
+            debug_id: None,
         };
 
         let widget = AuraWidget {
@@ -2901,6 +2909,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2926,6 +2935,7 @@ mod tests {
             events: HashMap::new(),
             children: vec![AuraNode::Text(AuraTextContent::Literal("Default Card".to_string()))],
             span: None,
+            debug_id: None,
         };
 
         let widget = AuraWidget {
@@ -2940,6 +2950,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -3049,6 +3060,7 @@ widget TestCardVariant {
             events: HashMap::new(),
             children: vec![AuraNode::Text(AuraTextContent::Literal("Default Card".to_string()))],
             span: None,
+            debug_id: None,
         };
 
         let inner_card2 = AuraNode::Element {
@@ -3057,6 +3069,7 @@ widget TestCardVariant {
             events: HashMap::new(),
             children: vec![AuraNode::Text(AuraTextContent::Literal("Outlined Card".to_string()))],
             span: None,
+            debug_id: None,
         };
 
         let col_node = AuraNode::Element {
@@ -3065,6 +3078,7 @@ widget TestCardVariant {
             events: HashMap::new(),
             children: vec![inner_card1, inner_card2],
             span: None,
+            debug_id: None,
         };
 
         let outer_card = AuraNode::Element {
@@ -3073,6 +3087,7 @@ widget TestCardVariant {
             events: HashMap::new(),
             children: vec![col_node],
             span: None,
+            debug_id: None,
         };
 
         let widget = AuraWidget {
@@ -3087,6 +3102,7 @@ widget TestCardVariant {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -3132,6 +3148,7 @@ fn test_text_with_flex_style() {
         events: HashMap::new(),
         children: vec![AuraNode::Text(AuraTextContent::Literal("Hello".to_string()))],
         span: None,
+        debug_id: None,
     };
 
     let widget = AuraWidget {
@@ -3146,6 +3163,7 @@ fn test_text_with_flex_style() {
         lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
     };
 
     let mut gen = JetGenerator::new();

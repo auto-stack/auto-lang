@@ -47,6 +47,7 @@ fn create_test_widget() -> AuraWidget {
                 AuraNode::Text(AuraTextContent::Literal("Count: ".to_string())),
             ],
             span: None,
+            debug_id: None,
         },
         handlers: HashMap::new(),
         props: vec![],
@@ -54,6 +55,7 @@ fn create_test_widget() -> AuraWidget {
         lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
     }
 }
 
@@ -150,6 +152,7 @@ fn test_tailwind_classes_converted_for_each_backend() {
             events: HashMap::new(),
             children: vec![],
             span: None,
+            debug_id: None,
         },
         handlers: HashMap::new(),
         props: vec![],
@@ -157,6 +160,7 @@ fn test_tailwind_classes_converted_for_each_backend() {
         lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
     };
 
     // Generate Vue code - should keep Tailwind classes as-is

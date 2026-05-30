@@ -1505,6 +1505,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = RustGenerator::new();

@@ -7146,6 +7146,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -7855,6 +7856,7 @@ mod tests {
             events: HashMap::new(),
             children: vec![],
             span: None,
+            debug_id: None,
         };
 
         let widget = AuraWidget {
@@ -7869,6 +7871,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = VueGenerator::new_shadcn();

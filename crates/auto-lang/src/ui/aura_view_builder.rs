@@ -32,9 +32,10 @@ use std::collections::HashMap;
 
 use auto_val::Value;
 
-use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraEvent};
+use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraEvent, AuraNodeId};
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::vm_bridge::VmBridge;
+use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::view::View;
 use crate::ui::style::{Style, StyleClass, SizeValue, Color};
 
@@ -85,6 +86,17 @@ impl<'a> AuraViewBuilder<'a> {
     /// VmBridge at build time.
     pub fn build(&self, node: &AuraNode) -> View<DynamicMessage> {
         self.convert_node(node)
+    }
+
+    /// Build a `View<DynamicMessage>` with DebugIdMap sideband mapping (Plan 274).
+    ///
+    /// Returns `(View, DebugIdMap)` where the DebugIdMap records which AuraNodeId
+    /// produced each View node, keyed by the View tree path (`Vec<usize>`).
+    pub fn build_with_debug(&self, node: &AuraNode) -> (View<DynamicMessage>, DebugIdMap) {
+        let mut id_map = DebugIdMap::default();
+        let mut path = Vec::new();
+        let view = self.convert_node_tracked(node, &mut path, &mut id_map);
+        (view, id_map)
     }
 
     // ========================================================================
@@ -175,6 +187,353 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
         }
+    }
+
+    /// Tracked version of convert_node that records View path → AuraNodeId mappings.
+    fn convert_node_tracked(
+        &self,
+        node: &AuraNode,
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+    ) -> View<DynamicMessage> {
+        // Record this node's debug_id at the current path
+        let node_debug_id = match node {
+            AuraNode::Element { debug_id, .. } => *debug_id,
+            AuraNode::ForLoop { debug_id, .. } => *debug_id,
+            AuraNode::Conditional { debug_id, .. } => *debug_id,
+            AuraNode::Component { debug_id, .. } => *debug_id,
+            AuraNode::Link { debug_id, .. } => *debug_id,
+            _ => None,
+        };
+        if let Some(aura_id) = node_debug_id {
+            id_map.record(path, aura_id);
+        }
+
+        match node {
+            AuraNode::Element { tag, props, events, children, .. } => {
+                self.convert_element_tracked(tag, props, events, children, path, id_map)
+            }
+            AuraNode::Text(text_content) => {
+                self.convert_text(text_content)
+            }
+            AuraNode::ForLoop { body, .. } => {
+                let child_views: Vec<View<DynamicMessage>> = body
+                    .iter()
+                    .enumerate()
+                    .map(|(i, n)| {
+                        path.push(i);
+                        let v = self.convert_node_tracked(n, path, id_map);
+                        path.pop();
+                        v
+                    })
+                    .collect();
+                View::Column {
+                    children: child_views,
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                }
+            }
+            AuraNode::Conditional { condition, then_body, else_body, .. } => {
+                let is_true = self.eval_condition(condition);
+                let empty = Vec::new();
+                let body = if is_true {
+                    then_body
+                } else {
+                    else_body.as_ref().unwrap_or(&empty)
+                };
+                let child_views: Vec<View<DynamicMessage>> = body
+                    .iter()
+                    .enumerate()
+                    .map(|(i, n)| {
+                        path.push(i);
+                        let v = self.convert_node_tracked(n, path, id_map);
+                        path.pop();
+                        v
+                    })
+                    .collect();
+                if child_views.is_empty() {
+                    View::Empty
+                } else if child_views.len() == 1 {
+                    child_views.into_iter().next().unwrap()
+                } else {
+                    View::Column {
+                        children: child_views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                    }
+                }
+            }
+            AuraNode::Component { name, .. } => {
+                View::Text {
+                    content: format!("<{} />", name),
+                    style: None,
+                }
+            }
+            AuraNode::Outlet => {
+                View::Text {
+                    content: "<outlet />".to_string(),
+                    style: None,
+                }
+            }
+            AuraNode::Link { text, children, .. } => {
+                if !children.is_empty() {
+                    let views: Vec<View<DynamicMessage>> = children
+                        .iter()
+                        .enumerate()
+                        .map(|(i, n)| {
+                            path.push(i);
+                            let v = self.convert_node_tracked(n, path, id_map);
+                            path.pop();
+                            v
+                        })
+                        .collect();
+                    View::Column {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                    }
+                } else if !text.is_empty() {
+                    View::Text {
+                        content: text.clone(),
+                        style: None,
+                    }
+                } else {
+                    View::Empty
+                }
+            }
+        }
+    }
+
+    /// Tracked version of convert_element that passes path/id_map to child conversions.
+    fn convert_element_tracked(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+    ) -> View<DynamicMessage> {
+        match tag {
+            "col" | "column" => self.convert_column_tracked(props, children, path, id_map),
+            "row" => self.convert_row_tracked(props, children, path, id_map),
+            "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
+                self.convert_text_element(tag, props, children)
+            }
+            "button" | "btn" => self.convert_button(props, events),
+            "center" => self.convert_center_tracked(props, children, path, id_map),
+            "input" => self.convert_input(props, events),
+            "textarea" => self.convert_textarea(props, events),
+            "checkbox" | "check" => self.convert_checkbox(props, events),
+            "container" | "div" => self.convert_container_tracked(props, children, path, id_map),
+            "img" | "image" => self.convert_image(props),
+            "progress" => self.convert_progress(props),
+            "spacer" => self.convert_spacer(props),
+            "divider" | "hr" => self.convert_divider(props),
+            "avatar" => self.convert_avatar(props),
+            _ => {
+                let views: Vec<View<DynamicMessage>> = children
+                    .iter()
+                    .enumerate()
+                    .map(|(i, n)| {
+                        path.push(i);
+                        let v = self.convert_node_tracked(n, path, id_map);
+                        path.pop();
+                        v
+                    })
+                    .collect();
+                if views.is_empty() {
+                    View::Empty
+                } else if views.len() == 1 {
+                    views.into_iter().next().unwrap()
+                } else {
+                    View::Column {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                    }
+                }
+            }
+        }
+    }
+
+    /// Tracked convert_column
+    fn convert_column_tracked(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+    ) -> View<DynamicMessage> {
+        let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
+        let padding = self.extract_u16(props, "padding").unwrap_or(0);
+        let style = self.extract_style(props);
+
+        let child_views: Vec<View<DynamicMessage>> = children
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                path.push(i);
+                let v = self.convert_node_tracked(n, path, id_map);
+                path.pop();
+                v
+            })
+            .collect();
+
+        let mut builder = View::<DynamicMessage>::col()
+            .spacing(spacing)
+            .padding(padding);
+
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        }
+
+        for child in child_views {
+            builder = builder.child(child);
+        }
+
+        builder.build()
+    }
+
+    /// Tracked convert_row
+    fn convert_row_tracked(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+    ) -> View<DynamicMessage> {
+        let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
+        let padding = self.extract_u16(props, "padding").unwrap_or(0);
+        let style = self.extract_style(props);
+
+        let child_views: Vec<View<DynamicMessage>> = children
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                path.push(i);
+                let v = self.convert_node_tracked(n, path, id_map);
+                path.pop();
+                v
+            })
+            .collect();
+
+        let mut builder = View::<DynamicMessage>::row()
+            .spacing(spacing)
+            .padding(padding);
+
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        }
+
+        for child in child_views {
+            builder = builder.child(child);
+        }
+
+        builder.build()
+    }
+
+    /// Tracked convert_container
+    fn convert_container_tracked(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+    ) -> View<DynamicMessage> {
+        let padding = self.extract_u16(props, "padding").unwrap_or(0);
+        let width = self.extract_u16(props, "width");
+        let height = self.extract_u16(props, "height");
+        let style = self.extract_style(props);
+
+        let child_view = if children.is_empty() {
+            View::Empty
+        } else if children.len() == 1 {
+            path.push(0);
+            let v = self.convert_node_tracked(&children[0], path, id_map);
+            path.pop();
+            v
+        } else {
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .enumerate()
+                .map(|(i, n)| {
+                    path.push(i);
+                    let v = self.convert_node_tracked(n, path, id_map);
+                    path.pop();
+                    v
+                })
+                .collect();
+            View::Column {
+                children: views,
+                spacing: 0,
+                padding: 0,
+                style: None,
+            }
+        };
+
+        let mut builder = View::container(child_view).padding(padding);
+        if let Some(w) = width {
+            builder = builder.width(w);
+        }
+        if let Some(h) = height {
+            builder = builder.height(h);
+        }
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        }
+
+        builder.build()
+    }
+
+    /// Tracked convert_center
+    fn convert_center_tracked(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+    ) -> View<DynamicMessage> {
+        let style = self.extract_style(props);
+
+        let child_view = if children.is_empty() {
+            View::Empty
+        } else if children.len() == 1 {
+            path.push(0);
+            let v = self.convert_node_tracked(&children[0], path, id_map);
+            path.pop();
+            v
+        } else {
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .enumerate()
+                .map(|(i, n)| {
+                    path.push(i);
+                    let v = self.convert_node_tracked(n, path, id_map);
+                    path.pop();
+                    v
+                })
+                .collect();
+            View::Column {
+                children: views,
+                spacing: 0,
+                padding: 0,
+                style: None,
+            }
+        };
+
+        let full_style = match style {
+            Some(s) => s.add(StyleClass::Width(SizeValue::Full)).add(StyleClass::Height(SizeValue::Full)),
+            None => Style::default().add(StyleClass::Width(SizeValue::Full)).add(StyleClass::Height(SizeValue::Full)),
+        };
+        let mut builder = View::container(child_view).center_x().center_y();
+        builder = builder.with_style(full_style);
+
+        builder.build()
     }
 
     /// Convert an AuraNode::Element to a View variant based on the tag name.
@@ -1032,6 +1391,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         }
     }
 
@@ -1096,6 +1456,8 @@ mod tests {
                 AuraNode::text("Child 1"),
                 AuraNode::text("Child 2"),
             ],
+            span: None,
+            debug_id: None,
         };
         let view = builder.build(&node);
 
@@ -1184,11 +1546,15 @@ mod tests {
             tag: "col".to_string(),
             props: HashMap::new(),
             events: HashMap::new(),
+            span: None,
+            debug_id: None,
             children: vec![
                 AuraNode::Element {
                     tag: "row".to_string(),
                     props: HashMap::new(),
                     events: HashMap::new(),
+                    span: None,
+                    debug_id: None,
                     children: vec![
                         AuraNode::text("Left"),
                         AuraNode::text("Right"),
@@ -1265,6 +1631,8 @@ mod tests {
                 ("text".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("count".to_string()))),
             ]),
             events: HashMap::new(),
+            span: None,
+            debug_id: None,
             children: vec![],
         };
         let view = builder.build(&node);
@@ -1294,6 +1662,8 @@ mod tests {
                     params: vec![],
                 }),
             ]),
+            span: None,
+            debug_id: None,
             children: vec![],
         };
         let view = builder.build(&node);

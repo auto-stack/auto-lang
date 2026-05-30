@@ -1140,6 +1140,7 @@ impl ArkGenerator {
                 events: events.clone(),
                 children: children.to_vec(),
                 span: None,
+                debug_id: None,
             };
 
             return self.generate_tabs_component(&tabs_node, &tab_items);
@@ -2137,6 +2138,7 @@ mod tests {
                 events: HashMap::new(),
                 children: vec![],
                 span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2144,6 +2146,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2178,6 +2181,7 @@ mod tests {
                 events: HashMap::new(),
                 children: vec![],
                 span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2185,6 +2189,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2225,6 +2230,7 @@ mod tests {
                 events: HashMap::new(),
                 children: vec![AuraNode::Text(AuraTextContent::Literal("Hello".to_string()))],
                 span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2232,6 +2238,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2266,6 +2273,7 @@ mod tests {
                 events: HashMap::new(),
                 children: vec![],
                 span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2280,6 +2288,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2330,6 +2339,7 @@ mod tests {
                 events: HashMap::new(),
                 children: vec![AuraNode::Text(AuraTextContent::Literal("Hello, World!".to_string()))],
                 span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2337,6 +2347,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2387,6 +2398,7 @@ mod tests {
                 href: String::new(),
                 children: vec![],
                 span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2394,6 +2406,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2447,6 +2460,7 @@ mod tests {
                 events: HashMap::new(),
                 children: vec![],
                 span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2454,6 +2468,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2491,6 +2506,7 @@ mod tests {
                 events: HashMap::new(),
                 children: vec![],
                 span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -2498,6 +2514,7 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();

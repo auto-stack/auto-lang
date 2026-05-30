@@ -37,8 +37,10 @@ use std::time::SystemTime;
 use std::collections::HashMap;
 
 use crate::aura::AuraWidget;
+use crate::aura::{AuraNodeId, SpanInfo};
 use crate::ui::aura_view_builder::AuraViewBuilder;
 use crate::ui::component::Component;
+use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::state_migration::{self, MigrationReport};
 use crate::ui::view::View;
@@ -109,6 +111,9 @@ pub struct DynamicComponent {
 
     /// Tick interval in ms — when set, the runtime emits .Tick events at this interval.
     tick_interval: Option<u32>,
+
+    /// Span map: AuraNodeId → source info for DevTools (Plan 274)
+    span_map: HashMap<AuraNodeId, SpanInfo>,
 }
 
 impl fmt::Debug for DynamicComponent {
@@ -158,6 +163,7 @@ impl DynamicComponent {
             last_modified: None,
             input_state_map,
             tick_interval: widget.tick_interval,
+            span_map: widget.span_map.clone(),
         })
     }
 
@@ -189,6 +195,7 @@ impl DynamicComponent {
             last_modified: None,
             input_state_map,
             tick_interval: widget.tick_interval,
+            span_map: widget.span_map.clone(),
         })
     }
 
@@ -263,14 +270,16 @@ impl DynamicComponent {
         find_span_dfs(&self.view_template, target_kind, target_index, &mut counter)
     }
 
-    /// Build a complete span lookup map in a single DFS pass.
-    /// Returns a HashMap keyed by (kind, occurrence_index) → span.
-    /// This is O(n) instead of calling find_element_span per element (which would be O(n²)).
-    pub fn build_span_lookup(&self) -> std::collections::HashMap<(String, usize), (usize, usize)> {
-        let mut lookup = std::collections::HashMap::new();
-        let mut counters = std::collections::HashMap::<String, usize>::new();
-        collect_all_spans_global_dfs(&self.view_template, &mut lookup, &mut counters);
-        lookup
+    /// Build a View with DebugIdMap sideband mapping (Plan 274).
+    /// Returns (View, DebugIdMap) for use by DevTools.
+    pub fn view_with_debug(&self) -> (View<DynamicMessage>, DebugIdMap) {
+        let builder = AuraViewBuilder::new(&self.bridge, &self.widget_name);
+        builder.build_with_debug(&self.view_template)
+    }
+
+    /// Get the span map (AuraNodeId → SpanInfo) for DevTools.
+    pub fn span_map(&self) -> &HashMap<AuraNodeId, SpanInfo> {
+        &self.span_map
     }
 
     // ========================================================================
@@ -401,6 +410,7 @@ impl DynamicComponent {
         self.widget_name = new_widget.name.clone();
         self.input_state_map = extract_input_state_map(&new_widget.view_tree);
         self.tick_interval = new_widget.tick_interval;
+        self.span_map = new_widget.span_map.clone();
         self.dirty = true;
 
         Ok(report)
@@ -641,66 +651,6 @@ fn find_span_dfs(
             None
         }
         _ => None,
-    }
-}
-
-/// Single-pass DFS to collect all (kind, per_kind_occurrence_index) → span mappings.
-/// Also inserts alias entries for tags that get renamed during AuraViewBuilder conversion
-/// (e.g., "center" → "container" in AbstractView).
-fn collect_all_spans_global_dfs(
-    node: &crate::aura::AuraNode,
-    lookup: &mut std::collections::HashMap<(String, usize), (usize, usize)>,
-    counters: &mut std::collections::HashMap<String, usize>,
-) {
-    use crate::aura::AuraNode;
-    match node {
-        AuraNode::Element { tag, children, span, .. } => {
-            let idx = *counters.entry(tag.clone()).or_insert(0);
-            if let Some(s) = *span {
-                lookup.insert((tag.clone(), idx), s);
-                // Add aliases for tags that get renamed in AuraViewBuilder
-                for alias in tag_aliases(tag) {
-                    let alias_idx = counters.entry(alias.to_string()).or_insert(0);
-                    lookup.insert((alias.to_string(), *alias_idx), s);
-                    *alias_idx += 1;
-                }
-            }
-            *counters.get_mut(tag).unwrap() += 1;
-            for child in children {
-                collect_all_spans_global_dfs(child, lookup, counters);
-            }
-        }
-        AuraNode::ForLoop { body, .. } => {
-            for child in body {
-                collect_all_spans_global_dfs(child, lookup, counters);
-            }
-        }
-        AuraNode::Conditional { then_body, else_body, .. } => {
-            for child in then_body {
-                collect_all_spans_global_dfs(child, lookup, counters);
-            }
-            if let Some(else_nodes) = else_body {
-                for child in else_nodes {
-                    collect_all_spans_global_dfs(child, lookup, counters);
-                }
-            }
-        }
-        AuraNode::Link { children, .. } => {
-            for child in children {
-                collect_all_spans_global_dfs(child, lookup, counters);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Returns rendering aliases for AuraNode tags that get renamed in AuraViewBuilder.
-/// e.g., "center" becomes View::container → "container" in the renderer.
-fn tag_aliases(tag: &str) -> Vec<&'static str> {
-    match tag {
-        "center" => vec!["container"],
-        "div" => vec!["container"],
-        _ => vec![],
     }
 }
 
