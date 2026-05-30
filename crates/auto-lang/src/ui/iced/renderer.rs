@@ -2089,6 +2089,103 @@ fn render_tree_into(
     }
 }
 
+/// AutoLang keywords for syntax highlighting.
+const AUTO_KEYWORDS: &[&str] = &[
+    "fn", "let", "var", "const", "if", "else", "for", "loop", "in", "break",
+    "return", "type", "enum", "use", "pub", "mut", "static", "true", "false",
+    "is", "Some", "None", "Ok", "Err", "match", "where",
+    // UI widget tags
+    "col", "row", "text", "button", "input", "container", "scroll",
+    "checkbox", "radio", "select", "slider", "image", "link", "list",
+    "tab", "tabs", "sidebar", "accordion", "nav", "textarea", "progress",
+];
+
+/// Render a single source line with syntax highlighting into a row of colored text spans.
+fn highlight_line(line: &str) -> iced::widget::Row<'static, IcedMessage> {
+    let mut spans: Vec<iced::Element<'static, IcedMessage>> = Vec::new();
+    let chars: Vec<char> = line.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        // Comment: //
+        if i + 1 < len && chars[i] == '/' && chars[i + 1] == '/' {
+            let comment: String = chars[i..].iter().collect();
+            spans.push(text(comment).size(10).color(iced::Color::from_rgb(0.5, 0.55, 0.5)).into());
+            break;
+        }
+        // String literal: "..."
+        if chars[i] == '"' {
+            let start = i;
+            i += 1;
+            while i < len && chars[i] != '"' {
+                if chars[i] == '\\' { i += 1; } // skip escaped char
+                i += 1;
+            }
+            if i < len { i += 1; } // closing quote
+            let s: String = chars[start..i].iter().collect();
+            spans.push(text(s).size(10).color(iced::Color::from_rgb(0.16, 0.6, 0.26)).into());
+            continue;
+        }
+        // F-string: f"..."
+        if chars[i] == 'f' && i + 1 < len && chars[i + 1] == '"' {
+            let start = i;
+            i += 2;
+            while i < len && chars[i] != '"' {
+                if chars[i] == '\\' { i += 1; }
+                i += 1;
+            }
+            if i < len { i += 1; }
+            let s: String = chars[start..i].iter().collect();
+            spans.push(text(s).size(10).color(iced::Color::from_rgb(0.16, 0.55, 0.35)).into());
+            continue;
+        }
+        // Number
+        if chars[i].is_ascii_digit() || (chars[i] == '-' && i + 1 < len && chars[i + 1].is_ascii_digit()) {
+            let start = i;
+            if chars[i] == '-' { i += 1; }
+            while i < len && (chars[i].is_ascii_digit() || chars[i] == '.') { i += 1; }
+            let s: String = chars[start..i].iter().collect();
+            spans.push(text(s).size(10).color(iced::Color::from_rgb(0.8, 0.4, 0.1)).into());
+            continue;
+        }
+        // Identifier or keyword
+        if chars[i].is_alphabetic() || chars[i] == '_' {
+            let start = i;
+            while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') { i += 1; }
+            let word: String = chars[start..i].iter().collect();
+            let color = if AUTO_KEYWORDS.contains(&word.as_str()) {
+                iced::Color::from_rgb(0.15, 0.3, 0.75) // keyword: blue
+            } else if word.starts_with(char::is_uppercase) {
+                iced::Color::from_rgb(0.5, 0.15, 0.55) // type: purple
+            } else {
+                iced::Color::from_rgb(0.3, 0.3, 0.3) // default: dark grey
+            };
+            spans.push(text(word).size(10).color(color).into());
+            continue;
+        }
+        // Operators and punctuation
+        let ch = chars[i];
+        i += 1;
+        let color = match ch {
+            ':' | '=' | '(' | ')' | '{' | '}' | '[' | ']' | ',' | '.' | '|' | '#' | '@' => {
+                iced::Color::from_rgb(0.45, 0.45, 0.45)
+            }
+            '+' | '-' | '*' | '/' | '%' | '<' | '>' | '!' | '&' | '^' => {
+                iced::Color::from_rgb(0.55, 0.35, 0.15)
+            }
+            _ => iced::Color::from_rgb(0.3, 0.3, 0.3),
+        };
+        spans.push(text(ch.to_string()).size(10).color(color).into());
+    }
+
+    let mut row = row![].spacing(0);
+    for span in spans {
+        row = row.push(span);
+    }
+    row
+}
+
 /// Render the Inspector tab: source code + properties, stacked vertically.
 fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
     let selected_id = state.selected_widget.borrow().clone();
@@ -2131,24 +2228,36 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
         }
     }
 
-    // --- Source section (bottom) ---
+    // --- Divider + Source section (bottom) ---
     let source = state.source_code.borrow().clone();
     let path_display = state.component.source_path()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
+    // Divider line with "源码" label
+    col = col.push(
+        container(
+            row![
+                text("───── 源码 ─────").size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
+            ]
+                .width(iced::Length::Fill)
+                .align_y(iced::Alignment::Center)
+        )
+            .width(iced::Length::Fill)
+            .padding(iced::Padding::new(4.0))
+    );
+
     match source {
         Some(code) => {
             col = col.push(
-                container(text(format!("── {} ──", path_display)).size(9).color(iced::Color::from_rgb(0.4, 0.6, 0.8)))
-                    .padding(iced::Padding::new(4.0))
+                text(path_display).size(9).color(iced::Color::from_rgb(0.4, 0.6, 0.8))
             );
             for (i, line) in code.lines().enumerate() {
                 let line_num = format!("{:>4}", i + 1);
                 col = col.push(
                     row![
                         text(line_num).size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
-                        text(line.to_string()).size(10).color(iced::Color::from_rgb(0.3, 0.3, 0.3)),
+                        highlight_line(line),
                     ]
                         .spacing(4)
                 );
