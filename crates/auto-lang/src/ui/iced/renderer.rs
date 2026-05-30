@@ -1482,9 +1482,10 @@ const DEBUG_SELECT_PREFIX: &str = "__select_";
 /// DevTools panel tab selector.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DevToolsTab {
-    Source,
+    Elements,
     Properties,
     Console,
+    Source,
 }
 
 /// Wrapper holding `DynamicComponent` as iced's application state.
@@ -1517,6 +1518,8 @@ struct DynamicState {
     source_code: std::cell::RefCell<Option<String>>,
     /// Shared console buffer — written to by print() via UI_CONSOLE_BUFFER.
     console_buffer: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    /// Component tree for DevTools Elements tab, rebuilt each frame.
+    component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -1566,6 +1569,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             console_output: std::cell::RefCell::new(Vec::new()),
             source_code: std::cell::RefCell::new(None),
             console_buffer: crate::libs::builtin::enable_ui_console(),
+            component_tree: std::cell::RefCell::new(None),
         }
     };
 
@@ -1605,6 +1609,10 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
         }
         // Handle DevTools panel tab switching and close
         match msg.event.as_str() {
+            "__tab_elements" => {
+                *state.devtools_tab.borrow_mut() = DevToolsTab::Elements;
+                return iced::Task::none();
+            }
             "__tab_source" => {
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Source;
                 return iced::Task::none();
@@ -1837,6 +1845,8 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             selected_id: state.selected_widget.borrow().clone(),
             counter: std::cell::RefCell::new(0),
             element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
+            tree_stack: std::cell::RefCell::new(Vec::new()),
+            component_tree: std::cell::RefCell::new(None),
         })
     } else {
         None
@@ -1844,10 +1854,12 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     let rendered = render_dynamic_view(converted, debug_ctx.as_ref());
 
-    // Copy element style metadata from DebugRenderCtx to DynamicState
+    // Copy element style metadata and component tree from DebugRenderCtx to DynamicState
     if let Some(ref ctx) = debug_ctx {
         let styles = ctx.element_styles.borrow();
         *state.debug_element_styles.borrow_mut() = styles.clone();
+        let tree = ctx.component_tree.borrow();
+        *state.component_tree.borrow_mut() = tree.clone();
     }
 
     if state.debug_mode {
@@ -1902,20 +1914,21 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
     let current_tab = *state.devtools_tab.borrow();
 
-    // Tab bar: [源码] [属性] [控制台] [×]
-    let tab_source_style = tab_style_fn(current_tab == DevToolsTab::Source);
+    // Tab bar: [元素] [属性] [控制台] [源码] [×]
+    let tab_elements_style = tab_style_fn(current_tab == DevToolsTab::Elements);
     let tab_props_style = tab_style_fn(current_tab == DevToolsTab::Properties);
     let tab_console_style = tab_style_fn(current_tab == DevToolsTab::Console);
+    let tab_source_style = tab_style_fn(current_tab == DevToolsTab::Source);
 
-    let tab_source = container(
-        mouse_area(text("源码").size(11))
+    let tab_elements = container(
+        mouse_area(text("元素").size(11))
             .on_press(IcedMessage {
                 widget: String::new(),
-                event: "__tab_source".to_string(),
+                event: "__tab_elements".to_string(),
                 input_value: None,
             })
     )
-        .style(tab_source_style)
+        .style(tab_elements_style)
         .padding(iced::Padding::new(4.0));
 
     let tab_props = container(
@@ -1940,6 +1953,17 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         .style(tab_console_style)
         .padding(iced::Padding::new(4.0));
 
+    let tab_source = container(
+        mouse_area(text("源码").size(11))
+            .on_press(IcedMessage {
+                widget: String::new(),
+                event: "__tab_source".to_string(),
+                input_value: None,
+            })
+    )
+        .style(tab_source_style)
+        .padding(iced::Padding::new(4.0));
+
     let close_btn = container(
         mouse_area(text("✕").size(11).color(iced::Color::from_rgb(0.7, 0.7, 0.7)))
             .on_press(IcedMessage {
@@ -1958,7 +1982,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         })
         .padding(iced::Padding::new(4.0));
 
-    let tab_bar = row![tab_source, tab_props, tab_console]
+    let tab_bar = row![tab_elements, tab_props, tab_console, tab_source]
         .spacing(2)
         .width(iced::Length::Fill);
     let header = row![tab_bar, close_btn]
@@ -1968,6 +1992,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
 
     // Tab content
     let content: iced::Element<'static, IcedMessage> = match current_tab {
+        DevToolsTab::Elements => render_elements_tab(state),
         DevToolsTab::Properties => render_properties_tab(state),
         DevToolsTab::Console => render_console_tab(state),
         DevToolsTab::Source => render_source_tab(state),
@@ -2029,6 +2054,78 @@ fn tab_style_fn(active: bool) -> Box<dyn Fn(&iced::Theme) -> container::Style> {
 }
 
 /// Render the Properties tab: show selected element's style properties.
+/// Render the Elements tab: component tree visualization.
+fn render_elements_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    let tree = state.component_tree.borrow();
+    match tree.as_ref() {
+        Some(root) => {
+            let selected_id = state.selected_widget.borrow().clone();
+            let mut rows: Vec<iced::Element<'static, IcedMessage>> = Vec::new();
+            render_tree_into(&root, 0, &selected_id, &mut rows);
+            let mut col = column![].spacing(1);
+            for row in rows {
+                col = col.push(row);
+            }
+            col.into()
+        }
+        None => {
+            column![
+                text("组件树不可用").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+                text("开启 Debug 模式后显示").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
+            ]
+                .spacing(4)
+                .into()
+        }
+    }
+}
+
+/// Recursively render tree nodes into a flat column of clickable rows.
+fn render_tree_into(
+    node: &DebugTreeNode, depth: usize, selected_id: &Option<String>,
+    rows: &mut Vec<iced::Element<'static, IcedMessage>>,
+) {
+    let indent = "  ".repeat(depth);
+    let is_selected = selected_id.as_deref() == Some(&node.id);
+
+    let has_children = !node.children.is_empty();
+    let prefix = if has_children { "▼ " } else { "  " };
+    let label = format!("{}{}{}", indent, prefix, node.kind);
+
+    let text_color = if is_selected {
+        iced::Color::from_rgb(1.0, 0.7, 0.3)
+    } else if has_children {
+        iced::Color::from_rgb(0.7, 0.85, 1.0)
+    } else {
+        iced::Color::from_rgb(0.7, 0.7, 0.7)
+    };
+
+    let click_area = mouse_area(
+        container(text(label).size(10).color(text_color))
+            .style(move |_: &iced::Theme| {
+                if is_selected {
+                    container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.3, 0.2, 0.1, 0.5))),
+                        ..Default::default()
+                    }
+                } else {
+                    container::Style::default()
+                }
+            })
+            .padding(iced::Padding::new(2.0))
+    )
+        .on_press(IcedMessage {
+            widget: String::new(),
+            event: format!("{}{}", DEBUG_SELECT_PREFIX, node.id),
+            input_value: None,
+        });
+
+    rows.push(click_area.into());
+
+    for child in &node.children {
+        render_tree_into(child, depth + 1, selected_id, rows);
+    }
+}
+
 fn render_properties_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
     let selected_id = state.selected_widget.borrow().clone();
     let styles = state.debug_element_styles.borrow();
@@ -2130,6 +2227,14 @@ fn render_source_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage
     }
 }
 
+/// A node in the debug component tree (for DevTools Elements tab).
+#[derive(Clone)]
+struct DebugTreeNode {
+    id: String,
+    kind: String,
+    children: Vec<DebugTreeNode>,
+}
+
 /// Debug rendering context: tracks hovered/selected widget and generates unique IDs.
 struct DebugRenderCtx {
     hovered_id: Option<String>,
@@ -2137,6 +2242,10 @@ struct DebugRenderCtx {
     counter: std::cell::RefCell<usize>,
     /// Style metadata per element: id -> (kind, props).
     element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
+    /// Component tree stack: tracks parent-child relationships during DFS traversal.
+    tree_stack: std::cell::RefCell<Vec<DebugTreeNode>>,
+    /// The final component tree root, set after rendering completes.
+    component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
 }
 
 /// Debug metadata for a single UI element.
@@ -2160,6 +2269,28 @@ impl DebugRenderCtx {
         self.hovered_id.as_deref() == Some(id)
     }
 
+    /// Begin tracking a node in the component tree (called before children are rendered).
+    fn tree_enter(&self, id: String, kind: String) {
+        self.tree_stack.borrow_mut().push(DebugTreeNode {
+            id,
+            kind,
+            children: Vec::new(),
+        });
+    }
+
+    /// Finish tracking a node: pop from stack, attach to parent (called after all children rendered).
+    fn tree_exit(&self) {
+        if let Some(node) = self.tree_stack.borrow_mut().pop() {
+            let mut stack = self.tree_stack.borrow_mut();
+            if let Some(parent) = stack.last_mut() {
+                parent.children.push(node);
+            } else {
+                // This is the root node
+                *self.component_tree.borrow_mut() = Some(node);
+            }
+        }
+    }
+
     /// Wrap any element with mouse_area for hover/click detection + store style metadata.
     fn wrap_debug(
         &self, kind: &str, el: iced::Element<'static, IcedMessage>,
@@ -2168,13 +2299,14 @@ impl DebugRenderCtx {
         let counter_val = *self.counter.borrow();
         let id = self.next_id(kind);
 
-        // Store metadata for tooltip/panel lookup in dynamic_view
-        if !props.is_empty() {
-            self.element_styles.borrow_mut().insert(id.clone(), DebugElementInfo {
-                kind: kind.to_string(),
-                props,
-            });
-        }
+        // Track this node in the component tree
+        self.tree_enter(id.clone(), kind.to_string());
+
+        // Always store metadata (even with empty props) for component tree lookup
+        self.element_styles.borrow_mut().insert(id.clone(), DebugElementInfo {
+            kind: kind.to_string(),
+            props,
+        });
 
         let hovered = self.is_hovered(&id);
         let selected = self.selected_id.as_deref() == Some(&id);
@@ -2204,7 +2336,7 @@ impl DebugRenderCtx {
             })
             .on_press(press_msg);
 
-        if selected {
+        let result: iced::Element<'static, IcedMessage> = if selected {
             // Selected element: orange border + tooltip
             let info = self.element_styles.borrow().get(&id).cloned();
             let header_text = format!("{} #{}", kind, id);
@@ -2290,7 +2422,10 @@ impl DebugRenderCtx {
                 .into()
         } else {
             ma.into()
-        }
+        };
+
+        self.tree_exit();
+        result
     }
 }
 
