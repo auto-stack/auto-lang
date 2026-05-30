@@ -1483,9 +1483,8 @@ const DEBUG_SELECT_PREFIX: &str = "__select_";
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DevToolsTab {
     Elements,
-    Properties,
+    Inspector,
     Console,
-    Source,
 }
 
 /// Wrapper holding `DynamicComponent` as iced's application state.
@@ -1565,7 +1564,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             debug_element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
             selected_widget: std::cell::RefCell::new(None),
             devtools_open: std::cell::RefCell::new(false),
-            devtools_tab: std::cell::RefCell::new(DevToolsTab::Properties),
+            devtools_tab: std::cell::RefCell::new(DevToolsTab::Inspector),
             console_output: std::cell::RefCell::new(Vec::new()),
             source_code: std::cell::RefCell::new(None),
             console_buffer: crate::libs::builtin::enable_ui_console(),
@@ -1577,7 +1576,11 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
         // Handle debug mode messages
         if msg.event == DEBUG_TOGGLE_EVENT {
             state.debug_mode = !state.debug_mode;
-            if !state.debug_mode {
+            if state.debug_mode {
+                // Opening: show DevTools panel
+                *state.devtools_open.borrow_mut() = true;
+            } else {
+                // Closing: clear all debug state
                 *state.hovered_widget.borrow_mut() = None;
                 *state.selected_widget.borrow_mut() = None;
                 *state.devtools_open.borrow_mut() = false;
@@ -1595,7 +1598,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             } else {
                 *state.selected_widget.borrow_mut() = Some(id);
                 *state.devtools_open.borrow_mut() = true;
-                *state.devtools_tab.borrow_mut() = DevToolsTab::Properties;
+                *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
                 // Cache source code for the Source tab
                 if state.source_code.borrow().is_none() {
                     if let Some(path) = state.component.source_path() {
@@ -1613,12 +1616,8 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Elements;
                 return iced::Task::none();
             }
-            "__tab_source" => {
-                *state.devtools_tab.borrow_mut() = DevToolsTab::Source;
-                return iced::Task::none();
-            }
-            "__tab_properties" => {
-                *state.devtools_tab.borrow_mut() = DevToolsTab::Properties;
+            "__tab_inspector" => {
+                *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
                 return iced::Task::none();
             }
             "__tab_console" => {
@@ -1863,33 +1862,10 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     }
 
     if state.debug_mode {
-        // Fixed-height info bar — shows hovered/selected element info
-        let hovered_id = state.hovered_widget.borrow().clone();
-        let selected_id = state.selected_widget.borrow().clone();
-        let info_text = match (&selected_id, &hovered_id) {
-            (Some(sel), _) => format!("Debug ON | selected: {}", sel),
-            (None, Some(hov)) => format!("Debug ON | hover: {}", hov),
-            (None, None) => "Debug ON".to_string(),
-        };
-        let bar = container(
-            text(info_text).size(12).color(iced::Color::WHITE)
-        )
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgb(0.1, 0.1, 0.1))),
-                ..Default::default()
-            })
-            .padding(4.0)
-            .width(iced::Length::Fill);
-
-        let mut main_col = column([]);
-        main_col = main_col.push(rendered);
-        main_col = main_col.push(bar);
-        main_col = main_col.width(iced::Length::Fill).height(iced::Length::Fill);
-
         if *state.devtools_open.borrow() {
-            // Row layout: [main area] [DevTools panel]
+            // Row layout: [main content] [DevTools panel]
             let panel = render_devtools_panel(state);
-            let layout = row![main_col, panel]
+            let layout = row![rendered, panel]
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill);
             container(layout)
@@ -1897,7 +1873,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
                 .height(iced::Length::Fill)
                 .into()
         } else {
-            container(main_col)
+            container(rendered)
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill)
                 .into()
@@ -1914,11 +1890,10 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
     let current_tab = *state.devtools_tab.borrow();
 
-    // Tab bar: [元素] [属性] [控制台] [源码] [×]
+    // Tab bar: [元素] [检查] [控制台] [×]
     let tab_elements_style = tab_style_fn(current_tab == DevToolsTab::Elements);
-    let tab_props_style = tab_style_fn(current_tab == DevToolsTab::Properties);
+    let tab_inspector_style = tab_style_fn(current_tab == DevToolsTab::Inspector);
     let tab_console_style = tab_style_fn(current_tab == DevToolsTab::Console);
-    let tab_source_style = tab_style_fn(current_tab == DevToolsTab::Source);
 
     let tab_elements = container(
         mouse_area(text("元素").size(11))
@@ -1931,15 +1906,15 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         .style(tab_elements_style)
         .padding(iced::Padding::new(4.0));
 
-    let tab_props = container(
-        mouse_area(text("属性").size(11))
+    let tab_inspector = container(
+        mouse_area(text("检查").size(11))
             .on_press(IcedMessage {
                 widget: String::new(),
-                event: "__tab_properties".to_string(),
+                event: "__tab_inspector".to_string(),
                 input_value: None,
             })
     )
-        .style(tab_props_style)
+        .style(tab_inspector_style)
         .padding(iced::Padding::new(4.0));
 
     let tab_console = container(
@@ -1953,19 +1928,8 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         .style(tab_console_style)
         .padding(iced::Padding::new(4.0));
 
-    let tab_source = container(
-        mouse_area(text("源码").size(11))
-            .on_press(IcedMessage {
-                widget: String::new(),
-                event: "__tab_source".to_string(),
-                input_value: None,
-            })
-    )
-        .style(tab_source_style)
-        .padding(iced::Padding::new(4.0));
-
     let close_btn = container(
-        mouse_area(text("✕").size(11).color(iced::Color::from_rgb(0.7, 0.7, 0.7)))
+        mouse_area(text("✕").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)))
             .on_press(IcedMessage {
                 widget: String::new(),
                 event: "__close_devtools".to_string(),
@@ -1973,7 +1937,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
             })
     )
         .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgb(0.2, 0.2, 0.22))),
+            background: Some(iced::Background::Color(iced::Color::from_rgb(0.95, 0.95, 0.95))),
             border: iced::Border {
                 radius: 3.0.into(),
                 ..Default::default()
@@ -1982,7 +1946,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         })
         .padding(iced::Padding::new(4.0));
 
-    let tab_bar = row![tab_elements, tab_props, tab_console, tab_source]
+    let tab_bar = row![tab_elements, tab_inspector, tab_console]
         .spacing(2)
         .width(iced::Length::Fill);
     let header = row![tab_bar, close_btn]
@@ -1993,9 +1957,8 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
     // Tab content
     let content: iced::Element<'static, IcedMessage> = match current_tab {
         DevToolsTab::Elements => render_elements_tab(state),
-        DevToolsTab::Properties => render_properties_tab(state),
+        DevToolsTab::Inspector => render_inspector_tab(state),
         DevToolsTab::Console => render_console_tab(state),
-        DevToolsTab::Source => render_source_tab(state),
     };
 
     let panel_col = column![header, container(
@@ -2011,9 +1974,9 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
 
     container(panel_col)
         .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgb(0.14, 0.14, 0.16))),
+            background: Some(iced::Background::Color(iced::Color::from_rgb(0.98, 0.98, 0.98))),
             border: iced::Border {
-                color: iced::Color::from_rgb(0.3, 0.3, 0.35),
+                color: iced::Color::from_rgb(0.85, 0.85, 0.85),
                 width: 1.0,
                 radius: 0.0.into(),
             },
@@ -2029,24 +1992,24 @@ fn tab_style_fn(active: bool) -> Box<dyn Fn(&iced::Theme) -> container::Style> {
     Box::new(move |_: &iced::Theme| {
         if active {
             container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgb(0.25, 0.25, 0.28))),
+                background: Some(iced::Background::Color(iced::Color::WHITE)),
                 border: iced::Border {
-                    color: iced::Color::from_rgb(0.4, 0.6, 1.0),
+                    color: iced::Color::from_rgb(0.3, 0.5, 0.9),
                     width: 1.0,
                     radius: 3.0.into(),
                 },
-                text_color: Some(iced::Color::WHITE),
+                text_color: Some(iced::Color::from_rgb(0.2, 0.2, 0.2)),
                 ..Default::default()
             }
         } else {
             container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgb(0.2, 0.2, 0.22))),
+                background: Some(iced::Background::Color(iced::Color::from_rgb(0.93, 0.93, 0.93))),
                 border: iced::Border {
-                    color: iced::Color::from_rgb(0.3, 0.3, 0.35),
+                    color: iced::Color::from_rgb(0.85, 0.85, 0.85),
                     width: 1.0,
                     radius: 3.0.into(),
                 },
-                text_color: Some(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+                text_color: Some(iced::Color::from_rgb(0.5, 0.5, 0.5)),
                 ..Default::default()
             }
         }
@@ -2092,11 +2055,11 @@ fn render_tree_into(
     let label = format!("{}{}{}", indent, prefix, node.kind);
 
     let text_color = if is_selected {
-        iced::Color::from_rgb(1.0, 0.7, 0.3)
+        iced::Color::from_rgb(0.85, 0.4, 0.1)
     } else if has_children {
-        iced::Color::from_rgb(0.7, 0.85, 1.0)
+        iced::Color::from_rgb(0.2, 0.4, 0.7)
     } else {
-        iced::Color::from_rgb(0.7, 0.7, 0.7)
+        iced::Color::from_rgb(0.4, 0.4, 0.4)
     };
 
     let click_area = mouse_area(
@@ -2104,7 +2067,7 @@ fn render_tree_into(
             .style(move |_: &iced::Theme| {
                 if is_selected {
                     container::Style {
-                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.3, 0.2, 0.1, 0.5))),
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.95, 0.85, 0.7, 0.6))),
                         ..Default::default()
                     }
                 } else {
@@ -2126,48 +2089,75 @@ fn render_tree_into(
     }
 }
 
-fn render_properties_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+/// Render the Inspector tab: source code + properties, stacked vertically.
+fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
     let selected_id = state.selected_widget.borrow().clone();
     let styles = state.debug_element_styles.borrow();
-
     let info = selected_id.as_ref().and_then(|id| styles.get(id));
 
+    let mut col = column![].spacing(4);
+
+    // --- Properties section (top) ---
     match info {
         Some(elem_info) => {
             let title = format!("{} #{}", elem_info.kind, selected_id.as_deref().unwrap_or("?"));
-            let mut col = column![
-                text(title).size(12).color(iced::Color::from_rgb(0.4, 0.7, 1.0))
-            ]
-                .spacing(2);
-
+            col = col.push(
+                text(title).size(12).color(iced::Color::from_rgb(0.2, 0.4, 0.8))
+            );
             if !elem_info.props.is_empty() {
                 col = col.push(
-                    text("Styles").size(10).color(iced::Color::from_rgb(0.5, 0.8, 0.5))
+                    text("样式属性").size(10).color(iced::Color::from_rgb(0.3, 0.6, 0.3))
                 );
                 for (k, v) in &elem_info.props {
                     col = col.push(
                         row![
                             text(format!("{}:", k)).size(11)
-                                .color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
+                                .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
                             text(v.clone()).size(11)
-                                .color(iced::Color::WHITE),
+                                .color(iced::Color::from_rgb(0.2, 0.2, 0.2)),
                         ]
                             .spacing(4)
                     );
                 }
             }
-
-            col.into()
         }
         None => {
-            column![
-                text("无选中元素").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
-                text("点击元素以查看属性").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
-            ]
-                .spacing(4)
-                .into()
+            col = col.push(
+                text("无选中元素").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5))
+            );
+            col = col.push(
+                text("点击元素以查看属性和源码").size(10).color(iced::Color::from_rgb(0.6, 0.6, 0.6))
+            );
         }
     }
+
+    // --- Source section (bottom) ---
+    let source = state.source_code.borrow().clone();
+    let path_display = state.component.source_path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    match source {
+        Some(code) => {
+            col = col.push(
+                container(text(format!("── {} ──", path_display)).size(9).color(iced::Color::from_rgb(0.4, 0.6, 0.8)))
+                    .padding(iced::Padding::new(4.0))
+            );
+            for (i, line) in code.lines().enumerate() {
+                let line_num = format!("{:>4}", i + 1);
+                col = col.push(
+                    row![
+                        text(line_num).size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
+                        text(line.to_string()).size(10).color(iced::Color::from_rgb(0.3, 0.3, 0.3)),
+                    ]
+                        .spacing(4)
+                );
+            }
+        }
+        None => {}
+    }
+
+    col.into()
 }
 
 /// Render the Console tab: show captured print() output.
@@ -2184,47 +2174,10 @@ fn render_console_tab(state: &DynamicState) -> iced::Element<'static, IcedMessag
     let mut col = column![].spacing(1);
     for line in output.iter().rev().take(100) {
         col = col.push(
-            text(line.clone()).size(10).color(iced::Color::from_rgb(0.85, 0.85, 0.85))
+            text(line.clone()).size(10).color(iced::Color::from_rgb(0.2, 0.2, 0.2))
         );
     }
     col.into()
-}
-
-/// Render the Source tab: show source code of the current .at file.
-fn render_source_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
-    let source = state.source_code.borrow().clone();
-    let path_display = state.component.source_path()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    match source {
-        Some(code) => {
-            let mut col = column![
-                text(path_display).size(9).color(iced::Color::from_rgb(0.4, 0.6, 0.8))
-            ]
-                .spacing(0);
-
-            for (i, line) in code.lines().enumerate() {
-                let line_num = format!("{:>4}", i + 1);
-                col = col.push(
-                    row![
-                        text(line_num).size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
-                        text(line.to_string()).size(10).color(iced::Color::from_rgb(0.8, 0.8, 0.8)),
-                    ]
-                        .spacing(4)
-                );
-            }
-            col.into()
-        }
-        None => {
-            column![
-                text("源码不可用").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
-                text("源码将在点击元素时加载").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
-            ]
-                .spacing(4)
-                .into()
-        }
-    }
 }
 
 /// A node in the debug component tree (for DevTools Elements tab).
@@ -2280,7 +2233,8 @@ impl DebugRenderCtx {
 
     /// Finish tracking a node: pop from stack, attach to parent (called after all children rendered).
     fn tree_exit(&self) {
-        if let Some(node) = self.tree_stack.borrow_mut().pop() {
+        let node = self.tree_stack.borrow_mut().pop();
+        if let Some(node) = node {
             let mut stack = self.tree_stack.borrow_mut();
             if let Some(parent) = stack.last_mut() {
                 parent.children.push(node);
