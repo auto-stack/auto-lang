@@ -1,310 +1,178 @@
 # Plan 272: Auto-UI DevTools Panel
 
-## 状态: Phase A-C 已完成，Phase D 待后续
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-## 目标
+**Goal:** 为 Auto-UI 桌面端实现 Chromium DevTools 风格的调试面板，支持元素检查、组件树、控制台、源码查看与热编辑。
 
-为 Auto-UI 桌面端实现 Chromium DevTools 风格的调试面板，作为 iced 窗口右侧的可展开/收起面板，支持三大核心功能：
+**Architecture:** iced 窗口右侧 300px 面板，F12 开关，三个 tab（元素/检查/控制台）。通过 `DebugRenderCtx` 在渲染 DFS 中收集组件树和样式元数据。
 
-1. **源码查看器**：显示当前 `.at` 文件源码，高亮选中组件对应的代码行
-2. **属性检查器**：展示选中组件的完整属性（默认属性、自定义 style、运行时属性）
-3. **Console**：捕获并显示 `print()` 输出
+**Tech Stack:** Rust, iced 0.14, AutoLang interpreter
 
-## 背景
+---
 
-### 现有基础设施
+## 状态: Phase A-D 已完成，Phase E 规划中
 
-| 组件 | 位置 | 状态 |
-|------|------|------|
-| `DebugLayer` | `ui/debug/mod.rs` | 完整：toggle/hover/selection/panel |
-| `DebugPanel` | `ui/debug/mod.rs:192` | 完整：NodeInfo + BoxModel + SourceLocation |
-| `SourceMap` | `ui/debug/source_map.rs` | API 完整但未被填充 |
-| `hit_test()` | `ui/debug/hit_test.rs` | 完整：O(n) 最深层节点查找 |
-| `OverlayInfo` | `ui/debug/overlay.rs` | 完整：hover(蓝)/select(橙) 高亮 |
-| `NodeInfo` | `ui/debug/inspector.rs` | 完整：widget type + bounds + styles |
-| iced hover tooltip | `ui/iced/renderer.rs` | 已完成：F12 开关 + hover tooltip + 蓝色边框 |
-| 热重载 | `ui/iced/renderer.rs` | 已完成：500ms 轮询 + 状态迁移 |
-| `DebugElementInfo` | `ui/iced/renderer.rs` | 已完成：kind + props 样式摘要 |
+## 已完成
 
-### 缺失部分
+| Phase | 功能 | 状态 |
+|-------|------|------|
+| A | 面板框架 + click-to-select + 属性检查器 | ✅ 已完成 |
+| B | Console Tab（print() 输出拦截） | ✅ 已完成 |
+| C | 源码查看器（带行号 + 热重载刷新） | ✅ 已完成 |
+| D | 组件树可视化 Elements Tab | ✅ 已完成 |
+| - | F12 直接打开面板 + 白色主题 + 合并 Inspector tab | ✅ 已完成 |
 
-| 缺失 | 说明 | 难度 |
-|------|------|------|
-| AST 源码位置保留 | AURA extraction 不保留 line_start/line_end | 中 |
-| DevTools 面板 UI | iced 中的右侧面板布局 | 低 |
-| print() 输出拦截 | print 输出到 stdout，无 UI 捕获 | 低 |
-| click-to-select | hover 存在但 click 选择未实现 | 低 |
-| 组件树可视化 | 没有树形结构展示 | 中 |
-
-## 架构设计
-
-### 面板布局
+## 当前面板布局
 
 ```
 ┌──────────────────────────────────────────┬─────────────────────┐
-│                                          │  Auto DevTools  [×] │
+│                                          │ [元素] [检查] [控制台]│
 │                                          │─────────────────────│
-│                                          │ [源码] [属性] [控制台]│
-│          应用主窗口                       │─────────────────────│
-│          (可调整大小)                     │                     │
-│                                          │  (当前 tab 内容)     │
+│          应用主窗口                       │                     │
+│          (白色主题)                       │  (当前 tab 内容)     │
 │                                          │                     │
 │                                          │                     │
-├──────────────────────────────────────────┤                     │
-│ Debug ON | text_0                        │                     │
 └──────────────────────────────────────────┴─────────────────────┘
 ```
 
-- 面板宽度：300px，可通过拖拽调整
-- 面板开关：F12（toggle）或点击面板 [×] 关闭
-- 面板状态：`PanelClosed` → `PanelOpen`，影响主窗口布局
-
-### 数据流
-
-```
-.at 源码
-  │
-  ▼
-Parser ──→ AST (含 Span/行号)
-  │
-  ▼
-AURA Extract ──→ AuraWidget (含 View 模板 + SourceMap)
-  │
-  ▼
-DynamicComponent ──→ view() ──→ AbstractView 树
-  │                                    │
-  ▼                                    ▼
-iced Renderer ←── DebugRenderCtx ──→ wrap_debug()
-  │                                    │
-  ▼                                    ▼
-DynamicState                    element_styles HashMap
-  │
-  ├── hovered_widget ──→ hover tooltip
-  ├── selected_widget ──→ 属性检查器
-  ├── source_code ──→ 源码查看器
-  └── console_output ──→ Console tab
-```
-
-## 分阶段实施计划
-
-### Phase A: 面板框架 + 属性检查器 (最小可用)
-
-**目标**：右侧面板可以展开，显示选中组件的属性信息。
-
-#### A1: click-to-select 机制
-
-**文件**: `crates/auto-lang/src/ui/iced/renderer.rs`
-
-在 `wrap_debug` 的 `mouse_area` 上添加 `on_press` 回调：
-
-```rust
-let press_msg = IcedMessage {
-    widget: String::new(),
-    event: format!("{}{}", DEBUG_SELECT_PREFIX, id),
-    input_value: None,
-};
-let ma = mouse_area(el)
-    .on_enter(enter_msg)
-    .on_exit(exit_msg)
-    .on_move(move |_point| ...)
-    .on_press(press_msg);  // 新增
-```
-
-在 `DynamicState` 中添加 `selected_widget: RefCell<Option<String>>`，处理 select 消息时设置。选中元素用橙色边框（区别于 hover 的蓝色）。
-
-#### A2: DevTools 面板状态
-
-**文件**: `crates/auto-lang/src/ui/iced/renderer.rs`
-
-扩展 `DynamicState`：
-
-```rust
-struct DynamicState {
-    // ... 现有字段 ...
-    selected_widget: RefCell<Option<String>>,
-    devtools_open: RefCell<bool>,
-    devtools_tab: RefCell<DevToolsTab>,
-    console_output: RefCell<Vec<String>>,
-    source_code: RefCell<Option<String>>,
-}
-
-enum DevToolsTab {
-    Source,
-    Properties,
-    Console,
-}
-```
-
-#### A3: 面板布局渲染
-
-**文件**: `crates/auto-lang/src/ui/iced/renderer.rs` 的 `dynamic_view` 函数
-
-当 `devtools_open` 为 true 时，主窗口变为 Row 布局：
-
-```rust
-if *state.devtools_open.borrow() {
-    // Row: [主内容 + 底部栏] [DevTools面板]
-    let main_area = column![rendered, bar];
-    let panel = render_devtools_panel(state);
-    let layout = row![main_area, panel]
-        .width(Fill).height(Fill);
-    container(layout).into()
-} else {
-    // 原有布局
-    container(rendered).width(Fill).height(Fill).into()
-}
-```
-
-#### A4: 属性检查器 Tab
-
-**文件**: `crates/auto-lang/src/ui/iced/renderer.rs`
-
-`render_devtools_panel(state)` 函数渲染属性面板：
-
-```
-┌─────────────────────┐
-│ element: col #col_1 │  ← 标题
-│─────────────────────│
-│ ▸ Default Styles    │  ← 可折叠
-│   gap: 10           │
-│   pad: 20           │
-│─────────────────────│
-│ ▸ Custom Styles     │  ← 从 style class 解析
-│   bg: #ffffff       │
-│   align: center     │
-│─────────────────────│
-│ ▸ Layout            │  ← iced 布局后的实际尺寸
-│   (需 backend 回报) │
-└─────────────────────┘
-```
-
-数据来源：
-- **Default Styles**: 从 `AbstractView` 的 legacy 字段提取（spacing, padding, width 等）
-- **Custom Styles**: 从 `DebugElementInfo.props` 获取（已有的 `debug_style_props` 函数）
-- **Layout**: 需要后端汇报实际渲染尺寸（Phase B）
-
-**验证**：
-1. F12 开启 debug → hover 有 tooltip + 蓝色边框
-2. 点击元素 → 橙色边框 + 右侧面板打开
-3. 面板显示选中元素的所有属性
-4. 切换到空白区域 → 面板显示 "无选中元素"
+- Tab: 元素（组件树）/ 检查（属性+源码合并）/ 控制台
+- 白色主题，与主 UI 一致
+- F12 直接打开面板
 
 ---
 
-### Phase B: Console Tab
+## Phase E: 源码定位 + 可视化编辑（规划）
 
-**目标**：拦截 `print()` 输出并显示在 Console tab 中。
+### 需求列表
 
-#### B1: 全局 Console Buffer
+| # | 需求 | 说明 |
+|---|------|------|
+| E1 | Inspector 分割线 | 属性和源码之间有明显分割线 + "源码" 标题 |
+| E2 | 源码语法高亮 | 关键字、字符串、注释、类型等彩色显示 |
+| E3 | 点击元素定位源码 | 点击 UI 组件时，源码自动滚动到对应 view 代码行，框选高亮 |
+| E4 | 源码组件可编辑 | 框选的源码组件可切换为表单编辑模式 |
+| E5 | 编辑写回 + 热重载 | 修改后写回 .at 文件，触发组件重新加载 |
 
-**文件**: `crates/auto-lang/src/libs/builtin.rs`
+### 难度分析
 
-添加全局 console buffer，类似已有的 `TEST_OUTPUT_CAPTURE`：
+#### E1: 分割线 — ⭐ 简单（30 分钟）
 
-```rust
-thread_local! {
-    static CONSOLE_BUFFER: RefCell<Arc<Mutex<Vec<String>>>> =
-        RefCell::new(Arc::new(Mutex::new(Vec::new())));
-}
+在 `render_inspector_tab` 中属性和源码之间加一个分隔容器，深色细线 + "源码" 标题文字。纯 UI 调整。
 
-pub fn console_output() -> Arc<Mutex<Vec<String>>> {
-    CONSOLE_BUFFER.with(|buf| buf.borrow().clone())
-}
+**文件**: `crates/auto-lang/src/ui/iced/renderer.rs` 的 `render_inspector_tab`
+
+#### E2: 源码语法高亮 — ⭐⭐ 中等（半天）
+
+iced 没有内置的代码高亮。方案选择：
+
+| 方案 | 优点 | 缺点 |
+|------|------|------|
+| **A: 手动 token 着色** | 无依赖，可控 | 需要实现简易 tokenizer |
+| **B: tree-sitter** | 精确高亮 | 引入大依赖，编译慢 |
+| **C: syntect** | 成熟，TextMate 语法 | 依赖大，嵌入语法文件 |
+
+推荐方案 A：实现一个简易的 AutoLang token 着色器，只处理关键字、字符串、注释、数字、类型名这几种情况。逐行处理，输出带颜色的 `text()` 组件。
+
+**文件**: 新增 `crates/auto-lang/src/ui/iced/source_highlight.rs`
+
+**关键技术点**：
+- 用正则或简易状态机逐行扫描
+- 关键字（fn, let, var, if, for, col, row, text, ...）→ 蓝色
+- 字符串 `"..."` → 绿色
+- 注释 `//...` → 灰色
+- 数字 → 橙色
+- 组件标签（col, row, text, button, ...）→ 紫色
+
+#### E3: 点击元素定位源码 — ⭐⭐⭐⭐ 困难（3-5 天）— 核心阻塞项
+
+**这是整个 Phase E 最难的部分。**
+
+当前 pipeline 完全没有源码位置信息：
+
+```
+Parser (有 Pos 但不保留) → ViewNode (无 span) → AuraNode (无 span) → View (无 span)
 ```
 
-修改 `print` 函数：在写入 stdout 的同时，也写入 console buffer。
+要实现点击 UI 元素定位到源码，需要贯穿整个 pipeline 传播 span：
 
-#### B2: Console Tab 渲染
+**改动链**：
 
-**文件**: `crates/auto-lang/src/ui/iced/renderer.rs`
-
-```rust
-fn render_console_tab(output: &[String]) -> iced::Element<'static, IcedMessage> {
-    let mut col = column([]);
-    for line in output.iter().rev().take(100) {  // 最近100条
-        col = col.push(text(line).size(11));
-    }
-    scrollable(col).into()
-}
-```
-
-需要定时轮询 console buffer（可复用 iced subscription），或者用 `on_press` 手动刷新。
-
-**验证**：
-1. 运行有 `print()` 的 Auto 程序
-2. DevTools Console tab 中能看到输出
-3. 输出与终端同步
-
----
-
-### Phase C: 源码查看器 Tab
-
-**目标**：显示 `.at` 源码，高亮选中组件对应的代码行。
-
-#### C1: AST Span 保留
-
-**文件**: `crates/auto-lang/src/aura/extract.rs`
-
-当前 AURA extraction 从 AST 提取 widget 时丢失了源码位置信息。需要在提取过程中保留每个 view 节点的行号范围。
-
-方案：在 `AuraNode`（或 `AbstractView`）中添加 `source_span: Option<(usize, usize)>` 字段（line_start, line_end）。
-
-**文件**: `crates/auto-lang/src/ui/view.rs`
-
-```rust
-pub struct View<M: Clone + Debug> {
-    // 现有 variant 数据...
-    // 新增：源码位置（行号范围）
-    source_span: Option<(usize, usize)>,
-}
-```
-
-但这需要修改整个 View 枚举——工作量大。替代方案：在 `DebugRenderCtx` 中维护一个独立的映射。
-
-#### C2: 源码加载与显示
-
-**文件**: `crates/auto-lang/src/ui/iced/renderer.rs`
-
-- 从 `DynamicComponent.source_path()` 获取源码文件路径
-- 在 `dynamic_view` 中读取源码（或缓存）
-- 渲染为 `scrollable(column![text(line1), text(line2), ...])`
-- 选中组件时高亮对应行（背景色）
+| 层 | 文件 | 改动 |
+|----|------|------|
+| **Parser** | `parser.rs` 的 `parse_view_node` | 在创建 `ViewNode` 时记录 `start_pos` 和 `end_pos` |
+| **AST** | `ast/ui.rs` 的 `ViewNode` | 每个 variant 添加 `span: Option<(usize, usize)>` |
+| **AURA** | `aura/extract.rs` | `extract_view_node` 传播 span 到 `AuraNode` |
+| **AURA 类型** | `aura/types.rs` | `AuraNode` 每个 variant 添加 `span` 字段 |
+| **View 构建** | `ui/aura_view_builder.rs` | `convert_node` 传播 span 到 View 或 DebugRenderCtx |
+| **Renderer** | `ui/iced/renderer.rs` | `wrap_debug` 从 View/AuraNode 获取 span，存入 `DebugElementInfo` |
 
 **难点**：
-1. 源码可能较长，需要虚拟滚动或限制显示行数
-2. 行号映射需要 Phase C1 的 span 信息
-3. 每帧重新读取文件开销大，需要缓存
+1. Parser 中 `parse_view_node` 是递归的，需要在进入和退出时记录位置
+2. `ViewNode` 有 7 个 variant，全部需要加 span 字段
+3. `AuraNode` 有 7 个 variant，同样全部需要加
+4. 所有 match 和构造的地方都需要更新
+5. byte offset → 行号的转换需要额外的 source map
 
-**验证**：
-1. DevTools 源码 tab 显示当前 `.at` 文件内容
-2. 选中组件后，对应代码行高亮
-3. 修改源码后，热重载时源码 tab 自动更新
+**替代方案（降低难度）**：
+- **方案 A（精确）**：完整 span 传播链 — 改动量大（~500 行），但结果精确
+- **方案 B（启发式）**：用 tag 名 + props 模式在源码中搜索匹配 — 不精确但实现快（~100 行）
+- **方案 C（混合）**：只在 `ViewNode` 和 `AuraNode` 层加 span，View 层用 side-channel 映射
 
----
+#### E4: 源码组件可编辑 — ⭐⭐⭐ 困难（2-3 天）— 依赖 E3
 
-### Phase D: 组件树可视化（可选）
+需要 E3 的 span 信息来确定可编辑区域。UI 部分：
+- 源码中被框选的组件显示为可点击区域
+- 点击后切换为表单：每个 prop 变成一行 input（key: value）
+- 需要处理 AutoLang 的属性语法（`key: value`, `key: {expr}`, `class: "..."` 等）
 
-**目标**：类似 DevTools Elements tab 左侧的 DOM 树。
+**难点**：
+1. 属性值的解析和序列化（表达式 vs 字面量 vs f-string）
+2. 编辑后需要重新生成有效的 AutoLang 源码片段
+3. 嵌套组件的边界识别
 
-展示当前页面的组件树层级结构，可展开/折叠，点击选中对应组件。
+#### E5: 编辑写回 + 热重载 — ⭐⭐ 中等（1-2 天）— 依赖 E3 + E4
 
-这个需要 `AbstractView` 树的结构化遍历，复杂度较高，可作为后续增强。
+**已有基础**：热重载机制完整（500ms 轮询 + mtime 检测 + 全量重解析 + 状态迁移）。
 
----
+**需要的额外工作**：
+1. 将编辑后的源码片段替换回原文件对应位置
+2. 触发热重载（修改 mtime 或直接调用 reload）
+3. 确保编辑后的组件 ID 稳定（当前 counter 每帧重置，已 OK）
 
-## 文件修改清单
+**难点**：
+1. 精确替换文件中的字节范围（需要 E3 的 span）
+2. 多次编辑的增量更新 vs 全量替换
+3. 替换后行号偏移的修正
 
-| 文件 | Phase | 改动 |
-|------|-------|------|
-| `crates/auto-lang/src/ui/iced/renderer.rs` | A | 面板框架 + click-select + 属性 tab + console tab |
-| `crates/auto-lang/src/libs/builtin.rs` | B | print() 输出拦截到 console buffer |
-| `crates/auto-lang/src/aura/extract.rs` | C | AST → AuraWidget 保留源码行号 |
-| `crates/auto-lang/src/ui/view.rs` | C | View 添加 source_span 字段 |
-
-## 实施优先级
+### 实施优先级
 
 ```
-Phase A (面板+属性) → Phase B (Console) → Phase C (源码) → Phase D (组件树)
-   ↑ 最小可用            ↑ 快速增值          ↑ 需 parser 改动   ↑ 锦上添花
-   1-2 天                半天               2-3 天             后续
+E1 (分割线)     → E2 (语法高亮) → E3 (源码定位)  → E4 (可编辑) → E5 (写回+重载)
+   ⭐ 简单           ⭐⭐ 中等        ⭐⭐⭐⭐ 最难       ⭐⭐⭐ 困难    ⭐⭐ 中等
+   30 min            半天             3-5 天          2-3 天       1-2 天
 ```
+
+**建议**：E1 和 E2 可以立即实施。E3 是核心阻塞项，决定后续 E4/E5 是否可行。如果 E3 采用方案 B（启发式），整个 Phase E 可以在 3-4 天内完成；方案 A（精确 span）则需要 7-10 天。
+
+### 技术决策点
+
+| 决策 | 选项 | 推荐 |
+|------|------|------|
+| 语法高亮方案 | A(手动) / B(tree-sitter) / C(syntect) | A — 简易够用 |
+| 源码定位方案 | A(精确span) / B(启发式) / C(混合) | A — 长期正确 |
+| 编辑模式 | 纯文本编辑 / 表单编辑 / 混合 | 表单编辑 — 更安全 |
+| 热重载触发 | mtime轮询 / notify监听 / 手动触发 | mtime轮询 — 已有 |
+
+## 文件修改清单（Phase E）
+
+| 文件 | 任务 | 改动 |
+|------|------|------|
+| `crates/auto-lang/src/ui/iced/renderer.rs` | E1 | Inspector 分割线 |
+| `crates/auto-lang/src/ui/iced/source_highlight.rs` | E2 | 新增语法高亮模块 |
+| `crates/auto-lang/src/ast/ui.rs` | E3 | ViewNode 添加 span 字段 |
+| `crates/auto-lang/src/parser.rs` | E3 | parse_view_node 记录位置 |
+| `crates/auto-lang/src/aura/types.rs` | E3 | AuraNode 添加 span 字段 |
+| `crates/auto-lang/src/aura/extract.rs` | E3 | 传播 span |
+| `crates/auto-lang/src/ui/aura_view_builder.rs` | E3 | 传播 span 到渲染层 |
+| `crates/auto-lang/src/ui/iced/renderer.rs` | E3-E5 | DebugElementInfo 添加 span，编辑 UI |
+| `crates/auto-lang/src/ui/dynamic.rs` | E5 | 文件写回 + reload 触发 |
