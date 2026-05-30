@@ -225,6 +225,11 @@ impl DynamicComponent {
         self.dirty
     }
 
+    /// Clear the dirty flag. Called by the runtime after consuming the dirty state.
+    pub fn clear_dirty(&mut self) {
+        self.dirty = false;
+    }
+
     /// Get the widget name.
     pub fn widget_name(&self) -> &str {
         &self.widget_name
@@ -250,12 +255,22 @@ impl DynamicComponent {
         self.tick_interval
     }
 
-    /// Collect source spans from the view template via DFS traversal.
-    /// Returns a Vec of spans in the same order as the rendering DFS would visit them.
-    pub fn collect_view_spans(&self) -> Vec<Option<(usize, usize)>> {
-        let mut spans = Vec::new();
-        collect_spans_dfs(&self.view_template, &mut spans);
-        spans
+    /// Find the source span for a specific element by kind and occurrence index.
+    /// Traverses the AuraNode tree in DFS order, counting Element nodes by tag name.
+    /// Returns the span of the `target_index`-th occurrence of `target_kind`.
+    pub fn find_element_span(&self, target_kind: &str, target_index: usize) -> Option<(usize, usize)> {
+        let mut counter = 0;
+        find_span_dfs(&self.view_template, target_kind, target_index, &mut counter)
+    }
+
+    /// Build a complete span lookup map in a single DFS pass.
+    /// Returns a HashMap keyed by (kind, occurrence_index) → span.
+    /// This is O(n) instead of calling find_element_span per element (which would be O(n²)).
+    pub fn build_span_lookup(&self) -> std::collections::HashMap<(String, usize), (usize, usize)> {
+        let mut lookup = std::collections::HashMap::new();
+        let mut counters = std::collections::HashMap::<String, usize>::new();
+        collect_all_spans_global_dfs(&self.view_template, &mut lookup, &mut counters);
+        lookup
     }
 
     // ========================================================================
@@ -281,6 +296,45 @@ impl DynamicComponent {
     /// Get the source file path (if set).
     pub fn source_path(&self) -> Option<&Path> {
         self.source_path.as_deref()
+    }
+
+    /// Replace a byte range in the source file with new content and return the updated source.
+    ///
+    /// This is used by the DevTools editor to write back edited source code.
+    /// After writing, the hot-reload mechanism will detect the file change and reload.
+    ///
+    /// # Arguments
+    /// * `offset` - Byte offset of the replacement target
+    /// * `len` - Length of the replacement target
+    /// * `new_content` - The replacement text
+    pub fn write_source_range(
+        &mut self,
+        offset: usize,
+        len: usize,
+        new_content: &str,
+    ) -> Result<String, String> {
+        let path = self.source_path()
+            .ok_or_else(|| "No source path set".to_string())?;
+
+        let mut code = std::fs::read_to_string(path)
+            .map_err(|e| format!("Cannot read source: {}", e))?;
+
+        if offset + len > code.len() {
+            return Err("Span range out of bounds (source may have changed)".to_string());
+        }
+
+        let new_code = format!("{}{}{}", &code[..offset], new_content, &code[offset + len..]);
+
+        std::fs::write(path, &new_code)
+            .map_err(|e| format!("Cannot write source: {}", e))?;
+
+        // Update last_modified to reflect the write we just did,
+        // so the next hot-reload tick won't re-trigger unnecessarily
+        self.last_modified = std::fs::metadata(path)
+            .ok()
+            .and_then(|m| m.modified().ok());
+
+        Ok(new_code)
     }
 
     /// Read all state fields as a name-to-value map.
@@ -533,44 +587,120 @@ fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, 
     }
 }
 
-/// DFS traversal of AuraNode tree to collect source spans in render order.
-fn collect_spans_dfs(node: &crate::aura::AuraNode, spans: &mut Vec<Option<(usize, usize)>>) {
+/// DFS traversal to find the span of the N-th Element node with matching tag.
+/// Returns the span when found, or None.
+fn find_span_dfs(
+    node: &crate::aura::AuraNode, target_kind: &str, target_index: usize, counter: &mut usize,
+) -> Option<(usize, usize)> {
     use crate::aura::AuraNode;
     match node {
-        AuraNode::Element { children, span, .. } => {
-            spans.push(*span);
+        AuraNode::Element { tag, children, span, .. } => {
+            if tag == target_kind {
+                let idx = *counter;
+                *counter += 1;
+                if idx == target_index {
+                    return *span;
+                }
+            }
             for child in children {
-                collect_spans_dfs(child, spans);
+                if let Some(s) = find_span_dfs(child, target_kind, target_index, counter) {
+                    return Some(s);
+                }
             }
+            None
         }
-        AuraNode::Text(_) => {} // Text nodes don't get wrapped by wrap_debug
-        AuraNode::ForLoop { body, span, .. } => {
-            spans.push(*span);
+        AuraNode::ForLoop { body, .. } => {
             for child in body {
-                collect_spans_dfs(child, spans);
+                if let Some(s) = find_span_dfs(child, target_kind, target_index, counter) {
+                    return Some(s);
+                }
             }
+            None
         }
-        AuraNode::Conditional { then_body, else_body, span, .. } => {
-            spans.push(*span);
+        AuraNode::Conditional { then_body, else_body, .. } => {
             for child in then_body {
-                collect_spans_dfs(child, spans);
+                if let Some(s) = find_span_dfs(child, target_kind, target_index, counter) {
+                    return Some(s);
+                }
             }
             if let Some(else_nodes) = else_body {
                 for child in else_nodes {
-                    collect_spans_dfs(child, spans);
+                    if let Some(s) = find_span_dfs(child, target_kind, target_index, counter) {
+                        return Some(s);
+                    }
+                }
+            }
+            None
+        }
+        AuraNode::Link { children, .. } => {
+            for child in children {
+                if let Some(s) = find_span_dfs(child, target_kind, target_index, counter) {
+                    return Some(s);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Single-pass DFS to collect all (kind, per_kind_occurrence_index) → span mappings.
+/// Also inserts alias entries for tags that get renamed during AuraViewBuilder conversion
+/// (e.g., "center" → "container" in AbstractView).
+fn collect_all_spans_global_dfs(
+    node: &crate::aura::AuraNode,
+    lookup: &mut std::collections::HashMap<(String, usize), (usize, usize)>,
+    counters: &mut std::collections::HashMap<String, usize>,
+) {
+    use crate::aura::AuraNode;
+    match node {
+        AuraNode::Element { tag, children, span, .. } => {
+            let idx = counters.entry(tag.clone()).or_insert(0);
+            if let Some(s) = *span {
+                lookup.insert((tag.clone(), *idx), s);
+                // Add aliases for tags that get renamed in AuraViewBuilder
+                for alias in tag_aliases(tag) {
+                    let alias_idx = counters.entry(alias.to_string()).or_insert(0);
+                    lookup.insert((alias.to_string(), *alias_idx), s);
+                    *alias_idx += 1;
+                }
+            }
+            *idx += 1;
+            for child in children {
+                collect_all_spans_global_dfs(child, lookup, counters);
+            }
+        }
+        AuraNode::ForLoop { body, .. } => {
+            for child in body {
+                collect_all_spans_global_dfs(child, lookup, counters);
+            }
+        }
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            for child in then_body {
+                collect_all_spans_global_dfs(child, lookup, counters);
+            }
+            if let Some(else_nodes) = else_body {
+                for child in else_nodes {
+                    collect_all_spans_global_dfs(child, lookup, counters);
                 }
             }
         }
-        AuraNode::Component { span, .. } => {
-            spans.push(*span);
-        }
-        AuraNode::Outlet => {}
-        AuraNode::Link { children, span, .. } => {
-            spans.push(*span);
+        AuraNode::Link { children, .. } => {
             for child in children {
-                collect_spans_dfs(child, spans);
+                collect_all_spans_global_dfs(child, lookup, counters);
             }
         }
+        _ => {}
+    }
+}
+
+/// Returns rendering aliases for AuraNode tags that get renamed in AuraViewBuilder.
+/// e.g., "center" becomes View::container → "container" in the renderer.
+fn tag_aliases(tag: &str) -> Vec<&'static str> {
+    match tag {
+        "center" => vec!["container"],
+        "div" => vec!["container"],
+        _ => vec![],
     }
 }
 

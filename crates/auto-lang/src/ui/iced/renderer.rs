@@ -1478,6 +1478,9 @@ const DEBUG_TOGGLE_EVENT: &str = "__toggle_debug";
 const DEBUG_HOVER_MOVE: &str = "__hover_";
 const DEBUG_HOVER_EXIT: &str = "__hover_exit_";
 const DEBUG_SELECT_PREFIX: &str = "__select_";
+const DEBUG_EDIT_PREFIX: &str = "__edit_";
+const DEBUG_EDIT_APPLY: &str = "__edit_apply";
+const DEBUG_EDIT_CANCEL: &str = "__edit_cancel";
 
 /// DevTools panel tab selector.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1521,6 +1524,39 @@ struct DynamicState {
     console_buffer: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     /// Component tree for DevTools Elements tab, rebuilt each frame.
     component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
+    /// Currently editing element ID (Inspector edit mode).
+    editing_element: std::cell::RefCell<Option<String>>,
+    /// Key for the TEXTAREA_CONTENTS storage used by the inline source editor.
+    edit_textarea_key: std::cell::RefCell<Option<String>>,
+    /// Source span of the element being edited.
+    edit_span: std::cell::RefCell<Option<(usize, usize)>>,
+    /// Error message from last edit apply attempt (if any).
+    edit_error: std::cell::RefCell<Option<String>>,
+    /// Cached span lookup from view_template. Rebuilt only after hot-reload.
+    /// Key: (kind, occurrence_index) → span (offset, len).
+    span_lookup_cache: std::cell::RefCell<Option<std::collections::HashMap<(String, usize), (usize, usize)>>>,
+    /// Whether the AbstractView needs rebuilding (set in update, cleared in dynamic_view).
+    /// When false, cached_converted_view is reused instead of rebuilding from AuraNode.
+    view_dirty: std::cell::RefCell<bool>,
+    /// Cached converted view tree (AbstractView<IcedMessage>), reused when view_dirty is false.
+    /// Saves O(n) AuraViewBuilder::build + convert_view_messages on idle frames.
+    cached_converted_view: std::cell::RefCell<Option<crate::ui::view::View<IcedMessage>>>,
+    /// Cached rendered iced Element (result of render_dynamic_view).
+    /// Reused when view_dirty is false, avoiding O(n) Element creation per frame.
+    cached_rendered: std::cell::RefCell<Option<iced::Element<'static, IcedMessage>>>,
+    /// Pre-computed syntax highlighting: per-line list of (text, color) spans.
+    /// Built once on source load/changed, reused every frame to avoid re-tokenization.
+    cached_highlighted: std::cell::RefCell<Option<Vec<Vec<(String, iced::Color)>>>>,
+    /// Fixed ID for the DevTools inspector scrollable, used for programmatic scroll.
+    inspector_scroll_id: iced::widget::Id,
+    /// When set, the next update() cycle will scroll to center this line index.
+    pending_scroll_to_center: std::cell::RefCell<Option<usize>>,
+    /// DevTools panel width in pixels. Default ~40% of window width.
+    devtools_panel_width: std::cell::RefCell<f32>,
+    /// Current window size, updated on resize events.
+    window_size: std::cell::RefCell<iced::Size>,
+    /// True when user is dragging the DevTools divider handle.
+    dragging_divider: std::cell::RefCell<bool>,
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -1572,10 +1608,32 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             source_line_offsets: std::cell::RefCell::new(Vec::new()),
             console_buffer: crate::libs::builtin::enable_ui_console(),
             component_tree: std::cell::RefCell::new(None),
+            editing_element: std::cell::RefCell::new(None),
+            edit_textarea_key: std::cell::RefCell::new(None),
+            edit_span: std::cell::RefCell::new(None),
+            edit_error: std::cell::RefCell::new(None),
+            span_lookup_cache: std::cell::RefCell::new(None),
+            view_dirty: std::cell::RefCell::new(true),
+            cached_converted_view: std::cell::RefCell::new(None),
+            cached_rendered: std::cell::RefCell::new(None),
+            cached_highlighted: std::cell::RefCell::new(None),
+            inspector_scroll_id: iced::widget::Id::unique(),
+            pending_scroll_to_center: std::cell::RefCell::new(None),
+            devtools_panel_width: std::cell::RefCell::new(420.0),
+            window_size: std::cell::RefCell::new(iced::Size::new(1024.0, 768.0)),
+            dragging_divider: std::cell::RefCell::new(false),
         }
     };
 
     let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+        // Clear component dirty at start of each update cycle.
+        // It will be re-set by on_with_input/write_state/reload if state actually changes.
+        state.component.clear_dirty();
+
+        // Track whether UI-only state changed (hover, select, tab, debug mode).
+        // These don't affect component state but change the rendered output.
+        let mut ui_changed = false;
+
         // Handle debug mode messages
         if msg.event == DEBUG_TOGGLE_EVENT {
             state.debug_mode = !state.debug_mode;
@@ -1589,6 +1647,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                 *state.devtools_open.borrow_mut() = false;
                 state.pending_hovers.borrow_mut().clear();
             }
+            ui_changed = true;
             return iced::Task::none();
         }
         // Handle click-to-select: set selected element and open DevTools panel
@@ -1615,31 +1674,133 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                             }
                             *state.source_line_offsets.borrow_mut() = offsets;
                             *state.source_code.borrow_mut() = Some(code);
+                            // Build syntax highlight cache for all lines
+                            if let Some(ref c) = *state.source_code.borrow() {
+                                *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
+                            }
                         }
                     }
                 }
             }
+            // Try to set pending scroll from element's span
+            if let Some(ref sel_id) = *state.selected_widget.borrow() {
+                let styles = state.debug_element_styles.borrow();
+                if let Some(elem_info) = styles.get(sel_id) {
+                    if let Some((offset, _len)) = elem_info.span {
+                        let line_offsets = state.source_line_offsets.borrow();
+                        let line_idx = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
+                        *state.pending_scroll_to_center.borrow_mut() = Some(line_idx);
+                    }
+                }
+            }
+            ui_changed = true;
             return iced::Task::none();
         }
         // Handle DevTools panel tab switching and close
         match msg.event.as_str() {
             "__tab_elements" => {
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Elements;
+                ui_changed = true;
                 return iced::Task::none();
             }
             "__tab_inspector" => {
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
+                ui_changed = true;
                 return iced::Task::none();
             }
             "__tab_console" => {
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Console;
+                ui_changed = true;
                 return iced::Task::none();
             }
             "__close_devtools" => {
                 *state.devtools_open.borrow_mut() = false;
+                ui_changed = true;
+                return iced::Task::none();
+            }
+            // Window resize: track current window size for panel width clamping
+            "__window_resized" => {
+                if let Some(ref val) = msg.input_value {
+                    if let Some((w, h)) = val.split_once('x') {
+                        let w: f32 = w.parse().unwrap_or(1600.0);
+                        let h: f32 = h.parse().unwrap_or(900.0);
+                        *state.window_size.borrow_mut() = iced::Size::new(w, h);
+                        // Clamp panel width to not exceed 80% of window
+                        let max_pw = w * 0.8;
+                        let pw = *state.devtools_panel_width.borrow();
+                        if pw > max_pw {
+                            *state.devtools_panel_width.borrow_mut() = max_pw;
+                        }
+                        ui_changed = true;
+                    }
+                }
+                return iced::Task::none();
+            }
+            // Divider drag: press
+            "__divider_press" => {
+                *state.dragging_divider.borrow_mut() = true;
+                return iced::Task::none();
+            }
+            // Mouse move: update panel width when dragging
+            "__mouse_moved" => {
+                if *state.dragging_divider.borrow() {
+                    if let Some(ref val) = msg.input_value {
+                        let x: f32 = val.split(',').next().unwrap_or("0").parse().unwrap_or(0.0);
+                        let win_w = state.window_size.borrow().width;
+                        let new_width = (win_w - x).max(200.0).min(win_w - 200.0);
+                        *state.devtools_panel_width.borrow_mut() = new_width;
+                        ui_changed = true;
+                    }
+                }
+                return iced::Task::none();
+            }
+            // Mouse release: stop dragging
+            "__mouse_released" => {
+                if *state.dragging_divider.borrow() {
+                    *state.dragging_divider.borrow_mut() = false;
+                    ui_changed = true;
+                }
+                return iced::Task::none();
+            }
+            // --- Edit mode messages (E4) ---
+            e if e == DEBUG_EDIT_CANCEL => {
+                *state.editing_element.borrow_mut() = None;
+                *state.edit_textarea_key.borrow_mut() = None;
+                *state.edit_span.borrow_mut() = None;
+                *state.edit_error.borrow_mut() = None;
+                ui_changed = true;
+                return iced::Task::none();
+            }
+            e if e == DEBUG_EDIT_APPLY => {
+                apply_edit(state);
+                ui_changed = true;
                 return iced::Task::none();
             }
             _ => {}
+        }
+        // Enter edit mode: __edit_{id}
+        if let Some(id) = msg.event.strip_prefix(DEBUG_EDIT_PREFIX) {
+            let id = id.to_string();
+            let styles = state.debug_element_styles.borrow();
+            if let Some(info) = styles.get(&id) {
+                if let Some(span) = info.span {
+                    *state.editing_element.borrow_mut() = Some(id.clone());
+                    *state.edit_span.borrow_mut() = Some(span);
+                    *state.edit_error.borrow_mut() = None;
+                    // Initialize textarea with source code fragment
+                    if let Some(ref code) = *state.source_code.borrow() {
+                        let (offset, len) = span;
+                        if offset + len <= code.len() {
+                            let fragment = &code[offset..offset + len];
+                            let key = format!("__edit_{}", id);
+                            get_textarea_content(&key, fragment);
+                            *state.edit_textarea_key.borrow_mut() = Some(key);
+                        }
+                    }
+                }
+            }
+            ui_changed = true;
+            return iced::Task::none();
         }
         // Accumulate hover move messages — resolved in view() by picking smallest counter
         if let Some(payload) = msg.event.strip_prefix(DEBUG_HOVER_MOVE) {
@@ -1648,6 +1809,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                     state.pending_hovers.borrow_mut().push((counter, id.to_string()));
                 }
             }
+            ui_changed = true; // hover highlight changes rendered output
             return iced::Task::none();
         }
         // Exit: no longer used for hover tracking (kept for compatibility)
@@ -1668,6 +1830,10 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                         }
                         *state.source_line_offsets.borrow_mut() = offsets;
                         *state.source_code.borrow_mut() = Some(code.clone());
+                        // Rebuild syntax highlight cache after hot-reload
+                        if let Some(ref c) = *state.source_code.borrow() {
+                            *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
+                        }
 
                         let session = CompilerSession::ui();
                         let mut parser = Parser::from(&code).with_session(session);
@@ -1676,6 +1842,10 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                                     if let Ok(widget) = crate::aura::extract_widget_from_decl(decl) {
                                         let _ = state.component.reload(&widget);
+                                        // Invalidate caches since view_template changed
+                                        *state.span_lookup_cache.borrow_mut() = None;
+                                        *state.cached_converted_view.borrow_mut() = None;
+                                        *state.cached_rendered.borrow_mut() = None;
                                     }
                                     break;
                                 }
@@ -1789,7 +1959,40 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             }
         }
 
-        iced::Task::none()
+        // Deferred scroll: if selected_widget is set but pending_scroll not yet computed,
+        // try to compute from element styles (which are populated during rendering).
+        if state.selected_widget.borrow().is_some() && state.pending_scroll_to_center.borrow().is_none() {
+            if let Some(ref sel_id) = *state.selected_widget.borrow() {
+                let styles = state.debug_element_styles.borrow();
+                if let Some(elem_info) = styles.get(sel_id) {
+                    if let Some((offset, _len)) = elem_info.span {
+                        let offsets = state.source_line_offsets.borrow();
+                        let line = offsets.partition_point(|&p| p <= offset).saturating_sub(1);
+                        *state.pending_scroll_to_center.borrow_mut() = Some(line);
+                    }
+                }
+            }
+        }
+
+        // Mark view dirty if component state changed or UI-only state changed.
+        // Component dirty: set by on_with_input, write_state, reload.
+        // UI dirty: hover, select, tab, debug mode, edit mode.
+        if state.component.is_dirty() || ui_changed {
+            *state.view_dirty.borrow_mut() = true;
+        }
+
+        // Emit scroll_to Task if pending scroll is set
+        let scroll_task: Option<iced::Task<IcedMessage>> = state.pending_scroll_to_center.borrow_mut().take().map(|line_idx| {
+            let line_height = 14.0; // font_size(10) + spacing(4)
+            let viewport_height = 500.0; // estimated panel content area height
+            let target_y = (line_idx as f32 * line_height) - (viewport_height / 3.0);
+            let y = target_y.max(0.0);
+            iced::widget::operation::scroll_to(
+                state.inspector_scroll_id.clone(),
+                iced::widget::scrollable::AbsoluteOffset { x: Some(0.0), y: Some(y) },
+            )
+        });
+        scroll_task.unwrap_or_else(iced::Task::none)
     };
 
     let title_fn = move |_state: &DynamicState| -> String {
@@ -1798,7 +2001,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
 
     iced::application(boot, update, dynamic_view)
         .title(title_fn)
-        .window_size(iced::Size::new(1024.0, 768.0))
+        .window_size(iced::Size::new(1600.0, 900.0))
         .subscription(|_state: &DynamicState| {
             let mut subs = vec![];
             if _state.component.source_path().is_some() {
@@ -1809,6 +2012,25 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             }
             // F12 keyboard listener for Auto-UI DevTools
             subs.push(debug_keyboard_sub());
+            // Window resize + mouse move/release events for DevTools panel drag
+            subs.push(iced::event::listen_with(|e, _status, _window_id| match e {
+                iced::Event::Window(iced::window::Event::Resized(size)) => Some(IcedMessage {
+                    widget: String::new(),
+                    event: "__window_resized".to_string(),
+                    input_value: Some(format!("{}x{}", size.width, size.height)),
+                }),
+                iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => Some(IcedMessage {
+                    widget: String::new(),
+                    event: "__mouse_moved".to_string(),
+                    input_value: Some(format!("{},{}", position.x, position.y)),
+                }),
+                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => Some(IcedMessage {
+                    widget: String::new(),
+                    event: "__mouse_released".to_string(),
+                    input_value: None,
+                }),
+                _ => None,
+            }));
             iced::Subscription::batch(subs)
         })
         .run()?;
@@ -1835,18 +2057,29 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         }
     }
 
+    // Fast path: if nothing changed since last frame, return cached Element directly.
+    // All state changes (component state + UI state like hover/select/tab) are tracked
+    // by view_dirty, so when it's false the cached Element is still valid.
+    {
+        let dirty = *state.view_dirty.borrow();
+        if !dirty {
+            let cached = state.cached_rendered.borrow_mut().take();
+            if let Some(el) = cached {
+                return el;
+            }
+            // Cache empty (shouldn't happen after first frame) — fall through to rebuild
+        }
+    }
+
+    // Full rebuild path: state changed or cache empty.
+    // Build the converted AbstractView tree, render to iced Element, and cache the result.
     let mut view = state.component.view();
-
-    // Inject dynamic todo list (replaces __TODO_LIST__ marker)
     inject_todo_list(&mut view, &state.todos, state.component.widget_name());
-
-    // Patch input values: for inputs with tracked text, replace the value
-    // with the user-typed text so the input stays editable.
     if !state.input_values.is_empty() {
         patch_input_values(&mut view, &state.input_values);
     }
-
     let converted = convert_view_messages(view);
+    *state.cached_converted_view.borrow_mut() = Some(converted.clone());
 
     // Sync console buffer → console_output for DevTools Console tab
     {
@@ -1857,15 +2090,23 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     }
 
     let debug_ctx = if state.debug_mode {
-        let source_spans = state.component.collect_view_spans();
+        // Rebuild span lookup only if cache is empty (first frame or after hot-reload)
+        let mut cache = state.span_lookup_cache.borrow_mut();
+        if cache.is_none() {
+            *cache = Some(state.component.build_span_lookup());
+        }
+        let span_lookup = cache.as_ref().unwrap().clone();
+        drop(cache); // release borrow before creating DebugRenderCtx
+
         Some(DebugRenderCtx {
             hovered_id: state.hovered_widget.borrow().clone(),
             selected_id: state.selected_widget.borrow().clone(),
             counter: std::cell::RefCell::new(0),
+            kind_counters: std::cell::RefCell::new(std::collections::HashMap::new()),
             element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
             tree_stack: std::cell::RefCell::new(Vec::new()),
             component_tree: std::cell::RefCell::new(None),
-            source_spans,
+            span_lookup,
         })
     } else {
         None
@@ -1881,11 +2122,31 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         *state.component_tree.borrow_mut() = tree.clone();
     }
 
-    if state.debug_mode {
+    let result: iced::Element<'static, IcedMessage> = if state.debug_mode {
         if *state.devtools_open.borrow() {
-            // Row layout: [main content] [DevTools panel]
+            // Row layout: [main content] [draggable divider] [DevTools panel]
             let panel = render_devtools_panel(state);
-            let layout = row![rendered, panel]
+            let is_dragging = *state.dragging_divider.borrow();
+            let divider_bg = if is_dragging {
+                iced::Color::from_rgb(0.3, 0.5, 0.9) // blue while dragging
+            } else {
+                iced::Color::from_rgb(0.82, 0.82, 0.82) // gray normally
+            };
+            let divider = mouse_area(
+                container(iced::widget::Space::new().width(6))
+                    .style(move |_: &iced::Theme| container::Style {
+                        background: Some(iced::Background::Color(divider_bg)),
+                        ..Default::default()
+                    })
+                    .width(6)
+                    .height(iced::Length::Fill)
+            )
+            .on_press(IcedMessage {
+                widget: String::new(),
+                event: "__divider_press".to_string(),
+                input_value: None,
+            });
+            let layout = row![rendered, divider, panel]
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill);
             container(layout)
@@ -1903,7 +2164,14 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             .width(iced::Length::Fill)
             .height(iced::Length::Fill)
             .into()
-    }
+    };
+
+    // Cache the final Element for reuse on next non-dirty frame and clear dirty.
+    *state.cached_rendered.borrow_mut() = Some(result);
+    *state.view_dirty.borrow_mut() = false;
+
+    // Take from cache and return (iced will call view again next frame).
+    state.cached_rendered.borrow_mut().take().unwrap()
 }
 
 /// Render the DevTools panel on the right side of the window.
@@ -1983,13 +2251,14 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
 
     let panel_col = column![header, container(
         scrollable(content)
+            .id(state.inspector_scroll_id.clone())
             .width(iced::Length::Fill)
             .height(iced::Length::Fill)
     )
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)]
         .spacing(4)
-        .width(300)
+        .width(*state.devtools_panel_width.borrow())
         .height(iced::Length::Fill);
 
     container(panel_col)
@@ -2003,7 +2272,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
             ..Default::default()
         })
         .padding(iced::Padding::new(6.0))
-        .width(300)
+        .width(*state.devtools_panel_width.borrow())
         .height(iced::Length::Fill)
         .into()
 }
@@ -2120,9 +2389,10 @@ const AUTO_KEYWORDS: &[&str] = &[
     "tab", "tabs", "sidebar", "accordion", "nav", "textarea", "progress",
 ];
 
-/// Render a single source line with syntax highlighting into a row of colored text spans.
-fn highlight_line(line: &str) -> iced::widget::Row<'static, IcedMessage> {
-    let mut spans: Vec<iced::Element<'static, IcedMessage>> = Vec::new();
+/// Pure tokenization: returns (text, color) pairs for one source line.
+/// No iced widget creation — just data, suitable for caching.
+fn tokenize_line(line: &str) -> Vec<(String, iced::Color)> {
+    let mut spans = Vec::new();
     let chars: Vec<char> = line.chars().collect();
     let len = chars.len();
     let mut i = 0;
@@ -2131,7 +2401,7 @@ fn highlight_line(line: &str) -> iced::widget::Row<'static, IcedMessage> {
         // Comment: //
         if i + 1 < len && chars[i] == '/' && chars[i + 1] == '/' {
             let comment: String = chars[i..].iter().collect();
-            spans.push(text(comment).size(10).color(iced::Color::from_rgb(0.5, 0.55, 0.5)).into());
+            spans.push((comment, iced::Color::from_rgb(0.5, 0.55, 0.5)));
             break;
         }
         // String literal: "..."
@@ -2144,7 +2414,7 @@ fn highlight_line(line: &str) -> iced::widget::Row<'static, IcedMessage> {
             }
             if i < len { i += 1; } // closing quote
             let s: String = chars[start..i].iter().collect();
-            spans.push(text(s).size(10).color(iced::Color::from_rgb(0.16, 0.6, 0.26)).into());
+            spans.push((s, iced::Color::from_rgb(0.16, 0.6, 0.26)));
             continue;
         }
         // F-string: f"..."
@@ -2157,7 +2427,7 @@ fn highlight_line(line: &str) -> iced::widget::Row<'static, IcedMessage> {
             }
             if i < len { i += 1; }
             let s: String = chars[start..i].iter().collect();
-            spans.push(text(s).size(10).color(iced::Color::from_rgb(0.16, 0.55, 0.35)).into());
+            spans.push((s, iced::Color::from_rgb(0.16, 0.55, 0.35)));
             continue;
         }
         // Number
@@ -2166,7 +2436,7 @@ fn highlight_line(line: &str) -> iced::widget::Row<'static, IcedMessage> {
             if chars[i] == '-' { i += 1; }
             while i < len && (chars[i].is_ascii_digit() || chars[i] == '.') { i += 1; }
             let s: String = chars[start..i].iter().collect();
-            spans.push(text(s).size(10).color(iced::Color::from_rgb(0.8, 0.4, 0.1)).into());
+            spans.push((s, iced::Color::from_rgb(0.8, 0.4, 0.1)));
             continue;
         }
         // Identifier or keyword
@@ -2181,7 +2451,7 @@ fn highlight_line(line: &str) -> iced::widget::Row<'static, IcedMessage> {
             } else {
                 iced::Color::from_rgb(0.3, 0.3, 0.3) // default: dark grey
             };
-            spans.push(text(word).size(10).color(color).into());
+            spans.push((word, color));
             continue;
         }
         // Operators and punctuation
@@ -2196,14 +2466,15 @@ fn highlight_line(line: &str) -> iced::widget::Row<'static, IcedMessage> {
             }
             _ => iced::Color::from_rgb(0.3, 0.3, 0.3),
         };
-        spans.push(text(ch.to_string()).size(10).color(color).into());
+        spans.push((ch.to_string(), color));
     }
+    spans
+}
 
-    let mut row = row![].spacing(0);
-    for span in spans {
-        row = row.push(span);
-    }
-    row
+/// Build cached syntax highlighting for all lines in a source file.
+/// Called once when source is loaded/changed, reused every frame.
+fn build_highlight_cache(source: &str) -> Vec<Vec<(String, iced::Color)>> {
+    source.lines().map(|line| tokenize_line(line)).collect()
 }
 
 /// Render the Inspector tab: source code + properties, stacked vertically.
@@ -2285,74 +2556,210 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
             col = col.push(
                 text(path_display).size(9).color(iced::Color::from_rgb(0.4, 0.6, 0.8))
             );
+
+            // Use cached syntax highlighting for all lines
+            let cached = state.cached_highlighted.borrow();
             let all_lines: Vec<&str> = code.lines().collect();
             let total = all_lines.len();
 
-            // Determine visible range: highlight area ± context, or first 50 lines
-            let (start_line, end_line) = match highlight_range {
-                Some((hs, he)) => {
-                    let ctx = 15; // 15 lines context around highlight
-                    let s = hs.saturating_sub(ctx);
-                    let e = (he + ctx + 1).min(total);
-                    (s, e)
+            for i in 0..total {
+                let line_num = format!("{:>4}", i + 1);
+                let is_highlighted = highlight_range
+                    .map(|(hs, he)| i >= hs && i < he)
+                    .unwrap_or(false);
+
+                // Build line content from cached highlight spans
+                let mut line_row = row![].spacing(0);
+                if is_highlighted {
+                    line_row = line_row.push(text(line_num).size(10).color(iced::Color::from_rgb(0.8, 0.4, 0.1)));
+                } else {
+                    line_row = line_row.push(text(line_num).size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)));
                 }
-                None => (0, total.min(50)),
-            };
 
-            // Show "..." if skipping lines at start
-            if start_line > 0 {
-                col = col.push(
-                    text(format!("  ... ({} lines hidden)", start_line))
-                        .size(9).color(iced::Color::from_rgb(0.6, 0.6, 0.6))
-                );
-            }
-
-            for i in start_line..end_line {
-                if let Some(line) = all_lines.get(i) {
-                    let line_num = format!("{:>4}", i + 1);
-                    let is_highlighted = highlight_range
-                        .map(|(hs, he)| i >= hs && i < he)
-                        .unwrap_or(false);
-                    if is_highlighted {
-                        col = col.push(
-                            container(
-                                row![
-                                    text(line_num).size(10).color(iced::Color::from_rgb(0.8, 0.4, 0.1)),
-                                    highlight_line(line),
-                                ]
-                                    .spacing(4)
-                            )
-                                .style(|_: &iced::Theme| container::Style {
-                                    background: Some(iced::Background::Color(iced::Color::from_rgb(1.0, 0.95, 0.85))),
-                                    ..Default::default()
-                                })
-                                .padding(iced::Padding::new(1.0))
-                                .width(iced::Length::Fill)
-                        );
+                if let Some(ref cache) = *cached {
+                    if let Some(cached_line) = cache.get(i) {
+                        for (fragment, color) in cached_line {
+                            line_row = line_row.push(text(fragment.clone()).size(10).color(*color));
+                        }
                     } else {
-                        col = col.push(
-                            row![
-                                text(line_num).size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
-                                text(line.to_string()).size(10).color(iced::Color::from_rgb(0.35, 0.35, 0.35)),
-                            ]
-                                .spacing(4)
-                        );
+                        // Fallback: plain text for empty/missing cache entry
+                        if let Some(line) = all_lines.get(i) {
+                            line_row = line_row.push(text(line.to_string()).size(10).color(iced::Color::from_rgb(0.3, 0.3, 0.3)));
+                        }
+                    }
+                } else {
+                    // No cache: plain text fallback
+                    if let Some(line) = all_lines.get(i) {
+                        line_row = line_row.push(text(line.to_string()).size(10).color(iced::Color::from_rgb(0.3, 0.3, 0.3)));
                     }
                 }
+
+                if is_highlighted {
+                    col = col.push(
+                        container(line_row.spacing(4))
+                            .style(|_: &iced::Theme| container::Style {
+                                background: Some(iced::Background::Color(iced::Color::from_rgb(1.0, 0.95, 0.85))),
+                                ..Default::default()
+                            })
+                            .padding(iced::Padding::new(1.0))
+                            .width(iced::Length::Fill)
+                    );
+                } else {
+                    col = col.push(line_row.spacing(4));
+                }
             }
 
-            // Show "..." if skipping lines at end
-            if end_line < total {
+            // Add edit button when element has a span and is selected
+            if info.is_some() && highlight_range.is_some() {
+                let edit_id = selected_id.clone().unwrap_or_default();
                 col = col.push(
-                    text(format!("  ... ({} lines hidden)", total - end_line))
-                        .size(9).color(iced::Color::from_rgb(0.6, 0.6, 0.6))
+                    container(
+                        mouse_area(
+                            text("[编辑]").size(9).color(iced::Color::from_rgb(0.2, 0.5, 0.8))
+                        )
+                        .on_press(IcedMessage {
+                            widget: String::new(),
+                            event: format!("{}{}", DEBUG_EDIT_PREFIX, edit_id),
+                            input_value: None,
+                        })
+                    )
+                    .padding(iced::Padding::new(2.0))
                 );
             }
         }
         None => {}
     }
 
+    // --- Edit mode UI: inline text_editor ---
+    let editing = state.editing_element.borrow().clone();
+    if let Some(ref _edit_id) = editing {
+        let edit_err = state.edit_error.borrow().clone();
+        let textarea_key = state.edit_textarea_key.borrow().clone();
+
+        col = col.push(
+            container(
+                text("✏ 编辑源码").size(11).color(iced::Color::from_rgb(0.8, 0.3, 0.1)),
+            )
+                .width(iced::Length::Fill)
+                .padding(iced::Padding::new(4.0))
+        );
+
+        // Multi-line text editor using text_editor widget
+        if let Some(ref key) = textarea_key {
+            let content = get_textarea_content(key, "");
+            let editor = text_editor(content)
+                .size(10);
+            col = col.push(
+                container(editor)
+                    .style(|_: &iced::Theme| container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgb(1.0, 0.98, 0.92))),
+                        border: iced::Border::default().rounded(3.0)
+                            .color(iced::Color::from_rgb(0.3, 0.6, 0.9))
+                            .width(1.0),
+                        ..Default::default()
+                    })
+                    .padding(iced::Padding::new(4.0))
+                    .width(iced::Length::Fill)
+            );
+        }
+
+        // Save / Cancel buttons
+        col = col.push(
+            row![
+                container(
+                    mouse_area(
+                        container(text("保存").size(10).color(iced::Color::from_rgb(1.0, 1.0, 1.0)))
+                            .style(|_: &iced::Theme| container::Style {
+                                background: Some(iced::Background::Color(iced::Color::from_rgb(0.2, 0.6, 0.3))),
+                                border: iced::Border::default().rounded(3.0),
+                                ..Default::default()
+                            })
+                            .padding(iced::Padding::new(4.0))
+                    )
+                    .on_press(IcedMessage {
+                        widget: String::new(),
+                        event: DEBUG_EDIT_APPLY.to_string(),
+                        input_value: None,
+                    })
+                ),
+                container(
+                    mouse_area(
+                        container(text("取消").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)))
+                            .style(|_: &iced::Theme| container::Style {
+                                background: Some(iced::Background::Color(iced::Color::from_rgb(0.9, 0.9, 0.9))),
+                                border: iced::Border::default().rounded(3.0),
+                                ..Default::default()
+                            })
+                            .padding(iced::Padding::new(4.0))
+                    )
+                    .on_press(IcedMessage {
+                        widget: String::new(),
+                        event: DEBUG_EDIT_CANCEL.to_string(),
+                        input_value: None,
+                    })
+                ),
+            ]
+                .spacing(8)
+        );
+
+        // Show error if any
+        if let Some(err) = edit_err {
+            col = col.push(
+                text(format!("❌ {}", err)).size(9).color(iced::Color::from_rgb(0.8, 0.1, 0.1))
+            );
+        }
+    }
+
     col.into()
+}
+
+/// Apply the current edit: read edited text from textarea, write back, trigger hot reload.
+fn apply_edit(state: &mut DynamicState) {
+    let edit_elem = state.editing_element.borrow().clone();
+    let edit_span = state.edit_span.borrow().clone();
+    let textarea_key = state.edit_textarea_key.borrow().clone();
+
+    if let (Some(_id), Some((offset, len)), Some(key)) = (edit_elem, edit_span, textarea_key) {
+        // Read edited text from textarea content
+        let map = TEXTAREA_CONTENTS.lock().unwrap();
+        let new_text = map.get(&key).map(|c| c.text().to_string()).unwrap_or_default();
+        drop(map);
+
+        let source = state.source_code.borrow().clone();
+        if let Some(ref code) = source {
+            if offset + len <= code.len() {
+                match state.component.write_source_range(offset, len, &new_text) {
+                    Ok(new_code) => {
+                        // Update cached source code and line offsets
+                        let mut offsets = vec![0usize];
+                        for (i, ch) in new_code.char_indices() {
+                            if ch == '\n' { offsets.push(i + 1); }
+                        }
+                        *state.source_line_offsets.borrow_mut() = offsets;
+                        *state.source_code.borrow_mut() = Some(new_code);
+                        // Invalidate caches since source file changed
+                        *state.span_lookup_cache.borrow_mut() = None;
+                        *state.cached_converted_view.borrow_mut() = None;
+                        *state.cached_rendered.borrow_mut() = None;
+                        // Rebuild syntax highlight cache after edit
+                        if let Some(ref c) = *state.source_code.borrow() {
+                            *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
+                        }
+                        // Clear edit state on success
+                        *state.editing_element.borrow_mut() = None;
+                        *state.edit_textarea_key.borrow_mut() = None;
+                        *state.edit_span.borrow_mut() = None;
+                        *state.edit_error.borrow_mut() = None;
+                    }
+                    Err(e) => {
+                        *state.edit_error.borrow_mut() = Some(e);
+                    }
+                }
+            } else {
+                *state.edit_error.borrow_mut() = Some("源码已变更，span 失效".to_string());
+            }
+        }
+    }
 }
 
 /// Render the Console tab: show captured print() output.
@@ -2388,14 +2795,17 @@ struct DebugRenderCtx {
     hovered_id: Option<String>,
     selected_id: Option<String>,
     counter: std::cell::RefCell<usize>,
+    /// Per-kind counter for span_lookup matching (matches AuraNode DFS per-tag counter).
+    kind_counters: std::cell::RefCell<std::collections::HashMap<String, usize>>,
     /// Style metadata per element: id -> (kind, props, span).
     element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
     /// Component tree stack: tracks parent-child relationships during DFS traversal.
     tree_stack: std::cell::RefCell<Vec<DebugTreeNode>>,
     /// The final component tree root, set after rendering completes.
     component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
-    /// Pre-collected source spans from AuraNode DFS, indexed by render order.
-    source_spans: Vec<Option<(usize, usize)>>,
+    /// Pre-computed span lookup: (kind, occurrence_index) → span.
+    /// Built once per frame via build_span_lookup() to avoid O(n²) per-element DFS.
+    span_lookup: std::collections::HashMap<(String, usize), (usize, usize)>,
 }
 
 /// Debug metadata for a single UI element.
@@ -2455,10 +2865,17 @@ impl DebugRenderCtx {
         // Track this node in the component tree
         self.tree_enter(id.clone(), kind.to_string());
 
-        // Always store metadata (even with empty props) for component tree lookup
-        // Get span for this element from pre-collected spans (indexed by counter_val)
-        let span = self.source_spans.get(counter_val).copied().flatten();
+        // Look up source span using per-kind counter (matches AuraNode per-tag counter).
+        let kind_idx = {
+            let mut kc = self.kind_counters.borrow_mut();
+            let idx = kc.entry(kind.to_string()).or_insert(0);
+            let result = *idx;
+            *idx += 1;
+            result
+        };
+        let span = self.span_lookup.get(&(kind.to_string(), kind_idx)).copied();
 
+        // Always store metadata (even with empty props) for component tree lookup
         self.element_styles.borrow_mut().insert(id.clone(), DebugElementInfo {
             kind: kind.to_string(),
             props,
@@ -2985,6 +3402,44 @@ fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &st
             for h in headers.iter_mut() { patch_input_values(h, input_values); }
             for row in rows.iter_mut() {
                 for cell in row.iter_mut() { patch_input_values(cell, input_values); }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Patch input values in an IcedMessage-typed view tree (cached view version).
+/// Same logic as patch_input_values but extracts event name from IcedMessage.event.
+fn patch_input_values_iced(view: &mut AbstractView<IcedMessage>, input_values: &std::collections::HashMap<String, String>) {
+    match view {
+        AbstractView::Input { value, on_change, .. } | AbstractView::Textarea { value, on_change, .. } => {
+            if let Some(msg) = on_change {
+                let clean_name = {
+                    let n = msg.event.trim_start_matches('.');
+                    if let Some(pos) = n.rfind("::") { n[pos + 2..].to_string() } else { n.to_string() }
+                };
+                if let Some(text) = input_values.get(&clean_name) {
+                    *value = text.clone();
+                }
+            }
+        }
+        AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => {
+            for child in children.iter_mut() {
+                patch_input_values_iced(child, input_values);
+            }
+        }
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
+            patch_input_values_iced(child, input_values);
+        }
+        AbstractView::List { items, .. } => {
+            for item in items.iter_mut() {
+                patch_input_values_iced(item, input_values);
+            }
+        }
+        AbstractView::Table { headers, rows, .. } => {
+            for h in headers.iter_mut() { patch_input_values_iced(h, input_values); }
+            for row in rows.iter_mut() {
+                for cell in row.iter_mut() { patch_input_values_iced(cell, input_values); }
             }
         }
         _ => {}
