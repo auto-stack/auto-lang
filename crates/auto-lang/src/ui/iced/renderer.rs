@@ -1742,7 +1742,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                         // Pick the last (innermost) AuraNodeId for this line
                         if let Some(&aura_id) = aura_ids.last() {
                             let cache = state.aura_to_id_cache.borrow();
-                            if let Some(debug_id) = cache.get(&aura_id) {
+                            if let Some(debug_id) = cache.get(&aura_id).cloned() {
                                 drop(cache);
                                 drop(line_map);
                                 *state.selected_widget.borrow_mut() = Some(debug_id.clone());
@@ -1750,7 +1750,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                                 *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
                                 // Scroll source to the selected element's span
                                 let styles = state.debug_element_styles.borrow();
-                                if let Some(elem_info) = styles.get(debug_id) {
+                                if let Some(elem_info) = styles.get(&debug_id) {
                                     if let Some((offset, _len)) = elem_info.span {
                                         let line_offsets = state.source_line_offsets.borrow();
                                         let line_idx = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
