@@ -41,6 +41,9 @@ pub struct WidgetDecl {
     /// Event handlers
     pub on: Option<OnBlock>,
 
+    /// Key bindings (Plan 275)
+    pub bind: Option<BindBlock>,
+
     /// Props for reusable components
     pub props: Vec<PropDecl>,
 
@@ -400,6 +403,22 @@ pub struct OnHandler {
     pub body: Body,
 }
 
+/// Key binding block (Plan 275)
+#[derive(Debug, Clone)]
+pub struct BindBlock {
+    /// Key bindings
+    pub bindings: Vec<KeyBinding>,
+}
+
+/// A single key binding: "key" -> .Handler
+#[derive(Debug, Clone)]
+pub struct KeyBinding {
+    /// Key string (e.g., "1", "+", "Enter", "Escape")
+    pub key: String,
+    /// Handler pattern (e.g., ".Digit1")
+    pub handler: String,
+}
+
 // ============================================================================
 // Prop Declaration
 // ============================================================================
@@ -529,6 +548,7 @@ mod tests {
             model: None,
             view: None,
             on: None,
+            bind: None,
             props: vec![],
             computed: None,
             routes: None,

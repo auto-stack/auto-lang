@@ -9766,6 +9766,7 @@ impl<'a> Parser<'a> {
         let mut computed = None;
         let mut view = None;
         let mut on = None;
+        let mut bind = None;
         let mut routes = None;
 
         while !self.is_kind(TokenKind::RBrace) {
@@ -9791,6 +9792,9 @@ impl<'a> Parser<'a> {
                 "on" => {
                     on = Some(self.parse_on_block()?);
                 }
+                "bind" => {
+                    bind = Some(self.parse_bind_block()?);
+                }
                 "routes" => {
                     routes = Some(self.parse_routes_block_inner()?);
                 }
@@ -9812,6 +9816,7 @@ impl<'a> Parser<'a> {
             computed,
             view,
             on,
+            bind,
             props,
             routes,
             lifecycle: vec![],
@@ -11082,6 +11087,67 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::RBrace)?;
         Ok(OnBlock { handlers })
+    }
+
+    /// Parse a bind block: bind { "key" -> .Handler, ... }
+    /// Plan 275: Key bindings for AURA widgets
+    fn parse_bind_block(&mut self) -> AutoResult<BindBlock> {
+        self.expect_ident("bind")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut bindings = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            // Parse key string: "1", "+", "Enter", etc.
+            let key = if self.is_kind(TokenKind::Str) {
+                let s = self.cur.text.to_string();
+                self.next();
+                s
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected string key in bind block, got '{}'", self.cur.text),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            };
+
+            // Expect ->
+            if self.is_kind(TokenKind::Arrow) {
+                self.next();
+            } else if self.is_kind(TokenKind::Asn) {
+                self.next();
+                self.expect(TokenKind::Gt)?;
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected '->' in bind block, got '{}'", self.cur.text),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+
+            // Parse handler: .Name
+            let handler = if self.is_kind(TokenKind::Dot) {
+                self.next(); // consume the dot
+                let name = self.cur.text.to_string();
+                self.next();
+                format!(".{}", name)
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected '.HandlerName' in bind block, got '{}'", self.cur.text),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            };
+
+            bindings.push(KeyBinding { key, handler });
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(BindBlock { bindings })
     }
 
     /// Helper: expect an identifier with specific text

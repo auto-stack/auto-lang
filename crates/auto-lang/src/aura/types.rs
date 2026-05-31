@@ -86,6 +86,10 @@ pub struct AuraWidget {
 
     /// Span map: AuraNodeId → source info for DevTools (Plan 273)
     pub span_map: HashMap<AuraNodeId, SpanInfo>,
+
+    /// Key bindings: key string → handler pattern (Plan 275)
+    /// e.g., "1" → ".Digit1", "Enter" → ".Equals"
+    pub key_bindings: HashMap<String, String>,
 }
 
 // ============================================================================
@@ -894,6 +898,7 @@ mod tests {
             tick_interval: None,
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
         };
 
         assert_eq!(widget.name, "Counter");

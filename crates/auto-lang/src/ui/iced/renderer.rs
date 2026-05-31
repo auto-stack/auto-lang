@@ -11,6 +11,7 @@ use crate::ui::app::AppResult;
 use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedFontSize, IcedShadowSize};
 use crate::ui::style::Style;
 use std::fmt::Debug;
+use std::collections::HashMap;
 use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_editor, text_input, tooltip};
 
 use crate::ui::dynamic::DynamicComponent;
@@ -1458,21 +1459,111 @@ fn widget_tick(interval_ms: u32) -> iced::Subscription<IcedMessage> {
     })
 }
 
-/// Keyboard listener for F12 devtools toggle (custom Auto-UI DevTools).
-fn debug_keyboard_sub() -> iced::Subscription<IcedMessage> {
-    iced::event::listen_with(|event, _status, _window_id| match event {
-        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) => {
-            if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
-                Some(IcedMessage {
-                    widget: String::new(),
-                    event: DEBUG_TOGGLE_EVENT.to_string(),
-                    input_value: None,
-                })
-            } else {
-                None
-            }
+/// Global key bindings storage for keyboard subscription (Plan 275).
+/// Updated by `keyboard_subscription()` each time the subscription is evaluated.
+static KEYBOARD_BINDINGS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, String>>> =
+    std::sync::OnceLock::new();
+
+/// Keyboard subscription: F12 devtools toggle + widget key bindings (Plan 275).
+///
+/// Uses `listen_with` (fn pointer) with a global `Arc<Mutex<HashMap>>` for bindings.
+/// The subscription closure updates the global ref each time it's evaluated,
+/// and the fn pointer reads from it.
+fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscription<IcedMessage> {
+    // Update global bindings reference
+    {
+        let guard = KEYBOARD_BINDINGS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+        let mut lock = guard.lock().unwrap();
+        *lock = key_bindings.clone();
+    }
+
+    iced::event::listen_with(|event, status, _window_id| {
+        // Skip events already consumed by a focused widget (e.g., text input)
+        if matches!(status, iced::event::Status::Captured) {
+            return None;
         }
-        _ => None,
+
+        match event {
+            iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                key, modifiers, ..
+            }) => {
+                // F12 → DevTools toggle (always active)
+                if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
+                    return Some(IcedMessage {
+                        widget: String::new(),
+                        event: DEBUG_TOGGLE_EVENT.to_string(),
+                        input_value: None,
+                    });
+                }
+
+                // Build key string for lookup
+                let key_str = match &key {
+                    // Named keys
+                    iced::keyboard::Key::Named(named) => {
+                        let name = match named {
+                            iced::keyboard::key::Named::Enter => "Enter",
+                            iced::keyboard::key::Named::Escape => "Escape",
+                            iced::keyboard::key::Named::Backspace => "Backspace",
+                            iced::keyboard::key::Named::Tab => "Tab",
+                            iced::keyboard::key::Named::Space => " ",
+                            iced::keyboard::key::Named::ArrowUp => "ArrowUp",
+                            iced::keyboard::key::Named::ArrowDown => "ArrowDown",
+                            iced::keyboard::key::Named::ArrowLeft => "ArrowLeft",
+                            iced::keyboard::key::Named::ArrowRight => "ArrowRight",
+                            iced::keyboard::key::Named::Delete => "Delete",
+                            iced::keyboard::key::Named::Home => "Home",
+                            iced::keyboard::key::Named::End => "End",
+                            _ => return None,
+                        };
+                        name.to_string()
+                    }
+                    // Character keys
+                    iced::keyboard::Key::Character(c) => {
+                        if modifiers.control() {
+                            format!("Ctrl+{}", c)
+                        } else {
+                            c.to_string()
+                        }
+                    }
+                    _ => return None,
+                };
+
+                // Look up handler from global bindings
+                let bindings_guard = KEYBOARD_BINDINGS.get().unwrap();
+                let bindings = bindings_guard.lock().unwrap();
+                // For Shift-modified characters, also try the shifted symbol mapping
+                let handler = bindings.get(&key_str).or_else(|| {
+                    // Shift symbol fallback: if key_str is a shifted variant (e.g., "="),
+                    // also try common Shift mappings ("+")
+                    if modifiers.shift() {
+                        let shifted_map: &[(&str, &str)] = &[
+                            ("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
+                        ];
+                        shifted_map.iter()
+                            .find(|(from, _)| *from == key_str.as_str())
+                            .and_then(|(_, to)| bindings.get(*to))
+                    } else {
+                        None
+                    }
+                });
+                if let Some(handler) = handler {
+                    // Strip the leading dot from ".Digit1" → "Digit1"
+                    let event_name = if handler.starts_with('.') {
+                        &handler[1..]
+                    } else {
+                        handler
+                    };
+                    Some(IcedMessage {
+                        widget: String::new(),
+                        event: event_name.to_string(),
+                        input_value: None,
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
     })
 }
 
@@ -2062,8 +2153,8 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             if let Some(interval_ms) = _state.component.tick_interval() {
                 subs.push(widget_tick(interval_ms));
             }
-            // F12 keyboard listener for Auto-UI DevTools
-            subs.push(debug_keyboard_sub());
+            // F12 DevTools + key bindings listener (Plan 275)
+            subs.push(keyboard_subscription(_state.component.key_bindings()));
             // Window resize + mouse move/release events for DevTools panel drag
             subs.push(iced::event::listen_with(|e, _status, _window_id| match e {
                 iced::Event::Window(iced::window::Event::Resized(size)) => Some(IcedMessage {

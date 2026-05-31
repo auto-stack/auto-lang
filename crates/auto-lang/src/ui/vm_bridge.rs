@@ -823,6 +823,10 @@ fn compile_stmt<'a>(
             }
             Ok(())
         }
+        crate::ast::Stmt::EmptyLine(_) | crate::ast::Stmt::Comment(_) => {
+            // Skip comments and empty lines in handler bytecode
+            Ok(())
+        }
         _ => Err(format!("unsupported stmt type in handler: {:?}", stmt)),
     }
 }

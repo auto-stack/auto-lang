@@ -1506,6 +1506,7 @@ mod tests {
             tick_interval: None,
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
         };
 
         let mut gen = RustGenerator::new();

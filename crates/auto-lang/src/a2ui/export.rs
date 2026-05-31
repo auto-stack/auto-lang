@@ -493,7 +493,8 @@ mod tests {
             tick_interval: None,
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
-        }
+            key_bindings: HashMap::new(),
+}
     }
 
     #[test]
@@ -558,7 +559,8 @@ mod tests {
             tick_interval: None,
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
-        };
+            key_bindings: HashMap::new(),
+};
 
         let result = export_widget(&widget);
         assert!(result.is_err());

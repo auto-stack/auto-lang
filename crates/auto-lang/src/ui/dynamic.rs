@@ -114,6 +114,9 @@ pub struct DynamicComponent {
 
     /// Span map: AuraNodeId → source info for DevTools (Plan 274)
     span_map: HashMap<AuraNodeId, SpanInfo>,
+
+    /// Key bindings: key string → handler pattern (Plan 275)
+    key_bindings: HashMap<String, String>,
 }
 
 impl fmt::Debug for DynamicComponent {
@@ -164,6 +167,7 @@ impl DynamicComponent {
             input_state_map,
             tick_interval: widget.tick_interval,
             span_map: widget.span_map.clone(),
+            key_bindings: widget.key_bindings.clone(),
         })
     }
 
@@ -196,9 +200,9 @@ impl DynamicComponent {
             input_state_map,
             tick_interval: widget.tick_interval,
             span_map: widget.span_map.clone(),
+            key_bindings: widget.key_bindings.clone(),
         })
     }
-
     // ========================================================================
     // State access
     // ========================================================================
@@ -280,6 +284,11 @@ impl DynamicComponent {
     /// Get the span map (AuraNodeId → SpanInfo) for DevTools.
     pub fn span_map(&self) -> &HashMap<AuraNodeId, SpanInfo> {
         &self.span_map
+    }
+
+    /// Get key bindings (Plan 275)
+    pub fn key_bindings(&self) -> &HashMap<String, String> {
+        &self.key_bindings
     }
 
     // ========================================================================

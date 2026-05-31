@@ -665,7 +665,7 @@ pub fn extract_type(ty: &Type) -> Type {
 // Widget Declaration Extractor (Plan 096)
 // ============================================================================
 
-use crate::ast::{WidgetDecl, ModelBlock, ViewBlock, OnBlock, MsgDecl, PropDecl, ViewNode, ViewText};
+use crate::ast::{WidgetDecl, ModelBlock, ViewBlock, OnBlock, BindBlock, MsgDecl, PropDecl, ViewNode, ViewText};
 
 /// Extract AuraWidget from parsed WidgetDecl
 pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> {
@@ -758,7 +758,18 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         tick_interval,
         handler_params,
         span_map,
+        key_bindings: extract_key_bindings(&decl.bind),
     })
+}
+
+/// Extract key bindings from bind block (Plan 275)
+fn extract_key_bindings(bind: &Option<BindBlock>) -> HashMap<String, String> {
+    match bind {
+        Some(block) => block.bindings.iter()
+            .map(|kb| (kb.key.clone(), kb.handler.clone()))
+            .collect(),
+        None => HashMap::new(),
+    }
 }
 
 /// Extract state variables from model block

@@ -455,6 +455,7 @@ mod tests {
             tick_interval: None,
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
         };
 
         let atom = to_atom(&widget);
@@ -481,6 +482,7 @@ mod tests {
             tick_interval: None,
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
         };
 
         let atom = to_atom(&widget);
@@ -518,9 +520,10 @@ mod tests {
                 props: vec![],
                 routes: None,
                 lifecycle: vec![],
-            tick_interval: None,
-            handler_params: HashMap::new(),
-            span_map: HashMap::new(),
+                tick_interval: None,
+                handler_params: HashMap::new(),
+                span_map: HashMap::new(),
+                key_bindings: HashMap::new(),
             }],
             messages: vec![],
             app: Some(AuraApp {
