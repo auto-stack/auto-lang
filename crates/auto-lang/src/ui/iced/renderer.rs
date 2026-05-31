@@ -3328,15 +3328,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
+            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
+            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
             let mut col_w = column([]);
             let sp = effective_spacing(spacing, style.as_ref());
             let pd = iced_padding(padding, style.as_ref());
-            col_w = col_w.spacing(sp).padding(pd);
+            col_w = col_w.spacing(sp);
             // Track whether we need Container wrapping for vertical alignment
             let mut justify_center = false;
             let mut justify_end = false;
-            if let Some(ref s) = style {
-                let is = IcedStyle::from_style(s);
+            // Track whether Fill height was skipped for centering
+            let mut height_skipped_for_center = false;
+            if let Some(ref is) = iced_style {
                 if let Some(ref w) = is.width {
                     match w {
                         IcedSize::Fixed(f) => col_w = col_w.width(iced::Length::Fixed(*f as f32)),
@@ -3348,9 +3351,11 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let needs_v_align = matches!(is.justify_content, Some(IcedJustify::Center | IcedJustify::End));
                 if !needs_v_align {
                     if let Some(ref h) = is.height {
-                        match h {
-                            IcedSize::Fixed(f) => col_w = col_w.height(iced::Length::Fixed(*f as f32)),
-                            IcedSize::Full => col_w = col_w.height(iced::Length::Fill),
+                        let skip = justify_center && matches!(h, IcedSize::Full);
+                        if !skip {
+                            col_w = col_w.height(iced_length(h));
+                        } else {
+                            height_skipped_for_center = true;
                         }
                     }
                 }
@@ -3374,16 +3379,36 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 col_w = col_w.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
-            // iced Column has no align_y — wrap in Container for vertical centering
-            let el: iced::Element<'static, IcedMessage> = if justify_center {
-                container(col_w)
-                    .width(iced::Length::Fill)
-                    .height(iced::Length::Fill)
-                    .center_y(iced::Length::Fill)
-                    .into()
-            } else if justify_end {
-                container(col_w).width(iced::Length::Fill).height(iced::Length::Fill).align_y(iced::alignment::Vertical::Bottom).into()
+            // Determine if we need Container wrapping for visual styles or alignment
+            let needs_wrap = justify_center || justify_end || has_visual;
+            let el: iced::Element<'static, IcedMessage> = if needs_wrap {
+                // Apply padding on the container (not the column) when wrapping for visual styles,
+                // so padding shows between the background/border and the content.
+                let mut cont = container(col_w);
+                cont = cont.padding(pd);
+                if height_skipped_for_center {
+                    cont = cont.center_y(iced::Length::Fill);
+                }
+                if justify_center {
+                    cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).center_y(iced::Length::Fill);
+                } else if justify_end {
+                    cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).align_y(iced::alignment::Vertical::Bottom);
+                }
+                // Apply visual styles (background, border, rounded, shadow)
+                if let Some(ref is) = iced_style {
+                    if has_visual {
+                        let cs = build_container_style(is);
+                        cont = cont.style(move |_| cs);
+                    } else if let Some(bg) = is.background_color {
+                        cont = cont.style(move |_| container::Style {
+                            background: Some(iced::Background::Color(bg)),
+                            ..Default::default()
+                        });
+                    }
+                }
+                cont.into()
             } else {
+                col_w = col_w.padding(pd);
                 col_w.into()
             };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props) } else { el }
@@ -3397,12 +3422,13 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
+            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
+            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
             let mut row_w = row([]);
             let sp = effective_spacing(spacing, style.as_ref());
             let pd = iced_padding(padding, style.as_ref());
-            row_w = row_w.spacing(sp).padding(pd);
-            if let Some(ref s) = style {
-                let is = IcedStyle::from_style(s);
+            row_w = row_w.spacing(sp);
+            if let Some(ref is) = iced_style {
                 if let Some(ref w) = is.width {
                     match w {
                         IcedSize::Fixed(f) => row_w = row_w.width(iced::Length::Fixed(*f as f32)),
@@ -3422,7 +3448,20 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 row_w = row_w.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
-            let el: iced::Element<'static, IcedMessage> = row_w.into();
+            let el: iced::Element<'static, IcedMessage> = if has_visual {
+                // Apply padding on the container so it shows between the
+                // border (visual style) and the row content.
+                let mut cont = container(row_w);
+                cont = cont.padding(pd);
+                if let Some(ref is) = iced_style {
+                    let cs = build_container_style(is);
+                    cont = cont.style(move |_| cs);
+                }
+                cont.into()
+            } else {
+                row_w = row_w.padding(pd);
+                row_w.into()
+            };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props) } else { el }
         }
 
