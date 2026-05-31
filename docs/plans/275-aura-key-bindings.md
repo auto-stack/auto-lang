@@ -14,6 +14,12 @@
 
 用户希望 calculator 的数字键和操作符可以同时用键盘输入。当前 AURA 只支持 widget 级的 `onclick`/`onchange` 事件，没有全局键盘监听。iced 已有 `debug_keyboard_sub()` 处理 F12，subscription 批处理机制完善，消息路由通用化 — 扩展键盘绑定是自然的。
 
+## 状态：已实现 ✅
+
+所有步骤已完成并通过验证。
+
+---
+
 ## 语法设计
 
 新增 `bind` 块（与 `on` 块平级）：
@@ -27,13 +33,12 @@ widget App {
     bind {
         "0" -> .Digit0
         "1" -> .Digit1
-        "9" -> .Digit9
         "+" -> .Add
         "-" -> .Sub
-        "*" -> .Mul
-        "/" -> .Div
         "Enter" -> .Equals
         "Escape" -> .Clear
+        "Ctrl+s" -> .Save       // Ctrl + 小写 s
+        "Ctrl+S" -> .SaveAll    // Ctrl + Shift + s = Ctrl + 大写 S
     }
 
     on {
@@ -48,113 +53,124 @@ widget App {
 - `on` 块内 `key` 前缀会打破 `.Name -> { body }` 的一致性模式
 - button 内 `key: "1"` 不适合全局快捷键（Escape、Ctrl+S）
 - `bind` 是纯映射（key → handler），不含代码逻辑，职责清晰
+- 与 `on` 块对称 — `on` 映射 UI 事件，`bind` 映射键盘事件
+
+---
+
+## Key 字符串匹配规则
+
+bind 块中的 key 字符串**严格区分大小写**，使用 OS 返回的原始字符：
+
+### 无修饰符
+
+| bind 写法 | 实际按键 | 说明 |
+|-----------|---------|------|
+| `"s"` | s | 小写 s |
+| `"S"` | Shift+s | 大写 S |
+| `"+"` | 小键盘+ 或 Shift+= | 加号（平台 fallback） |
+| `"$"` | Shift+4 | 美元符号 |
+| `"Enter"` | Enter | 命名键 |
+| `" "` | Space | 空格 |
+
+**规则：字符就是输入结果，`s` 和 `S` 是不同的绑定。**
+
+### 有修饰符（Ctrl / Alt）
+
+| bind 写法 | 实际按键 | 说明 |
+|-----------|---------|------|
+| `"Ctrl+s"` | Ctrl+s | Ctrl + 小写 s |
+| `"Ctrl+S"` | Ctrl+Shift+s | Ctrl + 大写 S |
+| `"Ctrl+1"` | Ctrl+1 | Ctrl + 数字 1 |
+| `"Alt+q"` | Alt+q | Alt + 小写 q |
+
+**规则：修饰符前缀 + 原始字符。Shift 不作为前缀出现（效果已体现在字符本身）。**
+
+### 支持的修饰符前缀
+
+- `Ctrl+` — Control 键
+- `Alt+` — Alt 键
+- 可组合：`"Ctrl+Alt+s"`
+
+### 支持的命名键
+
+| bind 写法 | 按键 |
+|-----------|------|
+| `"Enter"` | Enter |
+| `"Escape"` | Escape |
+| `"Backspace"` | Backspace |
+| `"Tab"` | Tab |
+| `" "` | Space |
+| `"ArrowUp"` / `"ArrowDown"` / `"ArrowLeft"` / `"ArrowRight"` | 方向键 |
+| `"Delete"` | Delete |
+| `"Home"` / `"End"` | Home / End |
+
+### 平台兼容性
+
+在 Windows 上，iced 对 Shift+双字符键返回的是基础字符 + Shift modifier（如 Shift+= 返回 `Character("=")` with `Modifiers(SHIFT)`，而不是 `Character("+")`）。renderer.rs 中有 fallback 映射表处理此差异：
+
+```rust
+// Windows fallback: Shift+= 的 "+" 映射
+("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
+```
+
+这使得 `bind { "+" -> .Add }` 在所有平台上都能工作。
 
 ---
 
 ## 实施步骤
 
-### Step 1: AST 数据结构
+### Step 1: AST 数据结构 ✅
 
 **文件:** `crates/auto-lang/src/ast/ui.rs`
 
-新增（在 `OnBlock` 附近）：
+新增 `BindBlock` 和 `KeyBinding` 结构体，`WidgetDecl` 添加 `bind: Option<BindBlock>` 字段。
 
-```rust
-#[derive(Debug, Clone)]
-pub struct BindBlock {
-    pub bindings: Vec<KeyBinding>,
-}
-
-#[derive(Debug, Clone)]
-pub struct KeyBinding {
-    pub key: String,       // "1", "+", "Enter", "Ctrl+S"
-    pub handler: String,   // ".Digit1"
-}
-```
-
-在 `WidgetDecl` 添加 `pub bind: Option<BindBlock>` 字段。
-
-### Step 2: Parser — `parse_bind_block()`
+### Step 2: Parser — `parse_bind_block()` ✅
 
 **文件:** `crates/auto-lang/src/parser.rs`
 
-新增 `parse_bind_block()` 方法（~40行），参考 `parse_on_block()` 但更简单 — 无参数、无 body，只有 `"key" -> .Handler`。
+新增 `parse_bind_block()` 方法，解析 `"key" -> .Handler` 语法。
 
-在 `parse_widget_decl()` (行 9771) 的 keyword match 中加入 `"bind"` 分支。
-
-**解析规则：**
-- key 是双引号字符串（`TokenKind::String`）
-- 箭头用 `->`（复用 `parse_on_block` 的 arrow 解析）
-- handler 是 `.Name`（复用 dot-name 解析）
-
-### Step 3: AuraWidget 存储
+### Step 3: AuraWidget 存储 ✅
 
 **文件:** `crates/auto-lang/src/aura/types.rs`
 
-在 `AuraWidget` 添加字段：
+`AuraWidget` 添加 `key_bindings: HashMap<String, String>` 字段。
 
-```rust
-pub key_bindings: HashMap<String, String>,  // key_str -> handler_pattern
-```
-
-**文件:** `crates/auto-lang/src/aura/atom.rs` — 构造处加 `key_bindings: HashMap::new()`
-
-### Step 4: Extract — 提取绑定
+### Step 4: Extract — 提取绑定 ✅
 
 **文件:** `crates/auto-lang/src/aura/extract.rs`
 
-在 `extract_widget_from_decl()` 中，从 `decl.bind` 提取 `key_bindings` HashMap。
+从 `BindBlock` 提取 `key_bindings` HashMap。
 
-### Step 5: DynamicComponent 传递
+### Step 5: DynamicComponent 传递 ✅
 
 **文件:** `crates/auto-lang/src/ui/dynamic.rs`
 
-在 `DynamicComponent` 添加 `key_bindings: HashMap<String, String>` 字段，从 `AuraWidget` 克隆。添加 `pub fn key_bindings(&self)` 访问器。
+`DynamicComponent` 添加 `key_bindings` 字段和访问器。
 
-### Step 6: Iced 键盘订阅（核心运行时）
+### Step 6: Iced 键盘订阅 ✅
 
 **文件:** `crates/auto-lang/src/ui/iced/renderer.rs`
 
-替换 `debug_keyboard_sub()` 为统一的 `keyboard_subscription(key_bindings: &HashMap<String, String>)`：
+替换 `debug_keyboard_sub()` 为 `keyboard_subscription()`，使用 `OnceLock<Mutex<HashMap>>` 全局存储 + `listen_with` fn pointer。
 
-1. F12 → `DEBUG_TOGGLE_EVENT`（保持不变）
-2. Named keys（Enter、Escape 等）→ 查表映射
-3. Character keys（"1"、"+" 等）→ 查表映射
-4. Ctrl 组合键 → `format!("Ctrl+{}", c)` 查表
-
-在 `.subscription()` 闭包中（行 2057）：
-- 读取 `state.component.key_bindings()`
-- 调用 `keyboard_subscription(&key_bindings)`
-- 移除原来的 `subs.push(debug_keyboard_sub())`
-
-**关键：输入焦点冲突** — 当 text input 获得焦点时，按键应输入文本而非触发绑定。iced 的 `listen_with` 回调接收 `status` 参数，`Status::Captured` 表示已被 widget 消费，此时应跳过绑定。
-
-**Named key 映射表：**
-
-| `.at` 字符串 | iced Named 枚举 |
-|---|---|
-| `"Enter"` | `Named::Enter` |
-| `"Escape"` | `Named::Escape` |
-| `"Backspace"` | `Named::Backspace` |
-| `"Tab"` | `Named::Tab` |
-| `" "` | `Named::Space` |
-| `"ArrowUp"` | `Named::ArrowUp` |
-| `"Delete"` | `Named::Delete` |
-
-Character keys 直接用字符匹配。
-
-### Step 7: 更新 Calculator 示例
+### Step 7: 更新 Calculator 示例 ✅
 
 **文件:** `examples/ui/011-calculator/src/front/app.at`
 
-添加 `bind` 块，绑定数字键和运算符。
+添加 `bind` 块，绑定数字键、运算符、Enter、Escape、Backspace。
 
-### Step 8: 编译修复（机械性）
+### Step 8: 编译修复（机械性）✅
 
-所有 match/构造 `AuraWidget` 的文件加 `key_bindings: HashMap::new()`：
-- `crates/auto-lang/src/a2ui/import.rs`
-- `crates/auto-lang/src/ui_gen/` 下的 generator 文件
-- 所有 AuraWidget 相关测试
+所有构造 `AuraWidget` 的文件加 `key_bindings: HashMap::new()`。
+
+### Bug Fix: Handler 编译器跳过注释 ✅
+
+**文件:** `crates/auto-lang/src/ui/vm_bridge.rs`
+
+`compile_stmt()` 中 `Stmt::EmptyLine` 和 `Stmt::Comment` 导致 handler 编译失败（静默跳过）。
+添加 match 分支跳过这两种语句。
 
 ---
 
@@ -168,6 +184,7 @@ Character keys 直接用字符匹配。
 | `crates/auto-lang/src/aura/extract.rs` | 从 `BindBlock` 提取绑定到 `key_bindings` |
 | `crates/auto-lang/src/ui/dynamic.rs` | `DynamicComponent` 加 `key_bindings` 字段和访问器 |
 | `crates/auto-lang/src/ui/iced/renderer.rs` | `keyboard_subscription()` 替换 `debug_keyboard_sub()` |
+| `crates/auto-lang/src/ui/vm_bridge.rs` | handler 编译器跳过 EmptyLine/Comment |
 | `examples/ui/011-calculator/src/front/app.at` | 添加 `bind` 块 |
 
 ## 数据流
@@ -186,6 +203,42 @@ iced Key::Character("1") → 查表 → "Digit1" → IcedMessage { event: "Digit
 component.on_with_input("Digit1", None) → call_handler("Digit1") → 执行 bytecode
 ```
 
+---
+
+## 未来扩展方向
+
+### 多键 → 单事件
+
+暂不加 `|` 语法。当前用重复行实现：
+
+```auto
+bind {
+    "Enter" -> .Equals
+    "=" -> .Equals       // 两种方式触发同一个事件
+}
+```
+
+### 作用域限定
+
+当前 `bind` 作用域是 widget 级。每个 widget 有自己的 `key_bindings` HashMap。
+未来路由系统实现时，根据焦点链决定哪个 widget 的绑定生效。
+
+```auto
+widget ListView {
+    bind {
+        "j" -> .Next
+        "k" -> .Prev
+    }
+}
+
+widget DetailView {
+    bind {
+        "Ctrl+s" -> .Save
+        "Escape" -> .Back
+    }
+}
+```
+
 ## 验证
 
 ```bash
@@ -197,8 +250,9 @@ auto examples/ui/011-calculator/src/front/app.at
 
 # 3. 验证键盘绑定
 # - 按键盘 "1" → display 显示 "1"
-# - 按键盘 "+" → expr 显示 "1 +"
+# - 按键盘 "+" (小键盘或 Shift+=) → expr 显示 "1 +"
 # - 按键盘 "2" → display 显示 "2"
 # - 按 Enter → display 显示 "3"，expr 显示 "1 + 2 ="
 # - 按 Escape → 清除所有
+# - 按 Backspace → 清除所有
 ```

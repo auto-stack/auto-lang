@@ -1536,12 +1536,12 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
                 // Look up handler from global bindings
                 let bindings_guard = KEYBOARD_BINDINGS.get().unwrap();
                 let bindings = bindings_guard.lock().unwrap();
-                // For Shift-modified characters, also try the shifted symbol mapping
+                // Platform compatibility: on Windows, Shift+= returns Character("=") with
+                // SHIFT modifier (NOT Character("+")). This fallback maps the base key to its
+                // shifted symbol so bind { "+" -> ... } works on all platforms.
+                // Only applies when no Ctrl/Alt modifier is held.
                 let handler = bindings.get(&key_str).or_else(|| {
-                    // Shift symbol fallback: if key_str is a shifted variant (e.g., "="),
-                    // also try common Shift mappings ("+"). Skip when Ctrl is held (Ctrl combos
-                    // should match literally, e.g., "Ctrl+=" not "Ctrl++").
-                    if modifiers.shift() && !modifiers.control() {
+                    if modifiers.shift() && !modifiers.control() && !modifiers.alt() {
                         let shifted_map: &[(&str, &str)] = &[
                             ("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
                         ];
