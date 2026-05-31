@@ -1,11 +1,13 @@
 widget App {
-    msg Msg { Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Add, Sub, Mul, Div, Equals, Clear, Dot, Percent }
+    msg Msg { Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Add, Sub, Mul, Div, Equals, Clear, Dot, Negate }
 
     model {
         var display str = "0"
-        var prev_value double = 0.0
-        var operator str = ""
-        var new_number bool = true
+        var val int = 0
+        var prev int = 0
+        var op str = ""
+        var fresh bool = true
+        var expr str = ""
     }
 
     view {
@@ -13,53 +15,49 @@ widget App {
             col {
                 // Display
                 col {
-                    text .display {
-                        style: "text-5xl font-light text-white text-right w-full"
-                    }
-                    text .operator {
+                    text .expr {
                         style: "text-sm text-gray-400 text-right w-full"
+                    }
+                    text .display {
+                        style: "text-4xl font-light text-white text-right w-full"
                     }
                     style: "w-full p-6 bg-gray-900 rounded-t-2xl"
                 }
 
-                // Button grid: 4 columns
+                // Button grid
                 col {
-                    // Row 1: C, %, /, *
                     row {
                         button "C" { onclick: .Clear, style: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
-                        button "%" { onclick: .Percent, style: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
+                        button "+/-" { onclick: .Negate, style: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
+                        button "%" { onclick: .Dot, style: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
                         button "/" { onclick: .Div, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        button "*" { onclick: .Mul, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
                         style: "w-full"
                     }
-                    // Row 2: 7, 8, 9, -
                     row {
                         button "7" { onclick: .Digit7, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
                         button "8" { onclick: .Digit8, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
                         button "9" { onclick: .Digit9, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "-" { onclick: .Sub, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
+                        button "*" { onclick: .Mul, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
                         style: "w-full"
                     }
-                    // Row 3: 4, 5, 6, +
                     row {
                         button "4" { onclick: .Digit4, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
                         button "5" { onclick: .Digit5, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
                         button "6" { onclick: .Digit6, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "+" { onclick: .Add, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
+                        button "-" { onclick: .Sub, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
                         style: "w-full"
                     }
-                    // Row 4: 1, 2, 3, =
                     row {
                         button "1" { onclick: .Digit1, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
                         button "2" { onclick: .Digit2, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
                         button "3" { onclick: .Digit3, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "=" { onclick: .Equals, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
+                        button "+" { onclick: .Add, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
                         style: "w-full"
                     }
-                    // Row 5: 0 (wide), .
                     row {
                         button "0" { onclick: .Digit0, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
                         button "." { onclick: .Dot, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
+                        button "=" { onclick: .Equals, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
                         style: "w-full"
                     }
                     style: "w-full p-2 bg-gray-800 rounded-b-2xl gap-1"
@@ -73,117 +71,234 @@ widget App {
     on {
         .Clear -> {
             .display = "0"
-            .prev_value = 0.0
-            .operator = ""
-            .new_number = true
+            .val = 0
+            .prev = 0
+            .op = ""
+            .fresh = true
+            .expr = ""
+        }
+        .Negate -> {
+            .val = 0 - .val
         }
         .Dot -> {
-            .display = .display + "."
-            .new_number = false
-        }
-        .Percent -> {
-            .display = "0"
+            // Decimal not supported with int-only math
         }
         .Digit0 -> {
-            if .new_number {
+            if .fresh {
                 .display = "0"
+                .val = 0
             } else {
                 .display = .display + "0"
+                .val = .val * 10
             }
-            .new_number = false
+            .fresh = false
         }
         .Digit1 -> {
-            if .new_number {
+            if .fresh {
                 .display = "1"
+                .val = 1
             } else {
                 .display = .display + "1"
+                .val = .val * 10 + 1
             }
-            .new_number = false
+            .fresh = false
         }
         .Digit2 -> {
-            if .new_number {
+            if .fresh {
                 .display = "2"
+                .val = 2
             } else {
                 .display = .display + "2"
+                .val = .val * 10 + 2
             }
-            .new_number = false
+            .fresh = false
         }
         .Digit3 -> {
-            if .new_number {
+            if .fresh {
                 .display = "3"
+                .val = 3
             } else {
                 .display = .display + "3"
+                .val = .val * 10 + 3
             }
-            .new_number = false
+            .fresh = false
         }
         .Digit4 -> {
-            if .new_number {
+            if .fresh {
                 .display = "4"
+                .val = 4
             } else {
                 .display = .display + "4"
+                .val = .val * 10 + 4
             }
-            .new_number = false
+            .fresh = false
         }
         .Digit5 -> {
-            if .new_number {
+            if .fresh {
                 .display = "5"
+                .val = 5
             } else {
                 .display = .display + "5"
+                .val = .val * 10 + 5
             }
-            .new_number = false
+            .fresh = false
         }
         .Digit6 -> {
-            if .new_number {
+            if .fresh {
                 .display = "6"
+                .val = 6
             } else {
                 .display = .display + "6"
+                .val = .val * 10 + 6
             }
-            .new_number = false
+            .fresh = false
         }
         .Digit7 -> {
-            if .new_number {
+            if .fresh {
                 .display = "7"
+                .val = 7
             } else {
                 .display = .display + "7"
+                .val = .val * 10 + 7
             }
-            .new_number = false
+            .fresh = false
         }
         .Digit8 -> {
-            if .new_number {
+            if .fresh {
                 .display = "8"
+                .val = 8
             } else {
                 .display = .display + "8"
+                .val = .val * 10 + 8
             }
-            .new_number = false
+            .fresh = false
         }
         .Digit9 -> {
-            if .new_number {
+            if .fresh {
                 .display = "9"
+                .val = 9
             } else {
                 .display = .display + "9"
+                .val = .val * 10 + 9
             }
-            .new_number = false
+            .fresh = false
         }
         .Add -> {
-            .operator = "+"
-            .new_number = true
+            if .op == "+" {
+                .val = .prev + .val
+            }
+            if .op == "-" {
+                .val = .prev - .val
+            }
+            if .op == "*" {
+                .val = .prev * .val
+            }
+            if .op == "/" {
+                if .val != 0 {
+                    .val = .prev / .val
+                }
+            }
+            if .op != "" {
+                .display = .val
+            }
+            .expr = .display + " +"
+            .prev = .val
+            .op = "+"
+            .fresh = true
         }
         .Sub -> {
-            .operator = "-"
-            .new_number = true
+            if .op == "+" {
+                .val = .prev + .val
+            }
+            if .op == "-" {
+                .val = .prev - .val
+            }
+            if .op == "*" {
+                .val = .prev * .val
+            }
+            if .op == "/" {
+                if .val != 0 {
+                    .val = .prev / .val
+                }
+            }
+            if .op != "" {
+                .display = .val
+            }
+            .expr = .display + " -"
+            .prev = .val
+            .op = "-"
+            .fresh = true
         }
         .Mul -> {
-            .operator = "*"
-            .new_number = true
+            if .op == "+" {
+                .val = .prev + .val
+            }
+            if .op == "-" {
+                .val = .prev - .val
+            }
+            if .op == "*" {
+                .val = .prev * .val
+            }
+            if .op == "/" {
+                if .val != 0 {
+                    .val = .prev / .val
+                }
+            }
+            if .op != "" {
+                .display = .val
+            }
+            .expr = .display + " *"
+            .prev = .val
+            .op = "*"
+            .fresh = true
         }
         .Div -> {
-            .operator = "/"
-            .new_number = true
+            if .op == "+" {
+                .val = .prev + .val
+            }
+            if .op == "-" {
+                .val = .prev - .val
+            }
+            if .op == "*" {
+                .val = .prev * .val
+            }
+            if .op == "/" {
+                if .val != 0 {
+                    .val = .prev / .val
+                }
+            }
+            if .op != "" {
+                .display = .val
+            }
+            .expr = .display + " /"
+            .prev = .val
+            .op = "/"
+            .fresh = true
         }
         .Equals -> {
-            .display = "0"
-            .operator = ""
-            .new_number = true
+            if .op != "" {
+                // Build expression BEFORE computing (e.g. "1 + 2 =")
+                .expr = .expr + " " + .display + " ="
+                // Compute
+                if .op == "+" {
+                    .val = .prev + .val
+                }
+                if .op == "-" {
+                    .val = .prev - .val
+                }
+                if .op == "*" {
+                    .val = .prev * .val
+                }
+                if .op == "/" {
+                    if .val != 0 {
+                        .val = .prev / .val
+                    }
+                }
+                .display = .val
+                .prev = 0
+                .op = ""
+                .fresh = true
+            }
         }
     }
 }
