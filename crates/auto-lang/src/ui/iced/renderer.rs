@@ -1517,23 +1517,15 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
                         };
                         name.to_string()
                     }
-                    // Character keys
+                    // Character keys — raw character from OS, no case normalization.
+                    // "s" and "S" are different keys. "S" = Shift+s. "Ctrl+S" = Ctrl+Shift+s.
+                    // With Ctrl/Alt held, prepend modifier prefix to the raw character.
                     iced::keyboard::Key::Character(c) => {
                         if modifiers.control() || modifiers.alt() {
-                            // With modifier: build "Ctrl+Shift+Key" style string.
-                            // Letters are uppercased to represent the physical key,
-                            // not the typed character. "Ctrl+S" = S key + Ctrl,
-                            // "Ctrl+Shift+S" = S key + Ctrl + Shift (explicit).
                             let mut prefix = String::new();
                             if modifiers.control() { prefix.push_str("Ctrl+"); }
-                            if modifiers.shift() { prefix.push_str("Shift+"); }
                             if modifiers.alt() { prefix.push_str("Alt+"); }
-                            let key_char = c.chars().next().unwrap_or_default();
-                            if key_char.is_ascii_alphabetic() {
-                                format!("{}{}", prefix, key_char.to_ascii_uppercase())
-                            } else {
-                                format!("{}{}", prefix, c)
-                            }
+                            format!("{}{}", prefix, c)
                         } else {
                             c.to_string()
                         }
