@@ -1520,7 +1520,9 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
                     // Character keys
                     iced::keyboard::Key::Character(c) => {
                         if modifiers.control() {
-                            format!("Ctrl+{}", c)
+                            // Normalize to uppercase for Ctrl combos: "Ctrl+S" matches both user input styles
+                            let upper = c.to_uppercase();
+                            format!("Ctrl+{}", upper)
                         } else {
                             c.to_string()
                         }
@@ -1534,8 +1536,9 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
                 // For Shift-modified characters, also try the shifted symbol mapping
                 let handler = bindings.get(&key_str).or_else(|| {
                     // Shift symbol fallback: if key_str is a shifted variant (e.g., "="),
-                    // also try common Shift mappings ("+")
-                    if modifiers.shift() {
+                    // also try common Shift mappings ("+"). Skip when Ctrl is held (Ctrl combos
+                    // should match literally, e.g., "Ctrl+=" not "Ctrl++").
+                    if modifiers.shift() && !modifiers.control() {
                         let shifted_map: &[(&str, &str)] = &[
                             ("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
                         ];
