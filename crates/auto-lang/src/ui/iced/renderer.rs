@@ -1520,9 +1520,8 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
                     // Character keys
                     iced::keyboard::Key::Character(c) => {
                         if modifiers.control() {
-                            // Normalize to uppercase for Ctrl combos: "Ctrl+S" matches both user input styles
-                            let upper = c.to_uppercase();
-                            format!("Ctrl+{}", upper)
+                            // Keep original case from OS: Ctrl+s is "Ctrl+s", Ctrl+Shift+s is "Ctrl+S"
+                            format!("Ctrl+{}", c)
                         } else {
                             c.to_string()
                         }
