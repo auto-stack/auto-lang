@@ -125,6 +125,7 @@ pub enum IcedOverflow {
 #[derive(Clone, Copy, PartialEq)]
 pub enum IcedSize {
     Full,
+    FillPortion(u16),
     Fixed(f32),
 }
 
@@ -533,8 +534,13 @@ impl IcedStyle {
 fn convert_size(size: &SizeValue) -> IcedSize {
     match size {
         SizeValue::Full => IcedSize::Full,
+        SizeValue::Half => IcedSize::FillPortion(1),
+        SizeValue::Third => IcedSize::FillPortion(1),
+        SizeValue::TwoThirds => IcedSize::FillPortion(2),
+        SizeValue::Quarter => IcedSize::FillPortion(1),
+        SizeValue::ThreeQuarters => IcedSize::FillPortion(3),
+        SizeValue::Auto => IcedSize::Full,
         SizeValue::Fixed(_) => IcedSize::Fixed(size.to_pixels() as f32),
-        _ => IcedSize::Full,
     }
 }
 

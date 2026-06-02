@@ -508,6 +508,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     iced_style.width.map(|w| match w {
                         crate::ui::style::iced_adapter::IcedSize::Fixed(f) => f as u16,
                         crate::ui::style::iced_adapter::IcedSize::Full => 0, // Fill handled separately
+                        crate::ui::style::iced_adapter::IcedSize::FillPortion(_) => 0,
                     }).or(width)
                 } else {
                     width
@@ -670,6 +671,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     iced_style.width.map(|w| match w {
                         crate::ui::style::iced_adapter::IcedSize::Fixed(f) => iced::Length::Fixed(f),
                         crate::ui::style::iced_adapter::IcedSize::Full => iced::Length::Fill,
+                        crate::ui::style::iced_adapter::IcedSize::FillPortion(n) => iced::Length::FillPortion(n),
                     }).or(width.map(|w| iced::Length::Fixed(w as f32)))
                 } else {
                     width.map(|w| iced::Length::Fixed(w as f32))
@@ -684,6 +686,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     iced_style.height.map(|h| match h {
                         crate::ui::style::iced_adapter::IcedSize::Fixed(f) => iced::Length::Fixed(f),
                         crate::ui::style::iced_adapter::IcedSize::Full => iced::Length::Fill,
+                        crate::ui::style::iced_adapter::IcedSize::FillPortion(n) => iced::Length::FillPortion(n),
                     }).or(height.map(|h| iced::Length::Fixed(h as f32)))
                 } else {
                     height.map(|h| iced::Length::Fixed(h as f32))
@@ -3252,10 +3255,10 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
     let is = IcedStyle::from_style(s);
     let mut props = Vec::new();
     if let Some(ref w) = is.width {
-        props.push(("w".into(), match w { IcedSize::Full => "fill".into(), IcedSize::Fixed(f) => format!("{}px", *f as u16) }));
+        props.push(("w".into(), match w { IcedSize::Full => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16) }));
     }
     if let Some(ref h) = is.height {
-        props.push(("h".into(), match h { IcedSize::Full => "fill".into(), IcedSize::Fixed(f) => format!("{}px", *f as u16) }));
+        props.push(("h".into(), match h { IcedSize::Full => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16) }));
     }
     if let Some(p) = is.padding { props.push(("pad".into(), format!("{}", p as u16))); }
     if let Some(g) = is.gap { props.push(("gap".into(), format!("{}", g as u16))); }
@@ -3351,6 +3354,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let effective_width = iced_style.width.map(|w| match w {
                     crate::ui::style::iced_adapter::IcedSize::Fixed(f) => Some(f as u16),
                     crate::ui::style::iced_adapter::IcedSize::Full => None,
+                    crate::ui::style::iced_adapter::IcedSize::FillPortion(_) => None,
                 }).unwrap_or(width);
                 if let Some(w) = effective_width {
                     if w > 0 { input_widget = input_widget.width(iced::Length::Fixed(w as f32)); }
@@ -3441,6 +3445,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     match w {
                         IcedSize::Fixed(f) => col_w = col_w.width(iced::Length::Fixed(*f as f32)),
                         IcedSize::Full => col_w = col_w.width(iced::Length::Fill),
+                        IcedSize::FillPortion(n) => col_w = col_w.width(iced::Length::FillPortion(*n)),
                     }
                 }
                 // When justify_content is Center/End, skip height on Column so it shrinks
@@ -3525,11 +3530,13 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let sp = effective_spacing(spacing, style.as_ref());
             let pd = iced_padding(padding, style.as_ref());
             row_w = row_w.spacing(sp);
+            let row_max_width = iced_style.as_ref().and_then(|is| is.max_width);
             if let Some(ref is) = iced_style {
                 if let Some(ref w) = is.width {
                     match w {
                         IcedSize::Fixed(f) => row_w = row_w.width(iced::Length::Fixed(*f as f32)),
                         IcedSize::Full => row_w = row_w.width(iced::Length::Fill),
+                        IcedSize::FillPortion(n) => row_w = row_w.width(iced::Length::FillPortion(*n)),
                     }
                 }
                 if let Some(ref a) = is.align_items {
@@ -3550,9 +3557,20 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 // border (visual style) and the row content.
                 let mut cont = container(row_w);
                 cont = cont.padding(pd);
+                if let Some(mw) = row_max_width {
+                    cont = cont.max_width(mw);
+                }
                 if let Some(ref is) = iced_style {
                     let cs = build_container_style(is);
                     cont = cont.style(move |_| cs);
+                }
+                cont.into()
+            } else if row_max_width.is_some() {
+                // Row has max_width but no visual styling — wrap in Container
+                row_w = row_w.padding(pd);
+                let mut cont = container(row_w);
+                if let Some(mw) = row_max_width {
+                    cont = cont.max_width(mw);
                 }
                 cont.into()
             } else {
@@ -3582,6 +3600,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     match ws {
                         IcedSize::Fixed(f) => c = c.width(iced::Length::Fixed(*f as f32)),
                         IcedSize::Full => c = c.width(iced::Length::Fill),
+                        IcedSize::FillPortion(n) => c = c.width(iced::Length::FillPortion(*n)),
                     }
                 } else if let Some(w) = width {
                     if w > 0 { c = c.width(iced::Length::Fixed(w as f32)); }
@@ -3589,6 +3608,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 match is.height {
                     Some(IcedSize::Fixed(f)) => { c = c.height(iced::Length::Fixed(f as f32)); }
                     Some(IcedSize::Full) => { c = c.height(iced::Length::Fill); }
+                    Some(IcedSize::FillPortion(n)) => { c = c.height(iced::Length::FillPortion(n)); }
                     None => { if let Some(h) = height { if h > 0 { c = c.height(iced::Length::Fixed(h as f32)); } } }
                 }
                 let bg = is.background_color;
@@ -3610,8 +3630,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 if let Some(w) = width { if w > 0 { c = c.width(iced::Length::Fixed(w as f32)); } }
                 if let Some(h) = height { if h > 0 { c = c.height(iced::Length::Fixed(h as f32)); } }
             }
-            if center_x { c = c.center_x(iced::Length::Fill); }
-            if center_y { c = c.center_y(iced::Length::Fill); }
+            if center_x { c = c.width(iced::Length::Fill).center_x(iced::Length::Fill); }
+            if center_y { c = c.height(iced::Length::Fill).center_y(iced::Length::Fill); }
             let el: iced::Element<'static, IcedMessage> = c.into();
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props) } else { el }
         }
@@ -3627,11 +3647,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ref st) = style {
                 let is = IcedStyle::from_style(st);
                 if let Some(ref ws) = is.width {
-                    match ws { IcedSize::Fixed(f) => s = s.width(iced::Length::Fixed(*f as f32)), IcedSize::Full => s = s.width(iced::Length::Fill) }
+                    match ws { IcedSize::Fixed(f) => s = s.width(iced::Length::Fixed(*f as f32)), IcedSize::Full => s = s.width(iced::Length::Fill), IcedSize::FillPortion(n) => s = s.width(iced::Length::FillPortion(*n)) }
                 } else if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
                 match is.height {
                     Some(IcedSize::Fixed(f)) => { s = s.height(iced::Length::Fixed(f as f32)); }
                     Some(IcedSize::Full) => { s = s.height(iced::Length::Fill); }
+                    Some(IcedSize::FillPortion(n)) => { s = s.height(iced::Length::FillPortion(n)); }
                     None => { if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } } }
                 }
             } else {
@@ -3735,6 +3756,7 @@ fn patch_input_values_iced(view: &mut AbstractView<IcedMessage>, input_values: &
 fn iced_length(size: &IcedSize) -> iced::Length {
     match size {
         IcedSize::Full => iced::Length::Fill,
+        IcedSize::FillPortion(n) => iced::Length::FillPortion(*n),
         IcedSize::Fixed(px) => iced::Length::Fixed(*px),
     }
 }
