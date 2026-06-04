@@ -32,7 +32,7 @@ nanbox = []
 ui = []
 ui-interpreter = ["ui"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
-ui-iced = ["ui", "dep:iced", "ui-interpreter"]
+ui-iced = ["ui", "dep:iced", "ui-interpreter", "dep:image"]
 
 [dependencies]
 auto-val = { path = "../auto-val" }
@@ -99,6 +99,7 @@ gpui-lib = { version = "0.2.2", package = "gpui", optional = true }
 gpui-component = { version = "0.5.0", optional = true }
 anyhow = { version = "1.0", optional = true }
 iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced"], optional = true }
+image = { version = "0.25", optional = true }
 notify = { workspace = true }
 # Plan 214: Python FFI (optional, requires Python dev headers)
 pyo3 = { version = "0.23", optional = true, features = ["auto-initialize"] }

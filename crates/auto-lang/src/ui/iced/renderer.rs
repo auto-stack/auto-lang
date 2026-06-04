@@ -1706,6 +1706,8 @@ struct DynamicState {
     pending_scroll_to_center: std::cell::RefCell<Option<usize>>,
     /// When true, next update() will trigger a layout bounds collection Task (Plan 282).
     needs_bounds: std::cell::RefCell<bool>,
+    /// Pending screenshot request from MCP thread (Plan 285).
+    screenshot_request: std::cell::RefCell<Option<crate::ui::mcp_server::ScreenshotRequest>>,
     /// DevTools panel width in pixels. Default ~40% of window width.
     devtools_panel_width: std::cell::RefCell<f32>,
     /// Current window size, updated on resize events.
@@ -1738,6 +1740,40 @@ struct DynamicState {
 ///
 /// `AppResult<String>` - Ok("UI closed") on normal exit, Err on failure.
 pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
+
+/// Save an iced Screenshot as a PNG file in the tmp/ directory (Plan 285).
+fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, String> {
+    let width = screenshot.size.width;
+    let height = screenshot.size.height;
+
+    // Build an RGBA image from raw bytes
+    let img = image::RgbaImage::from_raw(width, height, screenshot.rgba.as_ref().to_vec())
+        .ok_or_else(|| "Failed to create RGBA image from screenshot bytes".to_string())?;
+
+    // Ensure tmp/ directory exists
+    let tmp_dir = std::path::Path::new("tmp");
+    std::fs::create_dir_all(tmp_dir)
+        .map_err(|e| format!("Failed to create tmp/ directory: {}", e))?;
+
+    // Generate unique filename using system time
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let filename = format!("autoui-screenshot-{}.png", timestamp);
+    let path = tmp_dir.join(&filename);
+
+    // Save as PNG
+    img.save(&path)
+        .map_err(|e| format!("Failed to save PNG: {}", e))?;
+
+    // Return absolute path
+    let abs_path = std::fs::canonicalize(&path)
+        .unwrap_or_else(|_| path.clone());
+
+    Ok(abs_path.to_string_lossy().to_string())
+}
+
     let widget_name = component.widget_name().to_string();
 
     // Start MCP UI server in background thread (Plan 278)
@@ -1794,6 +1830,7 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             inspector_scroll_id: iced::widget::Id::unique(),
             pending_scroll_to_center: std::cell::RefCell::new(None),
             needs_bounds: std::cell::RefCell::new(false),
+            screenshot_request: std::cell::RefCell::new(None),
             devtools_panel_width: std::cell::RefCell::new(420.0),
             window_size: std::cell::RefCell::new(iced::Size::new(1024.0, 768.0)),
             dragging_divider: std::cell::RefCell::new(false),
@@ -1829,6 +1866,27 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
                     widget: String::new(),
                     event: "__bounds_collected".to_string(),
                     input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
+                });
+        }
+
+        // Handle screenshot request from MCP thread (Plan 285)
+        if let Some(req) = state.screenshot_request.borrow_mut().take() {
+            let reply_tx = std::sync::Arc::new(std::sync::Mutex::new(Some(req.reply_tx)));
+            return iced::window::oldest()
+                .then(move |maybe_id| {
+                    // Take the sender out (only called once in practice)
+                    let tx = reply_tx.lock().unwrap().take().unwrap();
+                    match maybe_id {
+                        Some(id) => iced::window::screenshot(id)
+                            .then(move |ss| {
+                                let _ = tx.send(save_screenshot_png(&ss));
+                                iced::Task::none()
+                            }),
+                        None => {
+                            let _ = tx.send(Err("No window found".to_string()));
+                            iced::Task::none()
+                        }
+                    }
                 });
         }
 
@@ -2445,6 +2503,13 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     // Request layout bounds collection on next update cycle (Plan 282).
     *state.needs_bounds.borrow_mut() = true;
+
+    // Pick up pending screenshot request from MCP thread (Plan 285).
+    if let Some(ref mcp_handle) = state.mcp_shared {
+        if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
+            *state.screenshot_request.borrow_mut() = Some(req);
+        }
+    }
 
     // Take from cache and return (iced will call view again next frame).
     state.cached_rendered.borrow_mut().take().unwrap()
