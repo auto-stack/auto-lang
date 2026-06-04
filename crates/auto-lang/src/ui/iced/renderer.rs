@@ -2375,6 +2375,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
             tree_stack: std::cell::RefCell::new(Vec::new()),
             component_tree: std::cell::RefCell::new(None),
+            debug_mode: state.debug_mode,
         })
     } else {
         None
@@ -3150,6 +3151,10 @@ struct DebugRenderCtx {
     tree_stack: std::cell::RefCell<Vec<DebugTreeNode>>,
     /// The final component tree root, set after rendering completes.
     component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
+    /// Whether debug visualization is active (toggled by F12).
+    /// When false, bounds probe containers are still created for MCP snapshot,
+    /// but mouse_area / hover highlights are skipped.
+    debug_mode: bool,
 }
 
 /// Debug metadata for a single UI element.
@@ -3238,6 +3243,31 @@ impl DebugRenderCtx {
             props,
             span,
         });
+
+        // --- Bounds probe container ---
+        // For non-container elements (button, text, divider, checkbox, etc.),
+        // wrap in a zero-visual container with an aura_ ID so LayoutCollector
+        // can capture their rendered bounds for MCP snapshot @rect annotations.
+        // Skip col/row/container/scroll — they already set IDs inside render_dynamic_view.
+        let el: iced::Element<'static, IcedMessage> = if aura_id.is_some()
+            && !matches!(kind, "col" | "row" | "container" | "scroll" | "input" | "textarea")
+        {
+            let id_str = format!("aura_{}", aura_id.unwrap().0);
+            container(el)
+                .id(id_str)
+                .style(|_: &iced::Theme| container::Style::default())
+                .into()
+        } else {
+            el
+        };
+
+        // --- Debug mode gate ---
+        // When debug_mode is off (no F12 pressed), skip mouse_area wrapping and
+        // hover/selected highlights. Only return the bounds-probed element.
+        if !self.debug_mode {
+            self.tree_exit();
+            return el;
+        }
 
         let hovered = self.is_hovered(&id);
         let selected = self.selected_id.as_deref() == Some(&id);
@@ -3720,6 +3750,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     let cs = build_container_style(is);
                     cont = cont.style(move |_| cs);
                 }
+                // Set iced widget ID for layout bounds collection
+                if let Some(ctx) = debug_ctx {
+                    if let Some(aura_id) = ctx.debug_id_map.get(path) {
+                        cont = cont.id(format!("aura_{}", aura_id.0));
+                    }
+                }
                 cont.into()
             } else if row_max_width.is_some() {
                 // Row has max_width but no visual styling — wrap in Container
@@ -3727,6 +3763,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let mut cont = container(row_w);
                 if let Some(mw) = row_max_width {
                     cont = cont.max_width(mw);
+                }
+                // Set iced widget ID for layout bounds collection
+                if let Some(ctx) = debug_ctx {
+                    if let Some(aura_id) = ctx.debug_id_map.get(path) {
+                        cont = cont.id(format!("aura_{}", aura_id.0));
+                    }
                 }
                 cont.into()
             } else {
