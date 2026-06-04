@@ -469,6 +469,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         cont = cont.center_y(iced::Length::Fill);
                     }
                     if let Some(ref is) = iced_style {
+                        // When wrapping in container, inherit the column's width setting
+                        // so that width(Fill) / max_width still take effect on the container.
+                        let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                            || is.width.is_none();
+                        if col_width_fill {
+                            cont = cont.width(iced::Length::Fill);
+                        }
                         if let Some(mw) = is.max_width {
                             cont = cont.max_width(mw);
                         }
@@ -3595,8 +3602,17 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 } else if justify_end {
                     cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).align_y(iced::alignment::Vertical::Bottom);
                 }
-                // Apply max_width on the wrapping container (Plan 282 fix)
+                // Apply width and max_width on the wrapping container so that
+                // the column's width(Fill) / max_width still take effect.
                 if let Some(ref is) = iced_style {
+                    if !justify_center && !justify_end {
+                        // justify paths already set width(Fill) above
+                        let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                            || is.width.is_none();
+                        if col_width_fill {
+                            cont = cont.width(iced::Length::Fill);
+                        }
+                    }
                     if let Some(mw) = is.max_width {
                         cont = cont.max_width(mw);
                     }
