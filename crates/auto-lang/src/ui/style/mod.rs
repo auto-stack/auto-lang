@@ -5,10 +5,12 @@
 
 mod class;
 mod color;
+mod layout_extract;
 mod parser;
 
 pub use class::{StyleClass, SizeValue, GradientDir};
 pub use color::Color;
+pub use layout_extract::BoxLayout;
 pub use parser::StyleParser;
 
 // Backend adapters (only compile when the respective backend is enabled)

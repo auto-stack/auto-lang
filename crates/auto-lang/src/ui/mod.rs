@@ -17,6 +17,24 @@ pub mod debug;
 pub mod vm_bridge;
 
 #[cfg(feature = "ui-interpreter")]
+pub mod mcp_types;
+
+#[cfg(feature = "ui-interpreter")]
+pub mod snapshot_builder;
+
+#[cfg(feature = "ui-interpreter")]
+pub mod action_mapper;
+
+#[cfg(feature = "ui-interpreter")]
+pub mod mcp_server;
+
+#[cfg(feature = "ui-interpreter")]
+pub mod aura_snapshot_builder;
+
+#[cfg(feature = "ui-interpreter")]
+pub mod render_support;
+
+#[cfg(feature = "ui-interpreter")]
 pub mod interpreter;
 
 #[cfg(feature = "ui-interpreter")]

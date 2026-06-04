@@ -1467,6 +1467,36 @@ fn widget_tick(interval_ms: u32) -> iced::Subscription<IcedMessage> {
 static KEYBOARD_BINDINGS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, String>>> =
     std::sync::OnceLock::new();
 
+/// Global MCP action channel receiver (Plan 278).
+/// Set once at startup by `run_dynamic_iced`, polled by `mcp_action_subscription`.
+static MCP_ACTION_RX: std::sync::OnceLock<std::sync::Mutex<Option<std::sync::mpsc::Receiver<crate::ui::mcp_server::ActionMessage>>>> =
+    std::sync::OnceLock::new();
+
+/// Subscription that polls the MCP action channel and injects IcedMessages
+/// into the event loop. This allows MCP actions to truly simulate user operations
+/// (with animations, state updates, and full UI refresh).
+fn mcp_action_subscription() -> iced::Subscription<IcedMessage> {
+    // Poll at 60fps to minimize latency for MCP-injected actions
+    iced::time::every(std::time::Duration::from_millis(16)).filter_map(|_| {
+        let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
+        let mut lock = guard.lock().unwrap();
+        if let Some(rx) = lock.as_mut() {
+            // Drain all pending actions (non-blocking)
+            match rx.try_recv() {
+                Ok(action) => Some(IcedMessage {
+                    widget: action.widget,
+                    event: action.event,
+                    input_value: action.input_value,
+                }),
+                Err(std::sync::mpsc::TryRecvError::Empty) => None,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+            }
+        } else {
+            None
+        }
+    })
+}
+
 /// Keyboard subscription: F12 devtools toggle + widget key bindings (Plan 275).
 ///
 /// Uses `listen_with` (fn pointer) with a global `Arc<Mutex<HashMap>>` for bindings.
@@ -1653,6 +1683,8 @@ struct DynamicState {
     inspector_scroll_id: iced::widget::Id,
     /// When set, the next update() cycle will scroll to center this line index.
     pending_scroll_to_center: std::cell::RefCell<Option<usize>>,
+    /// When true, next update() will trigger a layout bounds collection Task (Plan 282).
+    needs_bounds: std::cell::RefCell<bool>,
     /// DevTools panel width in pixels. Default ~40% of window width.
     devtools_panel_width: std::cell::RefCell<f32>,
     /// Current window size, updated on resize events.
@@ -1665,6 +1697,8 @@ struct DynamicState {
     /// Cache of AuraNodeId → debug element ID, copied from DebugRenderCtx after each render.
     /// Used to resolve source-click → selected_widget without holding a reference to DebugRenderCtx.
     aura_to_id_cache: std::cell::RefCell<std::collections::HashMap<AuraNodeId, String>>,
+    /// MCP shared state handle — updated after each render for AI agent inspection (Plan 278).
+    mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -1684,6 +1718,18 @@ struct DynamicState {
 /// `AppResult<String>` - Ok("UI closed") on normal exit, Err on failure.
 pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
     let widget_name = component.widget_name().to_string();
+
+    // Start MCP UI server in background thread (Plan 278)
+    let (mcp_shared, mcp_action_rx) = crate::ui::mcp_server::start_mcp_server(
+        widget_name.clone(),
+        crate::ui::mcp_server::mcp_port(),
+    );
+    // Store the action receiver in a global for the subscription to poll
+    {
+        let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
+        let mut lock = guard.lock().unwrap();
+        *lock = Some(mcp_action_rx);
+    }
 
     // BootFn requires Fn (not FnOnce), so we use RefCell<Option<...>> to
     // allow the boot closure to extract the component on the first (and only)
@@ -1726,11 +1772,13 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             cached_highlighted: std::cell::RefCell::new(None),
             inspector_scroll_id: iced::widget::Id::unique(),
             pending_scroll_to_center: std::cell::RefCell::new(None),
+            needs_bounds: std::cell::RefCell::new(false),
             devtools_panel_width: std::cell::RefCell::new(420.0),
             window_size: std::cell::RefCell::new(iced::Size::new(1024.0, 768.0)),
             dragging_divider: std::cell::RefCell::new(false),
             line_to_aura_ids: std::cell::RefCell::new(std::collections::HashMap::new()),
             aura_to_id_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+            mcp_shared: Some(mcp_shared.clone()),
         }
     };
 
@@ -1738,6 +1786,30 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
         // Clear component dirty at start of each update cycle.
         // It will be re-set by on_with_input/write_state/reload if state actually changes.
         state.component.clear_dirty();
+
+        // Layout bounds collection: store result from previous operation (Plan 282)
+        if msg.event == "__bounds_collected" {
+            if let Some(ref json) = msg.input_value {
+                if let Ok(bounds_map) = serde_json::from_str::<std::collections::HashMap<String, (f32,f32,f32,f32)>>(json) {
+                    if let Some(ref mcp) = state.mcp_shared {
+                        mcp.lock().unwrap().set_layout_bounds(bounds_map);
+                    }
+                }
+            }
+            return iced::Task::none();
+        }
+
+        // Trigger layout bounds collection if flagged (Plan 282)
+        if *state.needs_bounds.borrow() {
+            *state.needs_bounds.borrow_mut() = false;
+            use crate::ui::iced::LayoutCollector;
+            return iced::advanced::widget::operate(LayoutCollector::new())
+                .map(|bounds_map| IcedMessage {
+                    widget: String::new(),
+                    event: "__bounds_collected".to_string(),
+                    input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
+                });
+        }
 
         // Track whether UI-only state changed (hover, select, tab, debug mode).
         // These don't affect component state but change the rendered output.
@@ -2164,6 +2236,8 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
             }
             // F12 DevTools + key bindings listener (Plan 275)
             subs.push(keyboard_subscription(_state.component.key_bindings()));
+            // MCP action channel — polls for injected actions from AI agent (Plan 278)
+            subs.push(mcp_action_subscription());
             // Window resize + mouse move/release events for DevTools panel drag
             subs.push(iced::event::listen_with(|e, _status, _window_id| match e {
                 iced::Event::Window(iced::window::Event::Resized(size)) => Some(IcedMessage {
@@ -2195,6 +2269,28 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
 /// This is a standalone function (not a closure) so that Rust can correctly
 /// infer the higher-ranked lifetime bound `for<'a> ViewFn<'a, ...>`.
 fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
+    // Sync state to MCP shared handle for AI agent inspection (Plan 278)
+    // Must run in view() — not update() — because iced may not fire any events
+    // initially, meaning update() might never run before an MCP client connects.
+    if let Some(ref mcp_handle) = state.mcp_shared {
+        let mut mcp = mcp_handle.lock().unwrap();
+        if !mcp.has_view() {
+            eprintln!("AutoUI MCP: first state sync in view()");
+        }
+        let state_vals = state.component.read_all_state();
+        let input_map = state.component.input_state_map().clone();
+        let (view, id_map) = state.component.view_with_debug();
+        let view_template = Some(state.component.view_template().clone());
+        mcp.update(view, id_map, state_vals, input_map, view_template);
+        // Sync window size for layout annotations (Plan 281)
+        let ws = state.window_size.borrow();
+        if let iced::Size { width, height } = *ws {
+            if width > 0.0 && height > 0.0 {
+                mcp.set_window_size(width, height);
+            }
+        }
+    }
+
     // Resolve pending hover messages: pick the smallest counter (= deepest element).
     // This handles the case where nested mouse_areas both fire on_move — child has
     // smaller counter, so it wins. When mouse leaves child, only parent fires on_move,
@@ -2226,14 +2322,10 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     // Full rebuild path: state changed or cache empty.
     // Build the converted AbstractView tree, render to iced Element, and cache the result.
     //
-    // In debug mode, use view_with_debug() to get both the view and the DebugIdMap.
-    // In non-debug mode, use the simpler view() since we don't need the debug sideband.
-    let (mut view, debug_id_map) = if state.debug_mode {
-        let (v, id_map) = state.component.view_with_debug();
-        (v, Some(id_map))
-    } else {
-        (state.component.view(), None)
-    };
+    // Always use view_with_debug() to get the DebugIdMap — MCP snapshot and layout bounds
+    // collection (Plan 282) need it even when DevTools are closed.
+    let (mut view, debug_id_map) = state.component.view_with_debug();
+    let debug_id_map = Some(debug_id_map);
     inject_todo_list(&mut view, &state.todos, state.component.widget_name());
     if !state.input_values.is_empty() {
         patch_input_values(&mut view, &state.input_values);
@@ -2328,6 +2420,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     // Cache the final Element for reuse on next non-dirty frame and clear dirty.
     *state.cached_rendered.borrow_mut() = Some(result);
     *state.view_dirty.borrow_mut() = false;
+
+    // Request layout bounds collection on next update cycle (Plan 282).
+    *state.needs_bounds.borrow_mut() = true;
 
     // Take from cache and return (iced will call view again next frame).
     state.cached_rendered.borrow_mut().take().unwrap()
@@ -3431,6 +3526,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             }
             let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
             let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
+            let has_max_width = iced_style.as_ref().and_then(|is| is.max_width).is_some();
             let mut col_w = column([]);
             let sp = effective_spacing(spacing, style.as_ref());
             let pd = iced_padding(padding, style.as_ref());
@@ -3447,6 +3543,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                         IcedSize::Full => col_w = col_w.width(iced::Length::Fill),
                         IcedSize::FillPortion(n) => col_w = col_w.width(iced::Length::FillPortion(*n)),
                     }
+                } else if let Some(mw) = is.max_width {
+                    // No explicit width, but max_width set: use Fill + max_width
+                    col_w = col_w.width(iced::Length::Fill).max_width(mw);
                 }
                 // When justify_content is Center/End, skip height on Column so it shrinks
                 // to content size — the wrapping Container handles the vertical alignment.
@@ -3496,6 +3595,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 } else if justify_end {
                     cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).align_y(iced::alignment::Vertical::Bottom);
                 }
+                // Apply max_width on the wrapping container (Plan 282 fix)
+                if let Some(ref is) = iced_style {
+                    if let Some(mw) = is.max_width {
+                        cont = cont.max_width(mw);
+                    }
+                }
                 // Apply visual styles (background, border, rounded, shadow)
                 if let Some(ref is) = iced_style {
                     if has_visual {
@@ -3506,6 +3611,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                             background: Some(iced::Background::Color(bg)),
                             ..Default::default()
                         });
+                    }
+                }
+                // Set iced widget ID for layout bounds collection (Plan 282)
+                if let Some(ctx) = debug_ctx {
+                    if let Some(aura_id) = ctx.debug_id_map.get(path) {
+                        cont = cont.id(format!("aura_{}", aura_id.0));
                     }
                 }
                 cont.into()
@@ -3632,6 +3743,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             }
             if center_x { c = c.width(iced::Length::Fill).center_x(iced::Length::Fill); }
             if center_y { c = c.height(iced::Length::Fill).center_y(iced::Length::Fill); }
+            // Set iced widget ID for layout bounds collection (Plan 282)
+            if let Some(ctx) = debug_ctx {
+                if let Some(aura_id) = ctx.debug_id_map.get(path) {
+                    c = c.id(format!("aura_{}", aura_id.0));
+                }
+            }
             let el: iced::Element<'static, IcedMessage> = c.into();
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props) } else { el }
         }
@@ -3658,6 +3775,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
                 if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } }
+            }
+            // Set iced widget ID for layout bounds collection (Plan 282)
+            if let Some(ctx) = debug_ctx {
+                if let Some(aura_id) = ctx.debug_id_map.get(path) {
+                    s = s.id(format!("aura_{}", aura_id.0));
+                }
             }
             let el: iced::Element<'static, IcedMessage> = s.into();
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props) } else { el }

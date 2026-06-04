@@ -291,6 +291,18 @@ impl DynamicComponent {
         &self.key_bindings
     }
 
+    /// Get the input-to-state mapping: event_name -> state_field_name (Plan 278).
+    /// Used by MCP to know which state field to update when typing into an input.
+    pub fn input_state_map(&self) -> &HashMap<String, String> {
+        &self.input_state_map
+    }
+
+    /// Get the original AuraNode view template (Plan 279).
+    /// Used by MCP to generate AURA source-style snapshots with full original info.
+    pub fn view_template(&self) -> &crate::aura::AuraNode {
+        &self.view_template
+    }
+
     // ========================================================================
     // Hot Reload (Plan 205 Phase 4)
     // ========================================================================
