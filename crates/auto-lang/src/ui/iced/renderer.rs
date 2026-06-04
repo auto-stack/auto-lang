@@ -1845,6 +1845,15 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
         // It will be re-set by on_with_input/write_state/reload if state actually changes.
         state.component.clear_dirty();
 
+        // Pick up pending screenshot request from MCP thread at every update (Plan 285).
+        if state.screenshot_request.borrow().is_none() {
+            if let Some(ref mcp_handle) = state.mcp_shared {
+                if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
+                    *state.screenshot_request.borrow_mut() = Some(req);
+                }
+            }
+        }
+
         // Layout bounds collection: store result from previous operation (Plan 282)
         if msg.event == "__bounds_collected" {
             if let Some(ref json) = msg.input_value {
@@ -1857,8 +1866,9 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             return iced::Task::none();
         }
 
-        // Trigger layout bounds collection if flagged (Plan 282)
-        if *state.needs_bounds.borrow() {
+        // Trigger layout bounds collection if flagged (Plan 282).
+        // Skip if screenshot request is pending — screenshot has higher priority.
+        if *state.needs_bounds.borrow() && state.screenshot_request.borrow().is_none() {
             *state.needs_bounds.borrow_mut() = false;
             use crate::ui::iced::LayoutCollector;
             return iced::advanced::widget::operate(LayoutCollector::new())
@@ -1873,16 +1883,20 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
         if let Some(req) = state.screenshot_request.borrow_mut().take() {
             let reply_tx = std::sync::Arc::new(std::sync::Mutex::new(Some(req.reply_tx)));
             return iced::window::oldest()
-                .then(move |maybe_id| {
-                    // Take the sender out (only called once in practice)
-                    let tx = reply_tx.lock().unwrap().take().unwrap();
+                .then(move |maybe_id: Option<iced::window::Id>| {
                     match maybe_id {
-                        Some(id) => iced::window::screenshot(id)
-                            .then(move |ss| {
-                                let _ = tx.send(save_screenshot_png(&ss));
-                                iced::Task::none()
-                            }),
+                        Some(id) => {
+                            let tx = reply_tx.clone();
+                            iced::window::screenshot(id)
+                                .then(move |ss: iced::window::Screenshot| {
+                                    let result = save_screenshot_png(&ss);
+                                    let tx = tx.lock().unwrap().take().unwrap();
+                                    let _ = tx.send(result);
+                                    iced::Task::none()
+                                })
+                        }
                         None => {
+                            let tx = reply_tx.lock().unwrap().take().unwrap();
                             let _ = tx.send(Err("No window found".to_string()));
                             iced::Task::none()
                         }
