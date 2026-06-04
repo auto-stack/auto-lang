@@ -26,8 +26,18 @@ widget App {
                     style: "bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl p-6 mt-4 items-center gap-2 py-6"
                 }
                 row {
-                    button "Daily" { onclick: .TabDaily, style: "px-4 py-2 rounded-lg text-sm font-medium" }
-                    button "Hourly" { onclick: .TabHourly, style: "px-4 py-2 rounded-lg text-sm font-medium" }
+                    if .tab == "daily" {
+                        button "Daily" { onclick: .TabDaily, style: "px-4 py-2 rounded-lg text-sm font-medium bg-blue-500 text-white" }
+                    }
+                    if .tab != "daily" {
+                        button "Daily" { onclick: .TabDaily, style: "px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-600" }
+                    }
+                    if .tab == "hourly" {
+                        button "Hourly" { onclick: .TabHourly, style: "px-4 py-2 rounded-lg text-sm font-medium bg-blue-500 text-white" }
+                    }
+                    if .tab != "hourly" {
+                        button "Hourly" { onclick: .TabHourly, style: "px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-600" }
+                    }
                     style: "gap-2 mt-6"
                 }
                 if .tab == "daily" {
