@@ -10767,30 +10767,30 @@ impl<'a> Parser<'a> {
             } else if self.is_kind(TokenKind::Ident) {
                 let text = self.cur.text.to_string();
                 self.next();
-                // Handle method calls: ident.method(args)
-                if self.is_kind(TokenKind::Dot) {
+                // Build chained access: ident.field.method(args).another()
+                let mut chain = text;
+                while self.is_kind(TokenKind::Dot) {
                     self.next();
-                    let method = self.cur.text.to_string();
+                    let member = self.cur.text.to_string();
                     self.next();
-                    parts.push(format!("{}.{}", text, method));
-                    // Handle parentheses after method name
+                    chain.push_str(&format!(".{}", member));
+                    // Handle method call parentheses
                     if self.is_kind(TokenKind::LParen) {
                         self.next();
-                        parts.push("(".to_string());
+                        chain.push('(');
                         while !self.is_kind(TokenKind::RParen)
                             && !self.is_kind(TokenKind::LBrace)
                         {
-                            parts.push(self.cur.text.to_string());
+                            chain.push_str(&self.cur.text.to_string());
                             self.next();
                         }
                         if self.is_kind(TokenKind::RParen) {
                             self.next();
-                            parts.push(")".to_string());
+                            chain.push(')');
                         }
                     }
-                } else {
-                    parts.push(text);
                 }
+                parts.push(chain);
             } else if self.is_kind(TokenKind::Lt) || self.is_kind(TokenKind::Gt)
                 || self.is_kind(TokenKind::Le) || self.is_kind(TokenKind::Ge)
                 || self.is_kind(TokenKind::Eq) || self.is_kind(TokenKind::Neq)

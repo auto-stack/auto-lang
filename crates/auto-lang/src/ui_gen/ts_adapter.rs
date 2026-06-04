@@ -462,6 +462,14 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             write!(out, " }})()").ok();
         }
 
+        // Array index access: arr[idx] → arr.value[idx.value] for Vue refs
+        Expr::Index(array, index) => {
+            transpile_expr(array, ctx, out);
+            write!(out, "[").ok();
+            transpile_expr(index, ctx, out);
+            write!(out, "]").ok();
+        }
+
         // === Delegate to a2ts for everything else ===
         _ => delegate_expr(expr, ctx, out),
     }

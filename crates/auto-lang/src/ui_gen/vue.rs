@@ -3479,58 +3479,74 @@ impl VueGenerator {
     }
 
     /// Convert AuraExpr to Vue template text (handles interpolation)
-    fn expr_to_vue_text(&self, expr: &AuraExpr) -> GenResult<String> {
+    /// Convert AuraExpr to raw Vue text (no {{ }} wrapping).
+    /// Used internally by expr_to_vue_text for composing nested expressions.
+    fn expr_to_vue_text_raw(&self, expr: &AuraExpr) -> GenResult<String> {
         match expr {
             AuraExpr::Literal(s) => {
                 // Check if this is a template string with ${...} placeholders
-                // Convert them to Vue {{ ... }} interpolation
-                Ok(self.convert_template_to_vue(s))
+                // Strip outer {{ }} if present, since caller will wrap
+                let vue = self.convert_template_to_vue(s);
+                Ok(vue.trim_start_matches('{').trim_start_matches(' ')
+                    .trim_end_matches('}').trim_end_matches(' ').to_string())
             }
             AuraExpr::Int(n) => Ok(n.to_string()),
             AuraExpr::Float(f) => Ok(f.to_string()),
             AuraExpr::Bool(b) => Ok(b.to_string()),
-            AuraExpr::StateRef(name) => Ok(format!("{{{{ {} }}}}", name)),
+            AuraExpr::StateRef(name) => Ok(name.clone()),
             AuraExpr::FieldAccess { object, field } => {
-                // Handle user.name -> {{ user.name }}
-                let object_str = self.expr_to_vue_text(object)?;
-                Ok(format!("{{{{ {}.{} }}}}", object_str.trim_matches(|c| c == '{' || c == '}'), field))
+                // Handle user.name -> user.name
+                let object_str = self.expr_to_vue_text_raw(object)?;
+                Ok(format!("{}.{}", object_str, field))
             }
             AuraExpr::Binary { left, op: _, right } => {
-                // Handle expressions like "ID: " + user.id
-                let left_str = self.expr_to_vue_text(left)?;
-                let right_str = self.expr_to_vue_text(right)?;
+                let left_str = self.expr_to_vue_text_raw(left)?;
+                let right_str = self.expr_to_vue_text_raw(right)?;
                 Ok(format!("{}{}", left_str, right_str))
             }
             AuraExpr::MethodCall { object, method, args } => {
-                let obj_str = self.expr_to_vue_text(object)?;
-                let obj_clean = obj_str.trim_matches(|c| c == '{' || c == '}');
-                // Handle widget-external functions: getBookTitle() not self.getBookTitle()
-                let is_self = obj_clean == "self";
+                let obj_str = self.expr_to_vue_text_raw(object)?;
+                let is_self = obj_str == "self";
                 match method.as_str() {
-                    "to_string" => Ok(format!("{{{{ {} }}}}", obj_clean)),
-                    "len" => Ok(format!("{{{{ {}.length }}}}", obj_clean)),
+                    "to_string" => Ok(obj_str.clone()),
+                    "len" => Ok(format!("{}.length", obj_str)),
                     _ => {
                         let args_str: Vec<String> = args.iter()
                             .map(|a| self.expr_to_vue_bound_value(a))
                             .collect::<Result<Vec<_>, _>>()?;
                         if is_self {
-                            // External function call: getBookTitle(args)
                             if args_str.is_empty() {
-                                Ok(format!("{{{{ {}() }}}}", method))
+                                Ok(format!("{}()", method))
                             } else {
-                                Ok(format!("{{{{ {}({}) }}}}", method, args_str.join(", ")))
+                                Ok(format!("{}({})", method, args_str.join(", ")))
                             }
                         } else {
                             if args_str.is_empty() {
-                                Ok(format!("{{{{ {}.{}() }}}}", obj_clean, method))
+                                Ok(format!("{}.{}()", obj_str, method))
                             } else {
-                                Ok(format!("{{{{ {}.{}({}) }}}}", obj_clean, method, args_str.join(", ")))
+                                Ok(format!("{}.{}({})", obj_str, method, args_str.join(", ")))
                             }
                         }
                     }
                 }
             }
             _ => Ok("value".to_string()),
+        }
+    }
+
+    /// Convert AuraExpr to Vue template text with {{ }} wrapping for display.
+    /// Uses expr_to_vue_text_raw internally and wraps the final result.
+    fn expr_to_vue_text(&self, expr: &AuraExpr) -> GenResult<String> {
+        // For compound expressions that produce their own {{ }},
+        // use the raw version and wrap at the end.
+        let raw = self.expr_to_vue_text_raw(expr)?;
+        // If the raw result already contains {{ (e.g., from convert_template_to_vue),
+        // or is a plain literal string, return as-is.
+        // Otherwise wrap in {{ }}.
+        if raw.starts_with("{{") || matches!(expr, AuraExpr::Literal(_)) {
+            Ok(raw)
+        } else {
+            Ok(format!("{{{{ {} }}}}", raw))
         }
     }
 
