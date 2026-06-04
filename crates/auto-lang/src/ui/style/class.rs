@@ -87,6 +87,12 @@ pub enum StyleClass {
     /// Margin Top: mt-{0-12} (L2)
     MarginTop(SizeValue),
 
+    /// Margin Left Auto: ml-auto — push element to the right in a row
+    MarginLeftAuto,
+
+    /// Margin Right Auto: mr-auto — push element to the left in a row
+    MarginRightAuto,
+
     /// Gap: gap-{0-12} (gap-0, gap-1, ..., gap-12)
     Gap(SizeValue),
 
@@ -382,6 +388,19 @@ impl StyleClass {
         if let Some(rest) = class.strip_prefix("mt-") {
             let size = parse_size_value(rest)?;
             return Ok(StyleClass::MarginTop(size));
+        }
+
+        // Parse margin auto classes
+        if class == "ml-auto" {
+            return Ok(StyleClass::MarginLeftAuto);
+        }
+        if class == "mr-auto" {
+            return Ok(StyleClass::MarginRightAuto);
+        }
+        if class == "mx-auto" {
+            // mx-auto = both ml-auto and mr-auto (handled as a pair)
+            // We only emit MarginLeftAuto here; the adapter will set both
+            return Ok(StyleClass::MarginLeftAuto);
         }
 
         // Parse gap: gap-{0-12}

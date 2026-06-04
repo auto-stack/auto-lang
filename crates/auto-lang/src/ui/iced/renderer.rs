@@ -238,25 +238,39 @@ fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
     }
 }
 
-/// Wrap an iced element with top padding if margin_top (from mt-* classes) is set.
+/// Wrap an iced element with external spacing for margin simulation.
+/// Handles:
+/// - `margin_top` (mt-*): external top spacing via container padding
+/// - `margin_left_auto` (ml-auto): container fills remaining width, content pushed right
+/// - `margin_right_auto` (mr-auto): container fills remaining width, content pushed left
 fn wrap_with_margin_top<M: Clone + Debug + 'static>(
     el: iced::Element<'static, M>,
     is: &IcedStyle,
 ) -> iced::Element<'static, M> {
     use iced::widget::container;
-    if is.padding_top.is_some() {
-        let top_pad = is.padding_top.unwrap();
-        container(el)
-            .padding(iced::Padding {
-                top: top_pad,
-                right: 0.0,
-                bottom: 0.0,
-                left: 0.0,
-            })
-            .into()
-    } else {
-        el
+    let top = is.margin_top.unwrap_or(0.0);
+    let needs_wrap = top > 0.0 || is.margin_left_auto || is.margin_right_auto;
+    if !needs_wrap {
+        return el;
     }
+    let mut cont = container(el);
+    if top > 0.0 {
+        cont = cont.padding(iced::Padding {
+            top,
+            right: 0.0,
+            bottom: 0.0,
+            left: 0.0,
+        });
+    }
+    // ml-auto: container fills remaining row width, align content to the right
+    if is.margin_left_auto {
+        cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Right);
+    }
+    // mr-auto: container fills remaining row width, align content to the left
+    if is.margin_right_auto {
+        cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Left);
+    }
+    cont.into()
 }
 
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
@@ -3589,6 +3603,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             }
             // Determine if we need Container wrapping for visual styles or alignment
             let needs_wrap = justify_center || justify_end || has_visual;
+            // Extract margin_top for external spacing (not merged into padding)
+            let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
+            let needs_margin_wrap = mt > 0.0;
             let el: iced::Element<'static, IcedMessage> = if needs_wrap {
                 // Apply padding on the container (not the column) when wrapping for visual styles,
                 // so padding shows between the background/border and the content.
@@ -3639,6 +3656,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 col_w = col_w.padding(pd);
                 col_w.into()
+            };
+            // Apply external margin_top (mt-*) as an outer container with top padding.
+            // This is separate from internal padding so it works correctly on visual-wrap elements.
+            let el = if needs_margin_wrap {
+                container(el).padding(iced::Padding {
+                    top: mt,
+                    right: 0.0,
+                    bottom: 0.0,
+                    left: 0.0,
+                }).into()
+            } else {
+                el
             };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props) } else { el }
         }
@@ -3703,6 +3732,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 row_w = row_w.padding(pd);
                 row_w.into()
+            };
+            // Apply external margin_top (mt-*) for row as well
+            let row_mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
+            let el = if row_mt > 0.0 {
+                container(el).padding(iced::Padding {
+                    top: row_mt,
+                    right: 0.0,
+                    bottom: 0.0,
+                    left: 0.0,
+                }).into()
+            } else {
+                el
             };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props) } else { el }
         }

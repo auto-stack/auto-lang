@@ -20,11 +20,13 @@ pub struct IcedStyle {
     pub padding_bottom: Option<f32>,
     pub padding_left: Option<f32>,
     pub padding_right: Option<f32>,
-    // NOTE: Iced doesn't support margin - these fields are ignored
+    // NOTE: Iced doesn't support margin - these fields are handled as external spacing
     pub margin: Option<f32>,        // Not supported by Iced
     pub margin_x: Option<f32>,       // Not supported by Iced
     pub margin_y: Option<f32>,       // Not supported by Iced
-    pub margin_top: Option<f32>,      // Converted to top padding
+    pub margin_top: Option<f32>,      // Converted to external top spacing
+    pub margin_left_auto: bool,       // ml-auto: push element to right in row
+    pub margin_right_auto: bool,      // mr-auto: push element to left in row
     pub gap: Option<f32>,
 
     // Colors (L1)
@@ -170,6 +172,8 @@ impl IcedStyle {
             margin_x: None,    // Not supported by Iced
             margin_y: None,    // Not supported by Iced
             margin_top: None,
+            margin_left_auto: false,
+            margin_right_auto: false,
             gap: None,
             background_color: None,
             text_color: None,
@@ -211,10 +215,10 @@ impl IcedStyle {
             iced_style.apply_class(class);
         }
 
-        // Merge margin_top into padding_top (Iced doesn't have real margin)
-        if let Some(mt) = iced_style.margin_top {
-            iced_style.padding_top = Some(iced_style.padding_top.unwrap_or(0.0) + mt);
-        }
+        // margin_top is kept as-is — the renderer wraps the element in a container
+        // with external top padding to simulate margin-top, separate from internal padding.
+        // This avoids visual-wrap elements (gradient cards, bordered cols) absorbing
+        // mt-* into their internal padding.
 
         iced_style
     }
@@ -258,6 +262,12 @@ impl IcedStyle {
             }
             StyleClass::MarginTop(size) => {
                 self.margin_top = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginLeftAuto => {
+                self.margin_left_auto = true;
+            }
+            StyleClass::MarginRightAuto => {
+                self.margin_right_auto = true;
             }
             StyleClass::Gap(size) => {
                 self.gap = Some(size.to_pixels() as f32);
