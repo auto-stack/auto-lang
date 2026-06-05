@@ -1866,19 +1866,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             return iced::Task::none();
         }
 
-        // Trigger layout bounds collection if flagged (Plan 282).
-        // Skip if screenshot request is pending — screenshot has higher priority.
-        if *state.needs_bounds.borrow() && state.screenshot_request.borrow().is_none() {
-            *state.needs_bounds.borrow_mut() = false;
-            use crate::ui::iced::LayoutCollector;
-            return iced::advanced::widget::operate(LayoutCollector::new())
-                .map(|bounds_map| IcedMessage {
-                    widget: String::new(),
-                    event: "__bounds_collected".to_string(),
-                    input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
-                });
-        }
-
         // Handle screenshot request from MCP thread (Plan 285)
         if let Some(req) = state.screenshot_request.borrow_mut().take() {
             let reply_tx = std::sync::Arc::new(std::sync::Mutex::new(Some(req.reply_tx)));
@@ -2350,6 +2337,22 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 iced::widget::scrollable::AbsoluteOffset { x: Some(0.0), y: Some(y) },
             )
         });
+
+        // Layout bounds collection: deferred to end of update so user events
+        // (button clicks, input changes) are processed first (Plan 282).
+        // Previously this ran at the top of update(), which caused every user
+        // event to be dropped because needs_bounds was true after every view().
+        if *state.needs_bounds.borrow() && state.screenshot_request.borrow().is_none() {
+            *state.needs_bounds.borrow_mut() = false;
+            use crate::ui::iced::LayoutCollector;
+            return iced::advanced::widget::operate(LayoutCollector::new())
+                .map(|bounds_map| IcedMessage {
+                    widget: String::new(),
+                    event: "__bounds_collected".to_string(),
+                    input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
+                });
+        }
+
         scroll_task.unwrap_or_else(iced::Task::none)
     };
 
@@ -2442,6 +2445,8 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     // Fast path: if nothing changed since last frame, return cached Element directly.
     // All state changes (component state + UI state like hover/select/tab) are tracked
     // by view_dirty, so when it's false the cached Element is still valid.
+    // CRITICAL: This cache prevents hot_reload_tick (every 500ms) from rebuilding the
+    // widget tree on every tick, which would break iced button hover/press state tracking.
     {
         let dirty = *state.view_dirty.borrow();
         if !dirty {
@@ -2557,7 +2562,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     *state.view_dirty.borrow_mut() = false;
 
     // Request layout bounds collection on next update cycle (Plan 282).
-    *state.needs_bounds.borrow_mut() = true;
+    // DISABLED: setting needs_bounds every frame blocks user events.
+    // Only enable when MCP snapshot/bounds is explicitly requested.
+    // *state.needs_bounds.borrow_mut() = true;
 
     // Pick up pending screenshot request from MCP thread (Plan 285).
     if let Some(ref mcp_handle) = state.mcp_shared {
