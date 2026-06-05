@@ -33,6 +33,11 @@ use std::collections::HashMap;
 use auto_val::Value;
 
 use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraEvent, AuraNodeId};
+
+/// Loop variable bindings: variable name → current Value.
+/// Passed through the conversion call chain to resolve `FieldAccess`
+/// expressions like `note.title` where `note` is a loop variable.
+type Bindings = HashMap<String, Value>;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::vm_bridge::VmBridge;
 use crate::ui::debug_id_map::DebugIdMap;
@@ -85,7 +90,7 @@ impl<'a> AuraViewBuilder<'a> {
     /// corresponding View variant. State references are resolved from the
     /// VmBridge at build time.
     pub fn build(&self, node: &AuraNode) -> View<DynamicMessage> {
-        self.convert_node(node)
+        self.convert_node_with(node, &Bindings::new())
     }
 
     /// Build a `View<DynamicMessage>` with DebugIdMap sideband mapping (Plan 274).
@@ -95,7 +100,7 @@ impl<'a> AuraViewBuilder<'a> {
     pub fn build_with_debug(&self, node: &AuraNode) -> (View<DynamicMessage>, DebugIdMap) {
         let mut id_map = DebugIdMap::default();
         let mut path = Vec::new();
-        let view = self.convert_node_tracked(node, &mut path, &mut id_map);
+        let view = self.convert_node_tracked_with(node, &mut path, &mut id_map, &Bindings::new());
         (view, id_map)
     }
 
@@ -103,23 +108,55 @@ impl<'a> AuraViewBuilder<'a> {
     // Internal conversion
     // ========================================================================
 
-    /// Dispatch an AuraNode to the appropriate converter.
+    /// Dispatch an AuraNode to the appropriate converter (no bindings).
     fn convert_node(&self, node: &AuraNode) -> View<DynamicMessage> {
+        self.convert_node_with(node, &Bindings::new())
+    }
+
+    /// Dispatch an AuraNode to the appropriate converter with loop variable bindings.
+    fn convert_node_with(&self, node: &AuraNode, bindings: &Bindings) -> View<DynamicMessage> {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
-                self.convert_element(tag, props, events, children)
+                self.convert_element(tag, props, events, children, bindings)
             }
             AuraNode::Text(text_content) => {
-                self.convert_text(text_content)
+                self.convert_text_with(text_content, bindings)
             }
-            AuraNode::ForLoop { body, .. } => {
-                // For loops: convert each body node. For Phase 2, we flatten
-                // the loop body into a column since we can't iterate at build
-                // time without a list value.
-                let children: Vec<View<DynamicMessage>> = body
-                    .iter()
-                    .map(|n| self.convert_node(n))
+            AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                // Read the iterable array from VmBridge state
+                let array = match self.bridge.read_state(iterable) {
+                    Ok(Value::Array(arr)) => arr,
+                    _ => return View::Empty,
+                };
+
+                let children: Vec<View<DynamicMessage>> = array.iter().enumerate()
+                    .filter_map(|(i, item)| {
+                        let mut loop_bindings = bindings.clone();
+                        // Bind loop variable (e.g., "note" → Value::Obj{title, body, time})
+                        loop_bindings.insert(var.clone(), item.clone());
+                        // Bind index variable if present (e.g., "i" → Value::Int(0))
+                        if let Some(idx_var) = index {
+                            loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
+                        }
+                        // Convert body nodes with the loop bindings active
+                        let views: Vec<View<DynamicMessage>> = body.iter()
+                            .map(|n| self.convert_node_with(n, &loop_bindings))
+                            .collect();
+                        if views.is_empty() {
+                            None
+                        } else if views.len() == 1 {
+                            Some(views.into_iter().next().unwrap())
+                        } else {
+                            Some(View::Column {
+                                children: views,
+                                spacing: 0,
+                                padding: 0,
+                                style: None,
+                            })
+                        }
+                    })
                     .collect();
+
                 View::Column {
                     children,
                     spacing: 0,
@@ -128,7 +165,7 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
-                let is_true = self.eval_condition(condition);
+                let is_true = self.eval_condition_with(condition, bindings);
                 let empty = Vec::new();
                 let body = if is_true {
                     then_body
@@ -137,7 +174,7 @@ impl<'a> AuraViewBuilder<'a> {
                 };
                 let children: Vec<View<DynamicMessage>> = body
                     .iter()
-                    .map(|n| self.convert_node(n))
+                    .map(|n| self.convert_node_with(n, bindings))
                     .collect();
                 if children.is_empty() {
                     View::Empty
@@ -153,7 +190,6 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Component { name, .. } => {
-                // Component instantiation: render as a text placeholder for Phase 2.
                 View::Text {
                     content: format!("<{} />", name),
                     style: None,
@@ -169,7 +205,7 @@ impl<'a> AuraViewBuilder<'a> {
                 if !children.is_empty() {
                     let views: Vec<View<DynamicMessage>> = children
                         .iter()
-                        .map(|n| self.convert_node(n))
+                        .map(|n| self.convert_node_with(n, bindings))
                         .collect();
                     View::Column {
                         children: views,
@@ -196,6 +232,17 @@ impl<'a> AuraViewBuilder<'a> {
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
     ) -> View<DynamicMessage> {
+        self.convert_node_tracked_with(node, path, id_map, &Bindings::new())
+    }
+
+    /// Tracked version with loop variable bindings.
+    fn convert_node_tracked_with(
+        &self,
+        node: &AuraNode,
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
         // Record this node's debug_id at the current path
         let node_debug_id = match node {
             AuraNode::Element { debug_id, .. } => *debug_id,
@@ -211,20 +258,35 @@ impl<'a> AuraViewBuilder<'a> {
 
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
-                self.convert_element_tracked(tag, props, events, children, path, id_map)
+                self.convert_element_tracked_with(tag, props, events, children, path, id_map, bindings)
             }
             AuraNode::Text(text_content) => {
-                self.convert_text(text_content)
+                self.convert_text_with(text_content, bindings)
             }
-            AuraNode::ForLoop { body, .. } => {
-                let child_views: Vec<View<DynamicMessage>> = body
-                    .iter()
-                    .enumerate()
-                    .map(|(i, n)| {
-                        path.push(i);
-                        let v = self.convert_node_tracked(n, path, id_map);
-                        path.pop();
-                        v
+            AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                let array = match self.bridge.read_state(iterable) {
+                    Ok(Value::Array(arr)) => arr,
+                    _ => return View::Empty,
+                };
+                let child_views: Vec<View<DynamicMessage>> = array.iter().enumerate()
+                    .filter_map(|(i, item)| {
+                        let mut loop_bindings = bindings.clone();
+                        loop_bindings.insert(var.clone(), item.clone());
+                        if let Some(idx_var) = index {
+                            loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
+                        }
+                        let views: Vec<View<DynamicMessage>> = body.iter()
+                            .enumerate()
+                            .filter_map(|(bi, n)| {
+                                path.push(bi);
+                                let v = self.convert_node_tracked_with(n, path, id_map, &loop_bindings);
+                                path.pop();
+                                Some(v)
+                            })
+                            .collect();
+                        if views.is_empty() { None }
+                        else if views.len() == 1 { Some(views.into_iter().next().unwrap()) }
+                        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None }) }
                     })
                     .collect();
                 View::Column {
@@ -235,7 +297,7 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
-                let is_true = self.eval_condition(condition);
+                let is_true = self.eval_condition_with(condition, bindings);
                 let empty = Vec::new();
                 let body = if is_true {
                     then_body
@@ -247,7 +309,7 @@ impl<'a> AuraViewBuilder<'a> {
                     .enumerate()
                     .map(|(i, n)| {
                         path.push(i);
-                        let v = self.convert_node_tracked(n, path, id_map);
+                        let v = self.convert_node_tracked_with(n, path, id_map, bindings);
                         path.pop();
                         v
                     })
@@ -284,7 +346,7 @@ impl<'a> AuraViewBuilder<'a> {
                         .enumerate()
                         .map(|(i, n)| {
                             path.push(i);
-                            let v = self.convert_node_tracked(n, path, id_map);
+                            let v = self.convert_node_tracked_with(n, path, id_map, bindings);
                             path.pop();
                             v
                         })
@@ -317,48 +379,25 @@ impl<'a> AuraViewBuilder<'a> {
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
     ) -> View<DynamicMessage> {
-        match tag {
-            "col" | "column" => self.convert_column_tracked(props, children, path, id_map),
-            "row" => self.convert_row_tracked(props, children, path, id_map),
-            "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
-                self.convert_text_element(tag, props, children)
-            }
-            "button" | "btn" => self.convert_button(props, events),
-            "center" => self.convert_center_tracked(props, children, path, id_map),
-            "input" => self.convert_input(props, events),
-            "textarea" => self.convert_textarea(props, events),
-            "checkbox" | "check" => self.convert_checkbox(props, events),
-            "container" | "div" => self.convert_container_tracked(props, children, path, id_map),
-            "img" | "image" => self.convert_image(props),
-            "progress" => self.convert_progress(props),
-            "spacer" => self.convert_spacer(props),
-            "divider" | "hr" => self.convert_divider(props),
-            "avatar" => self.convert_avatar(props),
-            _ => {
-                let views: Vec<View<DynamicMessage>> = children
-                    .iter()
-                    .enumerate()
-                    .map(|(i, n)| {
-                        path.push(i);
-                        let v = self.convert_node_tracked(n, path, id_map);
-                        path.pop();
-                        v
-                    })
-                    .collect();
-                if views.is_empty() {
-                    View::Empty
-                } else if views.len() == 1 {
-                    views.into_iter().next().unwrap()
-                } else {
-                    View::Column {
-                        children: views,
-                        spacing: 0,
-                        padding: 0,
-                        style: None,
-                    }
-                }
-            }
-        }
+        self.convert_element_tracked_with(tag, props, events, children, path, id_map, &Bindings::new())
+    }
+
+    /// Tracked convert_element with bindings support.
+    /// For tracked mode, we delegate to the same _with methods used by untracked mode
+    /// since the debug ID tracking is handled at the node level in convert_node_tracked_with.
+    fn convert_element_tracked_with(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        // Delegate to the untracked-with methods — they already handle bindings.
+        // Debug ID tracking is done at the AuraNode level in convert_node_tracked_with.
+        self.convert_element(tag, props, events, children, bindings)
     }
 
     /// Tracked convert_column
@@ -543,28 +582,29 @@ impl<'a> AuraViewBuilder<'a> {
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
         children: &[AuraNode],
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         match tag {
             // Core layout widgets
-            "col" | "column" => self.convert_column(props, children),
-            "row" => self.convert_row(props, children),
+            "col" | "column" => self.convert_column(props, children, bindings),
+            "row" => self.convert_row(props, children, bindings),
 
             // Core element widgets
             "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
-                self.convert_text_element(tag, props, children)
+                self.convert_text_element(tag, props, children, bindings)
             }
-            "button" | "btn" => self.convert_button(props, events),
+            "button" | "btn" => self.convert_button(props, events, bindings),
 
             // Layout wrappers
-            "center" => self.convert_center(props, children),
+            "center" => self.convert_center(props, children, bindings),
 
-            // Input widgets (Phase 2 basic support)
-            "input" => self.convert_input(props, events),
-            "textarea" => self.convert_textarea(props, events),
+            // Input widgets
+            "input" => self.convert_input(props, events, bindings),
+            "textarea" => self.convert_textarea(props, events, bindings),
             "checkbox" | "check" => self.convert_checkbox(props, events),
-            "container" | "div" => self.convert_container(props, children),
+            "container" | "div" => self.convert_container(props, children, bindings),
 
-            // Image placeholder (no native Image variant yet)
+            // Image placeholder
             "img" | "image" => self.convert_image(props),
 
             // Utility widgets
@@ -577,7 +617,7 @@ impl<'a> AuraViewBuilder<'a> {
             _ => {
                 let views: Vec<View<DynamicMessage>> = children
                     .iter()
-                    .map(|n| self.convert_node(n))
+                    .map(|n| self.convert_node_with(n, bindings))
                     .collect();
                 if views.is_empty() {
                     View::Empty
@@ -604,6 +644,7 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
@@ -611,7 +652,7 @@ impl<'a> AuraViewBuilder<'a> {
 
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
-            .map(|n| self.convert_node(n))
+            .map(|n| self.convert_node_with(n, bindings))
             .collect();
 
         let mut builder = View::<DynamicMessage>::col()
@@ -634,6 +675,7 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
@@ -641,7 +683,7 @@ impl<'a> AuraViewBuilder<'a> {
 
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
-            .map(|n| self.convert_node(n))
+            .map(|n| self.convert_node_with(n, bindings))
             .collect();
 
         let mut builder = View::<DynamicMessage>::row()
@@ -664,6 +706,7 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let width = self.extract_u16(props, "width");
@@ -673,11 +716,11 @@ impl<'a> AuraViewBuilder<'a> {
         let child_view = if children.is_empty() {
             View::Empty
         } else if children.len() == 1 {
-            self.convert_node(&children[0])
+            self.convert_node_with(&children[0], bindings)
         } else {
             let views: Vec<View<DynamicMessage>> = children
                 .iter()
-                .map(|n| self.convert_node(n))
+                .map(|n| self.convert_node_with(n, bindings))
                 .collect();
             View::Column {
                 children: views,
@@ -706,17 +749,18 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let style = self.extract_style(props);
 
         let child_view = if children.is_empty() {
             View::Empty
         } else if children.len() == 1 {
-            self.convert_node(&children[0])
+            self.convert_node_with(&children[0], bindings)
         } else {
             let views: Vec<View<DynamicMessage>> = children
                 .iter()
-                .map(|n| self.convert_node(n))
+                .map(|n| self.convert_node_with(n, bindings))
                 .collect();
             View::Column {
                 children: views,
@@ -839,17 +883,18 @@ impl<'a> AuraViewBuilder<'a> {
         tag: &str,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let content = self.extract_string(props, "text")
-            .or_else(|| self.extract_string(props, "content"))
-            .or_else(|| self.extract_string(props, "label"))
+        let content = self.extract_string_with(props, "text", bindings)
+            .or_else(|| self.extract_string_with(props, "content", bindings))
+            .or_else(|| self.extract_string_with(props, "label", bindings))
             .unwrap_or_else(|| {
                 // Try to get content from child text nodes
                 children.iter()
                     .filter_map(|c| match c {
                         AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
-                        AuraNode::Text(AuraTextContent::Interpolated { template, bindings }) => {
-                            Some(self.resolve_interpolation(template, bindings))
+                        AuraNode::Text(AuraTextContent::Interpolated { template, bindings: tpl_bindings }) => {
+                            Some(self.resolve_interpolation_with(template, tpl_bindings, bindings))
                         }
                         _ => None,
                     })
@@ -888,9 +933,10 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let label = self.extract_string(props, "text")
-            .or_else(|| self.extract_string(props, "label"))
+        let label = self.extract_string_with(props, "text", bindings)
+            .or_else(|| self.extract_string_with(props, "label", bindings))
             .unwrap_or_else(|| "Button".to_string());
 
         let style = self.extract_style(props);
@@ -913,13 +959,14 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let placeholder = self.extract_string(props, "placeholder")
-            .or_else(|| self.extract_string(props, "text"))
+        let placeholder = self.extract_string_with(props, "placeholder", bindings)
+            .or_else(|| self.extract_string_with(props, "text", bindings))
             .unwrap_or_default();
 
         // Resolve value from state if it's a StateRef
-        let value = self.extract_string(props, "value").unwrap_or_default();
+        let value = self.extract_string_with(props, "value", bindings).unwrap_or_default();
 
         let style = self.extract_style(props);
         let width = self.extract_u16(props, "width");
@@ -953,11 +1000,12 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let placeholder = self.extract_string(props, "placeholder")
+        let placeholder = self.extract_string_with(props, "placeholder", bindings)
             .unwrap_or_default();
 
-        let value = self.extract_string(props, "value").unwrap_or_default();
+        let value = self.extract_string_with(props, "value", bindings).unwrap_or_default();
 
         let style = self.extract_style(props);
         let height = self.extract_u16(props, "height");
@@ -1031,11 +1079,11 @@ impl<'a> AuraViewBuilder<'a> {
     // ========================================================================
 
     /// Convert an AuraTextContent to a string, resolving interpolations.
-    fn convert_text(&self, content: &AuraTextContent) -> View<DynamicMessage> {
+    fn convert_text_with(&self, content: &AuraTextContent, bindings: &Bindings) -> View<DynamicMessage> {
         let resolved = match content {
             AuraTextContent::Literal(s) => s.clone(),
-            AuraTextContent::Interpolated { template, bindings } => {
-                self.resolve_interpolation(template, bindings)
+            AuraTextContent::Interpolated { template, bindings: tpl_bindings } => {
+                self.resolve_interpolation_with(template, tpl_bindings, bindings)
             }
         };
 
@@ -1050,19 +1098,17 @@ impl<'a> AuraViewBuilder<'a> {
     // ========================================================================
 
     /// Resolve a string interpolation template containing `${.field}` references.
-    ///
-    /// For each binding in `bindings`, looks up the current value from VmBridge
-    /// and substitutes it into the template in place of `${.field}`.
-    ///
-    /// # Example
-    ///
-    /// Template: `"Count: ${.count}"` with binding `"count"` → `"Count: 42"`
     fn resolve_interpolation(&self, template: &str, bindings: &[String]) -> String {
+        self.resolve_interpolation_with(template, bindings, &Bindings::new())
+    }
+
+    /// Resolve interpolation with loop variable bindings support.
+    fn resolve_interpolation_with(&self, template: &str, tpl_bindings: &[String], loop_bindings: &Bindings) -> String {
         let mut result = template.to_string();
 
-        for field_name in bindings {
+        for field_name in tpl_bindings {
             let pattern = format!("${{{}}}", format!(".{}", field_name));
-            let value_str = self.read_state_as_string(field_name);
+            let value_str = self.read_state_as_string_with(field_name, loop_bindings);
             result = result.replace(&pattern, &value_str);
         }
 
@@ -1070,39 +1116,85 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Read a state field value as a display string.
-    ///
-    /// Falls back to the field name wrapped in `${...}` if the field cannot
-    /// be read (e.g., field not found, VM error).
     fn read_state_as_string(&self, field_name: &str) -> String {
+        self.read_state_as_string_with(field_name, &Bindings::new())
+    }
+
+    /// Read a state field value as a display string, checking loop bindings first.
+    fn read_state_as_string_with(&self, field_name: &str, bindings: &Bindings) -> String {
+        // Check loop bindings first (e.g., "note" in `for note in .notes`)
+        if let Some(val) = bindings.get(field_name) {
+            return value_to_display_string(val);
+        }
         match self.bridge.read_state(field_name) {
             Ok(value) => value_to_display_string(&value),
             Err(_) => format!("${{{}}}", field_name),
         }
     }
 
-    /// Resolve an AuraExpr to a display string.
-    ///
-    /// For state references, reads from VmBridge. For literals that contain
-    /// `${.field}` interpolation patterns, resolves them from state.
+    /// Resolve an AuraExpr to a display string (no bindings).
     fn resolve_expr_to_string(&self, expr: &AuraExpr) -> String {
+        self.resolve_expr_to_string_with(expr, &Bindings::new())
+    }
+
+    /// Resolve an AuraExpr to a display string with loop variable bindings.
+    fn resolve_expr_to_string_with(&self, expr: &AuraExpr, bindings: &Bindings) -> String {
         match expr {
-            AuraExpr::Literal(s) => self.resolve_literal_interpolation(s),
+            AuraExpr::Literal(s) => self.resolve_literal_interpolation_with(s, bindings),
             AuraExpr::Int(i) => i.to_string(),
             AuraExpr::Float(f) => f.to_string(),
             AuraExpr::Bool(b) => b.to_string(),
-            AuraExpr::StateRef(name) => self.read_state_as_string(name),
+            AuraExpr::StateRef(name) => self.read_state_as_string_with(name, bindings),
+            AuraExpr::FieldAccess { object, field } => {
+                let obj_val = self.resolve_expr_to_value(object, bindings);
+                match obj_val {
+                    Some(Value::Obj(map)) => {
+                        map.get(field.as_str())
+                            .map(|v| value_to_display_string(&v))
+                            .unwrap_or_default()
+                    }
+                    _ => String::new(),
+                }
+            }
             _ => String::new(),
         }
     }
 
-    /// Evaluate a condition string against current state.
+    /// Resolve an AuraExpr to a Value, checking loop bindings and VmBridge state.
+    fn resolve_expr_to_value(&self, expr: &AuraExpr, bindings: &Bindings) -> Option<Value> {
+        match expr {
+            AuraExpr::StateRef(name) => {
+                bindings.get(name).cloned()
+                    .or_else(|| self.bridge.read_state(name).ok())
+            }
+            AuraExpr::FieldAccess { object, field } => {
+                let obj = self.resolve_expr_to_value(object, bindings)?;
+                match obj {
+                    Value::Obj(map) => map.get(field.as_str()),
+                    _ => None,
+                }
+            }
+            AuraExpr::Int(i) => Some(Value::Int(*i as i32)),
+            AuraExpr::Float(f) => Some(Value::Double(*f)),
+            AuraExpr::Bool(b) => Some(Value::Bool(*b)),
+            AuraExpr::Literal(s) => Some(Value::Str(s.as_str().into())),
+            _ => None,
+        }
+    }
+
+    /// Evaluate a condition string against current state (no bindings).
+    fn eval_condition(&self, condition: &str) -> bool {
+        self.eval_condition_with(condition, &Bindings::new())
+    }
+
+    /// Evaluate a condition string against current state with loop variable bindings.
     ///
     /// Supports patterns like:
     /// - `.running == "true"` — state ref compared to string literal
     /// - `.count > 0` — state ref compared to number
-    /// - `.count == 0` — state ref compared to number
+    /// - `.active_id == i` — state ref compared to loop index variable
     /// - `.flag` — bare state ref (truthy check)
-    fn eval_condition(&self, condition: &str) -> bool {
+    fn eval_condition_with(&self, condition: &str, bindings: &Bindings) -> bool {
         let cond = condition.trim();
 
         // Strip leading dot for state ref
@@ -1134,30 +1226,28 @@ impl<'a> AuraViewBuilder<'a> {
         };
 
         // Read state value for lhs
-        let state_val = match self.bridge.read_state(lhs) {
+        let lhs_val = match self.bridge.read_state(lhs) {
             Ok(v) => value_to_display_string(&v),
             Err(_) => return false,
         };
 
+        // Resolve rhs: check loop bindings first, then try as literal
+        let rhs_val = if let Some(val) = bindings.get(rhs) {
+            value_to_display_string(val)
+        } else {
+            rhs.trim_matches('"').to_string()
+        };
+
         // Compare
         match op {
-            "==" => {
-                // Strip quotes from rhs if present
-                let rhs_clean = rhs.trim_matches('"');
-                state_val == rhs_clean
-            }
-            "!=" => {
-                let rhs_clean = rhs.trim_matches('"');
-                state_val != rhs_clean
-            }
+            "==" => lhs_val == rhs_val,
+            "!=" => lhs_val != rhs_val,
             ">" | "<" | ">=" | "<=" => {
-                // Try numeric comparison
-                let lhs_num: f64 = match state_val.parse() {
+                let lhs_num: f64 = match lhs_val.parse() {
                     Ok(n) => n,
                     Err(_) => return false,
                 };
-                let rhs_clean = rhs.trim_matches('"');
-                let rhs_num: f64 = match rhs_clean.parse() {
+                let rhs_num: f64 = match rhs_val.parse() {
                     Ok(n) => n,
                     Err(_) => return false,
                 };
@@ -1178,7 +1268,13 @@ impl<'a> AuraViewBuilder<'a> {
     /// F-strings like `f"Count: ${.count}"` are extracted as `AuraExpr::Literal`
     /// with the template preserved. This method scans for `${.name}` patterns
     /// and substitutes current state values.
+    /// Resolve `${.field}` interpolation patterns in a literal string (no bindings).
     fn resolve_literal_interpolation(&self, s: &str) -> String {
+        self.resolve_literal_interpolation_with(s, &Bindings::new())
+    }
+
+    /// Resolve `${.field}` interpolation patterns with loop bindings support.
+    fn resolve_literal_interpolation_with(&self, s: &str, bindings: &Bindings) -> String {
         if !s.contains("${.") {
             return s.to_string();
         }
@@ -1203,7 +1299,7 @@ impl<'a> AuraViewBuilder<'a> {
                     // Validate field name is alphanumeric/underscore
                     if !field_name.is_empty() && field_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
                         let full_pattern = s[start..end + 1].to_string();
-                        let value = self.read_state_as_string(field_name);
+                        let value = self.read_state_as_string_with(field_name, bindings);
                         replacements.push((full_pattern, value));
                     }
                 }
@@ -1240,14 +1336,24 @@ impl<'a> AuraViewBuilder<'a> {
     // Property extraction helpers
     // ========================================================================
 
-    /// Extract a string property from AuraNode props.
+    /// Extract a string property from AuraNode props (no bindings).
     fn extract_string(
         &self,
         props: &HashMap<String, AuraPropValue>,
         key: &str,
     ) -> Option<String> {
+        self.extract_string_with(props, key, &Bindings::new())
+    }
+
+    /// Extract a string property with loop variable bindings support.
+    fn extract_string_with(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+        bindings: &Bindings,
+    ) -> Option<String> {
         match props.get(key)? {
-            AuraPropValue::Expr(expr) => Some(self.resolve_expr_to_string(expr)),
+            AuraPropValue::Expr(expr) => Some(self.resolve_expr_to_string_with(expr, bindings)),
             AuraPropValue::StyleBinding(_) => None,
         }
     }
@@ -1488,6 +1594,8 @@ mod tests {
                 AuraNode::text("A"),
                 AuraNode::text("B"),
             ],
+            span: None,
+            debug_id: None,
         };
         let view = builder.build(&node);
 
@@ -1507,6 +1615,8 @@ mod tests {
         let builder = AuraViewBuilder::new(&bridge, "Counter");
 
         let node = AuraNode::Element {
+            span: None,
+            debug_id: None,
             tag: "button".to_string(),
             props: HashMap::from([
                 ("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Increment".to_string()))),
@@ -1593,6 +1703,8 @@ mod tests {
             children: vec![
                 AuraNode::text("Content"),
             ],
+            span: None,
+            debug_id: None,
         };
         let view = builder.build(&node);
 

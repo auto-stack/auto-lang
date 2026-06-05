@@ -700,6 +700,8 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
         }
     }
 
@@ -817,6 +819,8 @@ mod tests {
                 ]),
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -824,6 +828,8 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
         };
 
         let comp = DynamicComponent::new(&widget).unwrap();
@@ -998,8 +1004,12 @@ mod tests {
                             }),
                         ]),
                         children: vec![],
+                        span: None,
+                        debug_id: None,
                     },
                 ],
+                span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -1007,6 +1017,8 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
         };
 
         let comp = DynamicComponent::new(&widget).unwrap();
@@ -1065,6 +1077,8 @@ mod tests {
                 ]),
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -1072,6 +1086,8 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
         };
 
         let mut comp = DynamicComponent::new(&widget).unwrap();
@@ -1249,6 +1265,8 @@ mod tests {
                 ]),
                 events: HashMap::new(),
                 children: vec![],
+                span: None,
+                debug_id: None,
             },
             handlers: HashMap::new(),
             props: vec![],
@@ -1256,6 +1274,8 @@ mod tests {
             lifecycle: vec![],
             tick_interval: None,
             handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
         };
 
         comp.reload(&new_widget).unwrap();
