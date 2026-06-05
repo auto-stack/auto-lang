@@ -3292,16 +3292,18 @@ impl DebugRenderCtx {
         };
 
         let (id, span) = if let Some(aura_id) = aura_id {
-            // Use AuraNodeId-based ID
+            // Use AuraNodeId-based ID.
+            // For ForLoop iterations, the same AuraNodeId appears at different paths.
+            // We must make the iced widget ID unique per path to avoid duplicate IDs
+            // which cause iced to suppress rendering of duplicates.
+            let base_id = format!("aura_{}", aura_id.0);
             let span_info = self.span_map.get(&aura_id);
-            let id_str = if let Some(info) = span_info {
-                if let Some(ref user_id) = info.user_id {
-                    format!("aura_{}_{}", aura_id.0, user_id)
-                } else {
-                    format!("aura_{}", aura_id.0)
-                }
+            let id_str = if view_path.len() > 0 {
+                // Include a path hash to ensure uniqueness across ForLoop iterations.
+                // Use counter_val which is guaranteed unique per call.
+                format!("{}_{}", base_id, counter_val)
             } else {
-                format!("aura_{}", aura_id.0)
+                base_id
             };
             let span = span_info.and_then(|info| info.span);
             // Record bidirectional mapping
@@ -3331,9 +3333,10 @@ impl DebugRenderCtx {
         let el: iced::Element<'static, IcedMessage> = if aura_id.is_some()
             && !matches!(kind, "col" | "row" | "container" | "scroll" | "input" | "textarea")
         {
-            let id_str = format!("aura_{}", aura_id.unwrap().0);
+            // Use the unique id (with counter suffix) instead of raw aura_id
+            // to avoid duplicate iced widget IDs from ForLoop iterations.
             container(el)
-                .id(id_str)
+                .id(id.clone())
                 .style(|_: &iced::Theme| container::Style::default())
                 .into()
         } else {

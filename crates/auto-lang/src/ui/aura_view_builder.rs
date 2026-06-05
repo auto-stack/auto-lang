@@ -32,7 +32,7 @@ use std::collections::HashMap;
 
 use auto_val::Value;
 
-use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraEvent, AuraNodeId};
+use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraEvent};
 
 /// Loop variable bindings: variable name → current Value.
 /// Passed through the conversion call chain to resolve `FieldAccess`
@@ -42,7 +42,7 @@ use crate::ui::interpreter::DynamicMessage;
 use crate::ui::vm_bridge::VmBridge;
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::view::View;
-use crate::ui::style::{Style, StyleClass, SizeValue, Color};
+use crate::ui::style::{Style, StyleClass, SizeValue};
 
 // ============================================================================
 // AuraViewBuilder
@@ -123,10 +123,17 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_text_with(text_content, bindings)
             }
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                // Strip leading dot from iterable name (e.g., ".notes" → "notes")
+                let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
                 // Read the iterable array from VmBridge state
-                let array = match self.bridge.read_state(iterable) {
+                let array = match self.bridge.read_state(state_name) {
                     Ok(Value::Array(arr)) => arr,
-                    _ => return View::Empty,
+                    Ok(other) => {
+                        return View::Empty;
+                    }
+                    Err(_) => {
+                        return View::Empty;
+                    }
                 };
 
                 let children: Vec<View<DynamicMessage>> = array.iter().enumerate()
@@ -264,7 +271,9 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_text_with(text_content, bindings)
             }
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
-                let array = match self.bridge.read_state(iterable) {
+                // Strip leading dot from iterable name (e.g., ".notes" → "notes")
+                let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+                let array = match self.bridge.read_state(state_name) {
                     Ok(Value::Array(arr)) => arr,
                     _ => return View::Empty,
                 };
@@ -275,11 +284,16 @@ impl<'a> AuraViewBuilder<'a> {
                         if let Some(idx_var) = index {
                             loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
                         }
+                        // Include iteration index in path to ensure unique debug IDs
+                        // across loop iterations (without this, all iterations produce
+                        // identical paths, causing duplicate iced widget IDs)
                         let views: Vec<View<DynamicMessage>> = body.iter()
                             .enumerate()
                             .filter_map(|(bi, n)| {
-                                path.push(bi);
+                                path.push(i);   // iteration index
+                                path.push(bi);  // body node index
                                 let v = self.convert_node_tracked_with(n, path, id_map, &loop_bindings);
+                                path.pop();
                                 path.pop();
                                 Some(v)
                             })
