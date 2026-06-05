@@ -2272,6 +2272,47 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         state.input_values.remove("InputChanged");
                     }
                 }
+                // Notes app: handle SelectNote:N / NewNote / DeleteNote
+                "SelectNote" => {
+                    if let Some(i) = idx {
+                        let _ = state.component.write_state("active_id", auto_val::Value::Int(i as i32));
+                        let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
+                    }
+                }
+                "NewNote" => {
+                    // Read current notes array, append new note, write back
+                    if let Ok(notes_val) = state.component.read_state("notes") {
+                        if let auto_val::Value::Array(mut arr) = notes_val {
+                            let mut note = auto_val::Obj::new();
+                            note.set("title", auto_val::Value::str("New Note"));
+                            note.set("body", auto_val::Value::str("Start writing..."));
+                            note.set("time", auto_val::Value::str("Just now"));
+                            arr.values.push(auto_val::Value::Obj(note));
+                            let new_len = arr.len() as i32;
+                            let _ = state.component.write_state("notes", auto_val::Value::Array(arr));
+                            let _ = state.component.write_state("active_id", auto_val::Value::Int(new_len - 1));
+                            let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
+                            let _ = state.component.write_state("edit_body", auto_val::Value::str("Start writing..."));
+                            let _ = state.component.write_state("search", auto_val::Value::str(""));
+                        }
+                    }
+                }
+                "DeleteNote" => {
+                    // Read active_id and notes, remove the note at active_id, write back
+                    if let (Ok(notes_val), Ok(active_val)) = (state.component.read_state("notes"), state.component.read_state("active_id")) {
+                        if let auto_val::Value::Array(mut arr) = notes_val {
+                            let active = active_val.as_int() as usize;
+                            if !arr.values.is_empty() {
+                                let del_idx = if active < arr.values.len() { active } else { 0 };
+                                arr.values.remove(del_idx);
+                                let new_active = if arr.values.is_empty() { 0 } else { del_idx.min(arr.values.len() - 1) };
+                                let _ = state.component.write_state("notes", auto_val::Value::Array(arr));
+                                let _ = state.component.write_state("active_id", auto_val::Value::Int(new_active as i32));
+                            }
+                        }
+                    }
+                    let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
+                }
                 _ => {}
             }
         }

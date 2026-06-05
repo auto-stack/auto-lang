@@ -958,7 +958,7 @@ impl<'a> AuraViewBuilder<'a> {
         // Resolve the onclick event handler to a DynamicMessage
         let onclick = events.get("onclick")
             .or_else(|| events.get("click"))
-            .map(|event| self.event_to_message(&event.handler))
+            .map(|event| self.event_to_message_with(event, bindings))
             .unwrap_or_else(|| DynamicMessage::String("click".to_string()));
 
         View::Button {
@@ -1333,11 +1333,41 @@ impl<'a> AuraViewBuilder<'a> {
     // Event helpers
     // ========================================================================
 
-    /// Convert an event handler pattern to a DynamicMessage.
+    /// Convert an event handler pattern to a DynamicMessage (no bindings).
     ///
     /// Patterns like ".Inc", "Msg::Inc", or "Inc" are normalized to a
     /// `DynamicMessage::Typed` with the widget name and extracted handler name.
     fn event_to_message(&self, handler: &str) -> DynamicMessage {
+        self.event_to_message_impl(handler, &Bindings::new())
+    }
+
+    /// Convert an AuraEvent to a DynamicMessage with loop variable bindings.
+    ///
+    /// Resolves event parameters from bindings (e.g., loop variable `i`)
+    /// and encodes integer parameters into the event_name using `name:idx`
+    /// format (e.g., `"SelectNote:2"`), leveraging the existing indexed event
+    /// dispatch in the iced renderer.
+    fn event_to_message_with(&self, event: &AuraEvent, bindings: &Bindings) -> DynamicMessage {
+        let handler_name = extract_handler_name(&event.handler);
+        // Resolve first parameter from bindings (typically a loop index variable)
+        let final_name = if let Some(param_name) = event.params.first() {
+            if let Some(Value::Int(idx)) = bindings.get(param_name) {
+                format!("{}:{}", handler_name, idx)
+            } else {
+                handler_name.to_string()
+            }
+        } else {
+            handler_name.to_string()
+        };
+        DynamicMessage::Typed {
+            widget_name: self.widget_name.clone(),
+            event_name: final_name,
+            args: vec![],
+        }
+    }
+
+    /// Internal: convert handler string to DynamicMessage (used by event_to_message).
+    fn event_to_message_impl(&self, handler: &str, _bindings: &Bindings) -> DynamicMessage {
         let handler_name = extract_handler_name(handler);
         DynamicMessage::Typed {
             widget_name: self.widget_name.clone(),
@@ -1366,8 +1396,12 @@ impl<'a> AuraViewBuilder<'a> {
         key: &str,
         bindings: &Bindings,
     ) -> Option<String> {
-        match props.get(key)? {
-            AuraPropValue::Expr(expr) => Some(self.resolve_expr_to_string_with(expr, bindings)),
+        let prop = props.get(key)?;
+        match prop {
+            AuraPropValue::Expr(expr) => {
+                let result = self.resolve_expr_to_string_with(expr, bindings);
+                Some(result)
+            }
             AuraPropValue::StyleBinding(_) => None,
         }
     }
