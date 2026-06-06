@@ -1,11 +1,12 @@
 widget App {
-    msg Msg { NewNote, DeleteNote, EditNote, SaveEdit, CancelEdit, EditBody, SearchChanged, SelectNote }
+    msg Msg { NewNote, DeleteNote, EditNote, SaveEdit, CancelEdit, EditBody, EditTitle, SearchChanged, SelectNote }
 
     model {
         var search str = ""
         var active_id int = 0
         var editing bool = false
         var edit_body str = ""
+        var edit_title str = ""
         var notes = [
             { title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now" },
             { title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago" },
@@ -44,13 +45,18 @@ widget App {
                     for i, note in .notes {
                         if .active_id == i {
                             col {
-                                text note.title { style: "text-lg font-semibold text-gray-800" }
+                                if .editing == false {
+                                    text note.title { style: "text-lg font-semibold text-gray-800" }
+                                }
+                                if .editing == true {
+                                    input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-gray-800 border-none outline-none w-full focus:ring-0 p-0" }
+                                }
                                 text note.time { style: "text-xs text-gray-400 mt-1" }
                                 if .editing == false {
                                     text note.body { style: "text-gray-700 flex-1 leading-relaxed" }
                                 }
                                 if .editing == true {
-                                    textarea { value: .edit_body, oninput: .EditBody, style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" }
+                                    textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing...", style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" }
                                 }
                                 style: "px-6 pt-6 pb-2 flex-1"
                             }
@@ -83,10 +89,11 @@ widget App {
         }
 
         .NewNote -> {
-            notes.push({ title: "New Note", body: "Start writing...", time: "Just now" })
+            notes.push({ title: "", body: "", time: "Just now" })
             .active_id = notes.len() - 1
             .editing = true
-            .edit_body = "Start writing..."
+            .edit_body = ""
+            .edit_title = ""
             .search = ""
         }
 
@@ -97,6 +104,7 @@ widget App {
 
         .EditNote -> {
             .edit_body = notes[.active_id].body
+            .edit_title = notes[.active_id].title
             .editing = true
         }
 
@@ -104,7 +112,12 @@ widget App {
             .edit_body = .edit_body
         }
 
+        .EditTitle -> {
+            .edit_title = .edit_title
+        }
+
         .SaveEdit -> {
+            notes[.active_id].title = .edit_title
             notes[.active_id].body = .edit_body
             notes[.active_id].time = "Just now"
             .editing = false
