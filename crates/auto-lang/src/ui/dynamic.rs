@@ -498,8 +498,10 @@ impl Component for DynamicComponent {
         };
 
         // Execute handler via VM bytecode closure
-        let _ = self.bridge.call_handler(&event_name, &[]);
-        self.dirty = true;
+        // Only mark dirty if handler was found and executed successfully
+        if self.bridge.call_handler(&event_name, &[]).is_ok() {
+            self.dirty = true;
+        }
     }
 
     /// Render the view by building from the AuraNode template.
@@ -530,12 +532,19 @@ impl DynamicComponent {
             if let Some(state_field) = self.input_state_map.get(event_name) {
                 let value = parse_input_value(text);
                 let _ = self.bridge.write_state(state_field, value);
+                self.dirty = true; // input value changed state
             }
         }
 
         // Run the handler via VM bytecode closure
-        let _ = self.bridge.call_handler(event_name, &[]);
-        self.dirty = true;
+        match self.bridge.call_handler(event_name, &[]) {
+            Ok(()) => self.dirty = true,
+            Err(_) => {
+                // Handler not found (e.g., indexed events like "SelectNote:0"
+                // that have no direct .at handler). Don't set dirty unless
+                // the input_value path above already did.
+            }
+        }
     }
 }
 
@@ -578,7 +587,7 @@ fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, 
     use crate::aura::{AuraNode, AuraPropValue, AuraExpr};
     match node {
         AuraNode::Element { tag, props, events, children, .. } => {
-            if tag == "input" {
+            if tag == "input" || tag == "textarea" {
                 // Find value prop that is a StateRef
                 let state_field = props.get("value").and_then(|v| match v {
                     AuraPropValue::Expr(AuraExpr::StateRef(name)) => Some(name.clone()),

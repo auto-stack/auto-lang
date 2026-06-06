@@ -42,9 +42,9 @@ fn get_textarea_content(key: &str, value: &str) -> &'static text_editor::Content
     let content = map.entry(key.to_string()).or_insert_with(|| {
         Box::leak(Box::new(text_editor::Content::with_text(value)))
     });
-    if content.text() != value {
-        **content = text_editor::Content::with_text(value);
-    }
+    // Always replace content to ensure iced text_editor reflects the latest value.
+    // The text_editor widget may cache its content reference, so we update in-place.
+    **content = text_editor::Content::with_text(value);
     // SAFETY: The leaked Box lives for 'static. We return a shared reference
     // while the Mutex guards exclusive access for mutation.
     unsafe { std::mem::transmute::<&mut text_editor::Content, &'static text_editor::Content>(&mut **content) }
@@ -1694,8 +1694,10 @@ struct DynamicState {
     /// Cached converted view tree (AbstractView<IcedMessage>), reused when view_dirty is false.
     /// Saves O(n) AuraViewBuilder::build + convert_view_messages on idle frames.
     cached_converted_view: std::cell::RefCell<Option<crate::ui::view::View<IcedMessage>>>,
+    /// Cached DebugIdMap from last view_with_debug() call, reused on non-dirty frames.
+    cached_debug_id_map: std::cell::RefCell<Option<crate::ui::debug_id_map::DebugIdMap>>,
     /// Cached rendered iced Element (result of render_dynamic_view).
-    /// Reused when view_dirty is false, avoiding O(n) Element creation per frame.
+    /// Reused when view_dirty is false via take(), preserving iced widget interaction state.
     cached_rendered: std::cell::RefCell<Option<iced::Element<'static, IcedMessage>>>,
     /// Pre-computed syntax highlighting: per-line list of (text, color) spans.
     /// Built once on source load/changed, reused every frame to avoid re-tokenization.
@@ -1825,6 +1827,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             edit_error: std::cell::RefCell::new(None),
             view_dirty: std::cell::RefCell::new(true),
             cached_converted_view: std::cell::RefCell::new(None),
+            cached_debug_id_map: std::cell::RefCell::new(None),
             cached_rendered: std::cell::RefCell::new(None),
             cached_highlighted: std::cell::RefCell::new(None),
             inspector_scroll_id: iced::widget::Id::unique(),
@@ -2142,7 +2145,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                                         let _ = state.component.reload(&widget);
                                         // Invalidate caches since view_template changed
                                         *state.cached_converted_view.borrow_mut() = None;
-                                        *state.cached_rendered.borrow_mut() = None;
+                                        *state.cached_debug_id_map.borrow_mut() = None;
                                         // Rebuild line → AuraNodeId index after hot-reload
                                         {
                                             let span_map = state.component.span_map().clone();
@@ -2199,6 +2202,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
         if let Some(text) = &msg.input_value {
             state.input_values.insert(event_name.clone(), text.clone());
         }
+
         state.component.on_with_input(&event_name, msg.input_value);
 
         // Post-process Lap: record real lap times by shifting lap entries
@@ -2299,6 +2303,54 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         }
                     }
                     let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
+                }
+                "EditNote" => {
+                    // Load current note body into edit_body for editing
+                    if let (Ok(notes_val), Ok(active_val)) = (state.component.read_state("notes"), state.component.read_state("active_id")) {
+                        if let auto_val::Value::Array(ref arr) = notes_val {
+                            let active = active_val.as_int() as usize;
+                            if active < arr.values.len() {
+                                if let auto_val::Value::Obj(ref note) = arr.values[active] {
+                                    let body = note.get("body").map(|v| v.as_str().to_string()).unwrap_or_default();
+                                    let _ = state.component.write_state("edit_body", auto_val::Value::str(&body));
+                                    // Clear stale input_values so patch_input_values won't overwrite
+                                    // the correct edit_body with the previously edited text.
+                                    state.input_values.remove("EditBody");
+                                }
+                            }
+                        }
+                    }
+                    let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
+                }
+                "SaveEdit" => {
+                    // Write edit_body back to notes[active_id].body
+                    if let (Ok(notes_val), Ok(active_val), Ok(edit_body_val)) = (
+                        state.component.read_state("notes"),
+                        state.component.read_state("active_id"),
+                        state.component.read_state("edit_body"),
+                    ) {
+                        if let auto_val::Value::Array(mut arr) = notes_val {
+                            let active = active_val.as_int() as usize;
+                            if active < arr.values.len() {
+                                if let auto_val::Value::Obj(ref mut note) = arr.values[active] {
+                                    note.set("body", edit_body_val.clone());
+                                    // Update time stamp
+                                    note.set("time", auto_val::Value::str("Just now"));
+                                }
+                                let _ = state.component.write_state("notes", auto_val::Value::Array(arr));
+                            }
+                        }
+                    }
+                    let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
+                    let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
+                    // Clear stale input_values so next Edit sees correct note body
+                    state.input_values.remove("EditBody");
+                }
+                "CancelEdit" => {
+                    let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
+                    let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
+                    // Clear stale input_values so next Edit sees correct note body
+                    state.input_values.remove("EditBody");
                 }
                 _ => {}
             }
@@ -2442,35 +2494,24 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         }
     }
 
-    // Fast path: if nothing changed since last frame, return cached Element directly.
-    // All state changes (component state + UI state like hover/select/tab) are tracked
-    // by view_dirty, so when it's false the cached Element is still valid.
-    // CRITICAL: This cache prevents hot_reload_tick (every 500ms) from rebuilding the
-    // widget tree on every tick, which would break iced button hover/press state tracking.
-    {
-        let dirty = *state.view_dirty.borrow();
-        if !dirty {
-            let cached = state.cached_rendered.borrow_mut().take();
-            if let Some(el) = cached {
-                return el;
-            }
-            // Cache empty (shouldn't happen after first frame) — fall through to rebuild
-        }
-    }
-
-    // Full rebuild path: state changed or cache empty.
-    // Build the converted AbstractView tree, render to iced Element, and cache the result.
+    // === View rendering with Element cache ===
     //
-    // Always use view_with_debug() to get the DebugIdMap — MCP snapshot and layout bounds
-    // collection (Plan 282) need it even when DevTools are closed.
-    let (mut view, debug_id_map) = state.component.view_with_debug();
-    let debug_id_map = Some(debug_id_map);
-    inject_todo_list(&mut view, &state.todos, state.component.widget_name());
-    if !state.input_values.is_empty() {
-        patch_input_values(&mut view, &state.input_values);
+    // iced calls view(&self) after each update() and requires owned Element return.
+    // Element doesn't impl Clone, so we use take() to return the cached instance.
+    //
+    // When view_dirty=true: rebuild AbstractView from template → render Element → cache it → take and return.
+    // When view_dirty=false: if cache exists, take and return it directly (preserves button hover/press state).
+    //                         if cache is empty (shouldn't happen normally), rebuild from cached AbstractView.
+
+    let dirty = *state.view_dirty.borrow();
+
+    // Fast path: return cached Element when nothing changed.
+    if !dirty {
+        if let Some(el) = state.cached_rendered.borrow_mut().take() {
+            return el;
+        }
+        // Cache empty — fall through to rebuild (uses cached AbstractView if available)
     }
-    let converted = convert_view_messages(view);
-    *state.cached_converted_view.borrow_mut() = Some(converted.clone());
 
     // Sync console buffer → console_output for DevTools Console tab
     {
@@ -2479,6 +2520,45 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             state.console_output.borrow_mut().extend_from_slice(&buf);
         }
     }
+
+    let (converted, debug_id_map) = if dirty {
+        // Full rebuild: construct AbstractView from template, cache the result.
+        let (mut view, debug_id_map) = state.component.view_with_debug();
+        let debug_id_map = Some(debug_id_map);
+        inject_todo_list(&mut view, &state.todos, state.component.widget_name());
+        if !state.input_values.is_empty() {
+            patch_input_values(&mut view, &state.input_values);
+        }
+        let converted = convert_view_messages(view);
+        *state.cached_converted_view.borrow_mut() = Some(converted.clone());
+        *state.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
+        (converted, debug_id_map)
+    } else {
+        // Cache miss on non-dirty frame: rebuild from cached AbstractView (cheaper than template rebuild)
+        let cached = state.cached_converted_view.borrow();
+        if let Some(ref converted) = *cached {
+            let debug_id_map = state.cached_debug_id_map.borrow().clone();
+            (converted.clone(), debug_id_map)
+        } else {
+            drop(cached);
+            let (mut view, debug_id_map) = state.component.view_with_debug();
+            let debug_id_map = Some(debug_id_map);
+            inject_todo_list(&mut view, &state.todos, state.component.widget_name());
+            if !state.input_values.is_empty() {
+                patch_input_values(&mut view, &state.input_values);
+            }
+            let converted = convert_view_messages(view);
+            *state.cached_converted_view.borrow_mut() = Some(converted.clone());
+            *state.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
+            (converted, debug_id_map)
+        }
+    };
+
+    // Clear view_dirty after consuming the change.
+    // Do this BEFORE rendering so that subscriptions/events arriving during
+    // render processing don't get missed.
+    *state.view_dirty.borrow_mut() = false;
+
 
     let debug_ctx = if let Some(id_map) = debug_id_map {
         let span_map = state.component.span_map().clone();
@@ -2557,15 +2637,6 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             .into()
     };
 
-    // Cache the final Element for reuse on next non-dirty frame and clear dirty.
-    *state.cached_rendered.borrow_mut() = Some(result);
-    *state.view_dirty.borrow_mut() = false;
-
-    // Request layout bounds collection on next update cycle (Plan 282).
-    // DISABLED: setting needs_bounds every frame blocks user events.
-    // Only enable when MCP snapshot/bounds is explicitly requested.
-    // *state.needs_bounds.borrow_mut() = true;
-
     // Pick up pending screenshot request from MCP thread (Plan 285).
     if let Some(ref mcp_handle) = state.mcp_shared {
         if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
@@ -2573,7 +2644,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         }
     }
 
-    // Take from cache and return (iced will call view again next frame).
+    // Cache the Element for reuse on next non-dirty frame, then take and return.
+    // view_dirty was already cleared above.
+    *state.cached_rendered.borrow_mut() = Some(result);
     state.cached_rendered.borrow_mut().take().unwrap()
 }
 
@@ -3163,7 +3236,7 @@ fn apply_edit(state: &mut DynamicState) {
                         *state.source_code.borrow_mut() = Some(new_code);
                         // Invalidate caches since source file changed
                         *state.cached_converted_view.borrow_mut() = None;
-                        *state.cached_rendered.borrow_mut() = None;
+                        *state.cached_debug_id_map.borrow_mut() = None;
                         // Rebuild syntax highlight cache after edit
                         if let Some(ref c) = *state.source_code.borrow() {
                             *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
