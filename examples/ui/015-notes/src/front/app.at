@@ -93,6 +93,7 @@ widget App {
         }
 
         .EditNote -> {
+            .edit_body = notes[.active_id].body
             .editing = true
         }
 
