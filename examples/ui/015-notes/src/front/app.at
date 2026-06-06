@@ -83,6 +83,8 @@ widget App {
         }
 
         .NewNote -> {
+            notes.push({ title: "New Note", body: "Start writing...", time: "Just now" })
+            .active_id = notes.len() - 1
             .editing = true
             .edit_body = "Start writing..."
             .search = ""
