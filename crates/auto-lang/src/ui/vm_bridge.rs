@@ -345,6 +345,57 @@ impl VmBridge {
             .map_err(|e| VmBridgeError::InvalidState(e))
     }
 
+    /// Read a state field that holds an array_id and return the actual Vec<Value> from arrays DashMap.
+    ///
+    /// When the state field is `Value::Array`, returns its inner Vec directly.
+    /// When it's `Value::Int(id)` (array_id from `[...]` literal), reads from vm.arrays.
+    /// Plan 289: Needed because `[...]` literals store array_id, not Value::Array, in state.
+    pub fn read_state_as_vec(&self, field_name: &str) -> Result<Vec<Value>> {
+        let val = self.read_state(field_name)?;
+        match val {
+            Value::Array(arr) => Ok(arr.values),
+            Value::Int(id) if id >= 2000000 => {
+                let arr_id = id as u64;
+                self.vm.arrays.get(&arr_id)
+                    .map(|r| r.read().unwrap().clone())
+                    .ok_or_else(|| VmBridgeError::InvalidState(
+                        format!("array_id {} not found in arrays DashMap", arr_id)
+                    ))
+            }
+            other => Err(VmBridgeError::InvalidState(
+                format!("Expected array for field '{}', got {:?}", field_name, other)
+            )),
+        }
+    }
+
+    /// Write a Vec<Value> back to a state field that holds an array reference.
+    ///
+    /// When the state field is `Value::Array`, writes back as Value::Array.
+    /// When it's `Value::Int(id)` (array_id from `[...]` literal), writes to vm.arrays directly.
+    /// Plan 289: Mirror of read_state_as_vec for write operations.
+    pub fn write_state_vec(&mut self, field_name: &str, values: Vec<Value>) -> Result<()> {
+        let val = self.read_state(field_name)?;
+        match val {
+            Value::Array(_) => {
+                self.write_state(field_name, Value::Array(auto_val::Array { values }))
+            }
+            Value::Int(id) if id >= 2000000 => {
+                let arr_id = id as u64;
+                if let Some(arr_ref) = self.vm.arrays.get(&arr_id) {
+                    *arr_ref.write().unwrap() = values;
+                    Ok(())
+                } else {
+                    Err(VmBridgeError::InvalidState(
+                        format!("array_id {} not found in arrays DashMap", arr_id)
+                    ))
+                }
+            }
+            other => Err(VmBridgeError::InvalidState(
+                format!("Expected array for field '{}', got {:?}", field_name, other)
+            )),
+        }
+    }
+
     /// Read all state fields as a name -> value map.
     ///
     /// Useful for bulk state reads during rendering.

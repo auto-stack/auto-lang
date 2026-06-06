@@ -2271,52 +2271,56 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     }
                 }
                 "NewNote" => {
-                    // Read current notes array, append new note, write back
-                    if let Ok(notes_val) = state.component.read_state("notes") {
-                        if let auto_val::Value::Array(mut arr) = notes_val {
-                            let mut note = auto_val::Obj::new();
-                            note.set("title", auto_val::Value::str("New Note"));
-                            note.set("body", auto_val::Value::str("Start writing..."));
-                            note.set("time", auto_val::Value::str("Just now"));
-                            arr.values.push(auto_val::Value::Obj(note));
-                            let new_len = arr.len() as i32;
-                            let _ = state.component.write_state("notes", auto_val::Value::Array(arr));
-                            let _ = state.component.write_state("active_id", auto_val::Value::Int(new_len - 1));
-                            let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
-                            let _ = state.component.write_state("edit_body", auto_val::Value::str("Start writing..."));
-                            let _ = state.component.write_state("search", auto_val::Value::str(""));
-                        }
+                    // Read current notes, append new note, write back
+                    // Plan 289: Use read_state_as_vec/write_state_vec to handle both
+                    // Value::Array and Value::Int(array_id) from [...] literals
+                    if let Ok(mut notes) = state.component.read_state_as_vec("notes") {
+                        let mut note = auto_val::Obj::new();
+                        note.set("title", auto_val::Value::str("New Note"));
+                        note.set("body", auto_val::Value::str("Start writing..."));
+                        note.set("time", auto_val::Value::str("Just now"));
+                        notes.push(auto_val::Value::Obj(note));
+                        let new_len = notes.len() as i32;
+                        let _ = state.component.write_state_vec("notes", notes);
+                        let _ = state.component.write_state("active_id", auto_val::Value::Int(new_len - 1));
+                        let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
+                        let _ = state.component.write_state("edit_body", auto_val::Value::str("Start writing..."));
+                        let _ = state.component.write_state("search", auto_val::Value::str(""));
                     }
                 }
                 "DeleteNote" => {
                     // Read active_id and notes, remove the note at active_id, write back
-                    if let (Ok(notes_val), Ok(active_val)) = (state.component.read_state("notes"), state.component.read_state("active_id")) {
-                        if let auto_val::Value::Array(mut arr) = notes_val {
-                            let active = active_val.as_int() as usize;
-                            if !arr.values.is_empty() {
-                                let del_idx = if active < arr.values.len() { active } else { 0 };
-                                arr.values.remove(del_idx);
-                                let new_active = if arr.values.is_empty() { 0 } else { del_idx.min(arr.values.len() - 1) };
-                                let _ = state.component.write_state("notes", auto_val::Value::Array(arr));
-                                let _ = state.component.write_state("active_id", auto_val::Value::Int(new_active as i32));
-                            }
+                    // Plan 289: Use read_state_as_vec/write_state_vec to handle both
+                    // Value::Array and Value::Int(array_id) from [...] literals
+                    if let (Ok(mut notes), Ok(active_val)) = (
+                        state.component.read_state_as_vec("notes"),
+                        state.component.read_state("active_id"),
+                    ) {
+                        let active = active_val.as_int() as usize;
+                        if !notes.is_empty() {
+                            let del_idx = if active < notes.len() { active } else { 0 };
+                            notes.remove(del_idx);
+                            let new_active = if notes.is_empty() { 0 } else { del_idx.min(notes.len() - 1) };
+                            let _ = state.component.write_state_vec("notes", notes);
+                            let _ = state.component.write_state("active_id", auto_val::Value::Int(new_active as i32));
                         }
                     }
                     let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
                 }
                 "EditNote" => {
                     // Load current note body into edit_body for editing
-                    if let (Ok(notes_val), Ok(active_val)) = (state.component.read_state("notes"), state.component.read_state("active_id")) {
-                        if let auto_val::Value::Array(ref arr) = notes_val {
-                            let active = active_val.as_int() as usize;
-                            if active < arr.values.len() {
-                                if let auto_val::Value::Obj(ref note) = arr.values[active] {
-                                    let body = note.get("body").map(|v| v.as_str().to_string()).unwrap_or_default();
-                                    let _ = state.component.write_state("edit_body", auto_val::Value::str(&body));
-                                    // Clear stale input_values so patch_input_values won't overwrite
-                                    // the correct edit_body with the previously edited text.
-                                    state.input_values.remove("EditBody");
-                                }
+                    if let (Ok(notes), Ok(active_val)) = (
+                        state.component.read_state_as_vec("notes"),
+                        state.component.read_state("active_id"),
+                    ) {
+                        let active = active_val.as_int() as usize;
+                        if active < notes.len() {
+                            if let auto_val::Value::Obj(ref note) = notes[active] {
+                                let body = note.get("body").map(|v| v.as_str().to_string()).unwrap_or_default();
+                                let _ = state.component.write_state("edit_body", auto_val::Value::str(&body));
+                                // Clear stale input_values so patch_input_values won't overwrite
+                                // the correct edit_body with the previously edited text.
+                                state.input_values.remove("EditBody");
                             }
                         }
                     }
@@ -2324,21 +2328,19 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 }
                 "SaveEdit" => {
                     // Write edit_body back to notes[active_id].body
-                    if let (Ok(notes_val), Ok(active_val), Ok(edit_body_val)) = (
-                        state.component.read_state("notes"),
+                    if let (Ok(mut notes), Ok(active_val), Ok(edit_body_val)) = (
+                        state.component.read_state_as_vec("notes"),
                         state.component.read_state("active_id"),
                         state.component.read_state("edit_body"),
                     ) {
-                        if let auto_val::Value::Array(mut arr) = notes_val {
-                            let active = active_val.as_int() as usize;
-                            if active < arr.values.len() {
-                                if let auto_val::Value::Obj(ref mut note) = arr.values[active] {
-                                    note.set("body", edit_body_val.clone());
-                                    // Update time stamp
-                                    note.set("time", auto_val::Value::str("Just now"));
-                                }
-                                let _ = state.component.write_state("notes", auto_val::Value::Array(arr));
+                        let active = active_val.as_int() as usize;
+                        if active < notes.len() {
+                            if let auto_val::Value::Obj(ref mut note) = notes[active] {
+                                note.set("body", edit_body_val.clone());
+                                // Update time stamp
+                                note.set("time", auto_val::Value::str("Just now"));
                             }
+                            let _ = state.component.write_state_vec("notes", notes);
                         }
                     }
                     let _ = state.component.write_state("editing", auto_val::Value::Bool(false));

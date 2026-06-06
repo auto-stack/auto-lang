@@ -228,6 +228,26 @@ impl DynamicComponent {
         Ok(())
     }
 
+    /// Read a state field that holds an array, returning the actual Vec<Value>.
+    /// Handles both Value::Array and Value::Int(array_id) from [...] literals.
+    /// Plan 289: Needed because [...] literals store array_id in state.
+    pub fn read_state_as_vec(&self, field_name: &str) -> Result<Vec<auto_val::Value>, String> {
+        self.bridge
+            .read_state_as_vec(field_name)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Write a Vec<Value> back to a state field that holds an array reference.
+    /// Handles both Value::Array and Value::Int(array_id) from [...] literals.
+    /// Plan 289: Mirror of read_state_as_vec for write operations.
+    pub fn write_state_vec(&mut self, field_name: &str, values: Vec<auto_val::Value>) -> Result<(), String> {
+        self.bridge
+            .write_state_vec(field_name, values)
+            .map_err(|e| e.to_string())?;
+        self.dirty = true;
+        Ok(())
+    }
+
     /// Check if the component needs re-rendering.
     ///
     /// Returns `true` after `on()` processes a message or `write_state()` is called.
