@@ -490,7 +490,15 @@ fn transpile_assign_target(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) 
                     return;
                 }
             }
-            delegate_expr(expr, ctx, out);
+            // Handle nested state ref: notes[.active_id].body → notes.value[active_id.value].body
+            transpile_expr(obj, ctx, out);
+            write!(out, ".{}", field.as_str()).ok();
+        }
+        Expr::Index(arr, idx) => {
+            transpile_expr(arr, ctx, out);
+            write!(out, "[").ok();
+            transpile_expr(idx, ctx, out);
+            write!(out, "]").ok();
         }
         Expr::Ident(name) => {
             if ctx.is_state(name.as_str()) {
