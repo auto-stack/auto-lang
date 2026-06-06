@@ -89,6 +89,7 @@ widget App {
         }
 
         .DeleteNote -> {
+            notes.remove(.active_id)
             .editing = false
         }
 

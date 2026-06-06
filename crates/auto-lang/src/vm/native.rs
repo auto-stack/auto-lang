@@ -1118,17 +1118,27 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Push an element to the end of the list.
 /// Stack: list_id, elem -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
+// Plan 289: Added arrays DashMap fallback for Value::Array literals
 pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
     let elem = task.ram.pop_i32();
     let list_id = task.ram.pop_i32() as u64;
 
+    // First try heap_objects (ListData<i32> from List.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             list.push(elem);
+            task.ram.push_i32(0);
+            return Ok(());
         }
+    }
+
+    // Fallback: arrays DashMap (Vec<Value> from [...] literals)
+    if let Some(arr_ref) = vm.arrays.get(&list_id) {
+        let mut arr = arr_ref.write().unwrap();
+        arr.push(Value::Int(elem));
     }
 
     // Return success (0)
@@ -1139,16 +1149,27 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Pop an element from the end of the list.
 /// Stack: list_id -> elem
 // Plan 077 Phase 5: Updated to use unified registry
+// Plan 289: Added arrays DashMap fallback for Value::Array literals
 pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    
+
     let list_id = task.ram.pop_i32() as u64;
 
+    // First try heap_objects (ListData<i32> from List.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             let elem = list.pop().unwrap_or(0);
             task.ram.push_i32(elem);
+            return Ok(());
+        }
+    }
+
+    // Fallback: arrays DashMap (Vec<Value> from [...] literals)
+    if let Some(arr_ref) = vm.arrays.get(&list_id) {
+        let mut arr = arr_ref.write().unwrap();
+        if let Some(val) = arr.pop() {
+            task.ram.push_i32(val.as_int());
             return Ok(());
         }
     }
@@ -1161,17 +1182,26 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Get the length of the list.
 /// Stack: list_id -> len
 // Plan 077 Phase 5: Updated to use unified registry
+// Plan 289: Added arrays DashMap fallback for Value::Array literals
 pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
     let list_id = task.ram.pop_i32() as u64;
 
+    // First try heap_objects (ListData<i32> from List.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
         let guard = obj.read().unwrap();
         if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
             task.ram.push_i32(list.len() as i32);
             return Ok(());
         }
+    }
+
+    // Fallback: arrays DashMap (Vec<Value> from [...] literals)
+    if let Some(arr_ref) = vm.arrays.get(&list_id) {
+        let arr = arr_ref.read().unwrap();
+        task.ram.push_i32(arr.len() as i32);
+        return Ok(());
     }
 
     // Invalid list_id
@@ -1311,18 +1341,29 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Insert element at index.
 /// Stack: list_id, index, elem -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
+// Plan 289: Added arrays DashMap fallback for Value::Array literals
 pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    
+
     let elem = task.ram.pop_i32();
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
+    // First try heap_objects (ListData<i32> from List.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             list.insert(index, elem);
+            task.ram.push_i32(0);
+            return Ok(());
         }
+    }
+
+    // Fallback: arrays DashMap (Vec<Value> from [...] literals)
+    if let Some(arr_ref) = vm.arrays.get(&list_id) {
+        let mut arr = arr_ref.write().unwrap();
+        let pos = index.min(arr.len());
+        arr.insert(pos, Value::Int(elem));
     }
 
     // Return success (0)
@@ -1333,12 +1374,14 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Remove element at index and return it.
 /// Stack: list_id, index -> elem
 // Plan 077 Phase 5: Updated to use unified registry
+// Plan 289: Added arrays DashMap fallback for Value::Array literals
 pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    
+
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
+    // First try heap_objects (ListData<i32> from List.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
@@ -1346,6 +1389,16 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
                 task.ram.push_i32(elem);
                 return Ok(());
             }
+        }
+    }
+
+    // Fallback: arrays DashMap (Vec<Value> from [...] literals)
+    if let Some(arr_ref) = vm.arrays.get(&list_id) {
+        let mut arr = arr_ref.write().unwrap();
+        if index < arr.len() {
+            let val = arr.remove(index);
+            task.ram.push_i32(val.as_int());
+            return Ok(());
         }
     }
 

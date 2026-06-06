@@ -5006,6 +5006,201 @@ impl AutoVM {
                                     }
                                 }
                             }
+                            "push" => {
+                                // Push element to end of List (arrays DashMap)
+                                #[cfg(feature = "nanbox")]
+                                let arr_key = if auto_val::is_object(receiver_nv) {
+                                    auto_val::decode_object(receiver_nv) as u64
+                                } else if auto_val::is_i32(receiver_nv) {
+                                    auto_val::decode_i32(receiver_nv) as u64
+                                } else {
+                                    0u64
+                                };
+                                #[cfg(not(feature = "nanbox"))]
+                                let arr_key = receiver as u64;
+                                // Pop the element arg
+                                #[cfg(feature = "nanbox")]
+                                let elem_nv = task.ram.pop_nv();
+                                #[cfg(not(feature = "nanbox"))]
+                                let elem_bits = task.ram.pop_i32();
+                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
+                                    let mut arr = arr_ref.write().unwrap();
+                                    #[cfg(feature = "nanbox")]
+                                    {
+                                        let value = if auto_val::is_i32(elem_nv) {
+                                            auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                        } else if auto_val::is_object(elem_nv) {
+                                            auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(elem_nv) as usize })
+                                        } else if auto_val::is_string(elem_nv) {
+                                            let idx = auto_val::decode_string(elem_nv) as usize;
+                                            let bytes = self.strings.read().unwrap().get(idx).cloned().unwrap_or_default();
+                                            auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
+                                        } else if auto_val::is_bool(elem_nv) {
+                                            auto_val::Value::Bool(auto_val::decode_bool(elem_nv))
+                                        } else if auto_val::is_f64(elem_nv) {
+                                            auto_val::Value::Double(auto_val::decode_f64(elem_nv))
+                                        } else if auto_val::is_f32(elem_nv) {
+                                            auto_val::Value::Float(auto_val::decode_f32(elem_nv) as f64)
+                                        } else if auto_val::is_null(elem_nv) {
+                                            auto_val::Value::Nil
+                                        } else {
+                                            auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                        };
+                                        arr.push(value);
+                                    }
+                                    #[cfg(not(feature = "nanbox"))]
+                                    {
+                                        let value = if elem_bits >= 2000000 {
+                                            // Array or object reference
+                                            if elem_bits >= 3000000 {
+                                                auto_val::Value::VmRef(auto_val::VmRef { id: (elem_bits - 3000000) as usize })
+                                            } else if elem_bits >= 2000000 {
+                                                auto_val::Value::VmRef(auto_val::VmRef { id: (elem_bits - 2000000) as usize })
+                                            } else {
+                                                auto_val::Value::Int(elem_bits)
+                                            }
+                                        } else if elem_bits >= 1000000 {
+                                            auto_val::Value::VmRef(auto_val::VmRef { id: elem_bits as usize })
+                                        } else if elem_bits < 0 && elem_bits != -2147483647 {
+                                            // String index (encoded as negative)
+                                            let str_idx = (-(elem_bits + 1)) as usize;
+                                            let bytes = self.strings.read().unwrap().get(str_idx).cloned().unwrap_or_default();
+                                            auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
+                                        } else if elem_bits != -2147483647 {
+                                            auto_val::Value::Int(elem_bits)
+                                        } else {
+                                            auto_val::Value::Nil
+                                        };
+                                        arr.push(value);
+                                    }
+                                } else {
+                                }
+                                // Pop receiver, push 0 (void)
+                                #[cfg(feature = "nanbox")]
+                                { task.ram.pop_nv(); task.ram.push_i32(0); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { task.ram.pop_i32(); task.ram.push_i32(0); }
+                            }
+                            "remove" => {
+                                // Remove element at index from List (arrays DashMap)
+                                #[cfg(feature = "nanbox")]
+                                let arr_key = if auto_val::is_object(receiver_nv) {
+                                    auto_val::decode_object(receiver_nv) as u64
+                                } else if auto_val::is_i32(receiver_nv) {
+                                    auto_val::decode_i32(receiver_nv) as u64
+                                } else {
+                                    0u64
+                                };
+                                #[cfg(not(feature = "nanbox"))]
+                                let arr_key = receiver as u64;
+                                // Pop the index arg
+                                #[cfg(feature = "nanbox")]
+                                let index = auto_val::decode_i32(task.ram.pop_nv()) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let index = task.ram.pop_i32() as usize;
+                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
+                                    let mut arr = arr_ref.write().unwrap();
+                                    if index < arr.len() {
+                                        arr.remove(index);
+                                    }
+                                }
+                                // Pop receiver, push 0 (void)
+                                #[cfg(feature = "nanbox")]
+                                { task.ram.pop_nv(); task.ram.push_i32(0); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { task.ram.pop_i32(); task.ram.push_i32(0); }
+                            }
+                            "pop" => {
+                                // Pop last element from List (arrays DashMap)
+                                #[cfg(feature = "nanbox")]
+                                let arr_key = if auto_val::is_object(receiver_nv) {
+                                    auto_val::decode_object(receiver_nv) as u64
+                                } else if auto_val::is_i32(receiver_nv) {
+                                    auto_val::decode_i32(receiver_nv) as u64
+                                } else {
+                                    0u64
+                                };
+                                #[cfg(not(feature = "nanbox"))]
+                                let arr_key = receiver as u64;
+                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
+                                    let mut arr = arr_ref.write().unwrap();
+                                    let _ = arr.pop();
+                                }
+                                // Pop receiver, push 0 (void)
+                                #[cfg(feature = "nanbox")]
+                                { task.ram.pop_nv(); task.ram.push_i32(0); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { task.ram.pop_i32(); task.ram.push_i32(0); }
+                            }
+                            "insert" => {
+                                // Insert element at index in List (arrays DashMap)
+                                #[cfg(feature = "nanbox")]
+                                let arr_key = if auto_val::is_object(receiver_nv) {
+                                    auto_val::decode_object(receiver_nv) as u64
+                                } else if auto_val::is_i32(receiver_nv) {
+                                    auto_val::decode_i32(receiver_nv) as u64
+                                } else {
+                                    0u64
+                                };
+                                #[cfg(not(feature = "nanbox"))]
+                                let arr_key = receiver as u64;
+                                // Stack: [..., receiver, index, elem]
+                                #[cfg(feature = "nanbox")]
+                                let elem_nv = task.ram.pop_nv();
+                                #[cfg(not(feature = "nanbox"))]
+                                let elem_bits = task.ram.pop_i32();
+                                #[cfg(feature = "nanbox")]
+                                let index = auto_val::decode_i32(task.ram.pop_nv()) as usize;
+                                #[cfg(not(feature = "nanbox"))]
+                                let index = task.ram.pop_i32() as usize;
+                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
+                                    let mut arr = arr_ref.write().unwrap();
+                                    let pos = index.min(arr.len());
+                                    #[cfg(feature = "nanbox")]
+                                    {
+                                        let value = if auto_val::is_i32(elem_nv) {
+                                            auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                        } else if auto_val::is_object(elem_nv) {
+                                            auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(elem_nv) as usize })
+                                        } else if auto_val::is_string(elem_nv) {
+                                            let idx = auto_val::decode_string(elem_nv) as usize;
+                                            let bytes = self.strings.read().unwrap().get(idx).cloned().unwrap_or_default();
+                                            auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
+                                        } else if auto_val::is_bool(elem_nv) {
+                                            auto_val::Value::Bool(auto_val::decode_bool(elem_nv))
+                                        } else if auto_val::is_f64(elem_nv) {
+                                            auto_val::Value::Double(auto_val::decode_f64(elem_nv))
+                                        } else if auto_val::is_f32(elem_nv) {
+                                            auto_val::Value::Float(auto_val::decode_f32(elem_nv) as f64)
+                                        } else if auto_val::is_null(elem_nv) {
+                                            auto_val::Value::Nil
+                                        } else {
+                                            auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                        };
+                                        arr.insert(pos, value);
+                                    }
+                                    #[cfg(not(feature = "nanbox"))]
+                                    {
+                                        let value = if elem_bits >= 1000000 {
+                                            auto_val::Value::VmRef(auto_val::VmRef { id: elem_bits as usize })
+                                        } else if elem_bits < 0 && elem_bits != -2147483647 {
+                                            let str_idx = (-(elem_bits + 1)) as usize;
+                                            let bytes = self.strings.read().unwrap().get(str_idx).cloned().unwrap_or_default();
+                                            auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
+                                        } else if elem_bits != -2147483647 {
+                                            auto_val::Value::Int(elem_bits)
+                                        } else {
+                                            auto_val::Value::Nil
+                                        };
+                                        arr.insert(pos, value);
+                                    }
+                                }
+                                // Pop receiver, push 0 (void)
+                                #[cfg(feature = "nanbox")]
+                                { task.ram.pop_nv(); task.ram.push_i32(0); }
+                                #[cfg(not(feature = "nanbox"))]
+                                { task.ram.pop_i32(); task.ram.push_i32(0); }
+                            }
                             "sort" | "dedup" | "reverse" => {
                                 // In-place sort/dedup/reverse of List
                                 #[cfg(feature = "nanbox")]

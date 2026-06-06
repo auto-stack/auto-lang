@@ -294,6 +294,18 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             write!(out, ".length").ok();
                             return;
                         }
+                        "remove" => {
+                            // AutoLang notes.remove(idx) → TypeScript notes.value.splice(idx, 1)
+                            transpile_expr(object, ctx, out);
+                            write!(out, ".splice(").ok();
+                            if let Some(first_arg) = call.args.args.first() {
+                                transpile_expr(&first_arg.get_expr(), ctx, out);
+                            } else {
+                                write!(out, "0").ok();
+                            }
+                            write!(out, ", 1)").ok();
+                            return;
+                        }
                         _ => {}
                     }
                     transpile_expr(object, ctx, out);
