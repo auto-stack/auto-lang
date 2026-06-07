@@ -847,6 +847,14 @@ pub struct VueGenerator {
     /// Names of known sub-widgets in the same project (e.g. "Sidebar", "EditorPanel")
     /// When a tag matches one of these, skip shadcn component mapping and treat as custom component
     known_sub_widgets: HashSet<String>,
+
+    /// Current for-loop variable name (e.g., "note") — used to pass loop var as event arg
+    /// When inside a `for note in .notes { ... }`, this is set to Some("note")
+    current_loop_var: Option<String>,
+
+    /// Handlers that need a loop-id parameter (e.g., "SelectNote" needs `id: any`)
+    /// Populated during template generation, consumed during script generation
+    loop_param_handlers: HashSet<String>,
 }
 
 /// Data for generating interactive preview cards
@@ -903,6 +911,8 @@ impl VueGenerator {
             use_theme_toggle: false,
             use_curve_type: false,
             known_sub_widgets: HashSet::new(),
+            current_loop_var: None,
+            loop_param_handlers: HashSet::new(),
         }
     }
 
@@ -954,6 +964,8 @@ impl VueGenerator {
         self.component_refs.clear();
         self.lucide_icons.clear();
         self.wrapper_classes.clear();
+        self.current_loop_var = None;
+        self.loop_param_handlers.clear();
         self.shadcn_components_used.clear();
         self.previewcard_counter = 0;
         self.previewcard_data.clear();
@@ -1365,17 +1377,21 @@ impl VueGenerator {
                 continue;
             }
             generated_handlers.insert(handler_name.clone());
-            // Check if this handler has typed params
+
+            // Build params: check for loop-param handlers first, then user-defined params
             let pattern_key = format!(".{}", handler_name);
-            let params_str = widget.handler_params.get(&pattern_key)
-                .map(|params| {
-                    // handler_params already contains only parameter names (types filtered by parser)
-                    let param_names: Vec<String> = params.iter()
-                        .map(|p| format!("{}: any", p))
-                        .collect();
-                    param_names.join(", ")
-                })
-                .unwrap_or_default();
+            let params_str = if self.loop_param_handlers.contains(handler_name) {
+                "id: any".to_string()
+            } else {
+                widget.handler_params.get(&pattern_key)
+                    .map(|params| {
+                        let param_names: Vec<String> = params.iter()
+                            .map(|p| format!("{}: any", p))
+                            .collect();
+                        param_names.join(", ")
+                    })
+                    .unwrap_or_default()
+            };
 
             let async_kw = if *is_async { "async " } else { "" };
             let return_type = if self.use_typescript {
@@ -1383,7 +1399,22 @@ impl VueGenerator {
             } else {
                 ""
             };
-            if handler_body.is_empty() {
+
+            // For loop-param handlers with empty body, auto-generate active_id assignment
+            let auto_body = if self.loop_param_handlers.contains(handler_name) && handler_body.is_empty() {
+                // Try to find a state variable that looks like an active_id selector
+                if let Some(target_var) = self.find_active_id_var(handler_name) {
+                    Some(format!("{}.value = id", target_var))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let Some(ref body) = auto_body {
+                script.push_str(&format!("{}function {}({}){} {{\n  {}\n}}\n\n", async_kw, handler_name, params_str, return_type, body));
+            } else if handler_body.is_empty() {
                 script.push_str(&format!("{}function {}({}){} {{\n  // TODO\n}}\n\n", async_kw, handler_name, params_str, return_type));
             } else {
                 script.push_str(&format!("{}function {}({}){} {{\n  {}\n}}\n\n", async_kw, handler_name, params_str, return_type, handler_body));
@@ -1396,7 +1427,26 @@ impl VueGenerator {
                 continue;
             }
             let return_type = if self.use_typescript { ": void" } else { "" };
-            script.push_str(&format!("function {}(){} {{\n  // TODO: handler not defined in on-block\n}}\n\n", handler_name, return_type));
+            // Check if this stub needs loop-param
+            let params_str = if self.loop_param_handlers.contains(handler_name) {
+                "id: any".to_string()
+            } else {
+                String::new()
+            };
+            let auto_body = if self.loop_param_handlers.contains(handler_name) {
+                if let Some(target_var) = self.find_active_id_var(handler_name) {
+                    Some(format!("{}.value = id", target_var))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(body) = auto_body {
+                script.push_str(&format!("function {}({}){} {{\n  {}\n}}\n\n", handler_name, params_str, return_type, body));
+            } else {
+                script.push_str(&format!("function {}({}){} {{\n  // TODO: handler not defined in on-block\n}}\n\n", handler_name, params_str, return_type));
+            }
         }
 
         // Generate timer/tick mechanism (setInterval + onUnmounted cleanup)
@@ -1719,8 +1769,13 @@ impl VueGenerator {
                     // Event handlers
                     for (event, aura_event) in events {
                         let vue_event = self.auto_event_to_vue(event);
-                        let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                        let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
+                        // If inside a for-loop, pass the loop variable's .id as argument
+                        if let Some(ref loop_var) = self.current_loop_var {
+                            handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                            self.loop_param_handlers.insert(handler_name.clone());
+                        }
                         self.used_handlers.insert(handler_name);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                     }
@@ -1744,7 +1799,7 @@ impl VueGenerator {
 
                 // Build attributes
                 let (attrs, text_content, generated_children) = if is_shadcn_component {
-                    // Use shadcn-specific attribute generation
+                    // Use shadcn-specific attribute generation (includes event handling)
                     let (shadcn_attrs, slot_content, slot_children) = self.generate_shadcn_attrs(tag, props, events);
                     (shadcn_attrs, slot_content, slot_children)
                 } else {
@@ -1811,9 +1866,14 @@ impl VueGenerator {
                     // Event handlers
                     for (event, aura_event) in events {
                         let vue_event = self.auto_event_to_vue(event);
-                        let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                        let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                         // Track used handler (without params for matching)
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
+                        // If inside a for-loop, pass the loop variable's .id as argument (e.g., SelectNote(note.id))
+                        if let Some(ref loop_var) = self.current_loop_var {
+                            handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                            self.loop_param_handlers.insert(handler_name.clone());
+                        }
                         self.used_handlers.insert(handler_name);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                     }
@@ -1903,20 +1963,34 @@ impl VueGenerator {
                     format!("v-for=\"{} in {}\"", var, iterable.trim_start_matches('.'))
                 };
 
+                // Set loop variable context so child events can pass it as arg
+                let prev_loop_var = self.current_loop_var.clone();
+                self.current_loop_var = Some(var.clone());
+
                 // If body has a single Element or Component, put v-for directly on it
                 // to avoid <template> scoping issues with vue-tsc
-                if body.len() == 1 {
+                let result = if body.len() == 1 {
                     match &body[0] {
                         AuraNode::Element { .. } | AuraNode::Component { .. } => {
                             let child_html = self.node_to_html(&body[0], indent)?;
                             if let Some(gt_pos) = child_html.find('>') {
                                 let mut result = child_html;
                                 result.insert_str(gt_pos, &format!(" {}", v_for));
-                                return Ok(result);
+                                Some(Ok(result))
+                            } else {
+                                None
                             }
                         }
-                        _ => {}
+                        _ => None,
                     }
+                } else {
+                    None
+                };
+
+                self.current_loop_var = prev_loop_var.clone();
+
+                if let Some(r) = result {
+                    return r;
                 }
 
                 // Fallback: wrap body in a div with v-for
@@ -1924,6 +1998,7 @@ impl VueGenerator {
                 for child in body {
                     body_html.push_str(&self.node_to_html(child, indent + 1)?);
                 }
+                self.current_loop_var = prev_loop_var;
                 Ok(format!("{}<div {}>\n{}{}</div>\n", ind, v_for, body_html, ind))
             }
 
@@ -6745,9 +6820,14 @@ impl VueGenerator {
         // Add event handlers
         for (event, aura_event) in events {
             let vue_event = self.shadcn_event_to_vue(tag, event);
-            let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
             // Track used handler (without params for matching)
             let handler_name = self.handler_to_function_call(&aura_event.handler);
+            // If inside a for-loop, pass the loop variable's .id as argument (e.g., SelectNote(note.id))
+            if let Some(ref loop_var) = self.current_loop_var {
+                handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                self.loop_param_handlers.insert(handler_name.clone());
+            }
             self.used_handlers.insert(handler_name);
             attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
         }
@@ -6852,6 +6932,18 @@ impl VueGenerator {
         } else {
             format!("on{}", handler)
         }
+    }
+
+    /// Find the state variable that likely represents the "active id" for a given handler.
+    /// Heuristic: looks for state vars ending with "_id" (e.g., "active_id" for "SelectNote")
+    fn find_active_id_var(&self, _handler_name: &str) -> Option<String> {
+        // Look for a state variable ending with "_id"
+        for name in &self.state_names {
+            if name.ends_with("_id") {
+                return Some(name.clone());
+            }
+        }
+        None
     }
 
     /// Convert handler to Vue function call with parameters
