@@ -1,0 +1,23 @@
+widget NoteItem(note: str, is_active: bool) {
+    msg Msg { Select, Delete }
+
+    view {
+        button "" {
+            col {
+                text .note.title { style: "text-sm font-semibold truncate" }
+                text .note.body { style: "text-xs text-gray-500 truncate mt-1" }
+                text .note.time { style: "text-xs text-gray-400 mt-1" }
+                style: "w-full text-left p-3 rounded-lg text-sm hover:bg-blue-50 transition-colors gap-0"
+            }
+            onclick: .Select
+            style: "w-full text-left"
+        }
+    }
+
+    on {
+        .Select -> {
+        }
+        .Delete -> {
+        }
+    }
+}

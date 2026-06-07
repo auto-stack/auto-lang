@@ -1,0 +1,64 @@
+// source/back/api.at - Notes API Interface
+// CRUD endpoints for notes management
+
+// ═══════════════════════════════════════════════════════════
+// Types (shared between frontend and backend)
+// ═══════════════════════════════════════════════════════════
+
+/// Note data model
+pub type Note = {
+    id: int
+    title: str
+    body: str
+    time: str
+}
+
+// ═══════════════════════════════════════════════════════════
+// API Endpoints
+// ═══════════════════════════════════════════════════════════
+
+/// List all notes
+/// GET /api/notes
+#[api(method = "GET", path = "/api/notes")]
+pub fn listnotes() []Note {
+    use db
+
+    return db.all_notes()
+}
+
+/// Get a single note by ID
+/// GET /api/notes/:id
+#[api(method = "GET", path = "/api/notes/:id")]
+pub fn getnote(id int) ?Note {
+    use db
+
+    return db.find_note(id)
+}
+
+/// Create a new note
+/// POST /api/notes
+#[api(method = "POST", path = "/api/notes")]
+pub fn createnote(title str, body str) Note {
+    use db
+
+    let note = db.create_note(title, body)
+    return note
+}
+
+/// Update an existing note
+/// PUT /api/notes/:id
+#[api(method = "PUT", path = "/api/notes/:id")]
+pub fn updatenote(id int, title str, body str) ?Note {
+    use db
+
+    return db.update_note(id, title, body)
+}
+
+/// Delete a note by ID
+/// DELETE /api/notes/:id
+#[api(method = "DELETE", path = "/api/notes/:id")]
+pub fn deletenote(id int) bool {
+    use db
+
+    return db.delete_note(id)
+}

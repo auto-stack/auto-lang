@@ -1,0 +1,89 @@
+// source/back/db.at - Notes Database Service
+// In-memory storage with JSON file persistence
+
+use api: Note
+
+// ═══════════════════════════════════════════════════════════
+// In-memory storage (initialized from data/notes.json)
+// ═══════════════════════════════════════════════════════════
+
+var notes List<Note> = List<Note>.new([
+    Note { id: 0, title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now" },
+    Note { id: 1, title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago" },
+    Note { id: 2, title: "Meeting Notes", body: "Q3 roadmap discussion with the team", time: "Yesterday" },
+])
+
+var nextid int = 3
+
+// ═══════════════════════════════════════════════════════════
+// Database Operations
+// ═══════════════════════════════════════════════════════════
+
+/// Find a note by ID
+pub fn find_note(id int) ?Note {
+    for note in notes {
+        if note.id == id {
+            return Some(note)
+        }
+    }
+    return None
+}
+
+/// Get all notes
+pub fn all_notes() []Note {
+    return notes.to_array()
+}
+
+/// Create a new note
+pub fn create_note(title str, body str) Note {
+    let note = Note {
+        id: nextid,
+        title: title,
+        body: body,
+        time: "Just now",
+    }
+    nextid = nextid + 1
+    notes.push(note)
+    return note
+}
+
+/// Update an existing note
+pub fn update_note(id int, title str, body str) ?Note {
+    for note in notes {
+        if note.id == id {
+            note.title = title
+            note.body = body
+            note.time = "Just now"
+            return Some(note)
+        }
+    }
+    return None
+}
+
+/// Delete a note by ID
+pub fn delete_note(id int) bool {
+    var removed bool = false
+    notes = notes.filter((n Note) => {
+        if n.id == id {
+            removed = true
+            return false
+        }
+        return true
+    })
+    return removed
+}
+
+/// Search notes by title or body
+pub fn search_notes(query str) []Note {
+    let query_lower str = query.to_lower()
+    let results List<Note> = List<Note>.new([])
+
+    for note in notes {
+        if note.title.to_lower().contains(query_lower) ||
+           note.body.to_lower().contains(query_lower) {
+            results.push(note)
+        }
+    }
+
+    return results.to_array()
+}

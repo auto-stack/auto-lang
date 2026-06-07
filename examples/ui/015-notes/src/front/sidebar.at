@@ -1,0 +1,28 @@
+widget Sidebar(notes: List, active_id: int, search: str) {
+    msg Msg { SelectNote, SearchChanged }
+
+    model {
+        var query str = ""
+    }
+
+    view {
+        col {
+            input { placeholder: "Search...", value: .query, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg mb-2" }
+            for note in .notes {
+                button note.title {
+                    onclick: .SelectNote
+                    variant: "ghost"
+                    style: "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                }
+            }
+            style: "w-64 border border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
+        }
+    }
+
+    on {
+        .SelectNote -> {
+        }
+        .SearchChanged -> {
+        }
+    }
+}

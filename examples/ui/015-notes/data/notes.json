@@ -1,0 +1,20 @@
+[
+  {
+    "id": 0,
+    "title": "Welcome",
+    "body": "This is your notes app. Click on any note to view it.",
+    "time": "Just now"
+  },
+  {
+    "id": 1,
+    "title": "Shopping List",
+    "body": "Milk, Eggs, Bread, Cheese",
+    "time": "2 hours ago"
+  },
+  {
+    "id": 2,
+    "title": "Meeting Notes",
+    "body": "Q3 roadmap discussion with the team",
+    "time": "Yesterday"
+  }
+]

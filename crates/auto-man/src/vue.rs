@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use colored::Colorize;
 use auto_lang::aura::AuraRoute;
 use auto_lang::database::{UIArtifact, UIBackend, UICache};
-use auto_lang::ui_gen::VueGenerator;
+use auto_lang::ui_gen::{BackendGenerator, VueGenerator};
 
 use crate::util::hash_string;
 use crate::AutoResult;
@@ -789,21 +789,63 @@ export default router
         let mut all_shadcn_components = HashSet::new();
         let mut all_routes: Vec<AuraRoute> = Vec::new();
 
-        // Process app.at
+        // Phase 1: Collect sub-widget names from front_dir .at files (to avoid shadcn name collisions)
+        let mut sub_widget_names: Vec<String> = Vec::new();
+        {
+            for entry in fs::read_dir(&front_dir)
+                .map_err(|e| format!("Failed to read front directory: {}", e))?
+            {
+                let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+                let path = entry.path();
+
+                if path.extension().map(|e| e == "at").unwrap_or(false) {
+                    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                    // Skip app.at and pac.at
+                    if file_name == "app.at" || file_name == "pac.at" {
+                        continue;
+                    }
+                    // Quick-scan to collect widget names (lightweight parse)
+                    if let Ok((_code, widgets)) = auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
+                        for widget in &widgets {
+                            sub_widget_names.push(widget.name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process app.at — generate each widget independently, with known sub-widget names
         if app_at.exists() {
-            match auto_lang::ui_build_shadcn_with_widgets(app_at.to_str().unwrap(), None) {
+            match auto_lang::ui_build_shadcn_with_sub_widgets(app_at.to_str().unwrap(), None, sub_widget_names.clone()) {
                 Ok((vue_code, widgets)) => {
                     let components = detect_shadcn_components(&vue_code);
                     for comp in &components {
                         all_shadcn_components.insert(comp.clone());
                     }
-                    for widget in &widgets {
+                    for (i, widget) in widgets.iter().enumerate() {
                         if let Some(ref routes) = widget.routes {
                             all_routes.extend(routes.routes.clone());
                         }
+                        if i == 0 {
+                            // First widget is the App root
+                            all_components.push(("".to_string(), "app".to_string(), vue_code.clone(), widget.name.clone()));
+                        } else {
+                            // Additional widgets in app.at become components
+                            let mut gen = VueGenerator::new_shadcn();
+                            match gen.generate(widget) {
+                                Ok(widget_code) => {
+                                    let comp_names = detect_shadcn_components(&widget_code);
+                                    for comp in &comp_names {
+                                        all_shadcn_components.insert(comp.clone());
+                                    }
+                                    all_components.push(("".to_string(), widget.name.to_lowercase(), widget_code, widget.name.clone()));
+                                }
+                                Err(e) => {
+                                    println!("{} Failed to generate widget {}: {}", "Warning:".bright_yellow(), widget.name, e);
+                                }
+                            }
+                        }
                     }
-                    let widget_name = widgets.first().map(|w| w.name.as_str()).unwrap_or("App");
-                    all_components.push(("".to_string(), "app".to_string(), vue_code, widget_name.to_string()));
                 }
                 Err(e) => {
                     println!("{} {}", "Warning: Failed to compile app.at:".bright_yellow(), e);
@@ -863,6 +905,57 @@ export default router
         if pages_dir.exists() {
             scan_pages_dir(&pages_dir, &front_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes)
                 .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
+        }
+
+        // Process .at files directly in front_dir (sub-widgets like sidebar.at, editor.at)
+        // Skip app.at (already processed) and pac.at (project config)
+        for entry in fs::read_dir(&front_dir)
+            .map_err(|e| format!("Failed to read front directory: {}", e))?
+        {
+            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let path = entry.path();
+
+            if path.extension().map(|e| e == "at").unwrap_or(false) {
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                // Skip app.at and pac.at
+                if file_name == "app.at" || file_name == "pac.at" {
+                    continue;
+                }
+
+                match auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
+                    Ok((vue_code, widgets)) => {
+                        let components = detect_shadcn_components(&vue_code);
+                        for comp in &components {
+                            all_shadcn_components.insert(comp.clone());
+                        }
+                        for widget in &widgets {
+                            if let Some(ref routes) = widget.routes {
+                                all_routes.extend(routes.routes.clone());
+                            }
+                            // Generate each widget as an independent Vue component
+                            let mut gen = VueGenerator::new_shadcn();
+                            match gen.generate(widget) {
+                                Ok(widget_code) => {
+                                    let comp_names = detect_shadcn_components(&widget_code);
+                                    for comp in &comp_names {
+                                        all_shadcn_components.insert(comp.clone());
+                                    }
+                                    let stem = path.file_stem()
+                                        .and_then(|s| s.to_str())
+                                        .unwrap_or("component");
+                                    all_components.push(("".to_string(), stem.to_string(), widget_code, widget.name.clone()));
+                                }
+                                Err(e) => {
+                                    println!("{} Failed to generate widget {}: {}", "Warning:".bright_yellow(), widget.name, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                    }
+                }
+            }
         }
 
         let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();

@@ -775,6 +775,9 @@ pub struct VueGenerator {
     /// State variable names (for ref() detection)
     state_names: Vec<String>,
 
+    /// Prop names (for defineProps — no .value suffix needed)
+    prop_names: Vec<String>,
+
     /// Event handler definitions (name, body, is_async)
     handlers: Vec<(String, String, bool)>,
 
@@ -840,6 +843,10 @@ pub struct VueGenerator {
 
     /// Whether CurveType from @unovis/ts is needed (for chart curve-type props)
     use_curve_type: bool,
+
+    /// Names of known sub-widgets in the same project (e.g. "Sidebar", "EditorPanel")
+    /// When a tag matches one of these, skip shadcn component mapping and treat as custom component
+    known_sub_widgets: HashSet<String>,
 }
 
 /// Data for generating interactive preview cards
@@ -872,6 +879,7 @@ impl VueGenerator {
             current_widget: None,
             imports: Vec::new(),
             state_names: Vec::new(),
+            prop_names: Vec::new(),
             handlers: Vec::new(),
             emit_events: Vec::new(),
             has_emit: false,
@@ -894,7 +902,14 @@ impl VueGenerator {
             has_dark_mode: false,
             use_theme_toggle: false,
             use_curve_type: false,
+            known_sub_widgets: HashSet::new(),
         }
+    }
+
+    /// Set known sub-widget names (to avoid shadcn name collisions)
+    pub fn with_sub_widgets(mut self, names: Vec<String>) -> Self {
+        self.known_sub_widgets = names.into_iter().collect();
+        self
     }
 
     /// Create a new Vue generator in shadcn-vue mode
@@ -932,6 +947,7 @@ impl VueGenerator {
     fn reset(&mut self) {
         self.imports.clear();
         self.state_names.clear();
+        self.prop_names.clear();
         self.handlers.clear();
         self.emit_events.clear();
         self.has_emit = false;
@@ -1065,6 +1081,21 @@ impl VueGenerator {
         // Pre-populate state_names so expr_to_js recognizes refs during template generation
         for state in &widget.state_vars {
             self.state_names.push(state.name.clone());
+        }
+
+        // Register prop names (props are NOT refs — no .value suffix in script)
+        for prop in &widget.props {
+            self.prop_names.push(prop.name.clone());
+        }
+
+        // Activate emit generation for sub-widgets that have messages
+        if !widget.messages.is_empty() {
+            self.has_emit = true;
+            for msg in &widget.messages {
+                for variant in &msg.variants {
+                    self.emit_events.push(variant.name.clone());
+                }
+            }
         }
 
         // Generate template first to collect shadcn components used and detect Outlet/Link
@@ -1288,6 +1319,21 @@ impl VueGenerator {
 
         if !widget.computed.is_empty() {
             script.push('\n');
+        }
+
+        // Generate defineProps if widget has props (sub-widget component)
+        if !widget.props.is_empty() {
+            script.push_str("const props = defineProps<{\n");
+            for prop in &widget.props {
+                // Use 'any' for all prop types since Auto's type system
+                // cannot fully map to TypeScript (e.g., object literals)
+                if prop.default.is_some() {
+                    script.push_str(&format!("  {}?: any\n", prop.name));
+                } else {
+                    script.push_str(&format!("  {}: any\n", prop.name));
+                }
+            }
+            script.push_str("}>()\n\n");
         }
 
         // Generate emit if needed
@@ -1550,7 +1596,8 @@ impl VueGenerator {
     fn generate_handler_body(&self, payload: &LogicPayload) -> GenResult<String> {
         match payload {
             LogicPayload::AstStmts(stmts) => {
-                let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect());
+                let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
+                    .with_props(self.prop_names.iter().cloned().collect());
                 Ok(crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx))
             }
             LogicPayload::AstBlock(_) => {
@@ -1651,12 +1698,49 @@ impl VueGenerator {
 
                 let html_tag = self.map_tag(tag, children.is_empty());
 
+                // Check if this is a known sub-widget (custom component, not shadcn)
+                let is_known_sub_widget = self.known_sub_widgets.contains(tag);
+
                 // Check if this is a shadcn-vue component
                 // Note: We need to check both the original tag and lowercase version because registry uses lowercase keys
                 let tag_lower = tag.to_lowercase();
-                let is_shadcn_component = self.is_shadcn() &&
+                let is_shadcn_component = !is_known_sub_widget && self.is_shadcn() &&
                     (self.widget_registry.is_backend_supported("vue", tag) ||
                      self.widget_registry.is_backend_supported("vue", &tag_lower));
+
+                // For known sub-widgets, use component-style prop passing
+                if is_known_sub_widget {
+                    let mut attrs = Vec::new();
+                    // Pass all props as v-bind
+                    for (key, value) in props {
+                        let value_str = self.prop_to_attr_value(value)?;
+                        attrs.push(format!(":{}={}", key, value_str));
+                    }
+                    // Event handlers
+                    for (event, aura_event) in events {
+                        let vue_event = self.auto_event_to_vue(event);
+                        let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                        let handler_name = self.handler_to_function_call(&aura_event.handler);
+                        self.used_handlers.insert(handler_name);
+                        attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+                    }
+                    let attr_str = if attrs.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {}", attrs.join(" "))
+                    };
+                    // Component with children
+                    if children.is_empty() {
+                        return Ok(format!("{}<{}{} />\n", ind, html_tag, attr_str));
+                    } else {
+                        let mut html = format!("{}<{}{}>\n", ind, html_tag, attr_str);
+                        for child in children {
+                            html.push_str(&self.node_to_html(child, indent + 1)?);
+                        }
+                        html.push_str(&format!("{}</{}>\n", ind, html_tag));
+                        return Ok(html);
+                    }
+                }
 
                 // Build attributes
                 let (attrs, text_content, generated_children) = if is_shadcn_component {
@@ -2492,6 +2576,15 @@ impl VueGenerator {
 
     /// Map AutoUI tag to HTML tag or shadcn-vue component
     fn map_tag(&mut self, tag: &str, self_closing: bool) -> String {
+        // Priority: known sub-widgets > shadcn components > HTML fallback
+        // If tag matches a known sub-widget, treat as custom component reference
+        if self.known_sub_widgets.contains(tag) {
+            if !self.component_refs.contains(&tag.to_string()) {
+                self.component_refs.push(tag.to_string());
+            }
+            return tag.to_string();
+        }
+
         // If in shadcn mode and tag has a shadcn component, use it
         if self.is_shadcn() {
             // nav-link maps to router-link (not a shadcn component)
@@ -2866,6 +2959,23 @@ impl VueGenerator {
         }
     }
 
+    /// Convert Auto Type to TypeScript type string for defineProps
+    fn type_to_ts_type(&self, ty: &crate::ast::Type) -> String {
+        match ty {
+            crate::ast::Type::Int | crate::ast::Type::Uint | crate::ast::Type::I64 | crate::ast::Type::U64 => "number".to_string(),
+            crate::ast::Type::Float | crate::ast::Type::Double => "number".to_string(),
+            crate::ast::Type::Bool => "boolean".to_string(),
+            crate::ast::Type::StrSlice | crate::ast::Type::StrOwned | crate::ast::Type::CStrLit => "string".to_string(),
+            crate::ast::Type::Array(_) | crate::ast::Type::RuntimeArray(_) | crate::ast::Type::List(_) => "any[]".to_string(),
+            crate::ast::Type::User(decl) => decl.name.to_string(),
+            crate::ast::Type::Enum(decl) => decl.borrow().name.to_string(),
+            crate::ast::Type::Void => "void".to_string(),
+            crate::ast::Type::Option(_) => "any".to_string(),
+            crate::ast::Type::Map(_, _) => "Record<string, any>".to_string(),
+            _ => "any".to_string(),
+        }
+    }
+
     /// Check if an expression contains NavCall (Plan 105)
     fn expr_has_nav_call(expr: &AuraExpr) -> bool {
         match expr {
@@ -2995,7 +3105,10 @@ impl VueGenerator {
             AuraExpr::Float(n) => Ok(n.to_string()),
             AuraExpr::Bool(b) => Ok(b.to_string()),
             AuraExpr::StateRef(name) => {
-                if self.state_names.contains(&name.to_string()) {
+                if self.prop_names.contains(&name.to_string()) {
+                    // Props: access via props.xxx (no .value, but need props. prefix in script)
+                    Ok(format!("props.{}", name))
+                } else if self.state_names.contains(&name.to_string()) {
                     Ok(format!("{}.value", name))
                 } else {
                     Ok(name.clone())

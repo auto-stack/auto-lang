@@ -1,0 +1,62 @@
+widget EditorPanel(note: str) {
+    msg Msg { Edit, Save, Cancel, EditBody, EditTitle, Delete }
+
+    model {
+        var editing bool = false
+        var edit_title str = ""
+        var edit_body str = ""
+    }
+
+    view {
+        col {
+            col {
+                if .editing == false {
+                    text .note.title { style: "text-lg font-semibold text-gray-800" }
+                }
+                if .editing == true {
+                    input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-gray-800 border-none outline-none w-full focus:ring-0 p-0" }
+                }
+                text .note.time { style: "text-xs text-gray-400 mt-1" }
+                if .editing == false {
+                    text .note.body { style: "text-gray-700 flex-1 leading-relaxed" }
+                }
+                if .editing == true {
+                    textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing...", style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" }
+                }
+                style: "px-6 pt-6 pb-2 flex-1"
+            }
+            row {
+                if .editing == false {
+                    button "Edit" { onclick: .Edit, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
+                }
+                if .editing == true {
+                    button "Save" { onclick: .Save, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
+                    button "Cancel" { onclick: .Cancel, style: "px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600" }
+                }
+                button "Delete" { onclick: .Delete, style: "ml-auto px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600" }
+                style: "p-4 border-t border-gray-100"
+            }
+            style: "flex-1 flex-col"
+        }
+    }
+
+    on {
+        .Edit -> {
+            .edit_title = .note.title
+            .edit_body = .note.body
+            .editing = true
+        }
+        .Save -> {
+            .editing = false
+        }
+        .Cancel -> {
+            .editing = false
+        }
+        .EditBody -> {
+        }
+        .EditTitle -> {
+        }
+        .Delete -> {
+        }
+    }
+}

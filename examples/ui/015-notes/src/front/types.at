@@ -1,0 +1,6 @@
+type Note {
+    id int
+    title str
+    body str
+    time str
+}

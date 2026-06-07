@@ -212,9 +212,14 @@ fn generate_tauri_ts_client(api_module: &auto_lang::api::ApiModule) -> String {
 /// Convert Auto type to TypeScript type
 fn auto_type_to_ts(auto_type: &str) -> String {
     let auto_type = auto_type.trim();
+    // Handle prefix ?T (Auto Option syntax: ?Note, ?int)
+    if let Some(inner) = auto_type.strip_prefix('?') {
+        return format!("{} | null", auto_type_to_ts(inner));
+    }
+    // Handle suffix T? (alternative Option syntax)
     if auto_type.ends_with('?') {
         let inner = &auto_type[..auto_type.len()-1];
-        return format!("{} | undefined", auto_type_to_ts(inner));
+        return format!("{} | null", auto_type_to_ts(inner));
     }
     if auto_type.starts_with("[]") || auto_type.starts_with("List<") {
         let inner = if auto_type.starts_with("[]") {

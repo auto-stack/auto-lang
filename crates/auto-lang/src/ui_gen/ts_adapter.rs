@@ -18,6 +18,8 @@ use std::io::Write;
 pub struct AuraTsContext {
     /// Names of reactive state variables (need `.value` in Vue).
     pub state_names: HashSet<String>,
+    /// Names of component props (need `props.` prefix in script, no `.value`).
+    pub prop_names: HashSet<String>,
     /// Known API function names (need `await` prefix).
     api_functions: &'static [&'static str],
 }
@@ -26,6 +28,7 @@ impl AuraTsContext {
     pub fn new(state_names: HashSet<String>) -> Self {
         Self {
             state_names,
+            prop_names: HashSet::new(),
             api_functions: &[
                 "listusers",
                 "getuser",
@@ -37,8 +40,17 @@ impl AuraTsContext {
         }
     }
 
+    pub fn with_props(mut self, prop_names: HashSet<String>) -> Self {
+        self.prop_names = prop_names;
+        self
+    }
+
     fn is_state(&self, name: &str) -> bool {
         self.state_names.contains(name)
+    }
+
+    fn is_prop(&self, name: &str) -> bool {
+        self.prop_names.contains(name)
     }
 
     fn is_api(&self, name: &str) -> bool {
@@ -228,7 +240,10 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             if let Expr::Ident(name) = obj.as_ref() {
                 if name.as_str() == "self" || name.as_str() == "." {
                     let field_name = field.as_str();
-                    if ctx.is_state(field_name) {
+                    if ctx.is_prop(field_name) {
+                        // Props need `props.` prefix in script
+                        write!(out, "props.{}", field_name).ok();
+                    } else if ctx.is_state(field_name) {
                         write!(out, "{}.value", field_name).ok();
                     } else {
                         write!(out, "{}", field_name).ok();

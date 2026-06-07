@@ -1,80 +1,31 @@
 widget App {
-    msg Msg { NewNote, DeleteNote, EditNote, SaveEdit, CancelEdit, EditBody, EditTitle, SearchChanged, SelectNote }
+    msg Msg { LoadNotes, SelectNote, NewNote, DeleteNote, SaveNote }
 
     model {
-        var search str = ""
-        var active_id int = 0
-        var editing bool = false
-        var edit_body str = ""
-        var edit_title str = ""
         var notes = [
-            { title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now" },
-            { title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago" },
-            { title: "Meeting Notes", body: "Q3 roadmap discussion with the team", time: "Yesterday" }
+            { id: 0, title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now" },
+            { id: 1, title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago" },
+            { id: 2, title: "Meeting Notes", body: "Q3 roadmap discussion with the team", time: "Yesterday" }
         ]
+        var active_id int = 0
+        var search str = ""
+        var edit_title str = ""
+        var edit_body str = ""
     }
 
     view {
         col {
-            // Header
             row {
                 h2 "Notes" { style: "text-xl font-bold text-gray-800" }
-                text "" { style: "text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full ml-2" }
                 button "+ New" { onclick: .NewNote, style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600" }
                 style: "w-full items-center p-4 border-b border-gray-200"
             }
-            // Body: sidebar + editor
             row {
-                // Sidebar
-                col {
-                    input { placeholder: "Search...", value: .search, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg mb-2" }
-                    for i, note in .notes {
-                        if .search == "" {
-                            button note.title { onclick: .SelectNote(i), variant: "ghost", style: "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50" }
-                        }
-                        if .search != "" {
-                            if note.title.includes(.search) {
-                                button note.title { onclick: .SelectNote(i), variant: "ghost", style: "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50" }
-                            }
-                        }
+                Sidebar(notes: .notes, active_id: .active_id, search: .search)
+                for note in .notes {
+                    if note.id == .active_id {
+                        EditorPanel(note: note)
                     }
-                    style: "w-64 border border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
-                }
-                // Editor panel
-                col {
-                    for i, note in .notes {
-                        if .active_id == i {
-                            col {
-                                if .editing == false {
-                                    text note.title { style: "text-lg font-semibold text-gray-800" }
-                                }
-                                if .editing == true {
-                                    input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-gray-800 border-none outline-none w-full focus:ring-0 p-0" }
-                                }
-                                text note.time { style: "text-xs text-gray-400 mt-1" }
-                                if .editing == false {
-                                    text note.body { style: "text-gray-700 flex-1 leading-relaxed" }
-                                }
-                                if .editing == true {
-                                    textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing...", style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" }
-                                }
-                                style: "px-6 pt-6 pb-2 flex-1"
-                            }
-                        }
-                    }
-                    // Action bar
-                    row {
-                        if .editing == false {
-                            button "Edit" { onclick: .EditNote, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
-                        }
-                        if .editing == true {
-                            button "Save" { onclick: .SaveEdit, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
-                            button "Cancel" { onclick: .CancelEdit, style: "px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600" }
-                        }
-                        button "Delete" { onclick: .DeleteNote, style: "ml-auto px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600" }
-                        style: "p-4 border-t border-gray-100"
-                    }
-                    style: "flex-1 flex-col"
                 }
                 style: "flex-1"
             }
@@ -83,52 +34,20 @@ widget App {
     }
 
     on {
-        .SelectNote(i) -> {
-            .active_id = i
-            .editing = false
+        .LoadNotes -> {
         }
 
         .NewNote -> {
-            notes.push({ title: "", body: "", time: "Just now" })
-            .active_id = notes.len() - 1
-            .editing = true
-            .edit_body = ""
-            .edit_title = ""
+            var new_id = notes.len()
+            notes.push({ id: new_id, title: "", body: "", time: "Just now" })
+            .active_id = new_id
             .search = ""
         }
 
         .DeleteNote -> {
-            notes.remove(.active_id)
-            .editing = false
         }
 
-        .EditNote -> {
-            .edit_body = notes[.active_id].body
-            .edit_title = notes[.active_id].title
-            .editing = true
-        }
-
-        .EditBody -> {
-            .edit_body = .edit_body
-        }
-
-        .EditTitle -> {
-            .edit_title = .edit_title
-        }
-
-        .SaveEdit -> {
-            notes[.active_id].title = .edit_title
-            notes[.active_id].body = .edit_body
-            notes[.active_id].time = "Just now"
-            .editing = false
-        }
-
-        .CancelEdit -> {
-            .editing = false
-        }
-
-        .SearchChanged -> {
-            .search = .search
+        .SaveNote -> {
         }
     }
 }

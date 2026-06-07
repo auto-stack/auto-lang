@@ -3010,6 +3010,66 @@ pub fn ui_build_shadcn_with_widgets(
     Ok((output_code, widgets))
 }
 
+/// Like `ui_build_shadcn_with_widgets`, but accepts a list of known sub-widget names
+/// to avoid naming collisions with shadcn-vue components (e.g. custom "Sidebar" widget
+/// should not be mapped to shadcn's Sidebar).
+pub fn ui_build_shadcn_with_sub_widgets(
+    path: &str,
+    output: Option<&str>,
+    sub_widget_names: Vec<String>,
+) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
+    use crate::session::CompilerSession;
+    use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};
+
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let session = CompilerSession::ui().with_backend("vue");
+    let mut parser = Parser::from(code.as_str());
+    parser = parser.with_session(session);
+
+    let ast = parser.parse().map_err(|e| {
+        format!("Parse error: {:?}", e)
+    })?;
+
+    let mut widgets = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+            let aura_widget = crate::aura::extract_widget_from_decl(widget_decl)
+                .map_err(|e| e.to_string())?;
+            widgets.push(aura_widget);
+        }
+    }
+
+    if widgets.is_empty() {
+        return Err("No widget declarations found in input file".into());
+    }
+
+    // Generate code with shadcn-vue mode, passing known sub-widget names
+    let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_sub_widgets(sub_widget_names.clone());
+    let mut output_code = String::new();
+
+    for widget in &widgets {
+        let code = gen.generate(widget).map_err(|e| e.to_string())?;
+        output_code.push_str(&code);
+        output_code.push_str("\n\n");
+    }
+
+    if let Some(out_dir) = output {
+        std::fs::create_dir_all(out_dir).ok();
+        for widget in &widgets {
+            let out_path = std::path::Path::new(out_dir)
+                .join(format!("{}.vue", widget.name));
+            let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_sub_widgets(sub_widget_names.clone());
+            let widget_code = gen.generate(widget).map_err(|e| e.to_string())?;
+            std::fs::write(&out_path, &widget_code)
+                .map_err(|e| format!("Failed to write output file: {}", e))?;
+        }
+    }
+
+    Ok((output_code, widgets))
+}
+
 // ============================================================================
 // Plan 075: Unified Compilation API for Multiple Execution Modes
 // ============================================================================

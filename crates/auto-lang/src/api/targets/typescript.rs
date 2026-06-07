@@ -31,7 +31,12 @@ impl TypeScriptGenerator {
     fn to_ts_type(&self, auto_type: &str) -> String {
         let trimmed = auto_type.trim();
 
-        // Handle optional types (ending with ?)
+        // Handle optional types (prefix ?T, e.g. ?Note, ?int)
+        if let Some(inner) = trimmed.strip_prefix('?') {
+            return format!("{} | null", self.to_ts_type(inner));
+        }
+
+        // Handle optional types (suffix T?, e.g. Note?, int?)
         if let Some(inner) = trimmed.strip_suffix('?') {
             return format!("{} | null", self.to_ts_type(inner));
         }
@@ -431,6 +436,9 @@ mod tests {
         assert_eq!(gen.to_ts_type("void"), "void");
         assert_eq!(gen.to_ts_type("User"), "User");
         assert_eq!(gen.to_ts_type("User?"), "User | null");
+        assert_eq!(gen.to_ts_type("?User"), "User | null");
+        assert_eq!(gen.to_ts_type("?int"), "number | null");
+        assert_eq!(gen.to_ts_type("?Note"), "Note | null");
         assert_eq!(gen.to_ts_type("[]int"), "number[]");
     }
 
