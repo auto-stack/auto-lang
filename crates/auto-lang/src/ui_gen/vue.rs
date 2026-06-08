@@ -2588,6 +2588,9 @@ impl VueGenerator {
                 let args_str: Vec<String> = args.iter().map(|a| self.expr_to_auto_string(a)).collect();
                 format!("{}({})", type_name, args_str.join(", "))
             }
+            AuraExpr::Index { target, index } => {
+                format!("{}[{}]", self.expr_to_auto_string(target), self.expr_to_auto_string(index))
+            }
         }
     }
 
@@ -3296,6 +3299,11 @@ impl VueGenerator {
                 // In JavaScript, constructors use 'new' keyword
                 Ok(format!("new {}({})", type_name, args_js.join(", ")))
             }
+            AuraExpr::Index { target, index } => {
+                let target_js = self.expr_to_js(target)?;
+                let index_js = self.expr_to_js(index)?;
+                Ok(format!("{}[{}]", target_js, index_js))
+            }
         }
     }
 
@@ -3549,6 +3557,10 @@ impl VueGenerator {
                     self.extract_api_calls_from_expr(arg);
                 }
             }
+            AuraExpr::Index { target, index } => {
+                self.extract_api_calls_from_expr(target);
+                self.extract_api_calls_from_expr(index);
+            }
             // These don't contain nested expressions
             AuraExpr::Literal(_)
             | AuraExpr::Int(_)
@@ -3622,6 +3634,9 @@ impl VueGenerator {
             }
             AuraExpr::Constructor { args, .. } => {
                 args.iter().any(|a| self.expr_has_api_calls(a))
+            }
+            AuraExpr::Index { target, index } => {
+                self.expr_has_api_calls(target) || self.expr_has_api_calls(index)
             }
             AuraExpr::Literal(_)
             | AuraExpr::Int(_)

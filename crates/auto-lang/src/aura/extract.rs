@@ -272,6 +272,16 @@ pub fn extract_expr(expr: &Expr) -> ExtractResult<AuraExpr> {
         Expr::Null => Ok(AuraExpr::Literal("null".to_string())),
         Expr::Nil | Expr::None => Ok(AuraExpr::Literal("".to_string())),
 
+        // Index access: target[index]
+        Expr::Index(target, index) => {
+            let target_expr = extract_expr(target)?;
+            let index_expr = extract_expr(index)?;
+            Ok(AuraExpr::Index {
+                target: Box::new(target_expr),
+                index: Box::new(index_expr),
+            })
+        }
+
         // Other expressions not yet supported in view
         _ => Err(ExtractError::UnsupportedExpr(format!("{:?}", expr))),
     }

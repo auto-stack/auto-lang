@@ -117,6 +117,9 @@ pub struct DynamicComponent {
 
     /// Key bindings: key string → handler pattern (Plan 275)
     key_bindings: HashMap<String, String>,
+
+    /// Widget registry for child widget lookup.
+    widget_registry: crate::ui::widget_registry::WidgetRegistry,
 }
 
 impl fmt::Debug for DynamicComponent {
@@ -168,7 +171,18 @@ impl DynamicComponent {
             tick_interval: widget.tick_interval,
             span_map: widget.span_map.clone(),
             key_bindings: widget.key_bindings.clone(),
+            widget_registry: crate::ui::widget_registry::WidgetRegistry::new(),
         })
+    }
+
+    /// Create a DynamicComponent with a widget registry for child widget support.
+    pub fn with_registry(
+        widget: &AuraWidget,
+        registry: crate::ui::widget_registry::WidgetRegistry,
+    ) -> Result<Self, String> {
+        let mut comp = Self::new(widget)?;
+        comp.widget_registry = registry;
+        Ok(comp)
     }
 
     /// Create a new DynamicComponent with a pre-configured AutoVM instance.
@@ -201,6 +215,7 @@ impl DynamicComponent {
             tick_interval: widget.tick_interval,
             span_map: widget.span_map.clone(),
             key_bindings: widget.key_bindings.clone(),
+            widget_registry: crate::ui::widget_registry::WidgetRegistry::new(),
         })
     }
     // ========================================================================
@@ -530,12 +545,13 @@ impl Component for DynamicComponent {
     /// state references from the VmBridge at build time. After rendering,
     /// the dirty flag is cleared.
     fn view(&self) -> View<Self::Msg> {
-        let builder = AuraViewBuilder::new(&self.bridge, &self.widget_name);
+        let builder = AuraViewBuilder::with_registry(
+            &self.bridge,
+            &self.widget_name,
+            &self.widget_registry,
+        );
         let view = builder.build(&self.view_template);
 
-        // Note: clearing dirty requires &mut self, but view() takes &self.
-        // The dirty flag is a hint for external consumers; the actual view
-        // is always freshly built from current state.
         view
     }
 }

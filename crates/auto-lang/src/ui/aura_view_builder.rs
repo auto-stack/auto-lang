@@ -68,6 +68,9 @@ pub struct AuraViewBuilder<'a> {
 
     /// Widget name, used in DynamicMessage routing
     widget_name: String,
+
+    /// Optional widget registry for child widget rendering
+    widget_registry: Option<&'a crate::ui::widget_registry::WidgetRegistry>,
 }
 
 impl<'a> AuraViewBuilder<'a> {
@@ -81,6 +84,20 @@ impl<'a> AuraViewBuilder<'a> {
         Self {
             bridge,
             widget_name: widget_name.to_string(),
+            widget_registry: None,
+        }
+    }
+
+    /// Create a builder with widget registry for child widget support.
+    pub fn with_registry(
+        bridge: &'a VmBridge,
+        widget_name: &str,
+        registry: &'a crate::ui::widget_registry::WidgetRegistry,
+    ) -> Self {
+        Self {
+            bridge,
+            widget_name: widget_name.to_string(),
+            widget_registry: Some(registry),
         }
     }
 
@@ -627,8 +644,16 @@ impl<'a> AuraViewBuilder<'a> {
             "divider" | "hr" => self.convert_divider(props),
             "avatar" => self.convert_avatar(props),
 
-            // Fallback: wrap children in a column
+            // Child widget lookup or fallback
             _ => {
+                // Check if this tag matches a registered child widget
+                if let Some(registry) = self.widget_registry {
+                    if let Some(child_widget) = registry.get(tag) {
+                        return self.render_child_widget(child_widget, props, events, bindings);
+                    }
+                }
+
+                // Fallback: wrap children in a column
                 let views: Vec<View<DynamicMessage>> = children
                     .iter()
                     .map(|n| self.convert_node_with(n, bindings))
@@ -647,6 +672,52 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
         }
+    }
+
+    /// Render a child widget by looking it up in the registry.
+    ///
+    /// This resolves props from parent state, initializes a child VmBridge,
+    /// and recursively renders the child widget's view tree.
+    fn render_child_widget(
+        &self,
+        child_widget: &crate::aura::AuraWidget,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        // 1. Resolve prop values from parent state
+        let mut resolved_props: HashMap<String, Value> = HashMap::new();
+        for (prop_name, prop_value) in props {
+            if let AuraPropValue::Expr(expr) = prop_value {
+                if let Some(val) = self.resolve_expr_to_value(expr, bindings) {
+                    resolved_props.insert(prop_name.clone(), val);
+                }
+            }
+        }
+
+        // 2. Create a VmBridge for the child widget
+        let child_bridge = match VmBridge::new(child_widget) {
+            Ok(mut b) => {
+                // Override state fields with resolved prop values
+                for (prop_name, val) in &resolved_props {
+                    let _ = b.write_state(prop_name, val.clone());
+                }
+                b
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to create child widget '{}': {:?}", child_widget.name, e);
+                return View::Empty;
+            }
+        };
+
+        // 3. Build a child view builder and render the child's view tree
+        let child_builder = AuraViewBuilder {
+            bridge: &child_bridge,
+            widget_name: child_widget.name.clone(),
+            widget_registry: self.widget_registry,
+        };
+
+        child_builder.build(&child_widget.view_tree)
     }
 
     // ========================================================================
@@ -1185,6 +1256,18 @@ impl<'a> AuraViewBuilder<'a> {
                 let obj = self.resolve_expr_to_value(object, bindings)?;
                 match obj {
                     Value::Obj(map) => map.get(field.as_str()),
+                    _ => None,
+                }
+            }
+            AuraExpr::Index { target, index } => {
+                let target_val = self.resolve_expr_to_value(target, bindings)?;
+                let index_val = self.resolve_expr_to_value(index, bindings)?;
+                match (&target_val, &index_val) {
+                    (Value::Array(arr), Value::Int(i)) => {
+                        let idx = *i as usize;
+                        if idx < arr.len() { Some(arr[idx].clone()) } else { None }
+                    }
+                    (Value::Obj(map), Value::Str(key)) => map.get(key.as_str()),
                     _ => None,
                 }
             }

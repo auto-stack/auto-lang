@@ -574,6 +574,9 @@ fn expr_to_arkts(expr: &AuraExpr) -> String {
             let args_code: Vec<String> = args.iter().map(|a| expr_to_arkts(a)).collect();
             format!("new {}({})", type_name, args_code.join(", "))
         }
+        AuraExpr::Index { target, index } => {
+            format!("{}[{}]", expr_to_arkts(target), expr_to_arkts(index))
+        }
     }
 }
 

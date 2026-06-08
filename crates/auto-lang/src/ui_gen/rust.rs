@@ -1225,6 +1225,11 @@ impl RustGenerator {
                     .collect();
                 format!("{}::new({})", type_name, args_str.join(", "))
             }
+            AuraExpr::Index { target, index } => {
+                let target_str = self.expr_to_rust(target);
+                let index_str = self.expr_to_rust(index);
+                format!("{}[{}]", target_str, index_str)
+            }
         }
     }
 

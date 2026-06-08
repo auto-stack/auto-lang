@@ -641,6 +641,15 @@ pub enum AuraExpr {
         /// Arguments
         args: Vec<AuraExpr>,
     },
+
+    /// Index access: target[index]
+    /// For example: notes[active_id]
+    Index {
+        /// Target collection (array, object)
+        target: Box<AuraExpr>,
+        /// Index expression
+        index: Box<AuraExpr>,
+    },
 }
 
 /// Binary operators

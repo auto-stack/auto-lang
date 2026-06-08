@@ -377,6 +377,13 @@ fn serialize_expr(expr: &AuraExpr, output: &mut String) {
             }
             output.push_str("])");
         }
+        AuraExpr::Index { target, index } => {
+            output.push_str("Index(");
+            serialize_expr(target, output);
+            output.push_str(", ");
+            serialize_expr(index, output);
+            output.push_str(")");
+        }
     }
 }
 

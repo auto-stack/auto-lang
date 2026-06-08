@@ -1618,6 +1618,7 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
     use crate::session::CompilerSession;
     use crate::ui::dynamic::DynamicComponent;
     use crate::ui::iced::run_dynamic_iced;
+    use crate::ui::widget_registry::WidgetRegistry;
 
     // 1. Parse with UI scenario
     let session = CompilerSession::ui();
@@ -1638,8 +1639,47 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
 
     let widget = widget.ok_or("No widget declaration found")?;
 
-    // 3. Create DynamicComponent
-    let mut comp = DynamicComponent::new(&widget)
+    // 2b. Load child widgets from `use` imports
+    let mut registry = WidgetRegistry::new();
+    if let Some(file_path) = path {
+        let use_stmts = crate::use_scanner::scan_use_statements(code);
+        let base_dir = std::path::Path::new(file_path)
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
+
+        for use_stmt in &use_stmts {
+            // Skip non-module imports (c, rust, py)
+            if use_stmt.module.starts_with('.') || use_stmt.module.starts_with('c') && use_stmt.module.contains('<') {
+                continue;
+            }
+            // Locate {module}.at in same directory
+            let module_path = base_dir.join(format!("{}.at", use_stmt.module));
+            if module_path.exists() {
+                if let Ok(module_code) = std::fs::read_to_string(&module_path) {
+                    let mod_session = CompilerSession::ui();
+                    let mut mod_parser = Parser::from(module_code.as_str()).with_session(mod_session);
+                    if let Ok(mod_ast) = mod_parser.parse() {
+                        for stmt in &mod_ast.stmts {
+                            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                                if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
+                                    // Only register if it's in the import list (or wildcard import)
+                                    if use_stmt.is_wildcard
+                                        || use_stmt.items.is_empty()
+                                        || use_stmt.items.iter().any(|s| s == &child_widget.name)
+                                    {
+                                        registry.register(child_widget);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Create DynamicComponent with registry
+    let mut comp = DynamicComponent::with_registry(&widget, registry)
         .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
 
     // 3b. Set source path for hot-reload tracking
