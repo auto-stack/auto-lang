@@ -95,6 +95,17 @@ graphify-out-crates/
 config_test.txt
 test-deployed.js
 
+# Local dev tools
+.mcp.json
+.playwright-mcp/
+bun.lock
+
+# Auto-generated backend skeleton
+examples/**/rust/
+
+# Temp screenshots
+helloworld_test.png
+
 # Cookbook test run artifacts
 data.txt
 lines.txt
