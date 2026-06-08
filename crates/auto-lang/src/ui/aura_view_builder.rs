@@ -1463,10 +1463,15 @@ impl<'a> AuraViewBuilder<'a> {
     /// dispatch in the iced renderer.
     fn event_to_message_with(&self, event: &AuraEvent, bindings: &Bindings) -> DynamicMessage {
         let handler_name = extract_handler_name(&event.handler);
-        // Resolve first parameter from bindings (typically a loop index variable)
+        // Resolve first parameter from bindings (typically a loop index or field access like "note.id")
         let final_name = if let Some(param_name) = event.params.first() {
-            if let Some(Value::Int(idx)) = bindings.get(param_name) {
-                format!("{}:{}", handler_name, idx)
+            // Try direct binding lookup first (e.g., "i" → Value::Int(0))
+            if let Some(val) = self.resolve_binding_path(param_name, bindings) {
+                format!("{}:{}", handler_name, match val {
+                    Value::Int(i) => i.to_string(),
+                    Value::Str(s) => s.as_str().to_string(),
+                    _ => "".to_string(),
+                })
             } else {
                 handler_name.to_string()
             }
@@ -1481,6 +1486,27 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Internal: convert handler string to DynamicMessage (used by event_to_message).
+    /// Resolve a dotted binding path like "note.id" from loop variable bindings.
+    /// Splits on '.', looks up the root in bindings, then navigates fields on Obj values.
+    fn resolve_binding_path(&self, path: &str, bindings: &Bindings) -> Option<Value> {
+        let parts: Vec<&str> = path.split('.').collect();
+        if parts.is_empty() {
+            return None;
+        }
+        // First segment: look up in bindings
+        let mut val = bindings.get(parts[0])?.clone();
+        // Remaining segments: field access on Obj
+        for field in &parts[1..] {
+            match val {
+                Value::Obj(map) => {
+                    val = map.get(*field)?;
+                }
+                _ => return None,
+            }
+        }
+        Some(val)
+    }
+
     fn event_to_message_impl(&self, handler: &str, _bindings: &Bindings) -> DynamicMessage {
         let handler_name = extract_handler_name(handler);
         DynamicMessage::Typed {
