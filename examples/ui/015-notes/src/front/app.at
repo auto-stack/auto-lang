@@ -13,6 +13,7 @@ widget App {
         ]
         var active_id int = 0
         var search str = ""
+        var editing bool = false
         var edit_title str = ""
         var edit_body str = ""
     }

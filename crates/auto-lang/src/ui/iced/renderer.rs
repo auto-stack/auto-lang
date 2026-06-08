@@ -2288,7 +2288,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         let _ = state.component.write_state("search", auto_val::Value::str(""));
                     }
                 }
-                "DeleteNote" => {
+                "DeleteNote" | "Delete" => {
                     // Read active_id and notes, remove the note at active_id, write back
                     // Plan 289: Use read_state_as_vec/write_state_vec to handle both
                     // Value::Array and Value::Int(array_id) from [...] literals
@@ -2307,7 +2307,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     }
                     let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
                 }
-                "EditNote" => {
+                "EditNote" | "Edit" => {
                     // Load current note body into edit_body for editing
                     if let (Ok(notes), Ok(active_val)) = (
                         state.component.read_state_as_vec("notes"),
@@ -2326,7 +2326,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     }
                     let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
                 }
-                "SaveEdit" => {
+                "SaveEdit" | "Save" => {
                     // Write edit_body back to notes[active_id].body
                     if let (Ok(mut notes), Ok(active_val), Ok(edit_body_val)) = (
                         state.component.read_state_as_vec("notes"),
@@ -2348,7 +2348,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     // Clear stale input_values so next Edit sees correct note body
                     state.input_values.remove("EditBody");
                 }
-                "CancelEdit" => {
+                "CancelEdit" | "Cancel" => {
                     let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
                     let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
                     // Clear stale input_values so next Edit sees correct note body
