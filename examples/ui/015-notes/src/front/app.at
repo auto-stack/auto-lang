@@ -1,3 +1,7 @@
+use editor: EditorPanel
+use sidebar: Sidebar
+use note_item: NoteItem
+
 widget App {
     msg Msg { LoadNotes, SelectNote, NewNote, DeleteNote, SaveNote }
 
@@ -33,11 +37,7 @@ widget App {
                     style: "w-64 border border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
                 }
                 col {
-                    for note in .notes {
-                        if note.id == .active_id {
-                            EditorPanel(note: note)
-                        }
-                    }
+                    EditorPanel(note: .notes[.active_id])
                     style: "flex-1"
                 }
                 style: "flex-1"
@@ -64,6 +64,10 @@ widget App {
         }
 
         .DeleteNote -> {
+            notes.remove(.active_id)
+            if .active_id >= notes.len() {
+                .active_id = notes.len() - 1
+            }
         }
 
         .SaveNote -> {

@@ -14,7 +14,7 @@ widget EditorPanel(note: str) {
                     text .note.title { style: "text-lg font-semibold text-gray-800" }
                 }
                 if .editing == true {
-                    input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-gray-800 border-none outline-none w-full focus:ring-0 p-0" }
+                    input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-gray-800 border-b border-gray-200 outline-none w-full focus:border-blue-500 p-1" }
                 }
                 text .note.time { style: "text-xs text-gray-400 mt-1" }
                 if .editing == false {
@@ -47,6 +47,8 @@ widget EditorPanel(note: str) {
             .editing = true
         }
         .Save -> {
+            .note.title = .edit_title
+            .note.body = .edit_body
             .editing = false
         }
         .Cancel -> {
