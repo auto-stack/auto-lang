@@ -2354,6 +2354,17 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     // Clear stale input_values so next Edit sees correct note body
                     state.input_values.remove("EditBody");
                 }
+                // Child widget input handlers — sync typed text back to parent state
+                "EditTitle" => {
+                    if let Some(text) = state.input_values.get("EditTitle") {
+                        let _ = state.component.write_state("edit_title", auto_val::Value::str(text));
+                    }
+                }
+                "EditBody" => {
+                    if let Some(text) = state.input_values.get("EditBody") {
+                        let _ = state.component.write_state("edit_body", auto_val::Value::str(text));
+                    }
+                }
                 _ => {}
             }
         }
