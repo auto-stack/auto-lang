@@ -1649,7 +1649,7 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
 
         for use_stmt in &use_stmts {
             // Skip non-module imports (c, rust, py)
-            if use_stmt.module.starts_with('.') || use_stmt.module.starts_with('c') && use_stmt.module.contains('<') {
+            if use_stmt.is_c_import || use_stmt.is_rust_import {
                 continue;
             }
             // Locate {module}.at in same directory
@@ -1662,7 +1662,6 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
                         for stmt in &mod_ast.stmts {
                             if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                                 if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
-                                    // Only register if it's in the import list (or wildcard import)
                                     if use_stmt.is_wildcard
                                         || use_stmt.items.is_empty()
                                         || use_stmt.items.iter().any(|s| s == &child_widget.name)
@@ -1677,6 +1676,7 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
             }
         }
     }
+
 
     // 3. Create DynamicComponent with registry
     let mut comp = DynamicComponent::with_registry(&widget, registry)

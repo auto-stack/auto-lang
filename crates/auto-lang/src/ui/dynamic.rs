@@ -312,7 +312,7 @@ impl DynamicComponent {
     /// Build a View with DebugIdMap sideband mapping (Plan 274).
     /// Returns (View, DebugIdMap) for use by DevTools.
     pub fn view_with_debug(&self) -> (View<DynamicMessage>, DebugIdMap) {
-        let builder = AuraViewBuilder::new(&self.bridge, &self.widget_name);
+        let builder = AuraViewBuilder::with_registry(&self.bridge, &self.widget_name, &self.widget_registry);
         builder.build_with_debug(&self.view_template)
     }
 

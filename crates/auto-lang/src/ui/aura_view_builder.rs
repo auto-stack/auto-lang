@@ -213,7 +213,16 @@ impl<'a> AuraViewBuilder<'a> {
                     }
                 }
             }
-            AuraNode::Component { name, .. } => {
+            AuraNode::Component { name, props, events, .. } => {
+                // Look up child widget in registry
+                if let Some(registry) = self.widget_registry {
+                    if let Some(child_widget) = registry.get(name) {
+                        let prop_values: HashMap<String, AuraPropValue> = props.iter()
+                            .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
+                            .collect();
+                        return self.render_child_widget(child_widget, &prop_values, events, bindings);
+                    }
+                }
                 View::Text {
                     content: format!("<{} />", name),
                     style: None,
@@ -358,7 +367,16 @@ impl<'a> AuraViewBuilder<'a> {
                     }
                 }
             }
-            AuraNode::Component { name, .. } => {
+            AuraNode::Component { name, props, events, .. } => {
+                // Look up child widget in registry
+                if let Some(registry) = self.widget_registry {
+                    if let Some(child_widget) = registry.get(name) {
+                        let prop_values: HashMap<String, AuraPropValue> = props.iter()
+                            .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
+                            .collect();
+                        return self.render_child_widget(child_widget, &prop_values, events, bindings);
+                    }
+                }
                 View::Text {
                     content: format!("<{} />", name),
                     style: None,
@@ -701,7 +719,6 @@ impl<'a> AuraViewBuilder<'a> {
             if modified_widget.state_vars.iter().any(|v| v.name == *prop_name) {
                 continue;
             }
-            // Add a placeholder state var — will be overwritten after VmBridge init
             modified_widget.state_vars.push(crate::aura::AuraStateDef {
                 name: prop_name.clone(),
                 type_info: crate::ast::Type::StrOwned,
