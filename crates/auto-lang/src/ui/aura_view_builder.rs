@@ -676,8 +676,8 @@ impl<'a> AuraViewBuilder<'a> {
 
     /// Render a child widget by looking it up in the registry.
     ///
-    /// This resolves props from parent state, initializes a child VmBridge,
-    /// and recursively renders the child widget's view tree.
+    /// This resolves props from parent state, injects them as state fields,
+    /// creates a child VmBridge, and recursively renders the child's view tree.
     fn render_child_widget(
         &self,
         child_widget: &crate::aura::AuraWidget,
@@ -695,22 +695,36 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
 
-        // 2. Create a VmBridge for the child widget
-        let child_bridge = match VmBridge::new(child_widget) {
-            Ok(mut b) => {
-                // Override state fields with resolved prop values
-                for (prop_name, val) in &resolved_props {
-                    let _ = b.write_state(prop_name, val.clone());
-                }
-                b
+        // 2. Clone the widget and inject props as state vars so VmBridge registers them
+        let mut modified_widget = child_widget.clone();
+        for (prop_name, _val) in &resolved_props {
+            if modified_widget.state_vars.iter().any(|v| v.name == *prop_name) {
+                continue;
             }
+            // Add a placeholder state var — will be overwritten after VmBridge init
+            modified_widget.state_vars.push(crate::aura::AuraStateDef {
+                name: prop_name.clone(),
+                type_info: crate::ast::Type::StrOwned,
+                initial: AuraExpr::Literal("".to_string()),
+                decorators: vec![],
+            });
+        }
+
+        // 3. Create VmBridge (state fields now include props)
+        let mut child_bridge = match VmBridge::new(&modified_widget) {
+            Ok(b) => b,
             Err(e) => {
                 eprintln!("Warning: Failed to create child widget '{}': {:?}", child_widget.name, e);
                 return View::Empty;
             }
         };
 
-        // 3. Build a child view builder and render the child's view tree
+        // 4. Overwrite prop state fields with actual resolved values
+        for (prop_name, val) in &resolved_props {
+            let _ = child_bridge.write_state(prop_name, val.clone());
+        }
+
+        // 5. Build a child view builder and render the child's view tree
         let child_builder = AuraViewBuilder {
             bridge: &child_bridge,
             widget_name: child_widget.name.clone(),
