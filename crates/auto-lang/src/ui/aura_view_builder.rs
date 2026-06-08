@@ -741,6 +741,15 @@ impl<'a> AuraViewBuilder<'a> {
             let _ = child_bridge.write_state(prop_name, val.clone());
         }
 
+        // 4b. Sync parent state to child's matching model vars
+        // This allows hardcoded handlers (NewNote, Edit, etc.) that update
+        // parent state (editing, edit_title, edit_body) to flow into the child widget.
+        for state_var in &child_widget.state_vars {
+            if let Ok(parent_val) = self.bridge.read_state(&state_var.name) {
+                let _ = child_bridge.write_state(&state_var.name, parent_val);
+            }
+        }
+
         // 5. Build a child view builder and render the child's view tree
         let child_builder = AuraViewBuilder {
             bridge: &child_bridge,
