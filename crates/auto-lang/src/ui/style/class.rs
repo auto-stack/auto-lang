@@ -730,7 +730,7 @@ impl StyleClass {
 /// Helper function to parse size values
 fn parse_size_value(input: &str) -> Result<SizeValue, String> {
     match input {
-        "full" => Ok(SizeValue::Full),
+        "full" | "screen" => Ok(SizeValue::Full),
         "auto" => Ok(SizeValue::Auto),
         "1/2" => Ok(SizeValue::Half),
         "1/3" => Ok(SizeValue::Third),

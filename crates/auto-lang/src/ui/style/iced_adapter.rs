@@ -507,9 +507,14 @@ impl IcedStyle {
                 // Flex is implicit in Iced's Column/Row — no extra action needed
             }
             StyleClass::Flex1 => {
-                // flex-1: expand to fill available space
+                // flex-1: expand to fill available space in both axes
+                // In CSS Tailwind, flex-1 means flex-grow:1 flex-shrink:1 flex-basis:0%
+                // Since IcedStyle doesn't know the parent's flex direction, set both.
                 if self.width.is_none() {
                     self.width = Some(IcedSize::Full);
+                }
+                if self.height.is_none() {
+                    self.height = Some(IcedSize::Full);
                 }
             }
             StyleClass::ItemsCenter => {

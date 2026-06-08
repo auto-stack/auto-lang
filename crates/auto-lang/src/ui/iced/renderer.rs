@@ -273,6 +273,234 @@ fn wrap_with_margin_top<M: Clone + Debug + 'static>(
     cont.into()
 }
 
+// ============================================================================
+// Shared style helpers for Column, Row, Container
+// ============================================================================
+// These functions unify the styling/container-wrapping logic that was previously
+// duplicated between IntoIcedElement::into_iced() and render_dynamic_view().
+// Both paths call these helpers after rendering children their own way.
+
+/// Apply style properties to a Column widget and optionally wrap in a Container
+/// for visual styles (background, border) or vertical alignment (justify).
+///
+/// Takes a column with spacing set and children already pushed.
+/// Returns the final styled element (possibly wrapped in container).
+fn apply_column_style<M: Clone + Debug + 'static>(
+    col: iced::widget::Column<'static, M>,
+    padding: u16,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let iced_style = style.map(|s| IcedStyle::from_style(s));
+    let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
+    let pd = iced_padding(padding, style);
+
+    // Apply width/height/alignment to column
+    let mut justify_center = false;
+    let mut justify_end = false;
+    let mut col = col;
+    if let Some(ref is) = iced_style {
+        // Width
+        if let Some(ref w) = is.width {
+            col = col.width(iced_length(w));
+        } else if let Some(mw) = is.max_width {
+            col = col.width(iced::Length::Fill).max_width(mw);
+        }
+        // Height — skip when justify needs it on container instead
+        let needs_v_align = matches!(is.justify_content, Some(IcedJustify::Center | IcedJustify::End));
+        if !needs_v_align {
+            if let Some(ref h) = is.height {
+                col = col.height(iced_length(h));
+            }
+        }
+        // Alignment
+        if let Some(ref a) = is.align_items {
+            col = col.align_x(iced_alignment_horizontal(*a));
+        }
+        // Justify tracking
+        if let Some(ref j) = is.justify_content {
+            match j {
+                IcedJustify::Center => justify_center = true,
+                IcedJustify::End => justify_end = true,
+                _ => {}
+            }
+        }
+    }
+
+    let needs_wrap = justify_center || justify_end || has_visual;
+    let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
+    let needs_margin_wrap = mt > 0.0;
+
+    let el = if needs_wrap {
+        let mut cont = container(col);
+        cont = cont.padding(pd);
+        if justify_center {
+            cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).center_y(iced::Length::Fill);
+        } else if justify_end {
+            cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).align_y(iced::alignment::Vertical::Bottom);
+        } else {
+            // Non-justify wrap: propagate column's width and height to container
+            if let Some(ref is) = iced_style {
+                let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                    || is.width.is_none();
+                if col_width_fill { cont = cont.width(iced::Length::Fill); }
+                let col_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)));
+                if col_height_fill { cont = cont.height(iced::Length::Fill); }
+                if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+            }
+        }
+        // Apply visual styles (background, border, rounded, shadow)
+        if let Some(ref is) = iced_style {
+            if has_visual {
+                let cs = build_container_style(is);
+                cont = cont.style(move |_| cs);
+            } else if let Some(bg) = is.background_color {
+                cont = cont.style(move |_| container::Style {
+                    background: Some(iced::Background::Color(bg)),
+                    ..Default::default()
+                });
+            }
+        }
+        if let Some(id) = widget_id { cont = cont.id(id); }
+        cont.into()
+    } else {
+        col.padding(pd).into()
+    };
+
+    if needs_margin_wrap {
+        container(el).padding(iced::Padding { top: mt, right: 0.0, bottom: 0.0, left: 0.0 }).into()
+    } else {
+        el
+    }
+}
+
+/// Apply style properties to a Row widget and optionally wrap in a Container
+/// for visual styles (background, border).
+fn apply_row_style<M: Clone + Debug + 'static>(
+    row: iced::widget::Row<'static, M>,
+    padding: u16,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let iced_style = style.map(|s| IcedStyle::from_style(s));
+    let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
+    let pd = iced_padding(padding, style);
+    let row_max_width = iced_style.as_ref().and_then(|is| is.max_width);
+
+    // Apply width and alignment to row
+    let mut r = row;
+    if let Some(ref is) = iced_style {
+        if let Some(ref w) = is.width {
+            r = r.width(iced_length(w));
+        }
+        if let Some(ref h) = is.height {
+            r = r.height(iced_length(h));
+        }
+        if let Some(ref a) = is.align_items {
+            r = r.align_y(iced_alignment_vertical(*a));
+        }
+    }
+
+    let el = if has_visual {
+        let mut cont = container(r);
+        cont = cont.padding(pd);
+        // Propagate row's width/height to wrapping container
+        if let Some(ref is) = iced_style {
+            let row_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)));
+            if row_width_fill { cont = cont.width(iced::Length::Fill); }
+            let row_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)));
+            if row_height_fill { cont = cont.height(iced::Length::Fill); }
+        }
+        if let Some(mw) = row_max_width { cont = cont.max_width(mw); }
+        if let Some(ref is) = iced_style {
+            let cs = build_container_style(is);
+            cont = cont.style(move |_| cs);
+        }
+        if let Some(id) = widget_id { cont = cont.id(id); }
+        cont.into()
+    } else if row_max_width.is_some() {
+        r = r.padding(pd);
+        let mut cont = container(r);
+        // Propagate row's width/height to wrapping container
+        if let Some(ref is) = iced_style {
+            let row_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)));
+            if row_width_fill { cont = cont.width(iced::Length::Fill); }
+            let row_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)));
+            if row_height_fill { cont = cont.height(iced::Length::Fill); }
+        }
+        if let Some(mw) = row_max_width { cont = cont.max_width(mw); }
+        if let Some(id) = widget_id { cont = cont.id(id); }
+        cont.into()
+    } else {
+        r.padding(pd).into()
+    };
+
+    // Apply external margin_top
+    let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
+    if mt > 0.0 {
+        container(el).padding(iced::Padding { top: mt, right: 0.0, bottom: 0.0, left: 0.0 }).into()
+    } else {
+        el
+    }
+}
+
+/// Apply style properties to a Container widget (width, height, centering, visual styles).
+fn apply_container_style<M: Clone + Debug + 'static>(
+    mut cont: iced::widget::Container<'static, M>,
+    padding: u16,
+    width: Option<u16>,
+    height: Option<u16>,
+    center_x: bool,
+    center_y: bool,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    cont = cont.padding(iced_padding(padding, style));
+
+    if let Some(ref s) = style {
+        let is = IcedStyle::from_style(s);
+        // Width: style takes priority, then legacy field
+        if let Some(ref ws) = is.width {
+            cont = cont.width(iced_length(ws));
+        } else if let Some(w) = width {
+            if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); }
+        }
+        // Height: style takes priority, then legacy field
+        match is.height {
+            Some(ref h) => { cont = cont.height(iced_length(h)); }
+            None => { if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } } }
+        }
+        // max_width / max_height from style
+        if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+        if let Some(mh) = is.max_height { cont = cont.max_height(mh); }
+        // Visual styles (background, border, rounded, shadow)
+        if needs_visual_wrap(&is) {
+            let cs = build_container_style(&is);
+            cont = cont.style(move |_| cs);
+        }
+    } else {
+        if let Some(w) = width { if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); } }
+        if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } }
+    }
+    // Centering: use explicit dimension when available, else Fill
+    if center_x {
+        if let Some(w) = width {
+            cont = cont.center_x(iced::Length::Fixed(w as f32));
+        } else {
+            cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
+        }
+    }
+    if center_y {
+        if let Some(h) = height {
+            cont = cont.center_y(iced::Length::Fixed(h as f32));
+        } else {
+            cont = cont.height(iced::Length::Fill).center_y(iced::Length::Fill);
+        }
+    }
+    if let Some(id) = widget_id { cont = cont.id(id); }
+    cont.into()
+}
+
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -369,148 +597,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             AbstractView::Row { children, spacing, padding, style } => {
                 let eff_spacing = effective_spacing(spacing, style.as_ref());
-                let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
-
-                let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
-                let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
-                let wraps_in_container = needs_justify || has_visual;
-
-                let mut row_widget = row([]);
-                row_widget = row_widget.spacing(eff_spacing);
-
-                // Apply width/height and cross-axis alignment
-                if let Some(ref is) = iced_style {
-                    if let Some(ref w) = is.width {
-                        row_widget = row_widget.width(iced_length(w));
-                    }
-                    if let Some(ref h) = is.height {
-                        row_widget = row_widget.height(iced_length(h));
-                    }
-                    // Row align_y = cross-axis alignment (items_center → vertical center)
-                    if let Some(align) = is.align_items {
-                        row_widget = row_widget.align_y(iced_alignment_vertical(align));
-                    }
-                }
-
+                let mut row_widget = row([]).spacing(eff_spacing);
                 for child in children {
                     row_widget = row_widget.push(child.into_iced());
                 }
-
-                if wraps_in_container {
-                    let pad = iced_padding(padding, style.as_ref());
-                    let mut cont = container(row_widget);
-                    // Apply padding on the container so it shows between the
-                    // border (visual style) and the row content.
-                    cont = cont.padding(pad);
-                    if let Some(ref is) = iced_style {
-                        if let Some(justify) = is.justify_content {
-                            if matches!(justify, IcedJustify::Center) {
-                                cont = cont.center_x(iced::Length::Fill);
-                            }
-                        }
-                        if let Some(mw) = is.max_width {
-                            cont = cont.max_width(mw);
-                        }
-                    }
-                    if let Some(ref is) = iced_style {
-                        if has_visual {
-                            let cs = build_container_style(is);
-                            cont = cont.style(move |_| cs);
-                        } else if let Some(bg) = is.background_color {
-                            cont = cont.style(move |_| container::Style {
-                                background: Some(iced::Background::Color(bg)),
-                                ..Default::default()
-                            });
-                        }
-                    }
-                    return cont.into();
-                }
-
-                // No container wrapper — apply padding directly on the row
-                let pad = iced_padding(padding, style.as_ref());
-                row_widget = row_widget.padding(pad);
-                row_widget.into()
+                apply_row_style(row_widget, padding, style.as_ref(), None)
             }
 
             AbstractView::Column { children, spacing, padding, style } => {
                 let eff_spacing = effective_spacing(spacing, style.as_ref());
-                let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
-
-                let needs_justify = iced_style.as_ref().and_then(|is| is.justify_content).is_some();
-                let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
-                let justify_is_center = iced_style.as_ref()
-                    .and_then(|is| is.justify_content)
-                    .map_or(false, |j| matches!(j, IcedJustify::Center));
-                let wraps_in_container = needs_justify || has_visual;
-
-                let mut col_widget = column([]);
-                col_widget = col_widget.spacing(eff_spacing);
-
-                // Track whether Fill height was skipped for centering
-                let mut height_skipped_for_center = false;
-
-                // Apply width/height and cross-axis alignment
-                if let Some(ref is) = iced_style {
-                    if let Some(ref w) = is.width {
-                        col_widget = col_widget.width(iced_length(w));
-                    } else if let Some(mw) = is.max_width {
-                        col_widget = col_widget.width(iced::Length::Fill).max_width(mw);
-                    }
-                    if let Some(ref h) = is.height {
-                        // Skip height(Fill) when justify_center — let the wrapper container handle vertical centering
-                        let skip = justify_is_center && matches!(h, IcedSize::Full);
-                        if !skip {
-                            col_widget = col_widget.height(iced_length(h));
-                        } else {
-                            height_skipped_for_center = true;
-                        }
-                    }
-                    // Column align_x = cross-axis alignment (items_center → horizontal center)
-                    if let Some(align) = is.align_items {
-                        col_widget = col_widget.align_x(iced_alignment_horizontal(align));
-                    }
-                }
-
+                let mut col_widget = column([]).spacing(eff_spacing);
                 for child in children {
                     col_widget = col_widget.push(child.into_iced());
                 }
-
-                if wraps_in_container {
-                    let pad = iced_padding(padding, style.as_ref());
-                    let mut cont = container(col_widget);
-                    cont = cont.padding(pad);
-                    if height_skipped_for_center {
-                        cont = cont.center_y(iced::Length::Fill);
-                    }
-                    if let Some(ref is) = iced_style {
-                        // When wrapping in container, inherit the column's width setting
-                        // so that width(Fill) / max_width still take effect on the container.
-                        let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
-                            || is.width.is_none();
-                        if col_width_fill {
-                            cont = cont.width(iced::Length::Fill);
-                        }
-                        if let Some(mw) = is.max_width {
-                            cont = cont.max_width(mw);
-                        }
-                    }
-                    if let Some(ref is) = iced_style {
-                        if has_visual {
-                            let cs = build_container_style(is);
-                            cont = cont.style(move |_| cs);
-                        } else if let Some(bg) = is.background_color {
-                            cont = cont.style(move |_| container::Style {
-                                background: Some(iced::Background::Color(bg)),
-                                ..Default::default()
-                            });
-                        }
-                    }
-                    return cont.into();
-                }
-
-                let pad = iced_padding(padding, style.as_ref());
-                col_widget = col_widget.padding(pad);
-                col_widget.into()
+                apply_column_style(col_widget, padding, style.as_ref(), None)
             }
 
             AbstractView::Input {
@@ -618,67 +718,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 style,
             } => {
                 use iced::widget::container;
-
-                let mut container_widget = container(child.into_iced());
-                let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
-
-                // Apply padding from style or legacy
-                let eff_padding = if let Some(ref is) = iced_style {
-                    is.padding.or(if padding > 0 { Some(padding as f32) } else { None })
-                } else if padding > 0 { Some(padding as f32) } else { None };
-                if let Some(p) = eff_padding {
-                    container_widget = container_widget.padding(p);
-                }
-
-                // Determine effective width/height from explicit fields or style
-                let eff_w = width.map(|w| iced::Length::Fixed(w as f32))
-                    .or_else(|| iced_style.as_ref().and_then(|is| is.width.map(|w| iced_length(&w))));
-                let eff_h = height.map(|h| iced::Length::Fixed(h as f32))
-                    .or_else(|| iced_style.as_ref().and_then(|is| is.height.map(|h| iced_length(&h))));
-
-                // Centering: only apply center_x/y when there's an explicit dimension
-                // or the parent provides bounded space. Using Fill inside a scrollable
-                // (unbounded) causes stack overflow / layout collapse.
-                if center_x {
-                    if let Some(w) = eff_w {
-                        container_widget = container_widget.center_x(w);
-                    } else {
-                        container_widget = container_widget.width(iced::Length::Fill);
-                        container_widget = container_widget.center_x(iced::Length::Fill);
-                    }
-                } else if let Some(w) = eff_w {
-                    container_widget = container_widget.width(w);
-                }
-                if center_y {
-                    if let Some(h) = eff_h {
-                        container_widget = container_widget.center_y(h);
-                    } else {
-                        container_widget = container_widget.height(iced::Length::Fill);
-                        container_widget = container_widget.center_y(iced::Length::Fill);
-                    }
-                } else if let Some(h) = eff_h {
-                    container_widget = container_widget.height(h);
-                }
-
-                // Apply max_width/max_height from style
-                if let Some(ref is) = iced_style {
-                    if let Some(mw) = is.max_width {
-                        container_widget = container_widget.max_width(mw);
-                    }
-                    if let Some(mh) = is.max_height {
-                        container_widget = container_widget.max_height(mh);
-                    }
-                }
-
-                // Apply visual styling (background, border, rounded, shadow)
-                if let Some(ref is) = iced_style {
-                    if needs_visual_wrap(is) {
-                        let cs = build_container_style(is);
-                        container_widget = container_widget.style(move |_| cs);
-                    }
-                }
-
-                container_widget.into()
+                let cont = container(child.into_iced());
+                apply_container_style(cont, padding, width, height, center_x, center_y, style.as_ref(), None)
             }
 
             AbstractView::Scrollable { child, width, height, style } => {
@@ -2245,12 +2286,29 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 }
                 "Delete" => {
                     if let Some(i) = idx {
+                        // Indexed Delete:N — todo item deletion
                         if i < state.todos.len() {
                             state.todos.remove(i);
                             let active = state.todos.iter().filter(|t| !t.done).count() as i32;
                             let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                             let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
                         }
+                    } else {
+                        // Bare Delete (no index) — notes deletion from EditorPanel
+                        if let (Ok(mut notes), Ok(active_val)) = (
+                            state.component.read_state_as_vec("notes"),
+                            state.component.read_state("active_id"),
+                        ) {
+                            let active = active_val.as_int() as usize;
+                            if !notes.is_empty() {
+                                let del_idx = if active < notes.len() { active } else { 0 };
+                                notes.remove(del_idx);
+                                let new_active = if notes.is_empty() { 0 } else { del_idx.min(notes.len() - 1) };
+                                let _ = state.component.write_state_vec("notes", notes);
+                                let _ = state.component.write_state("active_id", auto_val::Value::Int(new_active as i32));
+                            }
+                        }
+                        let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
                     }
                 }
                 "AddTodo" => {
@@ -2288,7 +2346,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         let _ = state.component.write_state("search", auto_val::Value::str(""));
                     }
                 }
-                "DeleteNote" | "Delete" => {
+                "DeleteNote" => {
                     // Read active_id and notes, remove the note at active_id, write back
                     // Plan 289: Use read_state_as_vec/write_state_vec to handle both
                     // Value::Array and Value::Int(array_id) from [...] literals
@@ -2308,7 +2366,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
                 }
                 "EditNote" | "Edit" => {
-                    // Load current note body into edit_body for editing
+                    // Load current note title and body into edit state
                     if let (Ok(notes), Ok(active_val)) = (
                         state.component.read_state_as_vec("notes"),
                         state.component.read_state("active_id"),
@@ -2316,10 +2374,11 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         let active = active_val.as_int() as usize;
                         if active < notes.len() {
                             if let auto_val::Value::Obj(ref note) = notes[active] {
+                                let title = note.get("title").map(|v| v.as_str().to_string()).unwrap_or_default();
                                 let body = note.get("body").map(|v| v.as_str().to_string()).unwrap_or_default();
+                                let _ = state.component.write_state("edit_title", auto_val::Value::str(&title));
                                 let _ = state.component.write_state("edit_body", auto_val::Value::str(&body));
-                                // Clear stale input_values so patch_input_values won't overwrite
-                                // the correct edit_body with the previously edited text.
+                                state.input_values.remove("EditTitle");
                                 state.input_values.remove("EditBody");
                             }
                         }
@@ -2327,16 +2386,22 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
                 }
                 "SaveEdit" | "Save" => {
-                    // Write edit_body back to notes[active_id].body
-                    if let (Ok(mut notes), Ok(active_val), Ok(edit_body_val)) = (
+                    // Write edit_title and edit_body back to notes[active_id]
+                    if let (Ok(mut notes), Ok(active_val)) = (
                         state.component.read_state_as_vec("notes"),
                         state.component.read_state("active_id"),
-                        state.component.read_state("edit_body"),
                     ) {
                         let active = active_val.as_int() as usize;
                         if active < notes.len() {
                             if let auto_val::Value::Obj(ref mut note) = notes[active] {
-                                note.set("body", edit_body_val.clone());
+                                // Read edit_title from state (synced by EditTitle handler)
+                                if let Ok(title_val) = state.component.read_state("edit_title") {
+                                    note.set("title", title_val);
+                                }
+                                // Read edit_body from state (synced by EditBody handler)
+                                if let Ok(body_val) = state.component.read_state("edit_body") {
+                                    note.set("body", body_val);
+                                }
                                 // Update time stamp
                                 note.set("time", auto_val::Value::str("Just now"));
                             }
@@ -2345,8 +2410,10 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     }
                     let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
                     let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
-                    // Clear stale input_values so next Edit sees correct note body
+                    let _ = state.component.write_state("edit_title", auto_val::Value::str(""));
+                    // Clear stale input_values so next Edit sees correct note content
                     state.input_values.remove("EditBody");
+                    state.input_values.remove("EditTitle");
                 }
                 "CancelEdit" | "Cancel" => {
                     let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
@@ -3791,130 +3858,15 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
-            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
-            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
-            let has_max_width = iced_style.as_ref().and_then(|is| is.max_width).is_some();
-            let mut col_w = column([]);
-            let sp = effective_spacing(spacing, style.as_ref());
-            let pd = iced_padding(padding, style.as_ref());
-            col_w = col_w.spacing(sp);
-            // Track whether we need Container wrapping for vertical alignment
-            let mut justify_center = false;
-            let mut justify_end = false;
-            // Track whether Fill height was skipped for centering
-            let mut height_skipped_for_center = false;
-            if let Some(ref is) = iced_style {
-                if let Some(ref w) = is.width {
-                    match w {
-                        IcedSize::Fixed(f) => col_w = col_w.width(iced::Length::Fixed(*f as f32)),
-                        IcedSize::Full => col_w = col_w.width(iced::Length::Fill),
-                        IcedSize::FillPortion(n) => col_w = col_w.width(iced::Length::FillPortion(*n)),
-                    }
-                } else if let Some(mw) = is.max_width {
-                    // No explicit width, but max_width set: use Fill + max_width
-                    col_w = col_w.width(iced::Length::Fill).max_width(mw);
-                }
-                // When justify_content is Center/End, skip height on Column so it shrinks
-                // to content size — the wrapping Container handles the vertical alignment.
-                let needs_v_align = matches!(is.justify_content, Some(IcedJustify::Center | IcedJustify::End));
-                if !needs_v_align {
-                    if let Some(ref h) = is.height {
-                        let skip = justify_center && matches!(h, IcedSize::Full);
-                        if !skip {
-                            col_w = col_w.height(iced_length(h));
-                        } else {
-                            height_skipped_for_center = true;
-                        }
-                    }
-                }
-                if let Some(ref a) = is.align_items {
-                    match a {
-                        IcedAlign::Start => col_w = col_w.align_x(iced::alignment::Horizontal::Left),
-                        IcedAlign::Center => col_w = col_w.align_x(iced::alignment::Horizontal::Center),
-                        IcedAlign::End => col_w = col_w.align_x(iced::alignment::Horizontal::Right),
-                    }
-                }
-                if let Some(ref j) = is.justify_content {
-                    match j {
-                        IcedJustify::Center => justify_center = true,
-                        IcedJustify::End => justify_end = true,
-                        _ => {}
-                    }
-                }
-            }
+            let eff_spacing = effective_spacing(spacing, style.as_ref());
+            let mut col_w = column([]).spacing(eff_spacing);
             for (i, child) in children.into_iter().enumerate() {
                 path.push(i);
                 col_w = col_w.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
-            // Determine if we need Container wrapping for visual styles or alignment
-            let needs_wrap = justify_center || justify_end || has_visual;
-            // Extract margin_top for external spacing (not merged into padding)
-            let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
-            let needs_margin_wrap = mt > 0.0;
-            let el: iced::Element<'static, IcedMessage> = if needs_wrap {
-                // Apply padding on the container (not the column) when wrapping for visual styles,
-                // so padding shows between the background/border and the content.
-                let mut cont = container(col_w);
-                cont = cont.padding(pd);
-                if height_skipped_for_center {
-                    cont = cont.center_y(iced::Length::Fill);
-                }
-                if justify_center {
-                    cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).center_y(iced::Length::Fill);
-                } else if justify_end {
-                    cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).align_y(iced::alignment::Vertical::Bottom);
-                }
-                // Apply width and max_width on the wrapping container so that
-                // the column's width(Fill) / max_width still take effect.
-                if let Some(ref is) = iced_style {
-                    if !justify_center && !justify_end {
-                        // justify paths already set width(Fill) above
-                        let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
-                            || is.width.is_none();
-                        if col_width_fill {
-                            cont = cont.width(iced::Length::Fill);
-                        }
-                    }
-                    if let Some(mw) = is.max_width {
-                        cont = cont.max_width(mw);
-                    }
-                }
-                // Apply visual styles (background, border, rounded, shadow)
-                if let Some(ref is) = iced_style {
-                    if has_visual {
-                        let cs = build_container_style(is);
-                        cont = cont.style(move |_| cs);
-                    } else if let Some(bg) = is.background_color {
-                        cont = cont.style(move |_| container::Style {
-                            background: Some(iced::Background::Color(bg)),
-                            ..Default::default()
-                        });
-                    }
-                }
-                // Set iced widget ID for layout bounds collection (Plan 282)
-                if let Some(ctx) = debug_ctx {
-                    if let Some(aura_id) = ctx.debug_id_map.get(path) {
-                        cont = cont.id(format!("aura_{}", aura_id.0));
-                    }
-                }
-                cont.into()
-            } else {
-                col_w = col_w.padding(pd);
-                col_w.into()
-            };
-            // Apply external margin_top (mt-*) as an outer container with top padding.
-            // This is separate from internal padding so it works correctly on visual-wrap elements.
-            let el = if needs_margin_wrap {
-                container(el).padding(iced::Padding {
-                    top: mt,
-                    right: 0.0,
-                    bottom: 0.0,
-                    left: 0.0,
-                }).into()
-            } else {
-                el
-            };
+            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let el = apply_column_style(col_w, padding, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props) } else { el }
         }
 
@@ -3926,83 +3878,15 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
-            let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
-            let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
-            let mut row_w = row([]);
-            let sp = effective_spacing(spacing, style.as_ref());
-            let pd = iced_padding(padding, style.as_ref());
-            row_w = row_w.spacing(sp);
-            let row_max_width = iced_style.as_ref().and_then(|is| is.max_width);
-            if let Some(ref is) = iced_style {
-                if let Some(ref w) = is.width {
-                    match w {
-                        IcedSize::Fixed(f) => row_w = row_w.width(iced::Length::Fixed(*f as f32)),
-                        IcedSize::Full => row_w = row_w.width(iced::Length::Fill),
-                        IcedSize::FillPortion(n) => row_w = row_w.width(iced::Length::FillPortion(*n)),
-                    }
-                }
-                if let Some(ref a) = is.align_items {
-                    match a {
-                        IcedAlign::Start => row_w = row_w.align_y(iced::alignment::Vertical::Top),
-                        IcedAlign::Center => row_w = row_w.align_y(iced::alignment::Vertical::Center),
-                        IcedAlign::End => row_w = row_w.align_y(iced::alignment::Vertical::Bottom),
-                    }
-                }
-            }
+            let eff_spacing = effective_spacing(spacing, style.as_ref());
+            let mut row_w = row([]).spacing(eff_spacing);
             for (i, child) in children.into_iter().enumerate() {
                 path.push(i);
                 row_w = row_w.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
-            let el: iced::Element<'static, IcedMessage> = if has_visual {
-                // Apply padding on the container so it shows between the
-                // border (visual style) and the row content.
-                let mut cont = container(row_w);
-                cont = cont.padding(pd);
-                if let Some(mw) = row_max_width {
-                    cont = cont.max_width(mw);
-                }
-                if let Some(ref is) = iced_style {
-                    let cs = build_container_style(is);
-                    cont = cont.style(move |_| cs);
-                }
-                // Set iced widget ID for layout bounds collection
-                if let Some(ctx) = debug_ctx {
-                    if let Some(aura_id) = ctx.debug_id_map.get(path) {
-                        cont = cont.id(format!("aura_{}", aura_id.0));
-                    }
-                }
-                cont.into()
-            } else if row_max_width.is_some() {
-                // Row has max_width but no visual styling — wrap in Container
-                row_w = row_w.padding(pd);
-                let mut cont = container(row_w);
-                if let Some(mw) = row_max_width {
-                    cont = cont.max_width(mw);
-                }
-                // Set iced widget ID for layout bounds collection
-                if let Some(ctx) = debug_ctx {
-                    if let Some(aura_id) = ctx.debug_id_map.get(path) {
-                        cont = cont.id(format!("aura_{}", aura_id.0));
-                    }
-                }
-                cont.into()
-            } else {
-                row_w = row_w.padding(pd);
-                row_w.into()
-            };
-            // Apply external margin_top (mt-*) for row as well
-            let row_mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
-            let el = if row_mt > 0.0 {
-                container(el).padding(iced::Padding {
-                    top: row_mt,
-                    right: 0.0,
-                    bottom: 0.0,
-                    left: 0.0,
-                }).into()
-            } else {
-                el
-            };
+            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let el = apply_row_style(row_w, padding, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props) } else { el }
         }
 
@@ -4018,53 +3902,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.push(0);
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
-            let mut c = container(child_el);
-            c = c.padding(iced_padding(padding, style.as_ref()));
-            if let Some(ref s) = style {
-                let is = IcedStyle::from_style(s);
-                if let Some(ref ws) = is.width {
-                    match ws {
-                        IcedSize::Fixed(f) => c = c.width(iced::Length::Fixed(*f as f32)),
-                        IcedSize::Full => c = c.width(iced::Length::Fill),
-                        IcedSize::FillPortion(n) => c = c.width(iced::Length::FillPortion(*n)),
-                    }
-                } else if let Some(w) = width {
-                    if w > 0 { c = c.width(iced::Length::Fixed(w as f32)); }
-                }
-                match is.height {
-                    Some(IcedSize::Fixed(f)) => { c = c.height(iced::Length::Fixed(f as f32)); }
-                    Some(IcedSize::Full) => { c = c.height(iced::Length::Fill); }
-                    Some(IcedSize::FillPortion(n)) => { c = c.height(iced::Length::FillPortion(n)); }
-                    None => { if let Some(h) = height { if h > 0 { c = c.height(iced::Length::Fixed(h as f32)); } } }
-                }
-                let bg = is.background_color;
-                let bc = is.border_color;
-                let bw = is.border_width.unwrap_or(0.0);
-                let rd = is.border_radius.unwrap_or(if is.rounded { 4.0 } else { 0.0 });
-                if bg.is_some() || bc.is_some() || bw > 0.0 || rd > 0.0 {
-                    c = c.style(move |_: &iced::Theme| container::Style {
-                        background: bg.map(iced::Background::Color),
-                        border: iced::Border {
-                            color: bc.unwrap_or(iced::Color::TRANSPARENT),
-                            width: bw,
-                            radius: rd.into(),
-                        },
-                        ..Default::default()
-                    });
-                }
-            } else {
-                if let Some(w) = width { if w > 0 { c = c.width(iced::Length::Fixed(w as f32)); } }
-                if let Some(h) = height { if h > 0 { c = c.height(iced::Length::Fixed(h as f32)); } }
-            }
-            if center_x { c = c.width(iced::Length::Fill).center_x(iced::Length::Fill); }
-            if center_y { c = c.height(iced::Length::Fill).center_y(iced::Length::Fill); }
-            // Set iced widget ID for layout bounds collection (Plan 282)
-            if let Some(ctx) = debug_ctx {
-                if let Some(aura_id) = ctx.debug_id_map.get(path) {
-                    c = c.id(format!("aura_{}", aura_id.0));
-                }
-            }
-            let el: iced::Element<'static, IcedMessage> = c.into();
+            let cont = container(child_el);
+            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let el = apply_container_style(cont, padding, width, height, center_x, center_y, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props) } else { el }
         }
 

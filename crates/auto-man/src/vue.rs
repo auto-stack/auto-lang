@@ -1545,7 +1545,64 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     let mut cache = UICache::load(root_dir);
     let mut changed_files: Vec<(PathBuf, String, String)> = Vec::new(); // (output_path, vue_code, widget_name)
 
-    // Check app.at for changes
+    // Phase 1: Scan sub-widget .at files in front_dir (e.g. editor.at, sidebar.at)
+    // Collect their names for app.at compilation and generate their .vue files
+    let mut sub_widget_names: Vec<String> = Vec::new();
+    if let Ok(entries) = fs::read_dir(&front_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "at").unwrap_or(false) {
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                // Skip app.at, pac.at, types.at, mod.at
+                if file_name == "app.at" || file_name == "pac.at" || file_name == "types.at" || file_name == "mod.at" {
+                    continue;
+                }
+                let file_stem = path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("component");
+
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let hash = hash_string(&content);
+                    let source_changed = cache.is_dirty(&path, hash);
+                    let widget_output = output_dir.join("src").join("components").join(format!("{}.vue", file_stem));
+                    let output_missing = !widget_output.exists();
+
+                    if source_changed || output_missing {
+                        println!("  {} (changed)", file_name.bright_yellow());
+                        if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content) {
+                            for widget_name in &widgets {
+                                sub_widget_names.push(widget_name.clone());
+                                // Also generate with widget name as fallback
+                                let output_path = output_dir.join("src").join("components").join(format!("{}.vue", widget_name));
+                                changed_files.push((output_path, vue_code.clone(), widget_name.clone()));
+                            }
+                            let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                                UIArtifact {
+                                    source_path: path.clone(),
+                                    widget_name: w.clone(),
+                                    output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                                    source_hash: hash,
+                                    content_hash: hash_string(&vue_code),
+                                    backend: UIBackend::Vue,
+                                }
+                            }).collect();
+                            cache.update(path.clone(), hash, artifacts);
+                        }
+                    } else {
+                        // Cached: still need sub-widget names for app.at compilation
+                        if let Ok((_vue_code, widgets)) = compile_at_to_vue(&path, &content) {
+                            for widget_name in &widgets {
+                                sub_widget_names.push(widget_name.clone());
+                            }
+                        }
+                        println!("  {} (cached)", file_name.bright_green());
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 2: Check app.at for changes (with sub-widget names known)
     let app_at = front_dir.join("app.at");
     let app_output_path = output_dir.join("src").join("App.vue");
     if app_at.exists() {
@@ -1560,7 +1617,8 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                 } else {
                     println!("  {} (output missing)", "app.at".bright_yellow());
                 }
-                if let Ok((vue_code, widgets)) = compile_at_to_vue(&app_at, &content) {
+                if let Ok((vue_code, widgets)) = compile_at_to_vue_with_sub_widgets(&app_at, &content, sub_widget_names.clone()) {
+                    let content_hash = hash_string(&vue_code);
                     if let Some(widget_name) = widgets.first() {
                         changed_files.push((app_output_path, vue_code, widget_name.clone()));
                     }
@@ -1570,7 +1628,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                             widget_name: w.clone(),
                             output_path: PathBuf::from(format!("src/App.vue")),
                             source_hash: hash,
-                            content_hash: hash_string(&changed_files.first().map(|f| f.1.as_str()).unwrap_or("")),
+                            content_hash: content_hash.clone(),
                             backend: UIBackend::Vue,
                         }
                     }).collect();
@@ -1582,7 +1640,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         }
     }
 
-    // Check widgets/ directory for changes
+    // Phase 3: Check widgets/ directory for changes
     let widgets_dir = front_dir.join("widgets");
     if widgets_dir.exists() {
         if let Ok(entries) = fs::read_dir(&widgets_dir) {
@@ -1624,7 +1682,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         }
     }
 
-    // Check pages/ directory for changes
+    // Phase 4: Check pages/ directory for changes
     let pages_dir = front_dir.join("pages");
     if pages_dir.exists() {
         if let Ok(entries) = fs::read_dir(&pages_dir) {
@@ -1805,6 +1863,43 @@ fn compile_at_to_vue(_at_path: &Path, content: &str) -> Result<(String, Vec<Stri
 
     // Use shadcn mode for proper component generation
     let mut generator = VueGenerator::new().with_mode(auto_lang::ui_gen::VueMode::Shadcn);
+    let vue_code = generator.generate(&widgets[0])
+        .map_err(|e| e.to_string())?;
+
+    let names: Vec<String> = widgets.iter().map(|w| w.name.clone()).collect();
+    Ok((vue_code, names))
+}
+
+/// Compile an .at file to Vue SFC with known sub-widget names (avoids shadcn name collisions)
+fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget_names: Vec<String>) -> Result<(String, Vec<String>), String> {
+    use auto_lang::Parser;
+    use auto_lang::session::CompilerSession;
+    use auto_lang::ui_gen::BackendGenerator;
+    use auto_lang::aura::extract_widget_from_decl;
+
+    let session = CompilerSession::ui().with_backend("vue");
+    let mut parser = Parser::from(content);
+    parser = parser.with_session(session);
+
+    let ast = parser.parse().map_err(|e| format!("Parse error: {:?}", e))?;
+
+    let mut widgets = Vec::new();
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+            let aura_widget = extract_widget_from_decl(widget_decl)
+                .map_err(|e| e.to_string())?;
+            widgets.push(aura_widget);
+        }
+    }
+
+    if widgets.is_empty() {
+        return Err("No widgets found".to_string());
+    }
+
+    // Use shadcn mode with sub-widget names to avoid treating child widgets as shadcn components
+    let mut generator = VueGenerator::new()
+        .with_mode(auto_lang::ui_gen::VueMode::Shadcn)
+        .with_sub_widgets(sub_widget_names);
     let vue_code = generator.generate(&widgets[0])
         .map_err(|e| e.to_string())?;
 

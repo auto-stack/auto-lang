@@ -30,8 +30,11 @@ widget EditorPanel(note: str) {
                     button "Edit" { onclick: .Edit, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
                 }
                 if .editing == true {
-                    button "Save" { onclick: .Save, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
-                    button "Cancel" { onclick: .Cancel, style: "px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600" }
+                    row {
+                        button "Save" { onclick: .Save, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
+                        button "Cancel" { onclick: .Cancel, style: "px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600" }
+                        style: "gap-2"
+                    }
                 }
                 button "Delete" { onclick: .Delete, style: "ml-auto px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600" }
                 style: "p-4 border-t border-gray-100"

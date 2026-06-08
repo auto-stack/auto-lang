@@ -1664,10 +1664,17 @@ impl VueGenerator {
         let mut template = String::new();
 
         // Wrapper div with Tailwind classes
-        let classes = if self.wrapper_classes.is_empty() {
-            "flex flex-col w-full h-full min-h-screen".to_string()
+        // Sub-widgets (non-App) should NOT have min-h-screen to avoid overflow
+        let is_app_widget = self.current_widget.as_deref() == Some("App");
+        let base_classes = if is_app_widget {
+            "flex flex-col w-full h-full min-h-screen"
         } else {
-            format!("flex flex-col w-full h-full min-h-screen {}", self.wrapper_classes)
+            "flex flex-col w-full h-full"
+        };
+        let classes = if self.wrapper_classes.is_empty() {
+            base_classes.to_string()
+        } else {
+            format!("{} {}", base_classes, self.wrapper_classes)
         };
 
         // Dark mode: add :class binding for isDark state
@@ -1761,10 +1768,13 @@ impl VueGenerator {
                 // For known sub-widgets, use component-style prop passing
                 if is_known_sub_widget {
                     let mut attrs = Vec::new();
-                    // Pass all props as v-bind
+                    // Pass all props as v-bind (:prop="expr" needs a JS expression, not template text)
                     for (key, value) in props {
-                        let value_str = self.prop_to_attr_value(value)?;
-                        attrs.push(format!(":{}={}", key, value_str));
+                        let value_str = match value {
+                            AuraPropValue::Expr(expr) => self.expr_to_vue_bound_value(expr)?,
+                            AuraPropValue::StyleBinding(_) => "\"\"".to_string(),
+                        };
+                        attrs.push(format!(":{}=\"{}\"", key, value_str));
                     }
                     // Event handlers
                     for (event, aura_event) in events {
@@ -3702,6 +3712,11 @@ impl VueGenerator {
                 let object_str = self.expr_to_vue_text_raw(object)?;
                 Ok(format!("{}.{}", object_str, field))
             }
+            AuraExpr::Index { target, index } => {
+                let target_str = self.expr_to_vue_text_raw(target)?;
+                let index_str = self.expr_to_vue_text_raw(index)?;
+                Ok(format!("{}[{}]", target_str, index_str))
+            }
             AuraExpr::Binary { left, op: _, right } => {
                 let left_str = self.expr_to_vue_text_raw(left)?;
                 let right_str = self.expr_to_vue_text_raw(right)?;
@@ -3766,6 +3781,11 @@ impl VueGenerator {
             AuraExpr::FieldAccess { object, field } => {
                 let obj_str = self.expr_to_vue_bound_value(object)?;
                 Ok(format!("{}.{}", obj_str, field))
+            }
+            AuraExpr::Index { target, index } => {
+                let target_str = self.expr_to_vue_bound_value(target)?;
+                let index_str = self.expr_to_vue_bound_value(index)?;
+                Ok(format!("{}[{}]", target_str, index_str))
             }
             AuraExpr::Array(elems) => {
                 let elems_vue: Vec<String> = elems.iter()

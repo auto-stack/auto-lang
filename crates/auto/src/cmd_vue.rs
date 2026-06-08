@@ -203,13 +203,57 @@ fn generate_workspace_project(
     let mut all_components: Vec<(String, String, String, String)> = Vec::new();
     let mut all_shadcn_components = HashSet::new();
     let mut all_routes: Vec<AuraRoute> = Vec::new();
+    let mut sub_widget_names: Vec<String> = Vec::new();
 
-    // Process app.at first
+    // Phase 1: Scan child widget .at files in front/ directory (e.g. editor.at, sidebar.at)
+    // These are sibling files of app.at that define child widgets used via `use` imports.
+    for entry in fs::read_dir(&front_dir)
+        .map_err(|e| format!("Failed to read front directory: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+
+        // Skip app.at (processed later), directories, and non-.at files
+        if path.extension().map(|e| e == "at").unwrap_or(false) {
+            let file_stem = path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            if file_stem == "app" || file_stem == "types" || file_stem == "mod" {
+                continue; // Processed separately or not a widget
+            }
+
+            println!("{} {}", "  Compiling:".bright_black(), path.display());
+
+            match auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
+                Ok((vue_code, widgets)) => {
+                    let components = detect_shadcn_components(&vue_code);
+                    for comp in &components {
+                        all_shadcn_components.insert(comp.clone());
+                    }
+                    for widget in &widgets {
+                        if let Some(ref routes) = widget.routes {
+                            all_routes.extend(routes.routes.clone());
+                        }
+                        sub_widget_names.push(widget.name.clone());
+                    }
+                    // Add as component (goes into src/components/)
+                    let widget_name = widgets.first().map(|w| w.name.as_str()).unwrap_or(&file_stem);
+                    all_components.push(("".to_string(), file_stem, vue_code, widget_name.to_string()));
+                }
+                Err(e) => {
+                    println!("{} Failed to compile {}: {}", "  Warning:".bright_yellow(), path.display(), e);
+                }
+            }
+        }
+    }
+
+    // Phase 2: Process app.at (with knowledge of sub-widget names)
     let app_at = front_dir.join("app.at");
     if app_at.exists() {
         println!("{} {}", "  Compiling:".bright_black(), app_at.display());
 
-        match auto_lang::ui_build_shadcn_with_widgets(app_at.to_str().unwrap(), None) {
+        match auto_lang::ui_build_shadcn_with_sub_widgets(app_at.to_str().unwrap(), None, sub_widget_names.clone()) {
             Ok((vue_code, widgets)) => {
                 let components = detect_shadcn_components(&vue_code);
                 for comp in &components {
@@ -231,7 +275,7 @@ fn generate_workspace_project(
         }
     }
 
-    // Process pages/ directory
+    // Phase 3: Process pages/ directory
     let pages_dir = front_dir.join("pages");
     if pages_dir.exists() {
         for entry in fs::read_dir(&pages_dir)
