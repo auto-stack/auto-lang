@@ -91,6 +91,10 @@ pub struct RustGenerator {
 
     /// Loop variables that iterate over Value-type collections (need ["field"] access)
     value_loop_vars: std::collections::HashSet<String>,
+
+    /// Local variables in handler bodies that hold serde_json::Value results
+    /// (from API function calls like `let note = create_note(...)`)
+    value_locals: std::collections::HashSet<String>,
 }
 
 impl RustGenerator {
@@ -108,6 +112,7 @@ impl RustGenerator {
             prop_names: std::collections::HashSet::new(),
             prop_types: std::collections::HashMap::new(),
             value_loop_vars: std::collections::HashSet::new(),
+            value_locals: std::collections::HashSet::new(),
         }
     }
 
@@ -119,6 +124,7 @@ impl RustGenerator {
         self.prop_names.clear();
         self.prop_types.clear();
         self.value_loop_vars.clear();
+        self.value_locals.clear();
         self.child_components.clear();
         self.needs_imports = true;
         self.indent = 0;
@@ -289,6 +295,10 @@ impl RustGenerator {
         if self.value_loop_vars.contains(target_name) {
             return true;
         }
+        // Local variables from function call results (likely serde_json::Value)
+        if self.value_locals.contains(target_name) {
+            return true;
+        }
         false
     }
 
@@ -386,6 +396,9 @@ impl RustGenerator {
         // Pre-scan view tree for input event→field mappings
         self.scan_input_fields(&widget.view_tree);
 
+        // Pre-scan handlers to find local variables from function calls (likely Value type)
+        self.scan_handler_locals(widget);
+
         // Component impl
         code.push_str(&self.generate_component_impl(widget));
 
@@ -394,6 +407,9 @@ impl RustGenerator {
             code.push('\n');
             code.push_str(&self.generate_computed_impl(widget));
         }
+
+        // NOTE: API function stubs are generated at the file level in rust_ui.rs,
+        // not per-widget, to avoid duplicate definitions.
 
         Ok(code)
     }
@@ -426,7 +442,54 @@ impl RustGenerator {
         Ok(code)
     }
 
-    /// Generate struct definition
+    /// Generate stub functions for API imports.
+    /// These are placeholder implementations that return dummy values so the code compiles.
+    /// In production, these would be replaced with actual HTTP client calls.
+    fn generate_api_stubs(&self, api_imports: &[String]) -> String {
+        let mut code = String::new();
+        code.push_str("// API function stubs (TODO: replace with real HTTP client calls)\n");
+        for fn_name in api_imports {
+            let lower = fn_name.to_lowercase();
+            if lower.starts_with("list_") || lower.starts_with("list") {
+                // Returns Vec<serde_json::Value>
+                code.push_str(&format!(
+                    "fn {}() -> Vec<serde_json::Value> {{\n    // TODO: HTTP GET request\n    vec![]\n}}\n\n",
+                    fn_name
+                ));
+            } else if lower.starts_with("create_") {
+                // Returns serde_json::Value
+                code.push_str(&format!(
+                    "fn {}(_title: String, _body: String) -> serde_json::Value {{\n    // TODO: HTTP POST request\n    serde_json::json!({{\"id\": 0, \"title\": _title, \"body\": _body, \"time\": \"now\"}})\n}}\n\n",
+                    fn_name
+                ));
+            } else if lower.starts_with("update_") {
+                // Returns nothing meaningful
+                code.push_str(&format!(
+                    "fn {}(_id: i32, _title: String, _body: String) {{\n    // TODO: HTTP PUT request\n}}\n\n",
+                    fn_name
+                ));
+            } else if lower.starts_with("delete_") {
+                // Returns nothing meaningful
+                code.push_str(&format!(
+                    "fn {}(_id: i32) {{\n    // TODO: HTTP DELETE request\n}}\n\n",
+                    fn_name
+                ));
+            } else if lower.starts_with("get_") {
+                // Returns Option<serde_json::Value>
+                code.push_str(&format!(
+                    "fn {}(_id: i32) -> Option<serde_json::Value> {{\n    // TODO: HTTP GET request\n    None\n}}\n\n",
+                    fn_name
+                ));
+            } else {
+                // Generic stub
+                code.push_str(&format!(
+                    "fn {}() {{\n    // TODO: implement API call\n    todo!(\"{}\");\n}}\n\n",
+                    fn_name, fn_name
+                ));
+            }
+        }
+        code
+    }
     fn generate_struct(&self, widget: &AuraWidget) -> String {
         let mut code = String::new();
 
@@ -551,7 +614,7 @@ impl RustGenerator {
                     .map_or(false, |v| v.payload.is_some());
                 if has_payload {
                     // Use a named binding instead of _ so handler body can reference it
-                    code.push_str(&format!("            {}::{}(__id) => {{\n", msg_name, variant_name));
+                    code.push_str(&format!("            {}::{}(id) => {{\n", msg_name, variant_name));
                 } else {
                     code.push_str(&format!("            {}::{} => {{\n", msg_name, variant_name));
                 }
@@ -594,10 +657,6 @@ impl RustGenerator {
                 }
 
                 code.push_str("            }\n");
-            }
-
-            if self.message_variants.len() > widget.handlers.len() {
-                code.push_str("            _ => {}\n");
             }
 
             // Add handler forwarding for child component message wrappers.
@@ -659,6 +718,11 @@ impl RustGenerator {
                 code.push_str("            }\n");
             }
 
+            // Wildcard arm must come AFTER all named arms (including child forwarding)
+            if self.message_variants.len() > widget.handlers.len() {
+                code.push_str("            _ => {}\n");
+            }
+
             code.push_str("        }\n");
         }
 
@@ -707,6 +771,41 @@ impl RustGenerator {
     /// Check if a tag is a leaf element that has no children (text, button, etc.)
     fn is_leaf_tag(&self, tag: &str) -> bool {
         matches!(tag, "text" | "label" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "button")
+    }
+
+    /// Pre-scan handler bodies to find local `let` bindings from function calls.
+    /// These locals likely hold `serde_json::Value` results and need index access
+    /// for field reads (e.g., `note.id` → `note["id"]`).
+    fn scan_handler_locals(&mut self, widget: &AuraWidget) {
+        for (_pattern, payload) in &widget.handlers {
+            match payload {
+                LogicPayload::AstStmts(stmts) => {
+                    for stmt in stmts {
+                        if let crate::ast::Stmt::Store(store) = stmt {
+                            if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const) {
+                                // Check if the value is a function call (likely returns Value)
+                                if matches!(&store.expr, crate::ast::Expr::Call(_)) {
+                                    self.value_locals.insert(store.name.as_str().to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                LogicPayload::AstBlock(stmts) => {
+                    for stmt in stmts {
+                        if let AuraStmt::Assign { target, value } = stmt {
+                            // Aura Assign with a method call value and no dot in target = local var
+                            if !target.contains('.') {
+                                if matches!(value, AuraExpr::MethodCall { .. }) {
+                                    self.value_locals.insert(target.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Pre-scan view tree to find input/textarea elements and record event→field mappings
@@ -1399,17 +1498,37 @@ impl RustGenerator {
 
     /// Convert AURA condition to Rust expression
     fn convert_condition(&self, condition: &str) -> String {
-        // Replace . with self. for state references
-        let mut result = condition.trim().to_string();
+        let result = condition.trim().to_string();
 
-        // Simple approach: replace ".name" at word boundaries with "self.name"
-        // This handles cases like ".count > 0" -> "self.count > 0"
-        result = result.replace(".", "self.");
+        // Replace state-ref dots like ".notes" → "self.notes", but NOT method call dots
+        // like ".len()" or ".to_string()". A state-ref dot is one where the previous
+        // character is NOT alphanumeric/underscore (i.e. it's at a word boundary).
+        let bytes = result.as_bytes();
+        let mut output = String::new();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'.'
+                && i + 1 < bytes.len()
+                && bytes[i + 1].is_ascii_alphabetic()
+            {
+                // Check if this dot is a method call (preceded by ident char)
+                let is_method_call = i > 0
+                    && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_' || bytes[i - 1] == b')');
+                if is_method_call {
+                    output.push('.');
+                } else {
+                    output.push_str("self.");
+                }
+            } else {
+                output.push(bytes[i] as char);
+            }
+            i += 1;
+        }
 
         // Fix double self references
-        result = result.replace("self.self.", "self.");
+        output = output.replace("self.self.", "self.");
 
-        result
+        output
     }
 
     /// Check if a tag is a custom widget reference (uppercase first letter, not a known tag)
@@ -1670,6 +1789,18 @@ impl RustGenerator {
     }
 
     /// Convert a crate::ast::Expr to Rust code (for on-handler bodies)
+    /// Generate the appropriate serde_json::Value field access expression.
+    /// Uses heuristic based on field name to pick the right type accessor.
+    fn value_field_access(&self, obj_expr: &str, field: &str) -> String {
+        if field == "id" || field.ends_with("_id") {
+            format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", obj_expr, field)
+        } else if field == "deleted" || field.starts_with("is_") {
+            format!("{}[\"{}\"].as_bool().unwrap_or(false)", obj_expr, field)
+        } else {
+            format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", obj_expr, field)
+        }
+    }
+
     fn ast_expr_to_rust(&self, expr: &crate::ast::Expr) -> String {
         use crate::ast::Expr;
         use auto_val::Op;
@@ -1718,8 +1849,9 @@ impl RustGenerator {
                         let prop_name = inner_field.as_str();
                         // Pattern: self.prop_name.field_str
                         if (inner_s == "self" || inner_s.starts_with('.')) && self.needs_index_access(prop_name) {
-                            // Reading from Value: self.note["title"].as_str().unwrap_or_default().to_string()
-                            return format!("self.{}[\"{}\"].as_str().unwrap_or_default().to_string()", prop_name, field_str);
+                            // Reading from Value: self.note["field"] with type-aware accessor
+                            let obj_expr = format!("self.{}", prop_name);
+                            return self.value_field_access(&obj_expr, field_str);
                         }
                     }
                 }
@@ -1735,7 +1867,7 @@ impl RustGenerator {
                         } else {
                             resolved.to_string()
                         };
-                        return format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", obj_str, field_str);
+                        return self.value_field_access(&obj_str, field_str);
                     }
                 }
                 let obj_str = self.ast_expr_to_rust(obj);
@@ -1827,7 +1959,23 @@ impl RustGenerator {
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| self.ast_expr_to_rust(&call.name));
                 let args: Vec<String> = call.args.args.iter()
-                    .map(|a| self.ast_expr_to_rust(&a.get_expr()))
+                    .map(|a| {
+                        let expr = self.ast_expr_to_rust(&a.get_expr());
+                        // In &mut self methods, passing self.field by value moves it.
+                        // Add .clone() for String-typed fields to avoid E0507.
+                        if expr.starts_with("self.") {
+                            let field_name = &expr[5..];
+                            // Don't clone for index access patterns like self.note["id"]
+                            if !field_name.contains('[') {
+                                if let Some(ty) = self.state_types.get(field_name) {
+                                    if ty == "String" {
+                                        return format!("{}.clone()", expr);
+                                    }
+                                }
+                            }
+                        }
+                        expr
+                    })
                     .collect();
                 match fn_name.as_str() {
                     "print" => {
@@ -1844,8 +1992,19 @@ impl RustGenerator {
                                 .collect();
                             format!("{}({})", fn_name, casted_args.join(", "))
                         } else if fn_name.ends_with(".push") {
-                            // .push() for Value vectors — keep args as-is
-                            format!("{}({})", fn_name, args.join(", "))
+                            // .push() for Value vectors — clone args that are value_locals
+                            // to avoid borrow-after-move when the local is used later
+                            let cloned_args: Vec<String> = args.iter()
+                                .map(|a| {
+                                    let bare = a.trim_start_matches("self.");
+                                    if self.value_locals.contains(bare) {
+                                        format!("{}.clone()", a)
+                                    } else {
+                                        a.clone()
+                                    }
+                                })
+                                .collect();
+                            format!("{}({})", fn_name, cloned_args.join(", "))
                         } else {
                             format!("{}({})", fn_name, args.join(", "))
                         };
@@ -2075,7 +2234,7 @@ impl RustGenerator {
                     if self.value_loop_vars.contains(name) {
                         // Loop variable is &serde_json::Value — use index access
                         // Use just the name (not self.name) since it's a closure param
-                        return format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", name, field);
+                        return self.value_field_access(name, field);
                     }
                 }
                 let object_str = self.expr_to_rust(object);
@@ -2083,7 +2242,7 @@ impl RustGenerator {
                 if let AuraExpr::StateRef(name) = object.as_ref() {
                     if self.needs_index_access(name) {
                         // Reading from serde_json::Value: use index + type conversion
-                        return format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", object_str, field);
+                        return self.value_field_access(&object_str, field);
                     }
                 }
                 format!("{}.{}", object_str, field)

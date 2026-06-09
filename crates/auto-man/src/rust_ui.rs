@@ -91,11 +91,13 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     };
 
     let mut all_components = String::new();
+    let mut all_api_imports: Vec<String> = Vec::new();
     for at_path in &at_files {
         match compile_at_file(at_path) {
-            Ok(code) => {
+            Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
+                all_api_imports.extend(api_imports);
             }
             Err(e) => {
                 let file_name = at_path.file_name().unwrap_or_default().to_string_lossy();
@@ -106,6 +108,13 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
 
     if all_components.trim().is_empty() {
         return Ok(());
+    }
+
+    // Deduplicate API imports and generate stubs once
+    deduplicate_imports(&mut all_api_imports);
+    if !all_api_imports.is_empty() {
+        all_components.push('\n');
+        all_components.push_str(&generate_api_stubs(&all_api_imports));
     }
 
     let full_code = wrap_example(&project_name, &all_components);
@@ -168,6 +177,7 @@ pub fn generate_rust_ui(
 
     // Compile each .at file and collect generated components
     let mut all_components = String::new();
+    let mut all_api_imports: Vec<String> = Vec::new();
     for at_path in &at_files {
         let file_name = at_path
             .file_name()
@@ -176,9 +186,10 @@ pub fn generate_rust_ui(
         println!("  {} {}", "Parsing".bright_cyan(), file_name);
 
         match compile_at_file(at_path) {
-            Ok(code) => {
+            Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
+                all_api_imports.extend(api_imports);
             }
             Err(e) => {
                 println!(
@@ -197,6 +208,13 @@ pub fn generate_rust_ui(
             "  No components generated (no WidgetDecl nodes found)".bright_yellow()
         );
         return Ok(());
+    }
+
+    // Deduplicate API imports and generate stubs once
+    deduplicate_imports(&mut all_api_imports);
+    if !all_api_imports.is_empty() {
+        all_components.push('\n');
+        all_components.push_str(&generate_api_stubs(&all_api_imports));
     }
 
     // Wrap in main() boilerplate
@@ -238,8 +256,38 @@ pub fn generate_rust_ui(
     Ok(())
 }
 
+/// Extract API function names from `use back.api: fn1, fn2, ...` statements.
+fn extract_api_imports_from_ast(ast: &auto_lang::ast::Code) -> Vec<String> {
+    let mut imports = Vec::new();
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::Use(ref use_stmt) = stmt {
+            if is_api_use(use_stmt) {
+                imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+    imports
+}
+
+/// Check if a `use` statement targets `back.api`
+fn is_api_use(use_stmt: &auto_lang::ast::Use) -> bool {
+    if use_stmt.paths.len() == 2
+        && use_stmt.paths[0].as_str() == "back"
+        && use_stmt.paths[1].as_str() == "api"
+    {
+        return true;
+    }
+    if let Some(ref mp) = use_stmt.module_path {
+        if mp.display() == "back.api" {
+            return true;
+        }
+    }
+    false
+}
+
 /// Compile a single .at file to Rust UI code.
-fn compile_at_file(at_path: &Path) -> AutoResult<String> {
+/// Returns (generated_code, api_imports) so callers can deduplicate API stubs.
+fn compile_at_file(at_path: &Path) -> AutoResult<(String, Vec<String>)> {
     let code = fs::read_to_string(at_path)
         .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
 
@@ -254,11 +302,15 @@ fn compile_at_file(at_path: &Path) -> AutoResult<String> {
     let mut output = String::new();
     let mut generator = RustGenerator::new();
 
+    // Extract API imports from `use back.api: ...` statements
+    let api_imports = extract_api_imports_from_ast(&ast);
+
     // Extract AURA widgets from AST
     for stmt in &ast.stmts {
         if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let aura_widget = auto_lang::aura::extract_widget_from_decl(widget_decl)
+            let mut aura_widget = auto_lang::aura::extract_widget_from_decl(widget_decl)
                 .map_err(|e| e.to_string())?;
+            aura_widget.api_imports = api_imports.clone();
 
             let rust_code = generator
                 .generate(&aura_widget)
@@ -269,7 +321,57 @@ fn compile_at_file(at_path: &Path) -> AutoResult<String> {
         }
     }
 
-    Ok(output)
+    // NOTE: API stubs are NOT generated here — callers collect all imports
+    // across files and generate stubs once to avoid duplicates.
+
+    Ok((output, api_imports))
+}
+
+/// Deduplicate API imports, preserving order.
+fn deduplicate_imports(imports: &mut Vec<String>) {
+    let mut seen = std::collections::HashSet::new();
+    imports.retain(|s| seen.insert(s.clone()));
+}
+
+/// Generate stub functions for API imports so the Rust code compiles.
+fn generate_api_stubs(api_imports: &[String]) -> String {
+    let mut code = String::new();
+    code.push_str("// API function stubs (TODO: replace with real HTTP client calls)\n");
+    for fn_name in api_imports {
+        let lower = fn_name.to_lowercase();
+        if lower.starts_with("list_") || lower.starts_with("list") {
+            code.push_str(&format!(
+                "fn {}() -> Vec<serde_json::Value> {{\n    // TODO: HTTP GET request\n    vec![]\n}}\n\n",
+                fn_name
+            ));
+        } else if lower.starts_with("create_") {
+            code.push_str(&format!(
+                "fn {}(_title: String, _body: String) -> serde_json::Value {{\n    // TODO: HTTP POST request\n    serde_json::json!({{\"id\": 0, \"title\": _title, \"body\": _body, \"time\": \"now\"}})\n}}\n\n",
+                fn_name
+            ));
+        } else if lower.starts_with("update_") {
+            code.push_str(&format!(
+                "fn {}(_id: i32, _title: String, _body: String) {{\n    // TODO: HTTP PUT request\n}}\n\n",
+                fn_name
+            ));
+        } else if lower.starts_with("delete_") {
+            code.push_str(&format!(
+                "fn {}(_id: i32) {{\n    // TODO: HTTP DELETE request\n}}\n\n",
+                fn_name
+            ));
+        } else if lower.starts_with("get_") {
+            code.push_str(&format!(
+                "fn {}(_id: i32) -> Option<serde_json::Value> {{\n    // TODO: HTTP GET request\n    None\n}}\n\n",
+                fn_name
+            ));
+        } else {
+            code.push_str(&format!(
+                "fn {}() {{\n    // TODO: implement API call\n    todo!(\"{}\");\n}}\n\n",
+                fn_name, fn_name
+            ));
+        }
+    }
+    code
 }
 
 /// Wrap generated components in a main() function with ICED/GPUI backend selection.
