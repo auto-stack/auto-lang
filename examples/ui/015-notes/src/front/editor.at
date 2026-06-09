@@ -62,6 +62,8 @@ widget EditorPanel(note: str) {
         .EditTitle -> {
         }
         .Delete -> {
+            .note.deleted = true
+            .editing = false
         }
     }
 }

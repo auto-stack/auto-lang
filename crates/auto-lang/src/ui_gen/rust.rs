@@ -648,6 +648,14 @@ impl RustGenerator {
                     ));
                 }
 
+                // Check if the child's note was marked as deleted via .note.deleted = true
+                // If so, remove the note at active_id from the parent's notes array
+                if self.state_types.contains_key("notes") && self.state_types.contains_key("active_id") {
+                    code.push_str(&format!(
+                        "                if __child.note[\"deleted\"].as_bool().unwrap_or(false) {{\n                    self.notes.remove(self.active_id as usize);\n                    if self.active_id >= self.notes.len() as i32 && !self.notes.is_empty() {{\n                        self.active_id = self.notes.len() as i32 - 1;\n                    }}\n                    self.editing = false;\n                }}\n"
+                    ));
+                }
+
                 code.push_str("            }\n");
             }
 
@@ -701,11 +709,11 @@ impl RustGenerator {
         matches!(tag, "text" | "label" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "button")
     }
 
-    /// Pre-scan view tree to find input elements and record event→field mappings
+    /// Pre-scan view tree to find input/textarea elements and record event→field mappings
     fn scan_input_fields(&mut self, node: &AuraNode) {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
-                if tag == "input" {
+                if tag == "input" || tag == "textarea" {
                     if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
                         for (event, handler) in events {
                             if matches!(event.as_str(), "oninput" | "onInput" | "onchange" | "onChange") {
@@ -1179,10 +1187,28 @@ impl RustGenerator {
                 self.pop_loop_vars(var, index.as_deref());
                 self.value_loop_vars.remove(var);
 
-                if let Some(idx) = index {
-                    format!("{}.enumerate().map(|({}, {})| {{ {} }})", iter_expr, idx, var, body_code.join("\n"))
+                // Auto-generate search filter: if the widget has a "search" state var
+                // and we're iterating a Value collection, insert .filter() before .map()
+                let search_filter = if is_value_iter && self.state_types.contains_key("search") {
+                    let var_ref = var.clone();
+                    Some(format!(
+                        ".filter(|{}| {{ \
+                            let __q = self.search.to_lowercase(); \
+                            if __q.is_empty() {{ return true; }} \
+                            let __t = {}[\"title\"].as_str().unwrap_or_default().to_lowercase(); \
+                            let __b = {}[\"body\"].as_str().unwrap_or_default().to_lowercase(); \
+                            __t.contains(&__q) || __b.contains(&__q) \
+                        }})",
+                        var_ref, var_ref, var_ref
+                    ))
                 } else {
-                    format!("{}.iter().map(|{}| {{ {} }})", iter_expr, var, body_code.join("\n"))
+                    None
+                };
+
+                if let Some(idx) = index {
+                    format!("{}.enumerate(){}{}.map(|({}, {})| {{ {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", idx, var, body_code.join("\n"))
+                } else {
+                    format!("{}.iter(){}{}.map(|{}| {{ {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", var, body_code.join("\n"))
                 }
             }
 

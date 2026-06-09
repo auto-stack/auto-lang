@@ -676,7 +676,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
 
                 if let Some(msg) = on_change {
-                    editor.on_action(move |_action| msg.clone()).into()
+                    let action_key = key.clone();
+                    editor.on_action(move |action| {
+                        let text = textarea_perform_action(&action_key, action);
+                        INPUT_TEXT.with(|t| *t.borrow_mut() = text);
+                        msg.clone()
+                    }).into()
                 } else {
                     editor.into()
                 }

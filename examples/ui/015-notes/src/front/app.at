@@ -63,6 +63,9 @@ widget App {
             var new_id = notes.len()
             notes.push({ id: new_id, title: "", body: "", time: "Just now" })
             .active_id = new_id
+            .editing = true
+            .edit_title = ""
+            .edit_body = ""
             .search = ""
         }
 
@@ -71,6 +74,7 @@ widget App {
             if .active_id >= notes.len() {
                 .active_id = notes.len() - 1
             }
+            .editing = false
         }
 
         .SaveNote -> {
