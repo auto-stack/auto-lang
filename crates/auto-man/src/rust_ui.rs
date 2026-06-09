@@ -150,7 +150,7 @@ pub fn generate_rust_ui(
     );
 
     // Determine output directory
-    let default_output = project_dir.join("gen").join("rust");
+    let default_output = project_dir.join("gen").join("front").join("rust");
     let output = output_dir
         .map(|p| p.to_path_buf())
         .unwrap_or(default_output);
@@ -443,7 +443,7 @@ fn find_auto_lang_path(project_dir: &Path) -> String {
     ];
 
     for candidate in &candidates {
-        let full = project_dir.join("gen").join("rust").join(candidate);
+        let full = project_dir.join("gen").join("front").join("rust").join(candidate);
         if full.exists() {
             return candidate.to_string();
         }
@@ -471,7 +471,7 @@ fn find_auto_lang_path(project_dir: &Path) -> String {
 
 /// Run the generated Rust UI project.
 pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
-    let rust_dir = project_dir.join("gen").join("rust");
+    let rust_dir = project_dir.join("gen").join("front").join("rust");
     let (full, code) = needs_regeneration(project_dir, &rust_dir);
 
     if full {

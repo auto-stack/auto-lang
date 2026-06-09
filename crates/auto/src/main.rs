@@ -239,14 +239,14 @@ enum Commands {
     },
 
     // ========== Build & Run ==========
-    #[command(about = "Compile the project based on pac.at backend", alias = "b")]
+    #[command(about = "Compile the project based on pac.at render target", alias = "b")]
     Build {
         #[arg(short, long)]
         dir: Option<String>,
         #[arg(short, long)]
         port: Option<String>,
-        #[arg(short, long, help = "Backend to use (vue, rust, jet, arkts, tauri)")]
-        backend: Option<String>,
+        #[arg(short, long, help = "Render target to use (vue, rust, jet, arkts, tauri)")]
+        render: Option<String>,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
@@ -254,8 +254,8 @@ enum Commands {
         dir: Option<String>,
         #[arg(short, long)]
         port: Option<String>,
-        #[arg(short, long, help = "Backend to use (vue, rust, jet, arkts, tauri)")]
-        backend: Option<String>,
+        #[arg(short, long, help = "Render target to use (vue, rust, jet, arkts, tauri)")]
+        render: Option<String>,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -545,7 +545,7 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== Build & Run ==========
-        Some(Commands::Build { dir, port, backend }) => {
+        Some(Commands::Build { dir, port, render }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -568,8 +568,8 @@ fn real_main(cli: Cli) -> Result<()> {
                     miette::miette!("{}", e)
                 })?;
             }
-            if let Some(b) = backend {
-                am.set_backend(b);
+            if let Some(b) = render {
+                am.set_render(b);
             }
             am.scan().map_err(|e| {
                 if ai_mode {
@@ -589,7 +589,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, backend, args }) => {
+        Some(Commands::Run { dir, port, render, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -612,8 +612,8 @@ fn real_main(cli: Cli) -> Result<()> {
                     miette::miette!("{}", e)
                 })?;
             }
-            if let Some(b) = backend {
-                am.set_backend(b);
+            if let Some(b) = render {
+                am.set_render(b);
             }
             if !ai_mode {
                 info!("Running project ...");

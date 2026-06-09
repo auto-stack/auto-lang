@@ -47,13 +47,15 @@ impl Scene {
 
 pub struct Pac {
     pub name: AutoStr,
-    /// Legacy backend string (for backwards compatibility)
+    /// Legacy backend string (for backwards compatibility with pac.at `backend:` field)
+    /// New projects should use `render:` field instead.
     pub backend: AutoStr,
-    /// New backend configuration (Plan 129)
+    /// Render target configuration (Plan 276)
+    /// Parsed from `render:` field in pac.at (falls back to `backend:` for compat)
     /// Supports:
-    ///   - Single: backend: "vue"
-    ///   - Split: backend: { front: "vue", back: "rust" }
-    ///   - Multi: backend: { front: ["vue", "tauri"], back: "rust" }
+    ///   - Single: render: "vue"
+    ///   - Split: render: { front: "vue", back: "rust" }
+    ///   - Multi: render: ["vue", "arkts"]
     pub backend_config: Option<BackendConfig>,
     /// API backend technology (Plan 276)
     /// e.g., api: "rust" -> generates Axum HTTP server
@@ -100,17 +102,24 @@ impl Pac {
             _ => None,
         }).unwrap_or_else(|| "c".to_string());
 
-        // Parse backend field - supports three forms (Plan 129):
-        //   1. backend: "vue"                          -> Single(BackendType::Vue)
-        //   2. backend: { front: "vue", back: "rust" } -> Split { front: [Vue], back: Rust }
-        //   3. backend: { front: ["vue", "tauri"], back: "rust" } -> Split { front: [Vue, Tauri], back: Rust }
-        //   4. backend: ["vue", "tauri"]               -> Multi([Vue, Tauri])
+        // Parse render field (Plan 276) - falls back to backend for compatibility
+        // Supports three forms:
+        //   1. render: "vue"                          -> Single(BackendType::Vue)
+        //   2. render: { front: "vue", back: "rust" } -> Split { front: [Vue], back: Rust }
+        //   3. render: ["vue", "arkts"]               -> Multi([Vue, Arkts])
+        let render_value = config.root.get_prop("render");
         let backend_value = config.root.get_prop("backend");
-        let backend_config = BackendConfig::from_value(&backend_value);
+        // Prefer "render" field, fall back to "backend" for backwards compatibility
+        let (effective_value, _legacy_backend) = if !render_value.to_astr().is_empty() {
+            (render_value.clone(), false)
+        } else {
+            (backend_value.clone(), true)
+        };
+        let backend_config = BackendConfig::from_value(&effective_value);
 
         // Legacy backend string (for backwards compatibility)
         // Also consider top-level lang: "rust" as backend "rust", "ts"/"typescript" as backend "ts"
-        let backend_str = backend_value.to_astr();
+        let backend_str = effective_value.to_astr();
         let backend = if backend_str.is_empty() {
             if top_lang == "rust" { "rust".into() }
             else if top_lang == "ts" || top_lang == "typescript" { "ts".into() }
@@ -1494,7 +1503,6 @@ mod tests {
     #[test]
     #[ignore = "VM codegen drops node.id — generic nodes lose their main_arg"]
     fn test_bpbe_architecture_parsing() {
-        use crate::node_ext::NodeExt;
         let code = r#"
         name: "sensor_hub"
         version: "1.0.0"

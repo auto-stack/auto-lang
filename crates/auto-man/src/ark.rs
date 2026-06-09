@@ -31,11 +31,11 @@ fn parse_pac_name(content: &str) -> Option<String> {
     None
 }
 
-/// Check if ark is in the backend list
+/// Check if ark is in the render list (supports both "render:" and legacy "backend:" fields)
 fn has_ark_backend(content: &str) -> bool {
     for line in content.lines() {
         let line = line.trim();
-        if line.starts_with("backend:") {
+        if line.starts_with("render:") || line.starts_with("backend:") {
             if let Some(colon_pos) = line.find(':') {
                 let value = line[colon_pos + 1..].trim();
                 // Check if it's an array format
@@ -125,7 +125,7 @@ impl ArkProject {
         };
 
         // Output directory
-        let output_dir = root_dir.join("gen").join("ark");
+        let output_dir = root_dir.join("gen").join("front").join("ark");
 
         // Compile .at files to ArkTS
         let mut arkts_files: Vec<(String, String)> = Vec::new();
@@ -557,7 +557,7 @@ pub fn build_ark_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "▶ Step 1: Generating ArkTS code...".bright_cyan());
     generate_ark_project(root_dir, None, false)?;
 
-    let ark_dir = root_dir.join("ark");
+    let ark_dir = root_dir.join("gen").join("front").join("ark");
 
     // Step 2: Check for hvigorw
     println!();
@@ -612,7 +612,7 @@ pub fn run_ark_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!("{}", "▶ Step 1: Generating ArkTS code...".bright_cyan());
     generate_ark_project(root_dir, None, false)?;
 
-    let ark_dir = root_dir.join("ark");
+    let ark_dir = root_dir.join("gen").join("front").join("ark");
 
     println!();
     println!("{}", "═══════════════════════════════════".bright_green());

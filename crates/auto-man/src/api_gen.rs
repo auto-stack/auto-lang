@@ -113,7 +113,7 @@ fn try_full_parse(api_content: &str) -> Option<ApiModule> {
 fn generate_tauri_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
     use auto_lang::api::Target;
 
-    let vue_dir = root_dir.join("gen").join("vue");
+    let vue_dir = root_dir.join("gen").join("front").join("vue");
     let tauri_src_dir = vue_dir.join("src-tauri").join("src");
 
     // Ensure directories exist
@@ -259,8 +259,8 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
         .map_err(|e| format!("Failed to write api.ts: {}", e))?;
 
     // Also write to vue/src/lib/ for Vue project imports
-    let vue_lib_dir = root_dir.join("gen").join("vue").join("src").join("lib");
-    if vue_lib_dir.exists() || root_dir.join("gen").join("vue").exists() {
+    let vue_lib_dir = root_dir.join("gen").join("front").join("vue").join("src").join("lib");
+    if vue_lib_dir.exists() || root_dir.join("gen").join("front").join("vue").exists() {
         std::fs::create_dir_all(&vue_lib_dir)
             .map_err(|e| format!("Failed to create vue lib directory: {}", e))?;
         std::fs::write(vue_lib_dir.join("api.ts"), &ts_code)
@@ -293,7 +293,7 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
 
 /// Generate Rust server code (Axum-based)
 fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
-    let rust_dir = root_dir.join("rust");
+    let rust_dir = root_dir.join("gen").join("back").join("rust");
     let src_dir = rust_dir.join("src");
     std::fs::create_dir_all(&src_dir)
         .map_err(|e| format!("Failed to create rust/src: {}", e))?;

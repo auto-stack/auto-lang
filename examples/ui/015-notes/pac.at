@@ -1,5 +1,5 @@
 name: "notes"
 version: "1.0.0"
 scene: "ui"
-backend: ["vue", "jet", "arkts"]
+render: ["vue", "jet", "arkts"]
 api: "rust"

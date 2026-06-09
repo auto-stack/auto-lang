@@ -33,13 +33,13 @@ fn parse_pac_name(content: &str) -> Option<String> {
     None
 }
 
-/// Parse backend from pac.at content (supports array format)
+/// Parse render from pac.at content (supports array format, checks both "render:" and "backend:")
 #[allow(dead_code)]
 fn parse_pac_backend(content: &str) -> Option<String> {
-    // First, try to parse as array: backend: ["vue", "jet"]
+    // First, try to parse as array: render: ["vue", "jet"]
     for line in content.lines() {
         let line = line.trim();
-        if line.starts_with("backend:") {
+        if line.starts_with("render:") || line.starts_with("backend:") {
             if let Some(colon_pos) = line.find(':') {
                 let value = line[colon_pos + 1..].trim();
                 // Check if it's an array format
@@ -71,11 +71,11 @@ fn parse_pac_backend(content: &str) -> Option<String> {
     None
 }
 
-/// Check if jet is in the backend list
+/// Check if jet is in the render list (supports both "render:" and legacy "backend:" fields)
 fn has_jet_backend(content: &str) -> bool {
     for line in content.lines() {
         let line = line.trim();
-        if line.starts_with("backend:") {
+        if line.starts_with("render:") || line.starts_with("backend:") {
             if let Some(colon_pos) = line.find(':') {
                 let value = line[colon_pos + 1..].trim();
                 // Check if it's an array format
@@ -150,7 +150,7 @@ impl JetProject {
         };
 
         // Output directory
-        let output_dir = root_dir.join("gen").join("jet");
+        let output_dir = root_dir.join("gen").join("front").join("jet");
 
         // Compile .at files to Kotlin
         let mut kotlin_files: Vec<(String, String)> = Vec::new();
@@ -266,7 +266,7 @@ impl JetProject {
 
         let name = parse_pac_name(&pac_content).unwrap_or_else(|| "MyApp".to_string());
         let front_dir = root_dir.join("source").join("front");
-        let output_dir = root_dir.join("jet");
+        let output_dir = root_dir.join("gen").join("front").join("jet");
 
         // Load cache
         let mut cache = UICache::load(root_dir);
@@ -686,7 +686,7 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!("{}", "▶ Step 1: Generating Kotlin code...".bright_cyan());
     generate_jet_project(root_dir, None, false)?;
 
-    let jet_dir = root_dir.join("jet");
+    let jet_dir = root_dir.join("gen").join("front").join("jet");
 
     // Step 2: Check for gradlew
     println!();
@@ -807,7 +807,7 @@ pub fn build_jet_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "▶ Step 1: Generating Kotlin code...".bright_cyan());
     generate_jet_project(root_dir, None, false)?;
 
-    let jet_dir = root_dir.join("jet");
+    let jet_dir = root_dir.join("gen").join("front").join("jet");
 
     // Step 2: Check for gradlew
     println!();

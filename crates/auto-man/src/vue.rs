@@ -781,7 +781,7 @@ export default router
             .unwrap_or_else(|| "aura-app".to_string());
 
         // Output directory (Plan 129: vue/ instead of dist/)
-        let output_dir = root_dir.join("gen").join("vue");
+        let output_dir = root_dir.join("gen").join("front").join("vue");
         let public_dir = front_dir.join("public");
 
         // Compile .at files
@@ -1413,7 +1413,7 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
 
     // Copy handmade theme assets if available
     let handmade_css = root_dir.join("vue").join("src").join("assets").join("index.css");
-    let gen_css = root_dir.join("gen").join("vue").join("src").join("assets").join("index.css");
+    let gen_css = root_dir.join("gen").join("front").join("vue").join("src").join("assets").join("index.css");
     if handmade_css.exists() && gen_css.exists() {
         if let Ok(content) = fs::read_to_string(&handmade_css) {
             fs::write(&gen_css, content)
@@ -1422,7 +1422,7 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
         }
     }
     let handmade_theme_toggle = root_dir.join("vue").join("src").join("components").join("ThemeToggle.vue");
-    let gen_components_dir = root_dir.join("gen").join("vue").join("src").join("components");
+    let gen_components_dir = root_dir.join("gen").join("front").join("vue").join("src").join("components");
     if handmade_theme_toggle.exists() {
         let gen_theme_toggle = gen_components_dir.join("ThemeToggle.vue");
         if let Ok(content) = fs::read_to_string(&handmade_theme_toggle) {
@@ -1468,7 +1468,7 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
 
     // Plan 234: Copy handmade composables
     let handmade_composables_dir = root_dir.join("vue").join("src").join("composables");
-    let gen_composables_dir = root_dir.join("gen").join("vue").join("src").join("composables");
+    let gen_composables_dir = root_dir.join("gen").join("front").join("vue").join("src").join("composables");
     if handmade_composables_dir.exists() && handmade_composables_dir.is_dir() {
         fs::create_dir_all(&gen_composables_dir).ok();
         if let Ok(entries) = fs::read_dir(&handmade_composables_dir) {
@@ -1499,7 +1499,7 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
 
     // Plan 234: Copy handmade types
     let handmade_types_dir = root_dir.join("vue").join("src").join("types");
-    let gen_types_dir = root_dir.join("gen").join("vue").join("src").join("types");
+    let gen_types_dir = root_dir.join("gen").join("front").join("vue").join("src").join("types");
     if handmade_types_dir.exists() && handmade_types_dir.is_dir() {
         fs::create_dir_all(&gen_types_dir).ok();
         if let Ok(entries) = fs::read_dir(&handmade_types_dir) {
@@ -1575,7 +1575,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     // Resolve front directory using same logic as VueProject::from_workspace
     let front_dir = resolve_front_dir(root_dir);
-    let output_dir = root_dir.join("gen").join("vue");
+    let output_dir = root_dir.join("gen").join("front").join("vue");
 
     // Load cache for incremental compilation
     let mut cache = UICache::load(root_dir);
@@ -1815,7 +1815,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     // Copy handmade theme assets if available
     let handmade_css = root_dir.join("vue").join("src").join("assets").join("index.css");
-    let gen_css = root_dir.join("gen").join("vue").join("src").join("assets").join("index.css");
+    let gen_css = root_dir.join("gen").join("front").join("vue").join("src").join("assets").join("index.css");
     if handmade_css.exists() && gen_css.exists() {
         if let Ok(content) = fs::read_to_string(&handmade_css) {
             fs::write(&gen_css, content)
@@ -1824,7 +1824,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         }
     }
     let handmade_theme_toggle = root_dir.join("vue").join("src").join("components").join("ThemeToggle.vue");
-    let gen_components_dir = root_dir.join("gen").join("vue").join("src").join("components");
+    let gen_components_dir = root_dir.join("gen").join("front").join("vue").join("src").join("components");
     if handmade_theme_toggle.exists() {
         let gen_theme_toggle = gen_components_dir.join("ThemeToggle.vue");
         if let Ok(content) = fs::read_to_string(&handmade_theme_toggle) {
@@ -1873,13 +1873,13 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     println!("▶ Step {}/{}: Copying public assets...", current_step, total_steps);
     project.copy_public_assets()?;
 
-    // Step 5.5: Start API backend server if rust/ exists (Plan 276)
-    let rust_dir = root_dir.join("rust");
+    // Step 5.5: Start API backend server if gen/back/rust/ exists (Plan 276)
+    let rust_dir = root_dir.join("gen").join("back").join("rust");
     let mut _api_child: Option<std::process::Child> = None;
     if rust_dir.join("Cargo.toml").exists() {
         println!();
         println!("▶ Starting API backend server...");
-        println!("  cd rust/ && cargo run");
+        println!("  cd gen/back/rust/ && cargo run");
 
         // Start the Rust API server as a background process
         let api_server = std::process::Command::new("cargo")

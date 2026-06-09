@@ -1,4 +1,4 @@
 name: "hero-section"
 version: "1.0.0"
 scene: "ui"
-backend: ["vue", "jet", "arkts", "rust"]
+render: ["vue", "jet", "arkts"]

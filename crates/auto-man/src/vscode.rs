@@ -142,7 +142,7 @@ impl VscodeProject {
             root_dir.join("src").join("front")
         };
 
-        let output_dir = root_dir.join("gen").join("vscode");
+        let output_dir = root_dir.join("gen").join("front").join("vscode");
 
         Ok(Self {
             root_dir: root_dir.to_path_buf(),
@@ -340,7 +340,7 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "Building VSCode extension project".bright_cyan());
 
     // Step 1: Ensure gen/vue is built (webview prerequisite)
-    let vue_dir = root_dir.join("gen").join("vue");
+    let vue_dir = root_dir.join("gen").join("front").join("vue");
     let vue_dist = vue_dir.join("dist");
 
     if !vue_dist.join("assets").join("index.js").exists() {
@@ -391,7 +391,7 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
     );
     generate_vscode_project(root_dir, None, false)?;
 
-    let vscode_dir = root_dir.join("gen").join("vscode");
+    let vscode_dir = root_dir.join("gen").join("front").join("vscode");
 
     // Step 3: Check for npm
     println!();
@@ -465,7 +465,7 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
     // so we copy gen/vue/dist/ → gen/vscode/webview/ at build time.
     // Symlinks/junctions don't work — the service worker resolves the real
     // path and rejects it as outside the extension.
-    let vue_dist_src = root_dir.join("gen").join("vue").join("dist");
+    let vue_dist_src = root_dir.join("gen").join("front").join("vue").join("dist");
     let vscode_webview_dst = vscode_dir.join("webview");
 
     if vue_dist_src.exists() {
@@ -490,7 +490,7 @@ pub fn run_vscode_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()>
     // Step 1: Build first (generates + installs deps + compiles)
     build_vscode_project(root_dir)?;
 
-    let vscode_dir = root_dir.join("gen").join("vscode");
+    let vscode_dir = root_dir.join("gen").join("front").join("vscode");
 
     // Step 2: Open VSCode with extension loaded
     println!();

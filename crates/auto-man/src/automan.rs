@@ -24,7 +24,7 @@ pub struct Automan {
     pac: Pac,
     index_store: IndexStore,
     cache: Option<AutoManCache>, // Optional cache for builds
-    backend_override: Option<String>, // --backend CLI override
+    render_override: Option<String>, // --render CLI override
     root_dir: PathBuf, // Project root directory (from pac.at location)
 }
 
@@ -216,7 +216,7 @@ impl Automan {
             pac,
             index_store,
             cache: None,
-            backend_override: None,
+            render_override: None,
             root_dir,
         })
     }
@@ -287,8 +287,8 @@ impl Automan {
         self.pac.pull()
     }
 
-    pub fn set_backend(&mut self, backend: String) {
-        self.backend_override = Some(backend);
+    pub fn set_render(&mut self, render: String) {
+        self.render_override = Some(render);
     }
 
     pub fn set_port(&mut self, port: AutoStr) -> AutoResult<()> {
@@ -445,13 +445,13 @@ impl Automan {
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
         // Jet project is in the jet/ subdirectory
-        let project_dir = root_dir.join("gen").join("jet");
+        let project_dir = root_dir.join("gen").join("front").join("jet");
 
         // Check if jet directory exists, if not, create it
         if !project_dir.exists() {
             println!("Jet project directory not found, generating...");
             // Generate the jet project first
-            let output_dir = root_dir.join("gen").join("jet");
+            let output_dir = root_dir.join("gen").join("front").join("jet");
             crate::jet::generate_jet_project(&root_dir, Some(&output_dir), true)?;
         }
 
@@ -574,13 +574,13 @@ impl Automan {
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
         // Ark project is in the ark/ subdirectory
-        let project_dir = root_dir.join("gen").join("ark");
+        let project_dir = root_dir.join("gen").join("front").join("ark");
 
         // Check if ark directory exists, if not, create it
         if !project_dir.exists() {
             println!("Ark project directory not found, generating...");
             // Generate the ark project first
-            let output_dir = root_dir.join("gen").join("ark");
+            let output_dir = root_dir.join("gen").join("front").join("ark");
             crate::ark::generate_ark_project(&root_dir, Some(&output_dir), true)?;
         }
 
@@ -1075,8 +1075,8 @@ impl Automan {
                             println!("  Generating Kotlin (backend: jet)");
                             let output_path = if frontends.len() > 1 {
                                 output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("gen").join("jet")
-                                }).or_else(|| Some(member_dir.join("gen").join("jet")))
+                                    std::path::PathBuf::from(o).join("gen").join("front").join("jet")
+                                }).or_else(|| Some(member_dir.join("gen").join("front").join("jet")))
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
@@ -1090,8 +1090,8 @@ impl Automan {
                             println!("  Generating ArkTS (backend: ark)");
                             let output_path = if frontends.len() > 1 {
                                 output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("gen").join("ark")
-                                }).or_else(|| Some(member_dir.join("gen").join("ark")))
+                                    std::path::PathBuf::from(o).join("gen").join("front").join("ark")
+                                }).or_else(|| Some(member_dir.join("gen").join("front").join("ark")))
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
@@ -1105,8 +1105,8 @@ impl Automan {
                             println!("  Generating Rust UI (backend: rust)");
                             let output_path = if frontends.len() > 1 {
                                 output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("gen").join("rust")
-                                }).or_else(|| Some(member_dir.join("gen").join("rust")))
+                                    std::path::PathBuf::from(o).join("gen").join("front").join("rust")
+                                }).or_else(|| Some(member_dir.join("gen").join("front").join("rust")))
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
@@ -1120,8 +1120,8 @@ impl Automan {
                             println!("  Generating VSCode extension (backend: vscode)");
                             let output_path = if frontends.len() > 1 {
                                 output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("gen").join("vscode")
-                                }).or_else(|| Some(member_dir.join("gen").join("vscode")))
+                                    std::path::PathBuf::from(o).join("gen").join("front").join("vscode")
+                                }).or_else(|| Some(member_dir.join("gen").join("front").join("vscode")))
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
@@ -1170,8 +1170,8 @@ impl Automan {
                     // For multi-backend, create output subdirectory
                     let output_path = if frontends.len() > 1 {
                         output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("gen").join("jet")
-                        }).or_else(|| Some(root_dir.join("gen").join("jet")))
+                            std::path::PathBuf::from(o).join("gen").join("front").join("jet")
+                        }).or_else(|| Some(root_dir.join("gen").join("front").join("jet")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
@@ -1190,8 +1190,8 @@ impl Automan {
                     // For multi-backend, create output subdirectory
                     let output_path = if frontends.len() > 1 {
                         output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("gen").join("ark")
-                        }).or_else(|| Some(root_dir.join("gen").join("ark")))
+                            std::path::PathBuf::from(o).join("gen").join("front").join("ark")
+                        }).or_else(|| Some(root_dir.join("gen").join("front").join("ark")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
@@ -1232,8 +1232,8 @@ impl Automan {
                     // For multi-backend, create output subdirectory
                     let output_path = if frontends.len() > 1 {
                         output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("gen").join("rust")
-                        }).or_else(|| Some(root_dir.join("gen").join("rust")))
+                            std::path::PathBuf::from(o).join("gen").join("front").join("rust")
+                        }).or_else(|| Some(root_dir.join("gen").join("front").join("rust")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
@@ -1251,8 +1251,8 @@ impl Automan {
 
                     let output_path = if frontends.len() > 1 {
                         output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("gen").join("vscode")
-                        }).or_else(|| Some(root_dir.join("gen").join("vscode")))
+                            std::path::PathBuf::from(o).join("gen").join("front").join("vscode")
+                        }).or_else(|| Some(root_dir.join("gen").join("front").join("vscode")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
@@ -1282,12 +1282,12 @@ impl Automan {
         if self.pac.has_backend_config() {
             let frontends = self.pac.frontend_types();
 
-            // Use --backend override if provided
-            let idx = if let Some(ref backend_name) = self.backend_override {
-                let lower = backend_name.to_lowercase();
+            // Use --render override if provided
+            let idx = if let Some(ref render_name) = self.render_override {
+                let lower = render_name.to_lowercase();
                 frontends.iter().position(|b| b.as_str().to_lowercase() == lower)
-                    .ok_or_else(|| format!("Backend '{}' not found in pac.at. Available: {}",
-                        backend_name,
+                    .ok_or_else(|| format!("Render target '{}' not found in pac.at. Available: {}",
+                        render_name,
                         frontends.iter().map(|b| b.as_str()).collect::<Vec<_>>().join(", ")
                     ))?
             } else {
@@ -1535,7 +1535,7 @@ impl Automan {
         println!("{} Build complete", "✓".bright_green());
 
         // Plan 132: Check if there's a generated Rust server to run
-        let rust_dir = root_dir.join("gen").join("rust");
+        let rust_dir = root_dir.join("gen").join("back").join("rust");
         let rust_server_path = rust_dir.join("Cargo.toml");
         let mut rust_server_handle: Option<std::process::Child> = None;
 

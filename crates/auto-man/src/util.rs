@@ -83,7 +83,7 @@ pub fn select_or_default_port(
 ///
 /// Logic:
 /// 1. Only 1 option → auto-select
-/// 2. `AUTO_BACKEND` env var → match (case-insensitive)
+/// 2. `AUTO_RENDER` env var → match (case-insensitive)
 /// 3. Non-TTY → auto-select first
 /// 4. Print numbered list, read number input from user
 pub fn select_backend(
@@ -99,22 +99,22 @@ pub fn select_backend(
         .map(|t| t.as_str())
         .collect();
 
-    // 2. Check AUTO_BACKEND environment variable
-    if let Ok(backend_env) = std::env::var("AUTO_BACKEND") {
-        let backend_lower = backend_env.to_lowercase();
+    // 2. Check AUTO_RENDER environment variable
+    if let Ok(render_env) = std::env::var("AUTO_RENDER") {
+        let render_lower = render_env.to_lowercase();
         for (i, name) in backend_names.iter().enumerate() {
-            if name.to_lowercase() == backend_lower {
-                println!("{} Using backend from AUTO_BACKEND: {}",
+            if name.to_lowercase() == render_lower {
+                println!("{} Using render target from AUTO_RENDER: {}",
                     "→".bright_green(), name.bright_cyan());
                 return Ok(i);
             }
         }
-        eprintln!("Warning: AUTO_BACKEND='{}' not found, falling back to selection", backend_env);
+        eprintln!("Warning: AUTO_RENDER='{}' not found, falling back to selection", render_env);
     }
 
     // 3. Non-TTY fallback
     if !atty_check() {
-        println!("{} Auto-selecting backend: {}",
+        println!("{} Auto-selecting render target: {}",
             "→".bright_green(), backend_names[0].bright_cyan());
         return Ok(0);
     }
