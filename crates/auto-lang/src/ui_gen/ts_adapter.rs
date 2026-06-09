@@ -67,6 +67,24 @@ impl AuraTsContext {
     }
 }
 
+/// Convert a snake_case identifier to camelCase (for TS/JS output).
+/// e.g. `list_notes` → `listNotes`, `create_note` → `createNote`
+pub fn snake_to_camel(name: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = false;
+    for c in name.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 /// Transpile a list of AutoLang statements to TypeScript, with AURA rewrites.
 pub fn transpile_handler_body(stmts: &[Stmt], ctx: &AuraTsContext) -> String {
     let mut out = Vec::new();
@@ -346,9 +364,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 // Regular function call
                 Expr::Ident(name) => {
                     let func_name = name.as_str();
-                    // API calls need `await`
+                    // API calls need `await` and snake_case → camelCase conversion
                     if ctx.is_api(func_name) {
-                        write!(out, "await {}", func_name).ok();
+                        write!(out, "await {}", snake_to_camel(func_name)).ok();
                     } else if func_name == "print" {
                         write!(out, "console.log").ok();
                     } else {

@@ -1359,9 +1359,11 @@ impl VueGenerator {
             }
         }
 
-        // Plan 132: Add API imports if needed
+        // Plan 132: Add API imports if needed (snake_case → camelCase for TS)
         if !self.api_functions_used.is_empty() {
-            let api_funcs: Vec<&str> = self.api_functions_used.iter().map(|s| s.as_str()).collect();
+            let api_funcs: Vec<String> = self.api_functions_used.iter()
+                .map(|s| crate::ui_gen::ts_adapter::snake_to_camel(s))
+                .collect();
             script.push_str(&format!("import {{ {} }} from '@/lib/api'\n", api_funcs.join(", ")));
             // Deprecation warning for implicit API usage
             if !self.explicit_api_imports {

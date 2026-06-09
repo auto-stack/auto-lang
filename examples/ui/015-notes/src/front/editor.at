@@ -1,4 +1,4 @@
-use back.api: updatenote, deletenote
+use back.api: update_note, delete_note
 
 widget EditorPanel(note: str) {
     msg Msg { Edit, Save, Cancel, EditBody, EditTitle, Delete }
@@ -54,7 +54,7 @@ widget EditorPanel(note: str) {
         .Save -> {
             .note.title = .edit_title
             .note.body = .edit_body
-            updatenote(.note.id, .edit_title, .edit_body)
+            update_note(.note.id, .edit_title, .edit_body)
             .editing = false
         }
         .Cancel -> {
@@ -65,7 +65,7 @@ widget EditorPanel(note: str) {
         .EditTitle -> {
         }
         .Delete -> {
-            deletenote(.note.id)
+            delete_note(.note.id)
             .note.deleted = true
             .editing = false
         }

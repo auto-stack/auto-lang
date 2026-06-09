@@ -20,7 +20,7 @@ pub type Note = {
 /// List all notes
 /// GET /api/notes
 #[api(method = "GET", path = "/api/notes")]
-pub fn listnotes() []Note {
+pub fn list_notes() []Note {
     use db
 
     return db.all_notes()
@@ -29,7 +29,7 @@ pub fn listnotes() []Note {
 /// Get a single note by ID
 /// GET /api/notes/:id
 #[api(method = "GET", path = "/api/notes/:id")]
-pub fn getnote(id int) ?Note {
+pub fn get_note(id int) ?Note {
     use db
 
     return db.find_note(id)
@@ -38,7 +38,7 @@ pub fn getnote(id int) ?Note {
 /// Create a new note
 /// POST /api/notes
 #[api(method = "POST", path = "/api/notes")]
-pub fn createnote(title str, body str) Note {
+pub fn create_note(title str, body str) Note {
     use db
 
     let note = db.create_note(title, body)
@@ -48,7 +48,7 @@ pub fn createnote(title str, body str) Note {
 /// Update an existing note
 /// PUT /api/notes/:id
 #[api(method = "PUT", path = "/api/notes/:id")]
-pub fn updatenote(id int, title str, body str) ?Note {
+pub fn update_note(id int, title str, body str) ?Note {
     use db
 
     return db.update_note(id, title, body)
@@ -57,7 +57,7 @@ pub fn updatenote(id int, title str, body str) ?Note {
 /// Delete a note by ID
 /// DELETE /api/notes/:id
 #[api(method = "DELETE", path = "/api/notes/:id")]
-pub fn deletenote(id int) bool {
+pub fn delete_note(id int) bool {
     use db
 
     return db.delete_note(id)
