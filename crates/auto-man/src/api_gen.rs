@@ -362,8 +362,11 @@ fn generate_types_rs(api_module: &auto_lang::api::ApiModule) -> String {
 
 /// Convert AutoLang type to Rust type
 fn auto_type_to_rust(auto_type: &str) -> String {
-    // Handle optional type T?
+    // Handle optional type: prefix ?T (AutoLang syntax: ?Note) or suffix T?
     let auto_type = auto_type.trim();
+    if let Some(inner) = auto_type.strip_prefix('?') {
+        return format!("Option<{}>", auto_type_to_rust(inner));
+    }
     if auto_type.ends_with('?') {
         let inner = &auto_type[..auto_type.len()-1];
         return format!("Option<{}>", auto_type_to_rust(inner));
@@ -383,26 +386,261 @@ fn auto_type_to_rust(auto_type: &str) -> String {
     }
 }
 
-/// Generate api.rs with route handlers
+/// Determine if a path contains a path parameter (e.g., `:id`)
+fn has_path_param(path: &str) -> bool {
+    path.split('/').any(|s| s.starts_with(':'))
+}
+
+
+
+/// Determine the primary type from an ApiModule (first defined type)
+fn primary_type_name(api_module: &auto_lang::api::ApiModule) -> Option<String> {
+    api_module.types.first().map(|t| t.name.clone())
+}
+
+/// Get body params (params that aren't path params)
+fn endpoint_body_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
+    let path = endpoint.path();
+    endpoint.params.iter().filter(|p| {
+        !path.contains(&format!(":{}", p.name))
+    }).collect()
+}
+
+/// Get path params (params that appear in the URL path)
+fn endpoint_path_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
+    let path = endpoint.path();
+    endpoint.params.iter().filter(|p| {
+        path.contains(&format!(":{}", p.name))
+    }).collect()
+}
+
+/// Check if endpoint has a JSON body (POST/PUT with non-path params)
+fn endpoint_has_body(endpoint: &ApiEndpoint) -> bool {
+    let method = endpoint.method();
+    matches!(method.as_str(), "POST" | "PUT")
+}
+
+/// Generate api.rs with route handlers — full CRUD implementation
 fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
-    let mut lines = vec!["use axum::Json;".to_string(), "use crate::types::*;".to_string(), "".to_string()];
+    let mut lines = vec![
+        "use axum::{".to_string(),
+        "    extract::{Path, State, Json},".to_string(),
+        "    http::StatusCode,".to_string(),
+        "    Json as JsonResponse,".to_string(),
+        "};".to_string(),
+        "use crate::types::*;".to_string(),
+        "use std::sync::{Arc, Mutex};".to_string(),
+        "".to_string(),
+    ];
 
-    for endpoint in &api_module.endpoints {
-        let return_type = auto_type_to_rust(&endpoint.return_type);
-        lines.push(format!("pub async fn {}() -> Json<{}> {{", endpoint.fn_name, return_type));
-
-        // Generate mock data for listusers endpoint
-        if endpoint.fn_name == "listusers" {
-            lines.push("    // Mock data for demo".to_string());
-            lines.push("    Json(vec![".to_string());
-            lines.push("        User { id: 1, name: \"Alice\".to_string(), email: \"alice@example.com\".to_string() },".to_string());
-            lines.push("        User { id: 2, name: \"Bob\".to_string(), email: \"bob@example.com\".to_string() },".to_string());
-            lines.push("        User { id: 3, name: \"Charlie\".to_string(), email: \"charlie@example.com\".to_string() },".to_string());
-            lines.push("    ])".to_string());
-        } else {
-            lines.push("    // TODO: Implement actual logic".to_string());
-            lines.push("    Json(Default::default())".to_string());
+    // Determine primary type and generate Db type alias
+    let primary_type = match primary_type_name(api_module) {
+        Some(t) => t,
+        None => {
+            // Fallback: generate skeleton handlers
+            lines.push("// No types defined, generating skeleton handlers".to_string());
+            for endpoint in &api_module.endpoints {
+                lines.push("".to_string());
+                lines.push(format!("pub async fn {}() {{", endpoint.fn_name));
+                lines.push("    // TODO: Implement".to_string());
+                lines.push("}".to_string());
+            }
+            return lines.join("\n");
         }
+    };
+
+    lines.push(format!("pub type Db = Arc<Mutex<Vec<{}>>>;", primary_type));
+    lines.push("".to_string());
+
+    // Generate CreateInput struct for POST endpoints with body fields
+    for endpoint in &api_module.endpoints {
+        if endpoint.method() == "POST" {
+            let body_params = endpoint_body_params(endpoint);
+            if !body_params.is_empty() {
+                lines.push("#[derive(serde::Deserialize)]".to_string());
+                lines.push(format!("pub struct Create{}Input {{", primary_type));
+                for param in &body_params {
+                    let rust_type = auto_type_to_rust(&param.ty);
+                    lines.push(format!("    pub {}: {},", param.name, rust_type));
+                }
+                lines.push("}".to_string());
+                lines.push("".to_string());
+                break; // Only one CreateInput per primary type
+            }
+        }
+    }
+
+    // Get type field names for time detection
+    let type_fields: Vec<&str> = api_module.types.iter()
+        .find(|t| t.name == primary_type)
+        .map(|t| t.fields.iter().map(|f| f.name.as_str()).collect())
+        .unwrap_or_default();
+    let has_time_field = type_fields.contains(&"time");
+    // Convention: first field is the ID field
+    let id_field = type_fields.first().copied().unwrap_or("id");
+
+    // Generate handler for each endpoint
+    for endpoint in &api_module.endpoints {
+        let method = endpoint.method();
+        let fn_name = &endpoint.fn_name;
+        let has_path = has_path_param(&endpoint.path());
+
+        // Build function parameters
+        let mut params = vec![];
+        if has_path {
+            let path_params = endpoint_path_params(endpoint);
+            if let Some(first) = path_params.first() {
+                let rust_type = auto_type_to_rust(&first.ty);
+                params.push(format!("Path({}): Path<{}>", first.name, rust_type));
+            }
+        }
+        params.push("State(db): State<Db>".to_string());
+        if endpoint_has_body(endpoint) {
+            if method == "POST" {
+                let body_params = endpoint_body_params(endpoint);
+                if !body_params.is_empty() {
+                    params.push(format!("Json(input): Json<Create{}Input>", primary_type));
+                } else {
+                    params.push(format!("Json(input): Json<{}>", primary_type));
+                }
+            } else {
+                // PUT uses the full type
+                params.push(format!("Json(input): Json<{}>", primary_type));
+            }
+        }
+
+        // Determine return type
+        // Strip Option wrapper for endpoints that use Result<_, StatusCode> for 404
+        let raw_ret = auto_type_to_rust(&endpoint.return_type);
+        let is_void = raw_ret == "()" || raw_ret == "void";
+        // Wrap in Result if endpoint may return NOT_FOUND
+        let needs_result = has_path || matches!(method.as_str(), "DELETE" | "PUT");
+        // For Result-returning endpoints, strip Option<> since 404 is handled via Err
+        let json_inner = if needs_result {
+            raw_ret.strip_prefix("Option<")
+                .and_then(|s| s.strip_suffix('>'))
+                .unwrap_or(&raw_ret)
+                .to_string()
+        } else {
+            raw_ret.clone()
+        };
+        let json_ret = if is_void {
+            "StatusCode".to_string()
+        } else {
+            format!("JsonResponse<{}>", json_inner)
+        };
+        let ret_type = if needs_result {
+            format!("Result<{}, StatusCode>", json_ret)
+        } else {
+            json_ret
+        };
+
+        lines.push(format!(
+            "pub async fn {}({}) -> {} {{",
+            fn_name,
+            params.join(", "),
+            ret_type
+        ));
+
+        // Generate handler body based on CRUD operation
+        match method.as_str() {
+            "GET" if !has_path => {
+                // List all
+                lines.push("    let items = db.lock().unwrap();".to_string());
+                lines.push("    JsonResponse(items.clone())".to_string());
+            }
+            "GET" if has_path => {
+                // Get by ID
+                let path_params = endpoint_path_params(endpoint);
+                let id_name = path_params.first().map(|p| p.name.as_str()).unwrap_or(id_field);
+                lines.push("    let items = db.lock().unwrap();".to_string());
+                lines.push("    items.iter()".to_string());
+                lines.push(format!("        .find(|n| n.{} == {})", id_name, id_name));
+                lines.push("        .cloned()".to_string());
+                lines.push("        .map(JsonResponse)".to_string());
+                lines.push("        .ok_or(StatusCode::NOT_FOUND)".to_string());
+            }
+            "POST" => {
+                // Create
+                lines.push("    let mut items = db.lock().unwrap();".to_string());
+                lines.push(format!(
+                    "    let new_id = items.iter().map(|n| n.{}).max().unwrap_or(-1) + 1;",
+                    id_field
+                ));
+                let body_params = endpoint_body_params(endpoint);
+                if body_params.is_empty() {
+                    lines.push(format!(
+                        "    let item = {} {{ {}: new_id, ..Default::default() }};",
+                        primary_type, id_field
+                    ));
+                } else {
+                    lines.push(format!("    let item = {} {{", primary_type));
+                    lines.push(format!("        {}: new_id,", id_field));
+                    for param in &body_params {
+                        lines.push(format!("        {}: input.{},", param.name, param.name));
+                    }
+                    if has_time_field {
+                        lines.push("        time: \"Just now\".to_string(),".to_string());
+                    }
+                    lines.push("    };".to_string());
+                }
+                lines.push("    items.push(item.clone());".to_string());
+                lines.push("    JsonResponse(item)".to_string());
+            }
+            "PUT" => {
+                // Update
+                let path_params = endpoint_path_params(endpoint);
+                let id_name = path_params.first().map(|p| p.name.as_str()).unwrap_or(id_field);
+                lines.push("    let mut items = db.lock().unwrap();".to_string());
+                lines.push(format!(
+                    "    if let Some(item) = items.iter_mut().find(|n| n.{} == {}) {{",
+                    id_name, id_name
+                ));
+                let body_params = endpoint_body_params(endpoint);
+                if !body_params.is_empty() {
+                    for param in &body_params {
+                        lines.push(format!("        item.{} = input.{}.clone();", param.name, param.name));
+                    }
+                } else {
+                    // Update from full type - copy all fields except id
+                    for field in &type_fields {
+                        if *field != id_name {
+                            lines.push(format!("        item.{} = input.{}.clone();", field, field));
+                        }
+                    }
+                }
+                if has_time_field && !body_params.iter().any(|p| p.name == "time") {
+                    lines.push("        item.time = \"Just now\".to_string();".to_string());
+                }
+                lines.push("        Ok(JsonResponse(item.clone()))".to_string());
+                lines.push("    } else {".to_string());
+                lines.push("        Err(StatusCode::NOT_FOUND)".to_string());
+                lines.push("    }".to_string());
+            }
+            "DELETE" => {
+                // Delete
+                let path_params = endpoint_path_params(endpoint);
+                let id_name = path_params.first().map(|p| p.name.as_str()).unwrap_or(id_field);
+                lines.push("    let mut items = db.lock().unwrap();".to_string());
+                lines.push("    let len_before = items.len();".to_string());
+                lines.push(format!("    items.retain(|n| n.{} != {});", id_name, id_name));
+                lines.push("    if items.len() < len_before {".to_string());
+                if raw_ret == "bool" {
+                    lines.push("        Ok(JsonResponse(true))".to_string());
+                } else {
+                    lines.push("        Ok(StatusCode::OK)".to_string());
+                }
+                lines.push("    } else {".to_string());
+                lines.push("        Err(StatusCode::NOT_FOUND)".to_string());
+                lines.push("    }".to_string());
+            }
+            _ => {
+                // Default fallback
+                lines.push("    // TODO: Implement".to_string());
+                lines.push("    JsonResponse(Default::default())".to_string());
+            }
+        }
+
         lines.push("}".to_string());
         lines.push("".to_string());
     }
@@ -410,53 +648,107 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
     lines.join("\n")
 }
 
-/// Generate main.rs with Axum server setup
+/// Generate initial sample data for the primary type
+fn generate_initial_data(api_module: &auto_lang::api::ApiModule) -> String {
+    let primary_type = match primary_type_name(api_module) {
+        Some(t) => t,
+        None => return "Vec::new()".to_string(),
+    };
+
+    let api_type = match api_module.types.iter().find(|t| t.name == primary_type) {
+        Some(t) => t,
+        None => return "Vec::new()".to_string(),
+    };
+
+    // Generate 3 sample items based on type fields
+    let mut items = vec![];
+    for i in 0..3 {
+        let fields: Vec<String> = api_type.fields.iter().map(|f| {
+            let val = match f.ty.as_str() {
+                "int" | "i64" => format!("{}", i),
+                "str" | "String" => {
+                    let sample = match f.name.as_str() {
+                        "title" | "name" => match i {
+                            0 => "Welcome",
+                            1 => "Shopping List",
+                            _ => "Meeting Notes",
+                        },
+                        "body" | "description" | "content" => match i {
+                            0 => "This is your notes app. Click on any note to view it.",
+                            1 => "Milk, Eggs, Bread, Cheese",
+                            _ => "Q3 roadmap discussion with the team",
+                        },
+                        "email" => match i {
+                            0 => "alice@example.com",
+                            1 => "bob@example.com",
+                            _ => "charlie@example.com",
+                        },
+                        "time" | "date" | "created_at" => match i {
+                            0 => "Just now",
+                            1 => "2 hours ago",
+                            _ => "Yesterday",
+                        },
+                        _ => "Sample",
+                    };
+                    format!("\"{}\".into()", sample)
+                }
+                "bool" => "false".to_string(),
+                _ => "Default::default()".to_string(),
+            };
+            format!("{}: {}", f.name, val)
+        }).collect();
+        let field_str = fields.join(",\n            ");
+        items.push(format!(
+            "        {} {{\n            {}\n        }}",
+            primary_type, field_str
+        ));
+    }
+
+    let items_str = items.join(",\n");
+    format!("vec![\n{}\n    ]", items_str)
+}
+
+/// Generate main.rs with Axum server setup, shared state, and initial data
 fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
     let routes: Vec<String> = api_module.endpoints.iter()
         .map(|e| {
-            let default_path = format!("/api/{}", e.fn_name);
-            let path = e.attrs.path.as_deref().unwrap_or(&default_path);
-            // Use the endpoint's HTTP method
-            let method = e.attrs.method.as_deref().unwrap_or("GET");
-            let method_fn = match method.to_lowercase().as_str() {
-                "post" => "post",
-                "put" => "put",
-                "delete" => "delete",
-                "patch" => "patch",
-                _ => "get",
-            };
-            format!("        .route(\"{}\", axum::routing::{}(api::{}))", path, method_fn, e.fn_name)
+            let path = e.path();
+            let method = e.method().to_lowercase();
+            format!("        .route(\"{}\", axum::routing::{}(api::{}))", path, method, e.fn_name)
         })
         .collect();
 
-    format!(r#"mod api;
-mod types;
+    let initial_data = generate_initial_data(api_module);
+    let routes_str = routes.join("\n");
 
-use tower_http::cors::{{
-    CorsLayer,
-    Any,
-}};
-
-#[tokio::main]
-async fn main() {{
-    println!("Server running on http://127.0.0.1:8080");
-    println!("CORS enabled for all origins");
-
-    // Enable CORS for frontend development
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
-    let app = axum::Router::new()
-{}
-        .layer(cors);
-
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
-}}
-"#, routes.join("\n"))
+    let mut s = String::new();
+    s.push_str("mod api;\n");
+    s.push_str("mod types;\n\n");
+    s.push_str("use api::Db;\n");
+    s.push_str("use crate::types::*;\n");
+    s.push_str("use std::sync::{Arc, Mutex};\n");
+    s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
+    s.push_str("#[tokio::main]\n");
+    s.push_str("async fn main() {\n");
+    s.push_str("    println!(\"Server running on http://127.0.0.1:8080\");\n");
+    s.push_str("    println!(\"CORS enabled for all origins\");\n\n");
+    s.push_str("    // Initial data\n");
+    s.push_str(&format!("    let data: Db = Arc::new(Mutex::new({}));\n\n", initial_data));
+    s.push_str("    // Enable CORS for frontend development\n");
+    s.push_str("    let cors = CorsLayer::new()\n");
+    s.push_str("        .allow_origin(Any)\n");
+    s.push_str("        .allow_methods(Any)\n");
+    s.push_str("        .allow_headers(Any);\n\n");
+    s.push_str("    let app = axum::Router::new()\n");
+    s.push_str(&format!("{}\n", routes_str));
+    s.push_str("        .with_state(data)\n");
+    s.push_str("        .layer(cors);\n\n");
+    s.push_str("    let listener = tokio::net::TcpListener::bind(\"127.0.0.1:8080\").await.unwrap();\n");
+    s.push_str("    axum::serve(listener, app).await.unwrap();\n");
+    s.push_str("}\n");
+    s
 }
+
 
 // ============================================================================
 // Lenient API Extraction (Plan 132)

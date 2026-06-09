@@ -55,6 +55,10 @@ pub struct Pac {
     ///   - Split: backend: { front: "vue", back: "rust" }
     ///   - Multi: backend: { front: ["vue", "tauri"], back: "rust" }
     pub backend_config: Option<BackendConfig>,
+    /// API backend technology (Plan 276)
+    /// e.g., api: "rust" -> generates Axum HTTP server
+    /// None = no API backend (frontend-only project)
+    pub api: Option<AutoStr>,
     pub port: Port,
     pub version: AutoStr,
     pub ports: Vec<Node>,
@@ -129,6 +133,16 @@ impl Pac {
         // Parse members field (Plan 130)
         let members = config.root.get_str_vec_or("members");
 
+        // Parse api field (Plan 276): api: "rust" -> API backend technology
+        let api_value = config.root.get_prop("api").to_astr();
+        let api = if api_value.is_empty() {
+            // Also check legacy "api" field as file path (api-example compatibility)
+            // If it's a path like "../back/api.at", don't treat as backend technology
+            None
+        } else {
+            Some(api_value)
+        };
+
         // target related properties
         let target_props = vec!["at", "lang"];
 
@@ -175,6 +189,7 @@ impl Pac {
             name: pac_name,
             backend,
             backend_config,
+            api,
             version,
             port,
             ports,

@@ -1873,11 +1873,47 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     println!("▶ Step {}/{}: Copying public assets...", current_step, total_steps);
     project.copy_public_assets()?;
 
+    // Step 5.5: Start API backend server if rust/ exists (Plan 276)
+    let rust_dir = root_dir.join("rust");
+    let mut _api_child: Option<std::process::Child> = None;
+    if rust_dir.join("Cargo.toml").exists() {
+        println!();
+        println!("▶ Starting API backend server...");
+        println!("  cd rust/ && cargo run");
+
+        // Start the Rust API server as a background process
+        let api_server = std::process::Command::new("cargo")
+            .args(["run"])
+            .current_dir(&rust_dir)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+
+        match api_server {
+            Ok(child) => {
+                println!("  ✓ API server started (PID: {})", child.id());
+                // Wait a moment for the server to bind the port
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                _api_child = Some(child);
+            }
+            Err(e) => {
+                println!("  ⚠ Failed to start API server: {}", e);
+                println!("  Continuing without backend...");
+            }
+        }
+    }
+
     // Step 6: npm run dev
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Starting dev server...", current_step, total_steps);
     project.npm_run_dev(args)?;
+
+    // Cleanup: stop API backend server when dev server exits
+    if let Some(mut child) = _api_child {
+        let _ = child.kill();
+        println!("  ✓ API server stopped");
+    }
 
     Ok(())
 }

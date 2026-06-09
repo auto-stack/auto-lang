@@ -52,6 +52,7 @@ widget EditorPanel(note: str) {
         .Save -> {
             .note.title = .edit_title
             .note.body = .edit_body
+            updatenote(.note.id, .edit_title, .edit_body)
             .editing = false
         }
         .Cancel -> {
@@ -62,6 +63,7 @@ widget EditorPanel(note: str) {
         .EditTitle -> {
         }
         .Delete -> {
+            deletenote(.note.id)
             .note.deleted = true
             .editing = false
         }
