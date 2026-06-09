@@ -14,6 +14,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use auto_lang::api::types::{ApiModule, ApiEndpoint};
+
 use auto_lang::ui_gen::rust::RustGenerator;
 use auto_lang::ui_gen::BackendGenerator;
 use auto_lang::Parser;
@@ -110,11 +112,11 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
         return Ok(());
     }
 
-    // Deduplicate API imports and generate stubs once
+    // Deduplicate API imports and generate API client once
     deduplicate_imports(&mut all_api_imports);
     if !all_api_imports.is_empty() {
         all_components.push('\n');
-        all_components.push_str(&generate_api_stubs(&all_api_imports));
+        all_components.push_str(&generate_api_client(project_dir, &all_api_imports));
     }
 
     let full_code = wrap_example(&project_name, &all_components);
@@ -210,11 +212,11 @@ pub fn generate_rust_ui(
         return Ok(());
     }
 
-    // Deduplicate API imports and generate stubs once
+    // Deduplicate API imports and generate API client once
     deduplicate_imports(&mut all_api_imports);
     if !all_api_imports.is_empty() {
         all_components.push('\n');
-        all_components.push_str(&generate_api_stubs(&all_api_imports));
+        all_components.push_str(&generate_api_client(project_dir, &all_api_imports));
     }
 
     // Wrap in main() boilerplate
@@ -333,41 +335,232 @@ fn deduplicate_imports(imports: &mut Vec<String>) {
     imports.retain(|s| seen.insert(s.clone()));
 }
 
-/// Generate stub functions for API imports so the Rust code compiles.
+/// Generate API client functions for Rust UI.
+/// Parses the API definition from src/back/api.at and generates ureq HTTP calls.
+/// Falls back to heuristic stubs if the API file can't be parsed.
+fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
+    const BASE_URL: &str = "http://localhost:8080";
+
+    // Try to parse api.at to get real endpoint definitions
+    let api_module = parse_api_module(project_dir);
+
+    if let Some(module) = &api_module {
+        let mut code = String::new();
+        code.push_str("// API client functions (auto-generated, uses ureq HTTP client)\n\n");
+
+        for endpoint in &module.endpoints {
+            code.push_str(&generate_endpoint_fn(endpoint, BASE_URL));
+            code.push('\n');
+        }
+        return code;
+    }
+
+    // Fallback: heuristic stubs based on function name convention
+    generate_api_stubs(api_imports)
+}
+
+/// Parse the API module from src/back/api.at
+fn parse_api_module(project_dir: &Path) -> Option<ApiModule> {
+    let back_dir = if project_dir.join("src").join("back").exists() {
+        project_dir.join("src").join("back")
+    } else if project_dir.join("back").exists() {
+        project_dir.join("back")
+    } else {
+        return None;
+    };
+
+    let api_file = back_dir.join("api.at");
+    if !api_file.exists() {
+        return None;
+    }
+
+    let content = fs::read_to_string(&api_file).ok()?;
+    crate::api_gen::try_full_parse(&content)
+        .or_else(|| crate::api_gen::extract_api_lenient(&content))
+}
+
+/// Generate a single ureq-based API function from an endpoint definition.
+fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
+    let fn_name = &endpoint.fn_name;
+    let method = endpoint.method().to_uppercase();
+    let path = endpoint.path();
+    // Strip leading slash from path to avoid double-slash with base_url
+    let path = path.strip_prefix('/').unwrap_or(&path);
+
+    // Separate path params from body params
+    let full_path = format!("/{}", path); // keep for :param matching
+    let path_params: Vec<_> = endpoint.params.iter()
+        .filter(|p| full_path.contains(&format!(":{}", p.name)))
+        .collect();
+    let body_params: Vec<_> = endpoint.params.iter()
+        .filter(|p| !full_path.contains(&format!(":{}", p.name)))
+        .collect();
+
+    // Build URL — if path has :param, use format!()
+    let has_path_params = !path_params.is_empty();
+    let url_expr = if has_path_params {
+        let mut url_fmt = path.to_string();
+        let mut format_args: Vec<String> = Vec::new();
+        for p in &path_params {
+            url_fmt = url_fmt.replace(&format!(":{}", p.name), "{}");
+            format_args.push(p.name.clone());
+        }
+        format!("&format!(\"{}/{}\", {})", base_url, url_fmt, format_args.join(", "))
+    } else {
+        format!("\"{}/{}\"", base_url, path)
+    };
+
+    // Function parameters
+    let params: Vec<String> = endpoint.params.iter()
+        .map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty)))
+        .collect();
+    let param_list = params.join(", ");
+
+    // Return type — use serde_json::Value for the Rust UI since widgets work with Value
+    let return_type = &endpoint.return_type;
+    let is_void = return_type == "void";
+    let is_vec = return_type.starts_with("[]");
+    let is_option = return_type.starts_with("?");
+
+    let (rust_return_type, value_type) = if is_void {
+        (String::new(), String::new())
+    } else if is_vec {
+        ("Vec<serde_json::Value>".to_string(), "Vec<serde_json::Value>".to_string())
+    } else if is_option {
+        ("Option<serde_json::Value>".to_string(), "Option<serde_json::Value>".to_string())
+    } else {
+        ("serde_json::Value".to_string(), "serde_json::Value".to_string())
+    };
+
+    // Generate function body based on HTTP method
+    let ureq_method = method.to_lowercase();
+    // DELETE never needs a return value in the UI — treat as void
+    let is_effectively_void = is_void || method == "DELETE";
+    let body = if method == "GET" {
+        generate_get_fn_body(ureq_method, url_expr, is_effectively_void, &value_type)
+    } else if method == "DELETE" {
+        generate_delete_fn_body(url_expr)
+    } else {
+        // POST, PUT — send JSON body
+        generate_write_fn_body(ureq_method, url_expr, &body_params, is_void, &value_type)
+    };
+
+    if is_effectively_void {
+        format!("fn {}({}) {{\n{}}}\n", fn_name, param_list, body)
+    } else {
+        format!("fn {}({}) -> {} {{\n{}}}\n", fn_name, param_list, rust_return_type, body)
+    }
+}
+
+/// Generate body for GET requests
+fn generate_get_fn_body(method: String, url_expr: String, is_void: bool, return_type: &str) -> String {
+    if is_void {
+        format!("    let _ = ureq::{}({}).call();\n", method, url_expr)
+    } else if return_type.starts_with("Vec<") {
+        format!(
+            "    ureq::{}({})\n        .call().ok()\n        .and_then(|r| r.into_json::<{}>().ok())\n        .unwrap_or_default()\n",
+            method, url_expr, return_type
+        )
+    } else if return_type.starts_with("Option<") {
+        // Deserialize as Value, let .ok() produce Option<Value> naturally
+        format!(
+            "    ureq::{}({})\n        .call().ok()\n        .and_then(|r| r.into_json::<serde_json::Value>().ok())\n",
+            method, url_expr
+        )
+    } else {
+        format!(
+            "    ureq::{}({})\n        .call().ok()\n        .and_then(|r| r.into_json::<{}>().ok())\n        .unwrap_or_default()\n",
+            method, url_expr, return_type
+        )
+    }
+}
+
+/// Generate body for DELETE requests
+fn generate_delete_fn_body(url_expr: String) -> String {
+    format!("    let _ = ureq::delete({}).call();\n", url_expr)
+}
+
+/// Generate body for POST/PUT requests (with JSON body)
+fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto_lang::api::types::ApiParam], is_void: bool, return_type: &str) -> String {
+    let json_fields: Vec<String> = body_params.iter()
+        .map(|p| format!("\"{}\": {}", p.name, p.name))
+        .collect();
+    let json_body = format!("serde_json::json!({{{}}})", json_fields.join(", "));
+
+    if is_void {
+        format!(
+            "    let _ = ureq::{}({})\n        .send_json({});\n",
+            method, url_expr, json_body
+        )
+    } else if return_type.starts_with("Vec<") {
+        format!(
+            "    ureq::{}({})\n        .send_json({})\n        .ok()\n        .and_then(|r| r.into_json::<{}>().ok())\n        .unwrap_or_default()\n",
+            method, url_expr, json_body, return_type
+        )
+    } else if return_type.starts_with("Option<") {
+        // Deserialize as Value, let .ok() produce Option<Value> naturally
+        format!(
+            "    ureq::{}({})\n        .send_json({})\n        .ok()\n        .and_then(|r| r.into_json::<serde_json::Value>().ok())\n",
+            method, url_expr, json_body
+        )
+    } else {
+        format!(
+            "    ureq::{}({})\n        .send_json({})\n        .ok()\n        .and_then(|r| r.into_json::<{}>().ok())\n        .unwrap_or_default()\n",
+            method, url_expr, json_body, return_type
+        )
+    }
+}
+
+/// Convert Auto type string to Rust type for API function signatures
+fn auto_type_to_rust(ty: &str) -> String {
+    match ty {
+        "int" => "i32".to_string(),
+        "i64" => "i64".to_string(),
+        "str" => "String".to_string(),
+        "bool" => "bool".to_string(),
+        "void" => "()".to_string(),
+        s if s.starts_with("[]") => {
+            let inner = &s[2..];
+            format!("Vec<{}>", auto_type_to_rust(inner))
+        }
+        s if s.starts_with("?") => {
+            let inner = &s[1..];
+            format!("Option<{}>", auto_type_to_rust(inner))
+        }
+        s => s.to_string(),
+    }
+}
+
+/// Generate heuristic stub functions when API module can't be parsed.
 fn generate_api_stubs(api_imports: &[String]) -> String {
     let mut code = String::new();
-    code.push_str("// API function stubs (TODO: replace with real HTTP client calls)\n");
+    code.push_str("// API function stubs (no api.at found — using heuristic placeholders)\n");
     for fn_name in api_imports {
         let lower = fn_name.to_lowercase();
         if lower.starts_with("list_") || lower.starts_with("list") {
             code.push_str(&format!(
-                "fn {}() -> Vec<serde_json::Value> {{\n    // TODO: HTTP GET request\n    vec![]\n}}\n\n",
-                fn_name
+                "fn {}() -> Vec<serde_json::Value> {{ vec![] }}\n\n", fn_name
             ));
         } else if lower.starts_with("create_") {
             code.push_str(&format!(
-                "fn {}(_title: String, _body: String) -> serde_json::Value {{\n    // TODO: HTTP POST request\n    serde_json::json!({{\"id\": 0, \"title\": _title, \"body\": _body, \"time\": \"now\"}})\n}}\n\n",
+                "fn {}(_title: String, _body: String) -> serde_json::Value {{ serde_json::json!({{\"id\": 0, \"title\": _title, \"body\": _body, \"time\": \"now\"}}) }}\n\n",
                 fn_name
             ));
         } else if lower.starts_with("update_") {
             code.push_str(&format!(
-                "fn {}(_id: i32, _title: String, _body: String) {{\n    // TODO: HTTP PUT request\n}}\n\n",
-                fn_name
+                "fn {}(_id: i32, _title: String, _body: String) {{ }}\n\n", fn_name
             ));
         } else if lower.starts_with("delete_") {
             code.push_str(&format!(
-                "fn {}(_id: i32) {{\n    // TODO: HTTP DELETE request\n}}\n\n",
-                fn_name
+                "fn {}(_id: i32) {{ }}\n\n", fn_name
             ));
         } else if lower.starts_with("get_") {
             code.push_str(&format!(
-                "fn {}(_id: i32) -> Option<serde_json::Value> {{\n    // TODO: HTTP GET request\n    None\n}}\n\n",
-                fn_name
+                "fn {}(_id: i32) -> Option<serde_json::Value> {{ None }}\n\n", fn_name
             ));
         } else {
             code.push_str(&format!(
-                "fn {}() {{\n    // TODO: implement API call\n    todo!(\"{}\");\n}}\n\n",
-                fn_name, fn_name
+                "fn {}() {{ }}\n\n", fn_name
             ));
         }
     }
@@ -524,6 +717,7 @@ default = ["ui-iced"]
 [dependencies]
 auto-lang = {{ path = "{auto_lang_path}" }}
 serde_json = "1"
+ureq = {{ version = "2", features = ["json"] }}
 "#
     )
 }
@@ -585,6 +779,60 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         regenerate_code_only(project_dir, &rust_dir)?;
     }
 
+    // Start API backend server if gen/back/rust/ exists
+    let api_backend_dir = project_dir.join("gen").join("back").join("rust");
+    let mut _api_child: Option<std::process::Child> = None;
+    if api_backend_dir.join("Cargo.toml").exists() {
+        println!();
+        println!("{}", "▶ Starting API backend server...".bright_cyan());
+        println!("  cd gen/back/rust/ && cargo run");
+
+        let api_server = std::process::Command::new("cargo")
+            .args(["run"])
+            .current_dir(&api_backend_dir)
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .spawn();
+
+        match api_server {
+            Ok(child) => {
+                println!("  {} API server starting (PID: {})...", "✓".bright_green(), child.id());
+                _api_child = Some(child);
+
+                // Wait for the server to become ready by polling the health endpoint
+                println!("  Waiting for API server to be ready...");
+                let max_wait = std::time::Duration::from_secs(60);
+                let start = std::time::Instant::now();
+                let mut ready = false;
+
+                while start.elapsed() < max_wait {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    match std::net::TcpStream::connect_timeout(
+                        &"127.0.0.1:8080".parse().unwrap(),
+                        std::time::Duration::from_secs(1),
+                    ) {
+                        Ok(_) => {
+                            ready = true;
+                            break;
+                        }
+                        Err(_) => continue,
+                    }
+                }
+
+                if ready {
+                    println!("  {} API server is ready on http://localhost:8080", "✓".bright_green());
+                } else {
+                    println!("  {} API server did not respond within {}s, continuing anyway...",
+                        "⚠".bright_yellow(), max_wait.as_secs());
+                }
+            }
+            Err(e) => {
+                println!("  {} Failed to start API server: {}", "⚠".bright_yellow(), e);
+                println!("  Continuing without backend...");
+            }
+        }
+    }
+
     println!("{}", "Running Rust UI app (backend: rust-ui)".bright_cyan());
 
     let mut cmd = std::process::Command::new("cargo");
@@ -595,6 +843,13 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     cmd.current_dir(&rust_dir);
 
     let status = cmd.status()?;
+
+    // Cleanup: stop API backend server when UI exits
+    if let Some(mut child) = _api_child {
+        let _ = child.kill();
+        println!("  {} API server stopped", "✓".bright_green());
+    }
+
     if !status.success() {
         return Err(format!("Cargo run failed with status: {}", status).into());
     }

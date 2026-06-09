@@ -92,7 +92,7 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
 }
 
 /// Try to parse API file with full AST parsing
-fn try_full_parse(api_content: &str) -> Option<ApiModule> {
+pub fn try_full_parse(api_content: &str) -> Option<ApiModule> {
     use auto_lang::api::ApiExtractor;
 
     let mut parser = auto_lang::Parser::from(api_content);
@@ -782,7 +782,7 @@ fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
 /// This function uses regex-based parsing to extract API definitions without
 /// requiring full module resolution. This is useful when `back/api.at` contains
 /// `use db` statements where the db module isn't available during extraction.
-fn extract_api_lenient(api_content: &str) -> Option<ApiModule> {
+pub fn extract_api_lenient(api_content: &str) -> Option<ApiModule> {
     use regex::Regex;
 
     let mut module = ApiModule::new("api".to_string());
