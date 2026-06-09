@@ -1579,6 +1579,12 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     // Load cache for incremental compilation
     let mut cache = UICache::load(root_dir);
+
+    // Invalidate cache if .api_functions changed (API imports may be different)
+    if cache.invalidate_if_api_functions_changed(&api_fns_path) {
+        println!("  {} (API config changed, regenerating all)", "cache".bright_yellow());
+    }
+
     let mut changed_files: Vec<(PathBuf, String, String)> = Vec::new(); // (output_path, vue_code, widget_name)
 
     // Phase 1: Scan sub-widget .at files in front_dir (e.g. editor.at, sidebar.at)

@@ -470,6 +470,24 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
         }
     }
 
+    // Generate UpdateInput struct for PUT endpoints with body fields
+    for endpoint in &api_module.endpoints {
+        if endpoint.method() == "PUT" {
+            let body_params = endpoint_body_params(endpoint);
+            if !body_params.is_empty() {
+                lines.push("#[derive(serde::Deserialize)]".to_string());
+                lines.push(format!("pub struct Update{}Input {{", primary_type));
+                for param in &body_params {
+                    let rust_type = auto_type_to_rust(&param.ty);
+                    lines.push(format!("    pub {}: {},", param.name, rust_type));
+                }
+                lines.push("}".to_string());
+                lines.push("".to_string());
+                break; // Only one UpdateInput per primary type
+            }
+        }
+    }
+
     // Get type field names for time detection
     let type_fields: Vec<&str> = api_module.types.iter()
         .find(|t| t.name == primary_type)
@@ -504,8 +522,13 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
                     params.push(format!("Json(input): Json<{}>", primary_type));
                 }
             } else {
-                // PUT uses the full type
-                params.push(format!("Json(input): Json<{}>", primary_type));
+                // PUT uses UpdateInput if body params exist, otherwise full type
+                let body_params = endpoint_body_params(endpoint);
+                if !body_params.is_empty() {
+                    params.push(format!("Json(input): Json<Update{}Input>", primary_type));
+                } else {
+                    params.push(format!("Json(input): Json<{}>", primary_type));
+                }
             }
         }
 

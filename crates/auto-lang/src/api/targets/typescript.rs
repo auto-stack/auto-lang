@@ -313,10 +313,17 @@ export type { IApi };
         lines.push(format!("{}{}headers: {{ 'Content-Type': 'application/json' }},", self.indent, self.indent));
 
         if method != "GET" && method != "DELETE" && !endpoint.params.is_empty() {
-            let body = if endpoint.params.len() == 1 {
-                endpoint.params[0].name.clone()
+            // Only include non-path params in the JSON body
+            let body_param_names: Vec<&str> = endpoint.params.iter()
+                .filter(|p| !path.contains(&format!(":{}", p.name)))
+                .map(|p| p.name.as_str())
+                .collect();
+            let body = if body_param_names.len() == 1 {
+                body_param_names[0].to_string()
+            } else if body_param_names.is_empty() {
+                "{}".to_string()
             } else {
-                format!("{{ {} }}", endpoint.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", "))
+                format!("{{ {} }}", body_param_names.join(", "))
             };
             lines.push(format!("{}{}body: JSON.stringify({}),", self.indent, self.indent, body));
         }

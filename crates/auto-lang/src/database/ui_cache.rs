@@ -19,6 +19,8 @@ pub struct UICache {
     artifacts: HashMap<PathBuf, Vec<UIArtifact>>,
     /// Cache version for migration
     version: u32,
+    /// Hash of the .api_functions file content — changed API config invalidates all cached artifacts
+    api_functions_hash: Option<u64>,
 }
 
 impl UICache {
@@ -30,6 +32,7 @@ impl UICache {
             file_hashes: HashMap::new(),
             artifacts: HashMap::new(),
             version: Self::VERSION,
+            api_functions_hash: None,
         }
     }
 
@@ -81,6 +84,36 @@ impl UICache {
             Some(&cached_hash) => cached_hash != current_hash,
             None => true,
         }
+    }
+
+    /// Check if `.api_functions` config has changed since last cache write.
+    /// If so, all cached artifacts are stale (API imports may have changed).
+    /// Returns true if the cache was invalidated.
+    pub fn invalidate_if_api_functions_changed(&mut self, api_fns_path: &Path) -> bool {
+        let current_hash = fs::read_to_string(api_fns_path)
+            .ok()
+            .map(|content| {
+                // Simple FNV-1a-style hash via seahash or just use a basic hash
+                let mut hash: u64 = 0xcbf29ce484222325;
+                for byte in content.bytes() {
+                    hash ^= byte as u64;
+                    hash = hash.wrapping_mul(0x100000001b3);
+                }
+                hash
+            });
+
+        let changed = match (&self.api_functions_hash, &current_hash) {
+            (Some(cached), Some(current)) => cached != current,
+            (None, None) => false,
+            _ => true, // appeared or disappeared
+        };
+
+        if changed {
+            self.clear();
+            self.api_functions_hash = current_hash;
+        }
+
+        changed
     }
 
     /// Get artifacts for a source file
