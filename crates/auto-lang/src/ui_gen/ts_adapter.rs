@@ -21,33 +21,36 @@ pub struct AuraTsContext {
     /// Names of component props (need `props.` prefix in script, no `.value`).
     pub prop_names: HashSet<String>,
     /// Known API function names (need `await` prefix).
-    api_functions: &'static [&'static str],
+    api_functions: Vec<String>,
 }
+
+/// Default API function names (fallback when no dynamic list is provided)
+const DEFAULT_API_FUNCTIONS: &[&str] = &[
+    "listusers",
+    "getuser",
+    "getUser",
+    "createUser",
+    "updateUser",
+    "deleteUser",
+];
 
 impl AuraTsContext {
     pub fn new(state_names: HashSet<String>) -> Self {
         Self {
             state_names,
             prop_names: HashSet::new(),
-            api_functions: &[
-                "listusers",
-                "getuser",
-                "getUser",
-                "createUser",
-                "updateUser",
-                "deleteUser",
-                // Notes API
-                "listnotes",
-                "getnote",
-                "createnote",
-                "updatenote",
-                "deletenote",
-            ],
+            api_functions: DEFAULT_API_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
         }
     }
 
     pub fn with_props(mut self, prop_names: HashSet<String>) -> Self {
         self.prop_names = prop_names;
+        self
+    }
+
+    /// Set custom API function names (from project's api.at)
+    pub fn with_api_functions(mut self, functions: Vec<String>) -> Self {
+        self.api_functions = functions;
         self
     }
 
@@ -60,7 +63,7 @@ impl AuraTsContext {
     }
 
     fn is_api(&self, name: &str) -> bool {
-        self.api_functions.contains(&name)
+        self.api_functions.iter().any(|f| f == name)
     }
 }
 
@@ -728,28 +731,19 @@ fn try_transpile_builtin_field(
 
 /// Check if any statement in the list contains an API function call.
 pub fn stmts_contain_api_call(stmts: &[Stmt]) -> bool {
-    const API_FNS: &[&str] = &[
-        "listusers",
-        "getuser",
-        "getUser",
-        "createUser",
-        "updateUser",
-        "deleteUser",
-        // Notes API
-        "listnotes",
-        "getnote",
-        "createnote",
-        "updatenote",
-        "deletenote",
-    ];
+    let default_fns: Vec<String> = DEFAULT_API_FUNCTIONS.iter().map(|s| s.to_string()).collect();
+    stmts_contain_api_call_with(stmts, &default_fns)
+}
 
-    fn walk_expr(expr: &Expr, api_fns: &[&str]) -> bool {
+/// Check if any statement in the list contains an API function call (with custom function list).
+pub fn stmts_contain_api_call_with(stmts: &[Stmt], api_fns: &[String]) -> bool {
+    fn walk_expr(expr: &Expr, api_fns: &[String]) -> bool {
         match expr {
             Expr::Call(call) => {
                 // Only simple identifier calls can be API functions;
                 // method calls (Dot names) are never API calls.
                 let is_api = call.get_name_text_safe()
-                    .map(|name| api_fns.contains(&name.as_str()))
+                    .map(|name| api_fns.iter().any(|f| f == name.as_str()))
                     .unwrap_or(false);
                 is_api || call.args.args.iter().any(|a| walk_expr(&a.get_expr(), api_fns))
             }
@@ -761,7 +755,7 @@ pub fn stmts_contain_api_call(stmts: &[Stmt]) -> bool {
         }
     }
 
-    fn check_stmts(stmts: &[Stmt], api_fns: &[&str]) -> bool {
+    fn check_stmts(stmts: &[Stmt], api_fns: &[String]) -> bool {
         stmts.iter().any(|s| match s {
             Stmt::Expr(expr) => walk_expr(expr, api_fns),
             Stmt::Store(store) => walk_expr(&store.expr, api_fns),
@@ -773,7 +767,7 @@ pub fn stmts_contain_api_call(stmts: &[Stmt]) -> bool {
         })
     }
 
-    check_stmts(stmts, API_FNS)
+    check_stmts(stmts, api_fns)
 }
 
 // ---------------------------------------------------------------------------

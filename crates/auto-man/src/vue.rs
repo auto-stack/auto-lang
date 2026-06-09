@@ -1387,6 +1387,18 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
         println!("  ⚠ API generation skipped: {}", e);
     }
 
+    // Load API function names for Vue generator (dynamic detection)
+    let api_fns_path = root_dir.join("dist").join(".api_functions");
+    if api_fns_path.exists() {
+        if let Ok(content) = fs::read_to_string(&api_fns_path) {
+            let fns: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+            if !fns.is_empty() {
+                // SAFETY: Setting a process-wide env var before spawning Vue generation
+                unsafe { std::env::set_var("AUTO_API_FUNCTIONS", fns.join(",")); }
+            }
+        }
+    }
+
     // Copy handmade theme assets if available
     let handmade_css = root_dir.join("vue").join("src").join("assets").join("index.css");
     let gen_css = root_dir.join("gen").join("vue").join("src").join("assets").join("index.css");
@@ -1805,6 +1817,18 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     if let Err(e) = crate::api_gen::generate_api(root_dir, "vue") {
         // API generation is optional - only warn on failure
         println!("  ⚠ API generation skipped: {}", e);
+    }
+
+    // Load API function names for Vue generator (dynamic detection)
+    let api_fns_path = root_dir.join("dist").join(".api_functions");
+    if api_fns_path.exists() {
+        if let Ok(content) = fs::read_to_string(&api_fns_path) {
+            let fns: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+            if !fns.is_empty() {
+                // SAFETY: Setting a process-wide env var before spawning Vue generation
+                unsafe { std::env::set_var("AUTO_API_FUNCTIONS", fns.join(",")); }
+            }
+        }
     }
 
     // Step 3: npm install

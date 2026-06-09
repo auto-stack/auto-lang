@@ -832,6 +832,9 @@ pub struct VueGenerator {
     /// API functions used in handlers (Plan 132)
     api_functions_used: HashSet<String>,
 
+    /// Project-specific API function names loaded from dist/.api_functions
+    project_api_functions: Vec<String>,
+
     /// Handler names actually referenced in the template
     used_handlers: HashSet<String>,
 
@@ -906,6 +909,12 @@ impl VueGenerator {
             needs_router: false,
             needs_route: false,
             api_functions_used: HashSet::new(),
+            project_api_functions: std::env::var("AUTO_API_FUNCTIONS")
+                .unwrap_or_default()
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.trim().to_string())
+                .collect(),
             used_handlers: HashSet::new(),
             has_dark_mode: false,
             use_theme_toggle: false,
@@ -920,6 +929,24 @@ impl VueGenerator {
     pub fn with_sub_widgets(mut self, names: Vec<String>) -> Self {
         self.known_sub_widgets = names.into_iter().collect();
         self
+    }
+
+    /// Set project-specific API function names (from dist/.api_functions)
+    pub fn with_project_api_functions(mut self, functions: Vec<String>) -> Self {
+        self.project_api_functions = functions;
+        self
+    }
+
+    /// Check if a name is a known API function (static list OR project-specific)
+    fn is_api_function(&self, name: &str) -> bool {
+        Self::API_FUNCTIONS.contains(&name) || self.project_api_functions.iter().any(|f| f == name)
+    }
+
+    /// Get the combined list of all known API function names
+    fn all_api_functions(&self) -> Vec<String> {
+        let mut fns: Vec<String> = Self::API_FUNCTIONS.iter().map(|s| s.to_string()).collect();
+        fns.extend(self.project_api_functions.iter().cloned());
+        fns
     }
 
     /// Create a new Vue generator in shadcn-vue mode
@@ -975,6 +1002,7 @@ impl VueGenerator {
         self.needs_router = false;
         self.needs_route = false;
         self.api_functions_used.clear();
+        self.project_api_functions.clear();
         self.used_handlers.clear();
         self.has_dark_mode = false;
         self.use_theme_toggle = false;
@@ -1661,8 +1689,11 @@ impl VueGenerator {
     fn generate_handler_body(&self, payload: &LogicPayload) -> GenResult<String> {
         match payload {
             LogicPayload::AstStmts(stmts) => {
-                let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
+                let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
                     .with_props(self.prop_names.iter().cloned().collect());
+                if !self.project_api_functions.is_empty() {
+                    ctx = ctx.with_api_functions(self.project_api_functions.clone());
+                }
                 Ok(crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx))
             }
             LogicPayload::AstBlock(_) => {
@@ -3238,7 +3269,7 @@ impl VueGenerator {
                 // Plan 132: Check if this is an API function call
                 // Case 1: Direct API call like listusers() - object is API name, method might be empty
                 if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if Self::API_FUNCTIONS.contains(&name.as_str()) {
+                    if self.is_api_function(&name) {
                         let args_js: Vec<String> = args.iter()
                             .map(|a| self.expr_to_js(a))
                             .collect::<Result<Vec<_>, _>>()?;
@@ -3248,7 +3279,7 @@ impl VueGenerator {
                 // Case 2: self.<api_function>() - treat as direct API call
                 // When AURA parser sees `listusers()` in handler, it converts to `self.listusers()`
                 if let AuraExpr::StateRef(obj_name) = object.as_ref() {
-                    if obj_name == "self" && Self::API_FUNCTIONS.contains(&method.as_str()) {
+                    if obj_name == "self" && self.is_api_function(&method) {
                         let args_js: Vec<String> = args.iter()
                             .map(|a| self.expr_to_js(a))
                             .collect::<Result<Vec<_>, _>>()?;
@@ -3256,7 +3287,7 @@ impl VueGenerator {
                     }
                 }
                 // Case 3: Any method call where method name is an API function
-                if Self::API_FUNCTIONS.contains(&method.as_str()) {
+                if self.is_api_function(&method) {
                     let args_js: Vec<String> = args.iter()
                         .map(|a| self.expr_to_js(a))
                         .collect::<Result<Vec<_>, _>>()?;
@@ -3371,13 +3402,13 @@ impl VueGenerator {
 
                 // Plan 132: Check if this is a standalone API function call
                 // (object is API function name, method is likely empty or 'call')
-                if Self::API_FUNCTIONS.contains(&object.as_str()) && method.is_empty() {
+                if self.is_api_function(&object) && method.is_empty() {
                     // Generate: await apiFunction(args)
                     return Ok(format!("await {}({})", object, args_js.join(", ")));
                 }
 
                 // Check if object is an API function being called as a method
-                if Self::API_FUNCTIONS.contains(&method.as_str()) {
+                if self.is_api_function(&method) {
                     // This might be something like api.listusers() - should be await listusers()
                     return Ok(format!("await {}({})", method, args_js.join(", ")));
                 }
@@ -3422,12 +3453,6 @@ impl VueGenerator {
         "createUser",
         "updateUser",
         "deleteUser",
-        // Notes API
-        "listnotes",
-        "getnote",
-        "createnote",
-        "updatenote",
-        "deletenote",
     ];
 
     /// Extract API function calls from a LogicPayload and track them
@@ -3513,8 +3538,10 @@ impl VueGenerator {
             }
         }
 
+        let all_fns = self.all_api_functions();
+        let all_fn_refs: Vec<&str> = all_fns.iter().map(|s| s.as_str()).collect();
         for stmt in stmts {
-            walk_stmt(stmt, Self::API_FUNCTIONS, &mut self.api_functions_used);
+            walk_stmt(stmt, &all_fn_refs, &mut self.api_functions_used);
         }
     }
 
@@ -3541,12 +3568,12 @@ impl VueGenerator {
             AuraExpr::MethodCall { object, method, args } => {
                 // Check if this is a direct API function call (e.g., listusers())
                 if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if Self::API_FUNCTIONS.contains(&name.as_str()) {
+                    if self.is_api_function(&name) {
                         self.api_functions_used.insert(name.clone());
                     }
                 }
                 // Also check if method name matches API function
-                if Self::API_FUNCTIONS.contains(&method.as_str()) {
+                if self.is_api_function(&method) {
                     self.api_functions_used.insert(method.clone());
                 }
                 // Recurse into object and args
@@ -3606,7 +3633,11 @@ impl VueGenerator {
     fn handler_has_api_calls(&self, payload: &LogicPayload) -> bool {
         match payload {
             LogicPayload::AstStmts(stmts) => {
-                crate::ui_gen::ts_adapter::stmts_contain_api_call(stmts)
+                if self.project_api_functions.is_empty() {
+                    crate::ui_gen::ts_adapter::stmts_contain_api_call(stmts)
+                } else {
+                    crate::ui_gen::ts_adapter::stmts_contain_api_call_with(stmts, &self.project_api_functions)
+                }
             }
             LogicPayload::AstBlock(stmts) => {
                 stmts.iter().any(|s| self.stmt_has_api_calls(s))
@@ -3622,11 +3653,11 @@ impl VueGenerator {
             AuraStmt::Update { value, .. } => self.expr_has_api_calls(value),
             AuraStmt::MethodCall { object, method, args } => {
                 // Check if method name is an API function
-                if Self::API_FUNCTIONS.contains(&method.as_str()) {
+                if self.is_api_function(&method) {
                     return true;
                 }
                 // Check if object name is an API function (standalone call)
-                if Self::API_FUNCTIONS.contains(&object.as_str()) {
+                if self.is_api_function(&object) {
                     return true;
                 }
                 // Check args
@@ -3640,12 +3671,12 @@ impl VueGenerator {
         match expr {
             AuraExpr::MethodCall { object, method, args } => {
                 // Check if method name is an API function
-                if Self::API_FUNCTIONS.contains(&method.as_str()) {
+                if self.is_api_function(&method) {
                     return true;
                 }
                 // Check if object is an API function reference
                 if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if Self::API_FUNCTIONS.contains(&name.as_str()) {
+                    if self.is_api_function(&name) {
                         return true;
                     }
                 }

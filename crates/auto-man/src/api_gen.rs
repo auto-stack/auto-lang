@@ -267,6 +267,13 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
             .map_err(|e| format!("Failed to write vue api.ts: {}", e))?;
     }
 
+    // Write API function names to a manifest file for code generator consumption
+    let fn_names: Vec<String> = api_module.endpoints.iter()
+        .map(|ep| ep.fn_name.to_lowercase())
+        .collect();
+    std::fs::write(dist_dir.join(".api_functions"), fn_names.join("\n"))
+        .map_err(|e| format!("Failed to write .api_functions: {}", e))?;
+
     println!("  ✓ Generated TypeScript client: dist/src/lib/api.ts");
 
     // Generate Rust server if back/ exists
