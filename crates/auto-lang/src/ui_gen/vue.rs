@@ -1204,6 +1204,13 @@ impl VueGenerator {
                 imports.push("onMounted");
             }
         }
+        // LoadNotes handler → needs onMounted for initial data loading
+        let has_load_notes = widget.handlers.keys().any(|k| k == ".LoadNotes");
+        if has_load_notes {
+            if !imports.contains(&"onMounted") {
+                imports.push("onMounted");
+            }
+        }
         if !imports.is_empty() {
             script.push_str(&format!("import {{ {} }} from 'vue'\n", imports.join(", ")));
         }
@@ -1447,6 +1454,14 @@ impl VueGenerator {
             } else {
                 script.push_str(&format!("function {}({}){} {{\n  // TODO: handler not defined in on-block\n}}\n\n", handler_name, params_str, return_type));
             }
+        }
+
+        // Generate onMounted for LoadNotes handler (initial data loading)
+        if let Some(load_payload) = widget.handlers.get(".LoadNotes") {
+            let is_async = self.handler_has_api_calls(load_payload);
+            let async_kw = if is_async { "async " } else { "" };
+            let body = self.generate_handler_body(load_payload).unwrap_or_default();
+            script.push_str(&format!("onMounted({}() => {{\n  {}\n}})\n\n", async_kw, body));
         }
 
         // Generate timer/tick mechanism (setInterval + onUnmounted cleanup)
@@ -3407,6 +3422,12 @@ impl VueGenerator {
         "createUser",
         "updateUser",
         "deleteUser",
+        // Notes API
+        "listnotes",
+        "getnote",
+        "createnote",
+        "updatenote",
+        "deletenote",
     ];
 
     /// Extract API function calls from a LogicPayload and track them

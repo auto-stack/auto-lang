@@ -36,6 +36,12 @@ impl AuraTsContext {
                 "createUser",
                 "updateUser",
                 "deleteUser",
+                // Notes API
+                "listnotes",
+                "getnote",
+                "createnote",
+                "updatenote",
+                "deletenote",
             ],
         }
     }
@@ -729,6 +735,12 @@ pub fn stmts_contain_api_call(stmts: &[Stmt]) -> bool {
         "createUser",
         "updateUser",
         "deleteUser",
+        // Notes API
+        "listnotes",
+        "getnote",
+        "createnote",
+        "updatenote",
+        "deletenote",
     ];
 
     fn walk_expr(expr: &Expr, api_fns: &[&str]) -> bool {

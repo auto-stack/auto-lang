@@ -6,11 +6,7 @@ widget App {
     msg Msg { LoadNotes, SelectNote(int), NewNote, DeleteNote, SaveNote, SearchChanged }
 
     model {
-        var notes = [
-            { id: 0, title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now" },
-            { id: 1, title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago" },
-            { id: 2, title: "Meeting Notes", body: "Q3 roadmap discussion with the team", time: "Yesterday" }
-        ]
+        var notes = []
         var active_id int = 0
         var search str = ""
         var editing bool = false
@@ -38,7 +34,9 @@ widget App {
                     style: "w-64 border border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
                 }
                 col {
-                    EditorPanel(note: .notes[.active_id])
+                    if .notes.len() > 0 {
+                        EditorPanel(note: .notes[.active_id])
+                    }
                     style: "flex-1"
                 }
                 style: "flex-1"
@@ -49,6 +47,7 @@ widget App {
 
     on {
         .LoadNotes -> {
+            .notes = listnotes()
         }
 
         .SelectNote -> {
@@ -60,9 +59,9 @@ widget App {
         }
 
         .NewNote -> {
-            var new_id = notes.len()
-            notes.push({ id: new_id, title: "", body: "", time: "Just now" })
-            .active_id = new_id
+            let note = createnote("", "")
+            notes.push(note)
+            .active_id = note.id
             .editing = true
             .edit_title = ""
             .edit_body = ""
@@ -70,6 +69,7 @@ widget App {
         }
 
         .DeleteNote -> {
+            deletenote(.active_id)
             notes.remove(.active_id)
             if .active_id >= notes.len() {
                 .active_id = notes.len() - 1
@@ -78,6 +78,8 @@ widget App {
         }
 
         .SaveNote -> {
+            updatenote(.active_id, .edit_title, .edit_body)
+            .editing = false
         }
     }
 }
