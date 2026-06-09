@@ -909,12 +909,13 @@ impl VueGenerator {
             needs_router: false,
             needs_route: false,
             api_functions_used: HashSet::new(),
-            project_api_functions: std::env::var("AUTO_API_FUNCTIONS")
-                .unwrap_or_default()
-                .split(',')
-                .filter(|s| !s.is_empty())
-                .map(|s| s.trim().to_string())
-                .collect(),
+            project_api_functions: {
+                let val = std::env::var("AUTO_API_FUNCTIONS").unwrap_or_default();
+                val.split(',')
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.trim().to_string())
+                    .collect()
+            },
             used_handlers: HashSet::new(),
             has_dark_mode: false,
             use_theme_toggle: false,
@@ -1002,7 +1003,8 @@ impl VueGenerator {
         self.needs_router = false;
         self.needs_route = false;
         self.api_functions_used.clear();
-        self.project_api_functions.clear();
+        // NOTE: project_api_functions is NOT cleared on reset — it's config-level,
+        // loaded once from AUTO_API_FUNCTIONS env var, and persists across widget generation.
         self.used_handlers.clear();
         self.has_dark_mode = false;
         self.use_theme_toggle = false;
@@ -1232,11 +1234,17 @@ impl VueGenerator {
                 imports.push("onMounted");
             }
         }
-        // LoadNotes handler → needs onMounted for initial data loading
-        let has_load_notes = widget.handlers.keys().any(|k| k == ".LoadNotes");
-        if has_load_notes {
+        // Lifecycle: .Init → onMounted, .Destroy → onUnmounted
+        let has_init = widget.lifecycle.iter().any(|l| l.name == "Init");
+        let has_destroy = widget.lifecycle.iter().any(|l| l.name == "Destroy");
+        if has_init {
             if !imports.contains(&"onMounted") {
                 imports.push("onMounted");
+            }
+        }
+        if has_destroy {
+            if !imports.contains(&"onUnmounted") {
+                imports.push("onUnmounted");
             }
         }
         if !imports.is_empty() {
@@ -1309,6 +1317,10 @@ impl VueGenerator {
         // Plan 132: Scan handlers for API function calls
         for (_pattern, payload) in &widget.handlers {
             self.extract_api_calls_from_payload(payload);
+        }
+        // Also scan lifecycle events (.Init, .Destroy) for API calls
+        for lc in &widget.lifecycle {
+            self.extract_api_calls_from_payload(&lc.payload);
         }
 
         // Plan 132: Add API imports if needed
@@ -1484,12 +1496,18 @@ impl VueGenerator {
             }
         }
 
-        // Generate onMounted for LoadNotes handler (initial data loading)
-        if let Some(load_payload) = widget.handlers.get(".LoadNotes") {
-            let is_async = self.handler_has_api_calls(load_payload);
+        // Generate lifecycle hooks from widget.lifecycle
+        // .Init → onMounted
+        if let Some(init) = widget.lifecycle.iter().find(|l| l.name == "Init") {
+            let is_async = self.handler_has_api_calls(&init.payload);
             let async_kw = if is_async { "async " } else { "" };
-            let body = self.generate_handler_body(load_payload).unwrap_or_default();
+            let body = self.generate_handler_body(&init.payload).unwrap_or_default();
             script.push_str(&format!("onMounted({}() => {{\n  {}\n}})\n\n", async_kw, body));
+        }
+        // .Destroy → onUnmounted
+        if let Some(destroy) = widget.lifecycle.iter().find(|l| l.name == "Destroy") {
+            let body = self.generate_handler_body(&destroy.payload).unwrap_or_default();
+            script.push_str(&format!("onUnmounted(() => {{\n  {}\n}})\n\n", body));
         }
 
         // Generate timer/tick mechanism (setInterval + onUnmounted cleanup)
@@ -3480,10 +3498,12 @@ impl VueGenerator {
         fn walk_expr(expr: &Expr, api_fns: &[&str], used: &mut HashSet<String>) {
             match expr {
                 Expr::Call(call) => {
-                    if let Expr::Ident(name) = call.name.as_ref() {
-                        let name_str = name.as_str();
-                        if api_fns.contains(&name_str) {
-                            used.insert(name_str.to_string());
+                    let call_name = call.get_name_text_safe()
+                        .map(|n| n.as_str().to_string())
+                        .unwrap_or_default();
+                    if !call_name.is_empty() {
+                        if api_fns.contains(&call_name.as_str()) {
+                            used.insert(call_name.clone());
                         }
                     }
                     // Recurse into args

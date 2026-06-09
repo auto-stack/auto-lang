@@ -721,6 +721,24 @@ fun {}Preview() {{
         ))
     }
 
+    /// Convert LogicPayload to Kotlin code
+    fn payload_to_kotlin(&self, payload: &LogicPayload) -> GenResult<String> {
+        match payload {
+            LogicPayload::AstBlock(stmts) => {
+                let mut parts = Vec::new();
+                for stmt in stmts {
+                    parts.push(self.stmt_to_kotlin(stmt)?);
+                }
+                Ok(parts.join("\n"))
+            }
+            LogicPayload::AstStmts(_) => {
+                // AstStmts (raw AST) not directly supported in Jet generator
+                Ok("// TODO: lifecycle with raw AST stmts".to_string())
+            }
+            _ => Ok("// TODO: Unsupported payload type".to_string()),
+        }
+    }
+
     /// Convert AuraStmt to Kotlin code
     fn stmt_to_kotlin(&self, stmt: &AuraStmt) -> GenResult<String> {
         match stmt {
@@ -2052,6 +2070,28 @@ impl BackendGenerator for JetGenerator {
             code.push_str("        while (true) {\n");
             code.push_str(&format!("            delay({}L)\n", interval));
             code.push_str("            dispatch(Msg.Tick)\n");
+            code.push_str("        }\n");
+            code.push_str("    }\n\n");
+        }
+
+        // Lifecycle: .Init → LaunchedEffect, .Destroy → DisposableEffect
+        if let Some(init) = widget.lifecycle.iter().find(|l| l.name == "Init") {
+            self.add_import("androidx.compose.runtime.LaunchedEffect");
+            let body = self.payload_to_kotlin(&init.payload)?;
+            code.push_str("    LaunchedEffect(Unit) {\n");
+            for line in body.lines() {
+                code.push_str(&format!("        {}\n", line));
+            }
+            code.push_str("    }\n\n");
+        }
+        if let Some(destroy) = widget.lifecycle.iter().find(|l| l.name == "Destroy") {
+            self.add_import("androidx.compose.runtime.DisposableEffect");
+            let body = self.payload_to_kotlin(&destroy.payload)?;
+            code.push_str("    DisposableEffect(Unit) {\n");
+            code.push_str("        onDispose {\n");
+            for line in body.lines() {
+                code.push_str(&format!("            {}\n", line));
+            }
             code.push_str("        }\n");
             code.push_str("    }\n\n");
         }

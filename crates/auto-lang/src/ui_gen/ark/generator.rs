@@ -643,6 +643,33 @@ impl ArkGenerator {
             lines.push("".to_string());
         }
 
+        // Lifecycle: .Init → aboutToAppear, .Destroy → aboutToDisappear
+        let init_body = widget.lifecycle.iter()
+            .find(|l| l.name == "Init")
+            .map(|l| generate_handler_body(&l.payload))
+            .unwrap_or_default();
+        let destroy_body = widget.lifecycle.iter()
+            .find(|l| l.name == "Destroy")
+            .map(|l| generate_handler_body(&l.payload))
+            .unwrap_or_default();
+
+        if !init_body.is_empty() {
+            lines.push(format!("{}aboutToAppear(): void {{", self.indent()));
+            for line in init_body.lines() {
+                lines.push(format!("{}  {}", self.indent(), line));
+            }
+            lines.push(format!("{}}}", self.indent()));
+            lines.push("".to_string());
+        }
+        if !destroy_body.is_empty() {
+            lines.push(format!("{}aboutToDisappear(): void {{", self.indent()));
+            for line in destroy_body.lines() {
+                lines.push(format!("{}  {}", self.indent(), line));
+            }
+            lines.push(format!("{}}}", self.indent()));
+            lines.push("".to_string());
+        }
+
         // Tick timer: setInterval in aboutToAppear, clearInterval in aboutToDisappear
         if let Some(interval) = widget.tick_interval {
             lines.push(format!("{}private timerId: number = -1", self.indent()));

@@ -46,7 +46,7 @@ widget App {
     }
 
     on {
-        .LoadNotes -> {
+        .Init -> {
             .notes = listnotes()
         }
 

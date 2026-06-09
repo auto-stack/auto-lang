@@ -154,21 +154,41 @@ impl Default for AuraRoutes {
 /// These are extracted from `lifecycle { ... }` blocks.
 #[derive(Debug, Clone)]
 pub struct AuraLifecycle {
-    /// Method name (e.g., "aboutToAppear")
+    /// Method name (e.g., "Init", "Destroy")
     pub name: String,
 
-    /// Method body statements
-    pub body: Vec<AuraStmt>,
+    /// Method body — stored as LogicPayload so generators can reuse existing body generation
+    pub payload: LogicPayload,
 }
 
 impl AuraLifecycle {
     /// Create a new lifecycle method
-    pub fn new(name: impl Into<String>, body: Vec<AuraStmt>) -> Self {
+    pub fn new(name: impl Into<String>, payload: LogicPayload) -> Self {
         Self {
             name: name.into(),
-            body,
+            payload,
         }
     }
+}
+
+/// Well-known lifecycle event names (dot-prefixed, as they appear in `on {}` blocks)
+///
+/// These are automatically extracted from the `on {}` block and moved into
+/// `AuraWidget.lifecycle` during extraction, so generators can handle them
+/// platform-specifically.
+///
+/// | AutoLang | Vue              | ArkTS              | Jetpack Compose       |
+/// |----------|------------------|--------------------|-----------------------|
+/// | `.Init`  | `onMounted`      | `aboutToAppear`    | `LaunchedEffect`      |
+/// | `.Destroy`| `onUnmounted`   | `aboutToDisappear` | `DisposableEffect`    |
+/// | `.Tick`  | `setInterval`    | `setInterval`      | `LaunchedEffect+delay`|
+pub mod lifecycle {
+    /// Component mounted/initialized — runs once after the component is added to the DOM
+    pub const INIT: &str = ".Init";
+    /// Component about to be destroyed — runs cleanup before removal
+    pub const DESTROY: &str = ".Destroy";
+    /// Periodic tick — handled separately via `tick_interval`
+    pub const TICK: &str = ".Tick";
 }
 
 // ============================================================================

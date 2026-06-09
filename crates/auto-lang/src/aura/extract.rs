@@ -699,7 +699,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
     };
 
     // Extract handlers
-    let (handlers, handler_params) = if let Some(on) = &decl.on {
+    let (mut handlers, handler_params) = if let Some(on) = &decl.on {
         extract_on_block(on)?
     } else {
         (HashMap::new(), HashMap::new())
@@ -724,6 +724,21 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
     } else {
         None
     };
+
+    // Extract lifecycle handlers (.Init, .Destroy) from the handlers map
+    // and move them into the lifecycle vec. .Tick is handled separately via tick_interval.
+    let lifecycle_names = [
+        crate::aura::types::lifecycle::INIT,
+        crate::aura::types::lifecycle::DESTROY,
+    ];
+    let lifecycle_events: Vec<crate::aura::types::AuraLifecycle> = lifecycle_names.iter()
+        .filter_map(|name| {
+            handlers.remove(*name).map(|payload| {
+                // name[1..] strips the leading "."
+                crate::aura::types::AuraLifecycle::new(&name[1..], payload)
+            })
+        })
+        .collect();
 
     // Extract props
     let props: Vec<AuraProp> = decl.props.iter()
@@ -764,7 +779,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         handlers,
         props,
         routes,
-        lifecycle: vec![],  // TODO: Extract lifecycle methods from WidgetDecl
+        lifecycle: lifecycle_events,
         tick_interval,
         handler_params,
         span_map,

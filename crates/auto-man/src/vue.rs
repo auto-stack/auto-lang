@@ -1358,6 +1358,18 @@ export default router
 pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "Building Vue project (backend: vue)".bright_cyan());
 
+    // Pre-load API function names BEFORE creating VueProject (which instantiates VueGenerator)
+    let api_fns_path = root_dir.join("dist").join(".api_functions");
+    if api_fns_path.exists() {
+        if let Ok(content) = fs::read_to_string(&api_fns_path) {
+            let fns: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+            if !fns.is_empty() {
+                // SAFETY: Setting a process-wide env var before VueGenerator::new() reads it
+                unsafe { std::env::set_var("AUTO_API_FUNCTIONS", fns.join(",")); }
+            }
+        }
+    }
+
     // Load project context
     let project = VueProject::from_workspace(root_dir)?;
 
@@ -1387,13 +1399,13 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
         println!("  ⚠ API generation skipped: {}", e);
     }
 
-    // Load API function names for Vue generator (dynamic detection)
+    // Refresh API function names after generating (for next run)
     let api_fns_path = root_dir.join("dist").join(".api_functions");
     if api_fns_path.exists() {
         if let Ok(content) = fs::read_to_string(&api_fns_path) {
             let fns: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
             if !fns.is_empty() {
-                // SAFETY: Setting a process-wide env var before spawning Vue generation
+                // SAFETY: Setting a process-wide env var for downstream use
                 unsafe { std::env::set_var("AUTO_API_FUNCTIONS", fns.join(",")); }
             }
         }
@@ -1548,6 +1560,18 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
 /// 6. npm run dev
 pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
+
+    // Pre-load API function names BEFORE any VueGenerator::new() calls
+    let api_fns_path = root_dir.join("dist").join(".api_functions");
+    if api_fns_path.exists() {
+        if let Ok(content) = fs::read_to_string(&api_fns_path) {
+            let fns: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+            if !fns.is_empty() {
+                // SAFETY: Setting a process-wide env var before VueGenerator::new() reads it
+                unsafe { std::env::set_var("AUTO_API_FUNCTIONS", fns.join(",")); }
+            }
+        }
+    }
 
     // Resolve front directory using same logic as VueProject::from_workspace
     let front_dir = resolve_front_dir(root_dir);
