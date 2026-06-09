@@ -51,7 +51,7 @@ widget App {
         }
 
         .SelectNote -> {
-            .active_id = __id
+            .active_id = id
             .editing = false
         }
 

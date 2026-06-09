@@ -1846,8 +1846,11 @@ impl VueGenerator {
                         let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
                         // If inside a for-loop, pass the loop variable's .id as argument
+                        // Only append if handler doesn't already have params from aura_event
                         if let Some(ref loop_var) = self.current_loop_var {
-                            handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                            if aura_event.params.is_empty() {
+                                handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                            }
                             self.loop_param_handlers.insert(handler_name.clone());
                         }
                         self.used_handlers.insert(handler_name);
@@ -6931,8 +6934,11 @@ impl VueGenerator {
             // Track used handler (without params for matching)
             let handler_name = self.handler_to_function_call(&aura_event.handler);
             // If inside a for-loop, pass the loop variable's .id as argument (e.g., SelectNote(note.id))
+            // Only append if handler doesn't already have params from aura_event
             if let Some(ref loop_var) = self.current_loop_var {
-                handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                if aura_event.params.is_empty() {
+                    handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                }
                 self.loop_param_handlers.insert(handler_name.clone());
             }
             self.used_handlers.insert(handler_name);
