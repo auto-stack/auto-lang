@@ -1882,19 +1882,45 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         println!("  cd gen/back/rust/ && cargo run");
 
         // Start the Rust API server as a background process
+        // Inherit stdout/stderr so compilation progress is visible
         let api_server = std::process::Command::new("cargo")
             .args(["run"])
             .current_dir(&rust_dir)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
             .spawn();
 
         match api_server {
             Ok(child) => {
-                println!("  ✓ API server started (PID: {})", child.id());
-                // Wait a moment for the server to bind the port
-                std::thread::sleep(std::time::Duration::from_secs(2));
+                println!("  ✓ API server starting (PID: {})...", child.id());
                 _api_child = Some(child);
+
+                // Wait for the server to become ready by polling the health endpoint
+                println!("  Waiting for API server to be ready...");
+                let max_wait = std::time::Duration::from_secs(60);
+                let start = std::time::Instant::now();
+                let mut ready = false;
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(1))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::blocking::Client::new());
+
+                while start.elapsed() < max_wait {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    match client.get("http://localhost:8080/api/notes").send() {
+                        Ok(resp) if resp.status().is_success() => {
+                            ready = true;
+                            break;
+                        }
+                        Ok(_) => continue,
+                        Err(_) => continue,
+                    }
+                }
+
+                if ready {
+                    println!("  ✓ API server is ready on http://localhost:8080");
+                } else {
+                    println!("  ⚠ API server did not respond within {}s, continuing anyway...",
+                        max_wait.as_secs());
+                }
             }
             Err(e) => {
                 println!("  ⚠ Failed to start API server: {}", e);
