@@ -858,6 +858,9 @@ pub struct VueGenerator {
     /// Handlers that need a loop-id parameter (e.g., "SelectNote" needs `id: any`)
     /// Populated during template generation, consumed during script generation
     loop_param_handlers: HashSet<String>,
+
+    /// Whether to generate handleChildDelete function (auto-wired when sub-widget emits Delete)
+    needs_child_delete_handler: bool,
 }
 
 /// Data for generating interactive preview cards
@@ -923,6 +926,7 @@ impl VueGenerator {
             known_sub_widgets: HashSet::new(),
             current_loop_var: None,
             loop_param_handlers: HashSet::new(),
+            needs_child_delete_handler: false,
         }
     }
 
@@ -994,6 +998,7 @@ impl VueGenerator {
         self.wrapper_classes.clear();
         self.current_loop_var = None;
         self.loop_param_handlers.clear();
+        self.needs_child_delete_handler = false;
         self.shadcn_components_used.clear();
         self.previewcard_counter = 0;
         self.previewcard_data.clear();
@@ -1242,6 +1247,14 @@ impl VueGenerator {
                 imports.push("onMounted");
             }
         }
+        // Auto-edit onMounted for sub-widgets with editing state + note prop
+        let _has_editing = self.state_names.iter().any(|n| n == "editing");
+        let _has_note_prop = self.prop_names.iter().any(|n| n == "note");
+        if _has_editing && _has_note_prop {
+            if !imports.contains(&"onMounted") {
+                imports.push("onMounted");
+            }
+        }
         if has_destroy {
             if !imports.contains(&"onUnmounted") {
                 imports.push("onUnmounted");
@@ -1407,7 +1420,11 @@ impl VueGenerator {
         // Generate event handlers
         for (pattern, payload) in &widget.handlers {
             let handler_name = self.pattern_to_handler_name(pattern);
-            let body = self.generate_handler_body(payload)?;
+            let mut body = self.generate_handler_body(payload)?;
+            // Auto-emit events for sub-widget handlers that match emit declarations
+            if self.has_emit && self.emit_events.contains(&handler_name) {
+                body.push_str(&format!("\nemit('{}')", handler_name));
+            }
             // Plan 132: Check if handler contains API calls (needs async)
             let is_async = self.handler_has_api_calls(payload);
             self.handlers.push((handler_name.clone(), body, is_async));
@@ -1473,6 +1490,10 @@ impl VueGenerator {
             if generated_handlers.contains(handler_name) {
                 continue;
             }
+            // Skip handleChildDelete — it's generated separately below
+            if handler_name == "handleChildDelete" && self.needs_child_delete_handler {
+                continue;
+            }
             let return_type = if self.use_typescript { ": void" } else { "" };
             // Check if this stub needs loop-param
             let params_str = if self.loop_param_handlers.contains(handler_name) {
@@ -1496,6 +1517,23 @@ impl VueGenerator {
             }
         }
 
+        // Generate handleChildDelete for parent components with array state
+        // This handles the case where a sub-widget emits 'Delete' and the parent
+        // needs to remove the item from its array (e.g., notes list)
+        if self.needs_child_delete_handler {
+            script.push_str("function handleChildDelete() {\n");
+            // Find the deleted note by matching active_id, then remove from array
+            script.push_str("  const idx = notes.value.findIndex((n: any) => n.id === notes.value[active_id.value]?.id)\n");
+            script.push_str("  if (idx !== -1) notes.value.splice(idx, 1)\n");
+            script.push_str("  if (notes.value.length > 0) {\n");
+            script.push_str("    active_id.value = 0\n");
+            script.push_str("  }\n");
+            if self.state_names.iter().any(|n| n == "editing") {
+                script.push_str("  editing.value = false\n");
+            }
+            script.push_str("}\n\n");
+        }
+
         // Generate lifecycle hooks from widget.lifecycle
         // .Init → onMounted
         if let Some(init) = widget.lifecycle.iter().find(|l| l.name == "Init") {
@@ -1508,6 +1546,25 @@ impl VueGenerator {
         if let Some(destroy) = widget.lifecycle.iter().find(|l| l.name == "Destroy") {
             let body = self.generate_handler_body(&destroy.payload).unwrap_or_default();
             script.push_str(&format!("onUnmounted(() => {{\n  {}\n}})\n\n", body));
+        }
+
+        // Auto-enter edit mode for sub-widgets when receiving a new/empty item
+        // If widget has editing state and a 'note' prop, auto-start editing when title is empty
+        let has_editing = self.state_names.iter().any(|n| n == "editing");
+        let has_note_prop = self.prop_names.iter().any(|n| n == "note");
+        let has_edit_title = self.state_names.iter().any(|n| n == "edit_title");
+        if has_editing && has_note_prop {
+            script.push_str("onMounted(() => {\n");
+            script.push_str("  if (!props.note?.title) {\n");
+            if has_edit_title {
+                script.push_str("    edit_title.value = ''\n");
+                if self.state_names.iter().any(|n| n == "edit_body") {
+                    script.push_str("    edit_body.value = ''\n");
+                }
+            }
+            script.push_str("    editing.value = true\n");
+            script.push_str("  }\n");
+            script.push_str("})\n\n");
         }
 
         // Generate timer/tick mechanism (setInterval + onUnmounted cleanup)
@@ -1832,13 +1889,22 @@ impl VueGenerator {
                 // For known sub-widgets, use component-style prop passing
                 if is_known_sub_widget {
                     let mut attrs = Vec::new();
+                    // Track first prop expression for :key binding
+                    let mut first_prop_expr: Option<String> = None;
                     // Pass all props as v-bind (:prop="expr" needs a JS expression, not template text)
                     for (key, value) in props {
                         let value_str = match value {
                             AuraPropValue::Expr(expr) => self.expr_to_vue_bound_value(expr)?,
                             AuraPropValue::StyleBinding(_) => "\"\"".to_string(),
                         };
+                        if first_prop_expr.is_none() {
+                            first_prop_expr = Some(value_str.clone());
+                        }
                         attrs.push(format!(":{}=\"{}\"", key, value_str));
+                    }
+                    // Add :key binding so sub-widget re-creates when data changes (e.g., switching notes)
+                    if let Some(expr) = first_prop_expr {
+                        attrs.push(format!(":key=\"{}?.id\"", expr));
                     }
                     // Event handlers
                     for (event, aura_event) in events {
@@ -1855,6 +1921,13 @@ impl VueGenerator {
                         }
                         self.used_handlers.insert(handler_name);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+                    }
+                    // Auto-wire child Delete event to parent handler
+                    // If parent has an array state (e.g., 'notes'), generate @delete handler
+                    if self.state_names.iter().any(|n| n == "notes") {
+                        attrs.push("@delete=\"handleChildDelete\"".to_string());
+                        self.used_handlers.insert("handleChildDelete".to_string());
+                        self.needs_child_delete_handler = true;
                     }
                     let attr_str = if attrs.is_empty() {
                         String::new()
