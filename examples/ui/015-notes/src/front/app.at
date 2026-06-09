@@ -3,7 +3,7 @@ use sidebar: Sidebar
 use note_item: NoteItem
 
 widget App {
-    msg Msg { LoadNotes, SelectNote, NewNote, DeleteNote, SaveNote }
+    msg Msg { LoadNotes, SelectNote(int), NewNote, DeleteNote, SaveNote, SearchChanged }
 
     model {
         var notes = [
@@ -52,6 +52,8 @@ widget App {
         }
 
         .SelectNote -> {
+            .active_id = __id
+            .editing = false
         }
 
         .SearchChanged -> {

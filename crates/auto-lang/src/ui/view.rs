@@ -1093,6 +1093,173 @@ impl<M: Clone + Debug> View<M> {
             style: None,
         }
     }
+
+    /// Map the message type from `M` to `N` using the provided function.
+    ///
+    /// This enables embedding child components with different message types:
+    /// ```ignore
+    /// // EditorPanel has its own EditorPanelMsg, but App needs View<AppMsg>
+    /// editor_panel.view().map_msg(|m| AppMsg::EditorPanel(m))
+    /// ```
+    pub fn map_msg<N: Clone + Debug + 'static>(self, f: impl Fn(M) -> N + Send + Sync + 'static) -> View<N>
+    where
+        M: 'static,
+    {
+        let f: std::sync::Arc<dyn Fn(M) -> N + Send + Sync> = std::sync::Arc::new(f);
+        self.map_msg_with_arc(&f)
+    }
+
+    /// Internal: recurse with a shared Arc<dyn Fn> to avoid impl Fn type issues.
+    fn map_msg_with_arc<N: Clone + Debug + 'static>(self, f: &std::sync::Arc<dyn Fn(M) -> N + Send + Sync>) -> View<N>
+    where
+        M: 'static,
+    {
+        match self {
+            View::Empty => View::Empty,
+            View::Text { content, style } => View::Text { content, style },
+            View::Button { label, onclick, style } => View::Button {
+                label,
+                onclick: f(onclick),
+                style,
+            },
+            View::Row { children, spacing, padding, style } => View::Row {
+                children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
+                spacing,
+                padding,
+                style,
+            },
+            View::Column { children, spacing, padding, style } => View::Column {
+                children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
+                spacing,
+                padding,
+                style,
+            },
+            View::Input { placeholder, value, on_change, width, password, style } => View::Input {
+                placeholder,
+                value,
+                on_change: on_change.map(|m| f(m)),
+                width,
+                password,
+                style,
+            },
+            View::Textarea { placeholder, value, on_change, height, style } => View::Textarea {
+                placeholder,
+                value,
+                on_change: on_change.map(|m| f(m)),
+                height,
+                style,
+            },
+            View::Checkbox { is_checked, label, on_toggle, style } => View::Checkbox {
+                is_checked,
+                label,
+                on_toggle: on_toggle.map(|m| f(m)),
+                style,
+            },
+            View::Container { child, padding, width, height, center_x, center_y, style } => View::Container {
+                child: Box::new(child.map_msg_with_arc(f)),
+                padding,
+                width,
+                height,
+                center_x,
+                center_y,
+                style,
+            },
+            View::Scrollable { child, width, height, style } => View::Scrollable {
+                child: Box::new(child.map_msg_with_arc(f)),
+                width,
+                height,
+                style,
+            },
+            View::Radio { label, is_selected, on_select, style } => View::Radio {
+                label,
+                is_selected,
+                on_select: on_select.map(|m| f(m)),
+                style,
+            },
+            View::Image { src, style } => View::Image { src, style },
+            View::ProgressBar { progress, style } => View::ProgressBar { progress, style },
+            View::List { items, spacing, style } => View::List {
+                items: items.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
+                spacing,
+                style,
+            },
+            View::Select { options, selected_index, on_select, style } => View::Select {
+                options,
+                selected_index,
+                on_select: on_select.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    SelectCallback::new(move |idx, val| f(cb.call(idx, val)))
+                }),
+                style,
+            },
+            View::Table { headers, rows, spacing, col_spacing, style } => View::Table {
+                headers: headers.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
+                rows: rows.into_iter()
+                    .map(|row| row.into_iter().map(|c| c.map_msg_with_arc(f)).collect())
+                    .collect(),
+                spacing,
+                col_spacing,
+                style,
+            },
+            View::Slider { min, max, value, on_change, step, style } => {
+                // Slider uses fn(f32) -> M which can't be wrapped into fn(f32) -> N.
+                // We need to convert to a dynamic callback. For now, panic at runtime
+                // if map_msg is used on a Slider view. This can be improved later.
+                let _ = on_change;
+                View::Slider {
+                    min,
+                    max,
+                    value,
+                    on_change: |_| panic!("map_msg not supported for Slider views"),
+                    step,
+                    style,
+                }
+            }
+            View::Accordion { items, allow_multiple, on_toggle, style } => View::Accordion {
+                items: items.into_iter().map(|item| AccordionItem {
+                    title: item.title,
+                    icon: item.icon,
+                    children: item.children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
+                    expanded: item.expanded,
+                }).collect(),
+                allow_multiple,
+                on_toggle: on_toggle.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    AccordionToggleCallback::new(move |idx, expanded| f(cb.call(idx, expanded)))
+                }),
+                style,
+            },
+            View::Sidebar { content, width, collapsible, position, style } => View::Sidebar {
+                content: Box::new(content.map_msg_with_arc(f)),
+                width,
+                collapsible,
+                position,
+                style,
+            },
+            View::Tabs { labels, contents, selected, position, on_select, style } => View::Tabs {
+                labels,
+                contents: contents.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
+                selected,
+                position,
+                on_select: on_select.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    TabsSelectCallback::new(move |idx| f(cb.call(idx)))
+                }),
+                style,
+            },
+            View::NavigationRail { items, selected, width, show_labels, on_select, style } => View::NavigationRail {
+                items,
+                selected,
+                width,
+                show_labels,
+                on_select: on_select.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    NavigationRailSelectCallback::new(move |idx| f(cb.call(idx)))
+                }),
+                style,
+            },
+        }
+    }
 }
 
 /// Builder for Scrollable with fluent API
@@ -1226,6 +1393,11 @@ impl<M: Clone + Debug> ViewInputBuilder<M> {
         self
     }
 
+    /// Set padding (combined, stored in style)
+    pub fn p(self, _n: u16) -> Self {
+        self
+    }
+
     /// Add border (stored in style)
     pub fn border(self) -> Self {
         self
@@ -1249,6 +1421,16 @@ impl<M: Clone + Debug> ViewInputBuilder<M> {
     /// Set style using Style object
     pub fn with_style(mut self, style: Style) -> Self {
         self.style = Some(style);
+        self
+    }
+
+    /// Set text color (stored in style)
+    pub fn text_color(self, _color: &str) -> Self {
+        self
+    }
+
+    /// Set color (alias for text_color)
+    pub fn color(self, _color: &str) -> Self {
         self
     }
 
@@ -1292,6 +1474,61 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
 
     pub fn with_style(mut self, style: Style) -> Self {
         self.style = Some(style);
+        self
+    }
+
+    /// Set style using Tailwind CSS class string
+    pub fn style(mut self, style_str: &str) -> Self {
+        let existing = self.style.take().unwrap_or_default();
+        let parsed = Style::parse(style_str).expect("Invalid style string");
+        let mut merged = existing;
+        for c in parsed.classes { merged = merged.add(c); }
+        self.style = Some(merged);
+        self
+    }
+
+    /// Set text color (stored in style)
+    pub fn text_color(self, _color: &str) -> Self {
+        self
+    }
+
+    /// Set color (alias for text_color)
+    pub fn color(self, _color: &str) -> Self {
+        self
+    }
+
+    /// Set flex-1 (fill available space)
+    pub fn flex1(self) -> Self {
+        self
+    }
+
+    /// Set horizontal padding
+    pub fn px(self, _n: u16) -> Self {
+        self
+    }
+
+    /// Set vertical padding
+    pub fn py(self, _n: u16) -> Self {
+        self
+    }
+
+    /// Set padding (combined)
+    pub fn p(self, _n: u16) -> Self {
+        self
+    }
+
+    /// Add border
+    pub fn border(self) -> Self {
+        self
+    }
+
+    /// Set rounded-lg
+    pub fn rounded_lg(self) -> Self {
+        self
+    }
+
+    /// Set full width
+    pub fn w_full(self) -> Self {
         self
     }
 

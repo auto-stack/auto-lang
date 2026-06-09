@@ -428,6 +428,7 @@ default = ["ui-iced"]
 
 [dependencies]
 auto-lang = {{ path = "{auto_lang_path}" }}
+serde_json = "1"
 "#
     )
 }

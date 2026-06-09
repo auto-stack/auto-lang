@@ -71,6 +71,9 @@ pub struct RustGenerator {
     /// Indent level
     indent: usize,
 
+    /// Child component names referenced in the current widget's view tree
+    child_components: Vec<String>,
+
     /// Loop variables in scope (for generating correct references)
     loop_vars: Vec<String>,
 
@@ -79,6 +82,15 @@ pub struct RustGenerator {
 
     /// State var types for lookup during handler generation
     state_types: std::collections::HashMap<String, String>,
+
+    /// Prop names for lookup during handler generation (to add self. prefix)
+    prop_names: std::collections::HashSet<String>,
+
+    /// Prop types for checking if a prop needs Value index access
+    prop_types: std::collections::HashMap<String, String>,
+
+    /// Loop variables that iterate over Value-type collections (need ["field"] access)
+    value_loop_vars: std::collections::HashSet<String>,
 }
 
 impl RustGenerator {
@@ -89,9 +101,13 @@ impl RustGenerator {
             message_variants: Vec::new(),
             needs_imports: true,
             indent: 0,
+            child_components: Vec::new(),
             loop_vars: Vec::new(),
             input_fields: std::collections::HashMap::new(),
             state_types: std::collections::HashMap::new(),
+            prop_names: std::collections::HashSet::new(),
+            prop_types: std::collections::HashMap::new(),
+            value_loop_vars: std::collections::HashSet::new(),
         }
     }
 
@@ -100,6 +116,10 @@ impl RustGenerator {
         self.message_variants.clear();
         self.input_fields.clear();
         self.state_types.clear();
+        self.prop_names.clear();
+        self.prop_types.clear();
+        self.value_loop_vars.clear();
+        self.child_components.clear();
         self.needs_imports = true;
         self.indent = 0;
         self.loop_vars.clear();
@@ -134,9 +154,142 @@ impl RustGenerator {
         }
     }
 
+    /// Get the widget-specific Msg enum name (e.g., "AppMsg", "EditorPanelMsg")
+    fn current_msg_name(&self) -> String {
+        match &self.current_widget {
+            Some(name) => format!("{}Msg", name),
+            None => "Msg".to_string(),
+        }
+    }
+
+    /// Get the Rust type for a state var, using refined type from initial expression
+    fn state_rust_type(&self, state: &crate::aura::AuraStateDef) -> String {
+        self.state_types.get(&state.name)
+            .cloned()
+            .unwrap_or_else(|| self.auto_type_to_rust(&state.type_info))
+    }
+
+    /// Get the Rust type for a prop
+    fn prop_rust_type(&self, prop: &crate::aura::AuraProp) -> String {
+        self.auto_type_to_rust(&prop.type_info)
+    }
+
+    /// Check if any handler body accesses prop_name.field (dot access on a prop)
+    fn prop_needs_value_type(&self, widget: &AuraWidget, prop_name: &str) -> bool {
+        for (_pattern, payload) in &widget.handlers {
+            let body_str = self.generate_handler_body(payload);
+            // Look for self.{prop_name}.field patterns
+            if body_str.contains(&format!("self.{}.", prop_name)) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check if the view tree contains field access on a prop (e.g., note.title)
+    /// indicating the prop needs to be serde_json::Value, not String
+    fn view_accesses_prop_field(&self, node: &AuraNode, prop_name: &str) -> bool {
+        match node {
+            AuraNode::Element { props, children, .. } => {
+                // Check if any prop value is a FieldAccess on our prop
+                for (_key, value) in props {
+                    if let crate::aura::AuraPropValue::Expr(expr) = value {
+                        if self.expr_accesses_field(expr, prop_name) {
+                            return true;
+                        }
+                    }
+                }
+                for child in children {
+                    if self.view_accesses_prop_field(child, prop_name) {
+                        return true;
+                    }
+                }
+            }
+            AuraNode::ForLoop { body, .. } => {
+                for child in body {
+                    if self.view_accesses_prop_field(child, prop_name) {
+                        return true;
+                    }
+                }
+            }
+            AuraNode::Conditional { then_body, else_body, .. } => {
+                for child in then_body {
+                    if self.view_accesses_prop_field(child, prop_name) {
+                        return true;
+                    }
+                }
+                if let Some(else_nodes) = else_body {
+                    for child in else_nodes {
+                        if self.view_accesses_prop_field(child, prop_name) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        false
+    }
+
+    /// Check if an expression accesses a field on the given prop name
+    fn expr_accesses_field(&self, expr: &AuraExpr, prop_name: &str) -> bool {
+        match expr {
+            AuraExpr::FieldAccess { object, field: _ } => {
+                if let AuraExpr::StateRef(name) = object.as_ref() {
+                    if name == prop_name {
+                        return true;
+                    }
+                }
+                self.expr_accesses_field(object, prop_name)
+            }
+            AuraExpr::Binary { left, right, .. } => {
+                self.expr_accesses_field(left, prop_name) || self.expr_accesses_field(right, prop_name)
+            }
+            AuraExpr::MethodCall { object, args, .. } => {
+                self.expr_accesses_field(object, prop_name)
+                    || args.iter().any(|a| self.expr_accesses_field(a, prop_name))
+            }
+            AuraExpr::Index { target, index } => {
+                self.expr_accesses_field(target, prop_name)
+                    || self.expr_accesses_field(index, prop_name)
+            }
+            _ => false,
+        }
+    }
+
     /// Check if a name is a loop variable
     fn is_loop_var(&self, name: &str) -> bool {
         self.loop_vars.contains(&name.to_string())
+    }
+
+    /// Check if a variable has serde_json::Value type (exact match, not Vec<Value>)
+    fn is_value_type_var(&self, name: &str) -> bool {
+        // Check state vars
+        if let Some(ty) = self.state_types.get(name) {
+            return ty == "serde_json::Value";
+        }
+        // Check props
+        if let Some(ty) = self.prop_types.get(name) {
+            return ty == "serde_json::Value";
+        }
+        false
+    }
+
+    /// Check if a dot access target needs index syntax (target["field"] instead of target.field)
+    fn needs_index_access(&self, target_name: &str) -> bool {
+        // Props that are actually serde_json::Value type
+        if let Some(ty) = self.prop_types.get(target_name) {
+            return ty == "serde_json::Value";
+        }
+        // State vars that are serde_json::Value (not Vec<Value>)
+        if let Some(ty) = self.state_types.get(target_name) {
+            return ty == "serde_json::Value";
+        }
+        // Loop variables iterating over Value-type collections
+        if self.value_loop_vars.contains(target_name) {
+            return true;
+        }
+        false
     }
 
     /// Push loop variables into scope
@@ -162,7 +315,37 @@ impl RustGenerator {
 
         // Populate state_types for handler generation
         for state in &widget.state_vars {
-            self.state_types.insert(state.name.clone(), self.auto_type_to_rust(&state.type_info));
+            let ty = if matches!(state.type_info, crate::ast::Type::Unknown) {
+                // Infer type from initial expression for untyped state vars
+                match &state.initial {
+                    AuraExpr::Array(_) => "Vec<serde_json::Value>".to_string(),
+                    AuraExpr::Object(_) => "serde_json::Value".to_string(),
+                    AuraExpr::Literal(_) => "String".to_string(),
+                    AuraExpr::Int(_) => "i32".to_string(),
+                    AuraExpr::Float(_) => "f64".to_string(),
+                    AuraExpr::Bool(_) => "bool".to_string(),
+                    _ => self.auto_type_to_rust(&state.type_info),
+                }
+            } else {
+                self.auto_type_to_rust(&state.type_info)
+            };
+            self.state_types.insert(state.name.clone(), ty);
+        }
+
+        // Populate prop_names and prop_types for self. prefix resolution and type checking
+        for prop in &widget.props {
+            self.prop_names.insert(prop.name.clone());
+            let mut prop_ty = self.prop_rust_type(prop);
+            // Apply the same Value upgrade logic as generate_struct
+            if self.prop_needs_value_type(widget, &prop.name) && prop_ty == "String" {
+                prop_ty = "serde_json::Value".to_string();
+            }
+            // Also check if the view tree accesses fields on this prop (e.g., note.title)
+            // which means it needs to be serde_json::Value, not String
+            if prop_ty == "String" && self.view_accesses_prop_field(&widget.view_tree, &prop.name) {
+                prop_ty = "serde_json::Value".to_string();
+            }
+            self.prop_types.insert(prop.name.clone(), prop_ty);
         }
 
         // Collect all message variants
@@ -183,8 +366,11 @@ impl RustGenerator {
             code.push_str("use auto_lang::ui::{Component, View};\n\n");
         }
 
-        // Message enum
-        if !self.message_variants.is_empty() {
+        // Pre-scan view tree for child component references (needed for wrapper msg variants)
+        self.scan_child_components(&widget.view_tree);
+
+        // Message enum (includes wrapper variants for child components)
+        if !self.message_variants.is_empty() || !self.child_components.is_empty() {
             code.push_str(&self.generate_msg_enum()?);
             code.push('\n');
         }
@@ -215,12 +401,24 @@ impl RustGenerator {
     /// Generate Msg enum definition
     fn generate_msg_enum(&self) -> GenResult<String> {
         let mut code = String::new();
+        let msg_name = self.current_msg_name();
 
-        code.push_str("#[derive(Clone, Copy, Debug, PartialEq)]\n");
-        code.push_str("pub enum Msg {\n");
+        code.push_str("#[derive(Clone, Debug, PartialEq)]\n");
+        code.push_str(&format!("pub enum {} {{\n", msg_name));
 
         for variant in &self.message_variants {
-            code.push_str(&format!("    {},\n", variant.name));
+            if let Some(ref ty) = variant.payload {
+                let ty_str = self.auto_type_to_rust(ty);
+                code.push_str(&format!("    {}({}),\n", variant.name, ty_str));
+            } else {
+                code.push_str(&format!("    {},\n", variant.name));
+            }
+        }
+
+        // Add wrapper variants for child components (e.g., EditorPanel(EditorPanelMsg))
+        for child_name in &self.child_components {
+            let child_msg = format!("{}Msg", child_name);
+            code.push_str(&format!("    {}({}),\n", child_name, child_msg));
         }
 
         code.push_str("}\n");
@@ -235,9 +433,19 @@ impl RustGenerator {
         code.push_str("#[derive(Debug)]\n");
         code.push_str(&format!("pub struct {} {{\n", widget.name));
 
+        // Props (from widget signature, e.g., EditorPanel's `note` parameter)
+        for prop in &widget.props {
+            // Use pre-computed prop type (which includes Value upgrade from initial pass)
+            let field_type = self.prop_types.get(&prop.name)
+                .cloned()
+                .unwrap_or_else(|| self.prop_rust_type(prop));
+            code.push_str(&format!("    pub {}: {},\n", prop.name, field_type));
+        }
+
+        // State variables (use refined types from state_types)
         for state in &widget.state_vars {
             let field_name = &state.name;
-            let field_type = self.auto_type_to_rust(&state.type_info);
+            let field_type = self.state_rust_type(state);
             code.push_str(&format!("    pub {}: {},\n", field_name, field_type));
         }
 
@@ -253,10 +461,29 @@ impl RustGenerator {
 
         code.push_str(&format!("impl {} {{\n", widget_name));
 
-        // new() constructor
-        code.push_str("    pub fn new() -> Self {\n");
+        // new() constructor — accepts props as parameters
+        let has_props = !widget.props.is_empty();
+        if has_props {
+            let params: Vec<String> = widget.props.iter()
+                .map(|p| {
+                    let ty = self.prop_types.get(&p.name)
+                        .cloned()
+                        .unwrap_or_else(|| self.prop_rust_type(p));
+                    format!("{}: {}", p.name, ty)
+                })
+                .collect();
+            code.push_str(&format!("    pub fn new({}) -> Self {{\n", params.join(", ")));
+        } else {
+            code.push_str("    pub fn new() -> Self {\n");
+        }
         code.push_str("        Self {\n");
 
+        // Initialize props from parameters
+        for prop in &widget.props {
+            code.push_str(&format!("            {}: {},\n", prop.name, prop.name));
+        }
+
+        // Initialize state vars from their defaults
         for state in &widget.state_vars {
             let init = self.expr_to_rust(&state.initial);
             code.push_str(&format!("            {}: {},\n", state.name, init));
@@ -266,11 +493,13 @@ impl RustGenerator {
         code.push_str("    }\n");
         code.push_str("}\n");
 
-        // Default impl delegates to new()
-        code.push_str(&format!(
-            "impl Default for {} {{\n    fn default() -> Self {{ Self::new() }}\n}}\n",
-            widget_name
-        ));
+        // Default impl — only for widgets without props (props require arguments)
+        if !has_props {
+            code.push_str(&format!(
+                "impl Default for {} {{\n    fn default() -> Self {{ Self::new() }}\n}}\n",
+                widget_name
+            ));
+        }
 
         code
     }
@@ -284,9 +513,9 @@ impl RustGenerator {
 
         // Message type
         let msg_type = if !self.message_variants.is_empty() {
-            "Msg"
+            self.current_msg_name()
         } else {
-            "()"
+            "()".to_string()
         };
         code.push_str(&format!("    type Msg = {};\n\n", msg_type));
 
@@ -305,6 +534,7 @@ impl RustGenerator {
     /// Generate on() method implementation
     fn generate_on_method(&self, widget: &AuraWidget) -> String {
         let mut code = String::new();
+        let msg_name = self.current_msg_name();
 
         code.push_str("    fn on(&mut self, msg: Self::Msg) {\n");
 
@@ -315,7 +545,16 @@ impl RustGenerator {
             for (pattern, payload) in &widget.handlers {
                 let variant_name = self.extract_variant_name(pattern);
                 let body = self.generate_handler_body(payload);
-                code.push_str(&format!("            Msg::{} => {{\n", variant_name));
+                // Check if variant has payload — if so, bind it to a variable
+                let has_payload = self.message_variants.iter()
+                    .find(|v| v.name == variant_name)
+                    .map_or(false, |v| v.payload.is_some());
+                if has_payload {
+                    // Use a named binding instead of _ so handler body can reference it
+                    code.push_str(&format!("            {}::{}(__id) => {{\n", msg_name, variant_name));
+                } else {
+                    code.push_str(&format!("            {}::{} => {{\n", msg_name, variant_name));
+                }
 
                 // If this event is from an input, prepend input text parsing
                 if let Some(field_name) = self.input_fields.get(&variant_name) {
@@ -360,6 +599,58 @@ impl RustGenerator {
             if self.message_variants.len() > widget.handlers.len() {
                 code.push_str("            _ => {}\n");
             }
+
+            // Add handler forwarding for child component message wrappers.
+            // Strategy: create a temp child instance, sync parent state fields that match
+            // child field names, call child.on(inner), then sync back.
+            for child_name in &self.child_components {
+                let child_msg = format!("{}Msg", child_name);
+                // Find parent state vars that likely correspond to child fields
+                // (same name in parent state as in child component)
+                let sync_fields = self.find_sync_fields_for_child(widget);
+                let constructor_args = self.find_constructor_args_for_child(widget);
+
+                code.push_str(&format!(
+                    "            {}::{}(inner) => {{\n",
+                    msg_name, child_name
+                ));
+
+                // Create temporary child instance with constructor args
+                code.push_str(&format!(
+                    "                let mut __child = {}::new({});\n",
+                    child_name, constructor_args
+                ));
+
+                // Sync parent state vars to child fields (by name matching)
+                for field in &sync_fields {
+                    code.push_str(&format!(
+                        "                __child.{} = self.{}.clone();\n",
+                        field, field
+                    ));
+                }
+
+                // Apply the message
+                code.push_str("                __child.on(inner);\n");
+
+                // Sync child fields back to parent state
+                for field in &sync_fields {
+                    code.push_str(&format!(
+                        "                self.{} = __child.{};\n",
+                        field, field
+                    ));
+                }
+
+                // Sync the note data back if the child has a "note" prop
+                // and the parent has notes[active_id]
+                if self.state_types.contains_key("notes") && self.state_types.contains_key("active_id") {
+                    code.push_str(&format!(
+                        "                if let Some(__n) = self.notes.get_mut(self.active_id as usize) {{\n                    *__n = __child.note.clone();\n                }}\n"
+                    ));
+                }
+
+                code.push_str("            }\n");
+            }
+
             code.push_str("        }\n");
         }
 
@@ -428,6 +719,57 @@ impl RustGenerator {
                     self.scan_input_fields(child);
                 }
             }
+            AuraNode::ForLoop { body, .. } => {
+                for child in body {
+                    self.scan_input_fields(child);
+                }
+            }
+            AuraNode::Conditional { then_body, else_body, .. } => {
+                for child in then_body {
+                    self.scan_input_fields(child);
+                }
+                if let Some(else_nodes) = else_body {
+                    for child in else_nodes {
+                        self.scan_input_fields(child);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Pre-scan the view tree to find custom widget references (e.g., EditorPanel, Sidebar).
+    /// These need wrapper message variants in the parent's enum.
+    fn scan_child_components(&mut self, node: &AuraNode) {
+        match node {
+            AuraNode::Element { tag, children, .. } => {
+                if self.is_custom_widget(tag) && !self.child_components.contains(&tag.to_string()) {
+                    self.child_components.push(tag.clone());
+                }
+                for child in children {
+                    self.scan_child_components(child);
+                }
+            }
+            AuraNode::ForLoop { body, .. } => {
+                for child in body {
+                    self.scan_child_components(child);
+                }
+            }
+            AuraNode::Conditional { then_body, else_body, .. } => {
+                for child in then_body {
+                    self.scan_child_components(child);
+                }
+                if let Some(else_nodes) = else_body {
+                    for child in else_nodes {
+                        self.scan_child_components(child);
+                    }
+                }
+            }
+            AuraNode::Component { name, .. } => {
+                if !self.child_components.contains(name) {
+                    self.child_components.push(name.clone());
+                }
+            }
             _ => {}
         }
     }
@@ -436,6 +778,11 @@ impl RustGenerator {
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
+                // Handle custom widget references (e.g., EditorPanel, Sidebar)
+                if self.is_custom_widget(tag) {
+                    return self.generate_child_component(tag, props);
+                }
+
                 let view_fn = self.tag_to_view_fn(tag);
 
                 // For text elements with a "text" prop and no extra styling/events,
@@ -502,8 +849,46 @@ impl RustGenerator {
                         match event.as_str() {
                             "oninput" | "onInput" | "onchange" | "onChange" => {
                                 let variant = self.extract_variant_name(&handler.handler);
-                                builder = format!("{}.on_change(Msg::{})", builder, variant);
+                                let msg_name = self.current_msg_name();
+                                builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 // Record event→field mapping for handler generation
+                                if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
+                                    self.input_fields.insert(variant, name.clone());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    return format!("{}.build()", builder);
+                }
+
+                // Special handling for textarea elements — View::textarea(placeholder).value(...).on_change(...)
+                if tag == "textarea" {
+                    let placeholder = props.get("placeholder")
+                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_default();
+
+                    let mut builder = format!("View::textarea(\"{}\")", placeholder);
+
+                    // Value binding: value: .field → .value(format!("{}", self.field))
+                    if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
+                        builder = format!("{}.value(format!(\"{{}}\", self.{}))", builder, name);
+                    }
+
+                    // Other props (skip placeholder, value)
+                    for (key, value) in props {
+                        if key == "placeholder" || key == "value" { continue; }
+                        builder = self.add_prop_to_builder(&builder, key, value);
+                    }
+
+                    // Events: oninput/onchange → on_change
+                    for (event, handler) in events {
+                        match event.as_str() {
+                            "oninput" | "onInput" | "onchange" | "onChange" => {
+                                let variant = self.extract_variant_name(&handler.handler);
+                                let msg_name = self.current_msg_name();
+                                builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
                                     self.input_fields.insert(variant, name.clone());
                                 }
@@ -524,6 +909,21 @@ impl RustGenerator {
                 // Check if text prop is a state reference (text .name)
                 let text_state_ref = props.get("text")
                     .and_then(|v| if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = v { Some(name.clone()) } else { None });
+
+                // Generate a Rust expression string for the text prop, handling ALL AuraExpr types.
+                // This catches FieldAccess (note.title), Index, and other dynamic expressions
+                // that fall through the Literal/StateRef checks above.
+                let text_rust_expr: Option<String> = if text_prop.is_some() || text_state_ref.is_some() {
+                    None // Already handled by text_prop or text_state_ref
+                } else {
+                    props.get("text").and_then(|v| {
+                        if let AuraPropValue::Expr(expr) = v {
+                            Some(self.expr_to_rust(expr))
+                        } else {
+                            None
+                        }
+                    })
+                };
 
                 // Handle image element — generate View::image() or View::image_styled()
                 if tag == "image" {
@@ -596,6 +996,13 @@ impl RustGenerator {
                         } else {
                             format!("View::{}(\"{}\")", view_fn, label)
                         }
+                    } else if let Some(ref text) = text_rust_expr {
+                        // Dynamic expression (FieldAccess, Index, etc.) as text content
+                        if tag == "button" {
+                            format!("View::button({})", text)
+                        } else {
+                            format!("View::text({})", text)
+                        }
                     } else {
                         format!("View::{}(())", view_fn)
                     }
@@ -621,10 +1028,15 @@ impl RustGenerator {
                     if let Some(label) = &text_prop {
                         return format!("View::text_styled(\"{}\".to_string(), \"{}\")", label, style_str);
                     }
+                    if let Some(ref text) = text_rust_expr {
+                        // text_rust_expr already produces a String (expr_to_rust adds .to_string())
+                        return format!("View::text_styled({}, \"{}\")", text, style_str);
+                    }
                 }
 
                 // Whether the "text" prop was consumed as a constructor arg
-                let text_prop_consumed = self.is_leaf_tag(tag.as_str()) && (text_prop.is_some() || text_state_ref.is_some());
+                let text_prop_consumed = self.is_leaf_tag(tag.as_str())
+                    && (text_prop.is_some() || text_state_ref.is_some() || text_rust_expr.is_some());
 
                 // Non-button leaf tags with text and no styling/children:
                 // View::text("str") returns View<M> directly, NOT a builder.
@@ -638,6 +1050,9 @@ impl RustGenerator {
                             return format!("View::text({})", self.interpolate_str(label));
                         }
                         return format!("View::text(\"{}\".to_string())", label);
+                    }
+                    if let Some(ref text) = text_rust_expr {
+                        return format!("View::text({})", text);
                     }
                     // Leaf tag without text content but no styling — e.g. avatar
                     // These go through the builder path
@@ -674,10 +1089,16 @@ impl RustGenerator {
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
 
-                    // Add children
+                    // Add children — use .children() for for-loops (which produce Vec<View>),
+                    // .child() for single views
                     for child in children {
+                        let is_for_loop = matches!(child, AuraNode::ForLoop { .. });
                         let child_code = self.generate_view_tree(child);
-                        builder = format!("{}.child({})", builder, child_code);
+                        if is_for_loop {
+                            builder = format!("{}.children({})", builder, child_code);
+                        } else {
+                            builder = format!("{}.child({})", builder, child_code);
+                        }
                     }
 
                     // Add events last
@@ -731,14 +1152,23 @@ impl RustGenerator {
 
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Generate iterator-based view construction
+                let iter_name = iterable.trim_start_matches('.');
                 let iter_expr = if iterable.starts_with('.') {
-                    format!("self.{}", iterable.trim_start_matches('.'))
+                    format!("self.{}", iter_name)
                 } else {
                     iterable.clone()
                 };
 
+                // Check if iterable is a Value-type collection
+                let is_value_iter = self.state_types.get(iter_name)
+                    .map(|ty| ty.contains("serde_json::Value"))
+                    .unwrap_or(false);
+
                 // Push loop vars into scope
                 self.push_loop_vars(var, index.as_deref());
+                if is_value_iter {
+                    self.value_loop_vars.insert(var.clone());
+                }
 
                 // Generate body with loop vars in scope
                 let body_code: Vec<String> = body.iter()
@@ -747,11 +1177,12 @@ impl RustGenerator {
 
                 // Pop loop vars from scope
                 self.pop_loop_vars(var, index.as_deref());
+                self.value_loop_vars.remove(var);
 
                 if let Some(idx) = index {
-                    format!("{}.enumerate().map(|({}, {})| {{ {} }}).collect::<Vec<_>>()", iter_expr, idx, var, body_code.join("\n"))
+                    format!("{}.enumerate().map(|({}, {})| {{ {} }})", iter_expr, idx, var, body_code.join("\n"))
                 } else {
-                    format!("{}.iter().map(|{}| {{ {} }}).collect::<Vec<_>>()", iter_expr, var, body_code.join("\n"))
+                    format!("{}.iter().map(|{}| {{ {} }})", iter_expr, var, body_code.join("\n"))
                 }
             }
 
@@ -771,19 +1202,19 @@ impl RustGenerator {
                 }
             }
 
-            AuraNode::Component { name, props, events, .. } => {
-                // Generate component instantiation
-                let mut builder = format!("{}::new()", name);
-
-                for (key, value) in props {
-                    builder = self.add_prop_to_builder(&builder, key, &AuraPropValue::Expr(value.clone()));
+            AuraNode::Component { name, props, .. } => {
+                // Generate component instantiation with message wrapping
+                let msg_name = self.current_msg_name();
+                let mut constructor_args: Vec<String> = Vec::new();
+                for (_key, value) in props {
+                    let rust_expr = self.expr_to_rust(value);
+                    constructor_args.push(rust_expr);
                 }
-
-                for (event, handler) in events {
-                    builder = self.add_event_to_builder(&builder, event, handler);
-                }
-
-                format!("{}.build()", builder)
+                let args_str = constructor_args.join(", ");
+                format!(
+                    "{}::new({}).view().map_msg(|m| {}::{}(m))",
+                    name, args_str, msg_name, name
+                )
             }
 
             // Plan 105: Router outlet and link
@@ -818,6 +1249,128 @@ impl RustGenerator {
         }
     }
 
+    /// Generate child component instantiation with message wrapping.
+    /// E.g., EditorPanel(note: .notes[.active_id]) →
+    ///   EditorPanel::new(self.notes[self.active_id as usize]).view().map_msg(|m| AppMsg::EditorPanel(m))
+    fn generate_child_component(&self, tag: &str, props: &std::collections::HashMap<String, crate::aura::AuraPropValue>) -> String {
+        let msg_name = self.current_msg_name();
+
+        // Build constructor arguments from props
+        // Props like "note: .notes[.active_id]" need to be converted to Rust expressions
+        let mut constructor_args: Vec<String> = Vec::new();
+        for (key, value) in props {
+            if key == "style" || key == "class" { continue; }
+            if let crate::aura::AuraPropValue::Expr(expr) = value {
+                let rust_expr = self.expr_to_rust(expr);
+                constructor_args.push(rust_expr);
+            }
+        }
+
+        let args_str = constructor_args.join(", ");
+
+        // Find parent state vars that should be synced to child before rendering.
+        // This ensures the child's view reflects the current parent state (e.g., editing=true).
+        let sync_fields: Vec<String> = self.state_types.keys()
+            .filter(|name| {
+                let ty = self.state_types.get(*name).map(|s| s.as_str()).unwrap_or("");
+                !ty.starts_with("Vec<") && !name.ends_with("_id") && **name != "notes" && **name != "search"
+            })
+            .cloned()
+            .collect();
+
+        if sync_fields.is_empty() {
+            format!(
+                "{}::new({}).view().map_msg(|m| {}::{}(m))",
+                tag, args_str, msg_name, tag
+            )
+        } else {
+            let mut code = format!("{{ let mut __{} = {}::new({}); ", tag.to_lowercase(), tag, args_str);
+            for field in &sync_fields {
+                code.push_str(&format!("__{}.{} = self.{}.clone(); ", tag.to_lowercase(), field, field));
+            }
+            code.push_str(&format!("__{}.view().map_msg(|m| {}::{}(m)) }}", tag.to_lowercase(), msg_name, tag));
+            code
+        }
+    }
+
+    /// Find parent state vars that should be synced to/from child component fields.
+    /// Matches by name: if parent has state var "editing" and child component likely
+    /// has a field "editing", they should be synced.
+    fn find_sync_fields_for_child(&self, widget: &AuraWidget) -> Vec<String> {
+        let mut fields = Vec::new();
+        for state in &widget.state_vars {
+            let name = &state.name;
+            // Skip collection types and id types — these don't map to child fields
+            let ty = self.state_types.get(name).map(|s| s.as_str()).unwrap_or("");
+            if ty.starts_with("Vec<") || name.ends_with("_id") || name == "notes" || name == "search" {
+                continue;
+            }
+            // State vars like "editing", "edit_title", "edit_body" are candidates
+            // to sync with child components that have the same fields
+            fields.push(name.clone());
+        }
+        fields
+    }
+
+    /// Find constructor args expression for child component instantiation in handler.
+    /// This mirrors generate_child_component but for the handler context.
+    fn find_constructor_args_for_child(&self, widget: &AuraWidget) -> String {
+        // Scan the view tree for the child component reference to get its props
+        if let Some(args) = self.extract_child_constructor_args(&widget.view_tree) {
+            return args;
+        }
+        String::new()
+    }
+
+    /// Recursively extract child component constructor args from view tree
+    fn extract_child_constructor_args(&self, node: &AuraNode) -> Option<String> {
+        match node {
+            AuraNode::Element { tag, props, children, .. } => {
+                if self.is_custom_widget(tag) {
+                    let mut constructor_args: Vec<String> = Vec::new();
+                    for (key, value) in props {
+                        if key == "style" || key == "class" { continue; }
+                        if let crate::aura::AuraPropValue::Expr(expr) = value {
+                            let rust_expr = self.expr_to_rust(expr);
+                            constructor_args.push(rust_expr);
+                        }
+                    }
+                    return Some(constructor_args.join(", "));
+                }
+                for child in children {
+                    if let Some(args) = self.extract_child_constructor_args(child) {
+                        return Some(args);
+                    }
+                }
+                None
+            }
+            AuraNode::ForLoop { body, .. } => {
+                for child in body {
+                    if let Some(args) = self.extract_child_constructor_args(child) {
+                        return Some(args);
+                    }
+                }
+                None
+            }
+            AuraNode::Conditional { then_body, else_body, .. } => {
+                for child in then_body {
+                    if let Some(args) = self.extract_child_constructor_args(child) {
+                        return Some(args);
+                    }
+                }
+                if let Some(else_nodes) = else_body {
+                    for child in else_nodes {
+                        if let Some(args) = self.extract_child_constructor_args(child) {
+                            return Some(args);
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
     /// Convert AURA condition to Rust expression
     fn convert_condition(&self, condition: &str) -> String {
         // Replace . with self. for state references
@@ -831,6 +1384,27 @@ impl RustGenerator {
         result = result.replace("self.self.", "self.");
 
         result
+    }
+
+    /// Check if a tag is a custom widget reference (uppercase first letter, not a known tag)
+    fn is_custom_widget(&self, tag: &str) -> bool {
+        // Known tags that should not be treated as custom widgets
+        const KNOWN_TAGS: &[&str] = &[
+            "col", "column", "row", "grid", "scroll", "container", "center",
+            "button", "input", "textarea", "checkbox", "toggle", "select", "option", "link",
+            "text", "label", "span", "h1", "h2", "h3", "h4", "h5", "h6", "p",
+            "table", "thead", "tbody", "tr", "th", "td", "tree", "tree_item",
+            "tabs", "tab",
+            "modal", "tooltip",
+            "slider", "radio", "radiogroup",
+            "progress", "badge", "spinner",
+            "card", "avatar",
+            "image", "icon",
+            "divider", "spacer",
+            "for", "if",
+        ];
+        // Custom widgets start with uppercase letter
+        tag.chars().next().map_or(false, |c| c.is_uppercase()) && !KNOWN_TAGS.contains(&tag)
     }
 
     /// Map tag to View builder function
@@ -962,17 +1536,49 @@ impl RustGenerator {
     #[allow(dead_code)]
     fn handler_to_rust_closure(&self, handler: &str) -> String {
         let variant = self.extract_variant_name(handler);
-        format!("|_| Msg::{}", variant)
+        let msg_name = self.current_msg_name();
+        format!("|_| {}::{}", msg_name, variant)
     }
 
     /// Convert handler pattern to Rust closure with parameters
     fn handler_to_rust_closure_with_params(&self, handler: &str, params: &[String]) -> String {
         let variant = self.extract_variant_name(handler);
+        let msg_name = self.current_msg_name();
         if params.is_empty() {
-            format!("|_| Msg::{}", variant)
+            format!("|_| {}::{}", msg_name, variant)
         } else {
-            format!("|_| Msg::{}({})", variant, params.join(", "))
+            // Convert dot access on Value-type vars to index access
+            let converted_params: Vec<String> = params.iter()
+                .map(|p| self.convert_param_value_access(p, &variant))
+                .collect();
+            format!("|_| {}::{}({})", msg_name, variant, converted_params.join(", "))
         }
+    }
+
+    /// Convert dot access in param expressions for Value-type variables
+    /// e.g., "note.id" → "note[\"id\"].as_i64().unwrap_or(0) as i32" for i32 payloads
+    fn convert_param_value_access(&self, param: &str, variant_name: &str) -> String {
+        // Check for patterns like "varname.field" or "varname.field.subfield"
+        let parts: Vec<&str> = param.split('.').collect();
+        if parts.len() >= 2 {
+            let var_name = parts[0];
+            if self.value_loop_vars.contains(var_name) || self.needs_index_access(var_name) {
+                let field = parts[1..].join(".");
+                // Check payload type to determine conversion
+                let payload_ty = self.message_variants.iter()
+                    .find(|v| v.name == variant_name)
+                    .and_then(|v| v.payload.as_ref())
+                    .map(|t| self.auto_type_to_rust(t));
+                return match payload_ty.as_deref() {
+                    Some("i32") => format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", var_name, field),
+                    Some("i64") => format!("{}[\"{}\"].as_i64().unwrap_or(0)", var_name, field),
+                    Some("String") => format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", var_name, field),
+                    Some("bool") => format!("{}[\"{}\"].as_bool().unwrap_or(false)", var_name, field),
+                    _ => format!("{}[\"{}\"]", var_name, field),
+                };
+            }
+        }
+        param.to_string()
     }
 
     /// Extract variant name from pattern (e.g., "Msg::Inc" or ".Inc" -> "Inc")
@@ -1013,7 +1619,22 @@ impl RustGenerator {
             crate::ast::Stmt::Store(store) => {
                 let name = store.name.as_str();
                 let value = self.ast_expr_to_rust(&store.expr);
-                format!("self.{} = {}", name, value)
+                // Let/Const are local variables — use let binding
+                // Var/Field are state variables — but only if they exist in state_types
+                match store.kind {
+                    crate::ast::StoreKind::Let | crate::ast::StoreKind::Const => {
+                        format!("let {} = {}", name, value)
+                    }
+                    _ => {
+                        // If name is a known state var, use self. prefix
+                        if self.state_types.contains_key(name) {
+                            format!("self.{} = {}", name, value)
+                        } else {
+                            // Otherwise it's a local var in handler context
+                            format!("let {} = {}", name, value)
+                        }
+                    }
+                }
             }
             crate::ast::Stmt::Expr(expr) => {
                 self.ast_expr_to_rust(expr)
@@ -1044,18 +1665,90 @@ impl RustGenerator {
             Expr::Ident(name) => {
                 let s = name.as_str();
                 if s.starts_with('.') {
-                    format!("self.{}", &s[1..])
+                    let path = &s[1..];
+                    // Check for dotted path on Value-type var (e.g., ".note.title")
+                    if let Some(dot_pos) = path.find('.') {
+                        let first = &path[..dot_pos];
+                        if self.needs_index_access(first) {
+                            let field = &path[dot_pos + 1..];
+                            // Reading from serde_json::Value: use index + string conversion
+                            return format!("self.{}[\"{}\"].as_str().unwrap_or_default().to_string()", first, field);
+                        }
+                    }
+                    format!("self.{}", path)
+                } else if self.state_types.contains_key(s) || self.prop_names.contains(s) {
+                    format!("self.{}", s)
                 } else {
                     s.to_string()
                 }
             }
             Expr::Dot(obj, field) => {
+                let field_str = field.as_str();
+                // Detect pattern: Dot(Dot(Ident("self"), prop_name), field_name)
+                // This is self.prop_name.field_name — check if prop_name is Value-type
+                if let Expr::Dot(inner_obj, inner_field) = obj.as_ref() {
+                    if let Expr::Ident(inner_name) = inner_obj.as_ref() {
+                        let inner_s = inner_name.as_str();
+                        let prop_name = inner_field.as_str();
+                        // Pattern: self.prop_name.field_str
+                        if (inner_s == "self" || inner_s.starts_with('.')) && self.needs_index_access(prop_name) {
+                            // Reading from Value: self.note["title"].as_str().unwrap_or_default().to_string()
+                            return format!("self.{}[\"{}\"].as_str().unwrap_or_default().to_string()", prop_name, field_str);
+                        }
+                    }
+                }
+                // If accessing a field on a Value-type prop directly: obj.field where obj is a prop
+                if let Expr::Ident(name) = obj.as_ref() {
+                    let s = name.as_str();
+                    let resolved = if s.starts_with('.') { &s[1..] } else { s };
+                    if self.needs_index_access(resolved) {
+                        let obj_str = if s == "self" || s.starts_with('.') {
+                            format!("self.{}", resolved)
+                        } else if self.state_types.contains_key(resolved) || self.prop_names.contains(resolved) {
+                            format!("self.{}", resolved)
+                        } else {
+                            resolved.to_string()
+                        };
+                        return format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", obj_str, field_str);
+                    }
+                }
                 let obj_str = self.ast_expr_to_rust(obj);
-                format!("{}.{}", obj_str, field)
+                format!("{}.{}", obj_str, field_str)
             }
             Expr::Bina(left, op, right) => {
                 // Assignment: .count = expr → self.count = expr
                 if matches!(op, Op::Asn) {
+                    // Check if target is a Value field write like self.note.title = value
+                    // Pattern: Dot(Dot(Ident("self"), "note"), "title")
+                    if let Expr::Dot(outer_obj, outer_field) = left.as_ref() {
+                        if let Expr::Dot(inner_obj, inner_field) = outer_obj.as_ref() {
+                            if let Expr::Ident(inner_name) = inner_obj.as_ref() {
+                                let inner_s = inner_name.as_str();
+                                let prop_name = inner_field.as_str();
+                                if (inner_s == "self" || inner_s.starts_with('.')) && self.needs_index_access(prop_name) {
+                                    let field = outer_field.as_str();
+                                    let value = self.ast_expr_to_rust(right);
+                                    // Write to Value field: self.note["title"] = json!(value)
+                                    return format!("self.{}[\"{}\"] = serde_json::json!({})", prop_name, field, value);
+                                }
+                            }
+                        }
+                    }
+                    // Also check for single-dot Ident pattern like ".note.title"
+                    if let Expr::Ident(name) = left.as_ref() {
+                        let s = name.as_str();
+                        if s.starts_with('.') {
+                            let path = &s[1..];
+                            if let Some(dot_pos) = path.find('.') {
+                                let first = &path[..dot_pos];
+                                if self.needs_index_access(first) {
+                                    let field = &path[dot_pos + 1..];
+                                    let value = self.ast_expr_to_rust(right);
+                                    return format!("self.{}[\"{}\"] = serde_json::json!({})", first, field, value);
+                                }
+                            }
+                        }
+                    }
                     let target = self.ast_expr_to_rust(left);
                     let value = self.ast_expr_to_rust(right);
                     return format!("{} = {}", target, value);
@@ -1117,11 +1810,127 @@ impl RustGenerator {
                             .collect();
                         format!("println!({})", print_args.join(", "))
                     }
-                    _ => format!("{}({})", fn_name, args.join(", ")),
+                    _ => {
+                        let result = if fn_name.ends_with(".remove") {
+                            // .remove() takes usize, cast args
+                            let casted_args: Vec<String> = args.iter()
+                                .map(|a| format!("{} as usize", a))
+                                .collect();
+                            format!("{}({})", fn_name, casted_args.join(", "))
+                        } else if fn_name.ends_with(".push") {
+                            // .push() for Value vectors — keep args as-is
+                            format!("{}({})", fn_name, args.join(", "))
+                        } else {
+                            format!("{}({})", fn_name, args.join(", "))
+                        };
+                        // .len() returns usize — cast to i32 for AURA compatibility
+                        if fn_name.ends_with(".len") {
+                            format!("{} as i32", result)
+                        } else {
+                            result
+                        }
+                    }
                 }
             }
+            Expr::Object(pairs) => {
+                let fields: Vec<String> = pairs.iter()
+                    .map(|p| {
+                        let key_str = match &p.key {
+                            crate::ast::Key::NamedKey(name) => format!("\"{}\"", name.as_str()),
+                            crate::ast::Key::IntKey(i) => i.to_string(),
+                            crate::ast::Key::BoolKey(b) => b.to_string(),
+                            crate::ast::Key::StrKey(s) => format!("\"{}\"", s),
+                        };
+                        let value = self.ast_expr_to_json_value(&p.value);
+                        format!("{}: {}", key_str, value)
+                    })
+                    .collect();
+                format!("serde_json::json!({{{}}})", fields.join(", "))
+            }
+            Expr::Array(elems) => {
+                let elems_str: Vec<String> = elems.iter()
+                    .map(|e| self.ast_expr_to_rust(e))
+                    .collect();
+                format!("vec![{}]", elems_str.join(", "))
+            }
+            Expr::Index(target, index) => {
+                let target_str = self.ast_expr_to_rust(target);
+                let index_str = self.ast_expr_to_rust(index);
+                format!("{}[{}]", target_str, index_str)
+            }
+            Expr::Nil | Expr::Null => "serde_json::Value::Null".to_string(),
             _ => format!("/* expr */"),
         }
+    }
+
+    /// Generate a json!()-compatible value expression (strings without .to_string())
+    fn ast_expr_to_json_value(&self, expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
+        match expr {
+            Expr::Str(s) => format!("\"{}\"", s),
+            Expr::I64(n) => n.to_string(),
+            Expr::Int(n) => n.to_string(),
+            Expr::U64(n) => n.to_string(),
+            Expr::Uint(n) => n.to_string(),
+            Expr::Bool(b) => b.to_string(),
+            Expr::Ident(name) => {
+                let s = name.as_str();
+                if s.starts_with('.') {
+                    format!("self.{}", &s[1..])
+                } else if self.state_types.contains_key(s) || self.prop_names.contains(s) {
+                    format!("self.{}", s)
+                } else {
+                    s.to_string()
+                }
+            }
+            Expr::Object(pairs) => {
+                let fields: Vec<String> = pairs.iter()
+                    .map(|p| {
+                        let key_str = match &p.key {
+                            crate::ast::Key::NamedKey(name) => format!("\"{}\"", name.as_str()),
+                            crate::ast::Key::IntKey(i) => i.to_string(),
+                            _ => String::new(),
+                        };
+                        let value = self.ast_expr_to_json_value(&p.value);
+                        format!("{}: {}", key_str, value)
+                    })
+                    .collect();
+                format!("serde_json::json!({{{}}})", fields.join(", "))
+            }
+            _ => self.ast_expr_to_rust(expr),
+        }
+    }
+
+    /// Generate a json!()-compatible value from AuraExpr (strings without .to_string())
+    fn expr_to_json_value(&self, expr: &AuraExpr) -> String {
+        match expr {
+            AuraExpr::Literal(s) => format!("\"{}\"", s),
+            AuraExpr::Int(n) => n.to_string(),
+            AuraExpr::Float(n) => n.to_string(),
+            AuraExpr::Bool(b) => b.to_string(),
+            AuraExpr::StateRef(name) => format!("self.{}", name),
+            AuraExpr::Object(fields) => {
+                let pairs: Vec<String> = fields.iter()
+                    .map(|(k, v)| format!("\"{}\": {}", k, self.expr_to_json_value(v)))
+                    .collect();
+                format!("serde_json::json!({{{}}})", pairs.join(", "))
+            }
+            _ => self.expr_to_rust(expr),
+        }
+    }
+
+    /// Convert a dotted target path to Rust, using index access for Value-type vars
+    /// e.g., "note.title" → "self.note[\"title\"]" when note is a Value prop
+    fn convert_target_to_rust(&self, target: &str) -> String {
+        let parts: Vec<&str> = target.split('.').collect();
+        if parts.len() >= 2 {
+            let first = parts[0];
+            if self.needs_index_access(first) {
+                let field = parts[1..].join(".");
+                return format!("self.{}[\"{}\"]", first, field);
+            }
+        }
+        format!("self.{}", target)
     }
 
     /// Convert AuraStmt to Rust
@@ -1129,6 +1938,16 @@ impl RustGenerator {
         match stmt {
             AuraStmt::Assign { target, value } => {
                 let value_str = self.expr_to_rust(value);
+                // Check if target is a dotted path on a Value-type var
+                let parts: Vec<&str> = target.split('.').collect();
+                if parts.len() >= 2 {
+                    let first = parts[0];
+                    if self.needs_index_access(first) {
+                        // Write to Value field: self.note["title"] = json!(value)
+                        let field = parts[1..].join(".");
+                        return format!("self.{}[\"{}\"] = serde_json::json!({})", first, field, value_str);
+                    }
+                }
                 format!("self.{} = {}", target, value_str)
             }
             AuraStmt::Update { target, op, value } => {
@@ -1145,7 +1964,15 @@ impl RustGenerator {
                 let args_str: Vec<String> = args.iter()
                     .map(|a| self.expr_to_rust(a))
                     .collect();
-                format!("self.{}.{}({})", object, method, args_str.join(", "))
+                // .remove() takes usize — cast i32 args
+                if method == "remove" {
+                    let casted_args: Vec<String> = args_str.iter()
+                        .map(|a| format!("{} as usize", a))
+                        .collect();
+                    format!("self.{}.{}({})", object, method, casted_args.join(", "))
+                } else {
+                    format!("self.{}.{}({})", object, method, args_str.join(", "))
+                }
             }
         }
     }
@@ -1183,9 +2010,15 @@ impl RustGenerator {
                 let args_str: Vec<String> = args.iter()
                     .map(|a| self.expr_to_rust(a))
                     .collect();
-                // Convert .len to .len() for Rust
+                // Convert .len to .len() as i32 for Rust (AURA uses i32 for lengths)
                 if method == "len" && args.is_empty() {
-                    format!("{}.len()", object_str)
+                    format!("{}.len() as i32", object_str)
+                } else if method == "remove" {
+                    // .remove() takes usize — cast args
+                    let casted_args: Vec<String> = args_str.iter()
+                        .map(|a| format!("{} as usize", a))
+                        .collect();
+                    format!("{}.{}({})", object_str, method, casted_args.join(", "))
                 } else if method == "filter" {
                     // filter takes a closure
                     format!("{}.{}({})", object_str, method, args_str.join(", "))
@@ -1201,16 +2034,32 @@ impl RustGenerator {
             }
             AuraExpr::Object(fields) => {
                 let pairs: Vec<String> = fields.iter()
-                    .map(|(k, v)| format!("{}: {}", k, self.expr_to_rust(v)))
+                    .map(|(k, v)| format!("\"{}\": {}", k, self.expr_to_json_value(v)))
                     .collect();
-                format!("{{{}}}", pairs.join(", "))
+                format!("serde_json::json!({{{}}})", pairs.join(", "))
             }
             AuraExpr::Lambda { params, body } => {
                 let body_str = self.expr_to_rust(body);
                 format!("|{}| {}", params.join(", "), body_str)
             }
             AuraExpr::FieldAccess { object, field } => {
+                // Check if object is a loop variable FIRST (before computing object_str)
+                // to avoid generating self.note when it should be just note
+                if let AuraExpr::StateRef(name) = object.as_ref() {
+                    if self.value_loop_vars.contains(name) {
+                        // Loop variable is &serde_json::Value — use index access
+                        // Use just the name (not self.name) since it's a closure param
+                        return format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", name, field);
+                    }
+                }
                 let object_str = self.expr_to_rust(object);
+                // Check if object is a Value-type state variable needing index access
+                if let AuraExpr::StateRef(name) = object.as_ref() {
+                    if self.needs_index_access(name) {
+                        // Reading from serde_json::Value: use index + type conversion
+                        return format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", object_str, field);
+                    }
+                }
                 format!("{}.{}", object_str, field)
             }
             AuraExpr::NavCall { path, params } => {
@@ -1228,7 +2077,14 @@ impl RustGenerator {
             AuraExpr::Index { target, index } => {
                 let target_str = self.expr_to_rust(target);
                 let index_str = self.expr_to_rust(index);
-                format!("{}[{}]", target_str, index_str)
+                // Vec indexing requires usize — add cast if index is an i32 expression
+                let index_cast = if index_str.starts_with("self.") {
+                    // Likely an i32 state var, cast to usize
+                    format!("{} as usize", index_str)
+                } else {
+                    index_str
+                };
+                format!("{}[{}].clone()", target_str, index_cast)
             }
         }
     }
@@ -1254,17 +2110,25 @@ impl RustGenerator {
 
     /// Convert Auto type to Rust type
     fn auto_type_to_rust(&self, ty: &crate::ast::Type) -> String {
+        use crate::ast::Type;
         match ty {
-            crate::ast::Type::Int => "i32".to_string(),
-            crate::ast::Type::Uint => "u32".to_string(),
-            crate::ast::Type::I64 => "i64".to_string(),
-            crate::ast::Type::U64 => "u64".to_string(),
-            crate::ast::Type::Float => "f32".to_string(),
-            crate::ast::Type::Double => "f64".to_string(),
-            crate::ast::Type::Bool => "bool".to_string(),
-            crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned | crate::ast::Type::StrSlice => "String".to_string(),
-            crate::ast::Type::Void => "()".to_string(),
-            _ => "i32".to_string(), // Default fallback
+            Type::Int => "i32".to_string(),
+            Type::Uint => "u32".to_string(),
+            Type::I64 => "i64".to_string(),
+            Type::U64 => "u64".to_string(),
+            Type::Float => "f32".to_string(),
+            Type::Double => "f64".to_string(),
+            Type::Bool => "bool".to_string(),
+            Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => "String".to_string(),
+            Type::Void => "()".to_string(),
+            Type::Array(arr) => format!("Vec<{}>", self.auto_type_to_rust(&arr.elem)),
+            Type::RuntimeArray(arr) => format!("Vec<{}>", self.auto_type_to_rust(&arr.elem)),
+            Type::List(inner) => format!("Vec<{}>", self.auto_type_to_rust(inner)),
+            Type::Slice(sl) => format!("Vec<{}>", self.auto_type_to_rust(&sl.elem)),
+            Type::Map(k, v) => format!("std::collections::HashMap<{}, {}>", self.auto_type_to_rust(k), self.auto_type_to_rust(v)),
+            Type::User(td) => td.name.to_string(),
+            Type::Unknown => "serde_json::Value".to_string(),
+            _ => "serde_json::Value".to_string(), // Fallback for unrecognized types
         }
     }
 }
