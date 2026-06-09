@@ -90,7 +90,11 @@ pub struct AuraWidget {
     /// Key bindings: key string → handler pattern (Plan 275)
     /// e.g., "1" → ".Digit1", "Enter" → ".Equals"
     pub key_bindings: HashMap<String, String>,
+
+    /// API function names explicitly imported via `use back.api: ...`
+    pub api_imports: Vec<String>,
 }
+
 
 // ============================================================================
 // Router Types (Plan 105)
@@ -928,6 +932,7 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
         };
 
         assert_eq!(widget.name, "Counter");

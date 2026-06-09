@@ -122,6 +122,7 @@ pub struct DynamicComponent {
     widget_registry: crate::ui::widget_registry::WidgetRegistry,
 }
 
+
 impl fmt::Debug for DynamicComponent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DynamicComponent")
@@ -747,6 +748,7 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
         }
     }
 
@@ -875,6 +877,7 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
         };
 
         let comp = DynamicComponent::new(&widget).unwrap();
@@ -1064,6 +1067,7 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
         };
 
         let comp = DynamicComponent::new(&widget).unwrap();
@@ -1133,6 +1137,7 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
         };
 
         let mut comp = DynamicComponent::new(&widget).unwrap();
@@ -1321,6 +1326,7 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
         };
 
         comp.reload(&new_widget).unwrap();

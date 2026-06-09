@@ -1696,6 +1696,7 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
         }
     }
 

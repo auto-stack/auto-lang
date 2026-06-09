@@ -1,6 +1,7 @@
 use editor: EditorPanel
 use sidebar: Sidebar
 use note_item: NoteItem
+use back.api: listnotes, createnote, updatenote, deletenote
 
 widget App {
     msg Msg { LoadNotes, SelectNote(int), NewNote, DeleteNote, SaveNote, SearchChanged }

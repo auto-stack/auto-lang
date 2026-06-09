@@ -463,7 +463,9 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
-        };
+            api_imports: vec![],
+        }
+;
 
         let atom = to_atom(&widget);
 
@@ -490,6 +492,7 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
         };
 
         let atom = to_atom(&widget);
@@ -531,6 +534,7 @@ mod tests {
                 handler_params: HashMap::new(),
                 span_map: HashMap::new(),
                 key_bindings: HashMap::new(),
+            api_imports: vec![],
             }],
             messages: vec![],
             app: Some(AuraApp {

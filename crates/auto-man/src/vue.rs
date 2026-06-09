@@ -832,6 +832,9 @@ export default router
                         } else {
                             // Additional widgets in app.at become components
                             let mut gen = VueGenerator::new_shadcn();
+                            if !widget.api_imports.is_empty() {
+                                gen = gen.with_project_api_functions(widget.api_imports.clone());
+                            }
                             match gen.generate(widget) {
                                 Ok(widget_code) => {
                                     let comp_names = detect_shadcn_components(&widget_code);
@@ -934,6 +937,9 @@ export default router
                             }
                             // Generate each widget as an independent Vue component
                             let mut gen = VueGenerator::new_shadcn();
+                            if !widget.api_imports.is_empty() {
+                                gen = gen.with_project_api_functions(widget.api_imports.clone());
+                            }
                             match gen.generate(widget) {
                                 Ok(widget_code) => {
                                     let comp_names = detect_shadcn_components(&widget_code);
@@ -1611,7 +1617,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
                     if source_changed || output_missing {
                         println!("  {} (changed)", file_name.bright_yellow());
-                        if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content) {
+                        if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content, root_dir) {
                             for widget_name in &widgets {
                                 sub_widget_names.push(widget_name.clone());
                                 // Also generate with widget name as fallback
@@ -1632,7 +1638,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                         }
                     } else {
                         // Cached: still need sub-widget names for app.at compilation
-                        if let Ok((_vue_code, widgets)) = compile_at_to_vue(&path, &content) {
+                        if let Ok((_vue_code, widgets)) = compile_at_to_vue(&path, &content, root_dir) {
                             for widget_name in &widgets {
                                 sub_widget_names.push(widget_name.clone());
                             }
@@ -1659,7 +1665,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                 } else {
                     println!("  {} (output missing)", "app.at".bright_yellow());
                 }
-                if let Ok((vue_code, widgets)) = compile_at_to_vue_with_sub_widgets(&app_at, &content, sub_widget_names.clone()) {
+                if let Ok((vue_code, widgets)) = compile_at_to_vue_with_sub_widgets(&app_at, &content, sub_widget_names.clone(), root_dir) {
                     let content_hash = hash_string(&vue_code);
                     if let Some(widget_name) = widgets.first() {
                         changed_files.push((app_output_path, vue_code, widget_name.clone()));
@@ -1698,7 +1704,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
                         if source_changed {
                             println!("  widgets/{} (changed)", file_name.bright_yellow());
-                            if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content) {
+                            if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content, root_dir) {
                                 if let Some(widget_name) = widgets.first() {
                                     let output_path = output_dir.join("src").join("components").join(format!("{}.vue", widget_name));
                                     changed_files.push((output_path, vue_code, widget_name.clone()));
@@ -1751,7 +1757,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                             } else {
                                 println!("  pages/{} (output missing)", file_name.bright_yellow());
                             }
-                            if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content) {
+                            if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content, root_dir) {
                                 // Use file_stem for output path (matching VueProject::generate behavior)
                                 let widget_name = widgets.first().cloned().unwrap_or_else(|| file_stem.to_string());
                                 changed_files.push((output_path, vue_code, widget_name.clone()));
@@ -1950,9 +1956,50 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     Ok(())
 }
 
+/// Check if a `use` statement imports from the API module (`back.api`)
+fn is_api_use(use_stmt: &auto_lang::ast::Use) -> bool {
+    // Check legacy paths: ["back", "api"]
+    if use_stmt.paths.len() == 2
+        && use_stmt.paths[0].as_str() == "back"
+        && use_stmt.paths[1].as_str() == "api"
+    {
+        return true;
+    }
+    // Check Plan 131 module_path: display == "back.api"
+    if let Some(ref mp) = use_stmt.module_path {
+        if mp.display() == "back.api" {
+            return true;
+        }
+    }
+    false
+}
+
+/// Validate that imported API function names exist in the API manifest
+fn validate_api_imports(imports: &[String], root_dir: &Path) -> Result<(), String> {
+    let manifest_path = root_dir.join("dist").join(".api_functions");
+    if !manifest_path.exists() {
+        // No API module exists yet; skip validation
+        return Ok(());
+    }
+    let known = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("Failed to read .api_functions: {}", e))?;
+    let known_names: Vec<&str> = known.lines().filter(|l| !l.trim().is_empty()).collect();
+    for import in imports {
+        let lower = import.to_lowercase();
+        if !known_names.iter().any(|k| k.eq_ignore_ascii_case(&lower)) {
+            return Err(format!(
+                "Unknown API function '{}' in use statement. Available: {}",
+                import,
+                known_names.join(", ")
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Compile a .at file to Vue component
 /// Returns (vue_code, widget_names)
-fn compile_at_to_vue(_at_path: &Path, content: &str) -> Result<(String, Vec<String>), String> {
+fn compile_at_to_vue(_at_path: &Path, content: &str, root_dir: &Path) -> Result<(String, Vec<String>), String> {
     use auto_lang::Parser;
     use auto_lang::session::CompilerSession;
     use auto_lang::ui_gen::BackendGenerator;
@@ -1964,11 +2011,22 @@ fn compile_at_to_vue(_at_path: &Path, content: &str) -> Result<(String, Vec<Stri
 
     let ast = parser.parse().map_err(|e| format!("Parse error: {:?}", e))?;
 
+    // Extract API imports from `use back.api: ...` statements
+    let mut api_imports: Vec<String> = Vec::new();
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::Use(use_stmt) = stmt {
+            if is_api_use(use_stmt) {
+                api_imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let aura_widget = extract_widget_from_decl(widget_decl)
+            let mut aura_widget = extract_widget_from_decl(widget_decl)
                 .map_err(|e| e.to_string())?;
+            aura_widget.api_imports = api_imports.clone();
             widgets.push(aura_widget);
         }
     }
@@ -1977,8 +2035,16 @@ fn compile_at_to_vue(_at_path: &Path, content: &str) -> Result<(String, Vec<Stri
         return Err("No widgets found".to_string());
     }
 
+    // Validate API imports against the manifest
+    if !api_imports.is_empty() {
+        validate_api_imports(&api_imports, root_dir)?;
+    }
+
     // Use shadcn mode for proper component generation
     let mut generator = VueGenerator::new().with_mode(auto_lang::ui_gen::VueMode::Shadcn);
+    if !api_imports.is_empty() {
+        generator = generator.with_project_api_functions(api_imports);
+    }
     let vue_code = generator.generate(&widgets[0])
         .map_err(|e| e.to_string())?;
 
@@ -1987,7 +2053,7 @@ fn compile_at_to_vue(_at_path: &Path, content: &str) -> Result<(String, Vec<Stri
 }
 
 /// Compile an .at file to Vue SFC with known sub-widget names (avoids shadcn name collisions)
-fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget_names: Vec<String>) -> Result<(String, Vec<String>), String> {
+fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget_names: Vec<String>, root_dir: &Path) -> Result<(String, Vec<String>), String> {
     use auto_lang::Parser;
     use auto_lang::session::CompilerSession;
     use auto_lang::ui_gen::BackendGenerator;
@@ -1999,11 +2065,22 @@ fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget
 
     let ast = parser.parse().map_err(|e| format!("Parse error: {:?}", e))?;
 
+    // Extract API imports from `use back.api: ...` statements
+    let mut api_imports: Vec<String> = Vec::new();
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::Use(use_stmt) = stmt {
+            if is_api_use(use_stmt) {
+                api_imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let aura_widget = extract_widget_from_decl(widget_decl)
+            let mut aura_widget = extract_widget_from_decl(widget_decl)
                 .map_err(|e| e.to_string())?;
+            aura_widget.api_imports = api_imports.clone();
             widgets.push(aura_widget);
         }
     }
@@ -2012,10 +2089,18 @@ fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget
         return Err("No widgets found".to_string());
     }
 
+    // Validate API imports against the manifest
+    if !api_imports.is_empty() {
+        validate_api_imports(&api_imports, root_dir)?;
+    }
+
     // Use shadcn mode with sub-widget names to avoid treating child widgets as shadcn components
     let mut generator = VueGenerator::new()
         .with_mode(auto_lang::ui_gen::VueMode::Shadcn)
         .with_sub_widgets(sub_widget_names);
+    if !api_imports.is_empty() {
+        generator = generator.with_project_api_functions(api_imports);
+    }
     let vue_code = generator.generate(&widgets[0])
         .map_err(|e| e.to_string())?;
 

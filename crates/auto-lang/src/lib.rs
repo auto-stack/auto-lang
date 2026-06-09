@@ -2987,6 +2987,37 @@ pub fn ui_build_shadcn(
 ///
 /// let (code, widgets) = ui_build_shadcn_with_widgets("app.at", None).unwrap();
 ///
+/// Extract API function names from `use back.api: fn1, fn2, ...` statements in an AST
+fn extract_api_imports_from_ast(code: &crate::ast::Code) -> Vec<String> {
+    let mut api_imports = Vec::new();
+    for stmt in &code.stmts {
+        if let crate::ast::Stmt::Use(ref use_stmt) = stmt {
+            if is_api_use_stmt(use_stmt) {
+                api_imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+    api_imports
+}
+
+/// Check if a `use` statement targets `back.api`
+fn is_api_use_stmt(use_stmt: &crate::ast::Use) -> bool {
+    // Check legacy paths: ["back", "api"]
+    if use_stmt.paths.len() == 2
+        && use_stmt.paths[0].as_str() == "back"
+        && use_stmt.paths[1].as_str() == "api"
+    {
+        return true;
+    }
+    // Check module_path: display == "back.api"
+    if let Some(ref mp) = use_stmt.module_path {
+        if mp.display() == "back.api" {
+            return true;
+        }
+    }
+    false
+}
+
 /// // Check if any widget has routes
 /// let has_routes = widgets.iter().any(|w| w.routes.is_some());
 /// ```
@@ -3010,12 +3041,16 @@ pub fn ui_build_shadcn_with_widgets(
         format!("Parse error: {:?}", e)
     })?;
 
+    // Extract API imports from `use back.api: ...` statements
+    let api_imports = extract_api_imports_from_ast(&ast);
+
     // Extract AURA widgets from AST
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let aura_widget = crate::aura::extract_widget_from_decl(widget_decl)
+            let mut aura_widget = crate::aura::extract_widget_from_decl(widget_decl)
                 .map_err(|e| e.to_string())?;
+            aura_widget.api_imports = api_imports.clone();
             widgets.push(aura_widget);
         }
     }
@@ -3024,8 +3059,11 @@ pub fn ui_build_shadcn_with_widgets(
         return Err("No widget declarations found in input file".into());
     }
 
-    // Generate code with shadcn-vue mode
+    // Generate code with shadcn-vue mode (with explicit API imports if present)
     let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
+    if !api_imports.is_empty() {
+        gen = gen.with_project_api_functions(api_imports.clone());
+    }
     let mut output_code = String::new();
 
     for widget in &widgets {
@@ -3041,6 +3079,9 @@ pub fn ui_build_shadcn_with_widgets(
             let out_path = std::path::Path::new(out_dir)
                 .join(format!("{}.vue", widget.name));
             let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
+            if !api_imports.is_empty() {
+                gen = gen.with_project_api_functions(api_imports.clone());
+            }
             let widget_code = gen.generate(widget).map_err(|e| e.to_string())?;
             std::fs::write(&out_path, &widget_code)
                 .map_err(|e| format!("Failed to write output file: {}", e))?;
@@ -3072,11 +3113,15 @@ pub fn ui_build_shadcn_with_sub_widgets(
         format!("Parse error: {:?}", e)
     })?;
 
+    // Extract API imports from `use back.api: ...` statements
+    let api_imports = extract_api_imports_from_ast(&ast);
+
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let aura_widget = crate::aura::extract_widget_from_decl(widget_decl)
+            let mut aura_widget = crate::aura::extract_widget_from_decl(widget_decl)
                 .map_err(|e| e.to_string())?;
+            aura_widget.api_imports = api_imports.clone();
             widgets.push(aura_widget);
         }
     }
@@ -3087,6 +3132,9 @@ pub fn ui_build_shadcn_with_sub_widgets(
 
     // Generate code with shadcn-vue mode, passing known sub-widget names
     let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_sub_widgets(sub_widget_names.clone());
+    if !api_imports.is_empty() {
+        gen = gen.with_project_api_functions(api_imports.clone());
+    }
     let mut output_code = String::new();
 
     for widget in &widgets {
@@ -3101,6 +3149,9 @@ pub fn ui_build_shadcn_with_sub_widgets(
             let out_path = std::path::Path::new(out_dir)
                 .join(format!("{}.vue", widget.name));
             let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_sub_widgets(sub_widget_names.clone());
+            if !api_imports.is_empty() {
+                gen = gen.with_project_api_functions(api_imports.clone());
+            }
             let widget_code = gen.generate(widget).map_err(|e| e.to_string())?;
             std::fs::write(&out_path, &widget_code)
                 .map_err(|e| format!("Failed to write output file: {}", e))?;

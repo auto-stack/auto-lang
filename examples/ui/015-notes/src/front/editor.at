@@ -1,3 +1,5 @@
+use back.api: updatenote, deletenote
+
 widget EditorPanel(note: str) {
     msg Msg { Edit, Save, Cancel, EditBody, EditTitle, Delete }
 

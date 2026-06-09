@@ -784,7 +784,9 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         handler_params,
         span_map,
         key_bindings: extract_key_bindings(&decl.bind),
-    })
+        api_imports: Vec::new(),
+    }
+)
 }
 
 /// Extract key bindings from bind block (Plan 275)

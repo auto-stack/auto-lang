@@ -861,6 +861,10 @@ pub struct VueGenerator {
 
     /// Whether to generate handleChildDelete function (auto-wired when sub-widget emits Delete)
     needs_child_delete_handler: bool,
+
+    /// Whether API functions were explicitly imported via `use back.api: ...`
+    /// When true, skip AST scanning and use the explicit import list
+    explicit_api_imports: bool,
 }
 
 /// Data for generating interactive preview cards
@@ -913,6 +917,8 @@ impl VueGenerator {
             needs_route: false,
             api_functions_used: HashSet::new(),
             project_api_functions: {
+                // DEPRECATED: Env var fallback for backward compatibility.
+                // New code should use `with_project_api_functions()` from explicit imports.
                 let val = std::env::var("AUTO_API_FUNCTIONS").unwrap_or_default();
                 val.split(',')
                     .filter(|s| !s.is_empty())
@@ -927,6 +933,7 @@ impl VueGenerator {
             current_loop_var: None,
             loop_param_handlers: HashSet::new(),
             needs_child_delete_handler: false,
+            explicit_api_imports: false,
         }
     }
 
@@ -936,8 +943,12 @@ impl VueGenerator {
         self
     }
 
-    /// Set project-specific API function names (from dist/.api_functions)
+    /// Set project-specific API function names (from explicit `use back.api: ...` imports)
+    /// When set via this method (from explicit imports), skip AST scanning and use this list directly.
     pub fn with_project_api_functions(mut self, functions: Vec<String>) -> Self {
+        if !functions.is_empty() {
+            self.explicit_api_imports = true;
+        }
         self.project_api_functions = functions;
         self
     }
@@ -999,6 +1010,7 @@ impl VueGenerator {
         self.current_loop_var = None;
         self.loop_param_handlers.clear();
         self.needs_child_delete_handler = false;
+        // NOTE: explicit_api_imports is NOT reset — it's a config-level setting from with_project_api_functions()
         self.shadcn_components_used.clear();
         self.previewcard_counter = 0;
         self.previewcard_data.clear();
@@ -1328,18 +1340,38 @@ impl VueGenerator {
         }
 
         // Plan 132: Scan handlers for API function calls
-        for (_pattern, payload) in &widget.handlers {
-            self.extract_api_calls_from_payload(payload);
-        }
-        // Also scan lifecycle events (.Init, .Destroy) for API calls
-        for lc in &widget.lifecycle {
-            self.extract_api_calls_from_payload(&lc.payload);
+        if !self.explicit_api_imports {
+            // Legacy mode: scan AST to discover API calls
+            for (_pattern, payload) in &widget.handlers {
+                self.extract_api_calls_from_payload(payload);
+            }
+            // Also scan lifecycle events (.Init, .Destroy) for API calls
+            for lc in &widget.lifecycle {
+                self.extract_api_calls_from_payload(&lc.payload);
+            }
+        } else {
+            // Explicit import mode: collect which declared imports are actually used
+            for (_pattern, payload) in &widget.handlers {
+                self.extract_api_calls_from_payload(payload);
+            }
+            for lc in &widget.lifecycle {
+                self.extract_api_calls_from_payload(&lc.payload);
+            }
         }
 
         // Plan 132: Add API imports if needed
         if !self.api_functions_used.is_empty() {
             let api_funcs: Vec<&str> = self.api_functions_used.iter().map(|s| s.as_str()).collect();
             script.push_str(&format!("import {{ {} }} from '@/lib/api'\n", api_funcs.join(", ")));
+            // Deprecation warning for implicit API usage
+            if !self.explicit_api_imports {
+                eprintln!(
+                    "  warning: Widget '{}' uses API functions [{}] without explicit import. Add `use back.api: {}` at the top of the file.",
+                    self.current_widget.as_deref().unwrap_or("unknown"),
+                    api_funcs.join(", "),
+                    api_funcs.join(", "),
+                );
+            }
         }
         script.push('\n');
 
@@ -7563,7 +7595,9 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
-        };
+            api_imports: vec![],
+        }
+;
 
         let mut gen = VueGenerator::new();
         let sfc = gen.generate(&widget).unwrap();
@@ -8289,6 +8323,7 @@ mod tests {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
         };
 
         let mut gen = VueGenerator::new_shadcn();

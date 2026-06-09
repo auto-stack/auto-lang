@@ -57,7 +57,9 @@ fn create_test_widget() -> AuraWidget {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
     }
+
 }
 
 #[test]
@@ -163,6 +165,7 @@ fn test_tailwind_classes_converted_for_each_backend() {
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
+            api_imports: vec![],
     };
 
     // Generate Vue code - should keep Tailwind classes as-is
