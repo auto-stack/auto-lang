@@ -403,15 +403,8 @@ fn to_snake_case(s: &str) -> String {
 fn generate_cargo_toml(project_name: &str, project_dir: &Path) -> String {
     let snake_name = to_snake_case(project_name);
 
-    // Compute relative path from rust/ back to the workspace root
-    let auto_lang_path = if project_dir.join("crates").join("auto-lang").exists() {
-        // We're running from the workspace root itself
-        "../crates/auto-lang".to_string()
-    } else {
-        // Relative path from rust/ to the auto-lang crate
-        // Find auto-lang crate by going up from the project directory
-        find_auto_lang_path(project_dir)
-    };
+    // Compute relative path from gen/front/rust/ back to crates/auto-lang
+    let auto_lang_path = find_auto_lang_path(project_dir);
 
     format!(
         r#"[package]
@@ -434,35 +427,43 @@ serde_json = "1"
 }
 
 /// Find the relative path from the generated rust/ project to auto-lang crate.
+/// The Cargo.toml is at `project_dir/gen/front/rust/Cargo.toml`, so we need
+/// the path relative to that location.
 fn find_auto_lang_path(project_dir: &Path) -> String {
-    // Try common relative paths
+    // The Cargo.toml lives at: project_dir/gen/front/rust/
+    let cargo_dir = project_dir.join("gen").join("front").join("rust");
+
+    // Try common relative paths from cargo_dir
     let candidates = [
-        "../../crates/auto-lang",  // examples/<project>/rust/ -> crates/auto-lang
-        "../../../crates/auto-lang",
-        "../crates/auto-lang",
+        "../../../crates/auto-lang",   // project_dir is workspace root
+        "../../../../crates/auto-lang", // project_dir is one level deep (e.g. examples/project)
+        "../../../../../crates/auto-lang", // two levels deep (e.g. examples/ui/project)
     ];
 
     for candidate in &candidates {
-        let full = project_dir.join("gen").join("front").join("rust").join(candidate);
+        let full = cargo_dir.join(candidate);
         if full.exists() {
             return candidate.to_string();
         }
     }
 
-    // Fallback: compute from project_dir structure
-    // Count how many levels up to find crates/auto-lang
+    // Fallback: compute by walking up from project_dir to find workspace root,
+    // then build path from gen/front/rust/ back to crates/auto-lang
     let mut dir = project_dir.to_path_buf();
-    let mut prefix = "..".to_string();
+    let mut depth = 0; // how many levels from project_dir to workspace root
     for _ in 0..10 {
         if dir.join("crates").join("auto-lang").exists() {
-            let rel = format!("{}/crates/auto-lang", prefix);
-            // From rust/ subdirectory
-            return format!("../{}", rel);
+            // gen/front/rust/ is 3 levels below project_dir,
+            // plus depth levels from project_dir to workspace root
+            let ups = 3 + depth;
+            let mut path = (0..ups).map(|_| "..").collect::<Vec<_>>().join("/");
+            path.push_str("/crates/auto-lang");
+            return path;
         }
         if !dir.pop() {
             break;
         }
-        prefix = format!("{}/..", prefix);
+        depth += 1;
     }
 
     // Absolute fallback
