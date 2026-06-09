@@ -2107,10 +2107,18 @@ impl VueGenerator {
                 // Auto syntax: for idx, item in list (index first, value second)
                 // Vue syntax: v-for="(item, index) in list" (value first, index second)
                 // So we need to swap the order for Vue
-                let v_for = if let Some(idx) = index {
-                    format!("v-for=\"({}, {}) in {}\"", var, idx, iterable.trim_start_matches('.'))
+                let iterable_name = iterable.trim_start_matches('.');
+                // Auto-add search filter when widget has a 'search' state and iterates over an array
+                let v_for_iterable = if self.state_names.iter().any(|n| n == "search")
+                    && self.state_names.iter().any(|n| n == iterable_name) {
+                    format!("{}.filter((n: any) => !search || n.title?.toLowerCase().includes(search.toLowerCase()))", iterable_name)
                 } else {
-                    format!("v-for=\"{} in {}\"", var, iterable.trim_start_matches('.'))
+                    iterable_name.to_string()
+                };
+                let v_for = if let Some(idx) = index {
+                    format!("v-for=\"({}, {}) in {}\"", var, idx, v_for_iterable)
+                } else {
+                    format!("v-for=\"{} in {}\"", var, v_for_iterable)
                 };
 
                 // Set loop variable context so child events can pass it as arg
