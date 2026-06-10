@@ -62,10 +62,10 @@ impl ContainerApp {
         View::row()
             .spacing(8)
             .padding(0)
-            .child(View::button("Padding", Message::ShowExample(Example::Padding)))
-            .child(View::button("Sizing", Message::ShowExample(Example::Sizing)))
-            .child(View::button("Centering", Message::ShowExample(Example::Centering)))
-            .child(View::button("Nested", Message::ShowExample(Example::Nested)))
+            .child(View::button("Padding").on_click(|_| Message::ShowExample(Example::Padding)).build())
+            .child(View::button("Sizing").on_click(|_| Message::ShowExample(Example::Sizing)).build())
+            .child(View::button("Centering").on_click(|_| Message::ShowExample(Example::Centering)).build())
+            .child(View::button("Nested").on_click(|_| Message::ShowExample(Example::Nested)).build())
             .build()
     }
 

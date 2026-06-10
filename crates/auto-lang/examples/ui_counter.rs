@@ -34,9 +34,9 @@ impl Component for Counter {
         View::col()
             .spacing(16)
             .padding(20)
-            .child(View::button("Increment (+)", Message::Increment))
+            .child(View::button("Increment (+)").on_click(|_| Message::Increment).build())
             .child(View::text(format!("Count: {}", self.count)))
-            .child(View::button("Decrement (-)", Message::Decrement))
+            .child(View::button("Decrement (-)").on_click(|_| Message::Decrement).build())
             .build()
     }
 }

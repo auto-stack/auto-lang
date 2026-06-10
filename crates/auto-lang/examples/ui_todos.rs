@@ -6,7 +6,7 @@
 //   cargo run --example ui_todos --features ui-iced
 //   cargo run --example ui_todos --features ui-gpui
 
-use auto_lang::ui::{App, Component, View};
+use auto_lang::ui::{Component, View};
 
 #[derive(Debug, Default)]
 struct TodoApp {
@@ -57,7 +57,7 @@ impl Component for TodoApp {
             .spacing(20)
             .padding(40)
             .child(View::text("Todo List"))
-            .child(View::button("Add Task", Message::AddTodo))
+            .child(View::button("Add Task").on_click(|_| Message::AddTodo).build())
             .child(View::text(format!("Total: {} tasks", self.todos.len())))
             .child(View::text("Click Add Task to create new todos"))
             .child(View::text("Click on todo items to toggle completion"))

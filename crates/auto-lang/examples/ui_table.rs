@@ -61,9 +61,9 @@ impl TableApp {
         View::row()
             .spacing(8)
             .padding(0)
-            .child(View::button("Simple", Message::ShowExample(Example::Simple)))
-            .child(View::button("With Stats", Message::ShowExample(Example::WithStats)))
-            .child(View::button("Complex", Message::ShowExample(Example::Complex)))
+            .child(View::button("Simple").on_click(|_| Message::ShowExample(Example::Simple)).build())
+            .child(View::button("With Stats").on_click(|_| Message::ShowExample(Example::WithStats)).build())
+            .child(View::button("Complex").on_click(|_| Message::ShowExample(Example::Complex)).build())
             .build()
     }
 

@@ -36,9 +36,9 @@ impl Component for SidebarApp {
             .spacing(10)
             .padding(10)
             .child(View::text("Navigation".to_string()))
-            .child(View::button("Home", Message::Navigate(0)))
-            .child(View::button("Settings", Message::Navigate(1)))
-            .child(View::button("About", Message::Navigate(2)))
+            .child(View::button("Home").on_click(|_| Message::Navigate(0)).build())
+            .child(View::button("Settings").on_click(|_| Message::Navigate(1)).build())
+            .child(View::button("About").on_click(|_| Message::Navigate(2)).build())
             .build();
 
         // Main content based on selection

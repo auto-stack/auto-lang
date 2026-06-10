@@ -95,7 +95,7 @@ impl Component for TodoApp {
                     .spacing(8)
                     .padding(4)
                     .child(View::text(format!("{} {}", if todo.completed { "✓" } else { "○" }, todo.text)))
-                    .child(View::button("Remove", Message::RemoveTodo(todo.id)))
+                    .child(View::button("Remove").on_click(move |_| Message::RemoveTodo(todo.id)).build())
                     .build()
             );
         }
@@ -104,26 +104,17 @@ impl Component for TodoApp {
         let filter_buttons = View::row()
             .spacing(8)
             .padding(8)
-            .child(View::button(
-                format!("All ({})", self.todos.len()),
-                Message::SetFilter(Filter::All),
-            ))
-            .child(View::button(
-                format!("Active ({})", self.todos.iter().filter(|t| !t.completed).count()),
-                Message::SetFilter(Filter::Active),
-            ))
-            .child(View::button(
-                format!("Completed ({})", self.todos.iter().filter(|t| t.completed).count()),
-                Message::SetFilter(Filter::Completed),
-            ))
-            .child(View::button("Clear Completed", Message::ClearCompleted))
+            .child(View::button(format!("All ({})", self.todos.len())).on_click(|_| Message::SetFilter(Filter::All)).build())
+            .child(View::button(format!("Active ({})", self.todos.iter().filter(|t| !t.completed).count())).on_click(|_| Message::SetFilter(Filter::Active)).build())
+            .child(View::button(format!("Completed ({})", self.todos.iter().filter(|t| t.completed).count())).on_click(|_| Message::SetFilter(Filter::Completed)).build())
+            .child(View::button("Clear Completed").on_click(|_| Message::ClearCompleted).build())
             .build();
 
         View::col()
             .spacing(16)
             .padding(20)
             .child(View::text("TodoMVC".to_string()))
-            .child(View::button("Add Todo", Message::AddTodo))
+            .child(View::button("Add Todo").on_click(|_| Message::AddTodo).build())
             .child(filter_buttons)
             .children(todo_views)
             .build()

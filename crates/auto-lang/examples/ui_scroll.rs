@@ -61,9 +61,9 @@ impl ScrollApp {
         View::row()
             .spacing(8)
             .padding(0)
-            .child(View::button("Basic", Message::ShowExample(Example::Basic)))
-            .child(View::button("Long Content", Message::ShowExample(Example::LongContent)))
-            .child(View::button("Nested", Message::ShowExample(Example::NestedScrollable)))
+            .child(View::button("Basic").on_click(|_| Message::ShowExample(Example::Basic)).build())
+            .child(View::button("Long Content").on_click(|_| Message::ShowExample(Example::LongContent)).build())
+            .child(View::button("Nested").on_click(|_| Message::ShowExample(Example::NestedScrollable)).build())
             .build()
     }
 

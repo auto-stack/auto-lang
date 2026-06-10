@@ -168,7 +168,7 @@ impl Component for GalleryApp {
 
 impl GalleryApp {
     fn page_item(&self, label: &str, page: Page) -> View<Message> {
-        View::button(label.to_string(), Message::PageSelected(page))
+        View::button(label.to_string()).on_click(move |_| Message::PageSelected(page)).build()
     }
 
     fn current_content(&self) -> View<Message> {
@@ -225,7 +225,7 @@ impl GalleryApp {
             .spacing(15)
             .padding(20)
             .child(View::text("Hello World".to_string()))
-            .child(View::button("Click Me!", Message::ButtonClicked))
+            .child(View::button("Click Me!").on_click(|_| Message::ButtonClicked).build())
             .child(View::text("".to_string()))
             .child(View::text("最简单的示例：一个按钮 + 文本".to_string()))
             .build()
@@ -238,9 +238,9 @@ impl GalleryApp {
             .child(View::text("Button 组件".to_string()))
             .child(View::text("基础按钮组件，支持点击事件".to_string()))
             .child(View::text("".to_string()))
-            .child(View::button("主要按钮", Message::ButtonClicked))
-            .child(View::button("次要按钮", Message::ButtonClicked))
-            .child(View::button("警告按钮", Message::ButtonClicked))
+            .child(View::button("主要按钮").on_click(|_| Message::ButtonClicked).build())
+            .child(View::button("次要按钮").on_click(|_| Message::ButtonClicked).build())
+            .child(View::button("警告按钮").on_click(|_| Message::ButtonClicked).build())
             .build()
     }
 
@@ -330,9 +330,9 @@ impl GalleryApp {
             .spacing(10)
             .padding(10)
             .child(View::text("导航菜单".to_string()))
-            .child(View::button("首页", Message::PageSelected(Page::Welcome)))
-            .child(View::button("设置", Message::PageSelected(Page::Settings)))
-            .child(View::button("关于", Message::PageSelected(Page::About)))
+            .child(View::button("首页").on_click(|_| Message::PageSelected(Page::Welcome)).build())
+            .child(View::button("设置").on_click(|_| Message::PageSelected(Page::Settings)).build())
+            .child(View::button("关于").on_click(|_| Message::PageSelected(Page::About)).build())
             .build();
 
         View::row()

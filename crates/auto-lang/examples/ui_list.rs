@@ -130,24 +130,15 @@ impl ListApp {
         View::row()
             .spacing(8)
             .padding(0)
-            .child(View::button(
-                format!("All ({})", self.tasks.len()),
-                Message::SetFilter(Filter::All),
-            ))
-            .child(View::button(
-                format!(
-                    "Active ({})",
-                    self.tasks.iter().filter(|t| !t.completed).count()
-                ),
-                Message::SetFilter(Filter::Active),
-            ))
-            .child(View::button(
-                format!(
-                    "Completed ({})",
-                    self.tasks.iter().filter(|t| t.completed).count()
-                ),
-                Message::SetFilter(Filter::Completed),
-            ))
+            .child(View::button(format!("All ({})", self.tasks.len())).on_click(|_| Message::SetFilter(Filter::All)).build())
+            .child(View::button(format!(
+                "Active ({})",
+                self.tasks.iter().filter(|t| !t.completed).count()
+            )).on_click(|_| Message::SetFilter(Filter::Active)).build())
+            .child(View::button(format!(
+                "Completed ({})",
+                self.tasks.iter().filter(|t| t.completed).count()
+            )).on_click(|_| Message::SetFilter(Filter::Completed)).build())
             .build()
     }
 
@@ -179,14 +170,8 @@ impl ListApp {
             .spacing(12)
             .padding(12)
             .child(View::text(format!("{} {}", status_icon, task.title)))
-            .child(View::button(
-                "Toggle".to_string(),
-                Message::ToggleTask(task.id),
-            ))
-            .child(View::button(
-                "Remove".to_string(),
-                Message::RemoveTask(task.id),
-            ))
+            .child(View::button("Toggle".to_string()).on_click(move |_| Message::ToggleTask(task.id)).build())
+            .child(View::button("Remove".to_string()).on_click(move |_| Message::RemoveTask(task.id)).build())
             .build()
     }
 }

@@ -6,7 +6,7 @@
 //   cargo run --example ui_progress --features ui-iced
 //   cargo run --example ui_progress --features ui-gpui
 
-use auto_lang::ui::{Component, View, App};
+use auto_lang::ui::{Component, View};
 
 #[derive(Debug, Default)]
 struct ProgressExample {

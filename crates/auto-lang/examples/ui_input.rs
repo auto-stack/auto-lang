@@ -123,7 +123,7 @@ impl InputApp {
             .child(
                 View::row()
                     .spacing(8)
-                    .child(View::button("Clear Form", Message::Clear))
+                    .child(View::button("Clear Form").on_click(|_| Message::Clear).build())
                     .build(),
             )
             .build()
