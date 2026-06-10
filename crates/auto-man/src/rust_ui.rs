@@ -44,8 +44,9 @@ fn find_front_dir(project_dir: &Path) -> PathBuf {
 fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
     let cargo_toml = rust_dir.join("Cargo.toml");
     let main_rs = rust_dir.join("src").join("main.rs");
+    let cargo_config = rust_dir.join(".cargo").join("config.toml");
 
-    if !cargo_toml.exists() || !main_rs.exists() {
+    if !cargo_toml.exists() || !main_rs.exists() || !cargo_config.exists() {
         return (true, true);
     }
 
@@ -237,6 +238,11 @@ pub fn generate_rust_ui(
     let cargo_path = output.join("Cargo.toml");
     fs::write(&cargo_path, &cargo_toml)
         .map_err(|e| format!("Failed to write {}: {}", cargo_path.display(), e))?;
+
+    // Write .cargo/config.toml with shared target-dir
+    if let Err(e) = write_shared_cargo_config(project_dir, "front") {
+        eprintln!("  Warning: failed to write shared cargo config: {}", e);
+    }
 
     println!();
     println!(
@@ -819,6 +825,49 @@ iced = {{ version = "0.14.0", features = ["tokio", "advanced"] }}
     )
 }
 
+/// Write `.cargo/config.toml` with shared target-dir pointing to workspace root's target/.
+pub fn write_shared_cargo_config(project_dir: &Path, gen_subdir: &str) -> std::io::Result<()> {
+    let cargo_dir = project_dir.join("gen").join(gen_subdir).join("rust");
+    let config_dir = cargo_dir.join(".cargo");
+    fs::create_dir_all(&config_dir)?;
+
+    // Compute relative path from cargo_dir back to workspace root's target/
+    let target_rel = find_workspace_target_path(&cargo_dir);
+
+    let config = format!(
+        "[build]\ntarget-dir = \"{}\"\n",
+        target_rel.replace('\\', "/")
+    );
+    fs::write(config_dir.join("config.toml"), config)
+}
+
+/// Find relative path from a generated rust/ dir to the workspace root's target/ directory.
+fn find_workspace_target_path(cargo_dir: &Path) -> String {
+    // Walk up from cargo_dir to find workspace root (identified by crates/ directory)
+    let mut ups = 0usize;
+    let mut dir = cargo_dir.to_path_buf();
+    for _ in 0..10 {
+        if dir.join("crates").exists() {
+            // Found workspace root — build relative path: ../../.../target
+            let mut rel = (0..ups).map(|_| "..").collect::<Vec<_>>().join("/");
+            if !rel.is_empty() {
+                rel.push('/');
+            }
+            rel.push_str("target");
+            return rel;
+        }
+        if !dir.pop() {
+            break;
+        }
+        ups += 1;
+    }
+    // Fallback: absolute path to auto-lang/target
+    let abs = std::env::current_dir()
+        .unwrap_or_default()
+        .join("target");
+    abs.to_string_lossy().to_string().replace('\\', "/")
+}
+
 /// Find the relative path from the generated rust/ project to auto-lang crate.
 /// The Cargo.toml is at `project_dir/gen/front/rust/Cargo.toml`, so we need
 /// the path relative to that location.
@@ -870,6 +919,14 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
     let api_backend_dir = project_dir.join("gen").join("back").join("rust");
     if !api_backend_dir.join("Cargo.toml").exists() {
         return None;
+    }
+
+    // Ensure .cargo/config.toml with shared target-dir exists
+    let cargo_config = api_backend_dir.join(".cargo").join("config.toml");
+    if !cargo_config.exists() {
+        if let Err(e) = write_shared_cargo_config(project_dir, "back") {
+            eprintln!("  Warning: failed to write shared cargo config: {}", e);
+        }
     }
 
     println!();

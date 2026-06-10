@@ -86,6 +86,11 @@ pub fn generate_tauri_backend(root_dir: &Path) -> AutoResult<()> {
     fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
         .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
 
+    // Write .cargo/config.toml with shared target-dir
+    if let Err(e) = crate::rust_ui::write_shared_cargo_config(root_dir, "back") {
+        eprintln!("  Warning: failed to write shared cargo config: {}", e);
+    }
+
     // Generate lib.rs
     let lib_rs = generate_lib_rs();
     fs::write(src_dir.join("lib.rs"), &lib_rs)

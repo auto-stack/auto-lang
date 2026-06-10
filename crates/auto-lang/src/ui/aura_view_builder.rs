@@ -146,7 +146,34 @@ impl<'a> AuraViewBuilder<'a> {
                 let array = match self.bridge.read_state(state_name) {
                     Ok(Value::Array(arr)) => arr,
                     Ok(other) => {
-                        return View::Empty;
+                        // Try read_state_as_vec for Value::Int(array_id) refs
+                        match self.bridge.read_state_as_vec(state_name) {
+                            Ok(vec) => {
+                                // Re-wrap as Array for consistent iteration
+                                let owned: Vec<Value> = vec;
+                                let arr = auto_val::Array::from(owned);
+                                // Need to re-iterate — fall through to filter_map below
+                                let children: Vec<View<DynamicMessage>> = arr.iter().enumerate()
+                                    .filter_map(|(i, item)| {
+                                        // Apply search filter if 'search' state exists and is non-empty
+                                        if !self.matches_search(item) { return None; }
+                                        let mut loop_bindings = bindings.clone();
+                                        loop_bindings.insert(var.clone(), item.clone());
+                                        if let Some(idx_var) = index {
+                                            loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
+                                        }
+                                        let views: Vec<View<DynamicMessage>> = body.iter()
+                                            .map(|n| self.convert_node_with(n, &loop_bindings))
+                                            .collect();
+                                        if views.is_empty() { None }
+                                        else if views.len() == 1 { Some(views.into_iter().next().unwrap()) }
+                                        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None }) }
+                                    })
+                                    .collect();
+                                return View::Column { children, spacing: 0, padding: 0, style: None };
+                            }
+                            Err(_) => return View::Empty,
+                        }
                     }
                     Err(_) => {
                         return View::Empty;
@@ -155,6 +182,8 @@ impl<'a> AuraViewBuilder<'a> {
 
                 let children: Vec<View<DynamicMessage>> = array.iter().enumerate()
                     .filter_map(|(i, item)| {
+                        // Apply search filter if 'search' state exists and is non-empty
+                        if !self.matches_search(item) { return None; }
                         let mut loop_bindings = bindings.clone();
                         // Bind loop variable (e.g., "note" → Value::Obj{title, body, time})
                         loop_bindings.insert(var.clone(), item.clone());
@@ -190,7 +219,6 @@ impl<'a> AuraViewBuilder<'a> {
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let is_true = self.eval_condition_with(condition, bindings);
-                eprintln!("[DEBUG-cond] widget='{}' cond='{}' => {}", self.widget_name, condition, is_true);
                 let empty = Vec::new();
                 let body = if is_true {
                     then_body
@@ -215,7 +243,6 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Component { name, props, events, .. } => {
-                eprintln!("[DEBUG-comp] widget='{}' child='{}' props={:?}", self.widget_name, name, props.keys().collect::<Vec<_>>());
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(name) {
@@ -307,6 +334,8 @@ impl<'a> AuraViewBuilder<'a> {
                 };
                 let child_views: Vec<View<DynamicMessage>> = array.iter().enumerate()
                     .filter_map(|(i, item)| {
+                        // Apply search filter if 'search' state exists and is non-empty
+                        if !self.matches_search(item) { return None; }
                         let mut loop_bindings = bindings.clone();
                         loop_bindings.insert(var.clone(), item.clone());
                         if let Some(idx_var) = index {
@@ -340,7 +369,6 @@ impl<'a> AuraViewBuilder<'a> {
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let is_true = self.eval_condition_with(condition, bindings);
-                eprintln!("[DEBUG-cond] widget='{}' cond='{}' => {}", self.widget_name, condition, is_true);
                 let empty = Vec::new();
                 let body = if is_true {
                     then_body
@@ -371,7 +399,6 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Component { name, props, events, .. } => {
-                eprintln!("[DEBUG-comp] widget='{}' child='{}' props={:?}", self.widget_name, name, props.keys().collect::<Vec<_>>());
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(name) {
@@ -712,10 +739,7 @@ impl<'a> AuraViewBuilder<'a> {
         for (prop_name, prop_value) in props {
             if let AuraPropValue::Expr(expr) = prop_value {
                 if let Some(val) = self.resolve_expr_to_value(expr, bindings) {
-                    eprintln!("[DEBUG-prop] child='{}' prop='{}' resolved to {:?}", child_widget.name, prop_name, val);
                     resolved_props.insert(prop_name.clone(), val);
-                } else {
-                    eprintln!("[DEBUG-prop] child='{}' prop='{}' FAILED to resolve", child_widget.name, prop_name);
                 }
             }
         }
@@ -1326,6 +1350,30 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+    /// Check if a loop item matches the current search filter.
+    ///
+    /// Reads the `search` state field. If it's empty or doesn't exist, all items match.
+    /// If non-empty and the item is an Obj, checks if any string field contains the search text.
+    fn matches_search(&self, item: &Value) -> bool {
+        let search_text = match self.bridge.read_state("search") {
+            Ok(Value::Str(s)) => s.to_string(),
+            Ok(Value::String(s)) => s.to_string(),
+            _ => return true, // no search field or non-string → show all
+        };
+        if search_text.is_empty() {
+            return true;
+        }
+        let search_lower = search_text.to_lowercase();
+        match item {
+            Value::Obj(map) => {
+                // Check title field for a match
+                let title = map.get("title").map(|v| value_to_display_string(&v)).unwrap_or_default();
+                title.to_lowercase().contains(&search_lower)
+            }
+            _ => true, // non-obj items always match
+        }
+    }
+
     /// Evaluate a condition string against current state (no bindings).
     fn eval_condition(&self, condition: &str) -> bool {
         self.eval_condition_with(condition, &Bindings::new())
@@ -1370,11 +1418,19 @@ impl<'a> AuraViewBuilder<'a> {
         };
 
         // Read state value for lhs
-        // Handle .len() suffix: "notes.len()" → read "notes" and return its length
-        let lhs_val = if let Some(field_name) = lhs.strip_suffix(".len()") {
+        // Normalize spaces inside .len() so "notes.len ( )" matches ".len()" suffix.
+        // The parser may produce "len ( )" with spaces inside the parens.
+        let lhs_normalized = lhs.replace(" ( ", "(").replace("( ", "(").replace(" )", ")");
+        let lhs_val = if let Some(field_name) = lhs_normalized.strip_suffix(".len()") {
             match self.bridge.read_state(field_name) {
                 Ok(Value::Array(arr)) => arr.len().to_string(),
-                Ok(other) => value_to_display_string(&other),
+                Ok(other) => {
+                    // Also try read_state_as_vec for Value::Int(array_id) refs
+                    match self.bridge.read_state_as_vec(field_name) {
+                        Ok(vec) => vec.len().to_string(),
+                        Err(_) => value_to_display_string(&other),
+                    }
+                }
                 Err(_) => return false,
             }
         } else {

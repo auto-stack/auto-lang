@@ -30,6 +30,9 @@ thread_local! {
 
 /// Static storage for textarea editor contents.
 /// Required because iced's `text_editor` widget needs `&'static Content<Renderer>`.
+/// Each entry is a leaked Box that lives for the entire process lifetime.
+/// We store `&'static mut` but only ever mutate under the Mutex, so the
+/// shared references we hand out remain valid.
 use std::sync::Mutex;
 lazy_static::lazy_static! {
     static ref TEXTAREA_CONTENTS: Mutex<std::collections::HashMap<String, &'static mut text_editor::Content>> =
@@ -38,16 +41,31 @@ lazy_static::lazy_static! {
 
 /// Get or create a `&'static text_editor::Content` for the given key, synced to `value`.
 fn get_textarea_content(key: &str, value: &str) -> &'static text_editor::Content {
-    let mut map = TEXTAREA_CONTENTS.lock().unwrap();
-    let content = map.entry(key.to_string()).or_insert_with(|| {
-        Box::leak(Box::new(text_editor::Content::with_text(value)))
-    });
-    // Always replace content to ensure iced text_editor reflects the latest value.
-    // The text_editor widget may cache its content reference, so we update in-place.
-    **content = text_editor::Content::with_text(value);
-    // SAFETY: The leaked Box lives for 'static. We return a shared reference
-    // while the Mutex guards exclusive access for mutation.
-    unsafe { std::mem::transmute::<&mut text_editor::Content, &'static text_editor::Content>(&mut **content) }
+    // Phase 1: ensure the entry exists (under lock)
+    {
+        let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+        map.entry(key.to_string()).or_insert_with(|| {
+            Box::leak(Box::new(text_editor::Content::with_text(value)))
+        });
+    }
+    // Phase 2: update content in-place (under lock)
+    {
+        let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+        if let Some(content) = map.get_mut(key) {
+            **content = text_editor::Content::with_text(value);
+        }
+    }
+    // Phase 3: get a raw pointer under lock, return as &'static outside lock.
+    // SAFETY: The Box is leaked so the allocation lives for 'static.
+    // We only mutate under the Mutex. The raw pointer is derived from
+    // a &'static mut that came from Box::leak, so it remains valid.
+    let ptr: *const text_editor::Content;
+    {
+        let map = TEXTAREA_CONTENTS.lock().unwrap();
+        ptr = map.get(key).map(|c| &**c as *const _).unwrap();
+    }
+    // SAFETY: ptr points to a leaked Box that lives for 'static.
+    unsafe { &*ptr }
 }
 
 /// Perform an action on a textarea content and return the resulting text.
@@ -2339,15 +2357,16 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     // Value::Array and Value::Int(array_id) from [...] literals
                     if let Ok(mut notes) = state.component.read_state_as_vec("notes") {
                         let mut note = auto_val::Obj::new();
-                        note.set("title", auto_val::Value::str("New Note"));
-                        note.set("body", auto_val::Value::str("Start writing..."));
+                        note.set("title", auto_val::Value::str(""));
+                        note.set("body", auto_val::Value::str(""));
                         note.set("time", auto_val::Value::str("Just now"));
                         notes.push(auto_val::Value::Obj(note));
                         let new_len = notes.len() as i32;
                         let _ = state.component.write_state_vec("notes", notes);
                         let _ = state.component.write_state("active_id", auto_val::Value::Int(new_len - 1));
                         let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
-                        let _ = state.component.write_state("edit_body", auto_val::Value::str("Start writing..."));
+                        let _ = state.component.write_state("edit_title", auto_val::Value::str(""));
+                        let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
                         let _ = state.component.write_state("search", auto_val::Value::str(""));
                     }
                 }
@@ -4115,7 +4134,7 @@ where
         C::update,
         view,
     )
-    .window_size(iced::Size::new(800.0, 600.0))
+    .window_size(iced::Size::new(1600.0, 900.0))
     .run()
     .map_err(|e| e.into())
 }

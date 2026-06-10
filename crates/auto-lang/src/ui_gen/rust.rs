@@ -1456,10 +1456,9 @@ impl RustGenerator {
                             let __q = self.search.to_lowercase(); \
                             if __q.is_empty() {{ return true; }} \
                             let __t = {}[\"title\"].as_str().unwrap_or_default().to_lowercase(); \
-                            let __b = {}[\"body\"].as_str().unwrap_or_default().to_lowercase(); \
-                            __t.contains(&__q) || __b.contains(&__q) \
+                            __t.contains(&__q) \
                         }})",
-                        var_ref, var_ref, var_ref
+                        var_ref, var_ref
                     ))
                 } else {
                     None

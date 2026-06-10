@@ -233,6 +233,20 @@ impl Pac {
         self.backend_config.is_some()
     }
 
+    /// Get the default frontend type from pac.at render config.
+    /// Returns the first configured type, or None if no render is set.
+    pub fn default_frontend(&self) -> Option<BackendType> {
+        if let Some(ref config) = self.backend_config {
+            match config {
+                BackendConfig::Single(t) => Some(t.clone()),
+                BackendConfig::Multi(types) => types.first().cloned(),
+                BackendConfig::Split { front, .. } => front.first().cloned(),
+            }
+        } else {
+            BackendType::from_str(&self.backend)
+        }
+    }
+
     /// Get frontend backend types
     /// Returns vec of frontend types, or empty vec if not configured
     pub fn frontend_types(&self) -> Vec<BackendType> {

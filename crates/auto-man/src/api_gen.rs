@@ -303,6 +303,11 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     std::fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
         .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
 
+    // Write .cargo/config.toml with shared target-dir
+    if let Err(e) = crate::rust_ui::write_shared_cargo_config(root_dir, "back") {
+        eprintln!("  Warning: failed to write shared cargo config: {}", e);
+    }
+
     // Generate types.rs
     let types_rs = generate_types_rs(api_module);
     std::fs::write(src_dir.join("types.rs"), &types_rs)

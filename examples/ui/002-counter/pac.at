@@ -1,4 +1,4 @@
 name: "counter"
 version: "1.0.0"
 scene: "ui"
-render: ["vue", "jet", "arkts", "vscode"]
+render: "vue"

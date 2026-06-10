@@ -208,6 +208,15 @@ impl BackendType {
             Self::Vscode => "vscode",
         }
     }
+
+    /// 返回所有可用的后端类型
+    pub fn all_variants() -> Vec<BackendType> {
+        vec![
+            Self::Vue, Self::Jet, Self::Tauri, Self::Gpui,
+            Self::Iced, Self::Arkts, Self::Cangjie, Self::Godot,
+            Self::Rust, Self::Vm, Self::Vscode,
+        ]
+    }
 }
 
 /// 后端配置（单后端或多后端）

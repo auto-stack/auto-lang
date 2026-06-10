@@ -1,4 +1,4 @@
 name: "calculator"
 version: "1.0.0"
 scene: "ui"
-render: ["vue", "jet", "arkts"]
+render: "vue"

@@ -291,6 +291,30 @@ impl Automan {
         self.render_override = Some(render);
     }
 
+    /// Resolve which backend to use:
+    /// 1. --render CLI override (any valid BackendType)
+    /// 2. pac.at render default
+    /// 3. Interactive selection from all types
+    fn resolve_backend(&self) -> AutoResult<auto_lang::config::BackendType> {
+        use auto_lang::config::BackendType;
+
+        // Priority 1: CLI --render override (any valid type)
+        if let Some(ref render_name) = self.render_override {
+            return BackendType::from_str(render_name)
+                .ok_or_else(|| format!("Unknown render target: '{}'", render_name).into());
+        }
+
+        // Priority 2: Default from pac.at
+        if let Some(default) = self.pac.default_frontend() {
+            return Ok(default);
+        }
+
+        // Priority 3: Interactive selection from ALL types
+        let all = BackendType::all_variants();
+        let idx = crate::util::select_backend(&all, "run")?;
+        Ok(all[idx].clone())
+    }
+
     pub fn set_port(&mut self, port: AutoStr) -> AutoResult<()> {
         self.pac.set_port(port.clone())?;
         self.pac.save_port(port)
@@ -300,25 +324,8 @@ impl Automan {
         println!("build dir: {}", self.pac.build_location);
         println!("port: {}", self.pac.port.name);
 
-        // Check if using new backend config (supports multiple backends)
-        if self.pac.has_backend_config() {
-            let frontends = self.pac.frontend_types();
-
-            let idx = crate::util::select_backend(&frontends, "open")?;
-            return self.open_ide_for_backend(&frontends[idx]);
-        }
-
-        // Legacy: Check single backend string
-        let backend = self.pac.backend.as_str();
-        if backend == "jet" {
-            return self.open_jet_project();
-        }
-        if backend == "ark" || backend == "arkts" {
-            return self.open_ark_project();
-        }
-
-        // Fall back to port builder for embedded IDEs
-        self.open_ide_for_port_builder()
+        let backend = self.resolve_backend()?;
+        self.open_ide_for_backend(&backend)
     }
 
     /// Open IDE for a specific backend
@@ -782,112 +789,9 @@ impl Automan {
             return self.build_workspace();
         }
 
-        // Check backend configuration (supports array form)
-        if self.pac.has_backend_config() {
-            let frontends = self.pac.frontend_types();
-            let idx = crate::util::select_backend(&frontends, "build")?;
-            return self.build_backend(&frontends[idx]);
-        }
-
-        // Legacy: single backend string
-        let backend = self.pac.backend.as_str();
-
-        match backend {
-            "vue" => {
-                // Vue backend: run npm run build in dist directory
-                println!("Building Vue project (backend: vue)");
-                self.build_vue()?;
-
-                // Run garbage collection if needed
-                if let Some(ref cache) = self.cache {
-                    if cache.should_gc() {
-                        println!("Running cache garbage collection...");
-                        let freed_mb = cache.run_gc()? / (1024 * 1024);
-                        println!("Cache GC: freed {} MB", freed_mb);
-                    }
-                }
-            }
-            "jet" => {
-                // Jet backend: build Jetpack Compose project
-                println!("Building Jetpack Compose project (backend: jet)");
-                self.build_jet()?;
-
-                // Run garbage collection if needed
-                if let Some(ref cache) = self.cache {
-                    if cache.should_gc() {
-                        println!("Running cache garbage collection...");
-                        let freed_mb = cache.run_gc()? / (1024 * 1024);
-                        println!("Cache GC: freed {} MB", freed_mb);
-                    }
-                }
-            }
-            "ark" => {
-                // Ark backend: build ArkTS/HarmonyOS project
-                println!("Building ArkTS/HarmonyOS project (backend: ark)");
-                self.build_ark()?;
-
-                // Run garbage collection if needed
-                if let Some(ref cache) = self.cache {
-                    if cache.should_gc() {
-                        println!("Running cache garbage collection...");
-                        let freed_mb = cache.run_gc()? / (1024 * 1024);
-                        println!("Cache GC: freed {} MB", freed_mb);
-                    }
-                }
-            }
-            "rust" => {
-                // Rust backend: transpile Auto -> Rust, then cargo build
-                println!("Transpiling Auto code to Rust (backend: rust)");
-                self.transpile_auto()?;
-                self.pac.build()?;
-
-                if let Some(ref cache) = self.cache {
-                    if cache.should_gc() {
-                        println!("Running cache garbage collection...");
-                        let freed_mb = cache.run_gc()? / (1024 * 1024);
-                        println!("Cache GC: freed {} MB", freed_mb);
-                    }
-                }
-            }
-            "ts" => {
-                // TypeScript backend: transpile Auto -> TypeScript only (no compilation step)
-                println!("Transpiling Auto code to TypeScript (backend: ts)");
-                self.transpile_auto()?;
-                // No build step needed for TypeScript
-            }
-            "vscode" => {
-                // VSCode extension backend: generate and build extension project
-                println!("Building VSCode extension project (backend: vscode)");
-                self.build_vscode()?;
-
-                if let Some(ref cache) = self.cache {
-                    if cache.should_gc() {
-                        println!("Running cache garbage collection...");
-                        let freed_mb = cache.run_gc()? / (1024 * 1024);
-                        println!("Cache GC: freed {} MB", freed_mb);
-                    }
-                }
-            }
-            _ => {
-                // Default C backend
-                println!("Transpiling auto code to c code");
-                self.transpile_auto()?;
-
-                // Build the project with a specific builder
-                self.pac.build()?;
-
-                // Run garbage collection if needed (Plan 082: AutoCache)
-                if let Some(ref cache) = self.cache {
-                    if cache.should_gc() {
-                        println!("Running cache garbage collection...");
-                        let freed_mb = cache.run_gc()? / (1024 * 1024);
-                        println!("Cache GC: freed {} MB", freed_mb);
-                    }
-                }
-            }
-        }
-
-        Ok(())
+        // Use resolve_backend for unified backend selection
+        let backend = self.resolve_backend()?;
+        self.build_backend(&backend)
     }
 
     /// Build Vue project using npm (full workflow: generate, install, build)
@@ -1141,23 +1045,10 @@ impl Automan {
             return Ok(());
         }
 
-        // Non-workspace mode: get frontend types from current project
-        let frontends = if self.pac.has_backend_config() {
-            self.pac.frontend_types()
-        } else {
-            // Legacy: parse single backend string
-            self.pac.backend.as_str().split(',')
-                .filter_map(|s| BackendType::from_str(s.trim()))
-                .collect()
-        };
-
-        if frontends.is_empty() {
-            return Err("No frontend backend configured in pac.at".into());
-        }
-
-        // Select backend (auto-select if only one)
-        let idx = crate::util::select_backend(&frontends, "generate")?;
-        let selected_backends = vec![frontends[idx].clone()];
+        // Non-workspace mode: resolve backend
+        let backend = self.resolve_backend()?;
+        let selected_backends = vec![backend];
+        let frontends = selected_backends.clone(); // for multi-backend output path check
 
         // Generate for selected backend only
         for backend in &selected_backends {
@@ -1273,53 +1164,12 @@ impl Automan {
     }
 
     pub fn run(&mut self, args: Vec<String>) -> AutoResult<()> {
-        // Plan 130: Check if this is a workspace
         if self.pac.is_workspace() {
             return self.run_workspace(args);
         }
 
-        // Check backend configuration (Plan 130: support array form)
-        if self.pac.has_backend_config() {
-            // Special case: --render=vm always works regardless of pac.at config
-            if let Some(ref render_name) = self.render_override {
-                if render_name.to_lowercase() == "vm" {
-                    return self.run_backend(&auto_lang::config::BackendType::Vm, args);
-                }
-            }
-
-            let frontends = self.pac.frontend_types();
-
-            // Use --render override if provided
-            let idx = if let Some(ref render_name) = self.render_override {
-                let lower = render_name.to_lowercase();
-                frontends.iter().position(|b| b.as_str().to_lowercase() == lower)
-                    .ok_or_else(|| format!("Render target '{}' not found in pac.at. Available: {}",
-                        render_name,
-                        frontends.iter().map(|b| b.as_str()).collect::<Vec<_>>().join(", ")
-                    ))?
-            } else {
-                crate::util::select_backend(&frontends, "run")?
-            };
-            return self.run_backend(&frontends[idx], args);
-        }
-
-        // Legacy: use backend string
-        let backend = self.pac.backend.as_str();
-
-        match backend {
-            "vue" => {
-                println!("Running Vue dev server (backend: vue)");
-                self.run_vue(args)
-            }
-            "tauri" => {
-                println!("Running Tauri dev server (backend: tauri)");
-                self.run_tauri(args)
-            }
-            _ => {
-                // Default: use pac.run()
-                self.pac.run(args)
-            }
-        }
+        let backend = self.resolve_backend()?;
+        self.run_backend(&backend, args)
     }
 
     /// Run with multiple backends - let user select one
