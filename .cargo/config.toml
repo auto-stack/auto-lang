@@ -7,6 +7,12 @@
 #
 # Requires: cargo install cargo-nextest
 
+# Limit parallel codegen units to reduce peak memory usage.
+# Each auto-lang target (lib + 23 examples + 9 integration tests) needs ~2GB
+# for linking. Default parallelism (CPU count) can exhaust system memory.
+[build]
+jobs = 2
+
 [alias]
 t = "nextest run -p auto-lang --lib"
 tv = "nextest run -p auto-lang --lib --features test-vm-files"
