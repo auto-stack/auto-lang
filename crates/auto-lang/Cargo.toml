@@ -30,7 +30,7 @@ nanbox = []
 
 # Plan 015: UI Features (AutoUI Core)
 ui = []
-ui-interpreter = ["ui"]
+ui-interpreter = ["ui", "dep:ureq"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
 ui-iced = ["ui", "dep:iced", "ui-interpreter", "dep:image"]
 
@@ -101,6 +101,7 @@ anyhow = { version = "1.0", optional = true }
 iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced"], optional = true }
 image = { version = "0.25", optional = true }
 notify = { workspace = true }
+ureq = { version = "2", features = ["json"], optional = true }
 # Plan 214: Python FFI (optional, requires Python dev headers)
 pyo3 = { version = "0.23", optional = true, features = ["auto-initialize"] }
 trans = "0.4.0"

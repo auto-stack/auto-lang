@@ -1687,6 +1687,13 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
         comp.set_source_path(p);
     }
 
+    // 3c. Fire .Init lifecycle event before starting Iced loop
+    if let Some(init_lc) = widget.lifecycle.iter().find(|l| l.name == "Init") {
+        if let crate::aura::LogicPayload::AstStmts(stmts) = &init_lc.payload {
+            comp.fire_init(stmts);
+        }
+    }
+
     // 4. Run iced (blocks until window closes)
     run_dynamic_iced(comp)
         .map_err(|e| crate::error::AutoError::Msg(format!("{}", e)))

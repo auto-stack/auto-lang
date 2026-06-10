@@ -864,6 +864,74 @@ fn find_auto_lang_path(project_dir: &Path) -> String {
 }
 
 /// Run the generated Rust UI project.
+/// Start the API backend server if gen/back/rust/ exists.
+/// Returns the child process handle so the caller can clean it up on exit.
+pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
+    let api_backend_dir = project_dir.join("gen").join("back").join("rust");
+    if !api_backend_dir.join("Cargo.toml").exists() {
+        return None;
+    }
+
+    println!();
+    println!("{}", "▶ Starting API backend server...".bright_cyan());
+    println!("  cd gen/back/rust/ && cargo run");
+
+    let api_server = std::process::Command::new("cargo")
+        .args(["run"])
+        .current_dir(&api_backend_dir)
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .spawn();
+
+    match api_server {
+        Ok(child) => {
+            println!("  {} API server starting (PID: {})...", "✓".bright_green(), child.id());
+
+            // Wait for the server to become ready by polling the port
+            println!("  Waiting for API server to be ready...");
+            let max_wait = std::time::Duration::from_secs(60);
+            let start = std::time::Instant::now();
+            let mut ready = false;
+
+            while start.elapsed() < max_wait {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                match std::net::TcpStream::connect_timeout(
+                    &"127.0.0.1:8080".parse().unwrap(),
+                    std::time::Duration::from_secs(1),
+                ) {
+                    Ok(_) => {
+                        ready = true;
+                        break;
+                    }
+                    Err(_) => continue,
+                }
+            }
+
+            if ready {
+                println!("  {} API server is ready on http://127.0.0.1:8080", "✓".bright_green());
+            } else {
+                println!("  {} API server did not respond within {}s, continuing anyway...",
+                    "⚠".bright_yellow(), max_wait.as_secs());
+            }
+
+            Some(child)
+        }
+        Err(e) => {
+            println!("  {} Failed to start API server: {}", "⚠".bright_yellow(), e);
+            println!("  Continuing without backend...");
+            None
+        }
+    }
+}
+
+/// Stop an API server child process (if running).
+pub fn stop_api_server(child: &mut Option<std::process::Child>) {
+    if let Some(c) = child {
+        let _ = c.kill();
+        println!("  {} API server stopped", "✓".bright_green());
+    }
+}
+
 pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     let rust_dir = project_dir.join("gen").join("front").join("rust");
     let (full, code) = needs_regeneration(project_dir, &rust_dir);
@@ -876,59 +944,7 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         regenerate_code_only(project_dir, &rust_dir)?;
     }
 
-    // Start API backend server if gen/back/rust/ exists
-    let api_backend_dir = project_dir.join("gen").join("back").join("rust");
-    let mut _api_child: Option<std::process::Child> = None;
-    if api_backend_dir.join("Cargo.toml").exists() {
-        println!();
-        println!("{}", "▶ Starting API backend server...".bright_cyan());
-        println!("  cd gen/back/rust/ && cargo run");
-
-        let api_server = std::process::Command::new("cargo")
-            .args(["run"])
-            .current_dir(&api_backend_dir)
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .spawn();
-
-        match api_server {
-            Ok(child) => {
-                println!("  {} API server starting (PID: {})...", "✓".bright_green(), child.id());
-                _api_child = Some(child);
-
-                // Wait for the server to become ready by polling the health endpoint
-                println!("  Waiting for API server to be ready...");
-                let max_wait = std::time::Duration::from_secs(60);
-                let start = std::time::Instant::now();
-                let mut ready = false;
-
-                while start.elapsed() < max_wait {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                    match std::net::TcpStream::connect_timeout(
-                        &"127.0.0.1:8080".parse().unwrap(),
-                        std::time::Duration::from_secs(1),
-                    ) {
-                        Ok(_) => {
-                            ready = true;
-                            break;
-                        }
-                        Err(_) => continue,
-                    }
-                }
-
-                if ready {
-                    println!("  {} API server is ready on http://localhost:8080", "✓".bright_green());
-                } else {
-                    println!("  {} API server did not respond within {}s, continuing anyway...",
-                        "⚠".bright_yellow(), max_wait.as_secs());
-                }
-            }
-            Err(e) => {
-                println!("  {} Failed to start API server: {}", "⚠".bright_yellow(), e);
-                println!("  Continuing without backend...");
-            }
-        }
-    }
+    let mut _api_child = start_api_server(project_dir);
 
     println!("{}", "Running Rust UI app (backend: rust-ui)".bright_cyan());
 
@@ -941,17 +957,48 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     let status = cmd.status()?;
 
-    // Cleanup: stop API backend server when UI exits
-    if let Some(mut child) = _api_child {
-        let _ = child.kill();
-        println!("  {} API server stopped", "✓".bright_green());
-    }
+    stop_api_server(&mut _api_child);
 
     if !status.success() {
         return Err(format!("Cargo run failed with status: {}", status).into());
     }
 
     Ok(())
+}
+
+/// Run the UI via the AutoLang interpreter (--render=vm mode).
+/// Starts the same API backend server as --render=rust, but runs
+/// the frontend through the in-process interpreter instead of
+/// transpiling to Rust.
+pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
+    let mut _api_child = start_api_server(project_dir);
+
+    let entry = project_dir.join("src").join("front").join("app.at");
+    if !entry.exists() {
+        stop_api_server(&mut _api_child);
+        return Err(format!("Frontend entry not found: {}", entry.display()).into());
+    }
+
+    println!("{}", "Running VM interpreter UI (backend: vm)".bright_cyan());
+
+    // Change CWD to src/front/ so `use` imports resolve correctly
+    let front_dir = project_dir.join("src").join("front");
+    let original_dir = std::env::current_dir().ok();
+    let _ = std::env::set_current_dir(&front_dir);
+
+    let result = auto_lang::run_file(entry.to_str().unwrap_or("src/front/app.at"));
+
+    // Restore original CWD
+    if let Some(dir) = original_dir {
+        let _ = std::env::set_current_dir(dir);
+    }
+
+    stop_api_server(&mut _api_child);
+
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("VM UI error: {}", e).into()),
+    }
 }
 
 #[cfg(test)]

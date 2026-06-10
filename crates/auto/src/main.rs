@@ -245,7 +245,7 @@ enum Commands {
         dir: Option<String>,
         #[arg(short, long)]
         port: Option<String>,
-        #[arg(short, long, help = "Render target to use (vue, rust, jet, arkts, tauri)")]
+        #[arg(short, long, help = "Render target to use (vue, rust, vm, jet, arkts, tauri)")]
         render: Option<String>,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
@@ -254,7 +254,7 @@ enum Commands {
         dir: Option<String>,
         #[arg(short, long)]
         port: Option<String>,
-        #[arg(short, long, help = "Render target to use (vue, rust, jet, arkts, tauri)")]
+        #[arg(short, long, help = "Render target to use (vue, rust, vm, jet, arkts, tauri)")]
         render: Option<String>,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,

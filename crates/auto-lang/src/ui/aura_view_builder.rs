@@ -190,6 +190,7 @@ impl<'a> AuraViewBuilder<'a> {
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let is_true = self.eval_condition_with(condition, bindings);
+                eprintln!("[DEBUG-cond] widget='{}' cond='{}' => {}", self.widget_name, condition, is_true);
                 let empty = Vec::new();
                 let body = if is_true {
                     then_body
@@ -214,6 +215,7 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Component { name, props, events, .. } => {
+                eprintln!("[DEBUG-comp] widget='{}' child='{}' props={:?}", self.widget_name, name, props.keys().collect::<Vec<_>>());
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(name) {
@@ -338,6 +340,7 @@ impl<'a> AuraViewBuilder<'a> {
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let is_true = self.eval_condition_with(condition, bindings);
+                eprintln!("[DEBUG-cond] widget='{}' cond='{}' => {}", self.widget_name, condition, is_true);
                 let empty = Vec::new();
                 let body = if is_true {
                     then_body
@@ -368,6 +371,7 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Component { name, props, events, .. } => {
+                eprintln!("[DEBUG-comp] widget='{}' child='{}' props={:?}", self.widget_name, name, props.keys().collect::<Vec<_>>());
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(name) {
@@ -708,7 +712,10 @@ impl<'a> AuraViewBuilder<'a> {
         for (prop_name, prop_value) in props {
             if let AuraPropValue::Expr(expr) = prop_value {
                 if let Some(val) = self.resolve_expr_to_value(expr, bindings) {
+                    eprintln!("[DEBUG-prop] child='{}' prop='{}' resolved to {:?}", child_widget.name, prop_name, val);
                     resolved_props.insert(prop_name.clone(), val);
+                } else {
+                    eprintln!("[DEBUG-prop] child='{}' prop='{}' FAILED to resolve", child_widget.name, prop_name);
                 }
             }
         }
@@ -1363,9 +1370,18 @@ impl<'a> AuraViewBuilder<'a> {
         };
 
         // Read state value for lhs
-        let lhs_val = match self.bridge.read_state(lhs) {
-            Ok(v) => value_to_display_string(&v),
-            Err(_) => return false,
+        // Handle .len() suffix: "notes.len()" → read "notes" and return its length
+        let lhs_val = if let Some(field_name) = lhs.strip_suffix(".len()") {
+            match self.bridge.read_state(field_name) {
+                Ok(Value::Array(arr)) => arr.len().to_string(),
+                Ok(other) => value_to_display_string(&other),
+                Err(_) => return false,
+            }
+        } else {
+            match self.bridge.read_state(lhs) {
+                Ok(v) => value_to_display_string(&v),
+                Err(_) => return false,
+            }
         };
 
         // Resolve rhs: check loop bindings first, then try as literal

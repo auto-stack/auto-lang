@@ -558,6 +558,17 @@ impl Component for DynamicComponent {
 }
 
 impl DynamicComponent {
+    /// Fire the `.Init` lifecycle event using AST statements.
+    ///
+    /// This executes the Init handler body against the widget state via
+    /// `VmBridge::call_handler_ast`. Called before the Iced event loop starts
+    /// so that initial state (e.g., API data) is populated before the first render.
+    pub fn fire_init(&mut self, stmts: &[crate::ast::Stmt]) {
+        if let Ok(()) = self.bridge.call_handler_ast("Init", stmts) {
+            self.dirty = true;
+        }
+    }
+
     /// Handle an event with an optional input text value.
     ///
     /// When `input_value` is `Some(text)`, looks up the associated state field

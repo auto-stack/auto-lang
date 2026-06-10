@@ -1280,6 +1280,13 @@ impl Automan {
 
         // Check backend configuration (Plan 130: support array form)
         if self.pac.has_backend_config() {
+            // Special case: --render=vm always works regardless of pac.at config
+            if let Some(ref render_name) = self.render_override {
+                if render_name.to_lowercase() == "vm" {
+                    return self.run_backend(&auto_lang::config::BackendType::Vm, args);
+                }
+            }
+
             let frontends = self.pac.frontend_types();
 
             // Use --render override if provided
@@ -1369,6 +1376,9 @@ impl Automan {
                     }
                     Ok(())
                 }
+            }
+            auto_lang::config::BackendType::Vm => {
+                crate::rust_ui::run_vm_ui(&root_dir, args)
             }
             auto_lang::config::BackendType::Vscode => {
                 println!("Running VSCode extension (backend: vscode)");

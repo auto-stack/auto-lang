@@ -631,8 +631,103 @@ impl VmBridge {
                 let r = self.eval_expr(rhs)?;
                 Ok(self.apply_binop(&l, op, &r))
             }
+            crate::ast::Expr::Call(call) => {
+                self.eval_call(call)
+            }
             _ => Ok(Value::Nil),
         }
+    }
+
+    /// Evaluate a function call expression.
+    /// Handles API client calls by making HTTP requests to the backend server.
+    #[cfg(feature = "ui-interpreter")]
+    fn eval_call(&self, call: &crate::ast::Call) -> Result<Value> {
+        let fn_name = call.get_name_text_safe()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+
+        // Try API HTTP call first
+        if let Some(result) = self.try_api_call(&fn_name, call) {
+            return result;
+        }
+
+        Ok(Value::Nil)
+    }
+
+    /// Evaluate a function call expression (no HTTP support).
+    #[cfg(not(feature = "ui-interpreter"))]
+    fn eval_call(&self, _call: &crate::ast::Call) -> Result<Value> {
+        Ok(Value::Nil)
+    }
+
+    /// Try to execute an API function call via HTTP.
+    /// Returns Some(result) if the function is a known API function, None otherwise.
+    #[cfg(feature = "ui-interpreter")]
+    fn try_api_call(&self, fn_name: &str, call: &crate::ast::Call) -> Option<Result<Value>> {
+        match fn_name {
+            "list_notes" => {
+                let result = ureq::get("http://127.0.0.1:8080/api/notes")
+                    .call().ok()
+                    .and_then(|r| r.into_json::<serde_json::Value>().ok())
+                    .unwrap_or(serde_json::Value::Null);
+                Some(Ok(json_to_value(&result)))
+            }
+            "get_note" => {
+                let id = self.eval_call_arg(call, 0).unwrap_or(Value::Int(0));
+                let url = format!("http://127.0.0.1:8080/api/notes/{}", id.as_int());
+                let result = ureq::get(&url)
+                    .call().ok()
+                    .and_then(|r| r.into_json::<serde_json::Value>().ok())
+                    .unwrap_or(serde_json::Value::Null);
+                Some(Ok(json_to_value(&result)))
+            }
+            "create_note" => {
+                let title = self.eval_call_arg(call, 0).unwrap_or(Value::str(""));
+                let body = self.eval_call_arg(call, 1).unwrap_or(Value::str(""));
+                let title_s = title.repr().to_string();
+                let body_s = body.repr().to_string();
+                let result = ureq::post("http://127.0.0.1:8080/api/notes")
+                    .send_json(serde_json::json!({
+                        "title": title_s,
+                        "body": body_s
+                    }))
+                    .ok()
+                    .and_then(|r| r.into_json::<serde_json::Value>().ok())
+                    .unwrap_or_else(|| serde_json::json!({"id": 0, "title": title_s, "body": body_s, "time": "now"}));
+                Some(Ok(json_to_value(&result)))
+            }
+            "update_note" => {
+                let id = self.eval_call_arg(call, 0).unwrap_or(Value::Int(0));
+                let title = self.eval_call_arg(call, 1).unwrap_or(Value::str(""));
+                let body = self.eval_call_arg(call, 2).unwrap_or(Value::str(""));
+                let title_s = title.repr().to_string();
+                let body_s = body.repr().to_string();
+                let url = format!("http://127.0.0.1:8080/api/notes/{}", id.as_int());
+                let _ = ureq::put(&url)
+                    .send_json(serde_json::json!({
+                        "title": title_s,
+                        "body": body_s
+                    }));
+                Some(Ok(Value::Nil))
+            }
+            "delete_note" => {
+                let id = self.eval_call_arg(call, 0).unwrap_or(Value::Int(0));
+                let url = format!("http://127.0.0.1:8080/api/notes/{}", id.as_int());
+                let _ = ureq::delete(&url).call();
+                Some(Ok(Value::Nil))
+            }
+            _ => None,
+        }
+    }
+
+    /// Evaluate the N-th argument of a function call.
+    fn eval_call_arg(&self, call: &crate::ast::Call, index: usize) -> Option<Value> {
+        call.args.args.get(index).and_then(|arg| {
+            match arg {
+                crate::ast::Arg::Pos(expr) => self.eval_expr(expr).ok(),
+                _ => None,
+            }
+        })
     }
 
     /// Apply a binary operation to two values.
@@ -1054,6 +1149,36 @@ fn emit_set_field(code: &mut Vec<u8>, state_obj_id: u64, field_idx: usize) {
 // ============================================================================
 // Tests
 // ============================================================================
+
+/// Convert a serde_json::Value to an auto_val::Value.
+#[cfg(feature = "ui-interpreter")]
+fn json_to_value(json: &serde_json::Value) -> Value {
+    match json {
+        serde_json::Value::Null => Value::Nil,
+        serde_json::Value::Bool(b) => Value::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Int(i as i32)
+            } else if let Some(f) = n.as_f64() {
+                Value::Float(f)
+            } else {
+                Value::Nil
+            }
+        }
+        serde_json::Value::String(s) => Value::str(s.as_str()),
+        serde_json::Value::Array(arr) => {
+            let items: Vec<Value> = arr.iter().map(json_to_value).collect();
+            Value::Array(auto_val::Array::from(items))
+        }
+        serde_json::Value::Object(map) => {
+            let mut obj = auto_val::Obj::new();
+            for (key, val) in map {
+                obj.set(key.as_str(), json_to_value(val));
+            }
+            Value::Obj(obj)
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

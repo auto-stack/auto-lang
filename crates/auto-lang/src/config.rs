@@ -152,6 +152,7 @@ pub enum BackendType {
     Cangjie,
     Godot,
     Rust,
+    Vm,
     Vscode,
 }
 
@@ -168,6 +169,7 @@ impl BackendType {
             "cangjie" => Some(Self::Cangjie),
             "godot" => Some(Self::Godot),
             "rust" => Some(Self::Rust),
+            "vm" => Some(Self::Vm),
             "vscode" => Some(Self::Vscode),
             _ => None,
         }
@@ -185,6 +187,7 @@ impl BackendType {
             Self::Cangjie => "cangjie",
             Self::Godot => "godot",
             Self::Rust => "back",
+            Self::Vm => "vm",
             Self::Vscode => "vscode",
         }
     }
@@ -201,6 +204,7 @@ impl BackendType {
             Self::Cangjie => "cangjie",
             Self::Godot => "godot",
             Self::Rust => "rust",
+            Self::Vm => "vm",
             Self::Vscode => "vscode",
         }
     }
