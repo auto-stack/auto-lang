@@ -2751,12 +2751,12 @@ mod tests {
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
 
-        assert!(code.contains("pub enum Msg"));
-        assert!(code.contains("Inc"));
-        assert!(code.contains("Dec"));
-        assert!(code.contains("pub struct Counter"));
-        assert!(code.contains("pub count: i32"));
-        assert!(code.contains("impl Component for Counter"));
+        assert!(code.contains("pub enum CounterMsg"), "got:\n{}", code);
+        assert!(code.contains("Inc"), "got:\n{}", code);
+        assert!(code.contains("Dec"), "got:\n{}", code);
+        assert!(code.contains("pub struct Counter"), "got:\n{}", code);
+        assert!(code.contains("pub count: i32"), "got:\n{}", code);
+        assert!(code.contains("impl Component for Counter"), "got:\n{}", code);
     }
 
     #[test]
@@ -2912,7 +2912,7 @@ mod tests {
 
         let mut gen = RustGenerator::new();
         let code = gen.generate_view_tree(&node);
-        assert!(code.contains("View::text(\"Hello, World!\")"), "got: {}", code);
+        assert!(code.contains("View::text(\"Hello, World!\".to_string())"), "got: {}", code);
         assert!(!code.contains(".build()"), "View::text(str) returns View directly, got: {}", code);
     }
 }
