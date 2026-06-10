@@ -1,0 +1,29 @@
+[package]
+name = "ash-core"
+version = "0.1.0"
+edition = "2021"
+description = "AutoShell core engine — pure logic, zero terminal dependencies"
+authors = ["AutoLang Contributors"]
+license = "MIT"
+
+[dependencies]
+# AutoLang value system
+auto-val = { path = "../auto-val" }
+
+# Data structures
+indexmap = "2.0"
+
+# Platform support
+dirs = "5.0"
+sysinfo = "0.33"
+
+# Utilities
+chrono = "0.4"
+regex = "1.10"
+
+# Error handling
+miette = "7.0"
+thiserror = "1.0"
+
+[dev-dependencies]
+pretty_assertions = "1.4"

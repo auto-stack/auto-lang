@@ -11,6 +11,9 @@ license = "MIT"
 auto-lang = { path = "../auto-lang" }
 auto-val = { path = "../auto-val" }
 
+# Ash Core (pure logic, zero terminal deps)
+ash-core = { path = "../ash-core" }
+
 # Terminal and REPL
 reedline = "0.44.0"
 crossterm = "0.27"

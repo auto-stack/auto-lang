@@ -3,26 +3,27 @@
 //! This library provides the core functionality for the AutoShell REPL,
 //! command execution, and pipeline system.
 //!
-//! ## Internal Layering (migrating toward ash-core + ash-tui split)
+//! ## Architecture
 //!
-//! - `core/` — Pure logic, zero terminal dependencies. Will become `ash-core` crate.
-//! - Everything else — Terminal-dependent code. Will become `ash-tui` crate.
+//! - `ash-core` crate — Pure logic, zero terminal dependencies
+//! - `frontend/` — Terminal-dependent code (will become `ash-tui` crate)
+//! - `cmd/`, `completions/`, `data/`, `shell/` — Mixed layer, migrating
 
-// Core layer (pure logic, zero terminal deps)
-pub mod core;
+// Core layer: re-export ash-core crate as `core` module for backward compatibility
+pub use ash_core as core;
 
 // Frontend layer (terminal-dependent, will become ash-tui crate)
 pub mod frontend;
 
-// Legacy modules (will migrate into core/ or frontend/ over time)
+// Legacy modules (will migrate into ash-core or frontend over time)
 pub mod cmd;
 pub mod completions;
 pub mod data;
 pub mod shell;
 
 // Re-export core modules at crate root for backward compatibility
-pub use core::bookmarks;
-pub use core::parser;
+pub use ash_core::bookmarks;
+pub use ash_core::parser;
 
 // Re-export frontend modules at crate root for backward compatibility
 pub use frontend::repl;
