@@ -1060,14 +1060,20 @@ impl<'a> AuraViewBuilder<'a> {
 
         let mut style = self.extract_style(props);
 
-        // Apply default heading styles if no explicit style was provided
-        if style.is_none() {
-            style = match tag {
+        // Apply default heading styles, merging with user-provided styles
+        if matches!(tag, "h1" | "h2" | "h3") {
+            let default = match tag {
                 "h1" => Style::parse("text-4xl font-bold").ok(),
                 "h2" => Style::parse("text-3xl font-bold").ok(),
                 "h3" => Style::parse("text-xl font-semibold").ok(),
                 _ => None,
             };
+            if let Some(mut default) = default {
+                if let Some(user) = style.take() {
+                    default.classes.extend(user.classes);
+                }
+                style = Some(default);
+            }
         }
 
         // Map heading tags to styled text

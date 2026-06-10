@@ -328,6 +328,19 @@ impl StyleClass {
             return Err("Empty style class".to_string());
         }
 
+        // Support Tailwind arbitrary value syntax: text-[#6CB0DD], bg-[#fff]
+        // Extract bracket content as `arbitrary_value`, keep prefix as `class`
+        let (class, arbitrary_value): (&str, Option<&str>) =
+            if class.starts_with(|c: char| c.is_ascii_alphabetic()) && class.ends_with(']') {
+                if let Some(bracket_start) = class.find('[') {
+                    (&class[..bracket_start], Some(&class[bracket_start + 1..class.len() - 1]))
+                } else {
+                    (class, None)
+                }
+            } else {
+                (class, None)
+            };
+
         // ========== Spacing (L1 + L2) ==========
 
         // Parse padding: p-{0-12}
@@ -429,7 +442,13 @@ impl StyleClass {
                 return Ok(StyleClass::BgGradient(d));
             }
             let color = Color::from_tailwind(color_name)
-                .or_else(|_| Color::from_hex(color_name))?;
+                .or_else(|_| Color::from_hex(color_name))
+                .or_else(|_| {
+                    // Support arbitrary value: bg-[#hex]
+                    arbitrary_value
+                        .and_then(|v| Color::from_hex(v).ok())
+                        .ok_or_else(|| format!("Unknown bg color: {}", color_name))
+                })?;
             return Ok(StyleClass::BackgroundColor(color));
         }
 
@@ -481,7 +500,13 @@ impl StyleClass {
         // Parse text color: text-{color} (must come after text-size/align)
         if let Some(color_name) = class.strip_prefix("text-") {
             let color = Color::from_tailwind(color_name)
-                .or_else(|_| Color::from_hex(color_name))?;
+                .or_else(|_| Color::from_hex(color_name))
+                .or_else(|_| {
+                    // Support arbitrary value: text-[#hex]
+                    arbitrary_value
+                        .and_then(|v| Color::from_hex(v).ok())
+                        .ok_or_else(|| format!("Unknown text color: {}", color_name))
+                })?;
             return Ok(StyleClass::TextColor(color));
         }
 

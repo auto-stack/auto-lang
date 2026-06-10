@@ -1,7 +1,9 @@
 widget App {
     view {
         center {
-            text "Hello, World!"
+            h1 "Hello, World!" {
+                style: "text-[#6CB0DD]"
+            }
         }
     }
 }
