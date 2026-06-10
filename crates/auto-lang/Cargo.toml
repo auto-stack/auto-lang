@@ -11,6 +11,9 @@ keywords = ["automation", "language", "scripting"]
 
 [features]
 default = ["with-file-history", "nanbox", "ui-iced"]
+# Plan 289: Feature-gated test groups for faster daily development
+test-vm-files = []
+test-trans = []
 with-file-history = []
 # Plan 081: AutoVM is now the default execution engine (no feature flag required)
 # DEPRECATED: The use-bigvm feature is kept for compatibility but has no effect

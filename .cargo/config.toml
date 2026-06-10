@@ -1,0 +1,14 @@
+# Plan 289: Cargo aliases for faster test workflows
+# Usage:
+#   cargo t          - fast daily tests (no heavy test groups)
+#   cargo tv         - VM file tests
+#   cargo tt         - transpiler tests
+#   cargo ta         - all tests (both VM + trans)
+#
+# Requires: cargo install cargo-nextest
+
+[alias]
+t = "nextest run -p auto-lang --lib"
+tv = "nextest run -p auto-lang --lib --features test-vm-files"
+tt = "nextest run -p auto-lang --lib --features test-trans"
+ta = "nextest run -p auto-lang --lib --features test-vm-files,test-trans"

@@ -8,22 +8,97 @@
 use crate::error::AutoResult;
 use crate::parser::Parser;
 use crate::{run, run_with_capture};
+use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::path::PathBuf;
+use std::sync::OnceLock;
+
+/// Cached test data: source code + optional expected outputs
+struct VmTestData {
+    source: String,
+    expected_out: Option<String>,
+    expected_result: Option<String>,
+    expected_error: bool,
+}
+
+/// Global cache for VM file test data. Loaded once per test process.
+static VM_TEST_CACHE: OnceLock<HashMap<String, VmTestData>> = OnceLock::new();
+
+/// Load all VM test data from test/vm/ directories into cache.
+/// Directory structure: test/vm/{category}/{NNN_name}/{name}.at
+fn load_vm_test_cache() -> HashMap<String, VmTestData> {
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut cache = HashMap::new();
+
+    let vm_dir = d.join("test/vm");
+    // Two-level scan: category dirs -> case dirs -> .at files
+    if let Ok(cat_entries) = std::fs::read_dir(&vm_dir) {
+        for cat_entry in cat_entries.flatten() {
+            if !cat_entry.path().is_dir() {
+                continue;
+            }
+            let category = cat_entry.path().file_name().unwrap().to_string_lossy().into_owned();
+            if let Ok(case_entries) = std::fs::read_dir(cat_entry.path()) {
+                for case_entry in case_entries.flatten() {
+                    if !case_entry.path().is_dir() {
+                        continue;
+                    }
+                    let case_dir_name = case_entry.path().file_name().unwrap().to_string_lossy().into_owned();
+                    // Parse "001_hello" -> name = "hello"
+                    let parts: Vec<&str> = case_dir_name.splitn(2, '_').collect();
+                    if parts.len() < 2 {
+                        continue;
+                    }
+                    let name = parts[1];
+                    let case = format!("{}/{}", category, case_dir_name);
+
+                    // Find the .at file inside the case directory
+                    let at_path = case_entry.path().join(format!("{}.at", name));
+                    if !at_path.is_file() {
+                        continue;
+                    }
+
+                    let source = read_to_string(&at_path).unwrap_or_default();
+                    let expected_out = {
+                        let p = case_entry.path().join(format!("{}.expected.out", name));
+                        if p.is_file() { read_to_string(&p).ok() } else { None }
+                    };
+                    let expected_result = {
+                        let p = case_entry.path().join(format!("{}.expected.result", name));
+                        if p.is_file() { read_to_string(&p).ok() } else { None }
+                    };
+                    let expected_error = {
+                        let p = case_entry.path().join(format!("{}.expected.error", name));
+                        p.is_file()
+                    };
+
+                    cache.insert(case, VmTestData {
+                        source,
+                        expected_out,
+                        expected_result,
+                        expected_error,
+                    });
+                }
+            }
+        }
+    }
+
+    cache
+}
+
+/// Get cached test data, loading all VM tests on first call
+fn get_cached_test(case: &str) -> Option<&VmTestData> {
+    let cache = VM_TEST_CACHE.get_or_init(load_vm_test_cache);
+    cache.get(case)
+}
 
 fn test_vm(case: &str) -> AutoResult<()> {
-    // Parse test case name: "01_basics/001_hello" -> "hello"
-    let dir_name = case.rsplit('/').next().unwrap_or(case);
-    let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
-    let name = parts[1..].join("_");
-
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let src = read_to_string(d.join(format!("test/vm/{}/{}.at", case, name)))?;
+    let data = get_cached_test(case)
+        .unwrap_or_else(|| panic!("Test case '{}' not found in cache. Check test/vm/ directory.", case));
 
     // Check .expected.error — expect runtime error
-    let err_path = d.join(format!("test/vm/{}/{}.expected.error", case, name));
-    if err_path.is_file() {
-        let result = run(&src);
+    if data.expected_error {
+        let result = run(&data.source);
         assert!(
             result.is_err(),
             "Expected error but got: {:?}",
@@ -33,28 +108,32 @@ fn test_vm(case: &str) -> AutoResult<()> {
     }
 
     // Execute with stdout capture
-    let (result, stdout) = run_with_capture(&src)?;
+    let (result, stdout) = run_with_capture(&data.source)?;
 
     // Check .expected.out — stdout output
-    let out_path = d.join(format!("test/vm/{}/{}.expected.out", case, name));
-    if out_path.is_file() {
-        let expected_out = read_to_string(&out_path)?;
-        if stdout != expected_out {
+    if let Some(ref expected_out) = data.expected_out {
+        if stdout != *expected_out {
+            let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let dir_name = case.rsplit('/').next().unwrap_or(case);
+            let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
+            let name = parts[1..].join("_");
             let wrong_path = d.join(format!("test/vm/{}/{}.wrong.out", case, name));
             std::fs::write(&wrong_path, &stdout)?;
         }
-        assert_eq!(stdout, expected_out);
+        assert_eq!(stdout, *expected_out);
     }
 
     // Check .expected.result — return value
-    let res_path = d.join(format!("test/vm/{}/{}.expected.result", case, name));
-    if res_path.is_file() {
-        let expected_res = read_to_string(&res_path)?;
-        if result != expected_res {
+    if let Some(ref expected_res) = data.expected_result {
+        if result != *expected_res {
+            let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let dir_name = case.rsplit('/').next().unwrap_or(case);
+            let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
+            let name = parts[1..].join("_");
             let wrong_path = d.join(format!("test/vm/{}/{}.wrong.result", case, name));
             std::fs::write(&wrong_path, &result)?;
         }
-        assert_eq!(result, expected_res);
+        assert_eq!(result, *expected_res);
     }
 
     Ok(())
@@ -496,38 +575,40 @@ const AUTO_LIB_FILES: &[&str] = &[
     "auto/lib/eval.at",
 ];
 
-/// Read and concatenate all auto/lib/*.at files
-fn read_auto_lib() -> AutoResult<String> {
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    let mut lib_code = String::new();
-    for file in AUTO_LIB_FILES {
-        let path = d.join(file);
-        if path.exists() {
-            lib_code.push_str(&read_to_string(&path)?);
-            lib_code.push('\n');
+/// Cached auto/lib code. Loaded once per test process.
+static AUTO_LIB_CACHE: OnceLock<String> = OnceLock::new();
+
+/// Read and concatenate all auto/lib/*.at files (cached)
+fn read_auto_lib() -> AutoResult<&'static str> {
+    let lib_code = AUTO_LIB_CACHE.get_or_init(|| {
+        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+        let mut code = String::new();
+        for file in AUTO_LIB_FILES {
+            let path = d.join(file);
+            if path.exists() {
+                if let Ok(content) = read_to_string(&path) {
+                    code.push_str(&content);
+                    code.push('\n');
+                }
+            }
         }
-    }
+        code
+    });
     Ok(lib_code)
 }
 
 /// AAVM test runner: merges auto/lib code with test case, runs through VM
 fn test_aavm(case: &str) -> AutoResult<()> {
-    let dir_name = case.rsplit('/').next().unwrap_or(case);
-    let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
-    let name = parts[1..].join("_");
-
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-    // Read test case source
-    let test_src = read_to_string(d.join(format!("test/vm/{}/{}.at", case, name)))?;
+    // Use cached test data for the source code
+    let data = get_cached_test(case)
+        .expect(&format!("AAVM test case '{}' not found in cache. Check test/vm/ directory.", case));
 
     // Merge: auto/lib code first, then test case (which may override main())
     let lib_code = read_auto_lib()?;
-    let merged = format!("{}\n{}", lib_code, test_src);
+    let merged = format!("{}\n{}", lib_code, data.source);
 
     // Check .expected.error — expect runtime error
-    let err_path = d.join(format!("test/vm/{}/{}.expected.error", case, name));
-    if err_path.is_file() {
+    if data.expected_error {
         let result = run(&merged);
         assert!(
             result.is_err(),
@@ -541,26 +622,30 @@ fn test_aavm(case: &str) -> AutoResult<()> {
     let (_result, stdout) = run_with_capture(&merged)?;
 
     // Check .expected.out — stdout output
-    let out_path = d.join(format!("test/vm/{}/{}.expected.out", case, name));
-    if out_path.is_file() {
-        let expected_out = read_to_string(&out_path)?;
-        if stdout != expected_out {
+    if let Some(ref expected_out) = data.expected_out {
+        if stdout != *expected_out {
+            let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let dir_name = case.rsplit('/').next().unwrap_or(case);
+            let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
+            let name = parts[1..].join("_");
             let wrong_path = d.join(format!("test/vm/{}/{}.wrong.out", case, name));
             std::fs::write(&wrong_path, &stdout)?;
         }
-        assert_eq!(stdout, expected_out);
+        assert_eq!(stdout, *expected_out);
     }
 
     // Check .expected.result — return value
-    let res_path = d.join(format!("test/vm/{}/{}.expected.result", case, name));
-    if res_path.is_file() {
-        let expected_res = read_to_string(&res_path)?;
+    if let Some(ref expected_res) = data.expected_result {
         let result = _result;
-        if result != expected_res {
+        if result != *expected_res {
+            let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let dir_name = case.rsplit('/').next().unwrap_or(case);
+            let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
+            let name = parts[1..].join("_");
             let wrong_path = d.join(format!("test/vm/{}/{}.wrong.result", case, name));
             std::fs::write(&wrong_path, &result)?;
         }
-        assert_eq!(result, expected_res);
+        assert_eq!(result, *expected_res);
     }
 
     Ok(())
@@ -602,24 +687,24 @@ fn extract_source_string(test_src: &str) -> AutoResult<String> {
     Err(crate::error::AutoError::Msg("No source string found in parser test file".into()))
 }
 
-/// Rust parser test runner: reads .at, extracts source, parses with Rust parser,
+/// Rust parser test runner: reads cached .at, extracts source, parses with Rust parser,
 /// compares to .expected.rust_ast
 fn test_rust_parser(case: &str) -> AutoResult<()> {
-    let dir_name = case.rsplit('/').next().unwrap_or(case);
-    let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
-    let name = parts[1..].join("_");
+    let data = get_cached_test(case)
+        .expect(&format!("Parser test case '{}' not found in cache.", case));
 
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-    // Read test file and extract source string
-    let test_src = read_to_string(d.join(format!("test/vm/{}/{}.at", case, name)))?;
-    let source = extract_source_string(&test_src)?;
+    // Extract source string from cached test data
+    let source = extract_source_string(&data.source)?;
 
     // Parse with Rust parser
     let mut parser = Parser::from(source.as_str());
     let ast = parser.parse()?;
 
     // Check .expected.rust_ast
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let dir_name = case.rsplit('/').next().unwrap_or(case);
+    let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
+    let name = parts[1..].join("_");
     let rust_ast_path = d.join(format!("test/vm/{}/{}.expected.rust_ast", case, name));
     if rust_ast_path.is_file() {
         let expected = read_to_string(&rust_ast_path)?;

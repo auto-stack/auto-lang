@@ -1,5 +1,9 @@
+// Plan 289: Transpiler tests (a2c/a2r/a2ts) gated behind test-trans feature
+#[cfg(feature = "test-trans")]
 mod a2c_tests;
+#[cfg(feature = "test-trans")]
 mod a2r_tests;
+#[cfg(feature = "test-trans")]
 mod a2ts_tests;
 mod atom_tests;
 // Plan 075: Unified API tests
@@ -42,6 +46,10 @@ mod vm_tests;
 mod infer_tests;
 mod autodown_tests;
 mod book_listing_tests;
+// Plan 289: VM file tests gated behind test-vm-files feature
+#[cfg(feature = "test-vm-files")]
 mod vm_file_tests; // Plan 177: VM file-based test framework
+#[cfg(feature = "test-vm-files")]
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
+#[cfg(feature = "test-vm-files")]
 mod conformance_tests; // Plan 266: AutoVM ↔ a2r semantic conformance tests
