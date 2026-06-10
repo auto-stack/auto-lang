@@ -4096,6 +4096,30 @@ where
     Ok(iced::run(C::update, view)?)
 }
 
+/// Run an auto-ui Component with Iced, dispatching an initial Task after the window appears.
+///
+/// The boot closure is `Fn` (not `FnOnce`), so callers typically use
+/// `RefCell<Option<Task>>` to consume the task on the first (and only) call.
+///
+/// Unlike `run_app`, this does NOT require `C: Default` — the boot closure
+/// creates the state, which enables async initialization patterns.
+pub fn run_app_with_task<C>(
+    boot: impl Fn() -> (C, iced::Task<C::Msg>) + 'static,
+) -> AppResult<()>
+where
+    C: Component + Default + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    iced::application(
+        boot,
+        C::update,
+        view,
+    )
+    .window_size(iced::Size::new(800.0, 600.0))
+    .run()
+    .map_err(|e| e.into())
+}
+
 fn view<C>(component: &C) -> iced::Element<'_, C::Msg>
 where
     C: Component,

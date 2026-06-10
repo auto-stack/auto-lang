@@ -339,7 +339,7 @@ fn deduplicate_imports(imports: &mut Vec<String>) {
 /// Parses the API definition from src/back/api.at and generates ureq HTTP calls.
 /// Falls back to heuristic stubs if the API file can't be parsed.
 fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
-    const BASE_URL: &str = "http://localhost:8080";
+    const BASE_URL: &str = "http://127.0.0.1:8080";
 
     // Try to parse api.at to get real endpoint definitions
     let api_module = parse_api_module(project_dir);
@@ -435,9 +435,10 @@ fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
     // Generate function body based on HTTP method
     let ureq_method = method.to_lowercase();
     // DELETE never needs a return value in the UI — treat as void
-    let is_effectively_void = is_void || method == "DELETE";
+    // Option-returning PUT/PATCH are also fire-and-forget (non-blocking) — treat as void
+    let is_fire_and_forget = is_void || method == "DELETE" || (method != "GET" && is_option);
     let body = if method == "GET" {
-        generate_get_fn_body(ureq_method, url_expr, is_effectively_void, &value_type)
+        generate_get_fn_body(ureq_method, url_expr, is_fire_and_forget, &value_type)
     } else if method == "DELETE" {
         generate_delete_fn_body(url_expr)
     } else {
@@ -445,7 +446,7 @@ fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
         generate_write_fn_body(ureq_method, url_expr, &body_params, is_void, &value_type)
     };
 
-    if is_effectively_void {
+    if is_fire_and_forget {
         format!("fn {}({}) {{\n{}}}\n", fn_name, param_list, body)
     } else {
         format!("fn {}({}) -> {} {{\n{}}}\n", fn_name, param_list, rust_return_type, body)
@@ -475,12 +476,22 @@ fn generate_get_fn_body(method: String, url_expr: String, is_void: bool, return_
     }
 }
 
-/// Generate body for DELETE requests
+/// Generate body for DELETE requests (non-blocking via background thread)
 fn generate_delete_fn_body(url_expr: String) -> String {
-    format!("    let _ = ureq::delete({}).call();\n", url_expr)
+    let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
+        format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
+    } else {
+        format!("    let url = {};\n", url_expr)
+    };
+    format!("{}    std::thread::spawn(move || {{ let _ = ureq::delete(&url).call(); }});\n", url_owned)
 }
 
 /// Generate body for POST/PUT requests (with JSON body)
+///
+/// For void return types (e.g., update_note): non-blocking via background thread.
+/// For value return types (e.g., create_note): returns a local JSON placeholder and
+/// spawns a background thread for the actual HTTP call. The returned placeholder
+/// contains the params so the UI can display immediately.
 fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto_lang::api::types::ApiParam], is_void: bool, return_type: &str) -> String {
     let json_fields: Vec<String> = body_params.iter()
         .map(|p| format!("\"{}\": {}", p.name, p.name))
@@ -488,25 +499,49 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
     let json_body = format!("serde_json::json!({{{}}})", json_fields.join(", "));
 
     if is_void {
+        // Non-blocking: spawn background thread for fire-and-forget
+        let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
+            format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
+        } else {
+            format!("    let url = {};\n", url_expr)
+        };
         format!(
-            "    let _ = ureq::{}({})\n        .send_json({});\n",
-            method, url_expr, json_body
+            "{}    let body = {};\n    std::thread::spawn(move || {{ let _ = ureq::{}(&url).send_json(body); }});\n",
+            url_owned, json_body, method
         )
     } else if return_type.starts_with("Vec<") {
+        // Vec return — keep blocking (rare for POST/PUT)
         format!(
             "    ureq::{}({})\n        .send_json({})\n        .ok()\n        .and_then(|r| r.into_json::<{}>().ok())\n        .unwrap_or_default()\n",
             method, url_expr, json_body, return_type
         )
     } else if return_type.starts_with("Option<") {
-        // Deserialize as Value, let .ok() produce Option<Value> naturally
+        // Option return (e.g., update_note) — non-blocking: fire-and-forget in background thread
+        let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
+            format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
+        } else {
+            format!("    let url = {};\n", url_expr)
+        };
         format!(
-            "    ureq::{}({})\n        .send_json({})\n        .ok()\n        .and_then(|r| r.into_json::<serde_json::Value>().ok())\n",
-            method, url_expr, json_body
+            "{}    let body = {};\n    std::thread::spawn(move || {{ let _ = ureq::{}(&url).send_json(body); }});\n",
+            url_owned, json_body, method
         )
     } else {
+        // Value return (e.g., create_note → serde_json::Value)
+        // Non-blocking: return a local placeholder with the params, POST in background.
+        // The actual server-generated ID won't be available, but the UI works immediately.
+        let local_fields: Vec<String> = body_params.iter()
+            .map(|p| format!("\"{}\": {}", p.name, p.name))
+            .collect();
+        let local_json = format!("serde_json::json!({{{}}})", local_fields.join(", "));
+        let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
+            format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
+        } else {
+            format!("    let url = {};\n", url_expr)
+        };
         format!(
-            "    ureq::{}({})\n        .send_json({})\n        .ok()\n        .and_then(|r| r.into_json::<{}>().ok())\n        .unwrap_or_default()\n",
-            method, url_expr, json_body, return_type
+            "{}    let body = {};\n    let local_result = {local_json};\n    std::thread::spawn(move || {{ let _ = ureq::{}(&url).send_json(body); }});\n    local_result\n",
+            url_owned, json_body, method, local_json = local_json
         )
     }
 }
@@ -570,11 +605,44 @@ fn generate_api_stubs(api_imports: &[String]) -> String {
 /// Wrap generated components in a main() function with ICED/GPUI backend selection.
 fn wrap_example(project_name: &str, components: &str) -> String {
     let main_widget = extract_main_widget(components);
+    let main_msg = format!("{}Msg", main_widget);
 
     // Strip duplicate imports — RustGenerator already emits them
     let cleaned = components.trim()
         .replace("use auto_lang::ui::{Component, View};\n", "")
         .replace("use auto_lang::ui::{Component, View};", "");
+
+    // Detect async init: look for __InitLoaded variant in generated code
+    let async_init_func = extract_init_api_func(cleaned.trim());
+
+    let iced_entry = if let Some(ref func_name) = async_init_func {
+        // Async init: use run_app_with_task with boot task that loads data in background.
+        // The async {} wrapper ensures spawn_blocking is only called when Iced's Tokio
+        // runtime polls the future — NOT eagerly in main() before the runtime starts.
+        format!(
+            r#"println!("Running with Iced backend");
+        let __init = std::cell::RefCell::new(Some(
+            iced::Task::perform(
+                async {{ tokio::task::spawn_blocking(|| {func_name}()).await.unwrap_or_default() }},
+                |r| {main_msg}::__InitLoaded(r)
+            )
+        ));
+        return auto_lang::ui::iced::run_app_with_task(move || {{
+            let task = __init.borrow_mut().take().unwrap_or_else(iced::Task::none);
+            ({main_widget}::default(), task)
+        }});"#,
+            func_name = func_name,
+            main_msg = main_msg,
+            main_widget = main_widget,
+        )
+    } else {
+        // No async init: use standard run_app
+        format!(
+            r#"println!("Running with Iced backend");
+        return auto_lang::ui::iced::run_app::<{main_widget}>();"#,
+            main_widget = main_widget,
+        )
+    };
 
     format!(
         r#"// Auto-generated from Auto language by a2rust-ui
@@ -586,8 +654,7 @@ use auto_lang::ui::{{Component, View}};
 fn main() -> auto_lang::ui::AppResult<()> {{
     #[cfg(feature = "ui-iced")]
     {{
-        println!("Running with Iced backend");
-        return auto_lang::ui::iced::run_app::<{main_widget}>();
+        {iced_entry}
     }}
     #[cfg(feature = "ui-gpui")]
     {{
@@ -601,6 +668,7 @@ fn main() -> auto_lang::ui::AppResult<()> {{
 }}
 "#,
         cleaned = cleaned.trim(),
+        iced_entry = iced_entry,
         main_widget = main_widget,
         project_name = to_snake_case(project_name),
     )
@@ -631,6 +699,33 @@ fn extract_main_widget(components: &str) -> String {
 
     // Last resort
     "App".to_string()
+}
+
+/// Detect async init by looking for `__InitLoaded` in the generated code.
+/// If found, extract the API function name (e.g., "list_notes") that should be
+/// called in the background boot task.
+fn extract_init_api_func(components: &str) -> Option<String> {
+    // Only look for async init if __InitLoaded variant exists
+    if !components.contains("__InitLoaded") {
+        return None;
+    }
+
+    // Find the API function to call: look for `fn list_*()` or `fn get_*()` definitions.
+    // These are the GET endpoints that load data for Init.
+    for line in components.lines() {
+        let trimmed = line.trim();
+        // Match patterns like: fn list_notes() -> Vec<...> {
+        if let Some(rest) = trimmed.strip_prefix("fn ") {
+            if let Some(paren_pos) = rest.find('(') {
+                let func_name = &rest[..paren_pos];
+                let lower = func_name.to_lowercase();
+                if lower.starts_with("list_") || lower.starts_with("get_") {
+                    return Some(func_name.to_string());
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Collect all .at files in a directory (non-recursive).
@@ -718,6 +813,8 @@ default = ["ui-iced"]
 auto-lang = {{ path = "{auto_lang_path}" }}
 serde_json = "1"
 ureq = {{ version = "2", features = ["json"] }}
+tokio = {{ version = "1", features = ["rt"] }}
+iced = {{ version = "0.14.0", features = ["tokio", "advanced"] }}
 "#
     )
 }

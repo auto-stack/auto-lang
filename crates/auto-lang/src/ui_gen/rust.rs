@@ -95,6 +95,20 @@ pub struct RustGenerator {
     /// Local variables in handler bodies that hold serde_json::Value results
     /// (from API function calls like `let note = create_note(...)`)
     value_locals: std::collections::HashSet<String>,
+
+    /// Whether the widget has an .Init lifecycle handler
+    has_init: bool,
+
+    /// Info about the API function called in .Init handler (for async init generation)
+    init_api_info: Option<InitApiInfo>,
+}
+
+/// Detected Init handler pattern: `self.state_var = api_func()`
+struct InitApiInfo {
+    /// State variable being assigned (e.g., "notes")
+    state_var: String,
+    /// API function being called (e.g., "list_notes")
+    func_name: String,
 }
 
 impl RustGenerator {
@@ -113,6 +127,8 @@ impl RustGenerator {
             prop_types: std::collections::HashMap::new(),
             value_loop_vars: std::collections::HashSet::new(),
             value_locals: std::collections::HashSet::new(),
+            has_init: false,
+            init_api_info: None,
         }
     }
 
@@ -126,6 +142,8 @@ impl RustGenerator {
         self.value_loop_vars.clear();
         self.value_locals.clear();
         self.child_components.clear();
+        self.has_init = false;
+        self.init_api_info = None;
         self.needs_imports = true;
         self.indent = 0;
         self.loop_vars.clear();
@@ -379,7 +397,34 @@ impl RustGenerator {
         // Pre-scan view tree for child component references (needed for wrapper msg variants)
         self.scan_child_components(&widget.view_tree);
 
-        // Message enum (includes wrapper variants for child components)
+        // Pre-scan handlers to find local variables from function calls (likely Value type)
+        self.scan_handler_locals(widget);
+
+        // Scan lifecycle handlers (.Init, .Destroy) for local variables and has_init flag
+        for lc in &widget.lifecycle {
+            if lc.name == "Init" {
+                self.has_init = true;
+                // Detect async Init pattern: self.X = api_func()
+                self.detect_init_api_call(&lc.payload, &widget.api_imports);
+            }
+            self.scan_payload_locals(&lc.payload);
+        }
+
+        // If there's an .Init lifecycle handler, add Init variant to message enum
+        if self.has_init {
+            if !self.message_variants.iter().any(|v| v.name == "Init") {
+                self.message_variants.push(AuraMsgVariant {
+                    name: "Init".to_string(),
+                    payload: None,
+                });
+            }
+            // If Init calls an API function (async init), add __InitLoaded variant
+            // We can't use AuraMsgVariant because Vec<serde_json::Value> doesn't map
+            // to any AST Type variant. Instead, inject it directly in generate_msg_enum.
+            // (See generate_msg_enum for the direct string injection.)
+        }
+
+        // Message enum (includes wrapper variants for child components + Init lifecycle)
         if !self.message_variants.is_empty() || !self.child_components.is_empty() {
             code.push_str(&self.generate_msg_enum()?);
             code.push('\n');
@@ -395,9 +440,6 @@ impl RustGenerator {
 
         // Pre-scan view tree for input event→field mappings
         self.scan_input_fields(&widget.view_tree);
-
-        // Pre-scan handlers to find local variables from function calls (likely Value type)
-        self.scan_handler_locals(widget);
 
         // Component impl
         code.push_str(&self.generate_component_impl(widget));
@@ -435,6 +477,12 @@ impl RustGenerator {
         for child_name in &self.child_components {
             let child_msg = format!("{}Msg", child_name);
             code.push_str(&format!("    {}({}),\n", child_name, child_msg));
+        }
+
+        // If async Init detected, add __InitLoaded variant (injected as raw string
+        // because Vec<serde_json::Value> doesn't map to any AST Type variant)
+        if self.init_api_info.is_some() {
+            code.push_str(&format!("    __InitLoaded(Vec<serde_json::Value>),\n"));
         }
 
         code.push_str("}\n");
@@ -539,7 +587,17 @@ impl RustGenerator {
         } else {
             code.push_str("    pub fn new() -> Self {\n");
         }
-        code.push_str("        Self {\n");
+
+        // If the widget has an .Init lifecycle handler AND it's synchronous (not async API call),
+        // dispatch Init message at construction.
+        // Async Init (init_api_info is Some) is dispatched by the runtime boot task instead.
+        let sync_init = self.has_init && self.init_api_info.is_none();
+        if sync_init {
+            let msg_name = self.current_msg_name();
+            code.push_str("        let mut __self = Self {\n");
+        } else {
+            code.push_str("        Self {\n");
+        }
 
         // Initialize props from parameters
         for prop in &widget.props {
@@ -552,7 +610,15 @@ impl RustGenerator {
             code.push_str(&format!("            {}: {},\n", state.name, init));
         }
 
-        code.push_str("        }\n");
+        if sync_init {
+            let msg_name = self.current_msg_name();
+            code.push_str(&format!("        }};\n"));
+            code.push_str(&format!("        __self.on({}::Init);\n", msg_name));
+            code.push_str("        __self\n");
+        } else {
+            code.push_str("        }\n");
+        }
+
         code.push_str("    }\n");
         code.push_str("}\n");
 
@@ -659,6 +725,27 @@ impl RustGenerator {
                 code.push_str("            }\n");
             }
 
+            // Generate match arms from lifecycle handlers (.Init, .Destroy)
+            for lc in &widget.lifecycle {
+                let body = self.generate_handler_body(&lc.payload);
+                code.push_str(&format!("            {}::{} => {{\n", msg_name, lc.name));
+                if lc.name == "Init" && self.init_api_info.is_some() {
+                    // Async Init: body is handled by __InitLoaded message from boot task
+                    code.push_str("                // async init — data arrives via __InitLoaded\n");
+                } else {
+                    code.push_str(&format!("                {}\n", body));
+                }
+                code.push_str("            }\n");
+            }
+
+            // If async Init detected, generate __InitLoaded handler
+            if let Some(ref info) = self.init_api_info {
+                code.push_str(&format!(
+                    "            {}::__InitLoaded(__data) => {{\n                self.{} = __data\n            }}\n",
+                    msg_name, info.state_var
+                ));
+            }
+
             // Add handler forwarding for child component message wrappers.
             // Strategy: create a temp child instance, sync parent state fields that match
             // child field names, call child.on(inner), then sync back.
@@ -718,8 +805,14 @@ impl RustGenerator {
                 code.push_str("            }\n");
             }
 
-            // Wildcard arm must come AFTER all named arms (including child forwarding)
-            if self.message_variants.len() > widget.handlers.len() {
+            // Wildcard arm must come AFTER all named arms (including child forwarding).
+            // The enum has message_variants.len() + child_components.len() total variants.
+            // We generate arms for: handlers + lifecycle + child_components + __InitLoaded (if async).
+            // If there are more enum variants than named arms, we need a wildcard.
+            let async_init_arm = if self.init_api_info.is_some() { 1 } else { 0 };
+            let total_enum_variants = self.message_variants.len() + self.child_components.len() + async_init_arm;
+            let named_arms = widget.handlers.len() + widget.lifecycle.len() + self.child_components.len() + async_init_arm;
+            if total_enum_variants > named_arms {
                 code.push_str("            _ => {}\n");
             }
 
@@ -804,6 +897,74 @@ impl RustGenerator {
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+
+    /// Scan a single LogicPayload for local variables from function calls.
+    /// Extracted from scan_handler_locals for reuse with lifecycle handlers.
+    fn scan_payload_locals(&mut self, payload: &LogicPayload) {
+        match payload {
+            LogicPayload::AstStmts(stmts) => {
+                for stmt in stmts {
+                    if let crate::ast::Stmt::Store(store) = stmt {
+                        if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const) {
+                            if matches!(&store.expr, crate::ast::Expr::Call(_)) {
+                                self.value_locals.insert(store.name.as_str().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            LogicPayload::AstBlock(stmts) => {
+                for stmt in stmts {
+                    if let AuraStmt::Assign { target, value } = stmt {
+                        if !target.contains('.') {
+                            if matches!(value, AuraExpr::MethodCall { .. }) {
+                                self.value_locals.insert(target.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Detect if the Init handler body is a single `self.X = api_func()` assignment
+    /// where api_func matches one of the API imports. If so, store in init_api_info
+    /// so we can generate an async init pattern (boot task + __InitLoaded message).
+    ///
+    /// In the AST, `.notes = list_notes()` is parsed as:
+    ///   Stmt::Expr(Expr::Bina(Expr::Dot(Ident("self"), "notes"), Op::Asn, Expr::Call("list_notes")))
+    fn detect_init_api_call(&mut self, payload: &LogicPayload, api_imports: &[String]) {
+        if api_imports.is_empty() {
+            return;
+        }
+        if let LogicPayload::AstStmts(stmts) = payload {
+            if stmts.len() != 1 {
+                return;
+            }
+            if let crate::ast::Stmt::Expr(expr) = &stmts[0] {
+                // Pattern: Bina(Dot(self, field), Asn, Call(func))
+                if let crate::ast::Expr::Bina(left, op, right) = expr {
+                    use auto_val::Op;
+                    if !matches!(op, Op::Asn) {
+                        return;
+                    }
+                    // Left side: Expr::Dot(Ident("self"), Name("field"))
+                    let state_var = extract_dot_self_field(left);
+                    // Right side: Expr::Call(...)
+                    let fn_name = extract_call_name(right);
+                    if let (Some(var), Some(func)) = (state_var, fn_name) {
+                        if api_imports.iter().any(|api| api == &func) {
+                            self.init_api_info = Some(InitApiInfo {
+                                state_var: var,
+                                func_name: func,
+                            });
+                        }
+                    }
+                }
             }
         }
     }
@@ -2315,6 +2476,28 @@ impl RustGenerator {
             Type::Unknown => "serde_json::Value".to_string(),
             _ => "serde_json::Value".to_string(), // Fallback for unrecognized types
         }
+    }
+}
+
+/// Extract field name from `Expr::Dot(Expr::Ident("self"), Name("field"))`.
+/// Returns `None` if the pattern doesn't match.
+fn extract_dot_self_field(expr: &crate::ast::Expr) -> Option<String> {
+    if let crate::ast::Expr::Dot(obj, field) = expr {
+        if let crate::ast::Expr::Ident(name) = obj.as_ref() {
+            if name.as_str() == "self" {
+                return Some(field.as_str().to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Extract function name from `Expr::Call(...)`.
+fn extract_call_name(expr: &crate::ast::Expr) -> Option<String> {
+    if let crate::ast::Expr::Call(call) = expr {
+        call.get_name_text_safe().map(|s| s.to_string())
+    } else {
+        None
     }
 }
 
