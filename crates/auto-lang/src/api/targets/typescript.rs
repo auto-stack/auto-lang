@@ -261,7 +261,7 @@ export type { IApi };
 
     /// Generate a single fetch function for an endpoint
     pub fn generate_fetch_function(&self, endpoint: &ApiEndpoint) -> String {
-        let name = endpoint.frontend_name();
+        let name = &endpoint.fn_name;
         let method = endpoint.method().to_uppercase();
         let path = endpoint.path();
 

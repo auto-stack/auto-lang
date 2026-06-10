@@ -364,9 +364,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 // Regular function call
                 Expr::Ident(name) => {
                     let func_name = name.as_str();
-                    // API calls need `await` and snake_case → camelCase conversion
+                    // API calls need `await`
                     if ctx.is_api(func_name) {
-                        write!(out, "await {}", snake_to_camel(func_name)).ok();
+                        write!(out, "await {}", func_name).ok();
                     } else if func_name == "print" {
                         write!(out, "console.log").ok();
                     } else {
