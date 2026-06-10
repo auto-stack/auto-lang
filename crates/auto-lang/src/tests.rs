@@ -45,6 +45,8 @@ mod vm_functions_tests;
 mod vm_tests;
 mod infer_tests;
 mod autodown_tests;
+// Plan 289: Book listing tests gated behind test-book feature (slow: ~5-7s each)
+#[cfg(feature = "test-book")]
 mod book_listing_tests;
 // Plan 289: VM file tests gated behind test-vm-files feature
 #[cfg(feature = "test-vm-files")]

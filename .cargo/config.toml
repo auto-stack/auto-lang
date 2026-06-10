@@ -3,18 +3,20 @@
 #   cargo t          - fast daily tests (no heavy test groups)
 #   cargo tv         - VM file tests
 #   cargo tt         - transpiler tests
-#   cargo ta         - all tests (both VM + trans)
+#   cargo tb         - book listing tests (slow: ~5-7s each)
+#   cargo ta         - all tests (VM + trans + book)
 #
 # Requires: cargo install cargo-nextest
 
-# Limit parallel codegen units to reduce peak memory usage.
-# Each auto-lang target (lib + 23 examples + 9 integration tests) needs ~2GB
-# for linking. Default parallelism (CPU count) can exhaust system memory.
+# Note: Examples and integration tests are disabled by default (build-examples feature).
+# Only lib + lib test are compiled, so no memory pressure from parallel linkers.
+
 [build]
-jobs = 2
+jobs = 8
 
 [alias]
 t = "nextest run -p auto-lang --lib"
 tv = "nextest run -p auto-lang --lib --features test-vm-files"
 tt = "nextest run -p auto-lang --lib --features test-trans"
-ta = "nextest run -p auto-lang --lib --features test-vm-files,test-trans"
+tb = "nextest run -p auto-lang --lib --features test-book"
+ta = "nextest run -p auto-lang --lib --features test-vm-files,test-trans,test-book"

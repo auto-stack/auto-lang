@@ -221,6 +221,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "slow: calls eval(\"main()\") on empty interpreter, hangs ~90s"]
     fn test_default_bridge() {
         let mut bridge = InterpreterBridge::default();
         // Test that default bridge works

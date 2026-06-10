@@ -14,6 +14,7 @@ default = ["with-file-history", "nanbox", "ui-iced"]
 # Plan 289: Feature-gated test groups for faster daily development
 test-vm-files = []
 test-trans = []
+test-book = []
 # Plan 289: Examples are opt-in to avoid 23 linker processes consuming ~46GB memory
 build-examples = []
 with-file-history = []
