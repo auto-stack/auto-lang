@@ -16,6 +16,10 @@ reedline = "0.44.0"
 crossterm = "0.27"
 nu-ansi-term = "0.49"
 
+# Ratatui rendering (core + widgets without crossterm backend)
+ratatui-core = "0.1"
+ratatui-widgets = "0.3"
+
 # Data structures
 indexmap = "2.0"
 
