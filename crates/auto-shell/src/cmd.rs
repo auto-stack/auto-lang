@@ -1,21 +1,27 @@
 //! Command execution module
 //!
 //! Handles execution of built-in commands, external commands, and Auto functions.
+//!
+//! Pure logic submodules (data, value_helpers, external) live in `core::cmd`.
+//! Terminal-dependent submodules (builtin, fs, pipeline, etc.) stay here.
 
 use miette::Result;
 use std::path::Path;
 
+// Re-export core cmd submodules for backward compatibility
+pub use crate::core::cmd::data;
+pub use crate::core::cmd::external;
+pub use crate::core::cmd::value_helpers;
+
+// Frontend-only submodules (have terminal deps or complex cross-deps)
 pub mod auto;
 pub mod builtin;
 pub mod commands;
-pub mod data;
-pub mod external;
 pub mod fs;
 pub mod parser;
 pub mod pipeline;
 pub mod pipeline_data;
 pub mod registry;
-pub mod value_helpers;
 
 pub use pipeline::execute_pipeline;
 pub use pipeline_data::PipelineData;

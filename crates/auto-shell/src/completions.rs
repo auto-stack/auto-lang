@@ -1,10 +1,16 @@
 //! Auto-completion module
 //!
 //! Provides command, file, and shell variable completion.
+//!
+//! Pure completion logic (auto, command, file) lives in `core::completions`.
+//! The reedline adapter stays here in the frontend layer.
 
-pub mod auto;
-pub mod command;
-pub mod file;
+// Re-export core completion submodules for backward compatibility
+pub use crate::core::completions::auto;
+pub use crate::core::completions::command;
+pub use crate::core::completions::file;
+
+// Frontend-only: reedline integration
 pub mod reedline;
 
 use crate::bookmarks::BookmarkManager;

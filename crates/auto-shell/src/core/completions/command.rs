@@ -2,6 +2,8 @@
 //!
 //! Provides completion for built-in shell commands.
 
+use crate::completions::Completion;
+
 /// Built-in shell commands that can be completed
 const BUILTIN_COMMANDS: &[&str] = &[
     // File system
@@ -17,7 +19,7 @@ const BUILTIN_COMMANDS: &[&str] = &[
 ];
 
 /// Complete command names
-pub fn complete_command(input: &str) -> Vec<super::Completion> {
+pub fn complete_command(input: &str) -> Vec<Completion> {
     let mut completions = Vec::new();
 
     // Only complete if we're at the start of the line or after a pipe
@@ -25,7 +27,7 @@ pub fn complete_command(input: &str) -> Vec<super::Completion> {
     if trimmed.is_empty() || trimmed.ends_with('|') {
         // Complete all built-in commands
         for &cmd in BUILTIN_COMMANDS {
-            completions.push(super::Completion {
+            completions.push(Completion {
                 display: cmd.to_string(),
                 replacement: cmd.to_string(),
             });
@@ -36,7 +38,7 @@ pub fn complete_command(input: &str) -> Vec<super::Completion> {
         if !last_word.is_empty() {
             for &cmd in BUILTIN_COMMANDS {
                 if cmd.starts_with(last_word) {
-                    completions.push(super::Completion {
+                    completions.push(Completion {
                         display: cmd.to_string(),
                         replacement: cmd.to_string(),
                     });

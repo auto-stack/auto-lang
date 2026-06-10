@@ -4,8 +4,10 @@
 
 use std::path::Path;
 
+use crate::completions::Completion;
+
 /// Complete file paths
-pub fn complete_file(input: &str) -> Vec<super::Completion> {
+pub fn complete_file(input: &str) -> Vec<Completion> {
     let mut completions = Vec::new();
 
     // Find the last path segment to complete
@@ -48,7 +50,7 @@ pub fn complete_file(input: &str) -> Vec<super::Completion> {
 }
 
 /// Complete files from a directory with a partial name filter
-fn complete_from_dir(dir_path: &Path, partial: &str, completions: &mut Vec<super::Completion>) {
+fn complete_from_dir(dir_path: &Path, partial: &str, completions: &mut Vec<Completion>) {
     // Try to read the directory
     let Ok(entries) = std::fs::read_dir(dir_path) else {
         return;
@@ -76,7 +78,7 @@ fn complete_from_dir(dir_path: &Path, partial: &str, completions: &mut Vec<super
         };
         replacement.push_str(suffix);
 
-        completions.push(super::Completion {
+        completions.push(Completion {
             display: format!("{}{}", name, suffix),
             replacement,
         });

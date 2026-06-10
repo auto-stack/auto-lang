@@ -1,11 +1,17 @@
 //! Data module for shell
 //!
 //! Provides structured data types and table rendering.
+//!
+//! Pure logic types (ShellValue, AshFileEntry, etc.) live in `core::data`.
+//! Terminal-dependent rendering (Table with ANSI styles) stays here.
 
+// Table rendering uses nu-ansi-term — stays in frontend layer
 pub mod table;
-pub mod convert;
-pub mod value;
-pub mod types;
+
+// Re-export core data types for backward compatibility
+pub use crate::core::data::convert;
+pub use crate::core::data::value;
+pub use crate::core::data::types;
 
 pub use table::{Table, Column, Align, FileEntry};
 pub use value::ShellValue;

@@ -5,7 +5,8 @@ use crate::parser::pipeline::parse_pipeline;
 use auto_lang::autovm_persistent::AutovmReplSession;
 use auto_val::Value;
 
-pub mod vars;
+// Re-export vars from core
+pub use crate::core::shell::vars;
 
 use crate::bookmarks::BookmarkManager;
 use crate::cmd::{commands, CommandRegistry, PipelineData};

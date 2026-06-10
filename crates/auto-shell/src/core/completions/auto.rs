@@ -2,8 +2,10 @@
 //!
 //! Provides completion for shell variables ($name, ${name}).
 
+use crate::completions::Completion;
+
 /// Complete shell variables
-pub fn complete_auto(input: &str) -> Vec<super::Completion> {
+pub fn complete_auto(input: &str) -> Vec<Completion> {
     // This is a simplified implementation
     // A full implementation would need access to Shell state to list actual variables
     // For now, we provide completion for common environment variables
@@ -46,7 +48,7 @@ pub fn complete_auto(input: &str) -> Vec<super::Completion> {
                 format!("${}", var)
             };
 
-            completions.push(super::Completion {
+            completions.push(Completion {
                 display: var.to_string(),
                 replacement,
             });
