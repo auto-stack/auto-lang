@@ -22,6 +22,7 @@ pub mod data;
 pub mod menu;
 pub mod prompt;
 pub mod shell;
+pub mod signal;
 
 // Re-export core modules at crate root for backward compatibility
 pub use ash_core::bookmarks;

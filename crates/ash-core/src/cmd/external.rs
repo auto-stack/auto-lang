@@ -141,6 +141,7 @@ fn try_spawn_command_impl(
         cmd.stdin(Stdio::piped());
     }
 
+    restore_sigint_in_child(&mut cmd);
     let child = cmd.spawn().into_diagnostic()?;
 
     match stdin_data {
@@ -176,6 +177,7 @@ fn try_spawn_powershell_impl(
         cmd.stdin(Stdio::piped());
     }
 
+    restore_sigint_in_child(&mut cmd);
     let child = cmd.spawn().into_diagnostic()?;
 
     match stdin_data {
@@ -213,6 +215,7 @@ fn try_spawn_with_shell_impl(
         cmd.stdin(Stdio::piped());
     }
 
+    restore_sigint_in_child(&mut cmd);
     let child = cmd.spawn().into_diagnostic()?;
 
     match stdin_data {
@@ -235,13 +238,13 @@ fn try_execute_command(
     capture_output: bool,
 ) -> Result<Option<String>> {
     if capture_output {
-        let output = Command::new(cmd_name)
-            .args(args)
+        let mut cmd = Command::new(cmd_name);
+        cmd.args(args)
             .current_dir(current_dir)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .into_diagnostic()?;
+            .stderr(Stdio::piped());
+        restore_sigint_in_child(&mut cmd);
+        let output = cmd.output().into_diagnostic()?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -256,11 +259,10 @@ fn try_execute_command(
             Err(miette!("Command failed: {}", stderr.trim()))
         }
     } else {
-        let status = Command::new(cmd_name)
-            .args(args)
-            .current_dir(current_dir)
-            .status()
-            .into_diagnostic()?;
+        let mut cmd = Command::new(cmd_name);
+        cmd.args(args).current_dir(current_dir);
+        restore_sigint_in_child(&mut cmd);
+        let status = cmd.status().into_diagnostic()?;
 
         if status.success() {
             Ok(None) // Output already went to terminal
@@ -293,14 +295,14 @@ fn try_execute_with_shell(
     );
 
     if capture_output {
-        let output = Command::new(shell)
-            .arg("-c")
+        let mut cmd = Command::new(shell);
+        cmd.arg("-c")
             .arg(&shell_cmd)
             .current_dir(current_dir)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .into_diagnostic()?;
+            .stderr(Stdio::piped());
+        restore_sigint_in_child(&mut cmd);
+        let output = cmd.output().into_diagnostic()?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -315,12 +317,12 @@ fn try_execute_with_shell(
             Err(miette!("{} command failed: {}", shell, stderr.trim()))
         }
     } else {
-        let status = Command::new(shell)
-            .arg("-c")
+        let mut cmd = Command::new(shell);
+        cmd.arg("-c")
             .arg(&shell_cmd)
-            .current_dir(current_dir)
-            .status()
-            .into_diagnostic()?;
+            .current_dir(current_dir);
+        restore_sigint_in_child(&mut cmd);
+        let status = cmd.status().into_diagnostic()?;
 
         if status.success() {
             Ok(None)
@@ -354,13 +356,13 @@ fn try_execute_powershell(
     );
 
     if capture_output {
-        let output = Command::new("powershell")
-            .args(["-NoProfile", "-Command", &ps_cmd])
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-Command", &ps_cmd])
             .current_dir(current_dir)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .into_diagnostic()?;
+            .stderr(Stdio::piped());
+        restore_sigint_in_child(&mut cmd);
+        let output = cmd.output().into_diagnostic()?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -375,11 +377,11 @@ fn try_execute_powershell(
             Err(miette!("PowerShell command failed: {}", stderr.trim()))
         }
     } else {
-        let status = Command::new("powershell")
-            .args(["-NoProfile", "-Command", &ps_cmd])
-            .current_dir(current_dir)
-            .status()
-            .into_diagnostic()?;
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-Command", &ps_cmd])
+            .current_dir(current_dir);
+        restore_sigint_in_child(&mut cmd);
+        let status = cmd.status().into_diagnostic()?;
 
         if status.success() {
             Ok(None)
@@ -426,6 +428,40 @@ fn parse_command(input: &str) -> Vec<String> {
 
     parts
 }
+
+/// Unix: restore SIGINT to default in the child process.
+///
+/// The parent shell sets SIGINT to a handler that catches Ctrl+C
+/// (so ASH survives). Without this fix, the child would inherit
+/// the catch handler and also ignore Ctrl+C. We restore SIG_DFL
+/// in the child so it terminates normally on Ctrl+C.
+#[cfg(unix)]
+fn libc_restore_sigint() {
+    const SIGINT: i32 = 2;
+    const SIG_DFL: usize = 0;
+    extern "C" {
+        fn signal(sig: i32, handler: usize) -> usize;
+    }
+    unsafe {
+        signal(SIGINT, SIG_DFL);
+    }
+}
+
+/// Apply SIGINT restoration pre_exec hook to a Command on Unix.
+#[cfg(unix)]
+fn restore_sigint_in_child(cmd: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        cmd.pre_exec(|| {
+            libc_restore_sigint();
+            Ok(())
+        });
+    }
+}
+
+/// No-op on Windows (children handle Ctrl+C via console events).
+#[cfg(windows)]
+fn restore_sigint_in_child(_cmd: &mut std::process::Command) {}
 
 #[cfg(test)]
 mod tests {

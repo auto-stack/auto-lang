@@ -133,6 +133,7 @@ impl Shell {
     /// (0 for success, non-zero for failure).
     pub fn execute(&mut self, input: &str) -> Result<Option<String>> {
         self.last_exit_code = 0; // reset; execute_inner may override
+        let _guard = crate::signal::CtrlCGuard::new();
         let result = self.execute_inner(input);
         if result.is_err() && self.last_exit_code == 0 {
             self.last_exit_code = 1;

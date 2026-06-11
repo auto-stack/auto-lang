@@ -129,6 +129,13 @@ impl Command for GrepCommand {
         input: AtomPipeline,
         shell: &mut Shell,
     ) -> Result<AtomPipeline> {
+        // Handle ExternalStream with line-by-line streaming — avoids
+        // buffering the entire output before processing.
+        if matches!(input, AtomPipeline::ExternalStream(_)) {
+            return self.run_atom_streaming(args, input);
+        }
+
+        // Fall back to legacy path for other variants
         let legacy_in = crate::cmd::pipeline_convert::atom_to_pipeline_data(input);
         let legacy_out = self.run(args, legacy_in, shell)?;
         let value = match legacy_out {
@@ -136,6 +143,64 @@ impl Command for GrepCommand {
             PipelineData::Text(s) => Value::str(&s),
         };
         Ok(AtomPipeline::from_atom(Atom::new(value, AtomType::MatchList)))
+    }
+}
+
+impl GrepCommand {
+    /// Streaming grep: process ExternalStream line-by-line without
+    /// buffering the entire input first.
+    fn run_atom_streaming(
+        &self,
+        args: &crate::cmd::parser::ParsedArgs,
+        input: AtomPipeline,
+    ) -> Result<AtomPipeline> {
+        let pattern = args.positionals.get(0)
+            .map(|s| s.as_str())
+            .ok_or_else(|| miette::miette!("grep: pattern argument required"))?;
+
+        let ignore_case = args.has_flag("ignore-case");
+        let invert_match = args.has_flag("invert-match");
+        let count_only = args.has_flag("count");
+        let show_line_number = args.has_flag("line-number");
+
+        let re = if ignore_case {
+            Regex::new(&format!("(?i){}", pattern)).into_diagnostic()?
+        } else {
+            Regex::new(pattern).into_diagnostic()?
+        };
+
+        let mut results = Vec::new();
+        let mut match_count = 0;
+
+        for (line_num, line) in input.into_lines().enumerate() {
+            let is_match = re.is_match(&line);
+            let should_include = if invert_match { !is_match } else { is_match };
+            if should_include {
+                if count_only {
+                    match_count += 1;
+                } else {
+                    let mut obj = Obj::new();
+                    obj.set("file", Value::str("<stdin>"));
+                    if show_line_number {
+                        obj.set("line_number", Value::Int((line_num + 1) as i32));
+                    }
+                    obj.set("text", Value::str(line.trim()));
+                    results.push(Value::Obj(obj));
+                }
+            }
+        }
+
+        if count_only && match_count > 0 {
+            let mut obj = Obj::new();
+            obj.set("file", Value::str("<stdin>"));
+            obj.set("count", Value::Int(match_count as i32));
+            results.push(Value::Obj(obj));
+        }
+
+        Ok(AtomPipeline::from_atom(Atom::new(
+            Value::Array(Array::from(results)),
+            AtomType::MatchList,
+        )))
     }
 }
 

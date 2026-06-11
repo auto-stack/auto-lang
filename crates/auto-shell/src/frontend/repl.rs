@@ -93,6 +93,9 @@ impl Repl {
 
     /// Run the REPL loop
     pub fn run(&mut self) -> Result<()> {
+        // One-time Ctrl+C handler init (protects ASH during commands)
+        crate::signal::init();
+
         // Initial git cache: sync refresh + start filesystem watcher for cwd
         crate::prompt::context::on_directory_changed(self.shell.pwd());
 

@@ -160,9 +160,38 @@ ASH 分层（对应 nushell）：
 3. 外部命令退出码提取 — 从错误消息解析 `"exit code: N"` 获取真实退出码
 4. `Shell::execute()` 重置退出码，`execute_inner()` 可覆盖
 
-### Phase 4：信号处理与 Job Control（远期）
+### Phase 4：信号处理 — ✅ 已完成
 
-- Ctrl+C 中断外部命令
+**已实现文件**：
+- `auto-shell/src/signal.rs` — 平台级 Ctrl+C 保护（零外部依赖，raw FFI）
+- `ash-core/src/cmd/external.rs` — Unix `pre_exec` 恢复子进程 SIGINT
+- `auto-shell/src/frontend/repl.rs` — 启动时初始化 Ctrl+C handler
+
+**已实现功能**：
+1. `CtrlCGuard` RAII 守卫 — 执行命令时 ASH 忽略 Ctrl+C，命令结束后恢复
+2. Windows: `SetConsoleCtrlHandler` 自定义 handler（AtomicBool 控制行为）
+3. Unix: `signal(SIGINT, handler)` + `pre_exec` 恢复子进程 SIG_DFL
+4. 子进程正常接收 Ctrl+C 并退出，ASH 存活继续运行
+5. 不干扰 reedline 的 Ctrl+C 处理（仅在命令执行期间保护）
+
+### Phase 5：流式迭代器 (Type F) — ✅ 已完成
+
+**已实现文件**：
+- `ash-core/src/pipeline/atom_pipeline.rs` — `into_lines()` 方法
+- `auto-shell/src/cmd/commands/grep.rs` — ExternalStream 逐行流式处理
+
+**已实现功能**：
+1. `AtomPipeline::into_lines()` — 返回 `Box<dyn Iterator<Item = String>>`
+   - ExternalStream: 从 pipe 逐行读取（零缓冲）
+   - Text: 按 newline 分割
+   - Atom/Stream: 转文本后分割
+   - Empty: 空迭代器
+2. `GrepCommand::run_atom_streaming()` — ExternalStream 输入时逐行匹配
+   - 避免先全量读取到内存
+   - 支持所有 grep 选项（-i, -v, -c, -n）
+
+### Phase 6：Job Control（远期）
+
 - Ctrl+Z 挂起（Unix only）
 - `fg`/`bg` 命令恢复挂起的任务
 - 参考 nushell 的 `ForegroundChild` + `FrozenJob` 机制

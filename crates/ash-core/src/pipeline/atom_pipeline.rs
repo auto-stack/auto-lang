@@ -179,6 +179,40 @@ impl AtomPipeline {
         }
     }
 
+    // ── Streaming line iterator ──────────────────────────
+
+    /// Consume the pipeline and return an iterator over its lines.
+    ///
+    /// For `ExternalStream`, reads lines incrementally (no buffering).
+    /// For `Text`, splits the string by newlines.
+    /// For `Atom`/`Stream`, converts to text first, then splits.
+    /// For `Empty`, yields nothing.
+    pub fn into_lines(self) -> Box<dyn Iterator<Item = String>> {
+        match self {
+            AtomPipeline::ExternalStream(es) => {
+                Box::new(es.lines().filter_map(|r| r.ok()))
+            }
+            AtomPipeline::Text(s) => {
+                let lines: Vec<String> = s.lines().map(|l| l.to_string()).collect();
+                Box::new(lines.into_iter())
+            }
+            AtomPipeline::Atom(a) => {
+                let text = a.into_text();
+                let lines: Vec<String> = text.lines().map(|l| l.to_string()).collect();
+                Box::new(lines.into_iter())
+            }
+            AtomPipeline::Stream(mut s) => {
+                let items: Vec<String> = s
+                    .collect_remaining()
+                    .iter()
+                    .map(|a| a.as_text())
+                    .collect();
+                Box::new(items.into_iter())
+            }
+            AtomPipeline::Empty => Box::new(std::iter::empty()),
+        }
+    }
+
     // ── Batom binary serialization ─────────────────────
 
     /// Serialize this pipeline to Batom binary format.
