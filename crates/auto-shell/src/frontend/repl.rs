@@ -4,16 +4,22 @@ use reedline::{
     KeyCode, KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal,
 };
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use crate::menu::{AshMenu, AshMenuConfig};
 use crate::completions::CompletionSignature;
-use crate::{completions::reedline::ShellCompleter, prompt::AshPrompt, shell::Shell};
+use crate::completions::definitions;
+use crate::completions::reedline::{CompletionState, ShellCompleter};
+use ash_core::completions::CompletionProvider;
+use crate::{prompt::AshPrompt, shell::Shell};
 
 /// Read-Eval-Print Loop for AutoShell
 pub struct Repl {
     shell: Shell,
     line_editor: Reedline,
     prompt: AshPrompt,
+    /// Shared completion state — updated after each cd/pushd/etc.
+    completion_state: Arc<Mutex<CompletionState>>,
 }
 
 impl Repl {
@@ -31,7 +37,19 @@ impl Repl {
         // Create completer for Tab completion (with registry signatures)
         let completion_sigs: Vec<CompletionSignature> =
             shell.registry().params().into_iter().map(Into::into).collect();
-        let completer = Box::new(ShellCompleter::new(completion_sigs));
+
+        // Create CompletionProvider and register external command definitions
+        let mut provider = CompletionProvider::new();
+        definitions::register_all(&mut provider);
+
+        // Shared state for completion (cwd, etc.)
+        let completion_state = Arc::new(Mutex::new(CompletionState::new(shell.pwd().to_path_buf())));
+
+        let completer = Box::new(ShellCompleter::new(
+            completion_sigs,
+            provider,
+            Arc::clone(&completion_state),
+        ));
 
         // Use AshMenu (adaptive completion menu replacing ColumnarMenu)
         let completion_menu = Box::new(AshMenu::new(AshMenuConfig {
@@ -67,7 +85,7 @@ impl Repl {
             .with_partial_completions(true)
             .with_edit_mode(edit_mode);
 
-        Ok(Self { shell, line_editor, prompt })
+        Ok(Self { shell, line_editor, prompt, completion_state })
     }
 
     /// Get the path to the history file
@@ -92,6 +110,13 @@ impl Repl {
         // We'll skip history expansion for now since reedline's API is complex
         // TODO: Implement proper history expansion once we understand reedline better
         Ok(false)
+    }
+
+    /// Update the shared completion state with the current working directory.
+    fn sync_completion_state(&self) {
+        if let Ok(mut state) = self.completion_state.lock() {
+            state.current_dir = self.shell.pwd().to_path_buf();
+        }
     }
 
     /// Run the REPL loop
@@ -152,6 +177,7 @@ impl Repl {
                         crate::prompt::context::refresh_git_info_async(
                             self.shell.pwd(),
                         );
+                        self.sync_completion_state();
                         continue;
                     }
 
@@ -172,6 +198,9 @@ impl Repl {
                             eprintln!("Error: {}", e);
                         }
                     }
+
+                    // Sync completion state (cwd may have changed after cd/pushd)
+                    self.sync_completion_state();
                 }
                 Ok(Signal::CtrlD) => {
                     println!();

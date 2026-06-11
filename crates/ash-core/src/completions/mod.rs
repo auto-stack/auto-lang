@@ -7,8 +7,14 @@ pub mod auto;
 pub mod command;
 pub mod file;
 pub mod flag;
+pub mod provider;
+pub mod spec;
 pub mod types;
 
+pub use provider::{CompletionContext, CompletionProvider};
+pub use spec::{
+    ArgSpec, CompletionSource, CompletionSpec, FlagSpec, ParseMode, SubcommandSpec, WhenCondition,
+};
 pub use types::{CompletionArgument, CompletionSignature};
 
 use crate::bookmarks::BookmarkManager;

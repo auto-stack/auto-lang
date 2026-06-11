@@ -2,4 +2,4 @@
 //!
 //! The actual implementation lives in `frontend::completions_reedline`.
 
-pub use crate::frontend::completions_reedline::{ShellCompleter};
+pub use crate::frontend::completions_reedline::{CompletionState, ShellCompleter};

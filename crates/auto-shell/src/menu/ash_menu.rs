@@ -236,25 +236,44 @@ impl AshMenu {
         }
     }
 
-    /// Infer completion kind from the suggestion value
+    /// Determine completion kind from the suggestion.
+    ///
+    /// First checks the authoritative `extra[0]` tag set by the completer,
+    /// then falls back to heuristic inference from the value text.
     fn infer_kind(suggestion: &Suggestion) -> CompletionKind {
+        // 1. Try authoritative tag from extra[0]
+        if let Some(extra) = &suggestion.extra {
+            if let Some(tag) = extra.first() {
+                if let Some(kind) = Self::kind_from_tag(tag) {
+                    return kind;
+                }
+            }
+        }
+
+        // 2. Fallback: heuristic inference
         let value = &suggestion.value;
-        // Directory: ends with /
         if value.ends_with('/') {
             return CompletionKind::Directory;
         }
-        // Variable: contains $ or starts with uppercase env var pattern
-        if suggestion.description.as_ref().map_or(false, |d| d.contains("variable"))
-            || value.starts_with('$')
-        {
-            return CompletionKind::Variable;
-        }
-        // Flag: starts with -
         if value.starts_with('-') {
             return CompletionKind::Flag;
         }
-        // Default: Command
         CompletionKind::Command
+    }
+
+    /// Parse CompletionKind from the string tag set in extra[0].
+    fn kind_from_tag(tag: &str) -> Option<CompletionKind> {
+        match tag {
+            "command" => Some(CompletionKind::Command),
+            "external" => Some(CompletionKind::External),
+            "file" => Some(CompletionKind::File),
+            "directory" => Some(CompletionKind::Directory),
+            "variable" => Some(CompletionKind::Variable),
+            "flag" => Some(CompletionKind::Flag),
+            "subcommand" => Some(CompletionKind::Subcommand),
+            "ai" => Some(CompletionKind::AiSuggested),
+            _ => None,
+        }
     }
 
     /// Get the currently selected suggestion

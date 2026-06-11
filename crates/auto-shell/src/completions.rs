@@ -4,11 +4,17 @@
 
 // Re-export everything from ash-core completions
 pub use ash_core::completions::{
-    auto, command, file, flag, types,
+    auto, command, file, flag, provider, spec, types,
     Completion, CompletionKind,
     get_completions, get_completions_with_context,
+    CompletionContext, CompletionProvider,
     CompletionSignature, CompletionArgument,
+    CompletionSpec, SubcommandSpec, FlagSpec, ArgSpec,
+    WhenCondition, CompletionSource, ParseMode,
 };
 
 // Frontend-only: reedline integration
 pub mod reedline;
+
+// External command completion definitions
+pub mod definitions;
