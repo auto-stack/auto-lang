@@ -6,8 +6,13 @@
 pub mod auto;
 pub mod command;
 pub mod file;
+pub mod flag;
+pub mod types;
+
+pub use types::{CompletionArgument, CompletionSignature};
 
 use crate::bookmarks::BookmarkManager;
+use types::CompletionSignature as CompSig;
 
 /// Completion kind — determines color and icon in the menu
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,14 +107,26 @@ impl Completion {
     }
 }
 
-/// Get completions for the current input
+/// Get completions for the current input (legacy, no registry).
+///
+/// Delegates to `get_completions_with_context` with an empty signature list,
+/// which falls back to hardcoded command names.
+pub fn get_completions(input: &str) -> Vec<Completion> {
+    get_completions_with_context(input, &[])
+}
+
+/// Get completions for the current input, using registry signatures.
 ///
 /// This function intelligently determines which completion type to use
 /// based on the input context:
 /// - Command names at the start of line or after |
+/// - Flag names when typing `-` or `--` after a known command
 /// - File paths after command names
 /// - Shell variables after $
-pub fn get_completions(input: &str) -> Vec<Completion> {
+pub fn get_completions_with_context(
+    input: &str,
+    signatures: &[CompSig],
+) -> Vec<Completion> {
     // Check if input ends with whitespace (user wants file completion after command)
     let ends_with_space = input.ends_with(|c: char| c.is_whitespace());
 
@@ -117,7 +134,7 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
 
     // Empty input: complete all commands
     if trimmed.is_empty() {
-        return command::complete_command(trimmed);
+        return command::complete_command(trimmed, signatures);
     }
 
     // Check if we're after a pipe
@@ -127,7 +144,7 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
 
         // If nothing after pipe or just starting a command, complete commands
         if after_pipe.is_empty() || (!after_pipe.contains(' ') && !ends_with_space) {
-            return command::complete_command(after_pipe);
+            return command::complete_command(after_pipe, signatures);
         }
     }
 
@@ -142,7 +159,7 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
     // Check if we should complete files or commands
     let parts: Vec<&str> = trimmed.split_whitespace().collect();
 
-    // If input ends with space or has multiple words, do file completion
+    // If input ends with space or has multiple words, do file/flag completion
     if ends_with_space || parts.len() > 1 {
         // Special handling for 'b' command
         if parts[0] == "b" {
@@ -168,7 +185,11 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
                 let manager = BookmarkManager::new();
                 for (name, _) in manager.list() {
                     if name.starts_with(prefix) {
-                        comps.push(Completion::with_kind(name.clone(), name.clone(), CompletionKind::Command));
+                        comps.push(Completion::with_kind(
+                            name.clone(),
+                            name.clone(),
+                            CompletionKind::Command,
+                        ));
                     }
                 }
                 return comps;
@@ -180,7 +201,11 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
                 let mut comps = Vec::new();
                 for (name, _) in manager.list() {
                     if name.starts_with(prefix) {
-                        comps.push(Completion::with_kind(name.clone(), name.clone(), CompletionKind::Command));
+                        comps.push(Completion::with_kind(
+                            name.clone(),
+                            name.clone(),
+                            CompletionKind::Command,
+                        ));
                     }
                 }
                 return comps;
@@ -190,8 +215,9 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
         // Multiple words: check if last word starts with -
         if let Some(last) = parts.last() {
             if last.starts_with('-') {
-                // Flag completion (TODO: not implemented yet)
-                return Vec::new();
+                // Flag completion — collect already-set flags from the line
+                let already_set = collect_flags(&parts);
+                return flag::complete_flags(last, parts[0], signatures, &already_set);
             }
         }
         // Complete file paths - pass original input, not trimmed!
@@ -200,7 +226,7 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
 
     // First word: complete commands
     if parts.len() == 1 {
-        let cmd_completions = command::complete_command(trimmed);
+        let cmd_completions = command::complete_command(trimmed, signatures);
         if !cmd_completions.is_empty() {
             return cmd_completions;
         }
@@ -213,60 +239,112 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
     file::complete_file(input)
 }
 
+/// Collect flag tokens already present on the command line.
+fn collect_flags(parts: &[&str]) -> Vec<String> {
+    let mut flags = Vec::new();
+    for &part in &parts[1..] {
+        if part.starts_with("--") {
+            // Long flag: extract name after --
+            let name = part.trim_start_matches('-').split('=').next().unwrap_or("");
+            if !name.is_empty() {
+                flags.push(name.to_string());
+            }
+        } else if part.starts_with('-') && part.len() > 1 && !part[1..].chars().all(|c| c.is_ascii_digit()) {
+            // Short flag(s): -a, -al, etc. Extract each letter
+            for ch in part[1..].chars() {
+                flags.push(ch.to_string());
+            }
+        }
+    }
+    flags
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_complete_empty() {
-        let completions = get_completions("");
+        let completions = get_completions_with_context("", &[]);
         assert!(!completions.is_empty());
         assert!(completions.iter().any(|c| c.display == "ls"));
     }
 
     #[test]
     fn test_complete_command() {
-        let completions = get_completions("l");
+        let completions = get_completions_with_context("l", &[]);
         assert!(!completions.is_empty());
         assert!(completions.iter().any(|c| c.display == "ls"));
     }
 
     #[test]
     fn test_complete_file_after_command() {
-        let completions = get_completions("ls src");
+        let completions = get_completions_with_context("ls src", &[]);
         let _ = completions;
     }
 
     #[test]
     fn test_complete_file_partial() {
-        let completions = get_completions("ls s");
+        let completions = get_completions_with_context("ls s", &[]);
         assert!(!completions.is_empty());
         assert!(completions.iter().any(|c| c.display == "src/"));
     }
 
     #[test]
     fn test_complete_file_after_command_with_space() {
-        let completions = get_completions("ls ");
+        let completions = get_completions_with_context("ls ", &[]);
         let _ = completions;
     }
 
     #[test]
     fn test_complete_variable() {
-        let completions = get_completions("echo $P");
+        let completions = get_completions_with_context("echo $P", &[]);
         assert!(!completions.is_empty());
         assert!(completions.iter().any(|c| c.display == "PATH"));
     }
 
     #[test]
     fn test_complete_after_pipe() {
-        let completions = get_completions("ls | gr");
+        let completions = get_completions_with_context("ls | gr", &[]);
         assert!(!completions.is_empty());
         assert!(completions.iter().any(|c| c.display == "grep"));
     }
 
     #[test]
     fn test_complete_no_match() {
-        let completions = get_completions("nonexistent_command xyz");
+        let completions = get_completions_with_context("nonexistent_command xyz", &[]);
         let _ = completions;
+    }
+
+    #[test]
+    fn test_complete_flags_with_context() {
+        use types::{CompletionArgument, CompletionSignature};
+
+        let sigs = vec![CompletionSignature {
+            name: "ls".into(),
+            description: "List directory contents".into(),
+            arguments: vec![
+                CompletionArgument {
+                    name: "all".into(),
+                    description: "Show all files".into(),
+                    required: false,
+                    is_flag: true,
+                    short: Some('a'),
+                },
+                CompletionArgument {
+                    name: "long".into(),
+                    description: "Long listing".into(),
+                    required: false,
+                    is_flag: true,
+                    short: Some('l'),
+                },
+            ],
+        }];
+
+        // ls --a<TAB> should suggest --all
+        let completions = get_completions_with_context("ls --a", &sigs);
+        assert_eq!(completions.len(), 1);
+        assert_eq!(completions[0].replacement, "--all");
+        assert_eq!(completions[0].kind, CompletionKind::Flag);
     }
 }

@@ -6,6 +6,7 @@ use reedline::{
 use std::path::PathBuf;
 
 use crate::menu::{AshMenu, AshMenuConfig};
+use crate::completions::CompletionSignature;
 use crate::{completions::reedline::ShellCompleter, prompt::AshPrompt, shell::Shell};
 
 /// Read-Eval-Print Loop for AutoShell
@@ -27,8 +28,10 @@ impl Repl {
                 .map_err(|e| miette::miette!("Failed to create history: {}", e))?,
         );
 
-        // Create completer for Tab completion
-        let completer = Box::new(ShellCompleter::new());
+        // Create completer for Tab completion (with registry signatures)
+        let completion_sigs: Vec<CompletionSignature> =
+            shell.registry().params().into_iter().map(Into::into).collect();
+        let completer = Box::new(ShellCompleter::new(completion_sigs));
 
         // Use AshMenu (adaptive completion menu replacing ColumnarMenu)
         let completion_menu = Box::new(AshMenu::new(AshMenuConfig {

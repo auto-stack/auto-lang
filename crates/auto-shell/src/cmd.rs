@@ -40,6 +40,29 @@ pub struct Argument {
     pub short: Option<char>,  // Short flag alias (e.g., 'a' for 'all')
 }
 
+// Bridge: auto-shell Signature → ash-core CompletionSignature
+impl From<Signature> for crate::completions::CompletionSignature {
+    fn from(sig: Signature) -> Self {
+        Self {
+            name: sig.name,
+            description: sig.description,
+            arguments: sig.arguments.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<Argument> for crate::completions::CompletionArgument {
+    fn from(arg: Argument) -> Self {
+        Self {
+            name: arg.name,
+            description: arg.description,
+            required: arg.required,
+            is_flag: arg.is_flag,
+            short: arg.short,
+        }
+    }
+}
+
 /// Command signature for help generation and validation
 #[derive(Clone, Debug)]
 pub struct Signature {

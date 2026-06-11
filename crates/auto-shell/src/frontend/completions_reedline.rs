@@ -1,16 +1,20 @@
 //! Reedline Completer integration
 //!
 //! Provides integration between auto-shell's completion system and reedline's Tab completion.
+//! The completer holds a snapshot of CommandRegistry signatures so it can provide
+//! flag and command name completions.
 
-use crate::completions::Completion;
+use crate::completions::{Completion, CompletionSignature};
 use reedline::{Completer, Suggestion};
 
 /// Reedline completer for auto-shell
-pub struct ShellCompleter;
+pub struct ShellCompleter {
+    signatures: Vec<CompletionSignature>,
+}
 
 impl ShellCompleter {
-    pub fn new() -> Self {
-        Self
+    pub fn new(signatures: Vec<CompletionSignature>) -> Self {
+        Self { signatures }
     }
 
     /// Convert our Completion to reedline Suggestion
@@ -25,18 +29,19 @@ impl ShellCompleter {
             Some(description)
         };
 
-        // Pass is_prefix_match via extra field so AshMenu can distinguish
-        // prefix matches from fuzzy matches for partial completion
-        let extra = if completion.is_prefix_match {
-            None
-        } else {
-            Some(vec!["fuzzy".to_string()])
-        };
+        // Pass metadata via extra field:
+        //   extra[0] = CompletionKind tag (for AshMenu coloring)
+        //   extra[1] = "fuzzy" if non-prefix match
+        let mut extra = Vec::new();
+        extra.push(kind_tag(completion.kind));
+        if !completion.is_prefix_match {
+            extra.push("fuzzy".to_string());
+        }
 
         Suggestion {
             value,
             description,
-            extra,
+            extra: Some(extra),
             span: reedline::Span {
                 start: 0,
                 end: completion.replacement.len(),
@@ -48,11 +53,29 @@ impl ShellCompleter {
     }
 }
 
+fn kind_tag(kind: crate::completions::CompletionKind) -> String {
+    use crate::completions::CompletionKind;
+    match kind {
+        CompletionKind::Command => "command",
+        CompletionKind::External => "external",
+        CompletionKind::File => "file",
+        CompletionKind::Directory => "directory",
+        CompletionKind::Variable => "variable",
+        CompletionKind::Flag => "flag",
+        CompletionKind::Subcommand => "subcommand",
+        CompletionKind::AiSuggested => "ai",
+    }
+    .to_string()
+}
+
 impl Completer for ShellCompleter {
     /// Complete the input line at the given position
     fn complete(&mut self, line: &str, pos: usize) -> Vec<Suggestion> {
-        // Get completions from our completion system
-        let completions = crate::completions::get_completions(line);
+        // Get completions from our completion system with registry context
+        let completions = crate::completions::get_completions_with_context(
+            line,
+            &self.signatures,
+        );
 
         // Calculate the span to replace: from the last word boundary to cursor position
         let start = line[..pos].rfind(' ').map(|i| i + 1).unwrap_or(0);
@@ -71,46 +94,77 @@ impl Completer for ShellCompleter {
     }
 }
 
-impl Default for ShellCompleter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_shell_completer_empty() {
-        let mut completer = ShellCompleter::new();
-        let suggestions = completer.complete("", 0);
-        // Should return all commands
-        assert!(!suggestions.is_empty());
-        assert!(suggestions.iter().any(|s| s.value.contains("ls")));
+    fn test_signatures() -> Vec<CompletionSignature> {
+        use crate::completions::CompletionArgument;
+        vec![
+            CompletionSignature {
+                name: "ls".into(),
+                description: "List directory contents".into(),
+                arguments: vec![
+                    CompletionArgument {
+                        name: "all".into(),
+                        description: "Show all files".into(),
+                        required: false,
+                        is_flag: true,
+                        short: Some('a'),
+                    },
+                    CompletionArgument {
+                        name: "long".into(),
+                        description: "Long listing".into(),
+                        required: false,
+                        is_flag: true,
+                        short: Some('l'),
+                    },
+                ],
+            },
+            CompletionSignature {
+                name: "grep".into(),
+                description: "Search for patterns".into(),
+                arguments: vec![],
+            },
+        ]
     }
 
     #[test]
-    fn test_shell_completer_command() {
-        let mut completer = ShellCompleter::new();
+    fn test_shell_completer_commands() {
+        let sigs = test_signatures();
+        let mut completer = ShellCompleter::new(sigs);
         let suggestions = completer.complete("l", 1);
         assert!(!suggestions.is_empty());
         assert!(suggestions.iter().any(|s| s.value == "ls"));
     }
 
     #[test]
-    fn test_shell_completer_after_pipe() {
-        let mut completer = ShellCompleter::new();
-        let suggestions = completer.complete("echo test | gr", 12);
+    fn test_shell_completer_flags() {
+        let sigs = test_signatures();
+        let mut completer = ShellCompleter::new(sigs);
+        let suggestions = completer.complete("ls --", 5);
         assert!(!suggestions.is_empty());
-        assert!(suggestions.iter().any(|s| s.value == "grep"));
+        assert!(suggestions.iter().any(|s| s.value == "--all"));
+        assert!(suggestions.iter().any(|s| s.value == "--long"));
     }
 
     #[test]
-    fn test_shell_completer_variable() {
-        let mut completer = ShellCompleter::new();
-        let suggestions = completer.complete("echo $P", 7);
+    fn test_shell_completer_short_flags() {
+        let sigs = test_signatures();
+        let mut completer = ShellCompleter::new(sigs);
+        let suggestions = completer.complete("ls -", 4);
         assert!(!suggestions.is_empty());
-        assert!(suggestions.iter().any(|s| s.value.contains("PATH")));
+        // Should include both -a, -l and --all, --long
+        assert!(suggestions.iter().any(|s| s.value == "-a"));
+        assert!(suggestions.iter().any(|s| s.value == "-l"));
+    }
+
+    #[test]
+    fn test_shell_completer_kind_tag_in_extra() {
+        let sigs = test_signatures();
+        let mut completer = ShellCompleter::new(sigs);
+        let suggestions = completer.complete("ls --a", 6);
+        let flag = suggestions.iter().find(|s| s.value == "--all").unwrap();
+        assert_eq!(flag.extra.as_ref().unwrap()[0], "flag");
     }
 }
