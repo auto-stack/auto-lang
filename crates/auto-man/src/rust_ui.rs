@@ -826,8 +826,6 @@ iced = {{ version = "0.14.0", features = ["tokio", "advanced"] }}
 }
 
 /// Write `.cargo/config.toml` with shared target-dir pointing to workspace root's target/.
-/// Also symlinks the workspace root's `Cargo.lock` so the generated project uses
-/// identical dependency versions — this prevents full recompilation of shared deps.
 pub fn write_shared_cargo_config(project_dir: &Path, gen_subdir: &str) -> std::io::Result<()> {
     let cargo_dir = project_dir.join("gen").join(gen_subdir).join("rust");
     let config_dir = cargo_dir.join(".cargo");
@@ -840,66 +838,7 @@ pub fn write_shared_cargo_config(project_dir: &Path, gen_subdir: &str) -> std::i
         "[build]\ntarget-dir = \"{}\"\n",
         target_rel.replace('\\', "/")
     );
-    fs::write(config_dir.join("config.toml"), config)?;
-
-    // Symlink Cargo.lock from workspace root so dependency versions match exactly.
-    // This is the key to avoiding full recompilation of iced, auto-lang, etc.
-    symlink_cargo_lock(&cargo_dir)
-}
-
-/// Create a relative symlink from `cargo_dir/Cargo.lock` to the workspace root's
-/// `Cargo.lock`. On Windows, uses junction-compatible symlinks. Falls back to
-/// copying if symlinks are unavailable.
-fn symlink_cargo_lock(cargo_dir: &Path) -> std::io::Result<()> {
-    let lock_dest = cargo_dir.join("Cargo.lock");
-
-    // Find workspace root (has crates/ directory)
-    let mut dir = cargo_dir.to_path_buf();
-    let mut ups = 0usize;
-    for _ in 0..10 {
-        if dir.join("crates").exists() {
-            let workspace_lock = dir.join("Cargo.lock");
-            if !workspace_lock.exists() {
-                return Ok(()); // No workspace lockfile yet — cargo will generate one
-            }
-
-            // Build relative path from cargo_dir to workspace Cargo.lock
-            let mut rel = (0..ups).map(|_| "..").collect::<Vec<_>>().join("/");
-            if !rel.is_empty() {
-                rel.push('/');
-            }
-            rel.push_str("Cargo.lock");
-
-            // Remove existing lockfile (or broken symlink)
-            let _ = fs::remove_file(&lock_dest);
-
-            // Try symlink first, fall back to hard copy
-            #[cfg(windows)]
-            {
-                use std::os::windows::fs::symlink_file;
-                if symlink_file(&rel, &lock_dest).is_ok() {
-                    return Ok(());
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                use std::os::unix::fs::symlink;
-                if symlink(&rel, &lock_dest).is_ok() {
-                    return Ok(());
-                }
-            }
-
-            // Symlink failed (e.g. no permission) — hard copy as fallback
-            fs::copy(&workspace_lock, &lock_dest)?;
-            return Ok(());
-        }
-        if !dir.pop() {
-            break;
-        }
-        ups += 1;
-    }
-
-    Ok(())
+    fs::write(config_dir.join("config.toml"), config)
 }
 
 /// Find relative path from a generated rust/ dir to the workspace root's target/ directory.
