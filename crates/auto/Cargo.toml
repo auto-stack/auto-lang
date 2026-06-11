@@ -19,4 +19,5 @@ simplelog = "0.12"
 colored = { workspace = true }
 
 [features]
+default = ["ui-iced"]
 ui-iced = ["auto-lang/ui-iced"]
