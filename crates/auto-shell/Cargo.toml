@@ -40,8 +40,13 @@ uucore = "0.0.27"
 chrono = "0.4"
 regex = "1.10"
 unicode-segmentation = "1.10"
+unicode-width = "0.2"
 # Note: Using regex crate instead of grep crate for simpler API
 # ripgrep's grep crate has complex module structure that's not well documented
+
+# Prompt engine
+rayon = "1.12"
+toml = "0.8"
 
 # Error handling
 miette = "7.0"

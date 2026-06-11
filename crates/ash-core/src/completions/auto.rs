@@ -2,7 +2,7 @@
 //!
 //! Provides completion for shell variables ($name, ${name}).
 
-use crate::completions::Completion;
+use crate::completions::{Completion, CompletionKind};
 
 /// Complete shell variables
 pub fn complete_auto(input: &str) -> Vec<Completion> {
@@ -48,10 +48,7 @@ pub fn complete_auto(input: &str) -> Vec<Completion> {
                 format!("${}", var)
             };
 
-            completions.push(Completion {
-                display: var.to_string(),
-                replacement,
-            });
+            completions.push(Completion::with_kind(var, replacement, CompletionKind::Variable));
         }
     }
 

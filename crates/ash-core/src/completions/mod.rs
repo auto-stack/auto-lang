@@ -9,11 +9,85 @@ pub mod file;
 
 use crate::bookmarks::BookmarkManager;
 
+/// Completion kind — determines color and icon in the menu
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionKind {
+    /// Built-in shell command (ls, cd, grep)
+    Command,
+    /// External command (git, cargo)
+    External,
+    /// File path
+    File,
+    /// Directory path
+    Directory,
+    /// Environment variable ($PATH)
+    Variable,
+    /// Flag argument (--verbose)
+    Flag,
+    /// Subcommand (cargo build)
+    Subcommand,
+    /// AI-suggested completion (future)
+    AiSuggested,
+}
+
+impl Default for CompletionKind {
+    fn default() -> Self {
+        Self::Command
+    }
+}
+
 /// Completion suggestion
 #[derive(Debug, Clone, PartialEq)]
 pub struct Completion {
+    /// Display text shown in the menu
     pub display: String,
+    /// Text to insert as replacement
     pub replacement: String,
+    /// Optional description (shown in descriptive list mode)
+    pub description: Option<String>,
+    /// Completion kind (determines color/icon)
+    pub kind: CompletionKind,
+}
+
+impl Completion {
+    /// Create a simple completion with display and replacement
+    pub fn new(display: impl Into<String>, replacement: impl Into<String>) -> Self {
+        Self {
+            display: display.into(),
+            replacement: replacement.into(),
+            description: None,
+            kind: CompletionKind::Command,
+        }
+    }
+
+    /// Create a completion with kind
+    pub fn with_kind(
+        display: impl Into<String>,
+        replacement: impl Into<String>,
+        kind: CompletionKind,
+    ) -> Self {
+        Self {
+            display: display.into(),
+            replacement: replacement.into(),
+            description: None,
+            kind,
+        }
+    }
+
+    /// Create a completion with description
+    pub fn with_description(
+        display: impl Into<String>,
+        replacement: impl Into<String>,
+        description: impl Into<String>,
+        kind: CompletionKind,
+    ) -> Self {
+        Self {
+            display: display.into(),
+            replacement: replacement.into(),
+            description: Some(description.into()),
+            kind,
+        }
+    }
 }
 
 /// Get completions for the current input
@@ -74,10 +148,7 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
                 // Subcommands
                 for sub in ["add", "del", "list"] {
                     if sub.starts_with(prefix) {
-                        comps.push(Completion {
-                            display: sub.to_string(),
-                            replacement: sub.to_string(),
-                        });
+                        comps.push(Completion::with_kind(sub, sub, CompletionKind::Subcommand));
                     }
                 }
 
@@ -85,10 +156,7 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
                 let manager = BookmarkManager::new();
                 for (name, _) in manager.list() {
                     if name.starts_with(prefix) {
-                        comps.push(Completion {
-                            display: name.clone(),
-                            replacement: name.clone(),
-                        });
+                        comps.push(Completion::with_kind(name.clone(), name.clone(), CompletionKind::Command));
                     }
                 }
                 return comps;
@@ -100,10 +168,7 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
                 let mut comps = Vec::new();
                 for (name, _) in manager.list() {
                     if name.starts_with(prefix) {
-                        comps.push(Completion {
-                            display: name.clone(),
-                            replacement: name.clone(),
-                        });
+                        comps.push(Completion::with_kind(name.clone(), name.clone(), CompletionKind::Command));
                     }
                 }
                 return comps;

@@ -19,6 +19,8 @@ pub mod frontend;
 pub mod cmd;
 pub mod completions;
 pub mod data;
+pub mod menu;
+pub mod prompt;
 pub mod shell;
 
 // Re-export core modules at crate root for backward compatibility

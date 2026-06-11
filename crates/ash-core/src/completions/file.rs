@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use crate::completions::Completion;
+use crate::completions::{Completion, CompletionKind};
 
 /// Complete file paths
 pub fn complete_file(input: &str) -> Vec<Completion> {
@@ -69,6 +69,11 @@ fn complete_from_dir(dir_path: &Path, partial: &str, completions: &mut Vec<Compl
 
         let is_dir = entry.path().is_dir();
         let suffix = if is_dir { "/" } else { "" };
+        let kind = if is_dir {
+            CompletionKind::Directory
+        } else {
+            CompletionKind::File
+        };
 
         // Build the replacement
         let mut replacement = if dir_str == "." || dir_str.is_empty() {
@@ -78,10 +83,11 @@ fn complete_from_dir(dir_path: &Path, partial: &str, completions: &mut Vec<Compl
         };
         replacement.push_str(suffix);
 
-        completions.push(Completion {
-            display: format!("{}{}", name, suffix),
+        completions.push(Completion::with_kind(
+            format!("{}{}", name, suffix),
             replacement,
-        });
+            kind,
+        ));
     }
 }
 
@@ -95,17 +101,13 @@ mod tests {
         // The test runs from auto-shell directory, which has a src directory
         // So this should return completions
         let _ = completions;
-        // We can't assert exact results without knowing the directory structure
-        // But if src exists, we should get completions
     }
 
     #[test]
     fn test_complete_file_with_slash() {
         let completions = complete_file("./src/");
-        // Should list contents of src directory if it exists
         let src_exists = std::path::Path::new("./src").exists();
         if src_exists {
-            // May or may not have completions depending on what's in src/
             let _ = completions;
         }
     }
@@ -113,10 +115,8 @@ mod tests {
     #[test]
     fn test_complete_file_directory_with_slash() {
         let completions = complete_file("src/");
-        // Should list contents of src directory if it exists
         let src_exists = std::path::Path::new("src").exists();
         if src_exists {
-            // src directory should have files (e.g., main.rs, lib.rs)
             assert!(!completions.is_empty());
         }
     }
@@ -124,7 +124,6 @@ mod tests {
     #[test]
     fn test_complete_file_empty() {
         let completions = complete_file("");
-        // Should list current directory
         assert!(!completions.is_empty());
     }
 
@@ -132,5 +131,23 @@ mod tests {
     fn test_complete_no_match() {
         let completions = complete_file("nonexistent_xyz_123");
         assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_file_kind_classification() {
+        let completions = complete_file("src/");
+        let src_exists = std::path::Path::new("src").exists();
+        if src_exists && !completions.is_empty() {
+            // Directories should have Directory kind
+            let dirs: Vec<_> = completions.iter().filter(|c| c.display.ends_with('/')).collect();
+            if !dirs.is_empty() {
+                assert_eq!(dirs[0].kind, CompletionKind::Directory);
+            }
+            // Files should have File kind
+            let files: Vec<_> = completions.iter().filter(|c| !c.display.ends_with('/')).collect();
+            if !files.is_empty() {
+                assert_eq!(files[0].kind, CompletionKind::File);
+            }
+        }
     }
 }

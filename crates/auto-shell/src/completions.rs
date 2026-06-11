@@ -4,7 +4,7 @@
 
 // Re-export everything from ash-core completions
 pub use ash_core::completions::{
-    auto, command, file, Completion, get_completions,
+    auto, command, file, Completion, CompletionKind, get_completions,
 };
 
 // Frontend-only: reedline integration

@@ -2,7 +2,7 @@
 //!
 //! Provides completion for built-in shell commands.
 
-use crate::completions::Completion;
+use crate::completions::{Completion, CompletionKind};
 
 /// Built-in shell commands that can be completed
 const BUILTIN_COMMANDS: &[&str] = &[
@@ -27,10 +27,7 @@ pub fn complete_command(input: &str) -> Vec<Completion> {
     if trimmed.is_empty() || trimmed.ends_with('|') {
         // Complete all built-in commands
         for &cmd in BUILTIN_COMMANDS {
-            completions.push(Completion {
-                display: cmd.to_string(),
-                replacement: cmd.to_string(),
-            });
+            completions.push(Completion::with_kind(cmd, cmd, CompletionKind::Command));
         }
     } else {
         // Extract the last word and complete it
@@ -38,10 +35,7 @@ pub fn complete_command(input: &str) -> Vec<Completion> {
         if !last_word.is_empty() {
             for &cmd in BUILTIN_COMMANDS {
                 if cmd.starts_with(last_word) {
-                    completions.push(Completion {
-                        display: cmd.to_string(),
-                        replacement: cmd.to_string(),
-                    });
+                    completions.push(Completion::with_kind(cmd, cmd, CompletionKind::Command));
                 }
             }
         }
@@ -88,5 +82,12 @@ mod tests {
     fn test_complete_no_match() {
         let completions = complete_command("xyz");
         assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_command_kind() {
+        let completions = complete_command("ls");
+        let ls = completions.iter().find(|c| c.display == "ls").unwrap();
+        assert_eq!(ls.kind, CompletionKind::Command);
     }
 }
