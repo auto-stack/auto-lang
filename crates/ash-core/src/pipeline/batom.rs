@@ -272,12 +272,21 @@ impl BatomEncoder {
     }
 
     /// Encode an AtomPipeline into Batom binary format.
+    ///
+    /// **Note**: `ExternalStream` cannot be encoded directly (it holds an I/O resource).
+    /// Callers must collect it into text first (`.into_text()`) before serialization.
     pub fn encode_pipeline(&mut self, pipeline: &AtomPipeline) -> Result<Vec<u8>, BatomError> {
         match pipeline {
             AtomPipeline::Atom(atom) => self.encode_atom(atom),
             AtomPipeline::Stream(stream) => {
                 // Encode as a stream: header with Stream marker, then N atoms
                 self.encode_stream(stream)
+            }
+            AtomPipeline::ExternalStream(_) => {
+                // ExternalStream is an I/O resource — cannot serialize.
+                // Encode as empty; callers should collect first.
+                let atom = Atom::empty();
+                self.encode_atom(&atom)
             }
             AtomPipeline::Text(text) => {
                 let atom = Atom::text(text);

@@ -5,4 +5,5 @@
 
 pub mod data;
 pub mod external;
+pub mod interactive;
 pub mod value_helpers;

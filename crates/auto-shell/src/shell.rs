@@ -284,8 +284,9 @@ impl Shell {
                             auto::execute_auto_function(self, cmd_name, args, Some(input))?;
                         output.map(|s| AtomPipeline::text(s))
                     } else {
-                        let output = external::execute_external(cmd, &self.current_dir, true)?;
-                        output.map(|s| AtomPipeline::text(s))
+                        // Spawn external command with streaming output
+                        let stream = external::spawn_external_stream(cmd, &self.current_dir)?;
+                        Some(AtomPipeline::ExternalStream(stream))
                     }
                 } else {
                     // No pipeline input
@@ -295,8 +296,9 @@ impl Shell {
                         let output = auto::execute_auto_function(self, cmd_name, args, None)?;
                         output.map(|s| AtomPipeline::text(s))
                     } else {
-                        let output = external::execute_external(cmd, &self.current_dir, true)?;
-                        output.map(|s| AtomPipeline::text(s))
+                        // Spawn external command with streaming output
+                        let stream = external::spawn_external_stream(cmd, &self.current_dir)?;
+                        Some(AtomPipeline::ExternalStream(stream))
                     }
                 }
             };

@@ -7,21 +7,24 @@
 use auto_val::Value;
 use super::atom::{Atom, AtomType};
 use super::atom_stream::AtomStream;
+use super::external_stream::ExternalStream;
 
 /// Typed pipeline data flowing between shell commands.
 ///
 /// | Variant | Purpose |
 /// |---------|---------|
 /// | `Atom` | Single typed value (most common) |
-/// | `Stream` | Lazy iteration for large datasets |
+/// | `Stream` | Lazy iteration over in-memory Atoms |
+/// | `ExternalStream` | Streaming output from an external child process |
 /// | `Text` | Plain text (external commands, legacy) |
 /// | `Empty` | No output (side-effect commands) |
-#[derive(Debug, Clone)]
 pub enum AtomPipeline {
     /// Single typed value
     Atom(Atom),
-    /// Lazy stream of typed values
+    /// Lazy stream of typed values (in-memory cursor)
     Stream(AtomStream),
+    /// Streaming output from an external child process (I/O backed)
+    ExternalStream(ExternalStream),
     /// Plain text (external commands, legacy compatibility)
     Text(String),
     /// No data
@@ -81,6 +84,7 @@ impl AtomPipeline {
         match self {
             AtomPipeline::Atom(a) => a.atom_type(),
             AtomPipeline::Stream(_) => AtomType::Nothing, // streams don't have a single type
+            AtomPipeline::ExternalStream(_) => AtomType::Text, // external output is text
             AtomPipeline::Text(_) => AtomType::Text,
             AtomPipeline::Empty => AtomType::Nothing,
         }
@@ -108,6 +112,7 @@ impl AtomPipeline {
             AtomPipeline::Atom(a) => a.is_empty(),
             AtomPipeline::Text(s) => s.is_empty(),
             AtomPipeline::Stream(s) => s.total_count() == 0,
+            AtomPipeline::ExternalStream(_) => false, // stream not yet read
         }
     }
 
@@ -130,6 +135,9 @@ impl AtomPipeline {
                 let items: Vec<String> = s.collect_remaining().iter().map(|a| a.as_text()).collect();
                 items.join("\n")
             }
+            AtomPipeline::ExternalStream(es) => {
+                es.read_all().unwrap_or_default()
+            }
             AtomPipeline::Text(s) => s,
             AtomPipeline::Empty => String::new(),
         }
@@ -143,6 +151,8 @@ impl AtomPipeline {
                 let items: Vec<String> = s.items.iter().map(|a: &Atom| a.as_text()).collect();
                 items.join("\n")
             }
+            // ExternalStream cannot be read without consuming; indicate pending
+            AtomPipeline::ExternalStream(_) => "<external stream>".to_string(),
             AtomPipeline::Text(s) => s.clone(),
             AtomPipeline::Empty => String::new(),
         }
@@ -153,6 +163,9 @@ impl AtomPipeline {
         match self {
             AtomPipeline::Atom(a) => Some(a.value),
             AtomPipeline::Stream(s) => Some(s.into_atom_list().value),
+            AtomPipeline::ExternalStream(es) => {
+                Some(Value::str(&es.read_all().unwrap_or_default()))
+            }
             AtomPipeline::Text(s) => Some(Value::str(&s)),
             AtomPipeline::Empty => None,
         }

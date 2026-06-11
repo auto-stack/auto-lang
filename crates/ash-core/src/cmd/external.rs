@@ -2,6 +2,8 @@ use miette::{miette, IntoDiagnostic, Result};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+use crate::pipeline::ExternalStream;
+
 /// Execute an external command with platform-specific fallbacks.
 ///
 /// When `capture_output` is false (default), the child process inherits
@@ -52,6 +54,113 @@ pub fn execute_external(input: &str, current_dir: &Path, capture_output: bool) -
     }
 
     direct_result
+}
+
+/// Spawn an external command and return a streaming ExternalStream.
+///
+/// Unlike `execute_external`, this spawns the process with piped stdout
+/// and returns an `ExternalStream` that can be read incrementally.
+/// This is the streaming equivalent of `capture_output = true`.
+///
+/// Stderr is inherited (goes to terminal) so the user can see error
+/// messages in real time.
+pub fn spawn_external_stream(input: &str, current_dir: &Path) -> Result<ExternalStream> {
+    let parts = parse_command(input);
+
+    if parts.is_empty() {
+        return Err(miette!("empty command"));
+    }
+
+    let cmd_name = &parts[0];
+    let args = &parts[1..];
+
+    // Try direct spawn first
+    let direct_result = try_spawn_command(cmd_name, args, current_dir);
+
+    if direct_result.is_err() {
+        #[cfg(windows)]
+        {
+            if let Ok(ps_result) = try_spawn_powershell(cmd_name, args, current_dir) {
+                return Ok(ps_result);
+            }
+        }
+
+        #[cfg(unix)]
+        {
+            for shell in &["sh", "bash", "zsh"] {
+                if let Ok(shell_result) = try_spawn_with_shell(cmd_name, args, current_dir, shell) {
+                    return Ok(shell_result);
+                }
+            }
+        }
+    }
+
+    direct_result
+}
+
+/// Try to spawn a command directly with piped stdout.
+fn try_spawn_command(cmd_name: &str, args: &[String], current_dir: &Path) -> Result<ExternalStream> {
+    let child = Command::new(cmd_name)
+        .args(args)
+        .current_dir(current_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .into_diagnostic()?;
+
+    Ok(ExternalStream::new(child))
+}
+
+/// Try to spawn a command via PowerShell on Windows.
+#[cfg(windows)]
+fn try_spawn_powershell(cmd_name: &str, args: &[String], current_dir: &Path) -> Result<ExternalStream> {
+    let ps_cmd = format!(
+        "{}{}",
+        cmd_name,
+        args.iter()
+            .map(|arg| format!(" \"{arg}\""))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+
+    let child = Command::new("powershell")
+        .args(["-NoProfile", "-Command", &ps_cmd])
+        .current_dir(current_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .into_diagnostic()?;
+
+    Ok(ExternalStream::new(child))
+}
+
+/// Try to spawn a command via a Unix shell.
+#[cfg(unix)]
+fn try_spawn_with_shell(
+    cmd_name: &str,
+    args: &[String],
+    current_dir: &Path,
+    shell: &str,
+) -> Result<ExternalStream> {
+    let shell_cmd = format!(
+        "{} {}",
+        cmd_name,
+        args.iter()
+            .map(|arg| format!("\"{}\"", arg.replace('"', "\\\"")))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+
+    let child = Command::new(shell)
+        .arg("-c")
+        .arg(&shell_cmd)
+        .current_dir(current_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .into_diagnostic()?;
+
+    Ok(ExternalStream::new(child))
 }
 
 /// Try to execute a command directly using std::process::Command

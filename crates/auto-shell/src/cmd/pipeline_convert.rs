@@ -4,7 +4,7 @@
 //! migrate from `PipelineData` to `AtomPipeline` without breaking
 //! existing commands.
 
-use ash_core::pipeline::{Atom, AtomPipeline, convert::infer_atom_type};
+use ash_core::pipeline::{Atom, AtomPipeline, AtomType, convert::infer_atom_type};
 use auto_val::Value;
 use super::pipeline_data::PipelineData;
 
@@ -39,6 +39,10 @@ pub fn atom_to_pipeline_data(atom: AtomPipeline) -> PipelineData {
             // Collect stream into a list Value
             let values: Vec<Value> = s.items.iter().map(|a| a.value.clone()).collect();
             PipelineData::Value(Value::Array(auto_val::Array::from(values)))
+        }
+        AtomPipeline::ExternalStream(es) => {
+            // Read external stream output into text
+            PipelineData::Text(es.read_all().unwrap_or_default())
         }
         AtomPipeline::Text(s) => PipelineData::Text(s),
         AtomPipeline::Empty => PipelineData::empty(),

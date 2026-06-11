@@ -130,6 +130,25 @@ impl Repl {
                         break;
                     }
 
+                    // Handle interactive commands (vim, less, ssh, etc.)
+                    // These need full terminal control — just execute directly
+                    // with inherited stdio, bypassing the shell's pipeline system.
+                    if ash_core::cmd::interactive::is_interactive_command(&line) {
+                        let result = ash_core::cmd::external::execute_external(
+                            &line,
+                            &self.shell.pwd(),
+                            false, // inherit stdio, not capture
+                        );
+                        if let Err(e) = result {
+                            eprintln!("Error: {}", e);
+                        }
+                        // Refresh git info after interactive command
+                        crate::prompt::context::refresh_git_info_async(
+                            self.shell.pwd(),
+                        );
+                        continue;
+                    }
+
                     // Evaluate the line
                     match self.shell.execute(&line) {
                         Ok(output) => {

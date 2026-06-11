@@ -80,7 +80,9 @@ impl Command for TeeCommand {
         input: AtomPipeline,
         shell: &mut Shell,
     ) -> Result<AtomPipeline> {
-        let legacy_in = crate::cmd::pipeline_convert::atom_to_pipeline_data(input.clone());
+        // Get text for writing to file without consuming the pipeline
+        let text = input.as_text();
+        let legacy_in = crate::cmd::pipeline_data::PipelineData::from_text(text);
         let _legacy_out = self.run(args, legacy_in, shell)?;
         // Return the original atom pipeline (pass-through)
         Ok(input)
