@@ -195,6 +195,9 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
     "postcss": "^8.4.0",
     "tailwindcss-animate": "^1.0.7",
     "@types/prismjs": "^1.26.0"
+  }},
+  "pnpm": {{
+    "onlyBuiltDependencies": ["esbuild", "vue-demi"]
   }}
 }}
 "#, name, router_dep)
@@ -1135,7 +1138,7 @@ export default router
         if pkg_path.exists() {
             let existing_pkg = fs::read_to_string(&pkg_path)
                 .map_err(|e| format!("Failed to read package.json: {}", e))?;
-            if !existing_pkg.contains("@types/prismjs") {
+            if !existing_pkg.contains("@types/prismjs") || !existing_pkg.contains("onlyBuiltDependencies") {
                 let new_pkg = generate_package_json(&self.name, self.has_routes);
                 fs::write(&pkg_path, &new_pkg)
                     .map_err(|e| format!("Failed to write package.json: {}", e))?;
