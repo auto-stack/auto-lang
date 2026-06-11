@@ -65,6 +65,28 @@ pub fn execute_external(input: &str, current_dir: &Path, capture_output: bool) -
 /// Stderr is inherited (goes to terminal) so the user can see error
 /// messages in real time.
 pub fn spawn_external_stream(input: &str, current_dir: &Path) -> Result<ExternalStream> {
+    spawn_external_stream_impl(input, current_dir, None)
+}
+
+/// Spawn an external command with stdin data, returning a streaming ExternalStream.
+///
+/// Like `spawn_external_stream`, but pipes the given `stdin_data` to the
+/// child process's stdin before returning. The write happens in a background
+/// thread so the main thread can immediately start reading stdout.
+pub fn spawn_external_stream_with_input(
+    input: &str,
+    current_dir: &Path,
+    stdin_data: &str,
+) -> Result<ExternalStream> {
+    spawn_external_stream_impl(input, current_dir, Some(stdin_data))
+}
+
+/// Internal: shared implementation for both spawn variants.
+fn spawn_external_stream_impl(
+    input: &str,
+    current_dir: &Path,
+    stdin_data: Option<&str>,
+) -> Result<ExternalStream> {
     let parts = parse_command(input);
 
     if parts.is_empty() {
@@ -75,12 +97,14 @@ pub fn spawn_external_stream(input: &str, current_dir: &Path) -> Result<External
     let args = &parts[1..];
 
     // Try direct spawn first
-    let direct_result = try_spawn_command(cmd_name, args, current_dir);
+    let direct_result = try_spawn_command_impl(cmd_name, args, current_dir, stdin_data);
 
     if direct_result.is_err() {
         #[cfg(windows)]
         {
-            if let Ok(ps_result) = try_spawn_powershell(cmd_name, args, current_dir) {
+            if let Ok(ps_result) =
+                try_spawn_powershell_impl(cmd_name, args, current_dir, stdin_data)
+            {
                 return Ok(ps_result);
             }
         }
@@ -88,7 +112,9 @@ pub fn spawn_external_stream(input: &str, current_dir: &Path) -> Result<External
         #[cfg(unix)]
         {
             for shell in &["sh", "bash", "zsh"] {
-                if let Ok(shell_result) = try_spawn_with_shell(cmd_name, args, current_dir, shell) {
+                if let Ok(shell_result) =
+                    try_spawn_with_shell_impl(cmd_name, args, current_dir, shell, stdin_data)
+                {
                     return Ok(shell_result);
                 }
             }
@@ -98,22 +124,39 @@ pub fn spawn_external_stream(input: &str, current_dir: &Path) -> Result<External
     direct_result
 }
 
-/// Try to spawn a command directly with piped stdout.
-fn try_spawn_command(cmd_name: &str, args: &[String], current_dir: &Path) -> Result<ExternalStream> {
-    let child = Command::new(cmd_name)
-        .args(args)
+/// Try to spawn a command directly with piped stdout (and optional stdin).
+fn try_spawn_command_impl(
+    cmd_name: &str,
+    args: &[String],
+    current_dir: &Path,
+    stdin_data: Option<&str>,
+) -> Result<ExternalStream> {
+    let mut cmd = Command::new(cmd_name);
+    cmd.args(args)
         .current_dir(current_dir)
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .into_diagnostic()?;
+        .stderr(Stdio::inherit());
 
-    Ok(ExternalStream::new(child))
+    if stdin_data.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
+
+    let child = cmd.spawn().into_diagnostic()?;
+
+    match stdin_data {
+        Some(data) => Ok(ExternalStream::new_with_stdin(child, data.to_string())),
+        None => Ok(ExternalStream::new(child)),
+    }
 }
 
-/// Try to spawn a command via PowerShell on Windows.
+/// Try to spawn a command via PowerShell on Windows (with optional stdin).
 #[cfg(windows)]
-fn try_spawn_powershell(cmd_name: &str, args: &[String], current_dir: &Path) -> Result<ExternalStream> {
+fn try_spawn_powershell_impl(
+    cmd_name: &str,
+    args: &[String],
+    current_dir: &Path,
+    stdin_data: Option<&str>,
+) -> Result<ExternalStream> {
     let ps_cmd = format!(
         "{}{}",
         cmd_name,
@@ -123,24 +166,32 @@ fn try_spawn_powershell(cmd_name: &str, args: &[String], current_dir: &Path) -> 
             .join(" ")
     );
 
-    let child = Command::new("powershell")
-        .args(["-NoProfile", "-Command", &ps_cmd])
+    let mut cmd = Command::new("powershell");
+    cmd.args(["-NoProfile", "-Command", &ps_cmd])
         .current_dir(current_dir)
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .into_diagnostic()?;
+        .stderr(Stdio::inherit());
 
-    Ok(ExternalStream::new(child))
+    if stdin_data.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
+
+    let child = cmd.spawn().into_diagnostic()?;
+
+    match stdin_data {
+        Some(data) => Ok(ExternalStream::new_with_stdin(child, data.to_string())),
+        None => Ok(ExternalStream::new(child)),
+    }
 }
 
-/// Try to spawn a command via a Unix shell.
+/// Try to spawn a command via a Unix shell (with optional stdin).
 #[cfg(unix)]
-fn try_spawn_with_shell(
+fn try_spawn_with_shell_impl(
     cmd_name: &str,
     args: &[String],
     current_dir: &Path,
     shell: &str,
+    stdin_data: Option<&str>,
 ) -> Result<ExternalStream> {
     let shell_cmd = format!(
         "{} {}",
@@ -151,16 +202,23 @@ fn try_spawn_with_shell(
             .join(" ")
     );
 
-    let child = Command::new(shell)
-        .arg("-c")
+    let mut cmd = Command::new(shell);
+    cmd.arg("-c")
         .arg(&shell_cmd)
         .current_dir(current_dir)
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .into_diagnostic()?;
+        .stderr(Stdio::inherit());
 
-    Ok(ExternalStream::new(child))
+    if stdin_data.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
+
+    let child = cmd.spawn().into_diagnostic()?;
+
+    match stdin_data {
+        Some(data) => Ok(ExternalStream::new_with_stdin(child, data.to_string())),
+        None => Ok(ExternalStream::new(child)),
+    }
 }
 
 /// Try to execute a command directly using std::process::Command

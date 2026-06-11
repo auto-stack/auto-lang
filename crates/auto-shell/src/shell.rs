@@ -284,8 +284,12 @@ impl Shell {
                             auto::execute_auto_function(self, cmd_name, args, Some(input))?;
                         output.map(|s| AtomPipeline::text(s))
                     } else {
-                        // Spawn external command with streaming output
-                        let stream = external::spawn_external_stream(cmd, &self.current_dir)?;
+                        // Spawn external command, piping upstream output to stdin
+                        let stream = external::spawn_external_stream_with_input(
+                            cmd,
+                            &self.current_dir,
+                            input,
+                        )?;
                         Some(AtomPipeline::ExternalStream(stream))
                     }
                 } else {

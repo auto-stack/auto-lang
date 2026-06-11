@@ -17,9 +17,9 @@
 | A. 内置结构化 | `ls`, `ps`, `grep` | N/A | AtomPipeline | 表格/结构化渲染 | ✅ 已实现 |
 | B. 外部快速 | `git status`, `echo hi` | inherit | inherit | 直接到终端 | ✅ 已修复 |
 | C. 外部长任务 | `cargo build`, `npm install` | inherit | inherit | 实时流到终端 | ✅ 已修复 |
-| D. 管道中的外部 | `cargo build \| grep error` | pipe | pipe | 捕获→下游 | ⚠️ 临时方案 |
-| E. 交互式 | `vim`, `less`, `top` | inherit | inherit | 完全接管终端 | ❌ 未处理 |
-| F. 流式+结构化 | `cat data.json \| from json` | pipe | pipe→Atom | 边读边解析 | ❌ 未处理 |
+| D. 管道中的外部 | `cargo build \| grep error` | pipe | pipe | 捕获→下游 | ✅ 已实现 |
+| E. 交互式 | `vim`, `less`, `top` | inherit | inherit | 完全接管终端 | ✅ 已实现 |
+| F. 流式+结构化 | `cat data.json \| from json` | pipe | pipe→Atom | 边读边解析 | ❌ 远期目标 |
 
 ### 各类型的处理策略
 
@@ -35,47 +35,34 @@
 - `Ok(None)` 表示输出已到终端，REPL 不再 println
 - **无需改动**
 
-#### 类型 D：管道中的外部命令
-- 需要从 `.output()`（全量缓冲）升级为 **流式处理**
-- 参考 nushell 的 `ByteStream::child()` 模式
+#### 类型 D：管道中的外部命令（已实现）
+- `ExternalStream` 封装 `std::process::Child`，后台线程等待 exit status
+- `AtomPipeline::ExternalStream` 变体持有 `ExternalStream`，支持 `lines()` 逐行迭代和 `read_all()` 全量读取
+- 上游管道输出通过 `ExternalStream::new_with_stdin()` 管道到子进程 stdin
+- `spawn_external_stream()` / `spawn_external_stream_with_input()` 提供平台级 fallback（Windows PowerShell / Unix sh）
 
-**目标架构**（参考 nushell）：
+**实际架构**：
 ```
-External Command
-    ↓ (Stdio::piped)
-ChildProcess (封装 spawn 的子进程)
+External Command (spawned with Stdio::piped)
     ↓ (stdout pipe reader)
-ByteStream (异步字节流，支持逐行读取)
+ExternalStream (BufReader<ChildStdout> + background exit-status thread)
     ↓
-AtomPipeline::stream() (流式 Atom 管道)
+AtomPipeline::ExternalStream (流式管道变体)
     ↓
-下游命令 (逐行消费，而非全量等待)
+下游命令 (可逐行 lines() 或全量 read_all())
 ```
 
-**核心改动**：
-1. 新增 `ChildProcess` 结构体 —— 封装 `std::process::Child`，后台线程等待 exit status
-2. 新增 `ByteStream` 类型 —— 包装 `BufReader<ChildStdout>`，实现 `Read` + `Iterator<Item=String>`
-3. `AtomPipeline` 新增 `Stream` 变体 —— 持有 `ByteStream`，支持逐行消费
-4. 下游命令从 `.into_text()` 全量读取改为 `.lines()` 逐行处理
+**已实现改动**：
+1. `ExternalStream` 结构体 — 封装 `BufReader<ChildStdout>`，后台线程收集 exit status
+2. `ExternalStream::new_with_stdin()` — 支持管道上游输出通过 stdin 传入子进程
+3. `AtomPipeline::ExternalStream` 变体 — 持有 `ExternalStream`，支持逐行消费
+4. `spawn_external_stream_with_input()` — 带 stdin 管道的 spawn，含 Windows/Unix fallback
 
-#### 类型 E：交互式命令
-- 需要将终端从 reedline 的 raw mode 切换回 normal mode
-- 子进程完全接管 stdin/stdout/stderr
-- 进程结束后恢复 raw mode，reedline 重新接管
-
-**Unix 方案**（参考 nushell `ForegroundChild`）：
-1. 为交互式进程创建独立进程组（`setpgid`）
-2. 将终端前台控制权交给子进程（`tcsetpgrp`）
-3. 子进程结束后收回控制权
-4. 支持 Ctrl+Z 挂起 → `FrozenJob` → `fg` 恢复
-
-**Windows 方案**：
-- Windows 无进程组概念，`Command::new().status()` 本身就能正确处理
-- 只需处理 reedline 的 raw mode 切换
-
-**检测交互式命令的启发式**：
-- 已知的交互式命令白名单：`vim`, `vi`, `nano`, `less`, `more`, `top`, `htop`, `man`, `ssh`, `telnet`
-- 或者：检测 stdin 是否为终端 + 命令不在管道中
+#### 类型 E：交互式命令（已实现）
+- `interactive.rs` 提供 `is_interactive_command()` 检测
+- 白名单涵盖：编辑器 (vim/nano/emacs/helix)、分页器 (less/more)、系统监控 (top/htop/btop)、远程 (ssh/telnet/mosh)、终端复用器 (tmux/screen)、调试器 (gdb/lldb)、REPL (python/node)、数据库 (psql/mysql/sqlite3)
+- REPL 在命令执行前检测交互式命令，直接调用 `execute_external()` with inherit stdio
+- Windows 上 `.status()` 自动处理 console mode；Unix 上 reedline raw mode 不阻塞子进程
 
 #### 类型 F：流式+结构化（远期目标）
 - `ByteStream` → 边读边解析为 Atom
@@ -129,83 +116,31 @@ ASH 分层（对应 nushell）：
 
 ## 实施计划
 
-### Phase 1：流式外部命令（类型 D 完善）
+### Phase 1：流式外部命令（类型 D）— ✅ 已完成
 
-**文件改动**：
-- `ash-core/src/cmd/external.rs` — 新增 `ChildProcess` + `ByteStream`
-- `ash-core/src/pipeline/mod.rs` — `AtomPipeline` 新增 `Stream` 变体
-- `auto-shell/src/shell.rs` — 管道执行使用新的流式 API
+**已实现文件**：
+- `ash-core/src/pipeline/external_stream.rs` — `ExternalStream` 结构体（等同于 `ByteStream` + `ChildProcess`）
+- `ash-core/src/cmd/external.rs` — `spawn_external_stream()` + `spawn_external_stream_with_input()`
+- `ash-core/src/pipeline/atom_pipeline.rs` — `AtomPipeline::ExternalStream` 变体
+- `auto-shell/src/shell.rs` — 管道执行使用流式 API，上游输出管道到外部命令 stdin
 
-**核心实现**：
+**已实现功能**：
+1. `ExternalStream` — 封装 `BufReader<ChildStdout>` + 后台 exit status 线程
+2. `ExternalStream::new_with_stdin()` — stdin 管道支持（后台线程写入数据）
+3. `lines()` / `read_all()` — 逐行迭代和全量读取
+4. `spawn_external_stream_with_input()` — 带 stdin 的 spawn，含 Windows/Unix fallback
+5. 管道执行中，上游输出自动管道到外部命令 stdin
 
-```rust
-// ash-core/src/cmd/byte_stream.rs（新文件）
-pub struct ChildProcess {
-    child: std::process::Child,
-    exit_status: Arc<Mutex<Option<ExitStatus>>>,
-}
+### Phase 2：交互式命令支持（类型 E）— ✅ 已完成
 
-pub struct ByteStream {
-    reader: BufReader<ChildStdout>,
-    source: Arc<ChildProcess>,
-}
+**已实现文件**：
+- `ash-core/src/cmd/interactive.rs` — 交互式命令白名单检测
+- `auto-shell/src/frontend/repl.rs` — REPL 中交互式命令执行
 
-impl ByteStream {
-    pub fn lines(self) -> impl Iterator<Item = Result<String>> { ... }
-    pub fn read_all(self) -> Result<String> { ... }
-}
-
-// AtomPipeline 新增变体
-pub enum AtomPipeline {
-    Atoms(Vec<Atom>),
-    Text(String),
-    Stream(ByteStream),  // 新增
-    Empty,
-}
-```
-
-**改动要点**：
-- `AtomPipeline::into_text()` 对 Stream 变体调用 `read_all()`
-- `AtomPipeline::lines()` 新方法，对 Stream 返回逐行迭代器
-- 下游命令可选择全量收集或逐行处理
-
-### Phase 2：交互式命令支持（类型 E）
-
-**文件改动**：
-- `ash-core/src/cmd/external.rs` — 新增 `execute_interactive()`
-- `auto-shell/src/frontend/repl.rs` — raw mode 切换逻辑
-- `ash-core/src/cmd/interactive.rs`（新文件）— 交互式命令检测和进程管理
-
-**核心实现**：
-
-```rust
-// ash-core/src/cmd/interactive.rs
-const INTERACTIVE_COMMANDS: &[&str] = &[
-    "vim", "vi", "nano", "emacs",
-    "less", "more", "bat",
-    "top", "htop", "btop",
-    "man", "info",
-    "ssh", "telnet", "mosh",
-    "screen", "tmux",
-];
-
-pub fn is_interactive_command(cmd: &str) -> bool {
-    let name = cmd.split_whitespace().next().unwrap_or("");
-    let name = Path::new(name).file_name().unwrap_or_default().to_str().unwrap_or("");
-    INTERACTIVE_COMMANDS.contains(&name)
-}
-```
-
-**REPL 集成**：
-```rust
-// repl.rs 中执行命令前
-if is_interactive_command(&line) {
-    // 1. 暂停 reedline（释放 raw mode）
-    // 2. 执行命令（inherit stdio）
-    // 3. 等待完成
-    // 4. 恢复 reedline（重新进入 raw mode）
-}
-```
+**已实现功能**：
+1. `is_interactive_command()` — 白名单 + 路径解析 + Windows .exe 剥离
+2. REPL 在执行前检测交互式命令，绕过管道系统直接 inherit stdio 执行
+3. 覆盖编辑器、分页器、监控、远程、复用器、调试器、REPL、数据库客户端
 
 ### Phase 3：信号处理与 Job Control（远期）
 

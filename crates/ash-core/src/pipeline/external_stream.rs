@@ -21,7 +21,29 @@ impl ExternalStream {
     ///
     /// The child must have been spawned with `stdout(Stdio::piped())`.
     /// A background thread is spawned to collect the exit status.
-    pub fn new(mut child: std::process::Child) -> Self {
+    pub fn new(child: std::process::Child) -> Self {
+        Self::from_piped_stdout(child)
+    }
+
+    /// Create an ExternalStream that also pipes data to the child's stdin.
+    ///
+    /// The child must have been spawned with both `stdin(Stdio::piped())`
+    /// and `stdout(Stdio::piped())`. The stdin data is written in a
+    /// background thread so the main thread can immediately start reading
+    /// stdout without blocking.
+    pub fn new_with_stdin(mut child: std::process::Child, stdin_data: String) -> Self {
+        if let Some(mut stdin) = child.stdin.take() {
+            std::thread::spawn(move || {
+                use std::io::Write;
+                let _ = stdin.write_all(stdin_data.as_bytes());
+                // stdin is dropped here, closing the pipe → child sees EOF
+            });
+        }
+        Self::from_piped_stdout(child)
+    }
+
+    /// Internal: take stdout from child and spawn exit-status thread.
+    fn from_piped_stdout(mut child: std::process::Child) -> Self {
         let exit_status: Arc<Mutex<Option<ExitStatus>>> = Arc::new(Mutex::new(None));
         let status_handle = exit_status.clone();
 
@@ -118,6 +140,22 @@ mod tests {
             .collect();
 
         assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn test_external_stream_with_stdin() {
+        // `sort` reads stdin and writes sorted lines to stdout
+        let child = Command::new("sort")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("sort should spawn");
+
+        let stream = ExternalStream::new_with_stdin(child, "cherry\napple\nbanana\n".to_string());
+        let output = stream.read_all().expect("should read all");
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines, vec!["apple", "banana", "cherry"]);
     }
 
     #[test]
