@@ -631,3 +631,64 @@ fn completion_item(
         tags: None,
     }
 }
+
+/// Workspace-aware completion: includes symbols from all resolved modules
+pub fn complete_workspace(
+    content: &str,
+    position: Position,
+    uri: &str,
+    trigger_character: Option<char>,
+    ws_state: &crate::workspace::WorkspaceState,
+) -> Vec<CompletionItem> {
+    // Start with single-file completions
+    let mut items = complete(content, position, uri, trigger_character);
+
+    // Add workspace-level symbols that aren't already in the list
+    let existing_names: std::collections::HashSet<String> = items.iter().map(|i| i.label.clone()).collect();
+
+    // Add functions from workspace TypeStore
+    if let Ok(store) = ws_state.type_store.read() {
+        for name in store.list_functions() {
+            let name_str = name.as_str().to_string();
+            if !existing_names.contains(&name_str) {
+                if let Some(fn_decl) = store.lookup_fn_decl_str(&name_str) {
+                    let sig = format_function_signature_for_completion(fn_decl);
+                    items.push(completion_item(
+                        &name_str,
+                        &format!("Imported: {}", sig),
+                        CompletionItemKind::FUNCTION,
+                        &format!("{}(", name_str),
+                    ));
+                }
+            }
+        }
+
+        // Add types from workspace TypeStore
+        for name in store.list_types() {
+            let name_str = name.to_string();
+            if !existing_names.contains(&name_str) {
+                items.push(completion_item(
+                    &name_str,
+                    &format!("Imported type: {}", name_str),
+                    CompletionItemKind::STRUCT,
+                    &name_str,
+                ));
+            }
+        }
+
+        // Add specs from workspace TypeStore
+        for name in store.list_specs() {
+            let name_str = name.to_string();
+            if !existing_names.contains(&name_str) {
+                items.push(completion_item(
+                    &name_str,
+                    &format!("Imported spec: {}", name_str),
+                    CompletionItemKind::INTERFACE,
+                    &name_str,
+                ));
+            }
+        }
+    }
+
+    items
+}

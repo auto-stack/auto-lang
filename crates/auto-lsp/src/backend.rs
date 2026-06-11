@@ -303,8 +303,16 @@ impl LanguageServer for Backend {
                 ctx.trigger_character.as_ref().and_then(|s| s.chars().next())
             });
 
-            let items = completion::complete(&content, position, &uri, trigger_char);
+            // Try workspace-aware completion first (includes cross-file symbols)
+            if let Some(ws_state) = self.build_workspace_state(&uri, &content).await {
+                let items = completion::complete_workspace(
+                    &content, position, &uri, trigger_char, &ws_state,
+                );
+                return Ok(Some(CompletionResponse::Array(items)));
+            }
 
+            // Fall back to single-file completion
+            let items = completion::complete(&content, position, &uri, trigger_char);
             Ok(Some(CompletionResponse::Array(items)))
         } else {
             // No content available, return empty completion
@@ -327,7 +335,14 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        // Provide hover information
+        // Try workspace-aware hover first (includes imported symbols)
+        if let Some(ws_state) = self.build_workspace_state(&uri, &content).await {
+            if let Some(result) = hover_info::hover_workspace(&content, position, &uri, &ws_state) {
+                return Ok(Some(result));
+            }
+        }
+
+        // Fall back to single-file hover
         Ok(hover_info::hover(&content, position, &uri))
     }
 

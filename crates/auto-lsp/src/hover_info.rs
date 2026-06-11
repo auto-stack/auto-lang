@@ -1,5 +1,86 @@
 use tower_lsp_server::ls_types::*;
 
+/// Workspace-aware hover: tries workspace TypeStore before single-file lookup
+pub fn hover_workspace(
+    content: &str,
+    position: Position,
+    uri: &str,
+    ws_state: &crate::workspace::WorkspaceState,
+) -> Option<Hover> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        hover_workspace_impl(content, position, uri, ws_state)
+    })).unwrap_or_else(|_| None)
+}
+
+fn hover_workspace_impl(
+    content: &str,
+    position: Position,
+    _uri: &str,
+    ws_state: &crate::workspace::WorkspaceState,
+) -> Option<Hover> {
+    let lines: Vec<&str> = content.lines().collect();
+    let line = lines.get(position.line as usize)?;
+    let word = get_word_at_position(line, position.character as usize)?;
+
+    // Try workspace TypeStore first (includes imported symbols)
+    if let Ok(store) = ws_state.type_store.read() {
+        if let Some(docs) = get_typestore_docs_direct(&store, &word) {
+            return Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: docs,
+                }),
+                range: None,
+            });
+        }
+    }
+
+    // Fall back to single-file hover
+    hover(content, position, _uri)
+}
+
+/// Get documentation from TypeStore directly (for workspace-level lookups)
+fn get_typestore_docs_direct(
+    store: &auto_lang::types::TypeStore,
+    name: &str,
+) -> Option<String> {
+    if let Some(fn_decl) = store.lookup_fn_decl_str(name) {
+        let sig = format_function_signature(fn_decl);
+        return Some(format!("**Function**\n\n```auto\n{}\n```", sig));
+    }
+
+    if let Some(type_decl) = store.lookup_type_decl_str(name) {
+        let mut docs = format!("**Type** `{}`\n\n", type_decl.name);
+        if !type_decl.members.is_empty() {
+            docs.push_str("**Members:**\n\n");
+            for member in &type_decl.members {
+                docs.push_str(&format!("- `{}`: `{}`\n", member.name, member.ty));
+            }
+        }
+        if !type_decl.methods.is_empty() {
+            docs.push_str("\n**Methods:**\n\n");
+            for method in &type_decl.methods {
+                docs.push_str(&format!("- `{}`\n", format_function_signature(method)));
+            }
+        }
+        return Some(docs);
+    }
+
+    if let Some(spec_decl) = store.lookup_spec_decl_str(name) {
+        let mut docs = format!("**Spec** `{}`\n\n", spec_decl.name);
+        if !spec_decl.methods.is_empty() {
+            docs.push_str("**Methods:**\n\n");
+            for method in &spec_decl.methods {
+                let params: Vec<String> = method.params.iter().map(|p| format!("{} {}", p.name, p.ty)).collect();
+                docs.push_str(&format!("- `fn {}({}) {}`\n", method.name, params.join(", "), method.ret));
+            }
+        }
+        return Some(docs);
+    }
+
+    None
+}
+
 /// Provide hover information at a given position
 pub fn hover(content: &str, position: Position, uri: &str) -> Option<Hover> {
     // Catch panics to prevent LSP from crashing
