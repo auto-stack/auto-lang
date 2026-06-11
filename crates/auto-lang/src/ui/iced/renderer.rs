@@ -2170,7 +2170,10 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 ui_changed = true;
                 return iced::Task::none();
             }
-            // Window resize: track current window size for panel width clamping
+            // Window resize: track current window size for panel width clamping.
+            // Only trigger view rebuild when devtools is visible (panel width clamping matters).
+            // For normal apps without devtools, Iced handles layout recalculation internally
+            // and we don't need to rebuild the entire AbstractView + Element tree.
             "__window_resized" => {
                 if let Some(ref val) = msg.input_value {
                     if let Some((w, h)) = val.split_once('x') {
@@ -2183,7 +2186,10 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         if pw > max_pw {
                             *state.devtools_panel_width.borrow_mut() = max_pw;
                         }
-                        ui_changed = true;
+                        // Only mark dirty when devtools panel is visible
+                        if state.debug_mode {
+                            ui_changed = true;
+                        }
                     }
                 }
                 return iced::Task::none();
