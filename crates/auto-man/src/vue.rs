@@ -1223,6 +1223,11 @@ export default router
                 fs::write(&pkg_path, &new_pkg)
                     .map_err(|e| format!("Failed to write package.json: {}", e))?;
                 println!("{}", "  ✓ Updated package.json (added pnpm build approvals)".bright_green());
+                // Remove stale lockfile (e.g. bun's) so pnpm regenerates it fresh
+                let lockfile = self.output_dir.join("pnpm-lock.yaml");
+                if lockfile.exists() {
+                    let _ = fs::remove_file(&lockfile);
+                }
             }
         }
 
