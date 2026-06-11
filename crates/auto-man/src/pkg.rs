@@ -1,9 +1,12 @@
 //! Package manager abstraction: npm, pnpm, or bun with config-based selection.
 //!
 //! Resolution order:
-//! 1. Per-project: `pkg: "bun"` in `pac.at`
+//! 1. Per-project: `pkg: "pnpm"` in `pac.at`
 //! 2. Global: `pkg: "pnpm"` in `~/.auto/auto-man/am.at`
-//! 3. Auto-detect: prefers bun > pnpm > npm (cached process-wide)
+//! 3. Auto-detect: prefers pnpm > bun > npm (cached process-wide)
+//!
+//! pnpm is preferred because its content-addressable store uses hardlinks,
+//! avoiding duplicate dependency copies across multiple Vue projects.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -34,10 +37,10 @@ impl PkgManagerKind {
 static CACHED_PM: OnceLock<PkgManagerKind> = OnceLock::new();
 
 fn auto_detect() -> PkgManagerKind {
-    if command_exists("bun") {
-        PkgManagerKind::Bun
-    } else if command_exists("pnpm") {
+    if command_exists("pnpm") {
         PkgManagerKind::Pnpm
+    } else if command_exists("bun") {
+        PkgManagerKind::Bun
     } else {
         PkgManagerKind::Npm
     }
