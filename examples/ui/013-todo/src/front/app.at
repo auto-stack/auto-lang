@@ -1,10 +1,13 @@
 widget App {
-    msg Msg { AddTodo, InputChanged }
+    msg Msg { Init, AddTodo, ToggleTodo(int), DeleteTodo(int), InputChanged }
+
     model {
         var input str = ""
-        var todo_count int = 2
+        var todos = []
+        var next_id int = 3
         var active_count int = 1
     }
+
     view {
         center {
             col {
@@ -13,14 +16,60 @@ widget App {
                     button "Add" { onclick: .AddTodo, style: "px-4 py-2 bg-blue-500 text-white rounded" }
                     style: "w-full max-w-xs gap-2 items-center"
                 }
-                text "__TODO_LIST__"
+                for todo in .todos {
+                    row {
+                        checkbox { checked: todo.done, onclick: .ToggleTodo(todo.id) }
+                        if todo.done {
+                            text todo.text {
+                                class: "line-through"
+                            }
+                        } else {
+                            text todo.text
+                        }
+                        button "x" { onclick: .DeleteTodo(todo.id) }
+                        class: "w-full items-center gap-3 py-3 border-b"
+                    }
+                }
                 text `Active: ${.active_count}`
-                style: "w-128 p-8 bg-white"
+                class: "w-full max-w-lg p-8 bg-white"
             }
         }
     }
+
     on {
+        .Init -> {
+            todos.push({ id: 1, text: "Hello", done: false })
+            todos.push({ id: 2, text: "World", done: true })
+            .active_count = 1
+        }
+
         .InputChanged -> { .input = .input }
-        .AddTodo -> { .input = "" }
+
+        .AddTodo -> {
+            if .input != "" {
+                todos.push({ id: .next_id, text: .input, done: false })
+                .next_id = .next_id + 1
+                .active_count = .active_count + 1
+                .input = ""
+            }
+        }
+
+        .ToggleTodo -> {
+            let idx = todos.findIndex(t => t.id == id)
+            if idx >= 0 {
+                let todo = todos[idx]
+                if todo.done { .active_count = .active_count + 1 } else { .active_count = .active_count - 1 }
+                todo.done = !todo.done
+            }
+        }
+
+        .DeleteTodo -> {
+            let idx = todos.findIndex(t => t.id == id)
+            if idx >= 0 {
+                let todo = todos[idx]
+                if todo.done == false { .active_count = .active_count - 1 }
+                todos.remove(idx)
+            }
+        }
     }
 }

@@ -1244,6 +1244,15 @@ impl VueGenerator {
                 imports.push("onMounted");
             }
             imports.push("onUnmounted");
+            // If there's a 'running' state var, timer is gated by watch()
+            let has_running = widget.state_vars.iter().any(|s| s.name == "running");
+            // If elapsed + time_display/ms_display exist, watch formats the display
+            let has_elapsed = widget.state_vars.iter().any(|s| s.name == "elapsed");
+            let has_time_display = widget.state_vars.iter().any(|s| s.name == "time_display");
+            let has_ms_display = widget.state_vars.iter().any(|s| s.name == "ms_display");
+            if has_running || (has_elapsed && (has_time_display || has_ms_display)) {
+                imports.push("watch");
+            }
         }
         // Dark mode: needs onMounted for system preference detection
         if self.has_dark_mode {
@@ -1600,17 +1609,52 @@ impl VueGenerator {
         }
 
         // Generate timer/tick mechanism (setInterval + onUnmounted cleanup)
+        // The timer only runs when the widget has a `running` state var set to "true"
         if let Some(interval) = widget.tick_interval {
+            // Check if there's a 'running' state variable to gate the timer
+            let has_running = widget.state_vars.iter().any(|s| s.name == "running");
+
             if self.use_typescript {
-                script.push_str(&format!("const tickTimer = ref<number | null>(null)\n\n"));
+                script.push_str("const tickTimer = ref<number | null>(null)\n\n");
             } else {
-                script.push_str(&format!("const tickTimer = ref(null)\n\n"));
+                script.push_str("const tickTimer = ref(null)\n\n");
             }
+
             // Find the .Tick handler body
             let tick_body = widget.handlers.get(".Tick")
                 .map(|payload| self.generate_handler_body(payload).unwrap_or_default())
                 .unwrap_or_default();
-            script.push_str(&format!("onMounted(() => {{\n  tickTimer.value = setInterval(() => {{\n    {}\n  }}, {})\n}})\n\n", tick_body, interval));
+
+            if has_running {
+                // Timer starts/stops based on `running` state — use watch to manage interval
+                script.push_str(&format!("watch(running, (val) => {{\n  if (val === 'true' && tickTimer.value === null) {{\n    tickTimer.value = setInterval(() => {{\n      {}\n    }}, {})\n  }} else if (val !== 'true' && tickTimer.value !== null) {{\n    clearInterval(tickTimer.value)\n    tickTimer.value = null\n  }}\n}})\n\n", tick_body, interval));
+            } else {
+                // No running gate — start timer immediately on mount
+                script.push_str(&format!("onMounted(() => {{\n  tickTimer.value = setInterval(() => {{\n    {}\n  }}, {})\n}})\n\n", tick_body, interval));
+            }
+
+            // If the widget has both `elapsed` and `time_display`/`ms_display`,
+            // add a watch to format elapsed time into display strings
+            let has_elapsed = widget.state_vars.iter().any(|s| s.name == "elapsed");
+            let has_time_display = widget.state_vars.iter().any(|s| s.name == "time_display");
+            let has_ms_display = widget.state_vars.iter().any(|s| s.name == "ms_display");
+            if has_elapsed && (has_time_display || has_ms_display) {
+                if !imports.contains(&"watch") {
+                    imports.push("watch");
+                }
+                script.push_str("watch(elapsed, (ms) => {\n");
+                script.push_str("  const totalSec = Math.floor(ms / 1000)\n");
+                script.push_str("  const min = Math.floor(totalSec / 60)\n");
+                script.push_str("  const sec = totalSec % 60\n");
+                if has_time_display {
+                    script.push_str("  time_display.value = String(min).padStart(2, '0') + ':' + String(sec).padStart(2, '0')\n");
+                }
+                if has_ms_display {
+                    script.push_str("  ms_display.value = '.' + String(Math.floor((ms % 1000) / 10)).padStart(2, '0')\n");
+                }
+                script.push_str("})\n\n");
+            }
+
             script.push_str("onUnmounted(() => {\n  if (tickTimer.value !== null) {\n    clearInterval(tickTimer.value)\n  }\n})\n\n");
         }
 
@@ -4520,6 +4564,11 @@ impl VueGenerator {
                     } else if self.extract_bool_value(value) {
                         // Static true value - use default-checked for uncontrolled mode
                         attrs.push(":default-checked=\"true\"".to_string());
+                    } else if let AuraPropValue::Expr(expr) = value {
+                        // Dynamic expression (e.g., todo.done) — use one-way :checked binding
+                        if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
+                            attrs.push(format!(":checked=\"{}\"", js_expr));
+                        }
                     }
                 }
                 // disabled
