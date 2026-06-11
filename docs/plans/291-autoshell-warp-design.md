@@ -1,9 +1,10 @@
 # Plan 291: AutoShell → 高速版 Warp 全栈升级设计
 
 > **日期**: 2026-06-10
-> **状态**: 设计已批准
+> **最后更新**: 2026-06-11
+> **状态**: Phase 1-2 已完成，Phase 3-4 推迟到未来单独规划
 > **策略**: 自底向上，数据管线优先
-> **总预估**: 15-22 周
+> **总预估**: 15-22 周（实际 Phase 0-2 已用约 2 周）
 
 ## 愿景
 
@@ -14,9 +15,52 @@
 
 核心原则：**NuShell 底层库优先 → uutils 兜底 → 自定义实现**。
 
+> **实际执行策略调整**: 经过调研，NuShell 的 `embed-nu` 封装库停留在 v0.3.0（对应 NuShell 0.69.x），与现代 NuShell 0.112+ 不兼容。
+> 改为**自实现所有命令**的策略，零新增依赖，手写 JSON/YAML/TOML/XML/CSV 解析器。
+> `nu-protocol` v0.113.1 已验证可直接编译引入，未来可作为可选依赖用于高级命令。
+
 ## 当前状态
 
-### 已有 (18 命令)
+### 已完成 ✅ (74 命令)
+
+#### Phase 0: Atom 管线基础 ✅
+- `AtomPipeline` 枚举：`Atom(Atom) | Stream(AtomStream) | Text(String) | Empty`
+- `Atom` 类型系统：21 种语义标签 (`FileEntry`, `FileList`, `ProcessList`, `Table`, `Record`, `Text`, `Path` 等)
+- `AtomStream`：基于游标的流式迭代
+- 类型推断引擎（`infer_atom_type`）
+- NuShell 适配层骨架
+- 所有 18 个原始命令迁移到 Atom 输出
+- 完整的 bridge 层（`PipelineData ↔ AtomPipeline`）
+- 代码位置：`crates/ash-core/src/pipeline/`
+
+#### Phase 1: Batom 二进制格式 ✅
+- `BatomEncoder` / `BatomDecoder`：完整二进制编解码
+- Magic "BATM" + 字符串去重表 + 标签化值编码
+- 支持 47 种 Value 类型的编解码
+- `AtomPipeline::to_batom()` / `from_batom()` 便捷方法
+- 25 个单元测试覆盖所有类型和边界情况
+- Criterion 基准测试（编码 int ~82ns, 1000 文件条目 ~400µs）
+- 代码位置：`crates/ash-core/src/pipeline/batom.rs`
+
+#### Phase 2: 命令扩展 (56 新命令) ✅
+**Batch 1 — 文件操作 (11 个)**: `cat`, `head`, `tail`, `touch`, `find`, `glob`, `stat`, `du`, `file`, `tee`, `ln`
+**Batch 2 — 文本处理 (10 个)**: `sort`, `uniq`, `cut`, `paste`, `tr`, `split`, `rev`, `column`, `fmt`, `diff`
+**Batch 3 — 数据格式 (10 个)**: `from/to json`, `from/to csv`, `from/to toml`, `from/to yaml`, `from/to xml`
+（全部手写解析器，零外部依赖）
+**Batch 4 — 字符串/数学/数据 (15 个)**: `str-replace/contains/split/join/trim/case/length`, `math-sum/avg/min/max/round`, `update`, `insert`, `each`
+**Batch 5 — HTTP/工具 (10 个)**: `http get/post/put/delete/head`, `url-encode`, `date`, `sleep`, `which`, `version`
+- 473 个测试全部通过
+- 代码位置：`crates/auto-shell/src/cmd/commands/`
+
+### 待规划 ⏸️
+
+#### Phase 3: AI 智能集成 ⏸️
+- 推迟到未来单独规划
+- 涉及 LLM Provider 接口、命令智能推荐、Agent 模式等复杂设计
+
+#### Phase 4: Block UX 现代化 ⏸️
+- 推迟到未来单独规划
+- 涉及 Block 渲染模型、现代输入编辑器、ANSI 渲染引擎等
 - 文件系统: `ls`, `cd`, `pwd`, `mkdir`, `rm`, `mv`, `cp`
 - 数据处理: `grep`, `wc`, `select`, `where`, `get`
 - 系统: `ps`, `sys`
@@ -453,22 +497,25 @@ pub enum BlockDisplayState {
 
 ## 里程碑时间线
 
-| Phase | 内容 | 预估时间 | 累计 |
-|-------|------|---------|------|
-| 0 | Atom 管线基础 | 2-3 周 | 2-3 周 |
-| 1 | Batom 二进制格式 | 2-3 周 | 4-6 周 |
-| 2 | NuShell 集成 + 命令扩展 | 4-6 周 | 8-12 周 |
-| 3 | AI 智能集成 | 3-4 周 | 11-16 周 |
-| 4 | Block UX 现代化 | 4-6 周 | 15-22 周 |
+| Phase | 内容 | 预估时间 | 状态 | 实际耗时 |
+|-------|------|---------|------|---------|
+| 0 | Atom 管线基础 | 2-3 周 | ✅ 完成 | ~3 天 |
+| 1 | Batom 二进制格式 | 2-3 周 | ✅ 完成 | ~1 天 |
+| 2 | 命令扩展 (56 新命令) | 4-6 周 | ✅ 完成 | ~2 天 |
+| 3 | AI 智能集成 | 3-4 周 | ⏸️ 推迟 | — |
+| 4 | Block UX 现代化 | 4-6 周 | ⏸️ 推迟 | — |
+
+> Phase 0-2 实际仅用约 6 天完成，远快于预估。主要原因：Atom/Batom 设计简洁，命令实现模式统一可批量生产。
 
 ## 风险与缓解
 
-| 风险 | 影响 | 缓解措施 |
-|------|------|---------|
-| NuShell crate 版本兼容 | 高 | 锁定版本 + 适配层隔离 |
-| Batom 性能不达预期 | 中 | 保留 Atom 文本模式作为回退 |
-| AI Provider API 变更 | 低 | 抽象层隔离，多 Provider 支持 |
-| Block UX 终端兼容性 | 中 | 检测终端能力，降级为传统模式 |
+| 风险 | 影响 | 状态 | 缓解措施 |
+|------|------|------|---------|
+| NuShell crate 版本兼容 | 高 | ✅ 已缓解 | 改为自实现，零外部依赖；`nu-protocol` v0.113.1 验证可编译，可选引入 |
+| Batom 性能不达预期 | 中 | ✅ 已验证 | 基准测试：1000 条目编码 ~400µs，满足需求 |
+| AI Provider API 变更 | 低 | ⏸️ 推迟 | 届时再评估 |
+| Block UX 终端兼容性 | 中 | ⏸️ 推迟 | 届时再评估 |
+| 命令实现品质不足 | 低 | ⚠️ 待改善 | 当前为 MVP 品质，可按用户反馈优先加固（JSON `\uXXXX`、find `**`、HTTP 原生客户端）|
 
 ## 参考文档
 
