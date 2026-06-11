@@ -165,6 +165,18 @@ impl AtomPipeline {
             other => other,
         }
     }
+
+    // ── Batom binary serialization ─────────────────────
+
+    /// Serialize this pipeline to Batom binary format.
+    pub fn to_batom(&self) -> Result<Vec<u8>, super::batom::BatomError> {
+        super::batom::encode_pipeline(self)
+    }
+
+    /// Deserialize a Batom binary blob into an AtomPipeline.
+    pub fn from_batom(data: &[u8]) -> Result<Self, super::batom::BatomError> {
+        super::batom::decode_pipeline(data)
+    }
 }
 
 #[cfg(test)]
