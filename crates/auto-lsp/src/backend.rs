@@ -161,6 +161,7 @@ impl LanguageServer for Backend {
                     retrigger_characters: None,
                     work_done_progress_options: Default::default(),
                 }),
+                inlay_hint_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -363,6 +364,14 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
+        // Try workspace-aware signature help first
+        if let Some(ws_state) = self.build_workspace_state(&uri, &content).await {
+            if let Some(result) = signature_help::get_signature_help_workspace(&content, position, &ws_state) {
+                return Ok(Some(result));
+            }
+        }
+
+        // Fall back to single-file signature help
         Ok(signature_help::get_signature_help(&content, position))
     }
 
@@ -708,6 +717,25 @@ impl LanguageServer for Backend {
             Ok(None)
         } else {
             Ok(Some(actions))
+        }
+    }
+
+    /// Provide inlay hints for a range
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        let uri = params.text_document.uri.to_string();
+        let range = params.range;
+
+        let content = match self.get_document(&uri).await {
+            Some(content) => content,
+            None => return Ok(None),
+        };
+
+        let hints = crate::inlay_hints::get_inlay_hints(&content, &range);
+
+        if hints.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(hints))
         }
     }
 }

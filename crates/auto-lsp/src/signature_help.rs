@@ -1,6 +1,6 @@
 use tower_lsp_server::ls_types::*;
 
-/// Get signature help at the given position
+/// Get signature help at the given position (single-file)
 pub fn get_signature_help(content: &str, position: Position) -> Option<SignatureHelp> {
     let lines: Vec<&str> = content.lines().collect();
     let line = lines.get(position.line as usize)?;
@@ -16,6 +16,34 @@ pub fn get_signature_help(content: &str, position: Position) -> Option<Signature
     let store = parser.type_store.read().ok()?;
     let fn_decl = store.lookup_fn_decl_str(&func_name)?;
 
+    build_signature_help(fn_decl, active_param)
+}
+
+/// Workspace-aware signature help: checks workspace TypeStore too
+pub fn get_signature_help_workspace(
+    content: &str,
+    position: Position,
+    ws_state: &crate::workspace::WorkspaceState,
+) -> Option<SignatureHelp> {
+    let lines: Vec<&str> = content.lines().collect();
+    let line = lines.get(position.line as usize)?;
+    let before_cursor = &line[..position.character.min(line.len() as u32) as usize];
+
+    let (func_name, active_param) = extract_function_call(before_cursor)?;
+
+    // Try workspace TypeStore first (includes imported functions)
+    if let Ok(store) = ws_state.type_store.read() {
+        if let Some(fn_decl) = store.lookup_fn_decl_str(&func_name) {
+            return build_signature_help(fn_decl, active_param);
+        }
+    }
+
+    // Fall back to single-file lookup
+    get_signature_help(content, position)
+}
+
+/// Build a SignatureHelp from a function declaration
+fn build_signature_help(fn_decl: &auto_lang::ast::Fn, active_param: u32) -> Option<SignatureHelp> {
     let mut params = Vec::new();
     for param in &fn_decl.params {
         params.push(ParameterInformation {
