@@ -1,5 +1,6 @@
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
+use ash_core::pipeline::AtomPipeline;
 use auto_val::{Value, Array};
 use miette::Result;
 
@@ -84,5 +85,16 @@ impl Command for GetCommand {
                 miette::bail!("get: cannot extract fields from text input");
             }
         }
+    }
+
+    fn run_atom(
+        &self,
+        args: &crate::cmd::parser::ParsedArgs,
+        input: AtomPipeline,
+        shell: &mut Shell,
+    ) -> Result<AtomPipeline> {
+        let legacy_in = crate::cmd::pipeline_convert::atom_to_pipeline_data(input);
+        let legacy_out = self.run(args, legacy_in, shell)?;
+        Ok(crate::cmd::pipeline_convert::pipeline_data_to_atom(legacy_out))
     }
 }

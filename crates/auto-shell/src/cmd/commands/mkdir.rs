@@ -4,6 +4,7 @@
 
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
+use ash_core::pipeline::AtomPipeline;
 use auto_val::Value;
 use miette::{IntoDiagnostic, Result};
 use std::fs;
@@ -76,6 +77,17 @@ impl Command for MkdirCommand {
         }
 
         Ok(PipelineData::from_value(Value::Obj(result_obj)))
+    }
+
+    fn run_atom(
+        &self,
+        args: &crate::cmd::parser::ParsedArgs,
+        _input: AtomPipeline,
+        shell: &mut Shell,
+    ) -> Result<AtomPipeline> {
+        // Delegate to run() — mkdir is a side-effect command, result is for info only
+        let legacy = self.run(args, PipelineData::empty(), shell)?;
+        Ok(crate::cmd::pipeline_convert::pipeline_data_to_atom(legacy))
     }
 }
 

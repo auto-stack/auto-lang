@@ -4,12 +4,14 @@ use std::path::PathBuf;
 use crate::parser::pipeline::parse_pipeline;
 use auto_lang::autovm_persistent::AutovmReplSession;
 use auto_val::Value;
+use ash_core::pipeline::AtomPipeline;
 
 // Re-export vars from core
 pub use crate::core::shell::vars;
 
 use crate::bookmarks::BookmarkManager;
 use crate::cmd::{commands, CommandRegistry, PipelineData};
+use crate::cmd::pipeline_convert;
 use vars::ShellVars;
 
 /// Shell state and context
@@ -121,9 +123,9 @@ impl Shell {
             let signature = cmd.signature();
             match crate::cmd::parser::parse_args(&signature, args) {
                 Ok(parsed_args) => {
-                    let pipeline_data = cmd.run(&parsed_args, PipelineData::empty(), self)?;
-                    // Convert PipelineData to String for display
-                    return Ok(Some(pipeline_data.into_text()));
+                    let atom_out = cmd.run_atom(&parsed_args, AtomPipeline::empty(), self)?;
+                    // Convert AtomPipeline to String for display
+                    return Ok(Some(atom_out.into_text()));
                 }
                 Err(e) => return Err(e),
             }
@@ -145,7 +147,7 @@ impl Shell {
 
     /// Execute a pipeline with Auto function support
     fn execute_pipeline_with_auto(&mut self, commands: &[String]) -> Result<Option<String>> {
-        use crate::cmd::{auto, builtin, external, PipelineData};
+        use crate::cmd::{auto, builtin, external};
 
         use crate::parser::quote::parse_args;
 
@@ -153,8 +155,8 @@ impl Shell {
             return Ok(None);
         }
 
-        // Start with empty PipelineData
-        let mut input_pipeline: Option<PipelineData> = None;
+        // Start with empty AtomPipeline
+        let mut input_pipeline: Option<AtomPipeline> = None;
 
         for (i, cmd) in commands.iter().enumerate() {
             let is_last = i == commands.len() - 1;
@@ -170,17 +172,17 @@ impl Shell {
 
             // Execute the command
             let output_pipeline = if let Some(registered_cmd) = self.registry.get(cmd_name) {
-                // Registered command (uses PipelineData)
+                // Registered command (uses AtomPipeline via run_atom)
                 let signature = registered_cmd.signature();
-                let input = input_pipeline.take().unwrap_or_else(PipelineData::empty);
+                let input = input_pipeline.take().unwrap_or_else(AtomPipeline::empty);
 
                 match crate::cmd::parser::parse_args(&signature, args) {
-                    Ok(parsed_args) => Some(registered_cmd.run(&parsed_args, input, self)?),
+                    Ok(parsed_args) => Some(registered_cmd.run_atom(&parsed_args, input, self)?),
                     Err(e) => return Err(e),
                 }
             } else {
                 // Non-registered command (builtins, auto functions, external)
-                // Convert PipelineData to text for legacy commands
+                // Convert AtomPipeline to text for legacy commands
                 let input_str = input_pipeline.take().and_then(|p| {
                     if p.is_empty() {
                         None
@@ -194,30 +196,30 @@ impl Shell {
                     if let Some(output) =
                         builtin::execute_builtin_with_input(cmd, &self.current_dir, Some(input))?
                     {
-                        Some(PipelineData::from_text(output))
+                        Some(AtomPipeline::text(output))
                     } else if self.has_auto_function(cmd_name) {
                         let output =
                             auto::execute_auto_function(self, cmd_name, args, Some(input))?;
-                        output.map(|s| PipelineData::from_text(s))
+                        output.map(|s| AtomPipeline::text(s))
                     } else {
                         let output = external::execute_external(cmd, &self.current_dir)?;
-                        output.map(|s| PipelineData::from_text(s))
+                        output.map(|s| AtomPipeline::text(s))
                     }
                 } else {
                     // No pipeline input
                     if let Some(output) = builtin::execute_builtin(cmd, &self.current_dir)? {
-                        Some(PipelineData::from_text(output))
+                        Some(AtomPipeline::text(output))
                     } else if self.has_auto_function(cmd_name) {
                         let output = auto::execute_auto_function(self, cmd_name, args, None)?;
-                        output.map(|s| PipelineData::from_text(s))
+                        output.map(|s| AtomPipeline::text(s))
                     } else {
                         let output = external::execute_external(cmd, &self.current_dir)?;
-                        output.map(|s| PipelineData::from_text(s))
+                        output.map(|s| AtomPipeline::text(s))
                     }
                 }
             };
 
-            // Store PipelineData for next command
+            // Store AtomPipeline for next command
             input_pipeline = output_pipeline;
 
             // If this is the last command, return the final output as text

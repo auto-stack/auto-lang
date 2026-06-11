@@ -4,6 +4,7 @@
 
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
+use ash_core::pipeline::{Atom, AtomPipeline, AtomType};
 use auto_val::{Value, Obj};
 use miette::Result;
 use sysinfo::{System, Disks, CpuRefreshKind};
@@ -26,21 +27,37 @@ impl Command for SysCommand {
         _input: PipelineData,
         _shell: &mut Shell,
     ) -> Result<PipelineData> {
+        let (value, _atom_type) = self.build_sys_info(args)?;
+        Ok(PipelineData::from_value(value))
+    }
+
+    fn run_atom(
+        &self,
+        args: &crate::cmd::parser::ParsedArgs,
+        _input: AtomPipeline,
+        _shell: &mut Shell,
+    ) -> Result<AtomPipeline> {
+        let (value, atom_type) = self.build_sys_info(args)?;
+        Ok(AtomPipeline::from_atom(Atom::new(value, atom_type)))
+    }
+}
+
+impl SysCommand {
+    fn build_sys_info(&self, args: &crate::cmd::parser::ParsedArgs) -> Result<(Value, AtomType)> {
         let subcommand = args.positionals.get(0).map(|s| s.as_str()).unwrap_or("all");
 
         match subcommand {
-            "disks" => sys_disks(),
-            "cpu" => sys_cpu(),
-            "mem" | "memory" => sys_mem(),
-            "all" => sys_all(),
+            "disks" => build_disks().map(|v| (v, AtomType::DiskEntry)),
+            "cpu" => build_cpu().map(|v| (v, AtomType::CpuInfo)),
+            "mem" | "memory" => build_mem().map(|v| (v, AtomType::MemoryInfo)),
+            "all" => build_all().map(|v| (v, AtomType::SystemInfo)),
             _ => miette::bail!("sys: unknown subcommand '{}'. Use: disks, cpu, mem", subcommand),
         }
     }
 }
 
-fn sys_disks() -> Result<PipelineData> {
+fn build_disks() -> Result<Value> {
     let disks = Disks::new_with_refreshed_list();
-
     let values: Vec<Value> = disks.iter().map(|disk| {
         let mut obj = Obj::new();
         obj.set("device", Value::str(&disk.name().to_string_lossy().to_string()));
@@ -51,14 +68,12 @@ fn sys_disks() -> Result<PipelineData> {
         obj.set("removable", Value::Bool(disk.is_removable()));
         Value::Obj(obj)
     }).collect();
-
-    Ok(PipelineData::from_value(Value::Array(auto_val::Array { values })))
+    Ok(Value::Array(auto_val::Array { values }))
 }
 
-fn sys_cpu() -> Result<PipelineData> {
+fn build_cpu() -> Result<Value> {
     let mut sys = System::new();
     sys.refresh_cpu_specifics(CpuRefreshKind::everything());
-
     let cpus: Vec<Value> = sys.cpus().iter().enumerate().map(|(i, cpu)| {
         let mut obj = Obj::new();
         obj.set("index", Value::Int(i as i32));
@@ -69,14 +84,12 @@ fn sys_cpu() -> Result<PipelineData> {
         obj.set("usage", Value::Float(cpu.cpu_usage() as f64));
         Value::Obj(obj)
     }).collect();
-
-    Ok(PipelineData::from_value(Value::Array(auto_val::Array { values: cpus })))
+    Ok(Value::Array(auto_val::Array { values: cpus }))
 }
 
-fn sys_mem() -> Result<PipelineData> {
+fn build_mem() -> Result<Value> {
     let mut sys = System::new();
     sys.refresh_memory();
-
     let total = sys.total_memory() as i64;
     let free = sys.free_memory() as i64;
     let available = sys.available_memory() as i64;
@@ -89,14 +102,12 @@ fn sys_mem() -> Result<PipelineData> {
     obj.set("available", Value::I64(available));
     obj.set("used", Value::I64(used));
     obj.set("usage_percent", Value::Float(usage_percent));
-
-    Ok(PipelineData::from_value(Value::Obj(obj)))
+    Ok(Value::Obj(obj))
 }
 
-fn sys_all() -> Result<PipelineData> {
+fn build_all() -> Result<Value> {
     let mut obj = Obj::new();
 
-    // Get disks
     let disks = Disks::new_with_refreshed_list();
     let disk_values: Vec<Value> = disks.iter().map(|disk| {
         let mut d = Obj::new();
@@ -108,11 +119,10 @@ fn sys_all() -> Result<PipelineData> {
     }).collect();
     obj.set("disks", Value::Array(auto_val::Array { values: disk_values }));
 
-    // Get memory
     let mut sys = System::new();
     sys.refresh_memory();
     obj.set("total_memory", Value::Int(sys.total_memory() as i32));
     obj.set("free_memory", Value::Int(sys.free_memory() as i32));
 
-    Ok(PipelineData::from_value(Value::Obj(obj)))
+    Ok(Value::Obj(obj))
 }

@@ -4,6 +4,7 @@
 
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
+use ash_core::pipeline::AtomPipeline;
 use auto_val::Value;
 use miette::{IntoDiagnostic, Result};
 use std::fs;
@@ -81,6 +82,16 @@ impl Command for MvCommand {
         result.set("success", Value::Bool(true));
 
         Ok(PipelineData::from_value(Value::Obj(result)))
+    }
+
+    fn run_atom(
+        &self,
+        args: &crate::cmd::parser::ParsedArgs,
+        _input: AtomPipeline,
+        shell: &mut Shell,
+    ) -> Result<AtomPipeline> {
+        let legacy = self.run(args, PipelineData::empty(), shell)?;
+        Ok(crate::cmd::pipeline_convert::pipeline_data_to_atom(legacy))
     }
 }
 

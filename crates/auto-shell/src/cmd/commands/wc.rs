@@ -1,5 +1,6 @@
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
+use ash_core::pipeline::{Atom, AtomPipeline, AtomType};
 use auto_val::{Value, Obj, Array};
 use miette::Result;
 
@@ -229,6 +230,21 @@ impl Command for WcCommand {
                 miette::bail!("wc: input must be text, string, or array of texts");
             }
         }
+    }
+
+    fn run_atom(
+        &self,
+        args: &crate::cmd::parser::ParsedArgs,
+        input: AtomPipeline,
+        shell: &mut Shell,
+    ) -> Result<AtomPipeline> {
+        let legacy_in = crate::cmd::pipeline_convert::atom_to_pipeline_data(input);
+        let legacy_out = self.run(args, legacy_in, shell)?;
+        let value = match legacy_out {
+            PipelineData::Value(v) => v,
+            PipelineData::Text(s) => Value::str(&s),
+        };
+        Ok(AtomPipeline::from_atom(Atom::new(value, AtomType::CountResult)))
     }
 }
 

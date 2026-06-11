@@ -1,5 +1,6 @@
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
+use ash_core::pipeline::AtomPipeline;
 use auto_val::{Value, Array};
 use miette::Result;
 
@@ -21,7 +22,6 @@ impl Command for SelectCommand {
         input: PipelineData,
         _shell: &mut Shell,
     ) -> Result<PipelineData> {
-        // Extract field names from positionals
         if args.positionals.is_empty() {
             miette::bail!("select: requires at least one field name");
         }
@@ -30,9 +30,7 @@ impl Command for SelectCommand {
 
         match input {
             PipelineData::Value(Value::Array(arr)) => {
-                // Select fields from array of objects
                 let mut result = Array::new();
-
                 for item in arr.iter() {
                     if let Value::Obj(obj) = item {
                         let mut new_obj = auto_val::Obj::new();
@@ -44,11 +42,9 @@ impl Command for SelectCommand {
                         result.push(Value::Obj(new_obj));
                     }
                 }
-
                 Ok(PipelineData::from_value(Value::Array(result)))
             }
             PipelineData::Value(Value::Obj(obj)) => {
-                // Select fields from single object
                 let mut new_obj = auto_val::Obj::new();
                 for field in &fields {
                     if let Some(value) = obj.get(*field) {
@@ -64,5 +60,17 @@ impl Command for SelectCommand {
                 miette::bail!("select: cannot select fields from text input");
             }
         }
+    }
+
+    fn run_atom(
+        &self,
+        args: &crate::cmd::parser::ParsedArgs,
+        input: AtomPipeline,
+        shell: &mut Shell,
+    ) -> Result<AtomPipeline> {
+        // Delegate: select preserves structured data, type inference handles it
+        let legacy_in = crate::cmd::pipeline_convert::atom_to_pipeline_data(input);
+        let legacy_out = self.run(args, legacy_in, shell)?;
+        Ok(crate::cmd::pipeline_convert::pipeline_data_to_atom(legacy_out))
     }
 }

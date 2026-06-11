@@ -4,6 +4,7 @@
 
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
+use ash_core::pipeline::{Atom, AtomPipeline};
 use auto_val::{Value, Obj};
 use miette::Result;
 use sysinfo::System;
@@ -27,6 +28,23 @@ impl Command for PsCommand {
         _input: PipelineData,
         _shell: &mut Shell,
     ) -> Result<PipelineData> {
+        let value = self.build_process_list(args)?;
+        Ok(PipelineData::from_value(value))
+    }
+
+    fn run_atom(
+        &self,
+        args: &crate::cmd::parser::ParsedArgs,
+        _input: AtomPipeline,
+        _shell: &mut Shell,
+    ) -> Result<AtomPipeline> {
+        let value = self.build_process_list(args)?;
+        Ok(AtomPipeline::from_atom(Atom::process_list(value)))
+    }
+}
+
+impl PsCommand {
+    fn build_process_list(&self, args: &crate::cmd::parser::ParsedArgs) -> Result<Value> {
         let long = args.has_flag("long");
         let _all = args.has_flag("all");
 
@@ -43,7 +61,7 @@ impl Command for PsCommand {
                     status: format!("{:?}", process.status()),
                     cpu_usage: process.cpu_usage() as f64,
                     mem_usage: process.memory() as i64,
-                    start_time: None, // sysinfo doesn't provide this directly
+                    start_time: None,
                     command: if long {
                         Some(process.cmd().iter()
                             .map(|s| s.to_string_lossy().to_string())
@@ -56,12 +74,10 @@ impl Command for PsCommand {
             })
             .collect();
 
-        // Sort by CPU usage (highest first)
         processes.sort_by(|a, b| {
             b.cpu_usage.partial_cmp(&a.cpu_usage).unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Convert to Value
         let values: Vec<Value> = processes.iter().map(|p| {
             let mut obj = Obj::new();
             obj.set("pid", Value::Int(p.pid));
@@ -70,15 +86,13 @@ impl Command for PsCommand {
             obj.set("status", Value::str(&p.status));
             obj.set("cpu", Value::Float(p.cpu_usage));
             obj.set("mem", Value::Int(p.mem_usage as i32));
-
             if let Some(cmd) = &p.command {
                 obj.set("command", Value::str(cmd));
             }
-
             Value::Obj(obj)
         }).collect();
 
-        Ok(PipelineData::from_value(Value::Array(auto_val::Array { values })))
+        Ok(Value::Array(auto_val::Array { values }))
     }
 }
 

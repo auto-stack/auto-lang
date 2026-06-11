@@ -24,6 +24,7 @@ pub mod shell;
 // Re-export core modules at crate root for backward compatibility
 pub use ash_core::bookmarks;
 pub use ash_core::parser;
+pub use ash_core::pipeline;
 
 // Re-export frontend modules at crate root for backward compatibility
 pub use frontend::repl;

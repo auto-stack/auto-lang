@@ -20,6 +20,7 @@ pub mod commands;
 pub mod fs;
 pub mod parser;
 pub mod pipeline;
+pub mod pipeline_convert;
 pub mod pipeline_data;
 pub mod registry;
 
@@ -109,7 +110,7 @@ pub trait Command {
     /// Get the command signature
     fn signature(&self) -> Signature;
 
-    /// Execute the command
+    /// Execute the command (legacy path)
     ///
     /// Commands now receive PipelineData (structured Value or text) and return PipelineData.
     /// This enables zero-copy structured data pipelines between commands.
@@ -119,6 +120,21 @@ pub trait Command {
         input: PipelineData,
         shell: &mut Shell,
     ) -> Result<PipelineData>;
+
+    /// Execute the command with typed AtomPipeline data
+    ///
+    /// Default implementation delegates to `run()` via the bridge layer.
+    /// Commands should override this to produce typed Atoms directly.
+    fn run_atom(
+        &self,
+        args: &crate::cmd::parser::ParsedArgs,
+        input: ash_core::pipeline::AtomPipeline,
+        shell: &mut Shell,
+    ) -> Result<ash_core::pipeline::AtomPipeline> {
+        let legacy_in = pipeline_convert::atom_to_pipeline_data(input);
+        let legacy_out = self.run(args, legacy_in, shell)?;
+        Ok(pipeline_convert::pipeline_data_to_atom(legacy_out))
+    }
 }
 
 /// Execute a command (built-in or external)
