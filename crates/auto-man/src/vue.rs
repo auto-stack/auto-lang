@@ -1212,6 +1212,20 @@ export default router
     /// Run package manager install
     pub fn npm_install(&self) -> AutoResult<()> {
         let pm = crate::pkg::display_name();
+
+        // Ensure package.json has pnpm onlyBuiltDependencies for esbuild/vue-demi
+        let pkg_path = self.output_dir.join("package.json");
+        if pkg_path.exists() {
+            let existing_pkg = fs::read_to_string(&pkg_path)
+                .map_err(|e| format!("Failed to read package.json: {}", e))?;
+            if !existing_pkg.contains("onlyBuiltDependencies") {
+                let new_pkg = generate_package_json(&self.name, self.has_routes);
+                fs::write(&pkg_path, &new_pkg)
+                    .map_err(|e| format!("Failed to write package.json: {}", e))?;
+                println!("{}", "  ✓ Updated package.json (added pnpm build approvals)".bright_green());
+            }
+        }
+
         if !crate::pkg::command_exists(crate::pkg::install_cmd()) {
             println!("{}", format!("⚠ {} not found. Please install it or Node.js.", pm).bright_yellow());
             return Err(format!("{} not found", pm).into());
