@@ -481,33 +481,54 @@ fn apply_container_style<M: Clone + Debug + 'static>(
     if let Some(ref s) = style {
         let is = IcedStyle::from_style(s);
 
-        // Width: when center_x is active with max_width, we use nested containers.
-        // Otherwise apply width directly.
-        if center_x && is.max_width.is_some() {
-            // Inner container: width(Fill) + max_width for content constraint
-            cont = cont.width(iced::Length::Fill).max_width(is.max_width.unwrap());
-        } else if let Some(ref ws) = is.width {
-            cont = cont.width(iced_length(ws));
-        } else if let Some(w) = width {
-            if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); }
-        }
+        if center_x || center_y {
+            // When centering, the container must fill its parent so it has room
+            // to center the content. We apply width/height from style to this
+            // container directly (not to a nested inner container).
+            if center_x {
+                match is.width {
+                    Some(ref ws) => { cont = cont.width(iced_length(ws)); }
+                    None => { cont = cont.width(iced::Length::Fill); }
+                }
+                if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+                cont = cont.align_x(iced::alignment::Horizontal::Center);
+            } else {
+                if let Some(ref ws) = is.width {
+                    cont = cont.width(iced_length(ws));
+                } else if let Some(w) = width {
+                    if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); }
+                }
+                if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+            }
 
-        // Height: when center_y is active, DON'T set height on inner container
-        // (the outer centering container will have height(Fill) instead).
-        // This ensures the inner container is intrinsic-height and can be centered.
-        if !center_y {
+            if center_y {
+                match is.height {
+                    Some(ref h) => { cont = cont.height(iced_length(h)); }
+                    None => { cont = cont.height(iced::Length::Fill); }
+                }
+                if let Some(mh) = is.max_height { cont = cont.max_height(mh); }
+                cont = cont.align_y(iced::alignment::Vertical::Center);
+            } else {
+                match is.height {
+                    Some(ref h) => { cont = cont.height(iced_length(h)); }
+                    None => { if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } } }
+                }
+                if let Some(mh) = is.max_height { cont = cont.max_height(mh); }
+            }
+        } else {
+            // Normal (non-centered) container
+            if let Some(ref ws) = is.width {
+                cont = cont.width(iced_length(ws));
+            } else if let Some(w) = width {
+                if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); }
+            }
             match is.height {
                 Some(ref h) => { cont = cont.height(iced_length(h)); }
                 None => { if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } } }
             }
-        }
-
-        // max_width already applied above for center_x case; apply for non-center case
-        if !center_x {
             if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+            if let Some(mh) = is.max_height { cont = cont.max_height(mh); }
         }
-        // max_height
-        if let Some(mh) = is.max_height { cont = cont.max_height(mh); }
 
         // Visual styles (background, border, rounded, shadow)
         if needs_visual_wrap(&is) {
@@ -517,19 +538,13 @@ fn apply_container_style<M: Clone + Debug + 'static>(
     } else {
         if let Some(w) = width { if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); } }
         if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } }
+
+        // No style but centering requested — fill parent and align center
+        if center_x { cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Center); }
+        if center_y { cont = cont.height(iced::Length::Fill).align_y(iced::alignment::Vertical::Center); }
     }
 
-    // Centering: in Iced, Container::center_x/center_y centers CONTENT within
-    // the container. To center a max-width-constrained element, we use nested containers:
-    //   outer: width(Fill).center_x(Fill) → fills parent, centers the inner
-    //   inner: width(Fill).max_width(mw) → constrains content width
-    if center_x || center_y {
-        let mut outer = container(cont);
-        if center_x { outer = outer.width(iced::Length::Fill).center_x(iced::Length::Fill); }
-        if center_y { outer = outer.height(iced::Length::Fill).center_y(iced::Length::Fill); }
-        if let Some(id) = widget_id { outer = outer.id(id); }
-        outer.into()
-    } else if let Some(id) = widget_id {
+    if let Some(id) = widget_id {
         cont.id(id).into()
     } else {
         cont.into()
