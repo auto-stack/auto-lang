@@ -1096,14 +1096,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     } else {
                         data
                     };
+                    // Use cached handle to avoid flickering — same URL reuses the same Handle
                     let inner: iced::Element<'static, M> = if src.ends_with(".svg") || src.contains("/svg") {
-                        let handle = svg::Handle::from_memory(data);
+                        let handle = get_or_create_svg_handle(&src, data);
                         let mut svg_widget = svg(handle);
                         if let Some(w) = eff_w { svg_widget = svg_widget.width(w); }
                         if let Some(h) = eff_h { svg_widget = svg_widget.height(h); }
                         svg_widget.into()
                     } else {
-                        let handle = iced::widget::image::Handle::from_bytes(data);
+                        let handle = get_or_create_image_handle(&src, data);
                         let mut img_widget = iced::widget::image(handle);
                         if let Some(w) = eff_w { img_widget = img_widget.width(w); }
                         if let Some(h) = eff_h { img_widget = img_widget.height(h); }
@@ -1182,6 +1183,41 @@ fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
 
     cache.lock().unwrap().insert(url.to_string(), result.clone());
     result
+}
+
+/// Cache image::Handle by URL to avoid flickering.
+/// Creating a new Handle each frame causes Iced to re-decode and re-upload the texture.
+fn get_or_create_image_handle(url: &str, data: Vec<u8>) -> iced::widget::image::Handle {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, iced::widget::image::Handle>>> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+
+    let mut lock = cache.lock().unwrap();
+    if let Some(handle) = lock.get(url) {
+        return handle.clone();
+    }
+    let handle = iced::widget::image::Handle::from_bytes(data);
+    lock.insert(url.to_string(), handle.clone());
+    handle
+}
+
+/// Cache svg::Handle by URL to avoid flickering.
+fn get_or_create_svg_handle(url: &str, data: Vec<u8>) -> iced::widget::svg::Handle {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, iced::widget::svg::Handle>>> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+
+    let mut lock = cache.lock().unwrap();
+    if let Some(handle) = lock.get(url) {
+        return handle.clone();
+    }
+    let handle = iced::widget::svg::Handle::from_memory(data);
+    lock.insert(url.to_string(), handle.clone());
+    handle
 }
 
 /// Extract initials from a URL (e.g. seed name) for placeholder display.
