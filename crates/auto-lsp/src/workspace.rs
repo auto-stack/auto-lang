@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use auto_lang::ast::{ModulePath, PathPrefix};
+use auto_lang::ast::ModulePath;
 use auto_lang::resolver::ModuleResolver;
 use auto_lang::database::Database;
 use auto_lang::indexer::Indexer;

@@ -540,50 +540,59 @@ fn user_defined_functions(content: &str) -> Vec<CompletionItem> {
     items
 }
 
-/// Extract variables in scope from AST
+/// Extract variables in scope from the compiler's InferenceContext + AST
 fn extract_variables_from_ast(
     _ast: &auto_lang::ast::Code,
     content: &str,
     _position: Position,
 ) -> Vec<CompletionItem> {
     let mut items = Vec::new();
+    use auto_lang::scope::Meta;
 
-    // Simple regex-based extraction for now
-    // TODO: Parse AST properly to extract variables in scope
-    use regex::Regex;
+    // Parse with the compiler to get type information
+    let mut parser = auto_lang::Parser::from(content);
+    let _ = parser.parse();
+    let infer_ctx = &parser.infer_ctx;
 
-    // Extract let, mut, const, var declarations
-    let var_regex = Regex::new(r"(let|mut|const|var)\s+(\w+)").unwrap();
-    for cap in var_regex.captures_iter(content) {
-        if let Some(name) = cap.get(2) {
-            let kind = match &cap[1] {
-                "const" => CompletionItemKind::CONSTANT,
-                _ => CompletionItemKind::VARIABLE,
-            };
-            items.push(completion_item(
-                name.as_str(),
-                &format!("Variable: {}", name.as_str()),
-                kind,
-                name.as_str(),
-            ));
+    // Extract variables from the InferenceContext (scope-aware, type-inferred)
+    // Use get_defined_var_names() + lookup_meta() since all_bindings() doesn't exist
+    let var_names = infer_ctx.get_defined_var_names();
+    for name in &var_names {
+        if let Some(meta) = infer_ctx.lookup_meta(name) {
+            match meta.as_ref() {
+                Meta::Store(store) => {
+                    let type_name = store.ty.unique_name();
+                    let kind = match store.kind {
+                        auto_lang::ast::StoreKind::Const => CompletionItemKind::CONSTANT,
+                        _ => CompletionItemKind::VARIABLE,
+                    };
+                    items.push(completion_item(
+                        name,
+                        &format!("Variable: {} ({})", name, type_name),
+                        kind,
+                        name,
+                    ));
+                }
+                _ => {}
+            }
         }
     }
 
-    // Extract function parameters
-    let param_regex = Regex::new(r"fn\s+\w+\s*\(([^)]*)\)").unwrap();
-    for cap in param_regex.captures_iter(content) {
-        if let Some(params) = cap.get(1) {
-            let params_str = params.as_str();
-            // Extract parameter names
-            for param in params_str.split(',') {
-                let param = param.trim();
-                if let Some(name) = param.split_whitespace().next() {
-                    if name != ":" {
+    // Also extract function parameters from AST for completeness
+    // (parameters may not be in InferenceContext if the function body hasn't been analyzed)
+    if let Ok(ast) = auto_lang::parse_preserve_error(content) {
+        for stmt in ast.stmts.iter() {
+            if let auto_lang::ast::Stmt::Fn(fn_decl) = stmt {
+                for param in &fn_decl.params {
+                    let p_name = param.name.as_str();
+                    // Avoid duplicates with InferenceContext
+                    if !items.iter().any(|i| i.label == p_name) {
+                        let ty_str = param.ty.unique_name().to_string();
                         items.push(completion_item(
-                            name,
-                            &format!("Parameter: {}", name),
+                            p_name,
+                            &format!("Parameter: {} ({})", p_name, ty_str),
                             CompletionItemKind::VARIABLE,
-                            name,
+                            p_name,
                         ));
                     }
                 }

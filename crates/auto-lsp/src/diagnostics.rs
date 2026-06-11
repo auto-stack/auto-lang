@@ -172,29 +172,30 @@ fn byte_offset_to_position(content: &str, target_offset: usize) -> Position {
     Position { line, character }
 }
 
-/// Extract line number from error message
+/// Extract line number from error message using simple string parsing
 fn extract_line_number(error_msg: &str) -> Option<usize> {
-    use regex::Regex;
-    use once_cell::sync::Lazy;
+    // Try common patterns in AutoLang error messages without regex
+    for prefix in &["line ", "at line ", "@ line "] {
+        if let Some(pos) = error_msg.find(prefix) {
+            let after = &error_msg[pos + prefix.len()..];
+            let num_str: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if let Ok(num) = num_str.parse::<usize>() {
+                return Some(num);
+            }
+        }
+    }
 
-    static LINE_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
-        vec![
-            Regex::new(r"line (\d+)").unwrap(),
-            Regex::new(r"at line (\d+)").unwrap(),
-            Regex::new(r"\[(\d+):").unwrap(),
-            Regex::new(r"L(\d+)").unwrap(),
-            Regex::new(r"l\.(\d+)").unwrap(),
-            Regex::new(r"@ line (\d+)").unwrap(),
-            Regex::new(r"\[(\d+),").unwrap(),
-            Regex::new(r"@ \[(\d+),").unwrap(),
-        ]
-    });
-
-    for re in LINE_PATTERNS.iter() {
-        if let Some(caps) = re.captures(error_msg) {
-            if let Some(match_str) = caps.get(1) {
-                if let Ok(num) = match_str.as_str().parse::<usize>() {
-                    return Some(num);
+    // Try bracket patterns like "[42:" or "[42,"
+    for (i, ch) in error_msg.char_indices() {
+        if ch == '[' && i > 0 {
+            let after = &error_msg[i + 1..];
+            let num_str: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if !num_str.is_empty() {
+                let rest = &after[num_str.len()..];
+                if rest.starts_with(':') || rest.starts_with(',') {
+                    if let Ok(num) = num_str.parse::<usize>() {
+                        return Some(num);
+                    }
                 }
             }
         }

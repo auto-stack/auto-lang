@@ -1,5 +1,4 @@
 use tower_lsp_server::ls_types::*;
-use auto_lang::ast::Stmt;
 
 /// Find the definition location for a symbol at a given position
 pub fn find_definition(content: &str, position: Position, uri: &str) -> Option<GotoDefinitionResponse> {
@@ -48,7 +47,7 @@ fn find_definition_impl(content: &str, position: Position, uri: &str) -> Option<
     None
 }
 
-/// Find the definition of a symbol using the compiler's Indexer + Database
+/// Find the definition of a symbol using the compiler's Indexer + Database + TypeStore
 fn find_definition_in_ast(content: &str, name: &str) -> Option<auto_lang::SymbolLocation> {
     use auto_lang::database::Database;
     use auto_lang::indexer::Indexer;
@@ -91,7 +90,7 @@ fn find_definition_in_ast(content: &str, name: &str) -> Option<auto_lang::Symbol
         return None;
     }
 
-    // Search indexed fragments for the symbol name
+    // Search indexed fragments for the symbol name (most accurate path)
     for frag_id in db.get_fragments_in_file(file_id) {
         if let Some(meta) = db.get_fragment_meta(&frag_id) {
             if meta.name.as_str() == name {
@@ -104,23 +103,28 @@ fn find_definition_in_ast(content: &str, name: &str) -> Option<auto_lang::Symbol
         }
     }
 
-    // Fallback: search for top-level definitions by line heuristic
-    for (line_num, line_str) in content.lines().enumerate() {
-        let trimmed = line_str.trim();
-        if trimmed.starts_with("fn ") && trimmed.contains(&format!("{}(", name)) {
-            return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
-        }
-        if trimmed.starts_with("type ") && trimmed.contains(name) {
-            return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
-        }
-        if trimmed.starts_with("enum ") && trimmed.contains(name) {
-            return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
-        }
-        if trimmed.starts_with("spec ") && trimmed.contains(name) {
-            return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
-        }
-        if trimmed.starts_with("const ") && trimmed.contains(name) {
-            return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
+    // Fallback: search TypeStore for function/type/enum/spec declarations
+    // This catches symbols that may not be in the Database fragments.
+    // Since AST nodes don't carry span info, search content lines by name match.
+    if let Ok(store) = parser.type_store.read() {
+        let known_symbol = store.lookup_fn_decl_str(name).is_some()
+            || store.lookup_type_decl_str(name).is_some()
+            || store.lookup_enum_decl_str(name).is_some()
+            || store.lookup_spec_decl_str(name).is_some();
+
+        if known_symbol {
+            // Find the definition line by matching declaration patterns
+            for (line_num, line_str) in content.lines().enumerate() {
+                let trimmed = line_str.trim();
+                let matches = (trimmed.starts_with("fn ") && trimmed.contains(&format!("{}(", name)))
+                    || (trimmed.starts_with("type ") && trimmed.contains(name))
+                    || (trimmed.starts_with("enum ") && trimmed.contains(name))
+                    || (trimmed.starts_with("spec ") && trimmed.contains(name))
+                    || (trimmed.starts_with("const ") && trimmed.contains(name));
+                if matches {
+                    return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
+                }
+            }
         }
     }
 
