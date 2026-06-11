@@ -259,8 +259,9 @@ fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
 /// Wrap an iced element with external spacing for margin simulation.
 /// Handles:
 /// - `margin_top` (mt-*): external top spacing via container padding
-/// - `margin_left_auto` (ml-auto): container fills remaining width, content pushed right
-/// - `margin_right_auto` (mr-auto): container fills remaining width, content pushed left
+/// - `mx-auto` (both flags): container fills remaining width, content centered
+/// - `ml-auto` alone: container fills remaining width, content pushed right
+/// - `mr-auto` alone: container fills remaining width, content pushed left
 fn wrap_with_margin_top<M: Clone + Debug + 'static>(
     el: iced::Element<'static, M>,
     is: &IcedStyle,
@@ -280,12 +281,14 @@ fn wrap_with_margin_top<M: Clone + Debug + 'static>(
             left: 0.0,
         });
     }
-    // ml-auto: container fills remaining row width, align content to the right
-    if is.margin_left_auto {
+    if is.margin_left_auto && is.margin_right_auto {
+        // mx-auto: center horizontally
+        cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
+    } else if is.margin_left_auto {
+        // ml-auto: push content to the right
         cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Right);
-    }
-    // mr-auto: container fills remaining row width, align content to the left
-    if is.margin_right_auto {
+    } else if is.margin_right_auto {
+        // mr-auto: push content to the left
         cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Left);
     }
     cont.into()
@@ -477,20 +480,35 @@ fn apply_container_style<M: Clone + Debug + 'static>(
 
     if let Some(ref s) = style {
         let is = IcedStyle::from_style(s);
-        // Width: style takes priority, then legacy field
-        if let Some(ref ws) = is.width {
+
+        // Width: when center_x is active with max_width, we use nested containers.
+        // Otherwise apply width directly.
+        if center_x && is.max_width.is_some() {
+            // Inner container: width(Fill) + max_width for content constraint
+            cont = cont.width(iced::Length::Fill).max_width(is.max_width.unwrap());
+        } else if let Some(ref ws) = is.width {
             cont = cont.width(iced_length(ws));
         } else if let Some(w) = width {
             if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); }
         }
-        // Height: style takes priority, then legacy field
-        match is.height {
-            Some(ref h) => { cont = cont.height(iced_length(h)); }
-            None => { if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } } }
+
+        // Height: when center_y is active, DON'T set height on inner container
+        // (the outer centering container will have height(Fill) instead).
+        // This ensures the inner container is intrinsic-height and can be centered.
+        if !center_y {
+            match is.height {
+                Some(ref h) => { cont = cont.height(iced_length(h)); }
+                None => { if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } } }
+            }
         }
-        // max_width / max_height from style
-        if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+
+        // max_width already applied above for center_x case; apply for non-center case
+        if !center_x {
+            if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+        }
+        // max_height
         if let Some(mh) = is.max_height { cont = cont.max_height(mh); }
+
         // Visual styles (background, border, rounded, shadow)
         if needs_visual_wrap(&is) {
             let cs = build_container_style(&is);
@@ -500,23 +518,22 @@ fn apply_container_style<M: Clone + Debug + 'static>(
         if let Some(w) = width { if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); } }
         if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } }
     }
-    // Centering: use explicit dimension when available, else Fill
-    if center_x {
-        if let Some(w) = width {
-            cont = cont.center_x(iced::Length::Fixed(w as f32));
-        } else {
-            cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
-        }
+
+    // Centering: in Iced, Container::center_x/center_y centers CONTENT within
+    // the container. To center a max-width-constrained element, we use nested containers:
+    //   outer: width(Fill).center_x(Fill) → fills parent, centers the inner
+    //   inner: width(Fill).max_width(mw) → constrains content width
+    if center_x || center_y {
+        let mut outer = container(cont);
+        if center_x { outer = outer.width(iced::Length::Fill).center_x(iced::Length::Fill); }
+        if center_y { outer = outer.height(iced::Length::Fill).center_y(iced::Length::Fill); }
+        if let Some(id) = widget_id { outer = outer.id(id); }
+        outer.into()
+    } else if let Some(id) = widget_id {
+        cont.id(id).into()
+    } else {
+        cont.into()
     }
-    if center_y {
-        if let Some(h) = height {
-            cont = cont.center_y(iced::Length::Fixed(h as f32));
-        } else {
-            cont = cont.height(iced::Length::Fill).center_y(iced::Length::Fill);
-        }
-    }
-    if let Some(id) = widget_id { cont = cont.id(id); }
-    cont.into()
 }
 
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
@@ -2268,6 +2285,17 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
         }
 
         state.component.on_with_input(&event_name, msg.input_value);
+
+        // After handler runs, clear input_values for OTHER inputs whose state
+        // fields may have been modified by the handler. For example, the
+        // CelsiusChanged handler writes fahrenheit — the fahrenheit input should
+        // now show the computed value, not stale user-typed text.
+        // Keep only the triggering event's entry (the user just typed it).
+        let input_map = state.component.input_state_map().clone();
+        state.input_values.retain(|ev_name, _| {
+            ev_name == &event_name
+                || !input_map.contains_key(ev_name)
+        });
 
         // Post-process Lap: record real lap times by shifting lap entries
         if event_name == "Lap" {

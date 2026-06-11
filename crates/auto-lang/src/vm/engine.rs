@@ -289,6 +289,18 @@ pub enum FutureState {
     Failed,
 }
 
+/// Convert a single-slot nanboxed value to f64 for mixed-type arithmetic.
+/// Handles i32 → f64 and f32 → f64 promotion.
+#[cfg(feature = "nanbox")]
+#[inline(always)]
+fn nanbox_single_to_f64(nv: auto_val::NanoValue) -> f64 {
+    if auto_val::is_f32(nv) {
+        auto_val::decode_f32(nv) as f64
+    } else {
+        auto_val::decode_i32(nv) as f64
+    }
+}
+
 impl AutoVM {
     pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
         let mut native_interface = NativeInterface::new();
@@ -3120,8 +3132,14 @@ impl AutoVM {
                     // Pop value (below instance_id)
                     #[cfg(feature = "nanbox")]
                     let value = {
-                        let nv = task.ram.pop_nv();
-                        self.decode_tagged_nv(nv)
+                        // f64 occupies 2 slots (raw bits + null padding), must use
+                        // pop_arith_operand to avoid popping only the padding marker.
+                        let (bits, is_f64) = task.ram.pop_arith_operand();
+                        if is_f64 {
+                            Value::Double(f64::from_bits(bits))
+                        } else {
+                            self.decode_tagged_nv(bits)
+                        }
                     };
                     #[cfg(not(feature = "nanbox"))]
                     let value = {
@@ -4017,27 +4035,32 @@ impl AutoVM {
                 OpCode::ADD => {
                     #[cfg(feature = "nanbox")]
                     {
-                    let b_nv = task.ram.pop_nv();
-                    let a_nv = task.ram.pop_nv();
-                    if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
-                        task.ram.push_f32(auto_val::decode_f32(a_nv) + auto_val::decode_f32(b_nv));
-                    } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
-                        task.ram.push_f64(auto_val::decode_f64(a_nv) + auto_val::decode_f64(b_nv));
-                    } else if auto_val::is_string(a_nv) || auto_val::is_string(b_nv) {
+                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
+                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    if a_is_f64 && b_is_f64 {
+                        task.ram.push_f64(f64::from_bits(a_bits) + f64::from_bits(b_bits));
+                    } else if a_is_f64 || b_is_f64 {
+                        // Mixed f64 + non-f64: promote both to f64
+                        let a = if a_is_f64 { f64::from_bits(a_bits) } else { nanbox_single_to_f64(a_bits) };
+                        let b = if b_is_f64 { f64::from_bits(b_bits) } else { nanbox_single_to_f64(b_bits) };
+                        task.ram.push_f64(a + b);
+                    } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
+                        task.ram.push_f32(auto_val::decode_f32(a_bits) + auto_val::decode_f32(b_bits));
+                    } else if auto_val::is_string(a_bits) || auto_val::is_string(b_bits) {
                         // String concatenation: decode both as strings, concatenate, push new string
-                        let a_str = if auto_val::is_string(a_nv) {
-                            let idx = auto_val::decode_string(a_nv) as usize;
+                        let a_str = if auto_val::is_string(a_bits) {
+                            let idx = auto_val::decode_string(a_bits) as usize;
                             let strings = self.strings.read().unwrap();
                             strings.get(idx).cloned().unwrap_or_default()
                         } else {
-                            auto_val::decode_i32(a_nv).to_string().into_bytes()
+                            auto_val::decode_i32(a_bits).to_string().into_bytes()
                         };
-                        let b_str = if auto_val::is_string(b_nv) {
-                            let idx = auto_val::decode_string(b_nv) as usize;
+                        let b_str = if auto_val::is_string(b_bits) {
+                            let idx = auto_val::decode_string(b_bits) as usize;
                             let strings = self.strings.read().unwrap();
                             strings.get(idx).cloned().unwrap_or_default()
                         } else {
-                            auto_val::decode_i32(b_nv).to_string().into_bytes()
+                            auto_val::decode_i32(b_bits).to_string().into_bytes()
                         };
                         let mut combined = a_str;
                         combined.extend_from_slice(&b_str);
@@ -4047,8 +4070,8 @@ impl AutoVM {
                         drop(strings);
                         task.ram.push_string(new_idx);
                     } else {
-                        let a = auto_val::decode_i32(a_nv);
-                        let b = auto_val::decode_i32(b_nv);
+                        let a = auto_val::decode_i32(a_bits);
+                        let b = auto_val::decode_i32(b_bits);
                         task.ram.push_i32(a.wrapping_add(b));
                     }
                     }
@@ -4089,15 +4112,19 @@ impl AutoVM {
                 OpCode::SUB => {
                     #[cfg(feature = "nanbox")]
                     {
-                    let b_nv = task.ram.pop_nv();
-                    let a_nv = task.ram.pop_nv();
-                    if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
-                        task.ram.push_f32(auto_val::decode_f32(a_nv) - auto_val::decode_f32(b_nv));
-                    } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
-                        task.ram.push_f64(auto_val::decode_f64(a_nv) - auto_val::decode_f64(b_nv));
+                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
+                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    if a_is_f64 && b_is_f64 {
+                        task.ram.push_f64(f64::from_bits(a_bits) - f64::from_bits(b_bits));
+                    } else if a_is_f64 || b_is_f64 {
+                        let a = if a_is_f64 { f64::from_bits(a_bits) } else { nanbox_single_to_f64(a_bits) };
+                        let b = if b_is_f64 { f64::from_bits(b_bits) } else { nanbox_single_to_f64(b_bits) };
+                        task.ram.push_f64(a - b);
+                    } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
+                        task.ram.push_f32(auto_val::decode_f32(a_bits) - auto_val::decode_f32(b_bits));
                     } else {
-                        let a = auto_val::decode_i32(a_nv);
-                        let b = auto_val::decode_i32(b_nv);
+                        let a = auto_val::decode_i32(a_bits);
+                        let b = auto_val::decode_i32(b_bits);
                         task.ram.push_i32(a.wrapping_sub(b));
                     }
                     }
@@ -4111,15 +4138,19 @@ impl AutoVM {
                 OpCode::MUL => {
                     #[cfg(feature = "nanbox")]
                     {
-                    let b_nv = task.ram.pop_nv();
-                    let a_nv = task.ram.pop_nv();
-                    if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
-                        task.ram.push_f32(auto_val::decode_f32(a_nv) * auto_val::decode_f32(b_nv));
-                    } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
-                        task.ram.push_f64(auto_val::decode_f64(a_nv) * auto_val::decode_f64(b_nv));
+                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
+                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    if a_is_f64 && b_is_f64 {
+                        task.ram.push_f64(f64::from_bits(a_bits) * f64::from_bits(b_bits));
+                    } else if a_is_f64 || b_is_f64 {
+                        let a = if a_is_f64 { f64::from_bits(a_bits) } else { nanbox_single_to_f64(a_bits) };
+                        let b = if b_is_f64 { f64::from_bits(b_bits) } else { nanbox_single_to_f64(b_bits) };
+                        task.ram.push_f64(a * b);
+                    } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
+                        task.ram.push_f32(auto_val::decode_f32(a_bits) * auto_val::decode_f32(b_bits));
                     } else {
-                        let a = auto_val::decode_i32(a_nv);
-                        let b = auto_val::decode_i32(b_nv);
+                        let a = auto_val::decode_i32(a_bits);
+                        let b = auto_val::decode_i32(b_bits);
                         task.ram.push_i32(a.wrapping_mul(b));
                     }
                     }
@@ -4133,19 +4164,24 @@ impl AutoVM {
                 OpCode::DIV => {
                     #[cfg(feature = "nanbox")]
                     {
-                    let b_nv = task.ram.pop_nv();
-                    let a_nv = task.ram.pop_nv();
-                    if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
-                        let b = auto_val::decode_f32(b_nv);
+                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
+                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    if a_is_f64 && b_is_f64 {
+                        let b = f64::from_bits(b_bits);
                         if b == 0.0 { return Err(VMError::DivisionByZero); }
-                        task.ram.push_f32(auto_val::decode_f32(a_nv) / b);
-                    } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
-                        let b = auto_val::decode_f64(b_nv);
+                        task.ram.push_f64(f64::from_bits(a_bits) / b);
+                    } else if a_is_f64 || b_is_f64 {
+                        let a = if a_is_f64 { f64::from_bits(a_bits) } else { nanbox_single_to_f64(a_bits) };
+                        let b = if b_is_f64 { f64::from_bits(b_bits) } else { nanbox_single_to_f64(b_bits) };
                         if b == 0.0 { return Err(VMError::DivisionByZero); }
-                        task.ram.push_f64(auto_val::decode_f64(a_nv) / b);
+                        task.ram.push_f64(a / b);
+                    } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
+                        let b = auto_val::decode_f32(b_bits);
+                        if b == 0.0 { return Err(VMError::DivisionByZero); }
+                        task.ram.push_f32(auto_val::decode_f32(a_bits) / b);
                     } else {
-                        let a = auto_val::decode_i32(a_nv);
-                        let b = auto_val::decode_i32(b_nv);
+                        let a = auto_val::decode_i32(a_bits);
+                        let b = auto_val::decode_i32(b_bits);
                         if b == 0 { return Err(VMError::DivisionByZero); }
                         task.ram.push_i32(a.wrapping_div(b));
                     }
@@ -4165,13 +4201,13 @@ impl AutoVM {
                 OpCode::NEG => {
                     #[cfg(feature = "nanbox")]
                     {
-                    let a_nv = task.ram.pop_nv();
-                    if auto_val::is_f32(a_nv) {
-                        task.ram.push_f32(-auto_val::decode_f32(a_nv));
-                    } else if auto_val::is_f64(a_nv) {
-                        task.ram.push_f64(-auto_val::decode_f64(a_nv));
+                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    if a_is_f64 {
+                        task.ram.push_f64(-f64::from_bits(a_bits));
+                    } else if auto_val::is_f32(a_bits) {
+                        task.ram.push_f32(-auto_val::decode_f32(a_bits));
                     } else {
-                        task.ram.push_i32(auto_val::decode_i32(a_nv).wrapping_neg());
+                        task.ram.push_i32(auto_val::decode_i32(a_bits).wrapping_neg());
                     }
                     }
                     #[cfg(not(feature = "nanbox"))]

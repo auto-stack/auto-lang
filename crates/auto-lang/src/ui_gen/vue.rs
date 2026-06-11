@@ -3092,7 +3092,7 @@ impl VueGenerator {
                 "grid" => classes.push("grid".to_string()),
                 "scroll" => classes.push("overflow-auto".to_string()),
                 "container" => classes.push("max-w-7xl mx-auto".to_string()),
-                "center" => classes.push("flex items-center justify-center w-full h-full".to_string()),
+                "center" => classes.push("flex flex-col items-center justify-center h-full".to_string()),
 
                 // HTML5 semantic elements (only add defaults if user hasn't provided class)
                 "header" => classes.push("w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60".to_string()),
@@ -3888,8 +3888,14 @@ impl VueGenerator {
                 // Check if this is a template string with ${...} placeholders
                 // Strip outer {{ }} if present, since caller will wrap
                 let vue = self.convert_template_to_vue(s);
-                Ok(vue.trim_start_matches('{').trim_start_matches(' ')
-                    .trim_end_matches('}').trim_end_matches(' ').to_string())
+                // Only strip {{ }} if the ENTIRE string is wrapped in them.
+                // Using trim_end_matches('}') is too aggressive — it would strip
+                // the closing }} from embedded Vue interpolations like "Counter: {{ count }}"
+                let vue = vue.strip_prefix("{{ ")
+                    .and_then(|v| v.strip_suffix(" }}"))
+                    .map(|v| v.to_string())
+                    .unwrap_or(vue);
+                Ok(vue)
             }
             AuraExpr::Int(n) => Ok(n.to_string()),
             AuraExpr::Float(f) => Ok(f.to_string()),
@@ -4270,12 +4276,24 @@ impl VueGenerator {
             }
 
             "center" => {
-                // Default: flex items-center justify-center w-full h-full + user style
-                let mut classes = vec!["flex".to_string(), "items-center".to_string(), "justify-center".to_string(), "w-full".to_string(), "h-full".to_string()];
+                // Default: flex items-center justify-center h-full + user style
+                // Note: do NOT add w-full here — if user has max-w-*, mx-auto handles centering.
+                // If no max-width is specified, the element fills width naturally via flex.
+                let mut classes = vec![
+                    "flex".to_string(),
+                    "flex-col".to_string(),
+                    "items-center".to_string(),
+                    "justify-center".to_string(),
+                    "h-full".to_string(),
+                ];
                 if let Some(value) = self.get_style_class(props) {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
                         classes.push(user_class.to_string());
+                        // If user style has max-w-*, add mx-auto to center the constrained element
+                        if user_class.contains("max-w-") {
+                            classes.push("mx-auto".to_string());
+                        }
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));

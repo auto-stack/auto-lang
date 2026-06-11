@@ -546,6 +546,49 @@ impl VirtualRAM {
         self.raw_nv[self.sp]
     }
 
+    /// Peek at the Nth value from top of stack without popping.
+    /// peek_nv(0) returns the top, peek_nv(1) returns one below, etc.
+    #[cfg(feature = "nanbox")]
+    #[inline(always)]
+    pub fn peek_nv(&self, offset: usize) -> NanoValue {
+        if self.sp <= offset {
+            panic!("Stack Underflow (nanbox peek)");
+        }
+        self.raw_nv[self.sp - 1 - offset]
+    }
+
+    /// Pop a typed arithmetic operand from the stack in nanbox mode.
+    ///
+    /// f64 values occupy 2 slots (raw bits + null padding), while all other
+    /// types occupy 1 slot. This helper inspects the top-of-stack to decide
+    /// which pop method to use, returning both the raw NanoValue (or f64 bits)
+    /// and a type tag so the caller can dispatch correctly.
+    ///
+    /// Returns `(bits, is_f64)`:
+    /// - If the TOS is the null-padding marker of an f64 pair, pops 2 slots
+    ///   and returns `(raw_f64_bits, true)`.
+    /// - Otherwise pops 1 slot and returns `(nanboxed_value, false)`.
+    #[cfg(feature = "nanbox")]
+    #[inline(always)]
+    pub fn pop_arith_operand(&mut self) -> (u64, bool) {
+        // Check if TOS is the null-padding of a 2-slot f64.
+        // The padding is always encode_null(), and the slot below it is the
+        // raw f64 bits (which is never nanboxed since normal f64 != NaN).
+        let tos = self.peek_nv(0);
+        if auto_val::is_null(tos) {
+            // Check slot below: if it's a raw f64 (not nanboxed), this is an f64 pair
+            let below = self.peek_nv(1);
+            if !auto_val::is_nanboxed(below) {
+                // This is an f64 — use pop_f64 which correctly handles 2 slots
+                let val = self.pop_f64();
+                return (val.to_bits(), true);
+            }
+        }
+        // Single-slot value (i32, f32, string, bool, object, etc.)
+        let nv = self.pop_nv();
+        (nv, false)
+    }
+
     /// Write a raw NanoValue at an address (preserves type tag).
     #[cfg(feature = "nanbox")]
     #[inline(always)]

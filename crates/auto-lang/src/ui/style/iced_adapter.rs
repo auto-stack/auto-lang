@@ -269,6 +269,11 @@ impl IcedStyle {
             StyleClass::MarginRightAuto => {
                 self.margin_right_auto = true;
             }
+            StyleClass::MarginXAuto => {
+                // mx-auto = center horizontally: both flags set
+                self.margin_left_auto = true;
+                self.margin_right_auto = true;
+            }
             StyleClass::Gap(size) => {
                 self.gap = Some(size.to_pixels() as f32);
             }

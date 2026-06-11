@@ -93,6 +93,9 @@ pub enum StyleClass {
     /// Margin Right Auto: mr-auto — push element to the left in a row
     MarginRightAuto,
 
+    /// Margin X Auto: mx-auto — center horizontally (both margins auto)
+    MarginXAuto,
+
     /// Gap: gap-{0-12} (gap-0, gap-1, ..., gap-12)
     Gap(SizeValue),
 
@@ -411,9 +414,8 @@ impl StyleClass {
             return Ok(StyleClass::MarginRightAuto);
         }
         if class == "mx-auto" {
-            // mx-auto = both ml-auto and mr-auto (handled as a pair)
-            // We only emit MarginLeftAuto here; the adapter will set both
-            return Ok(StyleClass::MarginLeftAuto);
+            // mx-auto = center horizontally (both margins auto)
+            return Ok(StyleClass::MarginXAuto);
         }
 
         // Parse gap: gap-{0-12}

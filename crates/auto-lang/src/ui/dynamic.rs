@@ -578,7 +578,7 @@ impl DynamicComponent {
         // If this event comes from an input, update the bound state field first
         if let Some(text) = &input_value {
             if let Some(state_field) = self.input_state_map.get(event_name) {
-                let value = parse_input_value(text);
+                let value = parse_input_value_for_field(text, state_field, &self.bridge);
                 let _ = self.bridge.write_state(state_field, value);
                 self.dirty = true; // input value changed state
             }
@@ -586,12 +586,8 @@ impl DynamicComponent {
 
         // Run the handler via VM bytecode closure
         match self.bridge.call_handler(event_name, &[]) {
-            Ok(()) => self.dirty = true,
-            Err(_) => {
-                // Handler not found (e.g., indexed events like "SelectNote:0"
-                // that have no direct .at handler). Don't set dirty unless
-                // the input_value path above already did.
-            }
+            Ok(()) => { self.dirty = true; }
+            Err(_) => {}
         }
     }
 }
@@ -611,6 +607,40 @@ fn parse_input_value(text: &str) -> auto_val::Value {
         return auto_val::Value::Bool(text == "true");
     }
     auto_val::Value::str(text)
+}
+
+/// Parse a string input value, preserving the state field's existing type.
+///
+/// The VM bytecode uses CONST_F64 for floating-point literals, which pushes
+/// values as f64 onto the nanbox stack. Value::Float is pushed as f32 (via
+/// push_f32), so if the state field is a floating-point type we must use
+/// Value::Double to keep types consistent and avoid the nanbox arithmetic
+/// fallback treating f32 bits as i32 (producing garbage like -2147483647).
+fn parse_input_value_for_field(
+    text: &str,
+    field_name: &str,
+    bridge: &crate::ui::vm_bridge::VmBridge,
+) -> auto_val::Value {
+    let parsed = parse_input_value(text);
+    // If we parsed an Int or Float but the field is currently Float/Double,
+    // promote to Double. This is critical because VM bytecode uses CONST_F64
+    // for floating-point arithmetic, and Value::Float is pushed as f32 (via
+    // push_f32) while Value::Double is pushed as f64 (via push_f64). Mixing
+    // f32 and f64 operands in nanbox arithmetic causes the fallback path to
+    // decode f32 bits as i32, producing garbage like -2147483647.
+    if let Ok(current) = bridge.read_state(field_name) {
+        if matches!(current, auto_val::Value::Float(_) | auto_val::Value::Double(_)) {
+            match parsed {
+                auto_val::Value::Int(_) | auto_val::Value::Float(_) => {
+                    if let Ok(f) = text.parse::<f64>() {
+                        return auto_val::Value::Double(f);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    parsed
 }
 
 /// Clean a handler pattern to a simple name.

@@ -809,7 +809,7 @@ impl VmBridge {
 fn eval_aura_expr_to_value(expr: &AuraExpr) -> Value {
     match expr {
         AuraExpr::Int(i) => Value::Int(*i as i32),
-        AuraExpr::Float(f) => Value::Float(*f as f64),
+        AuraExpr::Float(f) => Value::Double(*f as f64),
         AuraExpr::Bool(b) => Value::Bool(*b),
         AuraExpr::Literal(s) => Value::str(s),
         AuraExpr::StateRef(name) => {

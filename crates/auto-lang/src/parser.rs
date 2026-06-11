@@ -10420,53 +10420,13 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::RBrace)?;
         }
 
-        // Transform `center` to `col` with default centering styles
-        if tag == "center" {
-            let default_style = "w-full h-full justify-center items-center";
-
-            // Check if there was a user style before consuming props
-            let user_style_opt = props.iter()
-                .find(|p| p.name == "style")
-                .and_then(|p| {
-                    if let ViewPropValue::Expr(Expr::Str(s)) = &p.value {
-                        Some(s.to_string())
-                    } else {
-                        None
-                    }
-                });
-
-            // Build merged props
-            let mut merged_props: Vec<ViewProp> = props.into_iter()
-                .filter(|p| p.name != "style")
-                .collect();
-
-            let final_style = if let Some(user_style) = user_style_opt {
-                format!("{} {}", default_style, user_style.trim())
-            } else {
-                default_style.to_string()
-            };
-
-            merged_props.push(ViewProp {
-                name: "style".to_string(),
-                value: ViewPropValue::Expr(Expr::Str(AutoStr::from(&final_style))),
-            });
-
-            Ok(ViewNode::Element {
-                tag: "col".to_string(),
-                props: merged_props,
-                events,
-                children,
-                span: Some((start_pos.pos, self.cur.pos.pos - start_pos.pos)),
-            })
-        } else {
-            Ok(ViewNode::Element {
-                tag,
-                props,
-                events,
-                children,
-                span: Some((start_pos.pos, self.cur.pos.pos - start_pos.pos)),
-            })
-        }
+        Ok(ViewNode::Element {
+            tag,
+            props,
+            events,
+            children,
+            span: Some((start_pos.pos, self.cur.pos.pos - start_pos.pos)),
+        })
     }
 
     /// Parse style binding: { completed: todo.done, editing: todo.editing }

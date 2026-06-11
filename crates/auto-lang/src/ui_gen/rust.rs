@@ -1285,10 +1285,17 @@ impl RustGenerator {
                 // use View::text_styled() to avoid builder pattern issues
                 // (View::text("str") returns View, not ViewBuilder, so chaining won't work)
                 if self.is_leaf_tag(tag.as_str()) && tag != "button" && children.is_empty() && has_styling {
-                    let style_str = props.get("style")
+                    let user_style = props.get("style")
                         .or_else(|| props.get("class"))
                         .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
                         .unwrap_or_default();
+
+                    // Prepend heading default styles (h1→text-4xl font-bold, etc.)
+                    let style_str = match Self::heading_default_style(tag.as_str()) {
+                        Some(default) if !user_style.is_empty() => format!("{} {}", default, user_style),
+                        Some(default) => default.to_string(),
+                        None => user_style,
+                    };
 
                     if let Some(ref name) = text_state_ref {
                         return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, style_str);
@@ -1309,21 +1316,61 @@ impl RustGenerator {
                 // Non-button leaf tags with text and no styling/children:
                 // View::text("str") returns View<M> directly, NOT a builder.
                 // Skip .build() to avoid compile error.
+                // Heading tags (h1-h3) always use text_styled with their default styles.
+                let heading_default = Self::heading_default_style(tag.as_str());
                 if self.is_leaf_tag(tag.as_str()) && tag != "button" && children.is_empty() && !has_styling {
                     if let Some(ref name) = text_state_ref {
+                        if let Some(default) = heading_default {
+                            return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, default);
+                        }
                         return format!("View::text(format!(\"{{}}\", self.{}))", name);
                     }
                     if let Some(label) = &text_prop {
+                        if let Some(default) = heading_default {
+                            return format!("View::text_styled(\"{}\".to_string(), \"{}\")", label, default);
+                        }
                         if label.contains("${") {
                             return format!("View::text({})", self.interpolate_str(label));
                         }
                         return format!("View::text(\"{}\".to_string())", label);
                     }
                     if let Some(ref text) = text_rust_expr {
+                        if let Some(default) = heading_default {
+                            return format!("View::text_styled({}, \"{}\")", text, default);
+                        }
                         return format!("View::text({})", text);
                     }
                     // Leaf tag without text content but no styling — e.g. avatar
                     // These go through the builder path
+                }
+
+                // Special handling for "center" — View::center(child) takes a child directly,
+                // not the builder pattern. Assemble children into a col, then wrap in center.
+                if tag == "center" {
+                    let style_str = props.get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_default();
+
+                    // Build children into a col
+                    let child_view = if children.is_empty() {
+                        "View::Empty".to_string()
+                    } else if children.len() == 1 {
+                        self.generate_view_tree(&children[0])
+                    } else {
+                        let mut col = "View::col()".to_string();
+                        for child in children {
+                            let child_code = self.generate_view_tree(child);
+                            col = format!("{}.child({})", col, child_code);
+                        }
+                        format!("{}.build()", col)
+                    };
+
+                    let mut builder = format!("View::center({})", child_view);
+                    if !style_str.is_empty() {
+                        builder = format!("{}.style(\"{}\")", builder, style_str);
+                    }
+                    return format!("{}.build()", builder);
                 }
 
                 if children.is_empty() {
@@ -1710,6 +1757,16 @@ impl RustGenerator {
         ];
         // Custom widgets start with uppercase letter
         tag.chars().next().map_or(false, |c| c.is_uppercase()) && !KNOWN_TAGS.contains(&tag)
+    }
+
+    /// Default heading styles for h1-h6 tags (consistent with aura_view_builder & vue.rs)
+    fn heading_default_style(tag: &str) -> Option<&'static str> {
+        match tag {
+            "h1" => Some("text-4xl font-bold"),
+            "h2" => Some("text-3xl font-bold"),
+            "h3" => Some("text-xl font-semibold"),
+            _ => None,
+        }
     }
 
     /// Map tag to View builder function

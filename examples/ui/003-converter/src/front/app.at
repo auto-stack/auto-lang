@@ -7,7 +7,7 @@ widget App {
     }
 
     view {
-        col {
+        center {
             text "Temperature Converter" {
                 style: "text-2xl font-bold mb-4"
             }
@@ -30,7 +30,7 @@ widget App {
                 }
             }
 
-            style: "p-6 max-w-md mx-auto gap-4"
+            style: "p-6 max-w-md gap-4"
         }
     }
 
