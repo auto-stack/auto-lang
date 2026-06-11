@@ -140,6 +140,10 @@ impl VmBridge {
         let mut handler_bytecode: Vec<(String, Vec<u8>)> = Vec::new();
         let mut all_strings: Vec<String> = Vec::new();
         let field_names: Vec<String> = widget.state_vars.iter().map(|v| v.name.clone()).collect();
+        let string_fields: std::collections::HashSet<String> = widget.state_vars.iter()
+            .filter(|v| matches!(v.type_info, crate::ast::Type::StrSlice | crate::ast::Type::StrOwned | crate::ast::Type::StrFixed(_)))
+            .map(|v| v.name.clone())
+            .collect();
         let temp_state_id = 4000000u64;
 
         // Sort handlers by name for deterministic compilation order
@@ -150,7 +154,7 @@ impl VmBridge {
             if let LogicPayload::AstStmts(stmts) = payload {
                 let handler_name = extract_handler_name(event_pattern);
                 let string_base = all_strings.len();
-                if let Ok((bytecode, strings)) = compile_handler_stmts(stmts, temp_state_id, &field_names, string_base) {
+                if let Ok((bytecode, strings)) = compile_handler_stmts(stmts, temp_state_id, &field_names, string_base, string_fields.clone()) {
                     all_strings.extend(strings);
                     handler_bytecode.push((handler_name.to_string(), bytecode));
                 }
@@ -782,6 +786,7 @@ impl VmBridge {
                 _ => Value::Nil,
             },
             (Value::Str(a), Value::Str(b)) => match op {
+                Op::Add => Value::str(&format!("{}{}", a.as_str(), b.as_str())),
                 Op::Eq => Value::Bool(a.as_str() == b.as_str()),
                 Op::Neq => Value::Bool(a.as_str() != b.as_str()),
                 _ => Value::Nil,
@@ -876,6 +881,7 @@ fn compile_handler_stmts(
     state_obj_id: u64,
     state_field_names: &[String],
     string_base_idx: usize,
+    string_fields: std::collections::HashSet<String>,
 ) -> std::result::Result<(Vec<u8>, Vec<String>), String> {
     let mut ctx = CompileContext {
         code: Vec::new(),
@@ -883,6 +889,7 @@ fn compile_handler_stmts(
         state_obj_id,
         state_field_names,
         string_base_idx,
+        string_fields,
     };
     for stmt in stmts {
         compile_stmt(&mut ctx, stmt)?;
@@ -900,6 +907,8 @@ struct CompileContext<'a> {
     state_obj_id: u64,
     state_field_names: &'a [String],
     string_base_idx: usize,
+    /// Set of field names declared as string type (for Str += Int numeric increment)
+    string_fields: std::collections::HashSet<String>,
 }
 
 impl<'a> CompileContext<'a> {
@@ -908,6 +917,11 @@ impl<'a> CompileContext<'a> {
         let local_idx = self.strings.len();
         self.strings.push(s.to_string());
         self.string_base_idx + local_idx
+    }
+
+    /// Check if a state field is declared as string type.
+    fn is_string_field(&self, name: &str) -> bool {
+        self.string_fields.contains(name)
     }
 }
 
@@ -1028,7 +1042,7 @@ fn compile_expr<'a>(
             emit_const_i32(&mut ctx.code, if *b { 1 } else { 0 });
         }
         crate::ast::Expr::Str(s) => {
-            // Use LOAD_STR to push string — works in both nanbox and non-nanbox modes
+            // Use LOAD_STR to push string
             let idx = ctx.add_string(s);
             ctx.code.push(OpCode::LOAD_STR as u8);
             ctx.code.extend_from_slice(&(idx as u16).to_le_bytes());

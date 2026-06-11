@@ -60,6 +60,9 @@ widget App {
             .elapsed = 0
         }
         .Lap -> {
+            .lap3 = .lap2
+            .lap2 = .lap1
+            .lap1 = .time_display + .ms_display
             .lap_count += 1
         }
         .Tick -> { .elapsed += 10 }

@@ -424,6 +424,16 @@ impl RustGenerator {
             // (See generate_msg_enum for the direct string injection.)
         }
 
+        // If widget has a tick_interval, add Tick variant to message enum
+        if widget.tick_interval.is_some() {
+            if !self.message_variants.iter().any(|v| v.name == "Tick") {
+                self.message_variants.push(AuraMsgVariant {
+                    name: "Tick".to_string(),
+                    payload: None,
+                });
+            }
+        }
+
         // Message enum (includes wrapper variants for child components + Init lifecycle)
         if !self.message_variants.is_empty() || !self.child_components.is_empty() {
             code.push_str(&self.generate_msg_enum()?);
@@ -655,6 +665,16 @@ impl RustGenerator {
         // view() method
         code.push_str(&self.generate_view_method(widget));
 
+        // subscription() method — generate if tick_interval is set
+        if let Some(interval_ms) = widget.tick_interval {
+            let msg_name = self.current_msg_name();
+            code.push('\n');
+            code.push_str(&format!(
+                "    fn subscription(&self) -> iced::Subscription<Self::Msg> {{\n        iced::time::every(std::time::Duration::from_millis({})).map(|_| {}::Tick)\n    }}\n",
+                interval_ms, msg_name
+            ));
+        }
+
         code.push_str("}\n");
 
         code
@@ -678,11 +698,16 @@ impl RustGenerator {
                 let has_payload = self.message_variants.iter()
                     .find(|v| v.name == variant_name)
                     .map_or(false, |v| v.payload.is_some());
+                // Tick handler: guard with running check if "running" field exists
+                let is_tick_guarded = variant_name == "Tick" && self.state_types.contains_key("running");
                 if has_payload {
                     // Use a named binding instead of _ so handler body can reference it
                     code.push_str(&format!("            {}::{}(id) => {{\n", msg_name, variant_name));
                 } else {
                     code.push_str(&format!("            {}::{} => {{\n", msg_name, variant_name));
+                }
+                if is_tick_guarded {
+                    code.push_str("                if self.running == \"true\" {\n");
                 }
 
                 // If this event is from an input, prepend input text parsing
@@ -720,6 +745,31 @@ impl RustGenerator {
                     }
                 } else {
                     code.push_str(&format!("                {}\n", body));
+                }
+
+                // Post-process Tick handler: if model has elapsed + time_display + ms_display,
+                // append display computation after the user's tick body.
+                if variant_name == "Tick"
+                    && self.state_types.contains_key("elapsed")
+                    && self.state_types.contains_key("time_display")
+                    && self.state_types.contains_key("ms_display")
+                {
+                    // Ensure prior statement ends with semicolon
+                    code.push_str("                    ;\n");
+                    code.push_str(
+                        "                    let total_cs = self.elapsed / 10;\n\
+                         \x20                   let cs = total_cs % 100;\n\
+                         \x20                   let total_secs = total_cs / 100;\n\
+                         \x20                   let secs = total_secs % 60;\n\
+                         \x20                   let mins = total_secs / 60;\n\
+                         \x20                   self.time_display = format!(\"{:02}:{:02}\", mins, secs);\n\
+                         \x20                   self.ms_display = format!(\".{:02}\", cs);\n"
+                    );
+                }
+
+                // Close the running guard for Tick handler
+                if is_tick_guarded {
+                    code.push_str("                }\n");
                 }
 
                 code.push_str("            }\n");
@@ -1039,6 +1089,22 @@ impl RustGenerator {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Wrap multiple view expressions into a builder chain.
+    /// Single view: returns as-is. Multiple views: View::col().child(...).child(...).build()
+    fn wrap_views(views: &[String]) -> String {
+        if views.len() == 1 {
+            views[0].clone()
+        } else {
+            // Use row() for multi-child conditionals so siblings sit side-by-side.
+            // The parent col/row already controls the outer layout direction.
+            let mut builder = "View::row()".to_string();
+            for v in views {
+                builder = format!("{}.child({})", builder, v);
+            }
+            format!("{}.build()", builder)
         }
     }
 
@@ -1528,9 +1594,9 @@ impl RustGenerator {
                     let else_code: Vec<String> = else_nodes.iter()
                         .map(|child| self.generate_view_tree(child))
                         .collect();
-                    format!("if {} {{ {} }} else {{ {} }}", rust_condition, then_code.join("\n"), else_code.join("\n"))
+                    format!("if {} {{ {} }} else {{ {} }}", rust_condition, Self::wrap_views(&then_code), Self::wrap_views(&else_code))
                 } else {
-                    format!("if {} {{ {} }} else {{ View::empty() }}", rust_condition, then_code.join("\n"))
+                    format!("if {} {{ {} }} else {{ View::empty() }}", rust_condition, Self::wrap_views(&then_code))
                 }
             }
 
@@ -1980,7 +2046,8 @@ impl RustGenerator {
         match stmt {
             crate::ast::Stmt::Store(store) => {
                 let name = store.name.as_str();
-                let value = self.ast_expr_to_rust(&store.expr);
+                let resolved = if name.starts_with('.') { &name[1..] } else { name };
+                let mut value = self.ast_expr_to_rust(&store.expr);
                 // Let/Const are local variables — use let binding
                 // Var/Field are state variables — but only if they exist in state_types
                 match store.kind {
@@ -1989,8 +2056,14 @@ impl RustGenerator {
                     }
                     _ => {
                         // If name is a known state var, use self. prefix
-                        if self.state_types.contains_key(name) {
-                            format!("self.{} = {}", name, value)
+                        if self.state_types.contains_key(resolved) {
+                            // Auto-coerce int → String when assigning to a String field
+                            if self.state_types.get(resolved).map_or(false, |ty| ty == "String")
+                                && !self.ast_expr_is_string(&store.expr)
+                            {
+                                value = format!("{}.to_string()", value);
+                            }
+                            format!("self.{} = {}", resolved, value)
                         } else {
                             // Otherwise it's a local var in handler context
                             format!("let {} = {}", name, value)
@@ -2000,6 +2073,29 @@ impl RustGenerator {
             }
             crate::ast::Stmt::Expr(expr) => {
                 self.ast_expr_to_rust(expr)
+            }
+            crate::ast::Stmt::If(if_stmt) => {
+                let mut parts = Vec::new();
+                for (i, branch) in if_stmt.branches.iter().enumerate() {
+                    let cond = self.ast_expr_to_rust(&branch.cond);
+                    let body: Vec<String> = branch.body.stmts.iter()
+                        .map(|s| self.ast_stmt_to_rust(s))
+                        .collect();
+                    let body_str = body.join("; ");
+                    if i == 0 {
+                        parts.push(format!("if {} {{ {} }}", cond, body_str));
+                    } else {
+                        parts.push(format!("else if {} {{ {} }}", cond, body_str));
+                    }
+                }
+                if let Some(else_body) = &if_stmt.else_ {
+                    let body: Vec<String> = else_body.stmts.iter()
+                        .map(|s| self.ast_stmt_to_rust(s))
+                        .collect();
+                    let body_str = body.join("; ");
+                    parts.push(format!("else {{ {} }}", body_str));
+                }
+                parts.join(" ")
             }
             _ => format!("/* unhandled stmt */"),
         }
@@ -2015,6 +2111,80 @@ impl RustGenerator {
             format!("{}[\"{}\"].as_bool().unwrap_or(false)", obj_expr, field)
         } else {
             format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", obj_expr, field)
+        }
+    }
+
+    /// Check if an AST expression produces a String type (for detecting string concatenation)
+    fn ast_expr_is_string(&self, expr: &crate::ast::Expr) -> bool {
+        use crate::ast::Expr;
+        match expr {
+            Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => true,
+            Expr::Ident(name) => {
+                let s = name.as_str();
+                let resolved = if s.starts_with('.') { &s[1..] } else { s };
+                self.state_types.get(resolved).map_or(false, |ty| ty == "String")
+            }
+            Expr::Dot(obj, field) => {
+                // Dot(Ident("self"), "display") → check field "display" in state_types
+                if let Expr::Ident(obj_name) = obj.as_ref() {
+                    let obj_s = obj_name.as_str();
+                    if obj_s == "self" || obj_s.starts_with('.') {
+                        return self.state_types.get(field.as_str())
+                            .map_or(false, |ty| ty == "String");
+                    }
+                }
+                // Generic dot access: check the object chain
+                self.ast_expr_is_string(obj)
+            }
+            Expr::Bina(_left, op, _right) => {
+                // If this is an Add chain, check if either operand is string
+                use auto_val::Op;
+                if matches!(op, Op::Add) {
+                    self.ast_expr_is_string(_left) || self.ast_expr_is_string(_right)
+                } else {
+                    false
+                }
+            }
+            Expr::Call(_) => false,
+            _ => false,
+        }
+    }
+
+    /// Resolve an AST expression to a simple field name (for state_types lookup).
+    /// Returns None if the expression is not a simple field reference.
+    fn resolve_expr_name(&self, expr: &crate::ast::Expr) -> Option<String> {
+        use crate::ast::Expr;
+        match expr {
+            Expr::Ident(name) => {
+                let s = name.as_str();
+                if s.starts_with('.') {
+                    Some(s[1..].to_string())
+                } else {
+                    Some(s.to_string())
+                }
+            }
+            Expr::Dot(obj, field) => {
+                // Dot(Ident("self"), "field") → "field"
+                if let Expr::Ident(obj_name) = obj.as_ref() {
+                    let obj_s = obj_name.as_str();
+                    if obj_s == "self" || obj_s.starts_with('.') {
+                        return Some(field.as_str().to_string());
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Same as ast_expr_to_rust but without appending .to_string() to Str literals
+    fn ast_expr_to_rust_no_to_string(&self, expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
+        match expr {
+            Expr::Str(s) => format!("\"{}\"", s),
+            Expr::CStr(s) => format!("\"{}\"", s),
+            // For everything else, delegate to ast_expr_to_rust
+            _ => self.ast_expr_to_rust(expr),
         }
     }
 
@@ -2125,13 +2295,38 @@ impl RustGenerator {
                         }
                     }
                     let target = self.ast_expr_to_rust(left);
-                    let value = self.ast_expr_to_rust(right);
+                    let mut value = self.ast_expr_to_rust(right);
+                    // Auto-coerce int → String when assigning to a String field
+                    // e.g. .display = .val → self.display = self.val.to_string()
+                    if self.ast_expr_is_string(left) && !self.ast_expr_is_string(right) {
+                        value = format!("{}.to_string()", value);
+                    } else if self.ast_expr_is_string(left) && self.ast_expr_is_string(right) {
+                        // String-to-String assignment from a field ref needs .clone()
+                        // (Rust's String doesn't impl Copy). Skip for literals/expressions
+                        // that already produce owned String values.
+                        let needs_clone = self.resolve_expr_name(right).is_some();
+                        if needs_clone {
+                            value = format!("{}.clone()", value);
+                        }
+                    }
                     return format!("{} = {}", target, value);
                 }
                 // Compound assignment: .count += expr → self.count += expr
                 if matches!(op, Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq) {
                     let target = self.ast_expr_to_rust(left);
                     let value = self.ast_expr_to_rust(right);
+                    // Check if target is a String field — need parse/add/to_string pattern
+                    let target_name = self.resolve_expr_name(left);
+                    if target_name.as_ref().map_or(false, |n| self.state_types.get(n).map_or(false, |ty| ty == "String")) {
+                        let inner_op = match op {
+                            Op::AddEq => "+",
+                            Op::SubEq => "-",
+                            Op::MulEq => "*",
+                            Op::DivEq => "/",
+                            _ => unreachable!(),
+                        };
+                        return format!("{} = ({}.parse::<i32>().unwrap_or(0) {} {}).to_string()", target, target, inner_op, value);
+                    }
                     let op_str = match op {
                         Op::AddEq => "+=",
                         Op::SubEq => "-=",
@@ -2140,6 +2335,21 @@ impl RustGenerator {
                         _ => unreachable!(),
                     };
                     return format!("{} {} {}", target, op_str, value);
+                }
+                // String concatenation detection: use format! instead of +
+                // because Rust's + only works with String + &str, not String + String
+                // Check if EITHER side is a string literal (Expr::Str/CStr/FStr) — that
+                // unambiguously means string concatenation, not numeric addition.
+                let is_string_concat = matches!(op, Op::Add) && (
+                    matches!(left.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                    || matches!(right.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                    || self.ast_expr_is_string(left)
+                    || self.ast_expr_is_string(right)
+                );
+                if is_string_concat {
+                    let left_str = self.ast_expr_to_rust_no_to_string(left);
+                    let right_str = self.ast_expr_to_rust_no_to_string(right);
+                    return format!("format!(\"{{}}{{}}\", {}, {})", left_str, right_str);
                 }
                 let left_str = self.ast_expr_to_rust(left);
                 let right_str = self.ast_expr_to_rust(right);
@@ -2391,6 +2601,19 @@ impl RustGenerator {
             AuraExpr::Bool(b) => b.to_string(),
             AuraExpr::StateRef(name) => format!("self.{}", name),
             AuraExpr::Binary { left, op, right } => {
+                // Detect string concatenation: use format! instead of +
+                // because Rust's + only works with String + &str, not String + String
+                let is_string_concat = matches!(op, crate::aura::AuraBinOp::Add) && (
+                    matches!(left.as_ref(), AuraExpr::Literal(_))
+                    || matches!(right.as_ref(), AuraExpr::Literal(_))
+                    || self.expr_is_string(left)
+                    || self.expr_is_string(right)
+                );
+                if is_string_concat {
+                    let left_str = self.expr_to_rust_no_to_string(left);
+                    let right_str = self.expr_to_rust_no_to_string(right);
+                    return format!("format!(\"{{}}{{}}\", {}, {})", left_str, right_str);
+                }
                 let left_str = self.expr_to_rust(left);
                 let right_str = self.expr_to_rust(right);
                 let op_str = self.bin_op_to_rust(op);
@@ -2488,6 +2711,35 @@ impl RustGenerator {
                 };
                 format!("{}[{}].clone()", target_str, index_cast)
             }
+        }
+    }
+
+    /// Check if an AuraExpr produces a String type (for detecting string concatenation)
+    fn expr_is_string(&self, expr: &AuraExpr) -> bool {
+        match expr {
+            AuraExpr::Literal(_) => true,
+            AuraExpr::StateRef(name) => {
+                self.state_types.get(name).map_or(false, |ty| ty == "String")
+            }
+            AuraExpr::Binary { left, op, right } => {
+                // If this is an Add chain that produced a string, it's still string
+                matches!(op, crate::aura::AuraBinOp::Add)
+                    && (self.expr_is_string(left) || self.expr_is_string(right))
+            }
+            AuraExpr::MethodCall { method, .. } => {
+                matches!(method.as_str(), "to_string" | "trim" | "replace" | "to_lowercase" | "to_uppercase")
+            }
+            _ => false,
+        }
+    }
+
+    /// Same as expr_to_rust but without appending .to_string() to Literal values
+    /// Used inside format!() where &str is fine
+    fn expr_to_rust_no_to_string(&self, expr: &AuraExpr) -> String {
+        match expr {
+            AuraExpr::Literal(s) => format!("\"{}\"", s),
+            // For everything else, delegate to expr_to_rust
+            _ => self.expr_to_rust(expr),
         }
     }
 

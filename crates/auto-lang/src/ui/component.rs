@@ -44,4 +44,11 @@ pub trait Component: Sized + Debug {
     ///
     /// Returns the abstract view tree that will be adapted to specific backends.
     fn view(&self) -> View<Self::Msg>;
+
+    /// Optional subscription for periodic events (e.g., .Tick handlers).
+    /// Default implementation returns no subscription.
+    #[cfg(feature = "ui-iced")]
+    fn subscription(&self) -> iced::Subscription<Self::Msg> {
+        iced::Subscription::none()
+    }
 }

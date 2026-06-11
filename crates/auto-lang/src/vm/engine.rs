@@ -25,12 +25,11 @@ macro_rules! vm_debug {
 }
 
 // ============================================================================
-// Plan 221 Task 5: String tagging helpers (feature-gated for nanbox migration)
+// Plan 221 Task 5: String tagging helpers
 // ============================================================================
 
 /// Result of popping a mixed int/string value from the stack.
-/// Under non-nanbox: strings are encoded as negative i32 (-(idx+1)).
-/// Under nanbox: strings use NaN-boxed encoding, ints use i32 encoding.
+/// Strings use NaN-boxed encoding, ints use i32 encoding.
 #[derive(Debug, Clone, Copy)]
 pub enum StackTag {
     /// A plain integer value
@@ -40,38 +39,19 @@ pub enum StackTag {
 }
 
 /// Push a string tag onto the stack.
-#[cfg(feature = "nanbox")]
 #[inline(always)]
 fn push_str_tag(ram: &mut VirtualRAM, idx: u32) {
     ram.push_string(idx);
 }
 
-/// Push a string tag onto the stack.
-#[cfg(not(feature = "nanbox"))]
-#[inline(always)]
-fn push_str_tag(ram: &mut VirtualRAM, idx: u32) {
-    ram.push_i32(-(idx as i32) - 1);
-}
-
 /// Pop a known-string value, returning the string pool index.
-#[cfg(feature = "nanbox")]
 #[inline(always)]
 fn pop_str_idx(ram: &mut VirtualRAM) -> usize {
     ram.pop_string() as usize
 }
 
-/// Pop a known-string value, returning the string pool index.
-#[cfg(not(feature = "nanbox"))]
-#[inline(always)]
-fn pop_str_idx(ram: &mut VirtualRAM) -> usize {
-    let bits = ram.pop_i32();
-    (-bits - 1) as usize
-}
-
 /// Pop a mixed int/string value from the stack.
-/// Under nanbox: uses NanoValue type detection.
-/// Under non-nanbox: uses sign-bit tagging.
-#[cfg(feature = "nanbox")]
+/// Uses NanoValue type detection.
 #[inline(always)]
 fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
     let nv = ram.pop_nv();
@@ -82,19 +62,6 @@ fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
         StackTag::Int(-1)
     } else {
         StackTag::Int(auto_val::decode_i32(nv))
-    }
-}
-
-/// Pop a mixed int/string value from the stack.
-#[cfg(not(feature = "nanbox"))]
-#[inline(always)]
-fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
-    let bits = ram.pop_i32();
-    // Boolean sentinels: i32::MIN = true, i32::MIN + 1 = false — treat as int
-    if bits < 0 && bits > i32::MIN + 1 {
-        StackTag::Str(((-bits) - 1) as u32)
-    } else {
-        StackTag::Int(bits)
     }
 }
 
@@ -291,7 +258,6 @@ pub enum FutureState {
 
 /// Convert a single-slot nanboxed value to f64 for mixed-type arithmetic.
 /// Handles i32 → f64 and f32 → f64 promotion.
-#[cfg(feature = "nanbox")]
 #[inline(always)]
 fn nanbox_single_to_f64(nv: auto_val::NanoValue) -> f64 {
     if auto_val::is_f32(nv) {
@@ -312,7 +278,6 @@ impl AutoVM {
 
         // Override inventory shims with nanbox-aware versions for str methods
         // (inventory shims use String extraction which doesn't work with NanoValue stack)
-        #[cfg(feature = "nanbox")]
         {
             native_interface.register(crate::vm::native::NATIVE_STR_CONTAINS, crate::vm::native::shim_str_contains);
             native_interface.register(crate::vm::native::NATIVE_STR_STARTS_WITH, crate::vm::native::shim_str_starts_with);
@@ -389,7 +354,6 @@ impl AutoVM {
     }
 
     /// Decode a tagged NanoValue into a Value (nanbox mode).
-    #[cfg(feature = "nanbox")]
     fn decode_tagged_nv(&self, nv: auto_val::NanoValue) -> auto_val::Value {
         if auto_val::is_string(nv) {
             let str_idx = auto_val::decode_string(nv) as usize;
@@ -560,36 +524,21 @@ impl AutoVM {
     ) {
         match value {
             Value::Int(i) => {
-                #[cfg(feature = "nanbox")]
                 ram.push_nv(auto_val::encode_i32(*i));
-                #[cfg(not(feature = "nanbox"))]
-                ram.push_i32(*i);
             }
             Value::Uint(u) => {
-                #[cfg(feature = "nanbox")]
                 ram.push_nv(auto_val::encode_i32(*u as i32));
-                #[cfg(not(feature = "nanbox"))]
-                ram.push_i32(*u as i32);
             }
             Value::Float(f) => ram.push_f32(*f as f32),
             Value::Double(d) => ram.push_f64(*d),
             Value::Bool(b) => {
-                #[cfg(feature = "nanbox")]
                 ram.push_nv(auto_val::encode_bool(*b));
-                #[cfg(not(feature = "nanbox"))]
-                ram.push_i32(if *b { 1 } else { 0 });
             }
             Value::Char(c) => {
-                #[cfg(feature = "nanbox")]
                 ram.push_nv(auto_val::encode_i32(*c as i32));
-                #[cfg(not(feature = "nanbox"))]
-                ram.push_i32(*c as i32);
             }
             Value::Nil => {
-                #[cfg(feature = "nanbox")]
                 ram.push_nv(auto_val::encode_null());
-                #[cfg(not(feature = "nanbox"))]
-                ram.push_i32(0);
             }
             Value::Str(s) => {
                 // Store string in constant pool and push its tagged index
@@ -602,17 +551,11 @@ impl AutoVM {
                 push_str_tag(ram, idx as u32);
             }
             Value::VmRef(vmref) => {
-                #[cfg(feature = "nanbox")]
                 ram.push_nv(auto_val::encode_object(vmref.id as u32));
-                #[cfg(not(feature = "nanbox"))]
-                ram.push_i32(vmref.id as i32);
             }
             _ => {
                 eprintln!("WARNING: push_value unsupported type: {:?}", value);
-                #[cfg(feature = "nanbox")]
                 ram.push_nv(auto_val::encode_i32(0));
-                #[cfg(not(feature = "nanbox"))]
-                ram.push_i32(0);
             }
         }
     }
@@ -1177,9 +1120,6 @@ impl AutoVM {
         }
         let op: OpCode = op_byte.into();
 
-
-
-
             // Plan 199: Debugger hook — check if we should pause before executing
             {
                 let mut dbg = self.debugger.lock().unwrap();
@@ -1220,9 +1160,6 @@ impl AutoVM {
                     }
                 }
                 OpCode::DUP => {
-                    #[cfg(not(feature = "nanbox"))]
-                    { let val = task.ram.top().unwrap_or(0); task.ram.push_i32(val); }
-                    #[cfg(feature = "nanbox")]
                     { if task.ram.sp > 0 { task.ram.push_nv(task.ram.raw_nv[task.ram.sp - 1]); } }
                 }
 
@@ -1269,7 +1206,7 @@ impl AutoVM {
                 OpCode::LOAD_STR => {
                     let str_idx = self.flash.read_u16(task.ip);
                     task.ip += 2;
-                    // Push string reference (nanbox: direct tag, non-nanbox: negative i32)
+                    // Push string reference (NaN-boxed tag)
                     push_str_tag(&mut task.ram, str_idx as u32);
                     // Reset result type since this produces a string, not a number
                     task.last_result_type = ResultType::default();
@@ -1460,19 +1397,6 @@ impl AutoVM {
 
                     let mut elems = Vec::with_capacity(elem_count as usize);
                     for _ in 0..elem_count {
-                        #[cfg(not(feature = "nanbox"))]
-                        {
-                        let bits = task.ram.pop_i32();
-                        if bits != -2147483647 {
-                            let value = if bits >= 4000000 {
-                                auto_val::Value::VmRef(auto_val::VmRef { id: bits as usize })
-                            } else {
-                                auto_val::Value::Int(bits)
-                            };
-                            elems.push(value);
-                        }
-                        }
-                        #[cfg(feature = "nanbox")]
                         {
                         let nv = task.ram.pop_nv();
                         let is_nil = nv == auto_val::encode_i32(-2147483647);
@@ -1539,7 +1463,6 @@ impl AutoVM {
                 }
                 OpCode::ARRAY_LEN => {
                     // Stack: array_id
-                    #[cfg(feature = "nanbox")]
                     {
                         let nv = task.ram.pop_nv();
                         if auto_val::is_string(nv) {
@@ -1578,36 +1501,6 @@ impl AutoVM {
                         } else {
                             task.ram.push_i32(0);
                         }
-                    }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let array_id = task.ram.pop_i32() as u64;
-
-                    // Get array length
-                    if let Some(array_ref) = self.arrays.get(&array_id) {
-                        let guard = array_ref.read().unwrap();
-                        let len = guard.len() as i32;
-                        task.ram.push_i32(len);
-                    } else if let Some(list) = self.heap_objects.get(&array_id) {
-                        use crate::vm::types::ListData;
-                        let guard = list.read().unwrap();
-
-                        let len = if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
-                            list.elems.len() as i32
-                        } else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
-                            list.elems.len() as i32
-                        } else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
-                            list.elems.len() as i32
-                        } else if let Some(list) = guard.as_any().downcast_ref::<ListData<auto_val::Value>>() {
-                            list.elems.len() as i32
-                        } else {
-                            0 // Unknown type
-                        };
-                        task.ram.push_i32(len);
-                    } else {
-                        // Array not found
-                        task.ram.push_i32(0);
-                    }
                     }
                 }
                 // Plan 073: F-string support (f"hello $name")
@@ -1787,7 +1680,6 @@ impl AutoVM {
                     push_str_tag(&mut task.ram, result_idx as u32);
                 }
                 OpCode::NULL_COALESCE => {
-                    #[cfg(feature = "nanbox")]
                     {
                         // Pop right expression (default value)
                         let default_nv = task.ram.pop_nv();
@@ -1815,40 +1707,6 @@ impl AutoVM {
                             task.ram.push_nv(may_nv);
                         }
                     }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    // Pop right expression (default value)
-                    let default_bits = task.ram.pop_i32();
-                    // Pop left expression (May<T> value)
-                    let may_bits = task.ram.pop_i32();
-
-                    // Plan 197 Task 16: Check if May<T> is Option.None (heap object or old -1)
-                    let is_none = if may_bits == -1 {
-                        true
-                    } else if may_bits >= 4000000 {
-                        // Check if it's an Option.None heap object
-                        self.is_option_none(may_bits as u64)
-                    } else {
-                        false
-                    };
-
-                    if is_none {
-                        // Nil case: return default value
-                        task.ram.push_i32(default_bits);
-                    } else {
-                        // Val case: return the unwrapped value
-                        // Plan 197 Task 16: If it's an Option.Some, unwrap to get the inner value
-                        if may_bits >= 4000000 && self.is_option_some(may_bits as u64) {
-                            if let Some(field_val) = self.get_option_inner(may_bits as u64) {
-                                Self::push_value(&mut task.ram, &field_val, &self.strings);
-                            } else {
-                                task.ram.push_i32(may_bits);
-                            }
-                        } else {
-                            task.ram.push_i32(may_bits);
-                        }
-                    }
-                    } // end non-nanbox
                 }
                 // Plan 073: May<T> error propagate operator: expression.?
                 // Plan 208: Also handles Result.Ok / Result.Err heap objects with early return
@@ -1859,30 +1717,17 @@ impl AutoVM {
                     task.ip += 1;
 
                     // Pop May<T> value from stack
-                    #[cfg(feature = "nanbox")]
                     let may_nv = task.ram.pop_nv();
-                    #[cfg(feature = "nanbox")]
                     let may_bits = auto_val::decode_i32(may_nv);
-                    #[cfg(not(feature = "nanbox"))]
-                    let may_bits = task.ram.pop_i32();
 
                     // Determine if this is an error case that should propagate
                     let should_propagate;
                     let mut propagate_value = 0;
 
                     // Plan 197 Task 16: Check if May<T> is Option.None (heap object or old -1)
-                    #[cfg(feature = "nanbox")]
                     let is_none = if auto_val::is_null(may_nv) {
                         true
                     } else if may_bits == -1 {
-                        true
-                    } else if may_bits > 0 {
-                        self.is_option_none(may_bits as u64)
-                    } else {
-                        false
-                    };
-                    #[cfg(not(feature = "nanbox"))]
-                    let is_none = if may_bits == -1 {
                         true
                     } else if may_bits > 0 {
                         self.is_option_none(may_bits as u64)
@@ -1944,13 +1789,8 @@ impl AutoVM {
                     } else {
                         // Negative value: legacy Err sentinel or string nanbox (decoded)
                         should_propagate = false;
-                        #[cfg(feature = "nanbox")]
                         {
                             task.ram.push_nv(may_nv);
-                        }
-                        #[cfg(not(feature = "nanbox"))]
-                        {
-                            task.ram.push_i32(may_bits);
                         }
                     }
 
@@ -2012,13 +1852,8 @@ impl AutoVM {
                     task.ram.push_f64(val_f32 as f64);
                 }
                 OpCode::PUSH_NIL => {
-                    #[cfg(feature = "nanbox")]
                     {
                         task.ram.push_nv(auto_val::encode_null());
-                    }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                        task.ram.push_i32(i32::MIN + 1);
                     }
                 }
                 OpCode::TYPE_CAST_F64 => {
@@ -2033,63 +1868,6 @@ impl AutoVM {
                 // Plan 162: Explicit type conversion (.to) opcodes
                 // Plan 197 Task 10: Struct instances formatted as Type { field: val, ... }
                 OpCode::TYPE_TO_STR => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let value_bits = task.ram.pop_i32();
-                    if value_bits < 0 {
-                        task.ram.push_i32(value_bits);
-                    } else if value_bits >= 4000000 {
-                        use crate::vm::generic_registry::GenericInstanceData;
-                        use crate::vm::heap_object::TypeTag;
-                        let obj_id = value_bits as u64;
-                        let string_value = match self.get_heap_object(obj_id) {
-                            Some(obj) => {
-                                let guard = obj.read().unwrap();
-                                if let TypeTag::GenericInstance(_) = guard.type_tag() {
-                                    if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
-                                        let type_name = self.generic_registry
-                                            .get_type(&inst.mono_name)
-                                            .map(|ct| ct.base_name().to_string())
-                                            .unwrap_or_else(|| inst.mono_name.clone());
-                                        let field_strs: Vec<String> = inst.field_names.iter()
-                                            .zip(inst.fields.iter())
-                                            .map(|(name, val)| {
-                                                let val_str = match val {
-                                                    Value::Int(i) => i.to_string(),
-                                                    Value::Uint(u) => u.to_string(),
-                                                    Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
-                                                    Value::Float(f) => f.to_string(),
-                                                    Value::Double(d) => d.to_string(),
-                                                    Value::Char(c) => format!("'{}'", c),
-                                                    Value::Str(s) => format!("\"{}\"", s.as_str()),
-                                                    Value::VmRef(r) => format!("<heap:{}>", r.id),
-                                                    Value::Nil => "nil".to_string(),
-                                                    _ => format!("{:?}", val),
-                                                };
-                                                format!("{}: {}", name, val_str)
-                                            })
-                                            .collect();
-                                        format!("{} {{ {} }}", type_name, field_strs.join(", "))
-                                    } else { format!("<heap:{}>", value_bits) }
-                                } else { format!("<heap:{}>", value_bits) }
-                            }
-                            None => format!("<heap:{}>", value_bits),
-                        };
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
-                    } else {
-                        let string_value = format!("{}", value_bits);
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
-                    }
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let nv = task.ram.pop_nv();
                     if auto_val::is_string(nv) {
@@ -2300,63 +2078,6 @@ impl AutoVM {
                 // Plan 075: Convert any value to string
                 // Plan 197 Task 10: Struct instances formatted as Type { field: val, ... }
                 OpCode::TO_STR => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let value_bits = task.ram.pop_i32();
-                    if value_bits < 0 {
-                        task.ram.push_i32(value_bits);
-                    } else if value_bits >= 4000000 {
-                        use crate::vm::generic_registry::GenericInstanceData;
-                        use crate::vm::heap_object::TypeTag;
-                        let obj_id = value_bits as u64;
-                        let string_value = match self.get_heap_object(obj_id) {
-                            Some(obj) => {
-                                let guard = obj.read().unwrap();
-                                if let TypeTag::GenericInstance(_) = guard.type_tag() {
-                                    if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
-                                        let type_name = self.generic_registry
-                                            .get_type(&inst.mono_name)
-                                            .map(|ct| ct.base_name().to_string())
-                                            .unwrap_or_else(|| inst.mono_name.clone());
-                                        let field_strs: Vec<String> = inst.field_names.iter()
-                                            .zip(inst.fields.iter())
-                                            .map(|(name, val)| {
-                                                let val_str = match val {
-                                                    Value::Int(i) => i.to_string(),
-                                                    Value::Uint(u) => u.to_string(),
-                                                    Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
-                                                    Value::Float(f) => f.to_string(),
-                                                    Value::Double(d) => d.to_string(),
-                                                    Value::Char(c) => format!("'{}'", c),
-                                                    Value::Str(s) => format!("\"{}\"", s.as_str()),
-                                                    Value::VmRef(r) => format!("<heap:{}>", r.id),
-                                                    Value::Nil => "nil".to_string(),
-                                                    _ => format!("{:?}", val),
-                                                };
-                                                format!("{}: {}", name, val_str)
-                                            })
-                                            .collect();
-                                        format!("{} {{ {} }}", type_name, field_strs.join(", "))
-                                    } else { format!("<heap:{}>", value_bits) }
-                                } else { format!("<heap:{}>", value_bits) }
-                            }
-                            None => format!("<heap:{}>", value_bits),
-                        };
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
-                    } else {
-                        let string_value = format!("{}", value_bits);
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
-                    }
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let nv = task.ram.pop_nv();
                     if auto_val::is_string(nv) {
@@ -2441,13 +2162,6 @@ impl AutoVM {
                 }
                 // Plan 075: Check if value is nil
                 OpCode::IS_NIL => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let value_bits = task.ram.pop_i32();
-                    let is_nil = if value_bits == -1 { 1 } else { 0 };
-                    task.ram.push_i32(is_nil);
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let nv = task.ram.pop_nv();
                     let is_nil = if auto_val::is_null(nv) { 1 }
@@ -2458,27 +2172,6 @@ impl AutoVM {
                 }
                 // Plan 075: Concatenate two strings
                 OpCode::STR_CAT => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                        let right_bits = task.ram.pop_i32();
-                        let left_bits = task.ram.pop_i32();
-                        let strings = self.strings.read().unwrap();
-                        let left_str = if left_bits < 0 {
-                            let idx = (-left_bits - 1) as usize;
-                            strings.get(idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
-                        } else { left_bits.to_string() };
-                        let right_str = if right_bits < 0 {
-                            let idx = (-right_bits - 1) as usize;
-                            strings.get(idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
-                        } else { right_bits.to_string() };
-                        drop(strings);
-                        let result = format!("{}{}", left_str, right_str);
-                        let mut strings = self.strings.write().unwrap();
-                        let result_idx = strings.len();
-                        strings.push(result.into_bytes());
-                        push_str_tag(&mut task.ram, result_idx as u32);
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                         let right_nv = task.ram.pop_nv();
                         let left_nv = task.ram.pop_nv();
@@ -2522,7 +2215,6 @@ impl AutoVM {
                     let val = if type_tag == 1 {
                         auto_val::Value::Double(task.ram.pop_f64())
                     } else {
-                        #[cfg(feature = "nanbox")]
                         {
                             let nv = task.ram.pop_nv();
                             if auto_val::is_string(nv) {
@@ -2537,8 +2229,6 @@ impl AutoVM {
                                 auto_val::Value::Int(auto_val::decode_i32(nv))
                             }
                         }
-                        #[cfg(not(feature = "nanbox"))]
-                        { auto_val::Value::Int(task.ram.pop_i32()) }
                     };
                     let instance = GenericInstanceData::new("Result.Ok".to_string(), vec![val]);
                     let instance_id = self.insert_heap_object(instance);
@@ -2555,13 +2245,6 @@ impl AutoVM {
                 }
                 // Plan 120: Check if Option is Some
                 OpCode::IS_SOME => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let value = task.ram.pop_i32();
-                    let is_some = if value >= 0 { 1 } else { 0 };
-                    task.ram.push_i32(is_some);
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let nv = task.ram.pop_nv();
                     let is_some = if auto_val::is_null(nv) { 0 }
@@ -2596,15 +2279,6 @@ impl AutoVM {
                 }
                 // Plan 120: Unwrap Option (panic if None)
                 OpCode::UNWRAP_SOME => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let value = task.ram.pop_i32();
-                    if value == -1 {
-                        return Err(VMError::RuntimeError("called unwrap on None".to_string()));
-                    }
-                    task.ram.push_i32(value);
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let nv = task.ram.pop_nv();
                     if auto_val::is_null(nv) || (auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1) {
@@ -2818,7 +2492,6 @@ impl AutoVM {
                             }
                             _ => {
                                 // Pop value — in nanbox mode, preserve type information
-                                #[cfg(feature = "nanbox")]
                                 {
                                     let nv = task.ram.pop_nv();
                                     if auto_val::is_string(nv) {
@@ -2844,26 +2517,6 @@ impl AutoVM {
                                         Value::Float(auto_val::decode_f32(nv) as f64)
                                     } else {
                                         Value::Int(auto_val::decode_i32(nv))
-                                    }
-                                }
-                                #[cfg(not(feature = "nanbox"))]
-                                {
-                                    let val_i32 = task.ram.pop_i32();
-                                    if val_i32 >= 4000000 {
-                                        Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
-                                    } else if val_i32 < 0 {
-                                        let idx = (-val_i32 - 1) as usize;
-                                        let strings_guard = self.strings.read().unwrap();
-                                        if idx < strings_guard.len() {
-                                            let s = String::from_utf8_lossy(&strings_guard[idx]).to_string();
-                                            drop(strings_guard);
-                                            Value::Str(auto_val::AutoStr::from(s))
-                                        } else {
-                                            drop(strings_guard);
-                                            Value::Int(val_i32)
-                                        }
-                                    } else {
-                                        Value::Int(val_i32)
                                     }
                                 }
                             }
@@ -2946,7 +2599,6 @@ impl AutoVM {
                     }
                     let expected_name = String::from_utf8_lossy(&name_bytes).to_string();
 
-                    #[cfg(feature = "nanbox")]
                     {
                         let nv = task.ram.pop_nv();
                         let obj_id = if auto_val::is_object(nv) {
@@ -2975,31 +2627,6 @@ impl AutoVM {
                         };
                         task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
                     }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                        let instance_id = task.ram.pop_i32() as u64;
-                        let nil_marker = (i32::MIN + 1) as u64;
-                        let result = if instance_id == nil_marker {
-                            expected_name == "Option.None"
-                        } else if let Some(obj) = self.get_heap_object(instance_id) {
-                            let guard = obj.read().unwrap();
-                            if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
-                                instance.mono_name == expected_name
-                            } else {
-                                false
-                            }
-                        } else if instance_id < 1000000 {
-                            let val = instance_id as i32;
-                            match expected_name.as_str() {
-                                "Option.Some" => val >= 0,
-                                "Option.None" => val < 0,
-                                _ => false,
-                            }
-                        } else {
-                            false
-                        };
-                        task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
-                    }
                 }
                 OpCode::GET_GENERIC_FIELD => {
                     // Get field value from a generic instance or primitive Option.Some value
@@ -3012,7 +2639,6 @@ impl AutoVM {
                     let field_index = self.flash.read_u32(task.ip) as usize;
                     task.ip += 4;
 
-                    #[cfg(feature = "nanbox")]
                     {
                         let nv = task.ram.pop_nv();
                         // Determine object ID: if it's a proper TAG_OBJECT, decode it;
@@ -3070,46 +2696,6 @@ impl AutoVM {
                             )));
                         }
                     }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                        let instance_id = task.ram.read_i32(task.ram.sp - 1) as u64;
-
-                        if let Some(obj) = self.get_heap_object(instance_id) {
-                            let guard = obj.read().unwrap();
-                            let is_generic_instance =
-                                matches!(guard.type_tag(), TypeTag::GenericInstance(_));
-                            if is_generic_instance {
-                                if let Some(instance) =
-                                    guard.as_any().downcast_ref::<GenericInstanceData>()
-                                {
-                                    if let Some(value) = instance.get_field(field_index) {
-                                        let _ = task.ram.pop_i32();
-                                        Self::push_value(&mut task.ram, value, &self.strings);
-                                    } else {
-                                        return Err(VMError::RuntimeError(format!(
-                                            "Field index {} out of bounds", field_index
-                                        )));
-                                    }
-                                } else {
-                                    return Err(VMError::RuntimeError(
-                                        "GET_GENERIC_FIELD: failed to downcast".to_string()
-                                    ));
-                                }
-                            } else {
-                                return Err(VMError::RuntimeError(format!(
-                                    "Type error: GET_GENERIC_FIELD expected GenericInstance, got {:?}",
-                                    guard.type_tag()
-                                )));
-                            }
-                        } else if instance_id < 1000000 {
-                            let _ = task.ram.pop_i32();
-                            task.ram.push_i32(instance_id as i32);
-                        } else {
-                            return Err(VMError::RuntimeError(format!(
-                                "Invalid instance ID: {}", instance_id
-                            )));
-                        }
-                    }
                 }
                 OpCode::SET_GENERIC_FIELD => {
                     // Plan 087 Phase 2: Set field value in generic instance
@@ -3130,7 +2716,6 @@ impl AutoVM {
                     let instance_id = task.ram.pop_i32() as u64;
 
                     // Pop value (below instance_id)
-                    #[cfg(feature = "nanbox")]
                     let value = {
                         // f64 occupies 2 slots (raw bits + null padding), must use
                         // pop_arith_operand to avoid popping only the padding marker.
@@ -3139,15 +2724,6 @@ impl AutoVM {
                             Value::Double(f64::from_bits(bits))
                         } else {
                             self.decode_tagged_nv(bits)
-                        }
-                    };
-                    #[cfg(not(feature = "nanbox"))]
-                    let value = {
-                        let val_i32 = task.ram.pop_i32();
-                        if val_i32 >= 4000000 {
-                            Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
-                        } else {
-                            self.decode_tagged_value(val_i32)
                         }
                     };
 
@@ -3375,23 +2951,6 @@ impl AutoVM {
                     task.ip += 1;
                     let mut fields = Vec::with_capacity(elem_count as usize);
                     for _ in 0..elem_count {
-                        #[cfg(not(feature = "nanbox"))]
-                        {
-                        let val_i32 = task.ram.pop_i32();
-                        let val = if val_i32 < 0 && val_i32 > -1000000 && val_i32 != -2147483648 {
-                            let str_idx = (-val_i32 - 1) as usize;
-                            let strings = self.strings.read().unwrap();
-                            if let Some(bytes) = strings.get(str_idx) {
-                                auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
-                            } else {
-                                auto_val::Value::Int(val_i32)
-                            }
-                        } else {
-                            auto_val::Value::Int(val_i32)
-                        };
-                        fields.push(val);
-                        }
-                        #[cfg(feature = "nanbox")]
                         {
                         let nv = task.ram.pop_nv();
                         let val = self.decode_tagged_nv(nv);
@@ -3447,9 +3006,6 @@ impl AutoVM {
                     // Pop index first (top of stack)
                     let index_i32 = task.ram.pop_i32();
                     // Pop array_id/list_id or str_id (tagged)
-                    #[cfg(not(feature = "nanbox"))]
-                    let obj_or_str_bits = task.ram.pop_i32();
-                    #[cfg(feature = "nanbox")]
                     let obj_or_str_nv = task.ram.pop_nv();
 
                     // Helper function to convert negative index to actual index
@@ -3467,21 +3023,14 @@ impl AutoVM {
 
                     vm_debug!("DEBUG GET_ELEM: obj_or_str_bits={}, index={}",
                         {
-                            #[cfg(not(feature = "nanbox"))] { obj_or_str_bits }
-                            #[cfg(feature = "nanbox")] { auto_val::decode_i32(obj_or_str_nv) }
+                            auto_val::decode_i32(obj_or_str_nv)
                         }, index_i32);
 
                     // Check if this is a tagged string index
-                    #[cfg(not(feature = "nanbox"))]
-                    let is_string_val = obj_or_str_bits < 0 && obj_or_str_bits > -1000000 && obj_or_str_bits != -2147483648;
-                    #[cfg(feature = "nanbox")]
                     let is_string_val = auto_val::is_string(obj_or_str_nv);
 
                     if is_string_val {
                         // This is a tagged string index - string indexing operation
-                        #[cfg(not(feature = "nanbox"))]
-                        let str_idx = (-obj_or_str_bits - 1) as usize;
-                        #[cfg(feature = "nanbox")]
                         let str_idx = auto_val::decode_string(obj_or_str_nv) as usize;
                         let strings = self.strings.read().unwrap();
                         if let Some(bytes) = strings.get(str_idx) {
@@ -3508,9 +3057,6 @@ impl AutoVM {
                         }
                     } else {
                         // Regular array/list access
-                        #[cfg(not(feature = "nanbox"))]
-                        let obj_id = obj_or_str_bits as u64;
-                        #[cfg(feature = "nanbox")]
                         let obj_id = if auto_val::is_object(obj_or_str_nv) {
                             auto_val::decode_object(obj_or_str_nv) as u64
                         } else {
@@ -3531,7 +3077,6 @@ impl AutoVM {
                                     let elem = list.elems[normalized_idx];
                                     vm_debug!("DEBUG GET_ELEM: Returning elem[{}]={}", normalized_idx, elem);
                                     // Preserve string tag encoding: negative values are string indices
-                                    #[cfg(feature = "nanbox")]
                                     {
                                         if elem < 0 {
                                             let str_idx = (-(elem) - 1) as u32;
@@ -3543,8 +3088,6 @@ impl AutoVM {
                                             task.ram.push_i32(elem);
                                         }
                                     }
-                                    #[cfg(not(feature = "nanbox"))]
-                                    task.ram.push_i32(elem);
                                 } else {
                                     vm_debug!("DEBUG GET_ELEM: Index {} out of bounds", index_i32);
                                     task.ram.push_i32(0); // Out of bounds
@@ -3614,7 +3157,6 @@ impl AutoVM {
                                 match elem {
                                     auto_val::Value::Int(i) => {
                                         // Preserve string tag: negative values are string indices
-                                        #[cfg(feature = "nanbox")]
                                         {
                                             if *i < 0 {
                                                 let str_idx = (-(*i) - 1) as u32;
@@ -3623,8 +3165,6 @@ impl AutoVM {
                                                 task.ram.push_i32(*i);
                                             }
                                         }
-                                        #[cfg(not(feature = "nanbox"))]
-                                        task.ram.push_i32(*i);
                                     }
                                     auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
                                     auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
@@ -3693,31 +3233,19 @@ impl AutoVM {
                     use crate::vm::generic_registry::GenericInstanceData;
                     // Stack: value, object_id, field_name_idx (compiled in this order by codegen)
                     // Pop field_name_idx first (top of stack)
-                    #[cfg(not(feature = "nanbox"))]
-                    let field_idx = {
-                        let tagged = task.ram.pop_i32();
-                        if tagged < 0 { (-tagged - 1) as usize } else { tagged as usize }
-                    };
-                    #[cfg(feature = "nanbox")]
                     let field_idx = {
                         let nv = task.ram.pop_nv();
                         if auto_val::is_string(nv) { auto_val::decode_string(nv) as usize }
                         else { auto_val::decode_i32(nv) as usize }
                     };
                     // Pop object_id
-                    #[cfg(feature = "nanbox")]
                     let obj_id = {
                         let nv = task.ram.pop_nv();
                         if auto_val::is_i32(nv) { auto_val::decode_i32(nv) as u64 }
                         else if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
                         else { auto_val::decode_i32(nv) as u64 }
                     };
-                    #[cfg(not(feature = "nanbox"))]
-                    let obj_id = task.ram.pop_i32() as u64;
                     // Pop value (bottom of stack)
-                    #[cfg(not(feature = "nanbox"))]
-                    let value = task.ram.pop_i32();
-                    #[cfg(feature = "nanbox")]
                     let value_nv = task.ram.pop_nv();
 
                     // Get field name from strings pool
@@ -3774,9 +3302,6 @@ impl AutoVM {
                             )));
                         };
                         obj.set(key, {
-                            #[cfg(not(feature = "nanbox"))]
-                            { self.decode_tagged_value(value) }
-                            #[cfg(feature = "nanbox")]
                             { self.decode_tagged_nv(value_nv) }
                         });
                     } else if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
@@ -3786,9 +3311,6 @@ impl AutoVM {
                             let field_idx = inst.field_names.iter().position(|n| n == &field_name);
                             if let Some(idx) = field_idx {
                                 inst.set_field(idx, {
-                                    #[cfg(not(feature = "nanbox"))]
-                                    { self.decode_tagged_value(value) }
-                                    #[cfg(feature = "nanbox")]
                                     { self.decode_tagged_nv(value_nv) }
                                 }).map_err(|e| VMError::RuntimeError(e))?;
                             } else {
@@ -3804,10 +3326,7 @@ impl AutoVM {
                             // Handle semver field mutation
                             let mut field_set = false;
                             if type_name == "semver::Version" {
-                                #[cfg(feature = "nanbox")]
                                 let new_val = auto_val::decode_i32(value_nv);
-                                #[cfg(not(feature = "nanbox"))]
-                                let new_val = value;
                                 if let Some(obj) = self.heap_objects.get(&obj_id) {
                                     let mut guard = obj.write().unwrap();
                                     if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
@@ -3852,7 +3371,6 @@ impl AutoVM {
                     task.ip += 2;
 
                     // Pop object ID from stack
-                    #[cfg(feature = "nanbox")]
                     let obj_id = {
                         let nv = task.ram.pop_nv();
                         if auto_val::is_i32(nv) {
@@ -3869,8 +3387,6 @@ impl AutoVM {
                             auto_val::decode_i32(nv) as u64
                         }
                     };
-                    #[cfg(not(feature = "nanbox"))]
-                    let obj_id = task.ram.pop_i32() as u64;
 
                     // Get field name from strings pool (Plan 073: Now uses RwLock)
                     let strings = self.strings.read().unwrap();
@@ -3915,7 +3431,7 @@ impl AutoVM {
                                 }
                                 auto_val::Value::Char(c) => task.ram.push_i32(c as i32),
                                 auto_val::Value::Str(s) => {
-                                    // Push tagged string index (nanbox: direct tag, non-nanbox: negative i32)
+                                    // Push tagged string index (NaN-boxed)
                                     let str_bytes = s.as_bytes().to_vec();
                                     let mut strings = self.strings.write().unwrap();
                                     let str_idx = strings.len();
@@ -4033,7 +3549,6 @@ impl AutoVM {
                 }
                 // === Arithmetic ===
                 OpCode::ADD => {
-                    #[cfg(feature = "nanbox")]
                     {
                     let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
                     let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
@@ -4075,42 +3590,8 @@ impl AutoVM {
                         task.ram.push_i32(a.wrapping_add(b));
                     }
                     }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    // String concatenation: negative values are string tags (-(idx+1))
-                    let a_is_str = a < 0;
-                    let b_is_str = b < 0;
-                    if a_is_str || b_is_str {
-                        let a_bytes = if a_is_str {
-                            let idx = (-a - 1) as usize;
-                            let strings = self.strings.read().unwrap();
-                            strings.get(idx).cloned().unwrap_or_default()
-                        } else {
-                            a.to_string().into_bytes()
-                        };
-                        let b_bytes = if b_is_str {
-                            let idx = (-b - 1) as usize;
-                            let strings = self.strings.read().unwrap();
-                            strings.get(idx).cloned().unwrap_or_default()
-                        } else {
-                            b.to_string().into_bytes()
-                        };
-                        let mut combined = a_bytes;
-                        combined.extend_from_slice(&b_bytes);
-                        let mut strings = self.strings.write().unwrap();
-                        let new_idx = strings.len();
-                        strings.push(combined);
-                        drop(strings);
-                        task.ram.push_i32(-(new_idx as i32) - 1);
-                    } else {
-                        task.ram.push_i32(a.wrapping_add(b));
-                    }
-                    }
                 }
                 OpCode::SUB => {
-                    #[cfg(feature = "nanbox")]
                     {
                     let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
                     let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
@@ -4128,15 +3609,8 @@ impl AutoVM {
                         task.ram.push_i32(a.wrapping_sub(b));
                     }
                     }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    task.ram.push_i32(a.wrapping_sub(b));
-                    }
                 }
                 OpCode::MUL => {
-                    #[cfg(feature = "nanbox")]
                     {
                     let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
                     let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
@@ -4154,15 +3628,8 @@ impl AutoVM {
                         task.ram.push_i32(a.wrapping_mul(b));
                     }
                     }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    task.ram.push_i32(a.wrapping_mul(b));
-                    }
                 }
                 OpCode::DIV => {
-                    #[cfg(feature = "nanbox")]
                     {
                     let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
                     let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
@@ -4186,20 +3653,10 @@ impl AutoVM {
                         task.ram.push_i32(a.wrapping_div(b));
                     }
                     }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    if b == 0 {
-                        return Err(VMError::DivisionByZero);
-                    }
-                    task.ram.push_i32(a.wrapping_div(b));
-                    }
                 }
 
                 // === Control Flow ===
                 OpCode::NEG => {
-                    #[cfg(feature = "nanbox")]
                     {
                     let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
                     if a_is_f64 {
@@ -4209,11 +3666,6 @@ impl AutoVM {
                     } else {
                         task.ram.push_i32(auto_val::decode_i32(a_bits).wrapping_neg());
                     }
-                    }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let a = task.ram.pop_i32();
-                    task.ram.push_i32(a.wrapping_neg());
                     }
                 }
 
@@ -4349,7 +3801,6 @@ impl AutoVM {
                 }
 
                 OpCode::NOT => {
-                    #[cfg(feature = "nanbox")]
                     {
                         let nv = task.ram.pop_nv();
                         // Falsy: null nanbox, i32(0), i32(false sentinel -2147483647), or bool false
@@ -4359,11 +3810,6 @@ impl AutoVM {
                             || decoded == -2147483647
                             || nv == auto_val::encode_bool(false);
                         task.ram.push_i32(if is_false { 1 } else { 0 });
-                    }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                        let a = task.ram.pop_i32();
-                        task.ram.push_i32(if a == 0 || a == i32::MIN + 1 { 1 } else { 0 });
                     }
                 }
                 OpCode::CALL => {
@@ -4441,7 +3887,6 @@ impl AutoVM {
                         )));
                     };
 
-                    #[cfg(feature = "nanbox")]
                     let (receiver_nv, receiver_pos) = {
                         let nv = task.ram.read_nv(receiver_pos);
                         // In nanbox mode, if receiver_pos landed on a null marker
@@ -4458,13 +3903,9 @@ impl AutoVM {
                             (nv, receiver_pos)
                         }
                     };
-                    #[cfg(feature = "nanbox")]
                     let receiver_nv = receiver_nv;
-                    #[cfg(not(feature = "nanbox"))]
-                    let receiver = task.ram.read_i32(receiver_pos);
 
                     // Look up the object's type name from all registries
-                    #[cfg(feature = "nanbox")]
                     let type_name = if auto_val::is_string(receiver_nv) {
                         let str_idx = auto_val::decode_string(receiver_nv) as usize;
                         let s = self.strings.read().unwrap()
@@ -4545,62 +3986,6 @@ impl AutoVM {
                         format!("<unknown_nv:{:016x}>", receiver_nv)
                     };
 
-                    #[cfg(not(feature = "nanbox"))]
-                    let type_name = if receiver < 0 && receiver > i32::MIN + 1 {
-                        let str_idx = (-receiver - 1) as usize;
-                        if let Some(bytes) = self.strings.read().unwrap().get(str_idx) {
-                            let s = String::from_utf8_lossy(bytes).to_string();
-                            let candidate = format!("{}.{}", s, method_name);
-                            if self.flash.exports_by_name.contains_key(&candidate) {
-                                s
-                            } else {
-                                const STATIC_CALL_TYPES: &[&str] = &[
-                                    "Command", "Stdio", "Writer", "Reader", "ReaderBuilder",
-                                    "WriterBuilder", "StringRecord", "ThreadRng", "Complex",
-                                    "BigInt", "Normal", "Rng", "WalkDir", "Instant", "Duration",
-                                    "OnceCell", "Regex", "Url", "Version",
-                                ];
-                                if STATIC_CALL_TYPES.contains(&s.as_str()) {
-                                    s
-                                } else {
-                                    "str".to_string()
-                                }
-                            }
-                        } else {
-                            "str".to_string()
-                        }
-                    } else if receiver > 0 {
-                        let obj_key = receiver as u64;
-                        // heap_objects (4000000+): ListData, HashMapData, GenericInstanceData, etc.
-                        if let Some(obj_lock) = self.heap_objects.get(&obj_key) {
-                            let guard = obj_lock.read().unwrap();
-                            if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
-                                inst.mono_name.split('_').next()
-                                    .unwrap_or(&inst.mono_name).to_string()
-                            } else {
-                                // Fallback: use type_tag for ListData, HashMapData, etc.
-                                let tag_name = guard.type_tag().name();
-                                // Extract base type: "List<string>" → "List", "HashMap<String, int>" → "HashMap"
-                                tag_name.split('<').next()
-                                    .unwrap_or(&tag_name).to_string()
-                            }
-                        }
-                        // arrays (2000000+): Vec<Value> — treated as List
-                        else if self.arrays.contains_key(&obj_key) {
-                            "List".to_string()
-                        }
-                        // objects (1000000+): ObjectData (key-value map) — treated as HashMap
-                        else if self.objects.contains_key(&obj_key) {
-                            "HashMap".to_string()
-                        }
-                        else {
-                            format!("<unknown:{}>", obj_key)
-                        }
-                    } else if receiver == -1 {
-                        "Option".to_string()
-                    } else {
-                        format!("<invalid:{}>", receiver)
-                    };
                     // Construct function name: TypeName.method
                     let func_name = format!("{}.{}", type_name, method_name);
 
@@ -4648,13 +4033,10 @@ impl AutoVM {
                         // CALL_SPEC stack: [..., receiver, arg0, arg1, ..., argN-1]
                         // Native shim expects: [..., argN-1, ..., arg0, receiver] (pop args first, then receiver)
                         // Re-push receiver on top so shim can pop in correct order
-                        #[cfg(feature = "nanbox")]
                         {
                             let recv_nv = task.ram.read_nv(receiver_pos);
                             task.ram.push_nv(recv_nv);
                         }
-                        #[cfg(not(feature = "nanbox"))]
-                        task.ram.push_i32(task.ram.read_i32(receiver_pos));
                         if let Some(shim) = self.native_interface.get(native_id).cloned() {
                             shim(task, self)?;
                         } else {
@@ -4664,7 +4046,6 @@ impl AutoVM {
                         // Stack: [..., receiver, arg0..argN-1, receiver, return_value(s)]
                         // Need: [..., return_value(s)]
                         // In nanbox mode, string values occupy 2 slots (encode_string + encode_null).
-                        #[cfg(feature = "nanbox")]
                         {
                             use auto_val::NanoValue;
                             let top_nv: NanoValue = task.ram.pop_nv();
@@ -4681,12 +4062,6 @@ impl AutoVM {
                                 for _ in 0..=arg_count { task.ram.pop_nv(); }
                                 task.ram.push_nv(top_nv);
                             }
-                        }
-                        #[cfg(not(feature = "nanbox"))]
-                        {
-                            let return_val = task.ram.pop_i32();
-                            for _ in 0..=arg_count { task.ram.pop_i32(); }
-                            task.ram.push_i32(return_val);
                         }
                     } else if let Some(native_id) = math_native_id {
                         // Plan 240: Math method on expression result (e.g., (a-b).to_radians())
@@ -4737,10 +4112,7 @@ impl AutoVM {
                         // Stack: [..., receiver(str nanbox), arg0, ..., argN-1]
                         match method_name.as_str() {
                             "as_bytes" => {
-                                #[cfg(feature = "nanbox")]
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let str_idx = (-receiver - 1) as usize;
                                 let bytes: Vec<u8> = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| b.clone())
@@ -4748,32 +4120,20 @@ impl AutoVM {
                                 // Wrap as RustStdlibObject for FFI consumption
                                 let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("Vec<u8>", bytes);
                                 let handle = self.insert_heap_object(obj) as i32;
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(handle)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(handle); }
                             }
                             "to_uppercase" | "to_lower" | "to_lowercase" => {
-                                #[cfg(feature = "nanbox")]
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let str_idx = (-receiver - 1) as usize;
                                 let s = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).to_string())
                                     .unwrap_or_default();
                                 let result = if method_name == "to_uppercase" { s.to_uppercase() } else { s.to_lowercase() };
                                 let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(-(idx as i32) - 1); }
                             }
                             "chars" => {
-                                #[cfg(feature = "nanbox")]
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let str_idx = (-receiver - 1) as usize;
                                 let s = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).to_string())
@@ -4782,16 +4142,10 @@ impl AutoVM {
                                 let mut list: ListData<i32> = ListData::new();
                                 for ch in s.chars() { list.push(ch as i32); }
                                 let list_id = self.insert_heap_object(list);
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(list_id as i32); }
                             }
                             "graphemes" => {
-                                #[cfg(feature = "nanbox")]
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let str_idx = (-receiver - 1) as usize;
                                 let s = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).to_string())
@@ -4804,26 +4158,16 @@ impl AutoVM {
                                 // Fallback: split by char boundaries
                                 if list.len() == 0 { for ch in s.chars() { list.push(ch as i32); } }
                                 let list_id = self.insert_heap_object(list);
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(list_id as i32); }
                             }
                             "split" => {
-                                #[cfg(feature = "nanbox")]
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let str_idx = (-receiver - 1) as usize;
                                 let s = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).to_string())
                                     .unwrap_or_default();
                                 // Pop the separator argument
-                                #[cfg(feature = "nanbox")]
                                 let sep_nv = task.ram.pop_nv();
-                                #[cfg(not(feature = "nanbox"))]
-                                let sep = task.ram.pop_i32();
-                                #[cfg(feature = "nanbox")]
                                 let sep = if auto_val::is_string(sep_nv) {
                                     let sep_idx = auto_val::decode_string(sep_nv) as usize;
                                     self.strings.read().unwrap()
@@ -4845,129 +4189,69 @@ impl AutoVM {
                                 drop(strings);
                                 let list_id = self.insert_heap_object(list);
                                 // Remove receiver from CALL_SPEC layout, push result
-                                #[cfg(feature = "nanbox")]
                                 { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { task.ram.pop_i32(); task.ram.push_i32(list_id as i32); }
                             }
                             "is_empty" => {
-                                #[cfg(feature = "nanbox")]
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let str_idx = (-receiver - 1) as usize;
                                 let s = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| b.is_empty())
                                     .unwrap_or(true);
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(if s { auto_val::encode_i32(1) } else { auto_val::encode_i32(0) }); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(if s { 1 } else { 0 }); }
                             }
                             "starts_with" | "ends_with" | "contains" => {
-                                #[cfg(feature = "nanbox")]
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let str_idx = (-receiver - 1) as usize;
                                 let s = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).to_string())
                                     .unwrap_or_default();
-                                #[cfg(feature = "nanbox")]
                                 let arg_nv = task.ram.pop_nv();
-                                #[cfg(not(feature = "nanbox"))]
-                                let arg_val = task.ram.pop_i32();
-                                #[cfg(feature = "nanbox")]
                                 let pat = if auto_val::is_string(arg_nv) {
                                     let pat_idx = auto_val::decode_string(arg_nv) as usize;
-                                    self.strings.read().unwrap().get(pat_idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
-                                } else { String::new() };
-                                #[cfg(not(feature = "nanbox"))]
-                                let pat = if arg_val < 0 && arg_val > i32::MIN + 1 {
-                                    let pat_idx = (-arg_val - 1) as usize;
                                     self.strings.read().unwrap().get(pat_idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
                                 } else { String::new() };
                                 let result = if method_name == "starts_with" { s.starts_with(&pat) }
                                     else if method_name == "ends_with" { s.ends_with(&pat) }
                                     else { s.contains(&pat) };
-                                #[cfg(feature = "nanbox")]
                                 { task.ram.pop_nv(); task.ram.push_nv(if result { auto_val::encode_i32(1) } else { auto_val::encode_i32(0) }); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { task.ram.pop_i32(); task.ram.push_i32(if result { 1 } else { 0 }); }
                             }
                             "len" => {
-                                #[cfg(feature = "nanbox")]
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let str_idx = (-receiver - 1) as usize;
                                 let len = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).len() as i32)
                                     .unwrap_or(0);
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(len)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(len); }
                             }
                             "trim" => {
-                                #[cfg(feature = "nanbox")]
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let str_idx = (-receiver - 1) as usize;
                                 let s = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).trim().to_string())
                                     .unwrap_or_default();
                                 let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.into_bytes()); i };
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(-(idx as i32) - 1); }
                             }
                             "replace" => {
-                                #[cfg(feature = "nanbox")]
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let str_idx = (-receiver - 1) as usize;
                                 let s = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).to_string())
                                     .unwrap_or_default();
                                 // Pop replacement arg first (top), then pattern arg
-                                #[cfg(feature = "nanbox")]
                                 let repl_nv = task.ram.pop_nv();
-                                #[cfg(not(feature = "nanbox"))]
-                                let repl_val = task.ram.pop_i32();
-                                #[cfg(feature = "nanbox")]
                                 let pat_nv = task.ram.pop_nv();
-                                #[cfg(not(feature = "nanbox"))]
-                                let pat_val = task.ram.pop_i32();
-                                #[cfg(feature = "nanbox")]
                                 let pat = if auto_val::is_string(pat_nv) {
                                     let i = auto_val::decode_string(pat_nv) as usize;
                                     self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
                                 } else { String::new() };
-                                #[cfg(not(feature = "nanbox"))]
-                                let pat = if pat_val < 0 && pat_val > i32::MIN + 1 {
-                                    let i = (-pat_val - 1) as usize;
-                                    self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
-                                } else { String::new() };
-                                #[cfg(feature = "nanbox")]
                                 let repl = if auto_val::is_string(repl_nv) {
                                     let i = auto_val::decode_string(repl_nv) as usize;
                                     self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
                                 } else { String::new() };
-                                #[cfg(not(feature = "nanbox"))]
-                                let repl = if repl_val < 0 && repl_val > i32::MIN + 1 {
-                                    let i = (-repl_val - 1) as usize;
-                                    self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
-                                } else { String::new() };
                                 let result = s.replace(&pat, &repl);
                                 let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
-                                #[cfg(feature = "nanbox")]
                                 { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_string(idx as u32)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { task.ram.pop_i32(); task.ram.push_i32(-(idx as i32) - 1); }
                             }
                             "to_string" | "to_str" | "clone" => {
                                 // str.to_string() / str.to_str() / str.clone() — return self
@@ -4975,40 +4259,25 @@ impl AutoVM {
                             }
                             _ => {
                                 // Unknown str method — fall through to other handlers below
-                                #[cfg(feature = "nanbox")]
                                 task.ram.push_nv(auto_val::encode_null());
-                                #[cfg(not(feature = "nanbox"))]
-                                task.ram.push_i32(0);
                             }
                         }
                     } else if type_name == "List" {
                         match method_name.as_str() {
                             "count" | "len" => {
-                                #[cfg(feature = "nanbox")]
                                 let list_id = auto_val::decode_object(receiver_nv) as u64;
-                                #[cfg(not(feature = "nanbox"))]
-                                let list_id = receiver as u64;
                                 let len = if let Some(obj) = self.heap_objects.get(&list_id) {
                                     let guard = obj.read().unwrap();
                                     if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
                                         list.len() as i32
                                     } else { 0 }
                                 } else { 0 };
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(len)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(len); }
                             }
                             "get" => {
                                 // Pop index arg, then get element from list
-                                #[cfg(feature = "nanbox")]
                                 let index = auto_val::decode_i32(task.ram.pop_nv());
-                                #[cfg(not(feature = "nanbox"))]
-                                let index = task.ram.pop_i32();
-                                #[cfg(feature = "nanbox")]
                                 let list_id = auto_val::decode_object(receiver_nv) as u64;
-                                #[cfg(not(feature = "nanbox"))]
-                                let list_id = receiver as u64;
                                 if let Some(obj) = self.heap_objects.get(&list_id) {
                                     let guard = obj.read().unwrap();
                                     if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
@@ -5016,35 +4285,22 @@ impl AutoVM {
                                             let v = *val;
                                             if v >= 4000000 {
                                                 // Heap object ID — push as object reference
-                                                #[cfg(feature = "nanbox")]
                                                 { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(v as u32)); }
-                                                #[cfg(not(feature = "nanbox"))]
-                                                { task.ram.pop_i32(); for _ in 1..arg_count { task.ram.pop_i32(); } task.ram.push_i32(v); }
                                             } else if let Some(bytes) = self.get_string(v as u16) {
                                                 let new_idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(bytes.to_vec()); i };
-                                                #[cfg(feature = "nanbox")]
                                                 { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(new_idx as u32)); }
-                                                #[cfg(not(feature = "nanbox"))]
-                                                { task.ram.pop_i32(); for _ in 1..arg_count { task.ram.pop_i32(); } task.ram.push_i32(-(new_idx as i32) - 1); }
                                             } else {
-                                                #[cfg(feature = "nanbox")]
                                                 { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(v)); }
-                                                #[cfg(not(feature = "nanbox"))]
-                                                { task.ram.pop_i32(); for _ in 1..arg_count { task.ram.pop_i32(); } task.ram.push_i32(v); }
                                             }
                                         } else {
                                             // Out of bounds — push 0 (None)
-                                            #[cfg(feature = "nanbox")]
                                             { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_i32(0); }
-                                            #[cfg(not(feature = "nanbox"))]
-                                            { task.ram.pop_i32(); for _ in 1..arg_count { task.ram.pop_i32(); } task.ram.push_i32(0); }
                                         }
                                     }
                                 }
                             }
                             "push" => {
                                 // Push element to end of List (arrays DashMap)
-                                #[cfg(feature = "nanbox")]
                                 let arr_key = if auto_val::is_object(receiver_nv) {
                                     auto_val::decode_object(receiver_nv) as u64
                                 } else if auto_val::is_i32(receiver_nv) {
@@ -5052,16 +4308,10 @@ impl AutoVM {
                                 } else {
                                     0u64
                                 };
-                                #[cfg(not(feature = "nanbox"))]
-                                let arr_key = receiver as u64;
                                 // Pop the element arg
-                                #[cfg(feature = "nanbox")]
                                 let elem_nv = task.ram.pop_nv();
-                                #[cfg(not(feature = "nanbox"))]
-                                let elem_bits = task.ram.pop_i32();
                                 if let Some(arr_ref) = self.arrays.get(&arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
-                                    #[cfg(feature = "nanbox")]
                                     {
                                         let value = if auto_val::is_i32(elem_nv) {
                                             auto_val::Value::Int(auto_val::decode_i32(elem_nv))
@@ -5084,42 +4334,13 @@ impl AutoVM {
                                         };
                                         arr.push(value);
                                     }
-                                    #[cfg(not(feature = "nanbox"))]
-                                    {
-                                        let value = if elem_bits >= 2000000 {
-                                            // Array or object reference
-                                            if elem_bits >= 3000000 {
-                                                auto_val::Value::VmRef(auto_val::VmRef { id: (elem_bits - 3000000) as usize })
-                                            } else if elem_bits >= 2000000 {
-                                                auto_val::Value::VmRef(auto_val::VmRef { id: (elem_bits - 2000000) as usize })
-                                            } else {
-                                                auto_val::Value::Int(elem_bits)
-                                            }
-                                        } else if elem_bits >= 1000000 {
-                                            auto_val::Value::VmRef(auto_val::VmRef { id: elem_bits as usize })
-                                        } else if elem_bits < 0 && elem_bits != -2147483647 {
-                                            // String index (encoded as negative)
-                                            let str_idx = (-(elem_bits + 1)) as usize;
-                                            let bytes = self.strings.read().unwrap().get(str_idx).cloned().unwrap_or_default();
-                                            auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
-                                        } else if elem_bits != -2147483647 {
-                                            auto_val::Value::Int(elem_bits)
-                                        } else {
-                                            auto_val::Value::Nil
-                                        };
-                                        arr.push(value);
-                                    }
                                 } else {
                                 }
                                 // Pop receiver, push 0 (void)
-                                #[cfg(feature = "nanbox")]
                                 { task.ram.pop_nv(); task.ram.push_i32(0); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { task.ram.pop_i32(); task.ram.push_i32(0); }
                             }
                             "remove" => {
                                 // Remove element at index from List (arrays DashMap)
-                                #[cfg(feature = "nanbox")]
                                 let arr_key = if auto_val::is_object(receiver_nv) {
                                     auto_val::decode_object(receiver_nv) as u64
                                 } else if auto_val::is_i32(receiver_nv) {
@@ -5127,13 +4348,8 @@ impl AutoVM {
                                 } else {
                                     0u64
                                 };
-                                #[cfg(not(feature = "nanbox"))]
-                                let arr_key = receiver as u64;
                                 // Pop the index arg
-                                #[cfg(feature = "nanbox")]
                                 let index = auto_val::decode_i32(task.ram.pop_nv()) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let index = task.ram.pop_i32() as usize;
                                 if let Some(arr_ref) = self.arrays.get(&arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
                                     if index < arr.len() {
@@ -5141,14 +4357,10 @@ impl AutoVM {
                                     }
                                 }
                                 // Pop receiver, push 0 (void)
-                                #[cfg(feature = "nanbox")]
                                 { task.ram.pop_nv(); task.ram.push_i32(0); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { task.ram.pop_i32(); task.ram.push_i32(0); }
                             }
                             "pop" => {
                                 // Pop last element from List (arrays DashMap)
-                                #[cfg(feature = "nanbox")]
                                 let arr_key = if auto_val::is_object(receiver_nv) {
                                     auto_val::decode_object(receiver_nv) as u64
                                 } else if auto_val::is_i32(receiver_nv) {
@@ -5156,21 +4368,15 @@ impl AutoVM {
                                 } else {
                                     0u64
                                 };
-                                #[cfg(not(feature = "nanbox"))]
-                                let arr_key = receiver as u64;
                                 if let Some(arr_ref) = self.arrays.get(&arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
                                     let _ = arr.pop();
                                 }
                                 // Pop receiver, push 0 (void)
-                                #[cfg(feature = "nanbox")]
                                 { task.ram.pop_nv(); task.ram.push_i32(0); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { task.ram.pop_i32(); task.ram.push_i32(0); }
                             }
                             "insert" => {
                                 // Insert element at index in List (arrays DashMap)
-                                #[cfg(feature = "nanbox")]
                                 let arr_key = if auto_val::is_object(receiver_nv) {
                                     auto_val::decode_object(receiver_nv) as u64
                                 } else if auto_val::is_i32(receiver_nv) {
@@ -5178,21 +4384,12 @@ impl AutoVM {
                                 } else {
                                     0u64
                                 };
-                                #[cfg(not(feature = "nanbox"))]
-                                let arr_key = receiver as u64;
                                 // Stack: [..., receiver, index, elem]
-                                #[cfg(feature = "nanbox")]
                                 let elem_nv = task.ram.pop_nv();
-                                #[cfg(not(feature = "nanbox"))]
-                                let elem_bits = task.ram.pop_i32();
-                                #[cfg(feature = "nanbox")]
                                 let index = auto_val::decode_i32(task.ram.pop_nv()) as usize;
-                                #[cfg(not(feature = "nanbox"))]
-                                let index = task.ram.pop_i32() as usize;
                                 if let Some(arr_ref) = self.arrays.get(&arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
                                     let pos = index.min(arr.len());
-                                    #[cfg(feature = "nanbox")]
                                     {
                                         let value = if auto_val::is_i32(elem_nv) {
                                             auto_val::Value::Int(auto_val::decode_i32(elem_nv))
@@ -5215,31 +4412,12 @@ impl AutoVM {
                                         };
                                         arr.insert(pos, value);
                                     }
-                                    #[cfg(not(feature = "nanbox"))]
-                                    {
-                                        let value = if elem_bits >= 1000000 {
-                                            auto_val::Value::VmRef(auto_val::VmRef { id: elem_bits as usize })
-                                        } else if elem_bits < 0 && elem_bits != -2147483647 {
-                                            let str_idx = (-(elem_bits + 1)) as usize;
-                                            let bytes = self.strings.read().unwrap().get(str_idx).cloned().unwrap_or_default();
-                                            auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
-                                        } else if elem_bits != -2147483647 {
-                                            auto_val::Value::Int(elem_bits)
-                                        } else {
-                                            auto_val::Value::Nil
-                                        };
-                                        arr.insert(pos, value);
-                                    }
                                 }
                                 // Pop receiver, push 0 (void)
-                                #[cfg(feature = "nanbox")]
                                 { task.ram.pop_nv(); task.ram.push_i32(0); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { task.ram.pop_i32(); task.ram.push_i32(0); }
                             }
                             "sort" | "dedup" | "reverse" => {
                                 // In-place sort/dedup/reverse of List
-                                #[cfg(feature = "nanbox")]
                                 let arr_key = if auto_val::is_object(receiver_nv) {
                                     auto_val::decode_object(receiver_nv) as u64
                                 } else if auto_val::is_i32(receiver_nv) {
@@ -5247,8 +4425,6 @@ impl AutoVM {
                                 } else {
                                     0u64
                                 };
-                                #[cfg(not(feature = "nanbox"))]
-                                let arr_key = receiver as u64;
                                 // Try arrays registry first (most common for List)
                                 if let Some(arr_ref) = self.arrays.get(&arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
@@ -5283,26 +4459,17 @@ impl AutoVM {
                                     }
                                 }
                                 // Pop args, leave receiver on stack as return value
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..arg_count { task.ram.pop_nv(); } }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..arg_count { task.ram.pop_i32(); } }
                             }
                             "sort_by" | "sort_by_key" => {
                                 // In-place sort with comparator — pop closure arg, use default sort for now
-                                #[cfg(feature = "nanbox")]
                                 let arr_key = if auto_val::is_object(receiver_nv) {
                                     auto_val::decode_object(receiver_nv) as u64
                                 } else {
                                     auto_val::decode_i32(receiver_nv) as u64
                                 };
-                                #[cfg(not(feature = "nanbox"))]
-                                let arr_key = receiver as u64;
                                 // Pop args (closure)
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..arg_count { task.ram.pop_nv(); } }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..arg_count { task.ram.pop_i32(); } }
                                 if let Some(arr_ref) = self.arrays.get(&arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
                                     arr.sort_by(|a, b| {
@@ -5325,25 +4492,16 @@ impl AutoVM {
                                 // Identity operations: return receiver unchanged, only pop args
                                 if matches!(method_name.as_str(), "collect" | "rev" | "filter_map" | "flatten" | "into_iter" | "iter" | "iter_mut" | "par_iter" | "par_iter_mut" | "for_each" | "map" | "filter" | "find" | "any" | "all" | "reduce" | "fold") {
                                     // Pop args only (not receiver) — receiver stays as return value
-                                    #[cfg(feature = "nanbox")]
                                     { for _ in 0..arg_count { task.ram.pop_nv(); } }
-                                    #[cfg(not(feature = "nanbox"))]
-                                    { for _ in 0..arg_count { task.ram.pop_i32(); } }
                                 } else {
                                     // Unknown List method — push nil, fall through
-                                    #[cfg(feature = "nanbox")]
                                     task.ram.push_nv(auto_val::encode_null());
-                                    #[cfg(not(feature = "nanbox"))]
-                                    task.ram.push_i32(0);
                                 }
                             }
                         }
                     } else if type_name.starts_with("<unknown:") || type_name.starts_with("<invalid") {
                         // Integer literal methods: 0x1234.to_be_bytes(), etc.
-                        #[cfg(feature = "nanbox")]
                         let int_val = auto_val::decode_i32(receiver_nv);
-                        #[cfg(not(feature = "nanbox"))]
-                        let int_val = receiver;
                         match method_name.as_str() {
                             "to_be_bytes" | "to_le_bytes" => {
                                 let be = method_name == "to_be_bytes";
@@ -5358,10 +4516,7 @@ impl AutoVM {
                                     list.push(b as i32);
                                 }
                                 let list_id = self.insert_heap_object(list);
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(list_id as i32); }
                             }
                             "to_string" | "to_str" => {
                                 let s = int_val.to_string();
@@ -5371,16 +4526,10 @@ impl AutoVM {
                                     strings.push(bytes);
                                     strings.len() - 1
                                 };
-                                #[cfg(feature = "nanbox")]
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
-                                #[cfg(not(feature = "nanbox"))]
-                                { for _ in 0..=arg_count { task.ram.pop_i32(); } task.ram.push_i32(-(idx as i32) - 1); }
                             }
                             _ => {
-                                #[cfg(feature = "nanbox")]
                                 task.ram.push_nv(auto_val::encode_null());
-                                #[cfg(not(feature = "nanbox"))]
-                                task.ram.push_i32(0);
                             }
                         }
                     } else if type_name.contains("::") || type_name.contains("RustStdlib")
@@ -5401,10 +4550,7 @@ impl AutoVM {
                         // Detect if receiver is a type-name string from a static call
                         // Static calls have a string receiver (e.g., "WalkDir" from WalkDir.new)
                         // Instance calls have a heap handle receiver (i32 > 0 or object)
-                        #[cfg(feature = "nanbox")]
                         let receiver_is_type_string = auto_val::is_string(receiver_nv);
-                        #[cfg(not(feature = "nanbox"))]
-                        let receiver_is_type_string = receiver < 0 && receiver > i32::MIN + 1;
 
                         // Push method and type_name strings for the dispatch handler
                         let method_bytes = method_name.as_bytes().to_vec();
@@ -5414,15 +4560,9 @@ impl AutoVM {
                         // shim_rust_stdlib_dispatch expects: type_name(str), method(str) on top
                         // Stack is: [..., receiver, arg0..argN-1]
                         // Push type_name and method on top (1 nanbox slot each, no null marker)
-                        #[cfg(feature = "nanbox")]
                         {
                             task.ram.push_nv(auto_val::encode_string(type_idx as u32));
                             task.ram.push_nv(auto_val::encode_string(method_idx as u32));
-                        }
-                        #[cfg(not(feature = "nanbox"))]
-                        {
-                            task.ram.push_i32(-(type_idx as i32) - 1);
-                            task.ram.push_i32(-(method_idx as i32) - 1);
                         }
                         if let Some(shim) = self.native_interface.get(dispatch_id).cloned() {
                             shim(task, self)?;
@@ -5432,23 +4572,14 @@ impl AutoVM {
                         // Dispatch handler consumed type_name + method + args.
                         // For instance methods, receiver was consumed by handler too.
                         // For static calls, receiver type-name string is still on stack below return.
-                        #[cfg(feature = "nanbox")]
                         if receiver_is_type_string {
                             let ret_nv = task.ram.pop_nv();
                             task.ram.pop_nv(); // remove the type-name receiver leftover
                             task.ram.push_nv(ret_nv);
                         }
-                        #[cfg(not(feature = "nanbox"))]
-                        if receiver_is_type_string {
-                            let ret_val = task.ram.pop_i32();
-                            task.ram.pop_i32(); // remove the type-name receiver leftover
-                            task.ram.push_i32(ret_val);
-                        }
                     } else if method_name == "is_none" || method_name == "is_some" {
                         // Plan 240: Inline is_none/is_some for any type (Option semantics)
-                        // In nanbox mode: check nanbox type tag to determine Some vs None
-                        // In non-nanbox mode: check i32 value >= 0 (negative = None/special)
-                        #[cfg(feature = "nanbox")]
+                        // Check nanbox type tag to determine Some vs None
                         let (is_some, receiver_is_string) = {
                             let recv_nv = task.ram.read_nv(receiver_pos);
                             if auto_val::is_string(recv_nv) {
@@ -5470,14 +4601,11 @@ impl AutoVM {
                                 (true, false) // object, bool, f64, etc. = Some
                             }
                         };
-                        #[cfg(not(feature = "nanbox"))]
-                        let is_some = task.ram.read_i32(receiver_pos) >= 0;
                         let result = if method_name == "is_some" {
                             if is_some { 1 } else { 0 }
                         } else {
                             if is_some { 0 } else { 1 }
                         };
-                        #[cfg(feature = "nanbox")]
                         {
                             if receiver_is_string {
                                 // String receiver occupies 2 nanbox slots
@@ -5488,18 +4616,9 @@ impl AutoVM {
                             }
                             task.ram.push_nv(auto_val::encode_i32(result));
                         }
-                        #[cfg(not(feature = "nanbox"))]
-                        {
-                            for _ in 0..=arg_count { task.ram.pop_i32(); }
-                            task.ram.push_i32(result);
-                        }
                     } else if method_name == "to_string" || method_name == "to_str" {
                         // Inline to_string — convert to debug string representation
-                        #[cfg(feature = "nanbox")]
                         let recv_nv = task.ram.read_nv(receiver_pos);
-                        #[cfg(not(feature = "nanbox"))]
-                        let recv_val = task.ram.read_i32(receiver_pos);
-                        #[cfg(feature = "nanbox")]
                         let recv_val = if auto_val::is_i32(recv_nv) { auto_val::decode_i32(recv_nv) } else if auto_val::is_object(recv_nv) { auto_val::decode_object(recv_nv) as i32 } else { task.ram.read_i32(receiver_pos) };
                         let mut converted = false;
                         if recv_val > 0 {
@@ -5516,13 +4635,8 @@ impl AutoVM {
                                             strings.len() - 1
                                         };
                                         for _ in 0..=arg_count { task.ram.pop_i32(); }
-                                        #[cfg(feature = "nanbox")]
                                         {
                                             task.ram.push_nv(auto_val::encode_string(idx as u32));
-                                        }
-                                        #[cfg(not(feature = "nanbox"))]
-                                        {
-                                            task.ram.push_i32(-(idx as i32) - 1);
                                         }
                                         converted = true;
                                     }
@@ -5559,13 +4673,8 @@ impl AutoVM {
                                             strings.len() - 1
                                         };
                                         for _ in 0..=arg_count { task.ram.pop_i32(); }
-                                        #[cfg(feature = "nanbox")]
                                         {
                                             task.ram.push_nv(auto_val::encode_string(idx as u32));
-                                        }
-                                        #[cfg(not(feature = "nanbox"))]
-                                        {
-                                            task.ram.push_i32(-(idx as i32) - 1);
                                         }
                                         converted = true;
                                     }
@@ -5574,7 +4683,6 @@ impl AutoVM {
                         }
                         if !converted {
                             // Primitive value — convert i32/f64 to string
-                            #[cfg(feature = "nanbox")]
                             {
                                 let s = if auto_val::is_i32(recv_nv) {
                                     auto_val::decode_i32(recv_nv).to_string()
@@ -5595,18 +4703,6 @@ impl AutoVM {
                                     strings.len() - 1
                                 };
                                 task.ram.push_nv(auto_val::encode_string(idx as u32));
-                            }
-                            #[cfg(not(feature = "nanbox"))]
-                            {
-                                let s = recv_val.to_string();
-                                for _ in 0..=arg_count { task.ram.pop_i32(); }
-                                let bytes = s.into_bytes();
-                                let idx = {
-                                    let mut strings = self.strings.write().unwrap();
-                                    strings.push(bytes);
-                                    strings.len() - 1
-                                };
-                                task.ram.push_i32(-(idx as i32) - 1);
                             }
                         }
                     } else {
@@ -5640,9 +4736,6 @@ impl AutoVM {
                     }
 
                     // Under nanbox: preserve NanoValue type tag for string/bool/etc.
-                    #[cfg(not(feature = "nanbox"))]
-                    let result = task.ram.pop_i32();
-                    #[cfg(feature = "nanbox")]
                     let result_nv = task.ram.pop_nv();
 
                     let old_bp = task.ram.read_i32(task.bp) as usize;
@@ -5660,13 +4753,6 @@ impl AutoVM {
                         // Assuming simple verification for now.
                     }
 
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                        task.ram.write_i32(new_sp - 1, result);
-                        task.ram.sp = new_sp;
-                        task.ram.write_i32(new_sp - 1, result);
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                         task.ram.write_nv(new_sp - 1, result_nv);
                         task.ram.sp = new_sp;
@@ -6265,24 +5351,15 @@ impl AutoVM {
                         let n_args = task.current_fn_n_args;
                         let offset = n_args - param_idx;
                         let actual_offset = offset + 1;
-                        #[cfg(not(feature = "nanbox"))]
-                        task.ram.push_i32(task.ram.read_i32(task.bp - actual_offset));
-                        #[cfg(feature = "nanbox")]
                         task.ram.push_nv(task.ram.read_nv(task.bp - actual_offset));
                     } else {
                         // Local variable: load from bp+1+idx
-                        #[cfg(not(feature = "nanbox"))]
-                        task.ram.push_i32(task.ram.read_i32(task.bp + 1 + idx));
-                        #[cfg(feature = "nanbox")]
                         task.ram.push_nv(task.ram.read_nv(task.bp + 1 + idx));
                     }
                 }
                 OpCode::STORE_LOCAL => {
                     let idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
-                    #[cfg(not(feature = "nanbox"))]
-                    let val = task.ram.pop_i32();
-                    #[cfg(feature = "nanbox")]
                     let val_nv = task.ram.pop_nv();
 
                     // Plan 088 Phase 4: Check if this is a parameter (idx >= 0x80)
@@ -6291,45 +5368,24 @@ impl AutoVM {
                         let n_args = task.current_fn_n_args;
                         let offset = n_args - param_idx;
                         let actual_offset = offset + 1;
-                        #[cfg(not(feature = "nanbox"))]
-                        task.ram.write_i32(task.bp - actual_offset, val);
-                        #[cfg(feature = "nanbox")]
                         task.ram.write_nv(task.bp - actual_offset, val_nv);
                     } else {
-                        #[cfg(not(feature = "nanbox"))]
-                        task.ram.write_i32(task.bp + 1 + idx, val);
-                        #[cfg(feature = "nanbox")]
                         task.ram.write_nv(task.bp + 1 + idx, val_nv);
                     }
                 }
                 OpCode::LOAD_LOC_0 => {
-                    #[cfg(not(feature = "nanbox"))]
-                    task.ram.push_i32(task.ram.read_i32(task.bp + 1));
-                    #[cfg(feature = "nanbox")]
                     task.ram.push_nv(task.ram.read_nv(task.bp + 1));
                 }
                 OpCode::LOAD_LOC_1 => {
-                    #[cfg(not(feature = "nanbox"))]
-                    task.ram.push_i32(task.ram.read_i32(task.bp + 2));
-                    #[cfg(feature = "nanbox")]
                     task.ram.push_nv(task.ram.read_nv(task.bp + 2));
                 }
                 OpCode::LOAD_LOC_2 => {
-                    #[cfg(not(feature = "nanbox"))]
-                    task.ram.push_i32(task.ram.read_i32(task.bp + 3));
-                    #[cfg(feature = "nanbox")]
                     task.ram.push_nv(task.ram.read_nv(task.bp + 3));
                 }
                 OpCode::STORE_LOC_0 => {
-                    #[cfg(not(feature = "nanbox"))]
-                    { let v = task.ram.pop_i32(); task.ram.write_i32(task.bp + 1, v); }
-                    #[cfg(feature = "nanbox")]
                     { let v = task.ram.pop_nv(); task.ram.write_nv(task.bp + 1, v); }
                 }
                 OpCode::STORE_LOC_1 => {
-                    #[cfg(not(feature = "nanbox"))]
-                    { let v = task.ram.pop_i32(); task.ram.write_i32(task.bp + 2, v); }
-                    #[cfg(feature = "nanbox")]
                     { let v = task.ram.pop_nv(); task.ram.write_nv(task.bp + 2, v); }
                 }
 
@@ -6370,33 +5426,6 @@ impl AutoVM {
 
                 // === Comparison ===
                 OpCode::EQ => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    // Plan 091: Use special values for boolean results
-                    // i32::MIN = true, i32::MIN+1 = false
-                    // Plan 197 Task 2: Content-aware string comparison
-                    // Plan 197 Task 7: Structural equality for heap objects
-                    let result = if a == b {
-                        true
-                    } else if a >= 4000000 && b >= 4000000 {
-                        self.struct_eq(a, b)
-                    } else if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
-                        let a_idx = ((-a) - 1) as u16;
-                        let b_idx = ((-b) - 1) as u16;
-                        let a_str = self.get_string(a_idx);
-                        let b_str = self.get_string(b_idx);
-                        match (a_str, b_str) {
-                            (Some(sa), Some(sb)) => sa == sb,
-                            _ => false,
-                        }
-                    } else {
-                        false
-                    };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
@@ -6434,29 +5463,6 @@ impl AutoVM {
                     }
                 }
                 OpCode::NE => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    let result = if a == b {
-                        false
-                    } else if a >= 4000000 && b >= 4000000 {
-                        !self.struct_eq(a, b)
-                    } else if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
-                        let a_idx = ((-a) - 1) as u16;
-                        let b_idx = ((-b) - 1) as u16;
-                        let a_str = self.get_string(a_idx);
-                        let b_str = self.get_string(b_idx);
-                        match (a_str, b_str) {
-                            (Some(sa), Some(sb)) => sa != sb,
-                            _ => true,
-                        }
-                    } else {
-                        true
-                    };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
@@ -6491,29 +5497,6 @@ impl AutoVM {
                     }
                 }
                 OpCode::LT => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
-                        let a_idx = ((-a) - 1) as u16;
-                        let b_idx = ((-b) - 1) as u16;
-                        let a_str = self.get_string(a_idx);
-                        let b_str = self.get_string(b_idx);
-                        match (a_str, b_str) {
-                            (Some(sa), Some(sb)) => {
-                                let sa = String::from_utf8_lossy(&sa);
-                                let sb = String::from_utf8_lossy(&sb);
-                                sa < sb
-                            }
-                            _ => a < b,
-                        }
-                    } else {
-                        a < b
-                    };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
@@ -6539,29 +5522,6 @@ impl AutoVM {
                     }
                 }
                 OpCode::GT => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
-                        let a_idx = ((-a) - 1) as u16;
-                        let b_idx = ((-b) - 1) as u16;
-                        let a_str = self.get_string(a_idx);
-                        let b_str = self.get_string(b_idx);
-                        match (a_str, b_str) {
-                            (Some(sa), Some(sb)) => {
-                                let sa = String::from_utf8_lossy(&sa);
-                                let sb = String::from_utf8_lossy(&sb);
-                                sa > sb
-                            }
-                            _ => false,
-                        }
-                    } else {
-                        a > b
-                    };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
@@ -6616,29 +5576,6 @@ impl AutoVM {
                     }
                 }
                 OpCode::LE => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
-                        let a_idx = ((-a) - 1) as u16;
-                        let b_idx = ((-b) - 1) as u16;
-                        let a_str = self.get_string(a_idx);
-                        let b_str = self.get_string(b_idx);
-                        match (a_str, b_str) {
-                            (Some(sa), Some(sb)) => {
-                                let sa = String::from_utf8_lossy(&sa);
-                                let sb = String::from_utf8_lossy(&sb);
-                                sa <= sb
-                            }
-                            _ => a <= b,
-                        }
-                    } else {
-                        a <= b
-                    };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
@@ -6664,29 +5601,6 @@ impl AutoVM {
                     }
                 }
                 OpCode::GE => {
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
-                        let a_idx = ((-a) - 1) as u16;
-                        let b_idx = ((-b) - 1) as u16;
-                        let a_str = self.get_string(a_idx);
-                        let b_str = self.get_string(b_idx);
-                        match (a_str, b_str) {
-                            (Some(sa), Some(sb)) => {
-                                let sa = String::from_utf8_lossy(&sa);
-                                let sb = String::from_utf8_lossy(&sb);
-                                sa >= sb
-                            }
-                            _ => a >= b,
-                        }
-                    } else {
-                        a >= b
-                    };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
-                    }
-                    #[cfg(feature = "nanbox")]
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();

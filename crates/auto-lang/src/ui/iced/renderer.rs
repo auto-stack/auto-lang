@@ -2342,6 +2342,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     let _ = state.component.write_state("ms_display", auto_val::Value::str(&ms_display));
                 }
             }
+            *state.view_dirty.borrow_mut() = true;
             return iced::Task::none();
         }
 
@@ -2373,29 +2374,26 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 || !input_map.contains_key(ev_name)
         });
 
-        // Post-process Lap: record real lap times by shifting lap entries
+        // Post-process Lap: format lap entries with "Lap N: time" prefix.
+        // The bytecode handler already shifts lap3=lap2, lap2=lap1, lap1=time.
+        // We just re-format lap1 to include the lap count prefix.
         if event_name == "Lap" {
-            let time_display = state.component.read_state("time_display")
-                .map(|v| v.as_str().to_string())
-                .unwrap_or_else(|_| "00:00".to_string());
-            let ms_display = state.component.read_state("ms_display")
-                .map(|v| v.as_str().to_string())
-                .unwrap_or_else(|_| ".00".to_string());
             let lap_count = state.component.read_state("lap_count")
-                .map(|v| v.as_str().to_string())
+                .map(|v| {
+                    // Handle both int (after numeric += fix) and string types
+                    match v {
+                        auto_val::Value::Int(n) => format!("{}", n),
+                        _ => v.as_str().to_string(),
+                    }
+                })
                 .unwrap_or_else(|_| "0".to_string());
-            let lap_time = format!("Lap {}: {}{}", lap_count, time_display, ms_display);
-
-            // Shift: lap2 -> lap3, lap1 -> lap2, new -> lap1
-            let lap2 = state.component.read_state("lap2")
-                .map(|v| v.as_str().to_string())
-                .unwrap_or_default();
             let lap1 = state.component.read_state("lap1")
                 .map(|v| v.as_str().to_string())
                 .unwrap_or_default();
-            let _ = state.component.write_state("lap3", auto_val::Value::str(&lap2));
-            let _ = state.component.write_state("lap2", auto_val::Value::str(&lap1));
-            let _ = state.component.write_state("lap1", auto_val::Value::str(&lap_time));
+            if !lap1.is_empty() {
+                let _ = state.component.write_state("lap1",
+                    auto_val::Value::str(&format!("Lap {}: {}", lap_count, lap1)));
+            }
         }
 
         // Dynamic todo list: handle indexed Toggle:N / Delete:N / AddTodo
@@ -4211,12 +4209,17 @@ where
 /// Run an auto-ui Component with Iced backend
 ///
 /// This is the unified entry point for running UI applications with Iced.
+/// Wires up the component's `subscription()` for periodic events (e.g., .Tick).
 pub fn run_app<C>() -> AppResult<()>
 where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
-    Ok(iced::run(C::update, view)?)
+    iced::application(C::default, C::update, view)
+        .subscription(|c| c.subscription())
+        .window_size(iced::Size::new(800.0, 600.0))
+        .run()
+        .map_err(|e| e.into())
 }
 
 /// Run an auto-ui Component with Iced, dispatching an initial Task after the window appears.
