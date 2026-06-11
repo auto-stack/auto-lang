@@ -1,59 +1,18 @@
 use miette::Result;
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, EditCommand, Emacs, FileBackedHistory,
-    KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
-    TraversalDirection,
+    default_emacs_keybindings, EditCommand, Emacs, FileBackedHistory,
+    KeyCode, KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal,
 };
 use std::path::PathBuf;
 
-use crate::{completions::reedline::ShellCompleter, shell::Shell};
+use crate::menu::{AshMenu, AshMenuConfig};
+use crate::{completions::reedline::ShellCompleter, prompt::AshPrompt, shell::Shell};
 
 /// Read-Eval-Print Loop for AutoShell
 pub struct Repl {
     shell: Shell,
     line_editor: Reedline,
-}
-
-/// Custom prompt to handle consistent path formatting
-pub struct ShellPrompt;
-
-impl reedline::Prompt for ShellPrompt {
-    fn render_prompt_left(&self) -> std::borrow::Cow<'_, str> {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let mut path_str = cwd.display().to_string();
-
-        // 1. Remove UNC prefix on Windows
-        if path_str.starts_with(r"\\?\") {
-            path_str = path_str[4..].to_string();
-        }
-
-        // 2. Unify separators to forward slash
-        path_str = path_str.replace('\\', "/");
-
-        std::borrow::Cow::Owned(format!("{}〉", path_str))
-    }
-
-    fn render_prompt_right(&self) -> std::borrow::Cow<'_, str> {
-        std::borrow::Cow::Borrowed("")
-    }
-
-    fn render_prompt_indicator(
-        &self,
-        _prompt_mode: reedline::PromptEditMode,
-    ) -> std::borrow::Cow<'_, str> {
-        std::borrow::Cow::Borrowed("")
-    }
-
-    fn render_prompt_multiline_indicator(&self) -> std::borrow::Cow<'_, str> {
-        std::borrow::Cow::Borrowed("..> ")
-    }
-
-    fn render_prompt_history_search_indicator(
-        &self,
-        history_search: reedline::PromptHistorySearch,
-    ) -> std::borrow::Cow<'_, str> {
-        std::borrow::Cow::Owned(format!("({}): ", history_search.term))
-    }
+    prompt: AshPrompt,
 }
 
 impl Repl {
@@ -71,15 +30,12 @@ impl Repl {
         // Create completer for Tab completion
         let completer = Box::new(ShellCompleter::new());
 
-        // Use the interactive menu to select options from the completer
-        let completion_menu = Box::new(
-            ColumnarMenu::default()
-                .with_name("completion_menu")
-                .with_columns(4)
-                .with_column_width(None)
-                .with_column_padding(2)
-                .with_traversal_direction(TraversalDirection::Vertical),
-        );
+        // Use AshMenu (adaptive completion menu replacing ColumnarMenu)
+        let completion_menu = Box::new(AshMenu::new(AshMenuConfig {
+            name: "completion_menu".to_string(),
+            ..Default::default()
+        }));
+
         // Set up the required keybindings
         let mut keybindings = default_emacs_keybindings();
         keybindings.add_binding(
@@ -97,6 +53,9 @@ impl Repl {
 
         let edit_mode = Box::new(Emacs::new(keybindings));
 
+        // Create modular prompt (AshPrompt)
+        let prompt = AshPrompt::new(crate::prompt::AshConfig::load());
+
         let line_editor = Reedline::create()
             .with_history(history)
             .with_completer(completer)
@@ -104,7 +63,7 @@ impl Repl {
             .with_partial_completions(true)
             .with_edit_mode(edit_mode);
 
-        Ok(Self { shell, line_editor })
+        Ok(Self { shell, line_editor, prompt })
     }
 
     /// Get the path to the history file
@@ -133,11 +92,9 @@ impl Repl {
 
     /// Run the REPL loop
     pub fn run(&mut self) -> Result<()> {
-        let prompt = ShellPrompt;
-
         loop {
             // Read input
-            let sig = self.line_editor.read_line(&prompt);
+            let sig = self.line_editor.read_line(&self.prompt);
 
             match sig {
                 Ok(Signal::Success(line)) => {

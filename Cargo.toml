@@ -11,6 +11,8 @@ members = [
     "crates/auto-val",
     "crates/auto-vm",
     "crates/auto-shell",
+    # Plan 295: Ash Core + Ash TUI split
+    "crates/ash-core",
     # "crates/auto-xml",  # Temporarily disabled due to Cargo.toml issues
     # Plan 082: AutoCache global build cache
     "crates/auto-cache",

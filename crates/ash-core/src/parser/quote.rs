@@ -12,7 +12,7 @@
 ///
 /// # Examples
 /// ```
-/// use auto_shell::parser::quote::parse_args;
+/// use ash_core::parser::quote::parse_args;
 /// assert_eq!(parse_args("echo hello world"), vec!["echo", "hello", "world"]);
 /// assert_eq!(parse_args("echo \"hello world\""), vec!["echo", "hello world"]);
 /// assert_eq!(parse_args("echo 'it\\'s'"), vec!["echo", "it's"]);

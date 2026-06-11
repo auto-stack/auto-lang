@@ -4,11 +4,14 @@ use std::path::PathBuf;
 use crate::parser::pipeline::parse_pipeline;
 use auto_lang::autovm_persistent::AutovmReplSession;
 use auto_val::Value;
+use ash_core::pipeline::AtomPipeline;
 
-pub mod vars;
+// Re-export vars from core
+pub use crate::core::shell::vars;
 
 use crate::bookmarks::BookmarkManager;
 use crate::cmd::{commands, CommandRegistry, PipelineData};
+use crate::cmd::pipeline_convert;
 use vars::ShellVars;
 
 /// Shell state and context
@@ -48,6 +51,67 @@ impl Shell {
             reg.register(Box::new(commands::mv::MvCommand));
             reg.register(Box::new(commands::rm::RmCommand));
             reg.register(Box::new(commands::mkdir::MkdirCommand));
+            // Batch 1: File operations
+            reg.register(Box::new(commands::cat::CatCommand));
+            reg.register(Box::new(commands::head::HeadCommand));
+            reg.register(Box::new(commands::tail::TailCommand));
+            reg.register(Box::new(commands::touch::TouchCommand));
+            reg.register(Box::new(commands::find::FindCommand));
+            reg.register(Box::new(commands::glob::GlobCommand));
+            reg.register(Box::new(commands::stat::StatCommand));
+            reg.register(Box::new(commands::du::DuCommand));
+            reg.register(Box::new(commands::file::FileCommand));
+            reg.register(Box::new(commands::tee::TeeCommand));
+            reg.register(Box::new(commands::ln::LnCommand));
+            // Batch 2: Text processing
+            reg.register(Box::new(commands::sort::SortCommand));
+            reg.register(Box::new(commands::uniq::UniqCommand));
+            reg.register(Box::new(commands::cut::CutCommand));
+            reg.register(Box::new(commands::paste::PasteCommand));
+            reg.register(Box::new(commands::tr::TrCommand));
+            reg.register(Box::new(commands::split::SplitCommand));
+            reg.register(Box::new(commands::rev::RevCommand));
+            reg.register(Box::new(commands::column::ColumnCommand));
+            reg.register(Box::new(commands::fmt::FmtCommand));
+            reg.register(Box::new(commands::diff::DiffCommand));
+            // Batch 3: Data format conversion
+            reg.register(Box::new(commands::from_json::FromJsonCommand));
+            reg.register(Box::new(commands::to_json::ToJsonCommand));
+            reg.register(Box::new(commands::from_csv::FromCsvCommand));
+            reg.register(Box::new(commands::to_csv::ToCsvCommand));
+            reg.register(Box::new(commands::from_toml::FromTomlCommand));
+            reg.register(Box::new(commands::to_toml::ToTomlCommand));
+            reg.register(Box::new(commands::from_yaml::FromYamlCommand));
+            reg.register(Box::new(commands::to_yaml::ToYamlCommand));
+            reg.register(Box::new(commands::from_xml::FromXmlCommand));
+            reg.register(Box::new(commands::to_xml::ToXmlCommand));
+            // Batch 4: String, math, data transformation
+            reg.register(Box::new(commands::str_replace::StrReplaceCommand));
+            reg.register(Box::new(commands::str_contains::StrContainsCommand));
+            reg.register(Box::new(commands::str_split::StrSplitCommand));
+            reg.register(Box::new(commands::str_join::StrJoinCommand));
+            reg.register(Box::new(commands::str_trim::StrTrimCommand));
+            reg.register(Box::new(commands::str_case::StrCaseCommand));
+            reg.register(Box::new(commands::str_length::StrLengthCommand));
+            reg.register(Box::new(commands::math_sum::MathSumCommand));
+            reg.register(Box::new(commands::math_avg::MathAvgCommand));
+            reg.register(Box::new(commands::math_min::MathMinCommand));
+            reg.register(Box::new(commands::math_max::MathMaxCommand));
+            reg.register(Box::new(commands::math_round::MathRoundCommand));
+            reg.register(Box::new(commands::update::UpdateCommand));
+            reg.register(Box::new(commands::insert::InsertCommand));
+            reg.register(Box::new(commands::each::EachCommand));
+            // Batch 5: HTTP, datetime, utilities
+            reg.register(Box::new(commands::http_get::HttpGetCommand));
+            reg.register(Box::new(commands::http_post::HttpPostCommand));
+            reg.register(Box::new(commands::http_put::HttpPutCommand));
+            reg.register(Box::new(commands::http_delete::HttpDeleteCommand));
+            reg.register(Box::new(commands::http_head::HttpHeadCommand));
+            reg.register(Box::new(commands::url_encode::UrlEncodeCommand));
+            reg.register(Box::new(commands::date::DateCommand));
+            reg.register(Box::new(commands::sleep::SleepCommand));
+            reg.register(Box::new(commands::which::WhichCommand));
+            reg.register(Box::new(commands::version::VersionCommand));
             reg
         };
 
@@ -120,9 +184,9 @@ impl Shell {
             let signature = cmd.signature();
             match crate::cmd::parser::parse_args(&signature, args) {
                 Ok(parsed_args) => {
-                    let pipeline_data = cmd.run(&parsed_args, PipelineData::empty(), self)?;
-                    // Convert PipelineData to String for display
-                    return Ok(Some(pipeline_data.into_text()));
+                    let atom_out = cmd.run_atom(&parsed_args, AtomPipeline::empty(), self)?;
+                    // Convert AtomPipeline to String for display
+                    return Ok(Some(atom_out.into_text()));
                 }
                 Err(e) => return Err(e),
             }
@@ -144,7 +208,7 @@ impl Shell {
 
     /// Execute a pipeline with Auto function support
     fn execute_pipeline_with_auto(&mut self, commands: &[String]) -> Result<Option<String>> {
-        use crate::cmd::{auto, builtin, external, PipelineData};
+        use crate::cmd::{auto, builtin, external};
 
         use crate::parser::quote::parse_args;
 
@@ -152,8 +216,8 @@ impl Shell {
             return Ok(None);
         }
 
-        // Start with empty PipelineData
-        let mut input_pipeline: Option<PipelineData> = None;
+        // Start with empty AtomPipeline
+        let mut input_pipeline: Option<AtomPipeline> = None;
 
         for (i, cmd) in commands.iter().enumerate() {
             let is_last = i == commands.len() - 1;
@@ -169,17 +233,17 @@ impl Shell {
 
             // Execute the command
             let output_pipeline = if let Some(registered_cmd) = self.registry.get(cmd_name) {
-                // Registered command (uses PipelineData)
+                // Registered command (uses AtomPipeline via run_atom)
                 let signature = registered_cmd.signature();
-                let input = input_pipeline.take().unwrap_or_else(PipelineData::empty);
+                let input = input_pipeline.take().unwrap_or_else(AtomPipeline::empty);
 
                 match crate::cmd::parser::parse_args(&signature, args) {
-                    Ok(parsed_args) => Some(registered_cmd.run(&parsed_args, input, self)?),
+                    Ok(parsed_args) => Some(registered_cmd.run_atom(&parsed_args, input, self)?),
                     Err(e) => return Err(e),
                 }
             } else {
                 // Non-registered command (builtins, auto functions, external)
-                // Convert PipelineData to text for legacy commands
+                // Convert AtomPipeline to text for legacy commands
                 let input_str = input_pipeline.take().and_then(|p| {
                     if p.is_empty() {
                         None
@@ -193,30 +257,30 @@ impl Shell {
                     if let Some(output) =
                         builtin::execute_builtin_with_input(cmd, &self.current_dir, Some(input))?
                     {
-                        Some(PipelineData::from_text(output))
+                        Some(AtomPipeline::text(output))
                     } else if self.has_auto_function(cmd_name) {
                         let output =
                             auto::execute_auto_function(self, cmd_name, args, Some(input))?;
-                        output.map(|s| PipelineData::from_text(s))
+                        output.map(|s| AtomPipeline::text(s))
                     } else {
                         let output = external::execute_external(cmd, &self.current_dir)?;
-                        output.map(|s| PipelineData::from_text(s))
+                        output.map(|s| AtomPipeline::text(s))
                     }
                 } else {
                     // No pipeline input
                     if let Some(output) = builtin::execute_builtin(cmd, &self.current_dir)? {
-                        Some(PipelineData::from_text(output))
+                        Some(AtomPipeline::text(output))
                     } else if self.has_auto_function(cmd_name) {
                         let output = auto::execute_auto_function(self, cmd_name, args, None)?;
-                        output.map(|s| PipelineData::from_text(s))
+                        output.map(|s| AtomPipeline::text(s))
                     } else {
                         let output = external::execute_external(cmd, &self.current_dir)?;
-                        output.map(|s| PipelineData::from_text(s))
+                        output.map(|s| AtomPipeline::text(s))
                     }
                 }
             };
 
-            // Store PipelineData for next command
+            // Store AtomPipeline for next command
             input_pipeline = output_pipeline;
 
             // If this is the last command, return the final output as text

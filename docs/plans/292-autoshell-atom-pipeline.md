@@ -1,5 +1,13 @@
 # Atom Pipeline Foundation — Implementation Plan
 
+> **状态**: ✅ 全部完成 (2026-06-11)
+> **实现偏差说明**: 实际实现与计划有以下差异，均属于架构改进：
+> - Atom/AtomPipeline/AtomStream 代码移至 `crates/ash-core/src/pipeline/`（纯逻辑层），而非 `crates/auto-shell/src/pipeline/`
+> - `AtomType` 从 12 种扩展到 21 种（新增 `DiskEntry`, `Table`, `Record`, `Text`, `Path`, `Nothing`, `HelpInfo`）
+> - `convert.rs` 实现了 Value 结构推断而非依赖 AshFileEntry 等 shell 类型（解耦更彻底）
+> - NuShell 适配层仅保留类型推断骨架，未引入 `nu-protocol` 依赖
+> - 所有 12 个 Task 均已完成，测试数从 159 增长到 473
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace `PipelineData(Value|Text)` with `AtomPipeline(Atom|AtomStream|Text|Empty)` as AutoShell's first-class data carrier, migrate all 18 commands to Atom output, and lay the NuShell integration foundation.

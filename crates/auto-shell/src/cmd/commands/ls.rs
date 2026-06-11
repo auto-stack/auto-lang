@@ -1,5 +1,6 @@
 use crate::cmd::{fs, Command, PipelineData, Signature};
 use crate::shell::Shell;
+use ash_core::pipeline::{Atom, AtomPipeline, AtomType};
 use miette::Result;
 use std::path::Path;
 
@@ -30,23 +31,36 @@ impl Command for LsCommand {
         let path_arg = args.positionals.get(0).map(|s| s.as_str()).unwrap_or(".");
         let path = Path::new(path_arg);
 
-        // Extract flags
         let all = args.has_flag("all");
         let long = args.has_flag("long");
         let time = args.has_flag("time");
         let reverse = args.has_flag("reverse");
         let recursive = args.has_flag("recursive");
 
-        // Always use structured data - the display layer handles formatting
         let value = fs::ls_command_value(
-            path,
-            &shell.pwd(),
-            all,
-            long,
-            time,
-            reverse,
-            recursive,
+            path, &shell.pwd(), all, long, time, reverse, recursive,
         )?;
         Ok(PipelineData::from_value(value))
+    }
+
+    fn run_atom(
+        &self,
+        args: &crate::cmd::parser::ParsedArgs,
+        _input: AtomPipeline,
+        shell: &mut Shell,
+    ) -> Result<AtomPipeline> {
+        let path_arg = args.positionals.get(0).map(|s| s.as_str()).unwrap_or(".");
+        let path = Path::new(path_arg);
+
+        let all = args.has_flag("all");
+        let long = args.has_flag("long");
+        let time = args.has_flag("time");
+        let reverse = args.has_flag("reverse");
+        let recursive = args.has_flag("recursive");
+
+        let value = fs::ls_command_value(
+            path, &shell.pwd(), all, long, time, reverse, recursive,
+        )?;
+        Ok(AtomPipeline::from_atom(Atom::file_list(value)))
     }
 }

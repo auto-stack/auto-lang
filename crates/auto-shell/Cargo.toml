@@ -11,10 +11,17 @@ license = "MIT"
 auto-lang = { path = "../auto-lang" }
 auto-val = { path = "../auto-val" }
 
+# Ash Core (pure logic, zero terminal deps)
+ash-core = { path = "../ash-core" }
+
 # Terminal and REPL
 reedline = "0.44.0"
 crossterm = "0.27"
 nu-ansi-term = "0.49"
+
+# Ratatui rendering (core + widgets without crossterm backend)
+ratatui-core = "0.1"
+ratatui-widgets = "0.3"
 
 # Data structures
 indexmap = "2.0"
@@ -33,8 +40,13 @@ uucore = "0.0.27"
 chrono = "0.4"
 regex = "1.10"
 unicode-segmentation = "1.10"
+unicode-width = "0.2"
 # Note: Using regex crate instead of grep crate for simpler API
 # ripgrep's grep crate has complex module structure that's not well documented
+
+# Prompt engine
+rayon = "1.12"
+toml = "0.8"
 
 # Error handling
 miette = "7.0"
