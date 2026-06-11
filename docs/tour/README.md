@@ -43,6 +43,50 @@ An interactive tour of the Auto programming language, inspired by [Go Tour](http
 - [Custom Errors](ch06-errors/03_custom_error.at) — Defining error types
 - [Coalescing](ch06-errors/04_coalesce.at) — `??` default values
 
+### [Chapter 7: Collections](ch07-collections/) — Data Structures
+- [Arrays](ch07-collections/01_arrays.at) — Static arrays and slices
+- [Lists](ch07-collections/02_lists.at) — Dynamic `List<T>`
+- [Maps](ch07-collections/03_maps.at) — Key-value `Map<K,V>`
+- [Iteration](ch07-collections/04_iteration.at) — Loops and indexes
+- [Object Literals](ch07-collections/05_object_literal.at) — Inline `{key: value}`
+
+### [Chapter 8: Methods & Extensions](ch08-methods/) — Type Behavior
+- [Inline Methods](ch08-methods/01_inline_methods.at) — `fn`, `mut fn`, `static fn`
+- [Ext](ch08-methods/02_ext.at) — Extending existing types
+- [Builder Pattern](ch08-methods/03_builder.at) — Method chaining
+- [Operator Overload](ch08-methods/04_operator_overload.at) — Custom operators
+- [Spec Implementation](ch08-methods/05_spec_impl.at) — Interfaces and traits
+
+### [Chapter 9: Generics](ch09-generics/) — Abstract Types
+- [Generic Functions](ch09-generics/01_generic_fn.at) — `<T>` type parameters
+- [Generic Types](ch09-generics/02_generic_type.at) — Parameterized structs
+- [Spec with Generics](ch09-generics/03_spec_definition.at) — Constrained parameters
+- [Generic Collection](ch09-generics/04_generic_collection.at) — Reusable containers
+- [Multiple Specs](ch09-generics/05_multiple_constraints.at) — Combining constraints
+
+### [Chapter 10: Modules](ch10-modules/) — Code Organization
+- [Use Import](ch10-modules/01_use_import.at) — `use` statements
+- [Pub Visibility](ch10-modules/02_pub_visibility.at) — `pub` keyword
+- [Multi-File Module](ch10-modules/03_multi_file.at) — Project structure
+- [C Import](ch10-modules/04_c_import.at) — C header imports
+- [Annotations](ch10-modules/05_annotations.at) — `#[...]` attributes
+
+### [Chapter 11: Async](ch11-async/) — Asynchronous Programming
+- [Async Functions](ch11-async/01_async_fn.at) — `~T` return type + `.await`
+- [Concurrent Tasks](ch11-async/02_concurrent.at) — Running tasks in parallel
+- [Timeout](ch11-async/03_timeout.at) — Limiting async duration
+- [Channel](ch11-async/04_channel.at) — Message passing
+- [Actor Pattern](ch11-async/05_actor.at) — Encapsulated state
+- [Async Main](ch11-async/06_async_main.at) — Async entry point
+
+### [Chapter 12: Interop](ch12-interop/) — External Integration
+- [Dependencies](ch12-interop/01_dep.at) — `dep` declarations
+- [Rust Import](ch12-interop/02_rust_import.at) — `use.rust` for Rust crates
+- [String Types](ch12-interop/03_string_types.at) — Raw, byte, f-strings
+- [FFI Bridge](ch12-interop/04_ffi_bridge.at) — C/Rust FFI
+- [Process](ch12-interop/05_process.at) — Running external commands
+- [Byte Encoding](ch12-interop/06_byte_encoding.at) — Hex, Base64, hashing
+
 ---
 
 ## Running Examples

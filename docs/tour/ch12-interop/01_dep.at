@@ -1,0 +1,18 @@
+// Dependencies — Using external packages
+//
+// Use `dep` to declare external dependencies in your project.
+// Dependencies are downloaded with `auto fetch`.
+
+// Declare dependencies (typically in pac.at or top of file)
+dep serde
+dep regex
+
+fn main() {
+    // After declaring deps, use them via 'use'
+    // use serde: serialize, deserialize
+    // use regex: Regex
+
+    print("Dependencies declared with 'dep' keyword")
+    print("Downloaded via: auto fetch")
+    print("Used via: use package::symbol")
+}

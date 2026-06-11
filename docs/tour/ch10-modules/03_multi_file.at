@@ -1,0 +1,26 @@
+// Multi-File Module — Organizing code across files
+//
+// Auto projects can span multiple files. The module system
+// resolves imports based on directory structure.
+//
+// Project structure:
+//   myapp/
+//   ├── main.at          # Entry point with fn main()
+//   ├── math.at          # Module with math helpers
+//   └── utils/
+//       ├── mod.at       # Utils module entry
+//       └── string.at    # String utilities
+//
+// In main.at:
+//   use math: add, multiply
+//   use utils: format_result
+//
+// In utils/mod.at:
+//   pub fn format_result(n int) str { ... }
+
+fn main() {
+    // Simulating multi-file usage
+    print("Module system enables code organization")
+    print("Each .at file is a module with its own scope")
+    print("Use 'pub' to export symbols for other modules")
+}

@@ -1,0 +1,24 @@
+// Timeout — Limiting async operation duration
+//
+// Wrap async calls with timeout to prevent hanging.
+
+fn main() {
+    // Async with timeout pattern
+    let result = long_operation().await
+    print(result)
+
+    // Timeout pattern using guard
+    let data = fetch_with_timeout("api/data", 5000).await
+    is data {
+        Ok(d) -> print(d)
+        Err(e) -> print(f"Timeout or error: $e")
+    }
+}
+
+fn long_operation() ~str {
+    return "operation completed"
+}
+
+fn fetch_with_timeout(url str, ms int) ~Result {
+    return Ok(f"data from $url within ${ms}ms")
+}

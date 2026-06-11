@@ -1,0 +1,30 @@
+// Actor Pattern — Encapsulated state with message handling
+//
+// Combine types with channels for the actor concurrency model.
+
+type CounterActor {
+    count int
+
+    mut fn increment() {
+        .count = .count + 1
+    }
+
+    fn get_count() int {
+        return .count
+    }
+}
+
+fn main() {
+    var actor = CounterActor { count: 0 }
+
+    // Send messages (method calls)
+    actor.increment()
+    actor.increment()
+    actor.increment()
+
+    // Query state
+    print(actor.get_count())
+
+    // Actor pattern: state is encapsulated, access via messages
+    print("Actors combine state + message passing for safe concurrency")
+}

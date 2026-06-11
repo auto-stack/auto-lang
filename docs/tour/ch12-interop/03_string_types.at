@@ -1,0 +1,28 @@
+// String Types — Raw strings and byte strings
+//
+// Auto supports multiple string types for different use cases.
+
+fn main() {
+    // Regular string
+    let regular = "Hello, World!"
+
+    // F-string (formatted)
+    let name = "Auto"
+    let formatted = f"Hello, $name!"
+
+    // Raw string (no escape processing)
+    let raw = r"C:\Users\path\to\file"
+    print(raw)
+
+    // Byte string
+    let bytes = b"hello"
+    print(bytes)
+
+    // Multi-line string
+    let multi = "line 1
+line 2
+line 3"
+    print(multi)
+
+    print(formatted)
+}

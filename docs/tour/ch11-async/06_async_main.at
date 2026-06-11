@@ -1,0 +1,23 @@
+// Async Main — Entry point for async programs
+//
+// The main function can be async using `~void` return type.
+
+fn main() ~void {
+    print("Async main starting...")
+
+    let result = fetch_data().await
+    print(result)
+
+    let processed = process(result).await
+    print(processed)
+
+    print("Async main complete")
+}
+
+fn fetch_data() ~str {
+    return "raw data"
+}
+
+fn process(data str) ~str {
+    return f"processed: $data"
+}

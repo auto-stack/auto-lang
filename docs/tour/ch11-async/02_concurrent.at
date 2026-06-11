@@ -1,0 +1,31 @@
+// Concurrent Tasks — Running async operations concurrently
+//
+// Use `spawn` to run tasks in the background and `await` to collect results.
+
+fn slow_add(a int, b int) ~int {
+    return a + b
+}
+
+fn slow_multiply(a int, b int) ~int {
+    return a * b
+}
+
+fn main() {
+    // Run concurrently and await both
+    let sum = slow_add(10, 20).await
+    let product = slow_multiply(3, 4).await
+    print(f"Sum: $sum, Product: $product")
+
+    // Sequential async calls
+    let first = fetch_id().await
+    let second = fetch_name(first).await
+    print(second)
+}
+
+fn fetch_id() ~int {
+    return 1
+}
+
+fn fetch_name(id int) ~str {
+    return f"user_$id"
+}

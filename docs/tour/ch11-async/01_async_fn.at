@@ -1,0 +1,24 @@
+// Async Functions — ~T return type for async
+//
+// Async functions use `~T` as the return type (instead of `->`).
+// Call `.await` to wait for the result.
+
+// Async function that returns a future string
+fn fetch_data(url str) ~str {
+    // Simulate async operation
+    return "data from " + url
+}
+
+fn main() {
+    // Call async function and await result
+    let data = fetch_data("https://example.com").await
+    print(data)
+
+    // Async function returning int
+    let count = compute_count().await
+    print(count)
+}
+
+fn compute_count() ~int {
+    return 42
+}

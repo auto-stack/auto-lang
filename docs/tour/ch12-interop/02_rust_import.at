@@ -1,0 +1,17 @@
+// Rust Import — Using Rust crates
+//
+// Use `use.rust` to import Rust crates and call Rust functions.
+
+// Import Rust standard library components
+use.rust std::fs
+use.rust std::collections::HashMap
+
+fn main() {
+    // After importing, Rust types and functions are available
+    print("Rust imports enable access to the Rust ecosystem")
+    print("Syntax: use.rust crate::module::Symbol")
+
+    // File operations via Rust FFI
+    print("Read files: use.rust std::fs: read_to_string")
+    print("Collections: use.rust std::collections: HashMap")
+}

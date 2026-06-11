@@ -1,0 +1,20 @@
+// FFI Bridge — Foreign Function Interface
+//
+// Auto's FFI bridge allows calling functions from C and Rust libraries.
+
+// Import C headers
+use c <stdio.h>
+use c <math.h>
+
+fn main() {
+    // Call C math functions
+    let pi = 3.14159
+    let sine = sin(pi / 2.0)
+    print(f"sin(pi/2) = $sine")
+
+    // Auto can also call Rust functions
+    // through the use.rust mechanism
+    print("FFI enables calling C and Rust libraries")
+    print("use c <header.h> for C interop")
+    print("use.rust crate::path for Rust interop")
+}
