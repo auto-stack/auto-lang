@@ -1,12 +1,20 @@
 use miette::{miette, IntoDiagnostic, Result};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
-/// Execute an external command with platform-specific fallbacks
+/// Execute an external command with platform-specific fallbacks.
+///
+/// When `capture_output` is false (default), the child process inherits
+/// the terminal's stdin/stdout/stderr for real-time output — suitable for
+/// standalone commands like `cargo build`.
+///
+/// When `capture_output` is true, stdout is captured and returned as a
+/// string — suitable for pipeline usage where output feeds into the next
+/// command.
 ///
 /// On Windows: Tries command directly → PowerShell → CMD
 /// On Unix: Tries command directly → sh (or bash/zsh if available)
-pub fn execute_external(input: &str, current_dir: &Path) -> Result<Option<String>> {
+pub fn execute_external(input: &str, current_dir: &Path, capture_output: bool) -> Result<Option<String>> {
     // Parse command and arguments
     let parts = parse_command(input);
 
@@ -18,14 +26,14 @@ pub fn execute_external(input: &str, current_dir: &Path) -> Result<Option<String
     let args = &parts[1..];
 
     // Try to execute the command directly first
-    let direct_result = try_execute_command(cmd_name, args, current_dir);
+    let direct_result = try_execute_command(cmd_name, args, current_dir, capture_output);
 
     // If direct execution failed, try platform-specific fallbacks
     if direct_result.is_err() {
         #[cfg(windows)]
         {
             // Windows: Try PowerShell, then CMD
-            if let Ok(ps_result) = try_execute_powershell(cmd_name, args, current_dir) {
+            if let Ok(ps_result) = try_execute_powershell(cmd_name, args, current_dir, capture_output) {
                 return Ok(ps_result);
             }
             // Note: We could try CMD here, but most things that work in CMD also work in PowerShell
@@ -35,7 +43,7 @@ pub fn execute_external(input: &str, current_dir: &Path) -> Result<Option<String
         {
             // Unix: Try sh, then bash, then zsh
             for shell in &["sh", "bash", "zsh"] {
-                if let Ok(shell_result) = try_execute_with_shell(cmd_name, args, current_dir, shell)
+                if let Ok(shell_result) = try_execute_with_shell(cmd_name, args, current_dir, shell, capture_output)
                 {
                     return Ok(shell_result);
                 }
@@ -47,23 +55,54 @@ pub fn execute_external(input: &str, current_dir: &Path) -> Result<Option<String
 }
 
 /// Try to execute a command directly using std::process::Command
+///
+/// When `capture_output` is false, uses `.status()` with inherited stdio
+/// for real-time terminal output (e.g. `cargo build`).
+///
+/// When `capture_output` is true, uses `.output()` to capture stdout
+/// for pipeline consumption.
 fn try_execute_command(
     cmd_name: &str,
     args: &[String],
     current_dir: &Path,
+    capture_output: bool,
 ) -> Result<Option<String>> {
-    let output = Command::new(cmd_name)
-        .args(args)
-        .current_dir(current_dir)
-        .output()
-        .into_diagnostic()?;
+    if capture_output {
+        let output = Command::new(cmd_name)
+            .args(args)
+            .current_dir(current_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .into_diagnostic()?;
 
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        Ok(Some(stdout.trim().to_string()))
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let trimmed = stdout.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed.to_string()))
+            }
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Err(miette!("Command failed: {}", stderr.trim()))
+        }
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        Err(miette!("Command failed: {}", stderr.trim()))
+        let status = Command::new(cmd_name)
+            .args(args)
+            .current_dir(current_dir)
+            .status()
+            .into_diagnostic()?;
+
+        if status.success() {
+            Ok(None) // Output already went to terminal
+        } else {
+            Err(miette!(
+                "Command failed with exit code: {}",
+                status.code().unwrap_or(-1)
+            ))
+        }
     }
 }
 
@@ -74,6 +113,7 @@ fn try_execute_with_shell(
     args: &[String],
     current_dir: &Path,
     shell: &str,
+    capture_output: bool,
 ) -> Result<Option<String>> {
     // Build shell command: sh -c "cmd arg1 arg2..."
     let shell_cmd = format!(
@@ -85,19 +125,45 @@ fn try_execute_with_shell(
             .join(" ")
     );
 
-    let output = Command::new(shell)
-        .arg("-c")
-        .arg(&shell_cmd)
-        .current_dir(current_dir)
-        .output()
-        .into_diagnostic()?;
+    if capture_output {
+        let output = Command::new(shell)
+            .arg("-c")
+            .arg(&shell_cmd)
+            .current_dir(current_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .into_diagnostic()?;
 
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        Ok(Some(stdout.trim().to_string()))
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let trimmed = stdout.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed.to_string()))
+            }
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Err(miette!("{} command failed: {}", shell, stderr.trim()))
+        }
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        Err(miette!("{} command failed: {}", shell, stderr.trim()))
+        let status = Command::new(shell)
+            .arg("-c")
+            .arg(&shell_cmd)
+            .current_dir(current_dir)
+            .status()
+            .into_diagnostic()?;
+
+        if status.success() {
+            Ok(None)
+        } else {
+            Err(miette!(
+                "{} command failed with exit code: {}",
+                shell,
+                status.code().unwrap_or(-1)
+            ))
+        }
     }
 }
 
@@ -107,6 +173,7 @@ fn try_execute_powershell(
     cmd_name: &str,
     args: &[String],
     current_dir: &Path,
+    capture_output: bool,
 ) -> Result<Option<String>> {
     // Build PowerShell command
     // Use -Command with encoded arguments
@@ -119,19 +186,42 @@ fn try_execute_powershell(
             .join(" ")
     );
 
-    // Execute via PowerShell
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-Command", &ps_cmd])
-        .current_dir(current_dir)
-        .output()
-        .into_diagnostic()?;
+    if capture_output {
+        let output = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps_cmd])
+            .current_dir(current_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .into_diagnostic()?;
 
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        Ok(Some(stdout.trim().to_string()))
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let trimmed = stdout.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed.to_string()))
+            }
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Err(miette!("PowerShell command failed: {}", stderr.trim()))
+        }
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        Err(miette!("PowerShell command failed: {}", stderr.trim()))
+        let status = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps_cmd])
+            .current_dir(current_dir)
+            .status()
+            .into_diagnostic()?;
+
+        if status.success() {
+            Ok(None)
+        } else {
+            Err(miette!(
+                "PowerShell command failed with exit code: {}",
+                status.code().unwrap_or(-1)
+            ))
+        }
     }
 }
 

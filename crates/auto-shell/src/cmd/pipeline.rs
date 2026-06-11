@@ -69,7 +69,7 @@ fn execute_command(
 
     // For external commands, we'll need to pipe input via stdin (TODO)
     // For now, just execute without pipeline input
-    external::execute_external(cmd, current_dir)
+    external::execute_external(cmd, current_dir, true)
 }
 
 #[cfg(test)]

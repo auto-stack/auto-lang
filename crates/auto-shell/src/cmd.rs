@@ -147,5 +147,5 @@ pub fn execute_command(input: &str, current_dir: &Path) -> Result<Option<String>
     }
 
     // Otherwise, execute as external command
-    external::execute_external(input, current_dir)
+    external::execute_external(input, current_dir, false)
 }

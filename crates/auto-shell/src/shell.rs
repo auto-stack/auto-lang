@@ -201,7 +201,7 @@ impl Shell {
         }
 
         // Otherwise, execute as external command
-        external::execute_external(input, &self.current_dir)
+        external::execute_external(input, &self.current_dir, false)
     }
 
     /// Format an AtomPipeline for terminal display.
@@ -284,7 +284,7 @@ impl Shell {
                             auto::execute_auto_function(self, cmd_name, args, Some(input))?;
                         output.map(|s| AtomPipeline::text(s))
                     } else {
-                        let output = external::execute_external(cmd, &self.current_dir)?;
+                        let output = external::execute_external(cmd, &self.current_dir, true)?;
                         output.map(|s| AtomPipeline::text(s))
                     }
                 } else {
@@ -295,7 +295,7 @@ impl Shell {
                         let output = auto::execute_auto_function(self, cmd_name, args, None)?;
                         output.map(|s| AtomPipeline::text(s))
                     } else {
-                        let output = external::execute_external(cmd, &self.current_dir)?;
+                        let output = external::execute_external(cmd, &self.current_dir, true)?;
                         output.map(|s| AtomPipeline::text(s))
                     }
                 }
