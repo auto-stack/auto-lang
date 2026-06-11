@@ -11,6 +11,9 @@
 # Note: Examples and integration tests are disabled by default (build-examples feature).
 # Only lib + lib test are compiled, so no memory pressure from parallel linkers.
 
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+
 [build]
 jobs = 8
 
