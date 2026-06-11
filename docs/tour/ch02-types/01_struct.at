@@ -1,0 +1,20 @@
+// Struct Definition — `type` with named fields
+//
+// Use `type` to define custom data structures.
+// Fields use space-separated name-type syntax (no colon).
+
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    // Create an instance
+    let p = Point { x: 3, y: 4 }
+    print(p.x)
+    print(p.y)
+
+    // Access fields with dot notation
+    let dist = p.x * p.x + p.y * p.y
+    print(dist)
+}

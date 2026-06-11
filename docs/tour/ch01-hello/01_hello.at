@@ -1,0 +1,8 @@
+// Hello World — Your first Auto program
+//
+// Every Auto program starts with a `fn main()` function.
+// Use `print()` to output text to the console.
+
+fn main() {
+    print("Hello, World!")
+}

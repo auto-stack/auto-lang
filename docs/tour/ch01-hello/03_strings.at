@@ -1,0 +1,23 @@
+// Strings — String literals, f-strings, and concatenation
+//
+// Auto supports double-quoted strings, f-string interpolation,
+// and the `+` operator for concatenation.
+
+fn main() {
+    // Basic string
+    let greeting = "Hello, Auto!"
+
+    // F-string interpolation with $variable
+    let name = "World"
+    print(f"Hello, $name!")
+
+    // F-string with expressions using ${...}
+    let x = 10
+    let y = 20
+    print(f"${x} + ${y} = ${x + y}")
+
+    // String concatenation
+    let first = "Auto"
+    let last = "Lang"
+    print(first + " " + last)
+}

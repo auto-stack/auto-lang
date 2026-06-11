@@ -1,0 +1,24 @@
+// Coalescing — `??` default values
+//
+// The `??` operator provides a default value when an Option is None.
+// It's similar to `??` in C# or `||` in JavaScript.
+
+fn get_env(key str) Option {
+    if key == "HOME" {
+        return Some("/home/user")
+    }
+    return None
+}
+
+fn main() {
+    // Provide default when value is missing
+    let home = get_env("HOME") ?? "/tmp"
+    print(f"Home: $home")
+
+    let editor = get_env("EDITOR") ?? "vim"
+    print(f"Editor: $editor")
+
+    // Chain with other Option operations
+    let path = get_env("PATH") ?? "/usr/bin"
+    print(f"Path: $path")
+}

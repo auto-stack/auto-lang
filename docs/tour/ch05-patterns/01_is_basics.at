@@ -1,0 +1,29 @@
+// Basic Match — `is` with values and patterns
+//
+// Use `is` for pattern matching. Patterns use `->` arrows.
+// The `_` pattern matches anything (wildcard).
+
+fn describe(n int) str {
+    is n {
+        0 -> "zero"
+        1 -> "one"
+        2 -> "two"
+        _ -> "other"
+    }
+}
+
+fn main() {
+    print(describe(0))
+    print(describe(1))
+    print(describe(42))
+
+    // Match with range
+    let score = 85
+    let grade = is true {
+        _ if score >= 90 -> "A"
+        _ if score >= 80 -> "B"
+        _ if score >= 70 -> "C"
+        _ -> "F"
+    }
+    print(grade)
+}

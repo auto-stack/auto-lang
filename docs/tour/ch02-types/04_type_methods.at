@@ -1,0 +1,30 @@
+// Type Methods — Inline `fn` and `mut fn`
+//
+// Types can have methods defined inside their body.
+// Use `fn` for read-only methods and `mut fn` for methods that modify self.
+
+type Counter {
+    count int
+
+    fn value() int {
+        return .count
+    }
+
+    mut fn increment() {
+        .count = .count + 1
+    }
+
+    static fn new(start int) Counter {
+        return Counter { count: start }
+    }
+}
+
+fn main() {
+    var c = Counter.new(0)
+    print(c.value())
+
+    c.increment()
+    c.increment()
+    c.increment()
+    print(c.value())
+}

@@ -1,0 +1,18 @@
+// Constants — `const` declarations
+//
+// Use `const` for compile-time constants. These are immutable
+// and must be initialized with a literal or constant expression.
+
+const MAX_SIZE = 100
+const APP_NAME = "Auto Tour"
+const VERSION = "1.0"
+
+fn main() {
+    print(APP_NAME)
+    print(VERSION)
+    print(MAX_SIZE)
+
+    // Constants can be used in type fields and array sizes
+    let data = [0] * MAX_SIZE
+    print(len(data))
+}

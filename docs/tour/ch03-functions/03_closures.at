@@ -1,0 +1,26 @@
+// Closures — Lambda expressions
+//
+// Auto supports closures (anonymous functions) that can capture
+// variables from their enclosing scope.
+
+fn main() {
+    // Simple closure
+    let add = (a int, b int) int {
+        return a + b
+    }
+    print(add(3, 4))
+
+    // Closure capturing a variable
+    let base = 10
+    let add_base = (x int) int {
+        return x + base
+    }
+    print(add_base(5))
+
+    // Using closures with functions
+    let nums = [3, 1, 4, 1, 5]
+    nums.sort_by((a int, b int) int {
+        return a - b
+    })
+    print(nums)
+}

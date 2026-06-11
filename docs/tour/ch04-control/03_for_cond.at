@@ -1,0 +1,23 @@
+// Conditional Loop — `for condition { }` (while-like)
+//
+// Auto uses `for condition { }` instead of `while`.
+// The loop continues as long as the condition is true.
+
+fn main() {
+    // Count down from 10
+    var n = 10
+    for n > 0 {
+        print(n)
+        n = n - 1
+    }
+    print("Liftoff!")
+
+    // Sum numbers until threshold
+    var sum = 0
+    var i = 1
+    for sum < 50 {
+        sum = sum + i
+        i = i + 1
+    }
+    print(f"Sum reached $sum at i=$i")
+}

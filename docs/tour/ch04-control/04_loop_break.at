@@ -1,0 +1,26 @@
+// Loop & Break — Infinite loops with break
+//
+// `loop` creates an infinite loop. Use `break` to exit.
+// `break` can also return a value from the loop.
+
+fn main() {
+    // Simple infinite loop with break
+    var i = 0
+    loop {
+        if i >= 5 {
+            break
+        }
+        print(i)
+        i = i + 1
+    }
+
+    // Loop with break value
+    var n = 1
+    let found = loop {
+        if n * n > 100 {
+            break n
+        }
+        n = n + 1
+    }
+    print(f"First number whose square > 100: $found")
+}

@@ -1,0 +1,27 @@
+// Function Basics — Parameters and return types
+//
+// Functions are defined with `fn`. Return type comes after params (no `->`).
+// Use `return` to return a value, or omit for void functions.
+
+fn add(a int, b int) int {
+    return a + b
+}
+
+fn greet(name str) {
+    print(f"Hello, $name!")
+}
+
+// The last expression is implicitly returned
+fn double(x int) int {
+    x * 2
+}
+
+fn main() {
+    let sum = add(3, 4)
+    print(sum)
+
+    greet("Auto")
+
+    let d = double(5)
+    print(d)
+}

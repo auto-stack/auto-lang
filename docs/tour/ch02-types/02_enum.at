@@ -1,0 +1,24 @@
+// Enum Definition — Variants and data-carrying enums
+//
+// Enums define a type that can be one of several variants.
+// Variants can carry data.
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+enum Shape {
+    Circle(float)
+    Rectangle(float, float)
+    Square(float)
+}
+
+fn main() {
+    let c = Color::Red
+    print(c)
+
+    let r = Shape::Rectangle(3.0, 4.0)
+    print(r)
+}

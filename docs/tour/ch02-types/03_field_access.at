@@ -1,0 +1,29 @@
+// Field Access — Dot notation and nested types
+//
+// Access struct fields with dot notation.
+// Types can be nested: a struct can contain other structs.
+
+type Address {
+    city str
+    country str
+}
+
+type Person {
+    name str
+    age int
+    address Address
+}
+
+fn main() {
+    let home = Address { city: "Beijing", country: "China" }
+    let person = Person { name: "Alice", age: 30, address: home }
+
+    // Access nested fields
+    print(person.name)
+    print(person.address.city)
+
+    // Update a field (requires var)
+    var p = person
+    p.age = 31
+    print(p.age)
+}

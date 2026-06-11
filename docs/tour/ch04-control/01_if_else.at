@@ -1,0 +1,26 @@
+// If / Else — Conditional branching
+//
+// Use `if`, `elif`, and `else` for conditional execution.
+// Conditions do not need parentheses.
+
+fn classify(n int) str {
+    if n > 0 {
+        return "positive"
+    } elif n < 0 {
+        return "negative"
+    } else {
+        return "zero"
+    }
+}
+
+fn main() {
+    print(classify(42))
+    print(classify(-7))
+    print(classify(0))
+
+    // Simple if without else
+    let x = 10
+    if x > 5 {
+        print("x is greater than 5")
+    }
+}

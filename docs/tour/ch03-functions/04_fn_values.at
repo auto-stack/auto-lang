@@ -1,0 +1,29 @@
+// Function Values — Functions as first-class values
+//
+// Functions can be stored in variables, passed as arguments,
+// and returned from other functions.
+
+fn apply(f fn(int) int, x int) int {
+    return f(x)
+}
+
+fn make_adder(n int) fn(int) int {
+    return (x int) int {
+        return x + n
+    }
+}
+
+fn main() {
+    // Store function in variable
+    let double = (x int) int {
+        return x * 2
+    }
+
+    // Pass function as argument
+    let result = apply(double, 5)
+    print(result)
+
+    // Return function from function
+    let add3 = make_adder(3)
+    print(add3(10))
+}

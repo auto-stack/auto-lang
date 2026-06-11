@@ -1,0 +1,21 @@
+// Variables — `let` for immutable, `var` for mutable
+//
+// Auto uses `let` for immutable bindings and `var` for mutable ones.
+// Types are inferred automatically but can be annotated explicitly.
+
+fn main() {
+    // Immutable variable (cannot be reassigned)
+    let name = "Auto"
+    print(name)
+
+    // Mutable variable (can be reassigned)
+    var counter = 0
+    counter = counter + 1
+    print(counter)
+
+    // Explicit type annotation
+    let age int = 25
+    let pi float = 3.14159
+    print(age)
+    print(pi)
+}

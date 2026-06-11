@@ -1,0 +1,28 @@
+// Error Propagation — `.?` operator
+//
+// The `.?` operator unwraps an Ok value or propagates the Err upward.
+// Use it to chain fallible operations concisely.
+
+fn parse_int(s str) Result {
+    return Ok(int(s))
+}
+
+fn add_parsed(a str, b str) !int {
+    let x = parse_int(a).?
+    let y = parse_int(b).?
+    return Ok(x + y)
+}
+
+fn main() {
+    let r1 = add_parsed("10", "20")
+    is r1 {
+        Ok(n) -> print(f"Sum: $n")
+        Err(e) -> print(f"Error: $e")
+    }
+
+    let r2 = add_parsed("10", "abc")
+    is r2 {
+        Ok(n) -> print(n)
+        Err(e) -> print(f"Error: $e")
+    }
+}

@@ -1,0 +1,31 @@
+// If Expression — Conditional values
+//
+// In Auto, `if` can be used as an expression that returns a value.
+// Both branches must return the same type.
+
+fn abs(x int) int {
+    return if x >= 0 { x } else { -x }
+}
+
+fn classify_age(age int) str {
+    return if age < 13 {
+        "child"
+    } elif age < 18 {
+        "teenager"
+    } else {
+        "adult"
+    }
+}
+
+fn main() {
+    print(abs(-42))
+    print(abs(42))
+
+    let label = classify_age(15)
+    print(label)
+
+    // Inline if expression
+    let x = 10
+    let msg = if x > 5 { "big" } else { "small" }
+    print(msg)
+}

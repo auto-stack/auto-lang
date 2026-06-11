@@ -1,0 +1,30 @@
+// For Loop — Range and collection iteration
+//
+// Use `for x in start..end` for range iteration (exclusive end).
+// Use `for x in start..=end` for inclusive range.
+// Use `for x in collection` to iterate over arrays.
+
+fn main() {
+    // Exclusive range: 0 to 4
+    for i in 0..5 {
+        print(i)
+    }
+
+    // Inclusive range: 1 to 10
+    for i in 1..=10 {
+        print(i)
+    }
+
+    // Iterate over an array
+    let fruits = ["apple", "banana", "cherry"]
+    for fruit in fruits {
+        print(fruit)
+    }
+
+    // Range with step (manual)
+    var i = 0
+    for i < 10 {
+        print(i)
+        i = i + 2
+    }
+}

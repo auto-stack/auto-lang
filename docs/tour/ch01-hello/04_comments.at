@@ -1,0 +1,18 @@
+// Comments — Single-line and documentation comments
+//
+// Use `//` for single-line comments.
+// Auto also supports `/* ... */` block comments.
+
+fn main() {
+    // This is a single-line comment
+    print("comments are ignored by the compiler")
+
+    // Comments can explain what code does
+    let x = 42 // inline comment after code
+
+    /*
+       Block comments
+       span multiple lines
+    */
+    print(x)
+}

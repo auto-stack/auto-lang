@@ -1,0 +1,27 @@
+// Result Matching — Ok/Err handling
+//
+// `Result` represents either success `Ok(value)` or failure `Err(error)`.
+// Use pattern matching to handle both outcomes.
+
+fn safe_divide(a int, b int) Result {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    return Ok(a / b)
+}
+
+fn main() {
+    // Successful division
+    let r1 = safe_divide(10, 3)
+    is r1 {
+        Ok(value) -> print(f"Result: $value")
+        Err(msg) -> print(f"Error: $msg")
+    }
+
+    // Division by zero
+    let r2 = safe_divide(10, 0)
+    is r2 {
+        Ok(value) -> print(value)
+        Err(msg) -> print(f"Error: $msg")
+    }
+}

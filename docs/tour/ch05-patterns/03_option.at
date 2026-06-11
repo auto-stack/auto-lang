@@ -1,0 +1,29 @@
+// Option Matching — Some/None handling
+//
+// `Option` represents an optional value: `Some(value)` or `None`.
+// Use pattern matching to handle both cases.
+
+fn find_user(id int) Option {
+    if id == 1 {
+        return Some("Alice")
+    } elif id == 2 {
+        return Some("Bob")
+    }
+    return None
+}
+
+fn main() {
+    // Match on Option
+    let result = find_user(1)
+    is result {
+        Some(name) -> print(f"Found: $name")
+        None -> print("Not found")
+    }
+
+    // Handle missing user
+    let missing = find_user(99)
+    is missing {
+        Some(name) -> print(name)
+        None -> print("User not found")
+    }
+}
