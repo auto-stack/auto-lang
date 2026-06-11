@@ -1,8 +1,8 @@
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::cmd::parser::ParsedArgs;
 use crate::shell::Shell;
-use ash_core::pipeline::{Atom, AtomPipeline, AtomType};
-use auto_val::{Value, Array, Obj};
+use ash_core::pipeline::AtomPipeline;
+use auto_val::{Value, Array};
 use miette::Result;
 
 pub struct InsertCommand;

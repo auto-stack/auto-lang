@@ -6,7 +6,7 @@ use crate::cmd::{Command, PipelineData, Signature};
 use crate::cmd::parser::ParsedArgs;
 use crate::shell::Shell;
 use ash_core::pipeline::{Atom, AtomPipeline, AtomType};
-use auto_val::{Value, Obj};
+use auto_val::Value;
 use miette::{IntoDiagnostic, Result};
 
 pub struct HttpGetCommand;

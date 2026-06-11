@@ -2,6 +2,10 @@
 //!
 //! Modules are rendered in parallel via rayon, then concatenated into
 //! the final prompt string.
+//!
+//! **Performance**: Git info comes from a global background cache (context.rs).
+//! Prompt rendering never does I/O — it only reads the cached git info
+//! and formats strings. No TTL, no timers, no disk access during typing.
 
 use rayon::prelude::*;
 use std::borrow::Cow;
@@ -18,9 +22,12 @@ use super::modules::{
 /// Modular prompt engine implementing `reedline::Prompt`.
 ///
 /// Each prompt render:
-/// 1. Builds an `AshContext` from current environment
+/// 1. Builds an `AshContext` from current environment (no I/O — reads global git cache)
 /// 2. Renders all registered modules in parallel (rayon)
 /// 3. Concatenates segments into the final ANSI-colored string
+///
+/// No caching needed here — the expensive work (git discovery) is done by
+/// the global GitCache in context.rs, triggered by cd and command execution.
 pub struct AshPrompt {
     /// Left prompt modules (rendered left-to-right)
     modules: Vec<Box<dyn PromptModule>>,
@@ -71,17 +78,22 @@ impl AshPrompt {
 
     /// Render left prompt (parallel module computation)
     fn render_left(&self, ctx: &AshContext) -> String {
+        let newline = if self.config.add_newline { "\n" } else { "" };
         let segments: Vec<_> = self
             .modules
             .par_iter()
             .filter_map(|m| m.render(ctx))
             .collect();
 
-        segments
-            .iter()
-            .map(|s| s.to_ansi_string())
-            .collect::<Vec<_>>()
-            .join("")
+        format!(
+            "{}{}",
+            newline,
+            segments
+                .iter()
+                .map(|s| s.to_ansi_string())
+                .collect::<Vec<_>>()
+                .join("")
+        )
     }
 
     /// Render right prompt (parallel module computation)
@@ -106,26 +118,35 @@ impl AshPrompt {
             .map(|s| s.to_ansi_string())
             .unwrap_or_else(|| "⟩ ".to_string())
     }
+
+    /// Build context and render all prompt parts at once.
+    /// No I/O — only reads from the global git cache.
+    fn render_all(&self) -> (String, String, String) {
+        let ctx = AshContext::from_current();
+        let left = self.render_left(&ctx);
+        let right = self.render_right(&ctx);
+        let indicator = self.render_indicator(&ctx);
+        (left, right, indicator)
+    }
 }
 
 impl reedline::Prompt for AshPrompt {
     fn render_prompt_left(&self) -> Cow<'_, str> {
-        let ctx = AshContext::from_current();
-        let newline = if self.config.add_newline { "\n" } else { "" };
-        Cow::Owned(format!("{}{}", newline, self.render_left(&ctx)))
+        let (left, _, _) = self.render_all();
+        Cow::Owned(left)
     }
 
     fn render_prompt_right(&self) -> Cow<'_, str> {
-        let ctx = AshContext::from_current();
-        Cow::Owned(self.render_right(&ctx))
+        let (_, right, _) = self.render_all();
+        Cow::Owned(right)
     }
 
     fn render_prompt_indicator(
         &self,
         _mode: reedline::PromptEditMode,
     ) -> Cow<'_, str> {
-        let ctx = AshContext::from_current();
-        Cow::Owned(self.render_indicator(&ctx))
+        let (_, _, indicator) = self.render_all();
+        Cow::Owned(indicator)
     }
 
     fn render_prompt_multiline_indicator(&self) -> Cow<'_, str> {

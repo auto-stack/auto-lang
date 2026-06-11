@@ -40,7 +40,7 @@ impl Command for CutCommand {
             delimiter
         };
 
-        let fields_str = args.positionals.iter()
+        let _fields_str = args.positionals.iter()
             .find(|s| s.contains(',') || s.contains('-') || s.chars().all(|c| c.is_ascii_digit()))
             .map(|s| s.as_str());
 

@@ -5,7 +5,7 @@
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::cmd::parser::ParsedArgs;
 use crate::shell::Shell;
-use ash_core::pipeline::{Atom, AtomPipeline, AtomType};
+use ash_core::pipeline::{Atom, AtomPipeline};
 use auto_val::Value;
 use miette::{IntoDiagnostic, Result};
 use std::path::PathBuf;
@@ -70,7 +70,7 @@ impl Command for HeadCommand {
 
 /// Parse a named value or return default. Since ParsedArgs.named may not be
 /// populated for flags-with-values yet, we fall back gracefully.
-fn parse_named_or_default(args: &ParsedArgs, _name: &str, default: usize) -> usize {
+fn parse_named_or_default(_args: &ParsedArgs, _name: &str, default: usize) -> usize {
     // Try to find a numeric positional that looks like a line count
     // (flag -n is handled as a flag; value might be in named or positionals)
     default

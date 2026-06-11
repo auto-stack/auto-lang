@@ -6,7 +6,7 @@
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::cmd::parser::ParsedArgs;
 use crate::shell::Shell;
-use ash_core::pipeline::{Atom, AtomPipeline};
+use ash_core::pipeline::AtomPipeline;
 use auto_val::Value;
 use miette::{IntoDiagnostic, Result};
 use std::path::PathBuf;
@@ -81,7 +81,7 @@ impl Command for TeeCommand {
         shell: &mut Shell,
     ) -> Result<AtomPipeline> {
         let legacy_in = crate::cmd::pipeline_convert::atom_to_pipeline_data(input.clone());
-        let legacy_out = self.run(args, legacy_in, shell)?;
+        let _legacy_out = self.run(args, legacy_in, shell)?;
         // Return the original atom pipeline (pass-through)
         Ok(input)
     }

@@ -52,6 +52,9 @@ unicode-width = "0.2"
 rayon = "1.12"
 toml = "0.8"
 
+# File watching (git info refresh on .git changes)
+notify = "7.0"
+
 # Error handling
 miette = "7.0"
 thiserror = "1.0"

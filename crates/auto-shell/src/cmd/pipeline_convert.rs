@@ -4,7 +4,7 @@
 //! migrate from `PipelineData` to `AtomPipeline` without breaking
 //! existing commands.
 
-use ash_core::pipeline::{Atom, AtomPipeline, AtomType, convert::infer_atom_type};
+use ash_core::pipeline::{Atom, AtomPipeline, convert::infer_atom_type};
 use auto_val::Value;
 use super::pipeline_data::PipelineData;
 

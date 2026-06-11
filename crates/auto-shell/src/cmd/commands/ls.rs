@@ -1,6 +1,6 @@
 use crate::cmd::{fs, Command, PipelineData, Signature};
 use crate::shell::Shell;
-use ash_core::pipeline::{Atom, AtomPipeline, AtomType};
+use ash_core::pipeline::{Atom, AtomPipeline};
 use miette::Result;
 use std::path::Path;
 

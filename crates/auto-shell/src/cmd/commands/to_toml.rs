@@ -29,7 +29,7 @@ impl Command for ToTomlCommand {
     ) -> Result<PipelineData> {
         let value = match input {
             PipelineData::Value(v) => v,
-            PipelineData::Text(s) => miette::bail!("to_toml: cannot convert text to TOML; expected structured data"),
+            PipelineData::Text(_s) => miette::bail!("to_toml: cannot convert text to TOML; expected structured data"),
         };
 
         let toml = value_to_toml(&value, &[], 0);

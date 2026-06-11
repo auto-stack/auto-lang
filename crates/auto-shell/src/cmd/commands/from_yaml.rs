@@ -6,7 +6,7 @@
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::cmd::parser::ParsedArgs;
 use crate::shell::Shell;
-use ash_core::pipeline::{Atom, AtomPipeline, AtomType};
+use ash_core::pipeline::AtomPipeline;
 use auto_val::{Array, Obj, Value};
 use miette::Result;
 
@@ -262,7 +262,7 @@ fn parse_sequence(lines: &[YamlLine], start_idx: usize, min_indent: usize) -> Re
                     indent: item_indent,
                     content: item_content.to_string(),
                 }];
-                let block_start = idx;
+                let _block_start = idx;
                 while idx < lines.len() && lines[idx].indent >= item_indent
                     && !lines[idx].content.starts_with("- ")
                 {

@@ -6,7 +6,6 @@ use crate::cmd::{Command, PipelineData, Signature};
 use crate::cmd::parser::ParsedArgs;
 use crate::shell::Shell;
 use ash_core::pipeline::AtomPipeline;
-use auto_val::Value;
 use miette::{IntoDiagnostic, Result};
 use std::path::PathBuf;
 

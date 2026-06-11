@@ -42,7 +42,7 @@ impl Command for TouchCommand {
 
             if path.exists() {
                 // Update timestamp
-                let time = std::fs::File::open(&path)
+                let _time = std::fs::File::open(&path)
                     .into_diagnostic()
                     .map_err(|e| miette::miette!("touch: {}: {}", arg, e))?;
                 // Set modification time to now

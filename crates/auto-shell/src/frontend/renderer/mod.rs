@@ -5,5 +5,7 @@
 //! in the terminal via reedline or direct stdout.
 
 pub mod buffer_to_ansi;
+pub mod table;
 
 pub use buffer_to_ansi::{buffer_to_ansi, buffer_to_plain};
+pub use table::render_table;

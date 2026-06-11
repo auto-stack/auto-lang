@@ -10,8 +10,7 @@ use ash_core::pipeline::AtomPipeline;
 pub use crate::core::shell::vars;
 
 use crate::bookmarks::BookmarkManager;
-use crate::cmd::{commands, CommandRegistry, PipelineData};
-use crate::cmd::pipeline_convert;
+use crate::cmd::{commands, CommandRegistry};
 use vars::ShellVars;
 
 /// Shell state and context
@@ -185,8 +184,7 @@ impl Shell {
             match crate::cmd::parser::parse_args(&signature, args) {
                 Ok(parsed_args) => {
                     let atom_out = cmd.run_atom(&parsed_args, AtomPipeline::empty(), self)?;
-                    // Convert AtomPipeline to String for display
-                    return Ok(Some(atom_out.into_text()));
+                    return Ok(Some(self.format_output(atom_out)));
                 }
                 Err(e) => return Err(e),
             }
@@ -204,6 +202,29 @@ impl Shell {
 
         // Otherwise, execute as external command
         external::execute_external(input, &self.current_dir)
+    }
+
+    /// Format an AtomPipeline for terminal display.
+    ///
+    /// Structured data (file lists, etc.) gets rendered as a ratatui table
+    /// with borders. Everything else falls back to plain text.
+    fn format_output(&self, pipeline: AtomPipeline) -> String {
+        // Try ratatui table rendering for structured Atom data
+        if let AtomPipeline::Atom(ref atom) = pipeline {
+            if atom.is_structured() {
+                let term_width = crossterm::terminal::size()
+                    .map(|(w, _)| w)
+                    .unwrap_or(80);
+                if let Some(rendered) =
+                    crate::frontend::renderer::render_table(&atom.value, term_width)
+                {
+                    return rendered;
+                }
+            }
+        }
+
+        // Fallback: plain text
+        pipeline.into_text()
     }
 
     /// Execute a pipeline with Auto function support
@@ -285,7 +306,7 @@ impl Shell {
 
             // If this is the last command, return the final output as text
             if is_last {
-                return Ok(input_pipeline.map(|p| p.into_text()));
+                return Ok(input_pipeline.map(|p| self.format_output(p)));
             }
         }
 
@@ -325,6 +346,8 @@ impl Shell {
             self.current_dir = canonical.clone();
             // Update OS state (so Prompt and child processes see it)
             std::env::set_current_dir(&canonical).into_diagnostic()?;
+            // Notify git cache: sync refresh + start filesystem watcher
+            crate::prompt::context::on_directory_changed(canonical);
             Ok(())
         } else {
             miette::bail!("cd: {}: Not a directory", path);

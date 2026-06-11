@@ -32,7 +32,7 @@ impl Command for ToXmlCommand {
     ) -> Result<PipelineData> {
         let value = match input {
             PipelineData::Value(v) => v,
-            PipelineData::Text(s) => miette::bail!("to_xml: cannot convert text to XML; expected structured data"),
+            PipelineData::Text(_s) => miette::bail!("to_xml: cannot convert text to XML; expected structured data"),
         };
 
         let indent: usize = if args.has_flag("indent") {

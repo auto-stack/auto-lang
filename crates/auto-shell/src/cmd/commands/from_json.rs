@@ -3,7 +3,7 @@
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::cmd::parser::ParsedArgs;
 use crate::shell::Shell;
-use ash_core::pipeline::{Atom, AtomPipeline, AtomType};
+use ash_core::pipeline::AtomPipeline;
 use auto_val::{Array, Obj, Value};
 use miette::{IntoDiagnostic, Result};
 

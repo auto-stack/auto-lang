@@ -29,7 +29,7 @@ impl Command for ToCsvCommand {
     ) -> Result<PipelineData> {
         let value = match input {
             PipelineData::Value(v) => v,
-            PipelineData::Text(s) => miette::bail!("to_csv: cannot convert text to CSV; expected table data"),
+            PipelineData::Text(_s) => miette::bail!("to_csv: cannot convert text to CSV; expected table data"),
         };
 
         let delimiter = if args.has_flag("delimiter") {

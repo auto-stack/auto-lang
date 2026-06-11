@@ -28,7 +28,7 @@ impl Command for ToYamlCommand {
     ) -> Result<PipelineData> {
         let value = match input {
             PipelineData::Value(v) => v,
-            PipelineData::Text(s) => miette::bail!("to_yaml: cannot convert text to YAML; expected structured data"),
+            PipelineData::Text(_s) => miette::bail!("to_yaml: cannot convert text to YAML; expected structured data"),
         };
 
         let yaml = value_to_yaml(&value, 0);

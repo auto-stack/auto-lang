@@ -92,6 +92,9 @@ impl Repl {
 
     /// Run the REPL loop
     pub fn run(&mut self) -> Result<()> {
+        // Initial git cache: sync refresh + start filesystem watcher for cwd
+        crate::prompt::context::on_directory_changed(self.shell.pwd());
+
         loop {
             // Read input
             let sig = self.line_editor.read_line(&self.prompt);
@@ -132,6 +135,12 @@ impl Repl {
                             if let Some(s) = output {
                                 println!("{}", s);
                             }
+                            // After command execution, async-refresh git cache
+                            // (most changes are caught by filesystem watcher,
+                            //  but this covers edge cases like external git commands)
+                            crate::prompt::context::refresh_git_info_async(
+                                self.shell.pwd(),
+                            );
                         }
                         Err(e) => {
                             eprintln!("Error: {}", e);
