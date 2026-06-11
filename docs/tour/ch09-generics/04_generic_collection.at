@@ -1,0 +1,49 @@
+// Generic Collection — Building a reusable container
+//
+// Combine generics with methods for reusable data structures.
+
+type Stack<T> {
+    items List
+
+    static fn new() Stack {
+        return Stack { items: [] }
+    }
+
+    mut fn push(item T) {
+        .items.push(item)
+    }
+
+    fn pop() ?T {
+        if len(.items) == 0 {
+            return None
+        }
+        return Some(.items.pop())
+    }
+
+    fn peek() ?T {
+        if len(.items) == 0 {
+            return None
+        }
+        return Some(.items[len(.items) - 1])
+    }
+
+    fn size() int {
+        return len(.items)
+    }
+}
+
+fn main() {
+    var stack = Stack.new()
+    stack.push(10)
+    stack.push(20)
+    stack.push(30)
+    print(stack.size())
+
+    let top = stack.pop()
+    is top {
+        Some(v) -> print(v)
+        None -> print("empty")
+    }
+
+    print(stack.size())
+}

@@ -1,0 +1,25 @@
+// Maps — Key-value Map<K,V> type
+//
+// `Map` stores key-value pairs. Create with `{}` literal or `Map()`.
+
+fn main() {
+    // Map literal
+    let scores = { "Alice": 95, "Bob": 87, "Charlie": 92 }
+    print(scores["Alice"])
+
+    // Create empty map and insert
+    var config = Map()
+    config["host"] = "localhost"
+    config["port"] = "8080"
+    print(config["host"])
+
+    // Check if key exists
+    if "port" in config {
+        print(f"Port: ${config["port"]}")
+    }
+
+    // Iterate over map
+    for key in keys(scores) {
+        print(f"$key: ${scores[key]}")
+    }
+}

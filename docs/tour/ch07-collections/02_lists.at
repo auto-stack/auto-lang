@@ -1,0 +1,26 @@
+// Lists — Dynamic List<T> type
+//
+// `List` is a growable dynamic list. Use `push`, `pop`, and indexing.
+
+fn main() {
+    // Create an empty list
+    var nums = List()
+    nums.push(1)
+    nums.push(2)
+    nums.push(3)
+    print(len(nums))
+    print(nums[0])
+
+    // List from literal
+    let fruits = ["apple", "banana", "cherry"]
+    print(fruits)
+
+    // Pop last element
+    let last = nums.pop()
+    print(last)
+
+    // Iterate over list
+    for item in fruits {
+        print(item)
+    }
+}

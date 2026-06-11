@@ -1,0 +1,40 @@
+// Multiple Specs — Combining constraints
+//
+// A type can implement multiple specs, and functions can
+// require multiple constraints.
+
+spec Printable {
+    fn format() str
+}
+
+spec Measurable {
+    fn measure() float
+}
+
+type Product {
+    name str
+    price float
+
+    fn format() str {
+        return f"${.name}: $self.price"
+    }
+
+    fn measure() float {
+        return .price
+    }
+}
+
+fn report(item) str {
+    let formatted = item.format()
+    let m = item.measure()
+    return f"$formatted (measure: $m)"
+}
+
+fn main() {
+    let p = Product { name: "Widget", price: 9.99 }
+    print(p.format())
+    print(p.measure())
+
+    let r = report(p)
+    print(r)
+}

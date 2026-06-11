@@ -1,0 +1,25 @@
+// Object Literal — Inline key-value objects
+//
+// Use `{key: value}` for anonymous objects. Access fields with dot notation.
+
+fn main() {
+    // Object literal
+    let person = { name: "Alice", age: 30 }
+    print(person.name)
+    print(person.age)
+
+    // Nested objects
+    let config = {
+        server: { host: "localhost", port: 8080 },
+        debug: true
+    }
+    print(config.server.host)
+    print(config.debug)
+
+    // Modify object (requires var)
+    var point = { x: 0, y: 0 }
+    point.x = 10
+    point.y = 20
+    print(point.x)
+    print(point.y)
+}

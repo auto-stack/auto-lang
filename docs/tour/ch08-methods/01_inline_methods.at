@@ -1,0 +1,39 @@
+// Inline Methods — fn, mut fn, and static fn inside type
+//
+// Define methods directly inside a `type` block.
+// `fn` = read-only, `mut fn` = can modify self, `static fn` = no self.
+
+type Rect {
+    w float
+    h float
+
+    fn area() float {
+        return .w * .h
+    }
+
+    fn perimeter() float {
+        return 2.0 * (.w + .h)
+    }
+
+    mut fn scale(factor float) {
+        .w = .w * factor
+        .h = .h * factor
+    }
+
+    static fn square(side float) Rect {
+        return Rect { w: side, h: side }
+    }
+}
+
+fn main() {
+    let r = Rect { w: 3.0, h: 4.0 }
+    print(r.area())
+    print(r.perimeter())
+
+    let s = Rect.square(5.0)
+    print(s.area())
+
+    var r2 = Rect { w: 2.0, h: 3.0 }
+    r2.scale(2.0)
+    print(r2.area())
+}

@@ -1,0 +1,41 @@
+// Builder Pattern — Method chaining for configuration
+//
+// Methods that return `self` enable fluent builder patterns.
+
+type Builder {
+    name str
+    value int
+    active bool
+
+    static fn new() Builder {
+        return Builder { name: "", value: 0, active: false }
+    }
+
+    fn with_name(self, n str) Builder {
+        self.name = n
+        return self
+    }
+
+    fn with_value(self, v int) Builder {
+        self.value = v
+        return self
+    }
+
+    fn activate(self) Builder {
+        self.active = true
+        return self
+    }
+
+    fn build(self) str {
+        return f"{$self.name}=$self.value active=$self.active"
+    }
+}
+
+fn main() {
+    let result = Builder.new()
+        .with_name("config")
+        .with_value(42)
+        .activate()
+        .build()
+    print(result)
+}

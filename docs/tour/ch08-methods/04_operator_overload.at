@@ -1,0 +1,28 @@
+// Operator Overload — Custom arithmetic for types
+//
+// Types can define how operators work with them via special methods.
+
+type Money {
+    amount float
+    currency str
+
+    fn add(other Money) Money {
+        return Money { amount: .amount + other.amount, currency: .currency }
+    }
+
+    fn display() str {
+        return f"${.amount} ${.currency}"
+    }
+}
+
+fn main() {
+    let a = Money { amount: 10.50, currency: "USD" }
+    let b = Money { amount: 25.00, currency: "USD" }
+
+    let total = a.add(b)
+    print(total.display())
+
+    // Compare
+    let is_more = total.amount > 30.0
+    print(is_more)
+}

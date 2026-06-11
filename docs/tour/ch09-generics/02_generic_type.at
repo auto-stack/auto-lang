@@ -1,0 +1,26 @@
+// Generic Types — Parameterized structs
+//
+// Types can have type parameters for flexible data structures.
+
+type Pair<T, U> {
+    first T
+    second U
+
+    fn swap() Pair {
+        return Pair { first: .second, second: .first }
+    }
+}
+
+fn main() {
+    let p = Pair { first: 1, second: "hello" }
+    print(p.first)
+    print(p.second)
+
+    let swapped = p.swap()
+    print(swapped.first)
+    print(swapped.second)
+
+    // Pair of same type
+    let coords = Pair { first: 3.14, second: 2.71 }
+    print(coords.first)
+}

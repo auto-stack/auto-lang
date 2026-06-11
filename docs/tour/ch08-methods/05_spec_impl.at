@@ -1,0 +1,41 @@
+// Spec — Interface definition and implementation
+//
+// `spec` defines an interface (like traits in Rust or protocols in Swift).
+// Types implement specs to satisfy contracts.
+
+spec Drawable {
+    fn draw() str
+}
+
+type Circle {
+    radius float
+}
+
+ext Circle : Drawable {
+    fn draw() str {
+        return f"Circle(r=$self.radius)"
+    }
+}
+
+type Box {
+    width float
+    height float
+}
+
+ext Box : Drawable {
+    fn draw() str {
+        return f"Box(${self.width}x$self.height)"
+    }
+}
+
+fn render(d Drawable) {
+    print(d.draw())
+}
+
+fn main() {
+    let c = Circle { radius: 5.0 }
+    let b = Box { width: 10.0, height: 20.0 }
+
+    render(c)
+    render(b)
+}

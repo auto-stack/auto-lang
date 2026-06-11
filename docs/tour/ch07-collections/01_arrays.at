@@ -1,0 +1,23 @@
+// Arrays — Static arrays and slices
+//
+// Auto has static arrays `[N]T` and dynamic slices `[]T`.
+// Arrays have fixed size; slices are views into arrays.
+
+fn main() {
+    // Array literal (dynamic)
+    let nums = [1, 2, 3, 4, 5]
+    print(nums[0])
+    print(nums[4])
+
+    // Static array type
+    let buffer = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    print(len(buffer))
+
+    // Modify array elements
+    var arr = [10, 20, 30]
+    arr[1] = 25
+    print(arr[1])
+
+    // Array length
+    print(len(nums))
+}

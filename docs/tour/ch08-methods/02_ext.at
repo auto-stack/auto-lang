@@ -1,0 +1,36 @@
+// Ext — Extending existing types with new methods
+//
+// Use `ext` to add methods to types defined elsewhere.
+
+type Vec2 {
+    x float
+    y float
+}
+
+ext Vec2 {
+    fn length() float {
+        return (.x * .x + .y * .y) ** 0.5
+    }
+
+    fn dot(other Vec2) float {
+        return .x * other.x + .y * other.y
+    }
+
+    mut fn normalize() {
+        let len = .length()
+        .x = .x / len
+        .y = .y / len
+    }
+}
+
+fn main() {
+    let v = Vec2 { x: 3.0, y: 4.0 }
+    print(v.length())
+
+    let u = Vec2 { x: 1.0, y: 0.0 }
+    print(v.dot(u))
+
+    var n = Vec2 { x: 3.0, y: 4.0 }
+    n.normalize()
+    print(n.length())
+}
