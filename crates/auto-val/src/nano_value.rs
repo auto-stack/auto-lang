@@ -41,17 +41,17 @@ pub fn encode_f64(f: f64) -> NanoValue { f.to_bits() }
 pub fn encode_i32(i: i32) -> NanoValue { NANBOX_BASE | TAG_I32 | ((i as u32) as u64) }
 
 // String payload stores the NEGATIVE i32 tag (-(idx+1)) so that
-// decode_i32() on a string NanoValue returns the same negative value
-// that the non-nanbox encoding uses. This allows pop_i32/push_i32
-// round-trips to preserve string identity for code paths that
-// move values through ListData<i32> or other i32-only containers.
+// decode_i32() on a string NanoValue returns the same negative value.
+// This allows pop_i32/push_i32 round-trips to preserve string identity
+// for code paths that move values through ListData<i32> or other
+// i32-only containers.
 #[inline(always)]
 pub fn encode_string(idx: u32) -> NanoValue {
     let neg_tag = (-(idx as i32) - 1i32) as u32;
     NANBOX_BASE | TAG_STRING | (neg_tag as u64)
 }
 
-// Bool payload uses the same sentinel values as non-nanbox mode:
+// Bool payload uses sentinel values:
 // true  = i32::MIN      = -2147483648
 // false = i32::MIN + 1  = -2147483647
 #[inline(always)]
@@ -60,7 +60,7 @@ pub fn encode_bool(b: bool) -> NanoValue {
     NANBOX_BASE | TAG_BOOL | (sentinel as u32 as u64)
 }
 
-// Null payload uses the same sentinel as non-nanbox false: i32::MIN + 1
+// Null payload uses sentinel value: i32::MIN + 1
 #[inline(always)]
 pub fn encode_null() -> NanoValue { NANBOX_BASE | TAG_NULL | ((i32::MIN + 1) as u32 as u64) }
 

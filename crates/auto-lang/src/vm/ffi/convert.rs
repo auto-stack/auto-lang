@@ -97,9 +97,8 @@ impl VMConvertible for f32 {
 
 impl VMConvertible for f64 {
     fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
-        #[cfg(feature = "nanbox")]
         {
-            // In nanbox mode, f64 occupies 2 slots (value at sp-2, marker at sp-1).
+            // f64 occupies 2 slots (value at sp-2, marker at sp-1).
             // f32 occupies 1 slot. Codegen may push f32 when FFI expects f64.
             if task.ram.sp >= 2 {
                 let nv = task.ram.raw_nv[task.ram.sp - 2];

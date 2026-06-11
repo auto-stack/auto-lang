@@ -649,7 +649,7 @@ pub fn shim_process_spawn_with_output(
 /// Takes: cmd (String), timeout_ms (i32) — timeout currently unused.
 /// Returns: JSON string {"exit_code": N, "stdout": "...", "stderr": "..."}
 pub fn shim_sys_exec(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    // Pop timeout as i32 (Auto int = i32, not i64, to avoid nanbox slot mismatch)
+    // Pop timeout as i32 (Auto int = i32, not i64, to avoid slot mismatch)
     let timeout_ms: i32 = task.ram.pop_i32();
     let cmd: String = VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
@@ -867,7 +867,6 @@ pub fn shim_str_find_manual(task: &mut crate::vm::task::AutoTask, vm: &crate::vm
     use crate::vm::ffi::convert::VMConvertible;
 
     // Peek at top of stack to determine calling convention
-    #[cfg(feature = "nanbox")]
     let start_pos: i64 = {
         let top = task.ram.read_nv(task.ram.sp - 1);
         if auto_val::is_i32(top) {
@@ -875,16 +874,6 @@ pub fn shim_str_find_manual(task: &mut crate::vm::task::AutoTask, vm: &crate::vm
             auto_val::decode_i32(top) as i64
         } else {
             0i64 // no start_pos, default to 0
-        }
-    };
-    #[cfg(not(feature = "nanbox"))]
-    let start_pos: i64 = {
-        let top = task.ram.read_i32(task.ram.sp - 1);
-        if top >= 0 {
-            task.ram.pop_i32(); // consume start_pos
-            top as i64
-        } else {
-            0i64 // top is a string handle (negative), no start_pos
         }
     };
 
@@ -903,10 +892,7 @@ pub fn shim_str_find_manual(task: &mut crate::vm::task::AutoTask, vm: &crate::vm
     };
 
     // Push result
-    #[cfg(feature = "nanbox")]
     task.ram.push_nv(auto_val::encode_i32(result));
-    #[cfg(not(feature = "nanbox"))]
-    task.ram.push_i32(result);
 
     Ok(())
 }
@@ -1048,13 +1034,9 @@ pub fn shim_char_to_upper(codepoint: i32) -> i32 {
 /// Option.or(default) / Option.unwrap_or(default) — returns default if None, unwraps Some
 pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop default value
-    #[cfg(feature = "nanbox")]
     let default_val = { let nv = task.ram.pop_nv(); auto_val::decode_i32(nv) };
-    #[cfg(not(feature = "nanbox"))]
-    let default_val = task.ram.pop_i32();
 
-    // Pop option value — check for None (null nanbox or -1 sentinel)
-    #[cfg(feature = "nanbox")]
+    // Pop option value — check for None (null or -1 sentinel)
     {
         let opt_nv = task.ram.pop_nv();
         // None is represented as encode_null() (TAG_NULL) or encode_i32(-1)
@@ -1087,37 +1069,6 @@ pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
         task.ram.push_nv(opt_nv);
         return Ok(());
-    }
-    #[cfg(not(feature = "nanbox"))]
-    let opt_val = task.ram.pop_i32();
-
-    #[cfg(not(feature = "nanbox"))]
-    {
-        // Check if it's Option.None (heap object or legacy sentinel)
-        if opt_val == -1 || opt_val == i32::MIN + 1 {
-            task.ram.push_i32(default_val);
-            return Ok(());
-        }
-
-        if opt_val > 0 {
-            let instance_id = opt_val as u64;
-            if vm.is_option_none(instance_id) {
-                task.ram.push_i32(default_val);
-                return Ok(());
-            }
-            if vm.is_option_some(instance_id) {
-                if let Some(inner) = vm.get_option_inner(instance_id) {
-                    match inner {
-                        auto_val::Value::Int(n) => task.ram.push_i32(n),
-                        auto_val::Value::Bool(b) => task.ram.push_i32(if b { 1 } else { 0 }),
-                        _other => task.ram.push_i32(opt_val),
-                    }
-                    return Ok(());
-                }
-            }
-        }
-        task.ram.push_i32(opt_val);
-        Ok(())
     }
 }
 
@@ -3609,7 +3560,7 @@ pub fn shim_ctx_reply(value: i64) -> Result<(), String> {
 pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // File utility functions (walk/read_lines/is_binary now via #[rust_fn] registration)
 
-    // String method — manual shim for nanbox compatibility
+    // String method — manual shim
     natives.register_shim_by_name("auto.str.find", shim_str_find_manual);
     natives.register_shim_by_name("Str.find", shim_str_find_manual);
     natives.register_shim_by_name("str.find", shim_str_find_manual);
@@ -3713,7 +3664,6 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 // ============================================================================
 
 /// Push a Rust stdlib object onto the VM heap and push its handle.
-/// In nanbox mode, uses encode_object so print() can detect heap objects.
 fn push_rust_obj<T: Any + Send + Sync + 'static>(
     task: &mut AutoTask,
     vm: &AutoVM,
@@ -3722,20 +3672,14 @@ fn push_rust_obj<T: Any + Send + Sync + 'static>(
 ) -> Result<(), VMError> {
     let obj = RustStdlibObject::new(type_name, value);
     let handle = vm.insert_heap_object(obj) as u32;
-    #[cfg(feature = "nanbox")]
     {
         task.ram.push_nv(auto_val::encode_object(handle));
-    }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        task.ram.push_i32(handle as i32);
     }
     Ok(())
 }
 
 /// Pop a heap handle and return a reference to the RustStdlibObject.
 fn pop_rust_obj(task: &mut AutoTask, vm: &AutoVM, context: &str) -> Result<u64, VMError> {
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
         let handle = if auto_val::is_object(nv) {
@@ -3743,16 +3687,6 @@ fn pop_rust_obj(task: &mut AutoTask, vm: &AutoVM, context: &str) -> Result<u64, 
         } else {
             auto_val::decode_i32(nv) as u64
         };
-        if vm.get_heap_object(handle).is_none() {
-            return Err(VMError::RuntimeError(format!(
-                "Invalid Rust stdlib handle in {} (handle={})", context, handle
-            )));
-        }
-        Ok(handle)
-    }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let handle = task.ram.pop_i32() as u64;
         if vm.get_heap_object(handle).is_none() {
             return Err(VMError::RuntimeError(format!(
                 "Invalid Rust stdlib handle in {} (handle={})", context, handle
@@ -4079,18 +4013,12 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                     let val = *val;
                     if val >= 4000000 {
                         // Heap object ID — push as object reference
-                        #[cfg(feature = "nanbox")]
                         task.ram.push_nv(auto_val::encode_object(val as u32));
-                        #[cfg(not(feature = "nanbox"))]
-                        task.ram.push_i32(val);
                     } else if let Some(bytes) = vm.get_string(val as u16) {
                         let new_idx = vm.add_string(bytes.to_vec());
                         task.ram.push_str_idx(new_idx as u32);
                     } else {
-                        #[cfg(feature = "nanbox")]
                         task.ram.push_nv(auto_val::encode_i32(val));
-                        #[cfg(not(feature = "nanbox"))]
-                        task.ram.push_i32(val);
                     }
                 } else {
                     // Out of bounds — push None (0)
@@ -4108,10 +4036,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let guard = obj.read().unwrap();
             if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
                 let len = list.len() as i32;
-                #[cfg(feature = "nanbox")]
                 task.ram.push_nv(auto_val::encode_i32(len));
-                #[cfg(not(feature = "nanbox"))]
-                task.ram.push_i32(len);
             } else {
                 task.ram.push_i32(0);
             }
@@ -4308,10 +4233,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             // For VM, just pass through the DateTime that was already constructed
             // Pop the receiver (DateTime handle) and push it back
             let handle = pop_rust_obj(task, vm, "DateTime.single")?;
-            #[cfg(feature = "nanbox")]
             task.ram.push_nv(auto_val::encode_i32(handle as i32));
-            #[cfg(not(feature = "nanbox"))]
-            task.ram.push_i32(handle as i32);
         }
 
         // ---- regex extra methods ----
@@ -4338,10 +4260,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 }
             }
             let list_id = vm.insert_heap_object(match_list);
-            #[cfg(feature = "nanbox")]
             task.ram.push_nv(auto_val::encode_object(list_id as u32));
-            #[cfg(not(feature = "nanbox"))]
-            task.ram.push_i32(list_id as i32);
         }
 
         // ---- percent_encoding ----

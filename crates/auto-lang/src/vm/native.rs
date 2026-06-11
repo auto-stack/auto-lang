@@ -10,36 +10,13 @@ use std::sync::RwLock;
 
 use crate::{for_each_native, gen_native_constants};
 
-/// Decode a tagged string index from stack value.
-/// LOAD_STR pushes string indices as negative tagged values: -(str_idx as i32) - 1
-/// This function decodes the tag to get the actual string pool index.
-#[cfg(not(feature = "nanbox"))]
-#[inline]
-fn decode_str_idx(bits: i32) -> usize {
-    if bits < 0 {
-        (-bits - 1) as usize
-    } else {
-        bits as usize
-    }
-}
-
-/// Under nanbox, decode from a NanoValue popped from the stack.
-#[cfg(feature = "nanbox")]
+/// Decode a tagged string index from a NanoValue popped from the stack.
 #[inline]
 fn decode_str_idx_nv(nv: auto_val::NanoValue) -> usize {
     auto_val::decode_string(nv) as usize
 }
 
-/// Encode a string pool index as a tagged value (negative).
-#[cfg(not(feature = "nanbox"))]
-#[inline]
-#[allow(dead_code)]
-fn encode_str_idx(idx: i32) -> i32 {
-    -(idx + 1)
-}
-
-/// Under nanbox, encode as a NanoValue string tag.
-#[cfg(feature = "nanbox")]
+/// Encode as a NanoValue string tag.
 #[inline]
 fn encode_str_idx_nv(idx: u32) -> auto_val::NanoValue {
     auto_val::encode_string(idx)
@@ -482,7 +459,7 @@ math_unary_shim!(shim_math_sin, sin);
 math_unary_shim!(shim_math_cos, cos);
 math_unary_shim!(shim_math_tan, tan);
 // sqrt — registered in native.rs but shim lives in ffi/stdlib.rs with #[rust_fn]
-// (needed because #[rust_fn] uses VMConvertible which handles nanbox f64 encoding)
+// (needed because #[rust_fn] uses VMConvertible which handles f64 encoding)
 math_unary_shim!(shim_math_abs_f, abs);
 math_unary_shim!(shim_math_floor, floor);
 math_unary_shim!(shim_math_ceil, ceil);
@@ -558,21 +535,6 @@ fn vm_write(vm: &AutoVM, s: &str) {
 /// If the value is a tagged string index (negative), prints the string.
 /// Otherwise prints as an integer.
 pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let val = task.ram.pop_i32();
-        if val < 0 {
-            let str_index = ((-val) - 1) as u16;
-            if let Some(bytes) = vm.get_string(str_index) {
-                vm_print(vm, &String::from_utf8_lossy(&bytes));
-            } else {
-                vm_print(vm, &format!("<invalid string index: {}>", str_index));
-            }
-        } else {
-            vm_print(vm, &val.to_string());
-        }
-    }
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
@@ -590,7 +552,6 @@ pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
@@ -601,7 +562,7 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 vm_print(vm, &format!("<invalid string index: {}>", str_index));
             }
         } else if auto_val::is_null(nv) {
-            // None value (null nanbox)
+            // None value (null)
             vm_print(vm, "None");
         } else if auto_val::is_object(nv) {
             let handle = auto_val::decode_object(nv) as u64;
@@ -641,35 +602,11 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
         Ok(())
     }
-    #[cfg(not(feature = "nanbox"))]
-    {
-    let val = task.ram.pop_i32();
-    // Boolean sentinel values: i32::MIN = true, i32::MIN+1 = false
-    if val == -2147483648 {
-        vm_print(vm, "1");
-        return Ok(());
-    } else if val == -2147483647 {
-        vm_print(vm, "0");
-        return Ok(());
-    }
-    // Check if it's a Rust stdlib heap handle
-    let handle = val as u64;
-    if let Some(obj) = vm.get_heap_object(handle) {
-        let guard = obj.read().unwrap();
-        if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-            vm_print(vm, &format_rust_stdlib_obj(rust_obj));
-            return Ok(());
-        }
-    }
-    vm_print(vm, &val.to_string());
-    Ok(());
-    }
 }
 
 pub fn shim_print_f32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(feature = "nanbox")]
     {
-        // In nanbox mode, f64 occupies 2 slots (value at sp-2, marker at sp-1).
+        // f64 occupies 2 slots (value at sp-2, marker at sp-1).
         // Check sp-2 for f64 bits, then sp-1 for f32.
         if task.ram.sp >= 2 {
             let nv = task.ram.raw_nv[task.ram.sp - 2];
@@ -754,35 +691,6 @@ pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
 /// Expects tagged string index on TOS (LOAD_STR pushes -(idx+1)).
 /// If the value is non-negative and not a valid string index, prints as integer.
 pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let tagged = task.ram.pop_i32();
-        let str_index = if tagged < 0 {
-            ((-tagged) - 1) as u16
-        } else {
-            tagged as u16
-        };
-        if tagged < 0 {
-            if let Some(bytes) = vm.get_string(str_index) {
-                vm_print(vm, &String::from_utf8_lossy(&bytes));
-            } else {
-                vm_print(vm, &format!("<invalid string index: {}>", str_index));
-            }
-        } else {
-            let handle = tagged as u64;
-            if let Some(obj) = vm.get_heap_object(handle) {
-                let guard = obj.read().unwrap();
-                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    vm_print(vm, &format_rust_stdlib_obj(rust_obj));
-                } else {
-                    vm_print(vm, &tagged.to_string());
-                }
-            } else {
-                vm_print(vm, &tagged.to_string());
-            }
-        }
-    }
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
@@ -837,35 +745,6 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Write a string without trailing newline (write() in Auto).
 /// Same logic as shim_print_str but uses vm_write instead of vm_print.
 pub fn shim_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let tagged = task.ram.pop_i32();
-        let str_index = if tagged < 0 {
-            ((-tagged) - 1) as u16
-        } else {
-            tagged as u16
-        };
-        if tagged < 0 {
-            if let Some(bytes) = vm.get_string(str_index) {
-                vm_write(vm, &String::from_utf8_lossy(&bytes));
-            } else {
-                vm_write(vm, &format!("<invalid string index: {}>", str_index));
-            }
-        } else {
-            let handle = tagged as u64;
-            if let Some(obj) = vm.get_heap_object(handle) {
-                let guard = obj.read().unwrap();
-                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    vm_write(vm, &format_rust_stdlib_obj(rust_obj));
-                } else {
-                    vm_write(vm, &tagged.to_string());
-                }
-            } else {
-                vm_write(vm, &tagged.to_string());
-            }
-        }
-    }
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
@@ -896,7 +775,6 @@ pub fn shim_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 pub fn shim_assert(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
         let is_true = if auto_val::is_bool(nv) {
@@ -911,32 +789,12 @@ pub fn shim_assert(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
             return Err(VMError::RuntimeError("Assertion failed".to_string()));
         }
     }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let cond = task.ram.pop_i32();
-        if cond == 0 || cond == -2147483647 {
-            return Err(VMError::RuntimeError("Assertion failed".to_string()));
-        }
-    }
     Ok(())
 }
 
 /// Runtime panic: pops a string (tagged index) from stack and returns it as an error.
 /// Used by #[vm] function stubs when no matching native implementation is found.
 pub fn shim_runtime_panic(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(not(feature = "nanbox"))]
-    let msg = {
-        let tagged = task.ram.pop_i32();
-        if tagged < 0 {
-            let idx = ((-tagged) - 1) as u16;
-            vm.get_string(idx)
-                .map(|b| String::from_utf8_lossy(&b).to_string())
-                .unwrap_or_else(|| format!("Runtime panic (invalid string index {})", idx))
-        } else {
-            format!("Runtime panic (unexpected stack value: {})", tagged)
-        }
-    };
-    #[cfg(feature = "nanbox")]
     let msg = {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
@@ -952,31 +810,6 @@ pub fn shim_runtime_panic(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 }
 
 pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let right = task.ram.pop_i32();
-        let left = task.ram.pop_i32();
-
-        let equal = if left < 0 && right < 0 {
-            // Both are tagged string indices — compare actual string contents
-            let left_str = vm.get_string(decode_str_idx(left) as u16)
-                .map(|b| String::from_utf8_lossy(&b).to_string());
-            let right_str = vm.get_string(decode_str_idx(right) as u16)
-                .map(|b| String::from_utf8_lossy(&b).to_string());
-            left_str.as_deref() == right_str.as_deref()
-        } else {
-            left == right
-        };
-
-        if !equal {
-            return Err(VMError::RuntimeError(
-                format!("Assertion failed: {} != {}", left, right)
-            ));
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "nanbox")]
     {
         let right_nv = task.ram.pop_nv();
         let left_nv = task.ram.pop_nv();
@@ -1011,30 +844,6 @@ pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 pub fn shim_assert_ne(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let right = task.ram.pop_i32();
-        let left = task.ram.pop_i32();
-
-        let equal = if left < 0 && right < 0 {
-            let left_str = vm.get_string(decode_str_idx(left) as u16)
-                .map(|b| String::from_utf8_lossy(&b).to_string());
-            let right_str = vm.get_string(decode_str_idx(right) as u16)
-                .map(|b| String::from_utf8_lossy(&b).to_string());
-            left_str.as_deref() == right_str.as_deref()
-        } else {
-            left == right
-        };
-
-        if equal {
-            return Err(VMError::RuntimeError(
-                format!("Assertion failed: {} == {}", left, right)
-            ));
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "nanbox")]
     {
         let right_nv = task.ram.pop_nv();
         let left_nv = task.ram.pop_nv();
@@ -1254,10 +1063,8 @@ pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Stack: list_id, index -> elem
 // Plan 077 Phase 5: Updated to use unified registry
 /// Push a tagged value from ListData<i32> back onto the stack.
-/// In non-nanbox mode, all values are plain i32 so push_i32 is fine.
-/// In nanbox mode, negative values are string tags that must use push_str_idx
+/// Negative values are string tags that must use push_str_idx
 /// to preserve the TAG_STRING type tag in the NanoValue encoding.
-#[cfg(feature = "nanbox")]
 fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
     if val < 0 {
         let str_idx = (-(val) - 1) as u32;
@@ -1267,15 +1074,9 @@ fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
     }
 }
 
-#[cfg(not(feature = "nanbox"))]
-fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
-    ram.push_i32(val);
-}
-
 pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    #[cfg(feature = "nanbox")]
     {
         let index_nv = task.ram.pop_nv();
         let list_nv = task.ram.pop_nv();
@@ -1295,24 +1096,6 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
         task.ram.push_i32(0);
         return Ok(());
-    }
-    #[allow(unreachable_code)]
-    {
-    let index = task.ram.pop_i32() as usize;
-    let list_id = task.ram.pop_i32() as u64;
-
-    if let Some(obj) = vm.get_heap_object(list_id) {
-        let guard = obj.read().unwrap();
-        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
-            let value = list.get(index).copied().unwrap_or(0);
-            task.ram.push_i32(value);
-            return Ok(());
-        }
-    }
-
-    // Invalid list_id
-    task.ram.push_i32(0);
-    Ok(())
     }
 }
 
@@ -1644,9 +1427,6 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
     // Pop separator (string pool tag)
-    #[cfg(not(feature = "nanbox"))]
-    let sep_idx = decode_str_idx(task.ram.pop_i32());
-    #[cfg(feature = "nanbox")]
     let sep_idx = decode_str_idx_nv(task.ram.pop_nv());
     let separator = vm.strings.read().unwrap()
         .get(sep_idx)
@@ -2370,35 +2150,6 @@ pub fn shim_hashmap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// The value is auto-detected: negative (but not bool sentinels) = string tag,
 /// positive/zero/bool sentinels = int.
 pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let value_bits = task.ram.pop_i32();
-        let key_bits = task.ram.pop_i32();
-        let map_id = task.ram.pop_i32() as u64;
-        if let Some(obj) = vm.get_heap_object(map_id) {
-            let key_str_idx = ((-key_bits) - 1) as usize;
-            let strings = vm.strings.read().unwrap();
-            let key_bytes = strings.get(key_str_idx).cloned()
-                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
-            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
-            let value = if value_bits < 0 && value_bits > i32::MIN + 1 {
-                let str_idx = ((-value_bits) - 1) as usize;
-                if let Some(bytes) = strings.get(str_idx) {
-                    Value::Str(auto_val::AutoStr::from(String::from_utf8_lossy(bytes).as_ref()))
-                } else { Value::Int(0) }
-            } else if value_bits == i32::MIN { Value::Bool(true) }
-            else if value_bits == i32::MIN + 1 { Value::Bool(false) }
-            else { Value::Int(value_bits) };
-            drop(strings);
-            let mut guard = obj.write().unwrap();
-            if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
-                map.insert(key_str, value).map_err(|e| VMError::RuntimeError(e))?;
-            }
-        }
-        task.ram.push_i32(0);
-        return Ok(());
-    }
-    #[cfg(feature = "nanbox")]
     {
         let value_nv = task.ram.pop_nv();
         let key_idx = task.ram.pop_str_idx();
@@ -2436,12 +2187,11 @@ pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// Insert a string key with i32 value
 /// Stack: hashmap_id, key_str_id, value -> result (0)
 pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(feature = "nanbox")]
     {
         let value_nv = task.ram.pop_nv();
         let key_nv = task.ram.pop_nv();
         let map_nv = task.ram.pop_nv();
-        // Key should be a string pool reference. In nanbox mode, the tag can be
+        // Key should be a string pool reference. The tag can be
         // TAG_STRING or (due to i32 round-trips in some code paths) TAG_I32.
         // Both use the same payload encoding (negative i32 = string pool index),
         // so decode_string works for both.
@@ -2481,29 +2231,6 @@ pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         }
         task.ram.push_i32(0);
         return Ok(());
-    }
-    #[allow(unreachable_code)]
-    {
-    let value = task.ram.pop_i32();
-    let key_str_idx = task.ram.pop_str_idx();
-    let map_id = task.ram.pop_i32() as u64;
-
-    if let Some(obj) = vm.get_heap_object(map_id) {
-        // Get key string from pool
-        let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
-            .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
-        let key_str = String::from_utf8_lossy(&key_bytes).to_string();
-        drop(key_bytes);
-
-        let mut guard = obj.write().unwrap();
-        if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
-            map.insert(key_str, Value::Int(value))
-                .map_err(|e| VMError::RuntimeError(e))?;
-        }
-    }
-
-    task.ram.push_i32(0);
-    Ok(())
     }
 }
 
@@ -2545,13 +2272,8 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                         return Ok(());
                     }
                     auto_val::Value::VmRef(vm_ref) => {
-                        #[cfg(feature = "nanbox")]
                         {
                             task.ram.push_nv(auto_val::encode_object(vm_ref.id as u32));
-                        }
-                        #[cfg(not(feature = "nanbox"))]
-                        {
-                            task.ram.push_i32(vm_ref.id as i32);
                         }
                         return Ok(());
                     }
@@ -2564,13 +2286,8 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     }
 
     // Not found — push nil marker
-    #[cfg(feature = "nanbox")]
     {
         task.ram.push_nv(auto_val::encode_null());
-    }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        task.ram.push_i32(i32::MIN + 1);
     }
     Ok(())
 }
@@ -2599,13 +2316,8 @@ pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     }
 
     // Not found — push nil marker
-    #[cfg(feature = "nanbox")]
     {
         task.ram.push_nv(auto_val::encode_null());
-    }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        task.ram.push_i32(i32::MIN + 1);
     }
     Ok(())
 }
@@ -2674,13 +2386,8 @@ pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     }
 
     // Not found — push nil marker
-    #[cfg(feature = "nanbox")]
     {
         task.ram.push_nv(auto_val::encode_null());
-    }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        task.ram.push_i32(i32::MIN + 1);
     }
     Ok(())
 }
@@ -2843,7 +2550,6 @@ pub fn shim_hashset_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Insert a string element into the set
 /// Stack: hashset_id, elem_str_id -> result (0)
 pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(feature = "nanbox")]
     let key = {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
@@ -2853,18 +2559,6 @@ pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
                 .unwrap_or_default()
         } else {
             auto_val::decode_i32(nv).to_string()
-        }
-    };
-    #[cfg(not(feature = "nanbox"))]
-    let key = {
-        let raw = task.ram.pop_i32();
-        if raw < 0 {
-            let idx = decode_str_idx(raw);
-            vm.strings.read().unwrap().get(idx).cloned()
-                .map(|b| String::from_utf8_lossy(&b).to_string())
-                .unwrap_or_default()
-        } else {
-            raw.to_string()
         }
     };
 
@@ -2884,7 +2578,6 @@ pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Check if element exists in the set
 /// Stack: hashset_id, elem_str_id -> result (1 if exists, 0 otherwise)
 pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(feature = "nanbox")]
     let key = {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
@@ -2894,18 +2587,6 @@ pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 .unwrap_or_default()
         } else {
             auto_val::decode_i32(nv).to_string()
-        }
-    };
-    #[cfg(not(feature = "nanbox"))]
-    let key = {
-        let raw = task.ram.pop_i32();
-        if raw < 0 {
-            let idx = decode_str_idx(raw);
-            vm.strings.read().unwrap().get(idx).cloned()
-                .map(|b| String::from_utf8_lossy(&b).to_string())
-                .unwrap_or_else(|| "INVALID".to_string())
-        } else {
-            raw.to_string()
         }
     };
 
@@ -3559,7 +3240,6 @@ pub fn shim_btreemap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMEr
 pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // When compiler can't determine receiver type, it may call str.len on a List heap ID.
     // Detect this and dispatch to list.len instead.
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_i32(nv) {
@@ -3587,20 +3267,9 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
         return Ok(());
     }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let str_idx = task.ram.pop_str_idx() as u16;
-        if let Some(bytes) = vm.get_string(str_idx) {
-            task.ram.push_i32(bytes.len() as i32);
-        } else {
-            task.ram.push_i32(0);
-        }
-        Ok(())
-    }
 }
 
 /// Helper: decode a NanoValue to a String (from string pool)
-#[cfg(feature = "nanbox")]
 fn nv_to_string(nv: auto_val::NanoValue, vm: &AutoVM) -> String {
     if auto_val::is_string(nv) {
         vm.get_string(auto_val::decode_string(nv) as u16)
@@ -3614,7 +3283,6 @@ fn nv_to_string(nv: auto_val::NanoValue, vm: &AutoVM) -> String {
 /// str.contains(substring) — check if string contains substring
 /// Stack: substring, string -> bool
 pub fn shim_str_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(feature = "nanbox")]
     {
         let sub_nv = task.ram.pop_nv();
         let str_nv = task.ram.pop_nv();
@@ -3622,20 +3290,11 @@ pub fn shim_str_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         let sub_s = nv_to_string(sub_nv, vm);
         task.ram.push_i32(if str_s.contains(sub_s.as_str()) { 1 } else { 0 });
     }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let sub_idx = task.ram.pop_str_idx() as u16;
-        let str_idx = task.ram.pop_str_idx() as u16;
-        let str_s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
-        let sub_s = vm.get_string(sub_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
-        task.ram.push_i32(if str_s.contains(&sub_s) { 1 } else { 0 });
-    }
     Ok(())
 }
 
 /// str.starts_with(prefix) — check if string starts with prefix
 pub fn shim_str_starts_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(feature = "nanbox")]
     {
         let prefix_nv = task.ram.pop_nv();
         let str_nv = task.ram.pop_nv();
@@ -3643,20 +3302,11 @@ pub fn shim_str_starts_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         let prefix_s = nv_to_string(prefix_nv, vm);
         task.ram.push_i32(if str_s.starts_with(prefix_s.as_str()) { 1 } else { 0 });
     }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let prefix_idx = task.ram.pop_str_idx() as u16;
-        let str_idx = task.ram.pop_str_idx() as u16;
-        let str_s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
-        let prefix_s = vm.get_string(prefix_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
-        task.ram.push_i32(if str_s.starts_with(&prefix_s) { 1 } else { 0 });
-    }
     Ok(())
 }
 
 /// str.ends_with(suffix) — check if string ends with suffix
 pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(feature = "nanbox")]
     {
         let suffix_nv = task.ram.pop_nv();
         let str_nv = task.ram.pop_nv();
@@ -3664,22 +3314,13 @@ pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         let suffix_s = nv_to_string(suffix_nv, vm);
         task.ram.push_i32(if str_s.ends_with(suffix_s.as_str()) { 1 } else { 0 });
     }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let suffix_idx = task.ram.pop_str_idx() as u16;
-        let str_idx = task.ram.pop_str_idx() as u16;
-        let str_s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
-        let suffix_s = vm.get_string(suffix_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
-        task.ram.push_i32(if str_s.ends_with(&suffix_s) { 1 } else { 0 });
-    }
     Ok(())
 }
 
 /// str.to_int() / str.parse_int() — parse string to int, return Result<int>
 /// Stack: str -> CREATE_OK(int) or CREATE_ERR(str)
-/// In nanbox mode, returns the value as CREATE_OK for proper .?() chaining
+/// Returns the value as CREATE_OK for proper .?() chaining
 pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
         let s = if auto_val::is_string(nv) {
@@ -3693,13 +3334,6 @@ pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         let result = s.trim().parse::<i32>().unwrap_or(0);
         task.ram.push_nv(auto_val::encode_i32(result));
     }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let str_idx = task.ram.pop_str_idx() as u16;
-        let s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
-        let result = s.trim().parse::<i32>().unwrap_or(0);
-        task.ram.push_i32(result);
-    }
     Ok(())
 }
 
@@ -3707,33 +3341,6 @@ pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Supports both constant pool strings (tagged index) and heap-based mutable Strings (SpecializedStringBuilder).
 /// Stack: str_idx_or_sb_id -> length (as i32, char count for heap, byte count for const pool)
 pub fn shim_string_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    // Under non-nanbox: raw i32 is either a heap object ID (positive) or tagged string index (negative).
-    // Under nanbox: NanoValue is either an int (heap ID) or a string tag.
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let bits = task.ram.pop_i32();
-
-        // First try as heap object (mutable String)
-        let sb_id = bits as u64;
-        if let Some(obj) = vm.get_heap_object(sb_id) {
-            let guard = obj.read().unwrap();
-            if let Some(sb) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
-                task.ram.push_i32(sb.buffer.chars().count() as i32);
-                return Ok(());
-            }
-        }
-
-        // Fall back to constant pool string (tagged index)
-        let str_idx = decode_str_idx(bits) as u16;
-        if let Some(bytes) = vm.get_string(str_idx) {
-            task.ram.push_i32(bytes.len() as i32);
-        } else {
-            task.ram.push_i32(0);
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
 
@@ -4494,21 +4101,8 @@ pub fn shim_log_noop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
 // Plan 212 Phase 2.2: Regex Opaque Struct Shims
 // ============================================================================
 
-/// Helper: pop a string from the VM stack (handles both nanbox and non-nanbox)
+/// Helper: pop a string from the VM stack
 fn pop_vm_string(task: &mut AutoTask, vm: &AutoVM) -> String {
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let tagged = task.ram.pop_i32();
-        if tagged < 0 {
-            let idx = ((-tagged) - 1) as u16;
-            vm.get_string(idx)
-                .map(|b| String::from_utf8_lossy(&b).into_owned())
-                .unwrap_or_default()
-        } else {
-            format!("{}", tagged)
-        }
-    }
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
@@ -4947,10 +4541,7 @@ pub fn shim_semver_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         Ok(ver) => {
             let obj = RustStdlibObject::new("semver::Version", std::sync::Mutex::new(ver));
             let id = vm.insert_heap_object(obj);
-            #[cfg(feature = "nanbox")]
             task.ram.push_nv(auto_val::encode_object(id as u32));
-            #[cfg(not(feature = "nanbox"))]
-            task.ram.push_i32(id as i32);
         }
         Err(e) => {
             return Err(VMError::RuntimeError(format!("Version::parse failed: {}", e)));
@@ -5101,10 +4692,7 @@ pub fn shim_semver_opaque_versionreq_parse(task: &mut AutoTask, vm: &AutoVM) -> 
         Ok(req) => {
             let obj = RustStdlibObject::new("semver::VersionReq", std::sync::Mutex::new(req));
             let id = vm.insert_heap_object(obj);
-            #[cfg(feature = "nanbox")]
             task.ram.push_nv(auto_val::encode_object(id as u32));
-            #[cfg(not(feature = "nanbox"))]
-            task.ram.push_i32(id as i32);
         }
         Err(e) => {
             return Err(VMError::RuntimeError(format!("VersionReq::parse failed: {}", e)));
@@ -5525,24 +5113,18 @@ pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         strings.push(bytes);
         strings.len() - 1
     };
-    #[cfg(feature = "nanbox")]
     {
         let nv = auto_val::encode_string(idx as u32);
         task.ram.push_nv(nv);
         task.ram.push_nv(auto_val::encode_null());
-    }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        task.ram.push_i32(idx as i32);
     }
     Ok(())
 }
 
 // Plan 240: File I/O opaque shims
 
-/// Helper to pop a string from the stack (nanbox-aware)
+/// Helper to pop a string from the stack
 fn pop_string(task: &mut AutoTask, vm: &AutoVM) -> String {
-    #[cfg(feature = "nanbox")]
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
@@ -5553,13 +5135,6 @@ fn pop_string(task: &mut AutoTask, vm: &AutoVM) -> String {
         } else {
             auto_val::decode_i32(nv).to_string()
         }
-    }
-    #[cfg(not(feature = "nanbox"))]
-    {
-        let idx = task.ram.pop_i32() as usize;
-        vm.strings.read().unwrap().get(idx).cloned()
-            .map(|b| String::from_utf8_lossy(&b).to_string())
-            .unwrap_or_default()
     }
 }
 
@@ -5641,7 +5216,6 @@ pub fn shim_once_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: string_value, handle_id -> void (pushes 1 for success, 0 for already set)
 pub fn shim_once_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop string value
-    #[cfg(feature = "nanbox")]
     let value = {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
@@ -5652,13 +5226,6 @@ pub fn shim_once_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         } else {
             auto_val::decode_i32(nv).to_string()
         }
-    };
-    #[cfg(not(feature = "nanbox"))]
-    let value = {
-        let idx = task.ram.pop_i32() as usize;
-        vm.strings.read().unwrap().get(idx).cloned()
-            .map(|b| String::from_utf8_lossy(&b).to_string())
-            .unwrap_or_default()
     };
 
     let handle = task.ram.pop_i32() as u64;

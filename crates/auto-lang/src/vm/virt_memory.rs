@@ -7,7 +7,6 @@
 /// - VirtualRAM: Read-write data space (Stack + Heap)
 use crate::vm::codegen::ObjectType;
 use std::collections::HashMap;
-#[cfg(feature = "nanbox")]
 use auto_val::{NanoValue, encode_i32, decode_i32,
     encode_f32, decode_f32, encode_string, decode_string};
 
@@ -248,7 +247,6 @@ impl VirtualFlash {
 pub struct VirtualRAM {
     pub raw: Vec<i32>,
     /// Plan 221: NaN-boxed stack
-    #[cfg(feature = "nanbox")]
     pub raw_nv: Vec<NanoValue>,
     pub sp: usize, // Stack Pointer (Index of the next free slot)
     pub bp: usize, // Base Pointer (Index of the current frame)
@@ -260,7 +258,6 @@ impl VirtualRAM {
     pub fn new(size: usize) -> Self {
         Self {
             raw: vec![0; size],
-            #[cfg(feature = "nanbox")]
             raw_nv: vec![0u64; size],
             sp: 0,
             bp: 0,
@@ -268,17 +265,6 @@ impl VirtualRAM {
         }
     }
 
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn push_i32(&mut self, val: i32) {
-        if self.sp >= self.raw.len() {
-            panic!("Stack Overflow"); // Todo: Return Result
-        }
-        self.raw[self.sp] = val;
-        self.sp += 1;
-    }
-
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn push_i32(&mut self, val: i32) {
         if self.sp >= self.raw_nv.len() {
@@ -290,17 +276,6 @@ impl VirtualRAM {
         self.sp += 1;
     }
 
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn pop_i32(&mut self) -> i32 {
-        if self.sp == 0 {
-            panic!("Stack Underflow");
-        }
-        self.sp -= 1;
-        self.raw[self.sp]
-    }
-
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn pop_i32(&mut self) -> i32 {
         if self.sp == 0 { panic!("Stack Underflow"); }
@@ -309,15 +284,6 @@ impl VirtualRAM {
     }
 
     // Plan 073 Stage A: Float support
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn push_f32(&mut self, val: f32) {
-        // Use bit transmute to store f32 in i32 slot
-        let bits: i32 = unsafe { f32::to_bits(val).cast_signed() };
-        self.push_i32(bits);
-    }
-
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn push_f32(&mut self, val: f32) {
         if self.sp >= self.raw_nv.len() { panic!("Stack Overflow"); }
@@ -325,14 +291,6 @@ impl VirtualRAM {
         self.sp += 1;
     }
 
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn pop_f32(&mut self) -> f32 {
-        let bits = self.pop_i32();
-        unsafe { f32::from_bits(i32::cast_unsigned(bits)) }
-    }
-
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn pop_f32(&mut self) -> f32 {
         if self.sp == 0 { panic!("Stack Underflow"); }
@@ -341,19 +299,6 @@ impl VirtualRAM {
     }
 
     // Plan 073 Stage A: Double (f64) support
-    // Note: f64 takes 2 slots in our 32-bit VM (non-nanbox only)
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn push_f64(&mut self, val: f64) {
-        // Use bit transmute to split f64 into two i32 slots
-        let bits: u64 = unsafe { f64::to_bits(val) };
-        let low = (bits & 0xFFFFFFFF) as i32;
-        let high = ((bits >> 32) & 0xFFFFFFFF) as i32;
-        self.push_i32(low);  // Push low part first
-        self.push_i32(high); // Then high part
-    }
-
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn push_f64(&mut self, val: f64) {
         if self.sp + 1 >= self.raw_nv.len() {
@@ -368,16 +313,6 @@ impl VirtualRAM {
         self.sp += 1;
     }
 
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn pop_f64(&mut self) -> f64 {
-        let high = self.pop_i32() as u64;
-        let low = (self.pop_i32() as u32) as u64;
-        let bits = (high << 32) | low;
-        unsafe { f64::from_bits(bits) }
-    }
-
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn pop_f64(&mut self) -> f64 {
         if self.sp < 2 { panic!("Stack Underflow"); }
@@ -389,33 +324,17 @@ impl VirtualRAM {
     }
 
     // Plan 073 Stage A: Unsigned integer support
-    #[cfg(not(feature = "nanbox"))]
     #[inline(always)]
     pub fn push_u32(&mut self, val: u32) {
         self.push_i32(val as i32);
     }
 
-    #[cfg(feature = "nanbox")]
-    #[inline(always)]
-    pub fn push_u32(&mut self, val: u32) {
-        self.push_i32(val as i32);
-    }
-
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn pop_u32(&mut self) -> u32 {
-        self.pop_i32() as u32
-    }
-
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn pop_u32(&mut self) -> u32 {
         self.pop_i32() as u32
     }
 
     // Plan 073 Stage A: 64-bit integer support
-    // Note: i64 takes 2 slots in our 32-bit VM (non-nanbox only)
-    #[cfg(not(feature = "nanbox"))]
     #[inline(always)]
     pub fn push_i64(&mut self, val: i64) {
         let low = (val & 0xFFFFFFFF) as i32;
@@ -424,24 +343,6 @@ impl VirtualRAM {
         self.push_i32(high);
     }
 
-    #[cfg(feature = "nanbox")]
-    #[inline(always)]
-    pub fn push_i64(&mut self, val: i64) {
-        let low = (val & 0xFFFFFFFF) as i32;
-        let high = ((val >> 32) & 0xFFFFFFFF) as i32;
-        self.push_i32(low);
-        self.push_i32(high);
-    }
-
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn pop_i64(&mut self) -> i64 {
-        let high = self.pop_i32() as i64;
-        let low = self.pop_i32() as i64;
-        (high << 32) | (low & 0xFFFFFFFF)
-    }
-
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn pop_i64(&mut self) -> i64 {
         let high = self.pop_i32() as i64;
@@ -450,7 +351,6 @@ impl VirtualRAM {
     }
 
     // Plan 073 Stage A: u64 support
-    #[cfg(not(feature = "nanbox"))]
     #[inline(always)]
     pub fn push_u64(&mut self, val: u64) {
         let low = (val & 0xFFFFFFFF) as i32;
@@ -459,16 +359,6 @@ impl VirtualRAM {
         self.push_i32(high);
     }
 
-    #[cfg(feature = "nanbox")]
-    #[inline(always)]
-    pub fn push_u64(&mut self, val: u64) {
-        let low = (val & 0xFFFFFFFF) as i32;
-        let high = ((val >> 32) & 0xFFFFFFFF) as i32;
-        self.push_i32(low);
-        self.push_i32(high);
-    }
-
-    #[cfg(not(feature = "nanbox"))]
     #[inline(always)]
     pub fn pop_u64(&mut self) -> u64 {
         let high = self.pop_u32() as u64;
@@ -476,56 +366,17 @@ impl VirtualRAM {
         (high << 32) | low
     }
 
-    #[cfg(feature = "nanbox")]
-    #[inline(always)]
-    pub fn pop_u64(&mut self) -> u64 {
-        let high = self.pop_u32() as u64;
-        let low = self.pop_u32() as u64;
-        (high << 32) | low
-    }
-
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn read_i32(&self, addr: usize) -> i32 {
-        if addr >= self.raw.len() {
-            panic!("Memory Access Out of Bounds");
-        }
-        self.raw[addr]
-    }
-
-    #[cfg(feature = "nanbox")]
     pub fn read_i32(&self, addr: usize) -> i32 { decode_i32(self.raw_nv[addr]) }
 
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn write_i32(&mut self, addr: usize, val: i32) {
-        if addr >= self.raw.len() {
-            panic!("Memory Write Out of Bounds");
-        }
-        self.raw[addr] = val;
-    }
-
-    #[cfg(feature = "nanbox")]
     pub fn write_i32(&mut self, addr: usize, val: i32) { self.raw_nv[addr] = encode_i32(val); }
 
     // For manual viewing
-    #[cfg(not(feature = "nanbox"))]
-    pub fn top(&self) -> Option<i32> {
-        if self.sp == 0 {
-            None
-        } else {
-            Some(self.raw[self.sp - 1])
-        }
-    }
-
-    #[cfg(feature = "nanbox")]
     pub fn top(&self) -> Option<i32> {
         if self.sp == 0 { None } else { Some(decode_i32(self.raw_nv[self.sp - 1])) }
     }
 
     // ---- Plan 221: NanoValue operations ----
 
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn push_nv(&mut self, val: NanoValue) {
         if self.sp >= self.raw_nv.len() {
@@ -536,7 +387,6 @@ impl VirtualRAM {
         self.sp += 1;
     }
 
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn pop_nv(&mut self) -> NanoValue {
         if self.sp == 0 {
@@ -548,7 +398,6 @@ impl VirtualRAM {
 
     /// Peek at the Nth value from top of stack without popping.
     /// peek_nv(0) returns the top, peek_nv(1) returns one below, etc.
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn peek_nv(&self, offset: usize) -> NanoValue {
         if self.sp <= offset {
@@ -557,7 +406,7 @@ impl VirtualRAM {
         self.raw_nv[self.sp - 1 - offset]
     }
 
-    /// Pop a typed arithmetic operand from the stack in nanbox mode.
+    /// Pop a typed arithmetic operand from the stack.
     ///
     /// f64 values occupy 2 slots (raw bits + null padding), while all other
     /// types occupy 1 slot. This helper inspects the top-of-stack to decide
@@ -568,7 +417,6 @@ impl VirtualRAM {
     /// - If the TOS is the null-padding marker of an f64 pair, pops 2 slots
     ///   and returns `(raw_f64_bits, true)`.
     /// - Otherwise pops 1 slot and returns `(nanboxed_value, false)`.
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn pop_arith_operand(&mut self) -> (u64, bool) {
         // Check if TOS is the null-padding of a 2-slot f64.
@@ -590,55 +438,34 @@ impl VirtualRAM {
     }
 
     /// Write a raw NanoValue at an address (preserves type tag).
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn write_nv(&mut self, addr: usize, val: NanoValue) {
         self.raw_nv[addr] = val;
     }
 
     /// Read a raw NanoValue from an address (preserves type tag).
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn read_nv(&self, addr: usize) -> NanoValue {
         self.raw_nv[addr]
     }
 
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn push_string(&mut self, idx: u32) {
         self.push_nv(encode_string(idx));
     }
 
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn pop_string(&mut self) -> u32 {
         decode_string(self.pop_nv())
     }
 
     /// Pop a value that is known to be a string reference, returning the string pool index.
-    /// Under non-nanbox: pops i32 and decodes negative tagging.
-    /// Under nanbox: pops NanoValue and decodes string tag.
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn pop_str_idx(&mut self) -> usize {
-        let bits = self.pop_i32();
-        if bits < 0 { (-bits - 1) as usize } else { bits as usize }
-    }
-
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn pop_str_idx(&mut self) -> usize {
         decode_string(self.pop_nv()) as usize
     }
 
     /// Push a string pool index as a tagged reference.
-    #[cfg(not(feature = "nanbox"))]
-    #[inline(always)]
-    pub fn push_str_idx(&mut self, idx: u32) {
-        self.push_i32(-(idx as i32) - 1);
-    }
-
-    #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn push_str_idx(&mut self, idx: u32) {
         self.push_nv(encode_string(idx));

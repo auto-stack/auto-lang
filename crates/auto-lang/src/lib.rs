@@ -1310,16 +1310,10 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
     // Check VM runtime result type first (set during execution)
     let result = match task.last_result_type {
         ResultType::Float => {
-            #[cfg(not(feature = "nanbox"))]
             {
-            let result = task.ram.pop_f32();
-            format!("{}", result)
-            }
-            #[cfg(feature = "nanbox")]
-            {
-            // In nanbox mode, f64 may be on stack (2 slots) even when last_result_type is Float.
+            // f64 may be on stack (2 slots) even when last_result_type is Float.
             // This happens when FFI returns f64 but codegen marked the expression as Float.
-            // Format as f32 to match non-nanbox behavior (which truncates via pop_f32).
+            // Format as f32 to match expected behavior (which truncates via pop_f32).
             if task.ram.sp >= 2 {
                 let nv = task.ram.raw_nv[task.ram.sp - 2];
                 if auto_val::is_f64(nv) {
@@ -1340,14 +1334,8 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
             // Then check codegen's compile-time result type if provided
             match result_type {
                 Some(ObjectType::Float) | Some(ObjectType::Double) => {
-                    #[cfg(not(feature = "nanbox"))]
                     {
-                    let result = task.ram.pop_f32();
-                    format!("{}", result)
-                    }
-                    #[cfg(feature = "nanbox")]
-                    {
-                    // In nanbox mode, f64 occupies 2 slots (value at sp-2, marker at sp-1).
+                    // f64 occupies 2 slots (value at sp-2, marker at sp-1).
                     // Check sp-2 for f64 bits first, then sp-1 for f32.
                     if task.ram.sp >= 2 {
                         let nv = task.ram.raw_nv[task.ram.sp - 2];

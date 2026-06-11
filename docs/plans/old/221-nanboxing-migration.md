@@ -986,7 +986,7 @@ git commit -m "docs: update Plan 221 status — NaN-boxing migration complete (n
 
 ## Future Work (out of scope for this plan)
 
-- **Phase 4 cleanup**: Remove `raw: Vec<i32>`, remove `#[cfg(not(feature = "nanbox"))]` blocks, make NaN-boxing the only implementation
+- **~~Phase 4 cleanup~~**: ✅ Done in Plan 298 — removed `raw: Vec<i32>`, removed `#[cfg(not(feature = "nanbox"))]` blocks, NaN-boxing is now the only implementation
 - **Phase 5 typed instructions**: Add I32_ADD, F64_MUL etc. that bypass tag checks for statically-typed regions
 - **i64/u64 encoding**: Add TAG_I64/TAG_U64 with full 64-bit payload (requires different encoding — currently reserved)
 

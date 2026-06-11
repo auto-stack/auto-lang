@@ -10,7 +10,8 @@ license = "MIT"
 keywords = ["automation", "language", "scripting"]
 
 [features]
-default = ["with-file-history", "nanbox", "ui-iced"]
+default = ["with-file-history", "ui-iced", "nanbox"]
+nanbox = []
 # Plan 289: Feature-gated test groups for faster daily development
 test-vm-files = []
 test-trans = []
@@ -30,9 +31,6 @@ streaming-http = ["tokio-util", "futures"]
 
 # Plan 214: Python FFI (embed CPython via PyO3)
 python = ["pyo3"]
-
-# Plan 221: NaN-boxed value representation
-nanbox = []
 
 # Plan 015: UI Features (AutoUI Core)
 ui = []

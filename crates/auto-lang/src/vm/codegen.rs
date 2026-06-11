@@ -6833,7 +6833,7 @@ impl Codegen {
                 self.last_enum_variant_mono = Some("Option.Some".to_string());
             }
             // Plan 197 Task 16: Option type constructor - None
-            // Push nil marker (i32::MIN + 1 in non-nanbox, TAG_NULL in nanbox)
+            // Push nil marker (TAG_NULL in nanbox encoding)
             Expr::None => {
                 self.emit(OpCode::PUSH_NIL);
 
