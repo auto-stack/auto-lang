@@ -60,6 +60,7 @@ impl Repl {
             .with_history(history)
             .with_completer(completer)
             .with_menu(ReedlineMenu::EngineCompleter(completion_menu))
+            .with_quick_completions(true)
             .with_partial_completions(true)
             .with_edit_mode(edit_mode);
 

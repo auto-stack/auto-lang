@@ -302,11 +302,21 @@ impl Menu for AshMenu {
             self.update_values(editor, completer);
         }
 
-        // Try partial completion: find common prefix
-        if self.values.len() >= 2 {
-            let first = &self.values[0].value;
+        // Only consider prefix matches for partial completion.
+        // Fuzzy matches (extra contains "fuzzy") should NOT participate
+        // in computing the common prefix, as they would incorrectly
+        // shrink the prefix (e.g. "au" → "a" because "a3ui" is fuzzy).
+        let prefix_values: Vec<_> = self
+            .values
+            .iter()
+            .filter(|v| !v.extra.as_ref().map_or(false, |e| e.contains(&"fuzzy".to_string())))
+            .collect();
+
+        // Try partial completion: find common prefix among prefix matches only
+        if prefix_values.len() >= 2 {
+            let first = &prefix_values[0].value;
             let mut common_len = first.len();
-            for suggestion in &self.values[1..] {
+            for suggestion in &prefix_values[1..] {
                 common_len = common_len.min(
                     first
                         .chars()
@@ -317,7 +327,7 @@ impl Menu for AshMenu {
             }
             if common_len > 0 {
                 let common: String = first.chars().take(common_len).collect();
-                let span = self.values[0].span;
+                let span = prefix_values[0].span;
                 let buf = editor.get_buffer();
                 let start = span.start.min(buf.len());
                 let end = span.end.min(buf.len());

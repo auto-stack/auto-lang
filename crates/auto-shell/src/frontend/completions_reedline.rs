@@ -25,10 +25,18 @@ impl ShellCompleter {
             Some(description)
         };
 
+        // Pass is_prefix_match via extra field so AshMenu can distinguish
+        // prefix matches from fuzzy matches for partial completion
+        let extra = if completion.is_prefix_match {
+            None
+        } else {
+            Some(vec!["fuzzy".to_string()])
+        };
+
         Suggestion {
             value,
             description,
-            extra: None,
+            extra,
             span: reedline::Span {
                 start: 0,
                 end: completion.replacement.len(),

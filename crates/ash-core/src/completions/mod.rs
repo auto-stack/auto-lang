@@ -47,6 +47,9 @@ pub struct Completion {
     pub description: Option<String>,
     /// Completion kind (determines color/icon)
     pub kind: CompletionKind,
+    /// Whether this is an exact prefix match (vs fuzzy match).
+    /// Used to control partial completion behavior.
+    pub is_prefix_match: bool,
 }
 
 impl Completion {
@@ -57,6 +60,7 @@ impl Completion {
             replacement: replacement.into(),
             description: None,
             kind: CompletionKind::Command,
+            is_prefix_match: true,
         }
     }
 
@@ -71,6 +75,7 @@ impl Completion {
             replacement: replacement.into(),
             description: None,
             kind,
+            is_prefix_match: true,
         }
     }
 
@@ -86,7 +91,14 @@ impl Completion {
             replacement: replacement.into(),
             description: Some(description.into()),
             kind,
+            is_prefix_match: true,
         }
+    }
+
+    /// Mark this completion as a fuzzy (non-prefix) match
+    pub fn as_fuzzy(mut self) -> Self {
+        self.is_prefix_match = false;
+        self
     }
 }
 
