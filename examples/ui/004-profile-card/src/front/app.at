@@ -3,7 +3,7 @@ widget App {
         var name str = "Jane Cooper"
         var role str = "Full Stack Developer"
         var bio str = "Passionate about building great user experiences. Open source contributor and coffee enthusiast."
-        var avatar_url str = "avatar.png"
+        var avatar_url str = "https://cn.cravatar.com/avatar/e1e7ba949ade0936e071132d2edd3b3c.png"
         var status str = "online"
     }
 
