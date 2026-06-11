@@ -92,26 +92,33 @@ nushell 分层：
 └─────────────────────────────┘
 ```
 
-## ASH 的目标架构
+## ASH 的目标架构（实际实现）
 
 ```
 ASH 分层（对应 nushell）：
-┌─────────────────────────────┐
-│ AtomPipeline                 │  统一管道抽象
-│   ├ Atoms (Vec<Atom>)        │  结构化数据（已有）
-│   ├ Text (String)            │  纯文本（已有）
-│   └ Stream (ByteStream)     │  字节流（新增）
-├─────────────────────────────┤
-│ ByteStream（新增）            │  流式抽象
-│   └ ChildProcess（新增）     │  子进程封装
-│       ├ exit_status_thread   │  后台等待退出码
-│       └ signal_check         │  Ctrl+C 中断检查
-├─────────────────────────────┤
-│ ExternalCommand              │  执行策略选择
-│   ├ standalone → status()   │  B/C 类：inherit stdio
-│   ├ piped → spawn() + pipe  │  D 类：捕获输出
-│   └ interactive → 前台进程   │  E 类：接管终端
-└─────────────────────────────┘
+┌───────────────────────────────────┐
+│ AtomPipeline                       │  统一管道抽象
+│   ├ Atom(Atom)                     │  结构化数据
+│   ├ Stream(AtomStream)             │  内存流
+│   ├ ExternalStream(ExternalStream) │  外部进程字节流
+│   ├ Text(String)                   │  纯文本
+│   └ Empty                          │  无数据
+├───────────────────────────────────┤
+│ ExternalStream                     │  流式抽象
+│   ├ reader: BufReader<ChildStdout> │  逐行/全量读取
+│   ├ new_with_stdin(data)           │  管道上游→stdin
+│   └ exit_status_thread             │  后台等待退出码
+├───────────────────────────────────┤
+│ ExternalCommand                    │  执行策略选择
+│   ├ standalone → status()         │  B/C 类：inherit stdio
+│   ├ piped → spawn() + pipe stdin  │  D 类：捕获输出+管道输入
+│   └ interactive → inherit stdio   │  E 类：接管终端
+├───────────────────────────────────┤
+│ Shell.last_exit_code               │  $? 退出码追踪
+│   ├ 0 = 成功                       │
+│   ├ N = 外部命令实际退出码          │
+│   └ 1 = 其他错误                    │
+└───────────────────────────────────┘
 ```
 
 ## 实施计划
@@ -142,7 +149,18 @@ ASH 分层（对应 nushell）：
 2. REPL 在执行前检测交互式命令，绕过管道系统直接 inherit stdio 执行
 3. 覆盖编辑器、分页器、监控、远程、复用器、调试器、REPL、数据库客户端
 
-### Phase 3：信号处理与 Job Control（远期）
+### Phase 3：退出码追踪 — ✅ 已完成
+
+**已实现文件**：
+- `auto-shell/src/shell.rs` — `last_exit_code` 字段、`$?` 变量展开、`extract_exit_code()` 辅助函数
+
+**已实现功能**：
+1. `Shell.last_exit_code` — 每次命令执行后更新（0=成功，N=外部命令实际退出码，1=其他错误）
+2. `$?` 变量展开 — `get_variable("?")` 返回上次退出码
+3. 外部命令退出码提取 — 从错误消息解析 `"exit code: N"` 获取真实退出码
+4. `Shell::execute()` 重置退出码，`execute_inner()` 可覆盖
+
+### Phase 4：信号处理与 Job Control（远期）
 
 - Ctrl+C 中断外部命令
 - Ctrl+Z 挂起（Unix only）

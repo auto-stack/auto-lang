@@ -22,6 +22,7 @@ pub struct Shell {
 
     previous_dir: Option<PathBuf>,
     registry: CommandRegistry,
+    last_exit_code: i32, // $? — exit code of the last command
 }
 
 impl Shell {
@@ -122,11 +123,30 @@ impl Shell {
 
             previous_dir: None,
             registry,
+            last_exit_code: 0,
         }
     }
 
-    /// Execute a command or AutoLang expression
+    /// Execute a command or AutoLang expression.
+    ///
+    /// After execution, `$?` is updated with the exit code
+    /// (0 for success, non-zero for failure).
     pub fn execute(&mut self, input: &str) -> Result<Option<String>> {
+        self.last_exit_code = 0; // reset; execute_inner may override
+        let result = self.execute_inner(input);
+        if result.is_err() && self.last_exit_code == 0 {
+            self.last_exit_code = 1;
+        }
+        result
+    }
+
+    /// Get the exit code of the last executed command.
+    pub fn last_exit_code(&self) -> i32 {
+        self.last_exit_code
+    }
+
+    /// Internal: actual command dispatch.
+    fn execute_inner(&mut self, input: &str) -> Result<Option<String>> {
         // Try to parse as AutoLang expression first
         if self.looks_like_auto_expr(input) {
             return self.execute_auto(input);
@@ -201,7 +221,11 @@ impl Shell {
         }
 
         // Otherwise, execute as external command
-        external::execute_external(input, &self.current_dir, false)
+        let result = external::execute_external(input, &self.current_dir, false);
+        if let Err(ref e) = result {
+            self.last_exit_code = extract_exit_code(&e.to_string());
+        }
+        result
     }
 
     /// Format an AtomPipeline for terminal display.
@@ -487,8 +511,13 @@ impl Shell {
         result
     }
 
-    /// Get a variable value (checks local vars, then env vars)
+    /// Get a variable value (checks special vars, local vars, then env vars)
     fn get_variable(&self, name: &str) -> Option<String> {
+        // Special variables
+        if name == "?" {
+            return Some(self.last_exit_code.to_string());
+        }
+
         // First check local shell variables
         if let Some(value) = self.vars.get_local(name) {
             return Some(value.clone());
@@ -697,6 +726,21 @@ impl Shell {
     }
 }
 
+/// Extract the exit code from an external command error message.
+///
+/// External command errors follow the pattern `"... exit code: N"`.
+/// If no code can be parsed, returns 1 (generic failure).
+fn extract_exit_code(error_msg: &str) -> i32 {
+    // Look for "exit code: <number>" anywhere in the message
+    if let Some(pos) = error_msg.rfind("exit code: ") {
+        let rest = &error_msg[pos + "exit code: ".len()..];
+        if let Ok(code) = rest.trim().parse::<i32>() {
+            return code;
+        }
+    }
+    1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -879,5 +923,46 @@ mod tests {
         let result = shell.execute("nonexistent_func(1, 2)");
         // Should be an error (function doesn't exist) but not "program not found"
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_exit_code_success() {
+        let mut shell = Shell::new();
+        let _ = shell.execute("1 + 2");
+        assert_eq!(shell.last_exit_code(), 0);
+    }
+
+    #[test]
+    fn test_exit_code_failure() {
+        let mut shell = Shell::new();
+        let _ = shell.execute("nonexistent_command_xyz");
+        assert_ne!(shell.last_exit_code(), 0);
+    }
+
+    #[test]
+    fn test_exit_code_variable() {
+        let mut shell = Shell::new();
+        let _ = shell.execute("1 + 2");
+        assert_eq!(shell.last_exit_code(), 0);
+
+        // $? should expand to "0"
+        let expanded = shell.expand_variables("exit code was $?");
+        assert_eq!(expanded, "exit code was 0");
+
+        // After a failure, $? should be non-zero
+        let _ = shell.execute("nonexistent_command_xyz");
+        let expanded = shell.expand_variables("code: $?");
+        assert_eq!(expanded, "code: 1");
+    }
+
+    #[test]
+    fn test_extract_exit_code() {
+        assert_eq!(extract_exit_code("Command failed with exit code: 42"), 42);
+        assert_eq!(
+            extract_exit_code("PowerShell command failed with exit code: 7"),
+            7
+        );
+        assert_eq!(extract_exit_code("Command failed: something"), 1);
+        assert_eq!(extract_exit_code("generic error"), 1);
     }
 }
