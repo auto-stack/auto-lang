@@ -2,9 +2,13 @@
 name = "auto-shell"
 version = "0.1.0"
 edition = "2021"
-description = "A modern shell environment using AutoLang as the scripting language"
+description = "ASH - A modern shell environment using AutoLang as the scripting language"
 authors = ["AutoLang Contributors"]
 license = "MIT"
+
+[[bin]]
+name = "ash"
+path = "src/main.rs"
 
 [dependencies]
 # AutoLang integration
