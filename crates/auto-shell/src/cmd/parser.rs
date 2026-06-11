@@ -27,6 +27,26 @@ impl ParsedArgs {
     pub fn get_positional(&self, index: usize) -> Option<&String> {
         self.positionals.get(index)
     }
+
+    /// Get positional arg as str, with fallback default
+    pub fn positional_or<'a>(&'a self, index: usize, default: &'a str) -> &'a str {
+        self.positionals.get(index).map(|s| s.as_str()).unwrap_or(default)
+    }
+
+    /// Get the first positional arg as str
+    pub fn first(&self) -> Option<&str> {
+        self.positionals.first().map(|s| s.as_str())
+    }
+
+    /// Get the second positional arg as str
+    pub fn second(&self) -> Option<&str> {
+        self.positionals.get(1).map(|s| s.as_str())
+    }
+
+    /// Number of positional arguments
+    pub fn positional_count(&self) -> usize {
+        self.positionals.len()
+    }
 }
 
 /// Parse raw string arguments according to a command signature

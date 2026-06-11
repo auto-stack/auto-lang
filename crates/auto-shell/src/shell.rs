@@ -51,6 +51,67 @@ impl Shell {
             reg.register(Box::new(commands::mv::MvCommand));
             reg.register(Box::new(commands::rm::RmCommand));
             reg.register(Box::new(commands::mkdir::MkdirCommand));
+            // Batch 1: File operations
+            reg.register(Box::new(commands::cat::CatCommand));
+            reg.register(Box::new(commands::head::HeadCommand));
+            reg.register(Box::new(commands::tail::TailCommand));
+            reg.register(Box::new(commands::touch::TouchCommand));
+            reg.register(Box::new(commands::find::FindCommand));
+            reg.register(Box::new(commands::glob::GlobCommand));
+            reg.register(Box::new(commands::stat::StatCommand));
+            reg.register(Box::new(commands::du::DuCommand));
+            reg.register(Box::new(commands::file::FileCommand));
+            reg.register(Box::new(commands::tee::TeeCommand));
+            reg.register(Box::new(commands::ln::LnCommand));
+            // Batch 2: Text processing
+            reg.register(Box::new(commands::sort::SortCommand));
+            reg.register(Box::new(commands::uniq::UniqCommand));
+            reg.register(Box::new(commands::cut::CutCommand));
+            reg.register(Box::new(commands::paste::PasteCommand));
+            reg.register(Box::new(commands::tr::TrCommand));
+            reg.register(Box::new(commands::split::SplitCommand));
+            reg.register(Box::new(commands::rev::RevCommand));
+            reg.register(Box::new(commands::column::ColumnCommand));
+            reg.register(Box::new(commands::fmt::FmtCommand));
+            reg.register(Box::new(commands::diff::DiffCommand));
+            // Batch 3: Data format conversion
+            reg.register(Box::new(commands::from_json::FromJsonCommand));
+            reg.register(Box::new(commands::to_json::ToJsonCommand));
+            reg.register(Box::new(commands::from_csv::FromCsvCommand));
+            reg.register(Box::new(commands::to_csv::ToCsvCommand));
+            reg.register(Box::new(commands::from_toml::FromTomlCommand));
+            reg.register(Box::new(commands::to_toml::ToTomlCommand));
+            reg.register(Box::new(commands::from_yaml::FromYamlCommand));
+            reg.register(Box::new(commands::to_yaml::ToYamlCommand));
+            reg.register(Box::new(commands::from_xml::FromXmlCommand));
+            reg.register(Box::new(commands::to_xml::ToXmlCommand));
+            // Batch 4: String, math, data transformation
+            reg.register(Box::new(commands::str_replace::StrReplaceCommand));
+            reg.register(Box::new(commands::str_contains::StrContainsCommand));
+            reg.register(Box::new(commands::str_split::StrSplitCommand));
+            reg.register(Box::new(commands::str_join::StrJoinCommand));
+            reg.register(Box::new(commands::str_trim::StrTrimCommand));
+            reg.register(Box::new(commands::str_case::StrCaseCommand));
+            reg.register(Box::new(commands::str_length::StrLengthCommand));
+            reg.register(Box::new(commands::math_sum::MathSumCommand));
+            reg.register(Box::new(commands::math_avg::MathAvgCommand));
+            reg.register(Box::new(commands::math_min::MathMinCommand));
+            reg.register(Box::new(commands::math_max::MathMaxCommand));
+            reg.register(Box::new(commands::math_round::MathRoundCommand));
+            reg.register(Box::new(commands::update::UpdateCommand));
+            reg.register(Box::new(commands::insert::InsertCommand));
+            reg.register(Box::new(commands::each::EachCommand));
+            // Batch 5: HTTP, datetime, utilities
+            reg.register(Box::new(commands::http_get::HttpGetCommand));
+            reg.register(Box::new(commands::http_post::HttpPostCommand));
+            reg.register(Box::new(commands::http_put::HttpPutCommand));
+            reg.register(Box::new(commands::http_delete::HttpDeleteCommand));
+            reg.register(Box::new(commands::http_head::HttpHeadCommand));
+            reg.register(Box::new(commands::url_encode::UrlEncodeCommand));
+            reg.register(Box::new(commands::date::DateCommand));
+            reg.register(Box::new(commands::sleep::SleepCommand));
+            reg.register(Box::new(commands::which::WhichCommand));
+            reg.register(Box::new(commands::version::VersionCommand));
             reg
         };
 
