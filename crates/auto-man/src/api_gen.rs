@@ -293,20 +293,21 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
 
 /// Generate Rust server code (Axum-based)
 fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
-    let rust_dir = root_dir.join("gen").join("back").join("rust");
+    // Output to shared workspace at D:/.auto/rust-workspace/{name}-back/
+    let ws_dir = crate::rust_ui::ensure_shared_workspace(root_dir);
+    let back_name = crate::rust_ui::back_member_name(root_dir);
+    let rust_dir = ws_dir.join(&back_name);
     let src_dir = rust_dir.join("src");
     std::fs::create_dir_all(&src_dir)
         .map_err(|e| format!("Failed to create rust/src: {}", e))?;
 
-    // Generate Cargo.toml
+    // Generate Cargo.toml (workspace member version — no [workspace])
     let cargo_toml = generate_cargo_toml();
     std::fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
         .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
 
-    // Write .cargo/config.toml with shared target-dir
-    if let Err(e) = crate::rust_ui::write_shared_cargo_config(root_dir, "back") {
-        eprintln!("  Warning: failed to write shared cargo config: {}", e);
-    }
+    // Update workspace members to include the new backend project
+    let _ = crate::rust_ui::ensure_shared_workspace(root_dir);
 
     // Generate types.rs
     let types_rs = generate_types_rs(api_module);
@@ -323,12 +324,12 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     std::fs::write(src_dir.join("main.rs"), &main_rs)
         .map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
-    println!("  ✓ Generated Rust server: rust/");
+    println!("  ✓ Generated Rust server: {}/", back_name);
 
     Ok(())
 }
 
-/// Generate Cargo.toml for the Rust server
+/// Generate Cargo.toml for the Rust server (workspace member version).
 fn generate_cargo_toml() -> String {
     r#"[package]
 name = "api-server"
@@ -336,13 +337,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.7"
+axum.workspace = true
 tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tower-http = { version = "0.5", features = ["cors"] }
-
-[workspace]
+serde.workspace = true
+serde_json.workspace = true
+tower-http.workspace = true
 "#.to_string()
 }
 

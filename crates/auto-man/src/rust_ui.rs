@@ -44,9 +44,8 @@ fn find_front_dir(project_dir: &Path) -> PathBuf {
 fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
     let cargo_toml = rust_dir.join("Cargo.toml");
     let main_rs = rust_dir.join("src").join("main.rs");
-    let cargo_config = rust_dir.join(".cargo").join("config.toml");
 
-    if !cargo_toml.exists() || !main_rs.exists() || !cargo_config.exists() {
+    if !cargo_toml.exists() || !main_rs.exists() {
         return (true, true);
     }
 
@@ -161,8 +160,10 @@ pub fn generate_rust_ui(
         at_files.len()
     );
 
-    // Determine output directory
-    let default_output = project_dir.join("gen").join("front").join("rust");
+    // Determine output directory — use shared workspace at D:/.auto/rust-workspace/
+    let ws_dir = ensure_shared_workspace(project_dir);
+    let member_name = front_member_name(project_dir);
+    let default_output = ws_dir.join(&member_name);
     let output = output_dir
         .map(|p| p.to_path_buf())
         .unwrap_or(default_output);
@@ -233,16 +234,17 @@ pub fn generate_rust_ui(
     fs::write(&main_rs, &full_code)
         .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
 
-    // Generate Cargo.toml with auto-lang dependency + UI features
+    // Generate Cargo.toml with workspace dependencies
     let cargo_toml = generate_cargo_toml(&project_name, project_dir);
     let cargo_path = output.join("Cargo.toml");
     fs::write(&cargo_path, &cargo_toml)
         .map_err(|e| format!("Failed to write {}: {}", cargo_path.display(), e))?;
 
-    // Write .cargo/config.toml with shared target-dir
-    if let Err(e) = write_shared_cargo_config(project_dir, "front") {
-        eprintln!("  Warning: failed to write shared cargo config: {}", e);
-    }
+    // Note: no per-member .cargo/config.toml needed — the workspace-level
+    // .cargo/config.toml sets target-dir for all members.
+
+    // Update workspace members to include the newly created project
+    let _ = ensure_shared_workspace(project_dir);
 
     println!();
     println!(
@@ -795,12 +797,13 @@ fn to_snake_case(s: &str) -> String {
     result
 }
 
-/// Generate Cargo.toml content for the Rust UI project.
-fn generate_cargo_toml(project_name: &str, project_dir: &Path) -> String {
+/// Generate Cargo.toml content for the Rust UI project (workspace member version).
+///
+/// No `[workspace]` section — this project is a member of the shared workspace
+/// at `D:/.auto/rust-workspace/`. Dependencies use `workspace = true` to inherit
+/// from the workspace-level `[workspace.dependencies]`.
+fn generate_cargo_toml(project_name: &str, _project_dir: &Path) -> String {
     let snake_name = to_snake_case(project_name);
-
-    // Compute relative path from gen/front/rust/ back to crates/auto-lang
-    let auto_lang_path = find_auto_lang_path(project_dir);
 
     format!(
         r#"[package]
@@ -811,18 +814,14 @@ edition = "2021"
 [features]
 ui-gpui = ["auto-lang/ui-gpui"]
 ui-iced = ["auto-lang/ui-iced"]
-# Enable auto-lang's default features so the feature fingerprint matches
-# the main workspace, allowing compiled artifacts to be reused.
 default = ["ui-iced", "auto-lang/default"]
 
-[workspace]
-
 [dependencies]
-auto-lang = {{ path = "{auto_lang_path}" }}
-serde_json = "1"
-ureq = {{ version = "2", features = ["json"] }}
-tokio = {{ version = "1", features = ["rt"] }}
-iced = {{ version = "0.14.0", features = ["tokio", "advanced"] }}
+auto-lang.workspace = true
+serde_json.workspace = true
+ureq.workspace = true
+tokio.workspace = true
+iced.workspace = true
 "#
     )
 }
@@ -870,74 +869,182 @@ fn find_workspace_target_path(cargo_dir: &Path) -> String {
     abs.to_string_lossy().to_string().replace('\\', "/")
 }
 
-/// Find the relative path from the generated rust/ project to auto-lang crate.
-/// The Cargo.toml is at `project_dir/gen/front/rust/Cargo.toml`, so we need
-/// the path relative to that location.
-fn find_auto_lang_path(project_dir: &Path) -> String {
-    // The Cargo.toml lives at: project_dir/gen/front/rust/
-    let cargo_dir = project_dir.join("gen").join("front").join("rust");
+/// Get the shared Rust workspace directory for all generated UI projects.
+///
+/// Located outside the auto-lang repo to avoid Cargo's nested workspace restriction.
+/// All generated Rust projects become members of this single workspace, enabling
+/// cross-project compilation artifact reuse.
+pub fn get_rust_workspace_dir() -> PathBuf {
+    PathBuf::from("D:/.auto/rust-workspace")
+}
 
-    // Try common relative paths from cargo_dir
-    let candidates = [
-        "../../../crates/auto-lang",   // project_dir is workspace root
-        "../../../../crates/auto-lang", // project_dir is one level deep (e.g. examples/project)
-        "../../../../../crates/auto-lang", // two levels deep (e.g. examples/ui/project)
-    ];
-
-    for candidate in &candidates {
-        let full = cargo_dir.join(candidate);
-        if full.exists() {
-            return candidate.to_string();
-        }
-    }
-
-    // Fallback: compute by walking up from project_dir to find workspace root,
-    // then build path from gen/front/rust/ back to crates/auto-lang
+/// Compute the relative path from the shared workspace dir to auto-lang crate.
+fn compute_auto_lang_rel_path(project_dir: &Path) -> String {
+    // Walk up from project_dir to find the workspace root (has crates/auto-lang)
     let mut dir = project_dir.to_path_buf();
-    let mut depth = 0; // how many levels from project_dir to workspace root
     for _ in 0..10 {
         if dir.join("crates").join("auto-lang").exists() {
-            // gen/front/rust/ is 3 levels below project_dir,
-            // plus depth levels from project_dir to workspace root
-            let ups = 3 + depth;
-            let mut path = (0..ups).map(|_| "..").collect::<Vec<_>>().join("/");
-            path.push_str("/crates/auto-lang");
-            return path;
+            let auto_lang_abs = dir.join("crates").join("auto-lang");
+            let workspace_dir = get_rust_workspace_dir();
+            // Compute relative path from workspace_dir to auto_lang_abs
+            return compute_relative_path(&workspace_dir, &auto_lang_abs);
         }
         if !dir.pop() {
             break;
         }
-        depth += 1;
+    }
+    // Fallback
+    "../../autostack/auto-lang/crates/auto-lang".to_string()
+}
+
+/// Compute relative path from `from` to `to` using only `..` and directory names.
+fn compute_relative_path(from: &Path, to: &Path) -> String {
+    // Canonicalize both paths for reliable comparison
+    let from_abs = std::fs::canonicalize(from)
+        .unwrap_or_else(|_| from.to_path_buf());
+    let to_abs = std::fs::canonicalize(to)
+        .unwrap_or_else(|_| to.to_path_buf());
+
+    let from_parts: Vec<&std::ffi::OsStr> = from_abs.iter().collect();
+    let to_parts: Vec<&std::ffi::OsStr> = to_abs.iter().collect();
+
+    // Find common prefix length
+    let common = from_parts.iter().zip(to_parts.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+
+    // Go up from `from` to the common ancestor
+    let ups = from_parts.len() - common;
+    let mut result: Vec<String> = (0..ups).map(|_| "..".to_string()).collect();
+
+    // Then descend to `to`
+    for part in &to_parts[common..] {
+        result.push(part.to_string_lossy().to_string());
     }
 
-    // Absolute fallback
-    "../../crates/auto-lang".to_string()
+    result.join("/").replace('\\', "/")
+}
+
+/// Compute the relative path from the shared workspace dir to the auto-lang target/ directory.
+fn compute_target_rel_path(project_dir: &Path) -> String {
+    let mut dir = project_dir.to_path_buf();
+    for _ in 0..10 {
+        if dir.join("crates").exists() {
+            let target_abs = dir.join("target");
+            let workspace_dir = get_rust_workspace_dir();
+            return compute_relative_path(&workspace_dir, &target_abs);
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    "../../autostack/auto-lang/target".to_string()
+}
+
+/// Ensure the shared Rust workspace exists and is configured.
+///
+/// Creates/updates:
+/// - `D:/.auto/rust-workspace/Cargo.toml` (virtual manifest with all members)
+/// - `D:/.auto/rust-workspace/.cargo/config.toml` (target-dir pointing to auto-lang/target/)
+///
+/// Returns the workspace directory path.
+pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
+    let ws_dir = get_rust_workspace_dir();
+    fs::create_dir_all(&ws_dir).ok();
+
+    let ws_cargo = ws_dir.join("Cargo.toml");
+
+    // Scan existing member directories (each subdirectory with a Cargo.toml)
+    let mut members: Vec<String> = Vec::new();
+    if let Ok(entries) = fs::read_dir(&ws_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() && path.join("Cargo.toml").exists() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    // Skip .cargo directory
+                    if name != ".cargo" {
+                        members.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    members.sort();
+
+    let auto_lang_rel = compute_auto_lang_rel_path(project_dir);
+    let target_rel = compute_target_rel_path(project_dir);
+
+    let members_toml = members.iter()
+        .map(|m| format!("    \"{}\"", m))
+        .collect::<Vec<_>>()
+        .join(",\n");
+
+    let content = format!(
+r#"[workspace]
+members = [
+{members_toml}
+]
+resolver = "2"
+
+[workspace.dependencies]
+auto-lang = {{ path = "{auto_lang_rel}" }}
+serde_json = "1"
+ureq = {{ version = "2", features = ["json"] }}
+tokio = {{ version = "1", features = ["rt"] }}
+iced = {{ version = "0.14.0", features = ["tokio", "advanced"] }}
+axum = "0.7"
+serde = {{ version = "1", features = ["derive"] }}
+tower-http = {{ version = "0.5", features = ["cors"] }}
+"#
+    );
+
+    // Always rewrite to update members list
+    let _ = fs::write(&ws_cargo, &content);
+
+    // Write .cargo/config.toml with target-dir
+    let config_dir = ws_dir.join(".cargo");
+    fs::create_dir_all(&config_dir).ok();
+    let config = format!("[build]\ntarget-dir = \"{}\"\n", target_rel.replace('\\', "/"));
+    let _ = fs::write(config_dir.join("config.toml"), config);
+
+    ws_dir
+}
+
+/// Get the member directory name for a frontend project in the shared workspace.
+fn front_member_name(project_dir: &Path) -> String {
+    project_dir.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("myapp")
+        .to_string()
+}
+
+/// Get the member directory name for a backend project in the shared workspace.
+pub fn back_member_name(project_dir: &Path) -> String {
+    let base = project_dir.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("myapp");
+    format!("{}-back", base)
 }
 
 /// Run the generated Rust UI project.
-/// Start the API backend server if gen/back/rust/ exists.
+/// Start the API backend server if a backend exists in the shared workspace.
 /// Returns the child process handle so the caller can clean it up on exit.
 pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
-    let api_backend_dir = project_dir.join("gen").join("back").join("rust");
+    // Backend lives in the shared workspace at D:/.auto/rust-workspace/{name}-back/
+    let ws_dir = get_rust_workspace_dir();
+    let back_name = back_member_name(project_dir);
+    let api_backend_dir = ws_dir.join(&back_name);
     if !api_backend_dir.join("Cargo.toml").exists() {
         return None;
     }
 
-    // Ensure .cargo/config.toml with shared target-dir exists
-    let cargo_config = api_backend_dir.join(".cargo").join("config.toml");
-    if !cargo_config.exists() {
-        if let Err(e) = write_shared_cargo_config(project_dir, "back") {
-            eprintln!("  Warning: failed to write shared cargo config: {}", e);
-        }
-    }
-
     println!();
     println!("{}", "▶ Starting API backend server...".bright_cyan());
-    println!("  cd gen/back/rust/ && cargo run");
+    println!("  cargo run --manifest-path {}", api_backend_dir.join("Cargo.toml").display());
 
+    let cargo_toml = api_backend_dir.join("Cargo.toml");
     let api_server = std::process::Command::new("cargo")
-        .args(["run"])
-        .current_dir(&api_backend_dir)
+        .args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")])
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .spawn();
@@ -992,7 +1099,10 @@ pub fn stop_api_server(child: &mut Option<std::process::Child>) {
 }
 
 pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
-    let rust_dir = project_dir.join("gen").join("front").join("rust");
+    // Rust project now lives in the shared workspace at D:/.auto/rust-workspace/{name}/
+    let ws_dir = get_rust_workspace_dir();
+    let member_name = front_member_name(project_dir);
+    let rust_dir = ws_dir.join(&member_name);
     let (full, code) = needs_regeneration(project_dir, &rust_dir);
 
     if full {
