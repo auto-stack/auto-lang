@@ -221,6 +221,10 @@ enum TransTarget {
         #[arg(short, long, help = "Output file path (default: same name with .js extension)")]
         output: Option<String>,
     },
+    Gd {
+        #[arg(short, long, help = "Output file path (default: same name with .gd extension)")]
+        output: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -359,6 +363,8 @@ enum Commands {
     Python { path: String },
     #[command(about = "Transpile Auto to JavaScript", hide = true)]
     JavaScript { path: String },
+    #[command(about = "Transpile Auto to GDScript (Godot 4.x)", hide = true)]
+    GDScript { path: String },
     #[command(about = "Transpile stdlib to C", hide = true)]
     A2cStdlib,
 
@@ -1176,6 +1182,16 @@ fn real_main(cli: Cli) -> Result<()> {
             })?;
             output_success(ai_mode, &js);
         }
+        Some(Commands::GDScript { path }) => {
+            let gd = auto_lang::trans_gdscript(path.as_str()).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&e));
+                    std::process::exit(1);
+                }
+                to_miette_err(e)
+            })?;
+            output_success(ai_mode, &gd);
+        }
         // ========== Trans (single file) ==========
         Some(Commands::Trans { path, target }) => match target {
             TransTarget::Ts { output } => {
@@ -1250,6 +1266,18 @@ fn real_main(cli: Cli) -> Result<()> {
                     println!("[trans] {} -> {}", path, out);
                 } else {
                     output_success(ai_mode, &js);
+                }
+            }
+            TransTarget::Gd { output } => {
+                let gd = auto_lang::trans_gdscript(path.as_str()).map_err(|e| {
+                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    to_miette_err(e)
+                })?;
+                if let Some(out) = output {
+                    std::fs::write(&out, &gd).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    println!("[trans] {} -> {}", path, out);
+                } else {
+                    output_success(ai_mode, &gd);
                 }
             }
         }

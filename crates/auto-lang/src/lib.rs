@@ -2719,6 +2719,28 @@ pub fn trans_javascript(path: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, jsname))
 }
 
+/// Transpile AutoLang file to GDScript (Plan 290: a2gd)
+pub fn trans_gdscript(path: &str) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))
+        .unwrap();
+
+    let gdname = path.replace(".at", ".gd");
+    let fname = AutoPath::new(path).filename();
+
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let mut parser = Parser::from(code.as_str());
+    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let mut sink = Sink::new(fname.clone());
+    let mut trans = crate::trans::gdscript::GDScriptTrans::new(fname);
+    trans.trans(ast, &mut sink)?;
+
+    // Write GDScript file
+    std::fs::write(&gdname, sink.done()?)?;
+
+    Ok(format!("[trans] {} -> {}", path, gdname))
+}
+
 /// Transpile AutoLang file to TypeScript (Plan 100: a2js → a2ts)
 pub fn trans_typescript(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)

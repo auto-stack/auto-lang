@@ -1,5 +1,7 @@
 # Plan 290: Auto → GDScript (a2gd) Transpiler
 
+> **Status: ✅ COMPLETED** (2026-06-12) — All 10 tasks implemented, 9/9 tests passing.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 实现 AutoLang 到 GDScript 2.0 (Godot 4.x) 的转译器 (a2gd)，让 Auto 脚本能够生成有效的 GDScript 代码并挂载到 Godot 节点上运行。

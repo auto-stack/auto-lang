@@ -6,6 +6,7 @@ use std::io::{self, Write};
 pub mod c;
 pub mod rust;
 pub mod python;
+pub mod gdscript;
 pub mod javascript;
 pub mod typescript;
 pub mod r2a;

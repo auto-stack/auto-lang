@@ -1,0 +1,4 @@
+type Player {
+    name str
+    health int
+}

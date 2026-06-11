@@ -1,0 +1,5 @@
+fn main() {
+    let x = 10
+    var y = 20
+    print(x + y)
+}
