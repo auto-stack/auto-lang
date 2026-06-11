@@ -1155,14 +1155,33 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 }
 
 /// Download image bytes from a URL using blocking HTTP.
+/// Results are cached in memory so each URL is only fetched once.
 /// Returns None on failure.
 fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
-    if url.starts_with("http://") || url.starts_with("https://") {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, Option<Vec<u8>>>>> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+
+    // Check cache first
+    {
+        let lock = cache.lock().unwrap();
+        if let Some(cached) = lock.get(url) {
+            return cached.clone();
+        }
+    }
+
+    // Fetch and cache
+    let result = if url.starts_with("http://") || url.starts_with("https://") {
         reqwest::blocking::get(url).ok()?.bytes().ok().map(|b| b.to_vec())
     } else {
         // Try loading from local file path
         std::fs::read(url).ok()
-    }
+    };
+
+    cache.lock().unwrap().insert(url.to_string(), result.clone());
+    result
 }
 
 /// Extract initials from a URL (e.g. seed name) for placeholder display.

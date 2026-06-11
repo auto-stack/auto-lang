@@ -3,7 +3,7 @@ widget App {
         var name str = "Jane Cooper"
         var role str = "Full Stack Developer"
         var bio str = "Passionate about building great user experiences. Open source contributor and coffee enthusiast."
-        var avatar_url str = "https://api.dicebear.com/7.x/avataaars/svg?seed=Jane"
+        var avatar_url str = "avatar.png"
         var status str = "online"
     }
 
