@@ -811,7 +811,9 @@ edition = "2021"
 [features]
 ui-gpui = ["auto-lang/ui-gpui"]
 ui-iced = ["auto-lang/ui-iced"]
-default = ["ui-iced"]
+# Enable auto-lang's default features so the feature fingerprint matches
+# the main workspace, allowing compiled artifacts to be reused.
+default = ["ui-iced", "auto-lang/default"]
 
 [workspace]
 
@@ -1005,18 +1007,20 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     println!("{}", "Running Rust UI app (backend: rust-ui)".bright_cyan());
 
-    // Change CWD to src/front/ so local assets (e.g. avatar.png) can be found
-    // by the Iced renderer's load_image_bytes(), same as VM mode does.
+    // Set CWD to src/front/ so local assets (e.g. avatar.png) can be found
+    // by the Iced renderer's load_image_bytes(). The cargo subprocess uses
+    // --manifest-path instead of current_dir so it can find Cargo.toml, but
+    // the final binary (profile-card.exe) inherits this CWD for asset resolution.
     let front_dir = project_dir.join("src").join("front");
     let original_dir = std::env::current_dir().ok();
     let _ = std::env::set_current_dir(&front_dir);
 
+    let cargo_toml = rust_dir.join("Cargo.toml");
     let mut cmd = std::process::Command::new("cargo");
-    cmd.arg("run");
+    cmd.args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")]);
     for arg in &args {
         cmd.arg(arg);
     }
-    cmd.current_dir(&rust_dir);
 
     let status = cmd.status()?;
 
