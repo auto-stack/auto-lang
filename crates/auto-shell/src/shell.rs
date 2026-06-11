@@ -11,6 +11,7 @@ pub use crate::core::shell::vars;
 
 use crate::bookmarks::BookmarkManager;
 use crate::cmd::{commands, CommandRegistry};
+use crate::job::JobManager;
 use vars::ShellVars;
 
 /// Shell state and context
@@ -23,6 +24,7 @@ pub struct Shell {
     previous_dir: Option<PathBuf>,
     registry: CommandRegistry,
     last_exit_code: i32, // $? — exit code of the last command
+    jobs: JobManager,    // Background/suspended job control
 }
 
 impl Shell {
@@ -124,6 +126,7 @@ impl Shell {
             previous_dir: None,
             registry,
             last_exit_code: 0,
+            jobs: JobManager::new(),
         }
     }
 
@@ -148,6 +151,31 @@ impl Shell {
 
     /// Internal: actual command dispatch.
     fn execute_inner(&mut self, input: &str) -> Result<Option<String>> {
+        // Reap any finished background jobs and notify
+        self.reap_jobs();
+
+        // Check for background execution suffix: `cmd &`
+        let trimmed = input.trim();
+        if trimmed.ends_with('&') {
+            // Strip the trailing `&` and any whitespace before it
+            let cmd_part = trimmed.trim_end_matches('&').trim();
+            if !cmd_part.is_empty() {
+                return self.execute_background(cmd_part);
+            }
+        }
+
+        // Handle job control builtins
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if !parts.is_empty() {
+            match parts[0] {
+                "jobs" => return self.cmd_jobs(),
+                "fg" => return self.cmd_fg(parts.get(1).and_then(|s| s.parse::<u32>().ok())),
+                "bg" => return self.cmd_bg(parts.get(1).and_then(|s| s.parse::<u32>().ok())),
+                "suspend" => return self.cmd_suspend(),
+                _ => {}
+            }
+        }
+
         // Try to parse as AutoLang expression first
         if self.looks_like_auto_expr(input) {
             return self.execute_auto(input);
@@ -724,6 +752,110 @@ impl Shell {
             output.push_str(&format!("  {:<15} {}\n", name, path.display()));
         }
         Ok(Some(output))
+    }
+
+    // ── Job control ──────────────────────────────────────
+
+    /// Public accessor for the job manager (used by builtins).
+    pub fn jobs_mut(&mut self) -> &mut JobManager {
+        &mut self.jobs
+    }
+
+    /// Reap finished background jobs and print notifications.
+    fn reap_jobs(&mut self) {
+        let finished = self.jobs.reap_finished();
+        for (id, cmd, code) in &finished {
+            if *code == 0 {
+                eprintln!("[{}]  Done    {}", id, cmd);
+            } else {
+                eprintln!("[{}]  Exit {} {}", id, code, cmd);
+            }
+        }
+    }
+
+    /// Execute a command in the background (`cmd &`).
+    fn execute_background(&mut self, input: &str) -> Result<Option<String>> {
+        use crate::cmd::external;
+
+        let expanded = self.expand_variables(input);
+
+        let child = external::spawn_external_background(&expanded, &self.current_dir)?;
+        let id = self.jobs.add(expanded, child);
+        eprintln!("[{}]  Running in background", id);
+        Ok(None)
+    }
+
+    /// `jobs` builtin — list background/suspended jobs.
+    fn cmd_jobs(&mut self) -> Result<Option<String>> {
+        Ok(Some(self.jobs.format_jobs()))
+    }
+
+    /// `fg [N]` builtin — bring job N (or the most recent) to the foreground.
+    fn cmd_fg(&mut self, job_id: Option<u32>) -> Result<Option<String>> {
+        let id = job_id
+            .or_else(|| self.jobs.last_job_id())
+            .ok_or_else(|| miette::miette!("fg: no current job"))?;
+
+        // If stopped, resume it first
+        let job = self.jobs.get_mut(id)
+            .ok_or_else(|| miette::miette!("fg: job {} not found", id))?;
+
+        if job.state == crate::job::JobState::Stopped {
+            crate::job::JobManager::resume_job(&mut self.jobs, id)?;
+        }
+
+        // Remove from job manager so we can take ownership of the Child
+        let mut job = self.jobs.remove(id)
+            .ok_or_else(|| miette::miette!("fg: job {} not found", id))?;
+
+        let cmd_str = job.command.clone();
+        eprintln!("[{}]  Foreground  {}", id, cmd_str);
+
+        // Wait for it to finish
+        let _guard = crate::signal::CtrlCGuard::new();
+        match job.child.wait() {
+            Ok(status) => {
+                self.last_exit_code = status.code().unwrap_or(-1);
+                if !status.success() {
+                    // Don't error — just set exit code
+                }
+                Ok(None)
+            }
+            Err(e) => {
+                self.last_exit_code = 1;
+                Err(miette::miette!("fg: wait failed: {}", e))
+            }
+        }
+    }
+
+    /// `bg [N]` builtin — resume a stopped job in the background.
+    fn cmd_bg(&mut self, job_id: Option<u32>) -> Result<Option<String>> {
+        let id = job_id
+            .or_else(|| {
+                // Find most recent stopped job
+                let mut last_stopped = None;
+                // Access jobs directly since we can't iterate pub fields
+                for (jid, job) in self.jobs.jobs_raw() {
+                    if job.state == crate::job::JobState::Stopped {
+                        last_stopped = Some(*jid);
+                    }
+                }
+                last_stopped.or_else(|| self.jobs.last_job_id())
+            })
+            .ok_or_else(|| miette::miette!("bg: no current job"))?;
+
+        self.jobs.resume_job(id)?;
+        let job = self.jobs.get_mut(id).unwrap();
+        eprintln!("[{}]  Running  {}", id, job.command);
+        Ok(None)
+    }
+
+    /// `suspend` builtin — no-op hint. Real suspend happens via Ctrl+Z in the
+    /// frontend (TODO: REPL wait-loop with waitpid WUNTRACED on Unix, console
+    /// input monitoring on Windows). The suspend/resume infrastructure is in
+    /// `job.rs` (`JobManager::suspend_job` / `resume_job`).
+    fn cmd_suspend(&mut self) -> Result<Option<String>> {
+        Ok(Some("Use Ctrl+Z to suspend a running foreground command.".to_string()))
     }
 }
 

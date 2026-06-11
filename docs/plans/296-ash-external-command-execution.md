@@ -118,6 +118,13 @@ ASH 分层（对应 nushell）：
 │   ├ 0 = 成功                       │
 │   ├ N = 外部命令实际退出码          │
 │   └ 1 = 其他错误                    │
+├───────────────────────────────────┤
+│ JobManager                         │  任务管理
+│   ├ add() → 注册后台任务           │
+│   ├ reap_finished() → 非阻塞轮询   │
+│   ├ suspend_job() → 平台级挂起     │
+│   ├ resume_job() → 平台级恢复      │
+│   └ format_jobs() → 显示任务列表   │
 └───────────────────────────────────┘
 ```
 
@@ -190,11 +197,29 @@ ASH 分层（对应 nushell）：
    - 避免先全量读取到内存
    - 支持所有 grep 选项（-i, -v, -c, -n）
 
-### Phase 6：Job Control（远期）
+### Phase 6：Job Control — ✅ 已完成（核心功能）
 
-- Ctrl+Z 挂起（Unix only）
-- `fg`/`bg` 命令恢复挂起的任务
-- 参考 nushell 的 `ForegroundChild` + `FrozenJob` 机制
+**已实现文件**：
+- `auto-shell/src/job.rs` — `Job` 结构体、`JobManager`、平台级 suspend/resume
+- `auto-shell/src/shell.rs` — `&` 后缀解析、`jobs`/`fg`/`bg`/`suspend` 内置命令、JobManager 集成
+- `ash-core/src/cmd/external.rs` — `spawn_external_background()` 后台 spawn
+
+**已实现功能**：
+1. `cmd &` — 末尾 `&` 解析，spawn 子进程（stdout/stderr inherit，stdin null），不等待
+2. `jobs` — 列出所有后台/挂起任务（自动 reap 已完成任务）
+3. `fg [N]` — 将后台/挂起任务拉到前台等待（若 stopped 先 resume）
+4. `bg [N]` — 恢复挂起的任务在后台运行
+5. 任务状态追踪 — Running/Stopped/Done，`try_wait()` 非阻塞轮询
+6. 完成通知 — 后台任务完成时自动打印 `[N] Done/Exit cmd`
+
+**平台级 suspend/resume**：
+- Windows: `CreateToolhelp32Snapshot` → 枚举线程 → `SuspendThread`/`ResumeThread`
+- Unix: `kill(pid, SIGSTOP)` / `kill(pid, SIGCONT)`
+
+**Ctrl+Z 前台挂起** — 待前端集成：
+- 需修改 REPL wait-loop 使用 `waitpid(WUNTRACED)` 替代 `status()`
+- `job.rs` 中 suspend/resume 基础设施已就绪
+- 标记为后续前端增强任务
 
 ## 验证方案
 

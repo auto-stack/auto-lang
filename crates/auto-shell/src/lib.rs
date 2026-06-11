@@ -19,6 +19,7 @@ pub mod frontend;
 pub mod cmd;
 pub mod completions;
 pub mod data;
+pub mod job;
 pub mod menu;
 pub mod prompt;
 pub mod shell;

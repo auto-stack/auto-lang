@@ -1,6 +1,6 @@
 use miette::{miette, IntoDiagnostic, Result};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 
 use crate::pipeline::ExternalStream;
 
@@ -79,6 +79,90 @@ pub fn spawn_external_stream_with_input(
     stdin_data: &str,
 ) -> Result<ExternalStream> {
     spawn_external_stream_impl(input, current_dir, Some(stdin_data))
+}
+
+/// Spawn an external command in the background (for `cmd &` syntax).
+///
+/// The child process inherits stdout/stderr (so output still goes to the
+/// terminal) but has stdin set to null (no input). The caller receives the
+/// raw `Child` handle for job-control tracking — we do **not** wait for it.
+pub fn spawn_external_background(input: &str, current_dir: &Path) -> Result<Child> {
+    let parts = parse_command(input);
+
+    if parts.is_empty() {
+        return Err(miette!("empty command"));
+    }
+
+    let cmd_name = &parts[0];
+    let args = &parts[1..];
+
+    // Try direct spawn first
+    let direct = try_spawn_background(cmd_name, args, current_dir);
+    if direct.is_ok() {
+        return direct;
+    }
+
+    // Platform fallbacks
+    #[cfg(windows)]
+    {
+        let ps_cmd = format!(
+            "{}{}",
+            cmd_name,
+            args.iter()
+                .map(|arg| format!(" \"{arg}\""))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-Command", &ps_cmd])
+            .current_dir(current_dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+        restore_sigint_in_child(&mut cmd);
+        if let Ok(child) = cmd.spawn().into_diagnostic() {
+            return Ok(child);
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        for shell in &["sh", "bash", "zsh"] {
+            let shell_cmd = format!(
+                "{} {}",
+                cmd_name,
+                args.iter()
+                    .map(|arg| format!("\"{}\"", arg.replace('"', "\\\"")))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            let mut cmd = Command::new(shell);
+            cmd.arg("-c")
+                .arg(&shell_cmd)
+                .current_dir(current_dir)
+                .stdin(Stdio::null())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
+            restore_sigint_in_child(&mut cmd);
+            if let Ok(child) = cmd.spawn().into_diagnostic() {
+                return Ok(child);
+            }
+        }
+    }
+
+    direct
+}
+
+/// Try to spawn a background command directly.
+fn try_spawn_background(cmd_name: &str, args: &[String], current_dir: &Path) -> Result<Child> {
+    let mut cmd = Command::new(cmd_name);
+    cmd.args(args)
+        .current_dir(current_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+    restore_sigint_in_child(&mut cmd);
+    cmd.spawn().into_diagnostic()
 }
 
 /// Internal: shared implementation for both spawn variants.
