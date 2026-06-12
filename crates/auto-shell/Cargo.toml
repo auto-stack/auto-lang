@@ -52,6 +52,7 @@ unicode-width = "0.2"
 # Prompt engine
 rayon = "1.12"
 toml = "0.8"
+toml_edit = "0.22"
 
 # File watching (git info refresh on .git changes)
 notify = "7.0"

@@ -295,6 +295,13 @@ impl Repl {
                         continue;
                     }
 
+                    // Plan 304: Expand abbreviations (abbr) in-line
+                    let (expanded, was_expanded) = self.shell.expand_abbreviations(&line);
+                    if was_expanded {
+                        println!("{}", expanded); // show the expanded form
+                        line = expanded;
+                    }
+
                     // Expand history references (!!, !n, etc.)
                     match self.expand_line_history(&mut line) {
                         Ok(true) => {

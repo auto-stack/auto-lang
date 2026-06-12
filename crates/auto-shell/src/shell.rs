@@ -30,6 +30,9 @@ pub struct Shell {
     aliases: HashMap<String, String>, // Plan 302 Step 1.4: alias map
     dir_stack: Vec<PathBuf>,           // Plan 302 Step 3.5: directory stack
 
+    // Plan 304: Abbreviations (abbr) — like aliases but expanded in-line visually
+    abbreviations: HashMap<String, String>,
+
     // Plan 304: Event hooks — function names to call on events
     hooks: HashMap<String, String>,     // event name → Auto function name
 
@@ -141,6 +144,7 @@ impl Shell {
             jobs: JobManager::new(),
             aliases: HashMap::new(),
             dir_stack: Vec::new(),
+            abbreviations: HashMap::new(),
             hooks: HashMap::new(),
 
             last_command_line: None,
@@ -218,6 +222,8 @@ impl Shell {
                 "path" => return self.cmd_path(&parts),
                 "def" => return self.cmd_def(trimmed),
                 "hook" => return self.cmd_hook(&parts),
+                "abbr" => return self.cmd_abbr(&parts),
+                "config" => return self.cmd_config(&parts),
                 _ => {}
             }
         }
@@ -367,6 +373,18 @@ impl Shell {
         // Check if it's an Auto function
         if self.has_auto_function(cmd_name) {
             return auto::execute_auto_function(self, cmd_name, args, None);
+        }
+
+        // Plan 304: Auto-load from ~/.config/ash/functions/<name>.at (Fish-style)
+        if let Some(loaded) = self.try_autoload(cmd_name)? {
+            // Function was loaded, now execute it
+            if self.has_auto_function(cmd_name) {
+                return auto::execute_auto_function(self, cmd_name, args, None);
+            }
+            // The file was sourced but didn't define a matching function
+            if let Some(output) = loaded {
+                return Ok(Some(output));
+            }
         }
 
         // Otherwise, execute as external command
@@ -1223,9 +1241,220 @@ impl Shell {
         Ok(None)
     }
 
+    /// Manage abbreviations: `abbr -a name "expansion"` / `abbr -l` / `abbr -r name`
+    fn cmd_abbr(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        if parts.len() < 2 {
+            return Ok(Some(
+                "abbr — manage abbreviations\n\nUSAGE:\n  abbr -a <name> <expansion>   Add abbreviation\n  abbr -r <name>               Remove abbreviation\n  abbr -l, abbr list           List all abbreviations\n\nAbbreviations expand in-line when you type them (like Fish).\n".to_string()
+            ));
+        }
+        match parts[1] {
+            "-a" | "--add" => {
+                if parts.len() < 4 {
+                    return Err(miette::miette!("abbr -a: requires name and expansion"));
+                }
+                let name = parts[2];
+                let expansion = parts[3..].join(" ");
+                let expansion = expansion.trim_matches('\'').trim_matches('"').to_string();
+                self.abbreviations.insert(name.to_string(), expansion);
+                Ok(None)
+            }
+            "-r" | "--remove" => {
+                if parts.len() < 3 {
+                    return Err(miette::miette!("abbr -r: requires name"));
+                }
+                if self.abbreviations.remove(parts[2]).is_none() {
+                    eprintln!("abbr: {}: not found", parts[2]);
+                }
+                Ok(None)
+            }
+            "-l" | "--list" | "list" => {
+                if self.abbreviations.is_empty() {
+                    return Ok(Some("No abbreviations.\n".to_string()));
+                }
+                let mut out = String::new();
+                let mut names: Vec<&String> = self.abbreviations.keys().collect();
+                names.sort();
+                for name in names {
+                    out.push_str(&format!("abbr -a {} '{}'\n", name, self.abbreviations[name]));
+                }
+                Ok(Some(out))
+            }
+            _ => Err(miette::miette!("abbr: unknown option '{}'. Use -a, -r, or -l", parts[1])),
+        }
+    }
+
+    /// Manage shell configuration: `config get <key>`, `config set <key> <value>`, `config list`
+    fn cmd_config(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        if parts.len() < 2 {
+            return Ok(Some(
+                "config — manage shell configuration\n\nUSAGE:\n  config list             Show all settings\n  config get <key>        Get a setting value\n  config set <key> <val>  Set a setting value\n\nKEYS:\n  shell.history_size           History size (integer)\n  shell.autosuggestion         Fish-style autosuggestions (true/false)\n  shell.autosuggestion_min_chars  Min chars for autosuggestion (integer)\n  shell.edit_mode              \"emacs\" or \"vi\"\n  shell.syntax_highlighting    Syntax highlighting (true/false)\n  completion.case_sensitive    Case-sensitive completion (true/false)\n\nSettings are saved to ~/.config/ash.toml\n".to_string()
+            ));
+        }
+        match parts[1] {
+            "list" | "ls" | "show" => {
+                let config = crate::config::AshShellConfig::load();
+                let mut out = String::new();
+                out.push_str(&format!("  shell.history_size = {}\n", config.history_size));
+                out.push_str(&format!("  shell.autosuggestion = {}\n", config.autosuggestion));
+                out.push_str(&format!("  shell.autosuggestion_min_chars = {}\n", config.autosuggestion_min_chars));
+                out.push_str(&format!("  shell.edit_mode = \"{}\"\n", config.edit_mode));
+                out.push_str(&format!("  shell.syntax_highlighting = {}\n", config.syntax_highlighting));
+                out.push_str(&format!("  completion.case_sensitive = {}\n", config.completion_case_sensitive));
+                if !config.aliases.is_empty() {
+                    out.push_str("\n  [aliases]\n");
+                    let mut names: Vec<&String> = config.aliases.keys().collect();
+                    names.sort();
+                    for name in names {
+                        out.push_str(&format!("  {} = \"{}\"\n", name, config.aliases[name]));
+                    }
+                }
+                Ok(Some(out))
+            }
+            "get" => {
+                if parts.len() < 3 {
+                    return Err(miette::miette!("config get: missing key"));
+                }
+                let config = crate::config::AshShellConfig::load();
+                let value = match parts[2] {
+                    "shell.history_size" => config.history_size.to_string(),
+                    "shell.autosuggestion" => config.autosuggestion.to_string(),
+                    "shell.autosuggestion_min_chars" => config.autosuggestion_min_chars.to_string(),
+                    "shell.edit_mode" => config.edit_mode.clone(),
+                    "shell.syntax_highlighting" => config.syntax_highlighting.to_string(),
+                    "completion.case_sensitive" => config.completion_case_sensitive.to_string(),
+                    _ => return Err(miette::miette!("config: unknown key '{}'", parts[2])),
+                };
+                Ok(Some(format!("{}\n", value)))
+            }
+            "set" => {
+                if parts.len() < 4 {
+                    return Err(miette::miette!("config set: requires key and value"));
+                }
+                let key = parts[2];
+                let value = parts[3..].join(" ");
+                self.config_set(key, &value)?;
+                Ok(Some(format!("{} = {}\n", key, value)))
+            }
+            _ => Err(miette::miette!("config: unknown subcommand '{}'. Use list, get, or set", parts[1])),
+        }
+    }
+
+    /// Write a config value to ~/.config/ash.toml
+    fn config_set(&mut self, key: &str, value: &str) -> Result<()> {
+        let config_path = dirs::config_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("ash.toml");
+
+        // Read existing config or start fresh
+        let content = if config_path.exists() {
+            std::fs::read_to_string(&config_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let mut doc = match content.parse::<toml_edit::DocumentMut>() {
+            Ok(d) => d,
+            Err(_) => toml_edit::DocumentMut::new(),
+        };
+
+        // Parse key into section + field
+        let (section, field) = if let Some(dot) = key.find('.') {
+            (&key[..dot], &key[dot + 1..])
+        } else {
+            ("shell", key) // default section
+        };
+
+        // Convert value to toml_edit::Value
+        let toml_value: toml_edit::Value = if value == "true" {
+            toml_edit::Value::from(true)
+        } else if value == "false" {
+            toml_edit::Value::from(false)
+        } else if let Ok(n) = value.parse::<i64>() {
+            toml_edit::Value::from(n)
+        } else {
+            toml_edit::Value::from(value.trim_matches('"'))
+        };
+
+        // Set the value
+        doc[section][field] = toml_edit::Item::Value(toml_value);
+
+        // Ensure parent directory exists
+        if let Some(parent) = config_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        std::fs::write(&config_path, doc.to_string())
+            .into_diagnostic()
+            .map_err(|e| miette::miette!("config: failed to write {}: {}", config_path.display(), e))
+    }
+
+    /// Expand abbreviations in the input line (first word of each pipe segment).
+    /// Returns the expanded line and whether any expansion occurred.
+    pub fn expand_abbreviations(&self, line: &str) -> (String, bool) {
+        if self.abbreviations.is_empty() {
+            return (line.to_string(), false);
+        }
+        let segments = parse_chain(line);
+        let mut result = String::new();
+        let mut any_expanded = false;
+
+        for seg in &segments {
+            // Try to expand the first word
+            let trimmed_cmd = seg.command.trim();
+            if let Some(space_pos) = trimmed_cmd.find(|c: char| c.is_whitespace()) {
+                let first_word = &trimmed_cmd[..space_pos];
+                let rest = &trimmed_cmd[space_pos..];
+                if let Some(expansion) = self.abbreviations.get(first_word) {
+                    result.push_str(expansion);
+                    result.push_str(rest);
+                    any_expanded = true;
+                } else {
+                    result.push_str(trimmed_cmd);
+                }
+            } else {
+                // Single word command
+                if let Some(expansion) = self.abbreviations.get(trimmed_cmd) {
+                    result.push_str(expansion);
+                    any_expanded = true;
+                } else {
+                    result.push_str(trimmed_cmd);
+                }
+            }
+            if let Some(ref op) = seg.op {
+                match op {
+                    ChainOp::Pipe => result.push_str(" | "),
+                    ChainOp::And => result.push_str(" && "),
+                    ChainOp::Or => result.push_str(" || "),
+                }
+            }
+        }
+        (result, any_expanded)
+    }
+
     // -----------------------------------------------------------------------
     // Plan 302 Step 1.3 + 3.3: RC file / source
     // -----------------------------------------------------------------------
+
+    /// Try to auto-load a command from ~/.config/ash/functions/<name>.at
+    /// Returns Some(output) if the file was found and sourced, None if not found.
+    /// This implements Fish-style function auto-loading: when a command is not
+    /// found in the registry, builtins, or Auto functions, check if a file
+    /// exists in the functions directory and source it.
+    fn try_autoload(&mut self, name: &str) -> Result<Option<Option<String>>> {
+        let func_dir = dirs::config_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("ash")
+            .join("functions");
+
+        let candidate = func_dir.join(format!("{}.at", name));
+        if candidate.exists() {
+            self.source_file(&candidate)?;
+            Ok(Some(None)) // sourced successfully
+        } else {
+            Ok(None) // not found
+        }
+    }
 
     /// Execute each line of a file in the current shell context.
     ///
