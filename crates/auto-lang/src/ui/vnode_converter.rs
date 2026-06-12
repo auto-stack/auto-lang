@@ -545,6 +545,7 @@ mod tests {
             placeholder: "Enter text".to_string(),
             value: "".to_string(),
             on_change: None,
+            on_submit: None,
             width: None,
             password: false,
             style: None,

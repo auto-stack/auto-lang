@@ -674,12 +674,16 @@ fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, 
                 // Find oninput/onchange event
                 let event_name = events.get("oninput")
                     .or_else(|| events.get("onchange"))
+                    .or_else(|| events.get("onenter"))
                     .or_else(|| events.get("input"))
                     .or_else(|| events.get("change"))
                     .map(|e| clean_handler_name(&e.handler));
 
                 if let (Some(field), Some(event)) = (state_field, event_name) {
-                    map.insert(event, field);
+                    // Don't overwrite: first match wins (e.g., header input's
+                    // "EditInputChanged → input" should not be overwritten by
+                    // a later edit input's "EditInputChanged → edit_text").
+                    map.entry(event).or_insert(field);
                 }
             }
             for child in children {

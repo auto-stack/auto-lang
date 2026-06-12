@@ -172,7 +172,7 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
     "preview": "vite preview"
   }},
   "dependencies": {{
-    "vue": "^3.4.0",
+    "vue": ">=3.4.0 <3.5.36",
 {}    "@vueuse/core": "^10.7.0",
     "reka-ui": "^2.0.0",
     "class-variance-authority": "^0.7.0",
@@ -542,7 +542,8 @@ fn write_project_files(
         .map_err(|e| format!("Failed to write package.json: {}", e))?;
 
     // .npmrc — allow esbuild etc. to run postinstall builds (pnpm 9+ blocks them by default)
-    fs::write(output_path.join(".npmrc"), "manage-package-manager-versions=true\n")
+    fs::write(output_path.join(".npmrc"),
+        "manage-package-manager-versions=true\nonlyBuiltDependencies[]=esbuild\nonlyBuiltDependencies[]=vue-demi\n")
         .map_err(|e| format!("Failed to write .npmrc: {}", e))?;
 
     // components.json (shadcn-vue config)
@@ -1250,8 +1251,29 @@ export default router
                 Ok(())
             }
             Err(e) => {
-                println!("{} {}", "  ✗ Failed:".bright_red(), e);
-                Err(format!("{} install failed: {}", pm, e).into())
+                // pnpm v11 may fail with ERR_PNPM_IGNORED_BUILDS even when onlyBuiltDependencies
+                // is set in package.json if a stale lockfile exists. Auto-recover by deleting
+                // the lockfile and retrying.
+                if pm == "pnpm" {
+                    println!("{}", "  ⚠ Retrying: removing stale lockfile...".bright_yellow());
+                    let lockfile = self.output_dir.join("pnpm-lock.yaml");
+                    if lockfile.exists() {
+                        let _ = fs::remove_file(&lockfile);
+                    }
+                    match crate::pkg::install(&self.output_dir) {
+                        Ok(_) => {
+                            println!("{}", "  ✓ Dependencies installed (retry)".bright_green());
+                            Ok(())
+                        }
+                        Err(e2) => {
+                            println!("{} {}", "  ✗ Failed:".bright_red(), e2);
+                            Err(format!("{} install failed: {}", pm, e2).into())
+                        }
+                    }
+                } else {
+                    println!("{} {}", "  ✗ Failed:".bright_red(), e);
+                    Err(format!("{} install failed: {}", pm, e).into())
+                }
             }
         }
     }

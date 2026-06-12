@@ -6,7 +6,7 @@
 use super::Color;
 
 /// Size value (used for width, height, spacing, etc.)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SizeValue {
     Full,        // 100%
     Half,        // 50%
@@ -15,7 +15,8 @@ pub enum SizeValue {
     Quarter,     // 25%
     ThreeQuarters, // 75%
     Auto,
-    Fixed(u16),  // Pixels (Tailwind uses 4px base unit, so 1 = 4px, 2 = 8px, etc.)
+    Fixed(u16),  // Tailwind spacing units (1 = 4px, 2 = 8px, etc.)
+    Pixels(f32), // Arbitrary pixel value (e.g. w-[30px] → Pixels(30.0))
 }
 
 impl SizeValue {
@@ -23,7 +24,17 @@ impl SizeValue {
     pub fn to_pixels(&self) -> u16 {
         match self {
             SizeValue::Fixed(units) => units * 4,
+            SizeValue::Pixels(px) => *px as u16,
             _ => 0, // Full, Auto, etc. are handled differently by backends
+        }
+    }
+
+    /// Convert to f32 pixels (for cases needing sub-pixel precision)
+    pub fn to_pixels_f32(&self) -> f32 {
+        match self {
+            SizeValue::Fixed(units) => (*units as f32) * 4.0,
+            SizeValue::Pixels(px) => *px,
+            _ => 0.0,
         }
     }
 }
@@ -279,6 +290,98 @@ pub enum StyleClass {
     /// Z-index: z-{0-50} - L3
     ZIndex(i16),
 
+    // ========== Min/Max Sizing ==========
+    /// Min height: min-h-screen, min-h-[Npx]
+    MinHeight(f32),
+
+    /// Min width: min-w-[Npx]
+    MinWidth(f32),
+
+    // ========== Typography Extended ==========
+    /// Arbitrary font size: text-[80px], text-[14px]
+    TextArbitrary(f32),
+
+    /// Font weight: font-light (300)
+    FontLight,
+
+    /// Font weight: font-extralight (200)
+    FontExtraLight,
+
+    /// Font weight: font-semibold (600)
+    FontSemiBold,
+
+    /// Line height: leading-[1.4], leading-[1.2]
+    LineHeight(f32),
+
+    /// Line height: leading-none
+    LineHeightNone,
+
+    // ========== Text Control ==========
+    /// Whitespace: whitespace-nowrap
+    WhitespaceNowrap,
+
+    /// Word break: break-words
+    BreakWords,
+
+    // ========== Interaction ==========
+    /// Cursor: cursor-pointer
+    CursorPointer,
+
+    // ========== Outline/Border ==========
+    /// Outline: outline-none
+    OutlineNone,
+
+    /// Border: border-none
+    BorderNone,
+
+    // ========== Shadow Extended ==========
+    /// Arbitrary shadow: shadow-[...complex value...]
+    ShadowArbitrary(String),
+
+    // ========== Flex Extended ==========
+    /// Flex shrink: shrink-0
+    Shrink0,
+
+    // ========== List ==========
+    /// List style: list-none
+    ListNone,
+
+    // ========== Position Offsets ==========
+    /// Top offset: top-[Npx], -top-[Npx]
+    TopOffset(f32),
+
+    /// Bottom offset: bottom-[Npx], -bottom-[Npx]
+    BottomOffset(f32),
+
+    /// Right offset: right-[Npx], -right-[Npx]
+    RightOffset(f32),
+
+    /// Left offset: left-[Npx], -left-[Npx]
+    LeftOffset(f32),
+
+    // ========== Transform ==========
+    /// Rotation: rotate-90, rotate-45, etc.
+    Rotate(f32),
+
+    // ========== Visibility ==========
+    /// Hidden (display: none)
+    Hidden,
+
+    // ========== Transition ==========
+    /// Transition colors
+    TransitionColors,
+
+    /// Transition duration: duration-200
+    TransitionDuration(u16),
+
+    // ========== Accent ==========
+    /// Accent color: accent-[#hex]
+    AccentColor(Color),
+
+    // ========== Font Smoothing ==========
+    /// Font smoothing: antialiased
+    Antialiased,
+
     // ========== Overflow (L3 Advanced) ==========
     /// Overflow: overflow-auto - L3
     OverflowAuto,
@@ -346,63 +449,63 @@ impl StyleClass {
 
         // ========== Spacing (L1 + L2) ==========
 
-        // Parse padding: p-{0-12}
+        // Parse padding: p-{0-12} or p-[Npx]
         if let Some(rest) = class.strip_prefix("p-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::Padding(size));
         }
 
-        // Parse padding X: px-{0-12}
+        // Parse padding X: px-{0-12} or px-[Npx]
         if let Some(rest) = class.strip_prefix("px-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::PaddingX(size));
         }
 
-        // Parse padding Y: py-{0-12}
+        // Parse padding Y: py-{0-12} or py-[Npx]
         if let Some(rest) = class.strip_prefix("py-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::PaddingY(size));
         }
 
-        // Parse per-side padding: pt/pb/pl/pr
+        // Parse per-side padding: pt/pb/pl/pr with arbitrary: pt-[Npx]
         if let Some(rest) = class.strip_prefix("pt-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::PaddingTop(size));
         }
         if let Some(rest) = class.strip_prefix("pb-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::PaddingBottom(size));
         }
         if let Some(rest) = class.strip_prefix("pl-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::PaddingLeft(size));
         }
         if let Some(rest) = class.strip_prefix("pr-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::PaddingRight(size));
         }
 
-        // Parse margin: m-{0-12}
+        // Parse margin: m-{0-12} or m-[Npx]
         if let Some(rest) = class.strip_prefix("m-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::Margin(size));
         }
 
-        // Parse margin X: mx-{0-12}
+        // Parse margin X: mx-{0-12} or mx-[Npx]
         if let Some(rest) = class.strip_prefix("mx-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::MarginX(size));
         }
 
-        // Parse margin Y: my-{0-12}
+        // Parse margin Y: my-{0-12} or my-[Npx]
         if let Some(rest) = class.strip_prefix("my-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::MarginY(size));
         }
 
-        // Parse margin top: mt-{0-12}
+        // Parse margin top: mt-{0-12} or mt-[Npx]
         if let Some(rest) = class.strip_prefix("mt-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::MarginTop(size));
         }
 
@@ -418,9 +521,9 @@ impl StyleClass {
             return Ok(StyleClass::MarginXAuto);
         }
 
-        // Parse gap: gap-{0-12}
+        // Parse gap: gap-{0-12} or gap-[Npx]
         if let Some(rest) = class.strip_prefix("gap-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::Gap(size));
         }
 
@@ -470,7 +573,7 @@ impl StyleClass {
 
         // ========== Typography (L2) ==========
 
-        // Parse text size: text-{xs,sm,base,lg,xl,2xl,3xl}
+        // Parse text size: text-{xs,sm,base,lg,xl,2xl,3xl} or arbitrary text-[80px]
         match class {
             "text-xs" => return Ok(StyleClass::TextXs),
             "text-sm" => return Ok(StyleClass::TextSm),
@@ -483,12 +586,27 @@ impl StyleClass {
             _ => {}
         }
 
+        // Parse arbitrary text size: text-[80px], text-[14px], text-[11px]
+        if class == "text" {
+            if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::TextArbitrary(px));
+            }
+        }
+
         // Parse font weight
         match class {
             "font-bold" => return Ok(StyleClass::FontBold),
             "font-medium" => return Ok(StyleClass::FontMedium),
             "font-normal" => return Ok(StyleClass::FontNormal),
+            "font-light" => return Ok(StyleClass::FontLight),
+            "font-extralight" => return Ok(StyleClass::FontExtraLight),
+            "font-semibold" => return Ok(StyleClass::FontSemiBold),
             _ => {}
+        }
+
+        // Skip font-inherit (no iced equivalent, but don't error)
+        if class == "font-inherit" {
+            return Err("font-inherit: not supported in native renderer".to_string());
         }
 
         // Parse text alignment
@@ -510,6 +628,91 @@ impl StyleClass {
                         .ok_or_else(|| format!("Unknown text color: {}", color_name))
                 })?;
             return Ok(StyleClass::TextColor(color));
+        }
+
+        // ========== Line Height ==========
+        // Parse leading-[1.4], leading-[1.2]
+        if class == "leading" {
+            if let Some(av) = arbitrary_value {
+                if let Ok(lh) = av.parse::<f32>() {
+                    return Ok(StyleClass::LineHeight(lh));
+                }
+            }
+        }
+        // Parse leading-none
+        if class == "leading-none" {
+            return Ok(StyleClass::LineHeightNone);
+        }
+
+        // ========== Whitespace & Text Control ==========
+        if class == "whitespace-nowrap" {
+            return Ok(StyleClass::WhitespaceNowrap);
+        }
+        if class == "break-words" {
+            return Ok(StyleClass::BreakWords);
+        }
+
+        // ========== Interaction ==========
+        if class == "cursor-pointer" {
+            return Ok(StyleClass::CursorPointer);
+        }
+
+        // ========== Outline & Border ==========
+        if class == "outline-none" {
+            return Ok(StyleClass::OutlineNone);
+        }
+        if class == "border-none" {
+            return Ok(StyleClass::BorderNone);
+        }
+
+        // ========== Accent Color ==========
+        if let Some(color_name) = class.strip_prefix("accent-") {
+            if let Ok(color) = Color::from_tailwind(color_name)
+                .or_else(|_| Color::from_hex(color_name))
+                .or_else(|_| {
+                    arbitrary_value
+                        .and_then(|v| Color::from_hex(v).ok())
+                        .ok_or_else(|| format!("Unknown accent color: {}", color_name))
+                }) {
+                return Ok(StyleClass::AccentColor(color));
+            }
+        }
+
+        // ========== List Style ==========
+        if class == "list-none" {
+            return Ok(StyleClass::ListNone);
+        }
+
+        // ========== Font Smoothing ==========
+        if class == "antialiased" {
+            return Ok(StyleClass::Antialiased);
+        }
+
+        // ========== Flex Extended ==========
+        if class == "shrink-0" {
+            return Ok(StyleClass::Shrink0);
+        }
+
+        // ========== Visibility ==========
+        if class == "hidden" {
+            return Ok(StyleClass::Hidden);
+        }
+
+        // ========== Transition ==========
+        if class == "transition-colors" {
+            return Ok(StyleClass::TransitionColors);
+        }
+        if let Some(rest) = class.strip_prefix("duration-") {
+            if let Ok(ms) = rest.parse::<u16>() {
+                return Ok(StyleClass::TransitionDuration(ms));
+            }
+        }
+
+        // ========== Transform ==========
+        if let Some(rest) = class.strip_prefix("rotate-") {
+            if let Ok(deg) = rest.parse::<f32>() {
+                return Ok(StyleClass::Rotate(deg));
+            }
         }
 
         // ========== Layout (L1 + L2) ==========
@@ -553,30 +756,51 @@ impl StyleClass {
 
         // ========== Sizing (L1) ==========
 
-        // Parse width: w-{size}
+        // Parse width: w-{size} (supports arbitrary: w-[30px])
         if let Some(rest) = class.strip_prefix("w-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::Width(size));
         }
 
-        // Parse height: h-{size}
+        // Parse height: h-{size} (supports arbitrary: h-[65px])
         if let Some(rest) = class.strip_prefix("h-") {
-            let size = parse_size_value(rest)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::Height(size));
+        }
+
+        // Parse min-height: min-h-{size|screen} (supports arbitrary: min-h-[40px])
+        if let Some(rest) = class.strip_prefix("min-h-") {
+            let px = match rest {
+                "screen" => f32::MAX,
+                _ => parse_pixel_arbitrary(arbitrary_value)
+                    .unwrap_or_else(|| {
+                        rest.parse::<f32>().unwrap_or(0.0) * 4.0
+                    }),
+            };
+            return Ok(StyleClass::MinHeight(px));
+        }
+
+        // Parse min-width: min-w-{size} (supports arbitrary: min-w-[Npx])
+        if let Some(rest) = class.strip_prefix("min-w-") {
+            let px = parse_pixel_arbitrary(arbitrary_value)
+                .unwrap_or_else(|| {
+                    rest.parse::<f32>().unwrap_or(0.0) * 4.0
+                });
+            return Ok(StyleClass::MinWidth(px));
         }
 
         // ========== Max Sizing (L1) ==========
 
-        // Parse max-width: max-w-{named|numeric}
+        // Parse max-width: max-w-{named|numeric} or max-w-[Npx]
         if let Some(rest) = class.strip_prefix("max-w-") {
-            if let Some(px) = parse_max_size_value(rest) {
+            if let Some(px) = parse_max_size_value_arbitrary(rest, arbitrary_value) {
                 return Ok(StyleClass::MaxWidth(px));
             }
         }
 
-        // Parse max-height: max-h-{named|numeric}
+        // Parse max-height: max-h-{named|numeric} or max-h-[Npx]
         if let Some(rest) = class.strip_prefix("max-h-") {
-            if let Some(px) = parse_max_size_value(rest) {
+            if let Some(px) = parse_max_size_value_arbitrary(rest, arbitrary_value) {
                 return Ok(StyleClass::MaxHeight(px));
             }
         }
@@ -615,14 +839,30 @@ impl StyleClass {
             }
         }
 
-        // Parse border color: border-{color}
+        // Parse border color: border-{color} (supports arbitrary: border-[#hex])
         if let Some(color_name) = class.strip_prefix("border-") {
             // Skip border-0 which we already handled
             if color_name == "0" {
                 return Ok(StyleClass::Border0);
             }
+            if color_name == "none" {
+                return Ok(StyleClass::BorderNone);
+            }
+            if color_name == "transparent" {
+                // Use a hex color that iced adapter can treat as transparent
+                // Use a special hex value — iced adapter should handle it
+                return Ok(StyleClass::BorderColor(Color::from_hex("#00000000").unwrap_or_else(|_| {
+                    // Fallback: just use white, the border-none style above is preferred
+                    Color::from_hex("#ffffff").unwrap()
+                })));
+            }
             let color = Color::from_tailwind(color_name)
-                .or_else(|_| Color::from_hex(color_name))?;
+                .or_else(|_| Color::from_hex(color_name))
+                .or_else(|_| {
+                    arbitrary_value
+                        .and_then(|v| Color::from_hex(v).ok())
+                        .ok_or_else(|| format!("Unknown border color: {}", color_name))
+                })?;
             return Ok(StyleClass::BorderColor(color));
         }
 
@@ -638,6 +878,13 @@ impl StyleClass {
             "shadow-2xl" => return Ok(StyleClass::Shadow2Xl),
             "shadow-none" => return Ok(StyleClass::ShadowNone),
             _ => {}
+        }
+
+        // Parse arbitrary shadow: shadow-[0_2px_4px_0_rgba(...)]
+        if class == "shadow" {
+            if let Some(av) = arbitrary_value {
+                return Ok(StyleClass::ShadowArbitrary(av.to_string()));
+            }
         }
 
         // Parse opacity: opacity-{0-100}
@@ -657,6 +904,62 @@ impl StyleClass {
             "relative" => return Ok(StyleClass::Relative),
             "absolute" => return Ok(StyleClass::Absolute),
             _ => {}
+        }
+
+        // Parse position offsets: top-[Npx], -top-[Npx], bottom/right/left
+        if let Some(rest) = class.strip_prefix("top-") {
+            if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::TopOffset(px));
+            }
+            if let Ok(n) = rest.parse::<f32>() {
+                return Ok(StyleClass::TopOffset(n * 4.0));
+            }
+        }
+        if let Some(rest) = class.strip_prefix("bottom-") {
+            if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::BottomOffset(px));
+            }
+            if let Ok(n) = rest.parse::<f32>() {
+                return Ok(StyleClass::BottomOffset(n * 4.0));
+            }
+        }
+        if let Some(rest) = class.strip_prefix("right-") {
+            if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::RightOffset(px));
+            }
+            if let Ok(n) = rest.parse::<f32>() {
+                return Ok(StyleClass::RightOffset(n * 4.0));
+            }
+        }
+        if let Some(rest) = class.strip_prefix("left-") {
+            if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::LeftOffset(px));
+            }
+            if let Ok(n) = rest.parse::<f32>() {
+                return Ok(StyleClass::LeftOffset(n * 4.0));
+            }
+        }
+
+        // Handle negative offsets: -top-[Npx], -bottom-[Npx], etc.
+        if class.starts_with("-top-") {
+            if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::TopOffset(-px));
+            }
+        }
+        if class.starts_with("-bottom-") {
+            if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::BottomOffset(-px));
+            }
+        }
+        if class.starts_with("-right-") {
+            if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::RightOffset(-px));
+            }
+        }
+        if class.starts_with("-left-") {
+            if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::LeftOffset(-px));
+            }
         }
 
         // Parse z-index: z-{0-50}
@@ -773,12 +1076,50 @@ fn parse_size_value(input: &str) -> Result<SizeValue, String> {
     }
 }
 
+/// Parse a size value with optional arbitrary value support (e.g. [30px], [65px])
+fn parse_size_value_arbitrary(input: &str, arbitrary: Option<&str>) -> Result<SizeValue, String> {
+    // Try arbitrary pixel value first: [30px], [65px], [calc(100%-43px)]
+    if let Some(av) = arbitrary {
+        // Try Npx
+        if let Some(px_str) = av.strip_suffix("px") {
+            if let Ok(px) = px_str.parse::<f32>() {
+                return Ok(SizeValue::Pixels(px));
+            }
+        }
+        // Try bare number
+        if let Ok(px) = av.parse::<f32>() {
+            return Ok(SizeValue::Pixels(px));
+        }
+    }
+    parse_size_value(input)
+}
+
+/// Parse a float pixel value from arbitrary syntax: [Npx]
+fn parse_pixel_arbitrary(arbitrary: Option<&str>) -> Option<f32> {
+    arbitrary.and_then(|v| {
+        let v = v.strip_suffix("px").unwrap_or(v);
+        v.parse::<f32>().ok()
+    })
+}
+
 /// Helper to parse max-width/height named sizes to pixels.
 /// Tailwind: none=0, xs=320, sm=384, md=448, lg=512, xl=576, 2xl=672, 3xl=768, 4xl=896, full=∞
 /// Numeric values (e.g. max-w-96) use Tailwind spacing units (N * 4px).
-fn parse_max_size_value(input: &str) -> Option<f32> {
+/// Parse max-width/height with optional arbitrary value support (e.g. [550px]).
+fn parse_max_size_value_arbitrary(input: &str, arbitrary: Option<&str>) -> Option<f32> {
+    // Try arbitrary pixel value first: [550px], [300]
+    if let Some(av) = arbitrary {
+        if let Some(px_str) = av.strip_suffix("px") {
+            if let Ok(px) = px_str.parse::<f32>() {
+                return Some(px);
+            }
+        }
+        if let Ok(px) = av.parse::<f32>() {
+            return Some(px);
+        }
+    }
     match input {
-        "none" | "0" => None, // No constraint
+        "none" | "0" | "" if arbitrary.is_some() => None, // No constraint
         "xs" => Some(320.0),
         "sm" => Some(384.0),
         "md" => Some(448.0),

@@ -258,6 +258,7 @@ pub enum View<M: Clone + Debug> {
         placeholder: String,
         value: String,
         on_change: Option<M>,
+        on_submit: Option<M>,  // Fires on Enter key press
         width: Option<u16>,   // Legacy field
         password: bool,
         style: Option<Style>,  // ✅ NEW: Unified styling support
@@ -816,6 +817,7 @@ impl<M: Clone + Debug> View<M> {
             placeholder: placeholder.into(),
             value: String::new(),
             on_change: None,
+            on_submit: None,
             width: None,
             password: false,
             style: None,  // ✅ NEW: style field
@@ -1134,10 +1136,11 @@ impl<M: Clone + Debug> View<M> {
                 padding,
                 style,
             },
-            View::Input { placeholder, value, on_change, width, password, style } => View::Input {
+            View::Input { placeholder, value, on_change, on_submit, width, password, style } => View::Input {
                 placeholder,
                 value,
                 on_change: on_change.map(|m| f(m)),
+                on_submit: on_submit.map(|m| f(m)),
                 width,
                 password,
                 style,
@@ -1347,6 +1350,7 @@ pub struct ViewInputBuilder<M: Clone + Debug> {
     placeholder: String,
     value: String,
     on_change: Option<M>,
+    on_submit: Option<M>,
     width: Option<u16>,
     password: bool,
     style: Option<Style>,  // ✅ NEW: Unified styling support
@@ -1434,12 +1438,19 @@ impl<M: Clone + Debug> ViewInputBuilder<M> {
         self
     }
 
+    /// Set submit handler (fires on Enter key press)
+    pub fn on_submit(mut self, msg: M) -> Self {
+        self.on_submit = Some(msg);
+        self
+    }
+
     /// Build the input view
     pub fn build(self) -> View<M> {
         View::Input {
             placeholder: self.placeholder,
             value: self.value,
             on_change: self.on_change,
+            on_submit: self.on_submit,
             width: self.width,
             password: self.password,
             style: self.style,

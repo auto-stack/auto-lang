@@ -83,6 +83,29 @@ pub struct IcedStyle {
     pub row_span: Option<u8>,       // Not supported by Iced
     pub col_start: Option<u8>,      // Not supported by Iced
     pub row_start: Option<u8>,      // Not supported by Iced
+
+    // Extended sizing
+    pub min_height: Option<f32>,
+    pub min_width: Option<f32>,
+
+    // Extended typography
+    pub font_size_arbitrary: Option<f32>,
+    pub line_height: Option<f32>,
+
+    // Shadow extended
+    pub shadow_arbitrary: Option<String>,
+
+    // Position offsets (not fully supported by Iced)
+    pub top_offset: Option<f32>,
+    pub bottom_offset: Option<f32>,
+    pub right_offset: Option<f32>,
+    pub left_offset: Option<f32>,
+
+    // Transform (not supported by Iced, stored for reference)
+    pub rotate: Option<f32>,
+
+    // Visibility
+    pub hidden: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -148,6 +171,9 @@ pub enum IcedFontWeight {
     Normal,
     Medium,
     Bold,
+    Light,
+    ExtraLight,
+    SemiBold,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -209,6 +235,23 @@ impl IcedStyle {
             row_span: None,     // Not supported by Iced
             col_start: None,    // Not supported by Iced
             row_start: None,    // Not supported by Iced
+            // Extended sizing
+            min_height: None,
+            min_width: None,
+            // Extended typography
+            font_size_arbitrary: None,
+            line_height: None,
+            // Shadow extended
+            shadow_arbitrary: None,
+            // Position offsets
+            top_offset: None,
+            bottom_offset: None,
+            right_offset: None,
+            left_offset: None,
+            // Transform
+            rotate: None,
+            // Visibility
+            hidden: false,
         };
 
         for class in &style.classes {
@@ -543,6 +586,108 @@ impl IcedStyle {
             StyleClass::JustifyEnd => {
                 self.justify_content = Some(IcedJustify::End);
             }
+
+            // ========== Extended Sizing ==========
+            StyleClass::MinHeight(px) => {
+                self.min_height = Some(*px);
+            }
+            StyleClass::MinWidth(px) => {
+                self.min_width = Some(*px);
+            }
+
+            // ========== Extended Typography ==========
+            StyleClass::TextArbitrary(px) => {
+                self.font_size_arbitrary = Some(*px);
+            }
+            StyleClass::FontLight => {
+                self.font_weight = Some(IcedFontWeight::Light);
+            }
+            StyleClass::FontExtraLight => {
+                self.font_weight = Some(IcedFontWeight::ExtraLight);
+            }
+            StyleClass::FontSemiBold => {
+                self.font_weight = Some(IcedFontWeight::SemiBold);
+            }
+            StyleClass::LineHeight(lh) => {
+                self.line_height = Some(*lh);
+            }
+            StyleClass::LineHeightNone => {
+                self.line_height = Some(1.0);
+            }
+
+            // ========== Text Control ==========
+            StyleClass::WhitespaceNowrap | StyleClass::BreakWords => {
+                // Iced text doesn't directly support these, but no error
+            }
+
+            // ========== Interaction ==========
+            StyleClass::CursorPointer => {
+                // Iced doesn't have explicit cursor styling per element
+            }
+
+            // ========== Outline/Border ==========
+            StyleClass::OutlineNone | StyleClass::BorderNone => {
+                self.border = false;
+                self.border_width = Some(0.0);
+            }
+
+            // ========== Shadow Extended ==========
+            StyleClass::ShadowArbitrary(s) => {
+                self.shadow = true;
+                self.shadow_arbitrary = Some(s.clone());
+                if self.shadow_size.is_none() {
+                    self.shadow_size = Some(IcedShadowSize::Md);
+                }
+            }
+
+            // ========== Flex Extended ==========
+            StyleClass::Shrink0 => {
+                // Iced doesn't support flex-shrink directly
+            }
+
+            // ========== List Style ==========
+            StyleClass::ListNone => {
+                // Iced doesn't have list style concept
+            }
+
+            // ========== Font Smoothing ==========
+            StyleClass::Antialiased => {
+                // Iced handles font smoothing natively
+            }
+
+            // ========== Visibility ==========
+            StyleClass::Hidden => {
+                self.hidden = true;
+            }
+
+            // ========== Transition ==========
+            StyleClass::TransitionColors | StyleClass::TransitionDuration(_) => {
+                // Iced doesn't support CSS transitions
+            }
+
+            // ========== Transform ==========
+            StyleClass::Rotate(deg) => {
+                self.rotate = Some(*deg);
+            }
+
+            // ========== Position Offsets ==========
+            StyleClass::TopOffset(px) => {
+                self.top_offset = Some(*px);
+            }
+            StyleClass::BottomOffset(px) => {
+                self.bottom_offset = Some(*px);
+            }
+            StyleClass::RightOffset(px) => {
+                self.right_offset = Some(*px);
+            }
+            StyleClass::LeftOffset(px) => {
+                self.left_offset = Some(*px);
+            }
+
+            // ========== Accent Color ==========
+            StyleClass::AccentColor(_) => {
+                // Iced checkbox accent color not directly controllable
+            }
         }
     }
 
@@ -561,6 +706,7 @@ fn convert_size(size: &SizeValue) -> IcedSize {
         SizeValue::ThreeQuarters => IcedSize::FillPortion(3),
         SizeValue::Auto => IcedSize::Full,
         SizeValue::Fixed(_) => IcedSize::Fixed(size.to_pixels() as f32),
+        SizeValue::Pixels(px) => IcedSize::Fixed(*px),
     }
 }
 

@@ -1151,12 +1151,19 @@ impl<'a> AuraViewBuilder<'a> {
             .or_else(|| events.get("input"))
             .map(|event| self.event_to_message(&event.handler));
 
+        let on_submit = events.get("onenter")
+            .or_else(|| events.get("enter"))
+            .map(|event| self.event_to_message(&event.handler));
+
         let mut builder = View::<DynamicMessage>::input(placeholder).value(value);
         if password {
             builder = builder.password();
         }
         if let Some(msg) = on_change {
             builder = builder.on_change(msg);
+        }
+        if let Some(msg) = on_submit {
+            builder = builder.on_submit(msg);
         }
         if let Some(w) = width {
             builder = builder.width(w);

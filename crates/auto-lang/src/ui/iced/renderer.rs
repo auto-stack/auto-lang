@@ -253,6 +253,9 @@ fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
         IcedFontWeight::Bold => iced::Font { weight: iced::font::Weight::Bold, ..Default::default() },
         IcedFontWeight::Medium => iced::Font { weight: iced::font::Weight::Semibold, ..Default::default() },
         IcedFontWeight::Normal => iced::Font::default(),
+        IcedFontWeight::Light => iced::Font { weight: iced::font::Weight::Light, ..Default::default() },
+        IcedFontWeight::ExtraLight => iced::Font { weight: iced::font::Weight::Thin, ..Default::default() },
+        IcedFontWeight::SemiBold => iced::Font { weight: iced::font::Weight::Semibold, ..Default::default() },
     }
 }
 
@@ -350,7 +353,8 @@ fn apply_column_style<M: Clone + Debug + 'static>(
 
     let needs_wrap = justify_center || justify_end || has_visual;
     let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
-    let needs_margin_wrap = mt > 0.0;
+    let needs_margin_wrap = mt > 0.0
+        || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
 
     let el = if needs_wrap {
         let mut cont = container(col);
@@ -389,7 +393,21 @@ fn apply_column_style<M: Clone + Debug + 'static>(
     };
 
     if needs_margin_wrap {
-        container(el).padding(iced::Padding { top: mt, right: 0.0, bottom: 0.0, left: 0.0 }).into()
+        let mut cont = container(el);
+        if mt > 0.0 {
+            cont = cont.padding(iced::Padding { top: mt, right: 0.0, bottom: 0.0, left: 0.0 });
+        }
+        // Handle mx-auto / ml-auto / mr-auto
+        if let Some(ref is) = iced_style {
+            if is.margin_left_auto && is.margin_right_auto {
+                cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
+            } else if is.margin_left_auto {
+                cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Right);
+            } else if is.margin_right_auto {
+                cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Left);
+            }
+        }
+        cont.into()
     } else {
         el
     }
@@ -456,10 +474,25 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         r.padding(pd).into()
     };
 
-    // Apply external margin_top
+    // Apply external margin_top and mx-auto/ml-auto/mr-auto
     let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
-    if mt > 0.0 {
-        container(el).padding(iced::Padding { top: mt, right: 0.0, bottom: 0.0, left: 0.0 }).into()
+    let needs_margin_wrap = mt > 0.0
+        || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
+    if needs_margin_wrap {
+        let mut cont = container(el);
+        if mt > 0.0 {
+            cont = cont.padding(iced::Padding { top: mt, right: 0.0, bottom: 0.0, left: 0.0 });
+        }
+        if let Some(ref is) = iced_style {
+            if is.margin_left_auto && is.margin_right_auto {
+                cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
+            } else if is.margin_left_auto {
+                cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Right);
+            } else if is.margin_right_auto {
+                cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Left);
+            }
+        }
+        cont.into()
     } else {
         el
     }
@@ -564,8 +597,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 if let Some(ref s) = style {
                     let iced_style = IcedStyle::from_style(s);
 
-                    if let Some(ref font_size) = iced_style.font_size {
-                        text_widget = text_widget.size(font_size_to_f32(font_size));
+                    if let Some(fs) = effective_font_size(&iced_style) {
+                        text_widget = text_widget.size(fs);
                     }
                     if let Some(color) = iced_style.text_color {
                         text_widget = text_widget.color(color);
@@ -667,6 +700,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 placeholder,
                 value,
                 on_change,
+                on_submit: _,
                 width,
                 password: _,
                 style,
@@ -750,8 +784,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let mut label_widget = text(label.clone());
                 if let Some(ref s) = style {
                     let iced_style = IcedStyle::from_style(s);
-                    if let Some(ref font_size) = iced_style.font_size {
-                        label_widget = label_widget.size(font_size_to_f32(font_size));
+                    if let Some(fs) = effective_font_size(&iced_style) {
+                        label_widget = label_widget.size(fs);
                     }
                     if let Some(color) = iced_style.text_color {
                         label_widget = label_widget.color(color);
@@ -833,8 +867,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let mut label_widget = text(label.clone());
                 if let Some(ref s) = style {
                     let iced_style = IcedStyle::from_style(s);
-                    if let Some(ref font_size) = iced_style.font_size {
-                        label_widget = label_widget.size(font_size_to_f32(font_size));
+                    if let Some(fs) = effective_font_size(&iced_style) {
+                        label_widget = label_widget.size(fs);
                     }
                     if let Some(color) = iced_style.text_color {
                         label_widget = label_widget.color(color);
@@ -1268,6 +1302,12 @@ fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) ->
     }
 }
 
+/// Get effective font size in pixels, preferring arbitrary pixel value over named size.
+fn effective_font_size(iced_style: &IcedStyle) -> Option<f32> {
+    iced_style.font_size_arbitrary
+        .or_else(|| iced_style.font_size.as_ref().map(font_size_to_f32))
+}
+
 // ============================================================================
 // Plan 227: Send-safe IcedMessage wrapper for DynamicComponent
 // ============================================================================
@@ -1487,6 +1527,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             placeholder,
             value,
             on_change,
+            on_submit,
             width,
             password,
             style,
@@ -1494,6 +1535,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             placeholder,
             value,
             on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
+            on_submit: on_submit.map(|m| IcedMessage::from_dynamic(&m)),
             width,
             password,
             style,
@@ -2437,13 +2479,30 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     }
                 }
                 "AddTodo" => {
+                    eprintln!("[DEBUG] AddTodo handler: saved_input={:?} input_state_map={:?}", saved_input, state.component.input_state_map());
+                    // Also try reading from input_values map
+                    let from_input_values = state.input_values.get("EditInputChanged").cloned();
+                    eprintln!("[DEBUG] AddTodo: input_values EditInputChanged={:?}, all_keys={:?}", from_input_values, state.input_values.keys().collect::<Vec<_>>());
                     if !saved_input.is_empty() {
                         state.todos.push(TodoItem { text: saved_input, done: false });
                         let active = state.todos.iter().filter(|t| !t.done).count() as i32;
                         let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                         let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
                         let _ = state.component.write_state("input", auto_val::Value::str(""));
+                        state.input_values.remove("EditInputChanged");
                         state.input_values.remove("InputChanged");
+                    } else if let Some(text) = from_input_values {
+                        // Fallback: use the last tracked input value
+                        eprintln!("[DEBUG] AddTodo fallback: using input_values text={:?}", text);
+                        state.todos.push(TodoItem { text, done: false });
+                        let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                        let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
+                        let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
+                        let _ = state.component.write_state("input", auto_val::Value::str(""));
+                        state.input_values.remove("EditInputChanged");
+                        state.input_values.remove("InputChanged");
+                    } else {
+                        eprintln!("[DEBUG] AddTodo: both saved_input and input_values are empty!");
                     }
                 }
                 // Notes app: handle SelectNote:N / NewNote / DeleteNote
@@ -3900,7 +3959,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // Input needs IcedMessage-specific text capture — on_input constructs a new
         // IcedMessage with the typed text included, which the generic IntoIcedElement
         // trait cannot do since it's generic over M.
-        AbstractView::Input { placeholder, value, on_change, width, password: _, style } => {
+        AbstractView::Input { placeholder, value, on_change, on_submit, width, password: _, style } => {
             let dbg_props = debug_style_props(style.as_ref());
             let mut input_widget = text_input(&placeholder, &value);
 
@@ -3923,18 +3982,25 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 if w > 0 { input_widget = input_widget.width(iced::Length::Fixed(w as f32)); }
             }
 
-            let el: iced::Element<'static, IcedMessage> = if let Some(msg) = on_change {
+            // Wire on_change → on_input (captures typed text)
+            if let Some(msg) = on_change {
                 let msg_clone = msg.clone();
-                input_widget.on_input(move |text| {
+                input_widget = input_widget.on_input(move |text| {
                     IcedMessage {
                         widget: msg_clone.widget.clone(),
                         event: msg_clone.event.clone(),
                         input_value: Some(text),
                     }
-                }).into()
-            } else {
-                input_widget.into()
-            };
+                });
+            }
+
+            // Wire on_submit → on_submit (fires on Enter key press)
+            // Note: iced's on_submit takes a plain Message, not a closure
+            if let Some(msg) = on_submit {
+                input_widget = input_widget.on_submit(msg);
+            }
+
+            let el: iced::Element<'static, IcedMessage> = input_widget.into();
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props) } else { el }
         }
 
