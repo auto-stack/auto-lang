@@ -51,7 +51,7 @@
 //!   </div>
 //! </template>
 //!
-//! <style scoped>
+//! <style>
 //! /* Component styles */
 //! </style>
 //! ```
@@ -1208,7 +1208,7 @@ impl VueGenerator {
 {}
 </template>
 
-<style scoped>
+<style>
 {}
 </style>
 "#,
@@ -1860,33 +1860,25 @@ impl VueGenerator {
     fn generate_template(&mut self, root: &AuraNode) -> GenResult<String> {
         let mut template = String::new();
 
-        // Wrapper div with Tailwind classes
-        // Sub-widgets (non-App) should NOT have min-h-screen to avoid overflow
-        let is_app_widget = self.current_widget.as_deref() == Some("App");
-        let base_classes = if is_app_widget {
-            "flex flex-col w-full h-full min-h-screen"
-        } else {
-            "flex flex-col w-full h-full"
-        };
-        let classes = if self.wrapper_classes.is_empty() {
-            base_classes.to_string()
-        } else {
-            format!("{} {}", base_classes, self.wrapper_classes)
-        };
-
-        // Dark mode: add :class binding for isDark state
+        // Render the view root directly without an extra wrapper div.
+        // The view's root element (col/row/etc.) already gets appropriate classes
+        // from extract_classes(). Adding a hardcoded wrapper breaks apps that
+        // need clean HTML (e.g., TodoMVC where body CSS controls layout).
+        //
+        // For dark mode, inject :class binding into the root element after generation.
+        let root_html = self.node_to_html(root, 2)?;
         if self.has_dark_mode {
-            template.push_str(&format!("  <div :class=\"{{ dark: isDark }}\" class=\"{}\">\n", classes));
+            // Add :class binding for isDark into the first opening tag
+            let html = root_html.replacen("<div ", "<div :class=\"{ dark: isDark }\" ", 1);
+            template.push_str(&html);
         } else {
-            template.push_str(&format!("  <div class=\"{}\">\n", classes));
+            template.push_str(&root_html);
         }
-        template.push_str(&self.node_to_html(root, 2)?);
-        template.push_str("  </div>\n");
 
         Ok(template)
     }
 
-    /// Generate <style scoped> content
+    /// Generate <style> content
     fn generate_style(&self) -> String {
         let mut style = String::new();
 
@@ -1950,15 +1942,28 @@ impl VueGenerator {
                     return self.generate_category_section_html(props, children, indent);
                 }
 
-                let html_tag = self.map_tag(tag, children.is_empty());
-
                 // Check if this is a known sub-widget (custom component, not shadcn)
                 let is_known_sub_widget = self.known_sub_widgets.contains(tag);
 
                 // Check if this is a shadcn-vue component
                 // Note: We need to check both the original tag and lowercase version because registry uses lowercase keys
                 let tag_lower = tag.to_lowercase();
-                let is_shadcn_component = !is_known_sub_widget && self.is_shadcn() &&
+                // If user provides a class prop on form elements, force native HTML
+                // (e.g., TodoMVC needs <input type="checkbox" class="toggle"> not <Checkbox>)
+                let has_user_class = props.contains_key("class") || props.contains_key("style");
+                let force_native_elements = ["checkbox", "input", "button"];
+                let force_native = has_user_class && force_native_elements.contains(&tag_lower.as_str());
+
+                // Determine HTML tag: when force_native, use plain HTML; otherwise map_tag handles shadcn
+                let html_tag = if force_native {
+                    match tag_lower.as_str() {
+                        "checkbox" => "input".to_string(),
+                        _ => tag_lower.clone(),
+                    }
+                } else {
+                    self.map_tag(tag, children.is_empty())
+                };
+                let is_shadcn_component = !is_known_sub_widget && !force_native && self.is_shadcn() &&
                     (self.widget_registry.is_backend_supported("vue", tag) ||
                      self.widget_registry.is_backend_supported("vue", &tag_lower));
 
@@ -2042,6 +2047,17 @@ impl VueGenerator {
                         attrs.push(format!(":class=\"{}\"", dynamic));
                     }
 
+                    // Auto-add type attribute for checkbox (native HTML needs type="checkbox")
+                    let tag_lower_for_type = tag.to_lowercase();
+                    if tag_lower_for_type == "checkbox" {
+                        attrs.push("type=\"checkbox\"".to_string());
+                    }
+
+                    // Track value state ref for v-model optimization
+                    // When input has both :value="stateRef" and @input handler,
+                    // use v-model instead (native HTML two-way binding)
+                    let mut value_state_ref: Option<String> = None;
+
                     // Props as attributes
                     for (key, value) in props {
                         if key == "class" || key == "style" {
@@ -2057,6 +2073,18 @@ impl VueGenerator {
                         // Special handling for codeblock's code prop - render as content
                         if key == "code" && (tag == "codeblock" || tag == "code-block") {
                             text_content = Some(self.prop_to_text_content(value)?);
+                            continue;
+                        }
+
+                        // Checkbox: native <input type="checkbox"> uses :checked, not :model-value
+                        if tag == "checkbox" && key == "checked" {
+                            if let Some(model) = self.extract_state_ref(value) {
+                                attrs.push(format!(":checked=\"{}\"", model));
+                            } else if let AuraPropValue::Expr(expr) = value {
+                                if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
+                                    attrs.push(format!(":checked=\"{}\"", js_expr));
+                                }
+                            }
                             continue;
                         }
 
@@ -2079,6 +2107,10 @@ impl VueGenerator {
 
                         // Use v-bind (:attr) for dynamic values, static quotes for literals
                         if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                            // Track value state ref for v-model optimization on input elements
+                            if key == "value" && (tag == "input" || tag == "textarea") {
+                                value_state_ref = Some(name.clone());
+                            }
                             attrs.push(format!(":{}=\"{}\"", key, name));
                         } else if let AuraPropValue::Expr(AuraExpr::FieldAccess { .. }) = value {
                             let value_str = self.prop_to_attr_value(value)?;
@@ -2091,13 +2123,32 @@ impl VueGenerator {
 
                     // Event handlers
                     for (event, aura_event) in events {
+                        // v-model optimization: when input/textarea has both :value="stateRef"
+                        // and @input handler, replace with v-model (native HTML two-way binding)
+                        if (event == "oninput" || event == "onInput") && value_state_ref.is_some() {
+                            // Replace the :value binding with v-model
+                            let model_ref = value_state_ref.as_ref().unwrap();
+                            // Remove the existing :value attribute and add v-model instead
+                            if let Some(pos) = attrs.iter().position(|a| a.starts_with(":value=\"")) {
+                                attrs[pos] = format!("v-model=\"{}\"", model_ref);
+                            } else {
+                                attrs.push(format!("v-model=\"{}\"", model_ref));
+                            }
+                            // Track the handler but don't emit @input event (v-model handles it)
+                            let handler_name = self.handler_to_function_call(&aura_event.handler);
+                            self.used_handlers.insert(handler_name);
+                            continue;
+                        }
                         let vue_event = self.auto_event_to_vue(event);
                         let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                         // Track used handler (without params for matching)
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
-                        // If inside a for-loop, pass the loop variable's .id as argument (e.g., SelectNote(note.id))
+                        // If inside a for-loop and the handler doesn't already have params,
+                        // pass the loop variable's .id as argument (e.g., SelectNote(note.id))
                         if let Some(ref loop_var) = self.current_loop_var {
-                            handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                            if aura_event.params.is_empty() {
+                                handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                            }
                             self.loop_param_handlers.insert(handler_name.clone());
                         }
                         self.used_handlers.insert(handler_name);
@@ -2221,13 +2272,14 @@ impl VueGenerator {
                     None
                 };
 
-                self.current_loop_var = prev_loop_var.clone();
-
                 if let Some(r) = result {
+                    self.current_loop_var = prev_loop_var;
                     return r;
                 }
 
                 // Fallback: wrap body in a div with v-for
+                // Keep current_loop_var set while processing children so
+                // event handlers inside the loop get proper loop-param tracking
                 let mut body_html = String::new();
                 for child in body {
                     body_html.push_str(&self.node_to_html(child, indent + 1)?);
@@ -3112,10 +3164,22 @@ impl VueGenerator {
         // Check if user has provided a class or style attribute
         let has_user_class = props.contains_key("class") || props.contains_key("style");
 
-        // For semantic HTML elements, skip defaults if user provides their own class
-        // These elements are typically fully custom-styled
-        let semantic_elements = ["header", "nav", "main", "aside", "footer", "article"];
-        let skip_semantic_defaults = has_user_class && semantic_elements.contains(&normalized_tag);
+        // For elements that should skip default classes when user provides their own class.
+        // This covers semantic HTML elements, layout elements, typography, and form elements
+        // that may need fully custom styling (e.g., TodoMVC uses todomvc-app-css).
+        let user_class_skip_elements = [
+            // Semantic HTML5
+            "header", "nav", "main", "aside", "footer", "article", "section",
+            // Layout
+            "col", "column", "row",
+            // Typography
+            "h1", "h2", "h3", "h4", "h5", "h6", "text", "p",
+            // Form
+            "button", "input", "checkbox", "link", "label",
+            // Data
+            "tree", "tree_item", "tree-item",
+        ];
+        let skip_semantic_defaults = has_user_class && user_class_skip_elements.contains(&normalized_tag);
 
         // Extract gap prop for layout elements
         let gap_class = if let Some(value) = props.get("gap") {
@@ -3147,7 +3211,9 @@ impl VueGenerator {
                 "article" => classes.push("prose max-w-none".to_string()),
 
                 // Typography
-                "h1" => classes.push("text-4xl font-bold tracking-tight".to_string()),
+                "h1" => {
+                    // Don't add default typography classes - let CSS handle sizing
+                }
                 "h2" => classes.push("text-2xl font-semibold tracking-tight mt-8".to_string()),
                 "h3" => classes.push("text-xl font-semibold".to_string()),
                 "text" => classes.push("text-muted-foreground leading-7".to_string()),
@@ -3163,7 +3229,10 @@ impl VueGenerator {
                 "codeblock" | "code-block" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-x-auto".to_string()),
                 "codepane" | "code-pane" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-hidden".to_string()),
                 "previewcard" | "preview-card" => classes.push("rounded-lg border overflow-hidden".to_string()),
-                "label" => classes.push("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70".to_string()),
+                "label" => {
+                    // Don't add default classes for native <label> elements
+                    // (shadcn Label component is a separate widget, not plain label)
+                }
 
                 // Data
                 "table" => classes.push("w-full border-collapse".to_string()),
@@ -3217,22 +3286,33 @@ impl VueGenerator {
             }
         }
 
-        // Support both 'style' (new) and 'class' (legacy) props
-        // Priority: style > class
-        if let Some(value) = props.get("style").or_else(|| props.get("class")) {
+        // Process 'style' (dynamic class binding) and 'class' (static classes) independently.
+        // Both can coexist: class provides static Tailwind utilities, style provides dynamic :class.
+        // Process 'style' prop first (generates dynamic :class binding)
+        if let Some(value) = props.get("style") {
             match value {
-                AuraPropValue::Expr(AuraExpr::Literal(s)) => {
-                    classes.push(s.clone());
-                }
                 AuraPropValue::StyleBinding(bindings) => {
                     // Generate dynamic class binding: { completed: todo.done, editing: todo.editing }
+                    // Use expr_to_vue_bound_value (no .value suffix) because Vue templates auto-unwrap refs
                     let binding_strs: Vec<String> = bindings.iter()
                         .map(|b| {
-                            let cond = self.expr_to_js(&b.condition).unwrap_or_else(|_| "false".to_string());
+                            let cond = self.expr_to_vue_bound_value(&b.condition).unwrap_or_else(|_| "false".to_string());
                             format!("{}: {}", b.style_name, cond)
                         })
                         .collect();
                     dynamic_binding = Some(format!("{{ {} }}", binding_strs.join(", ")));
+                }
+                AuraPropValue::Expr(AuraExpr::Literal(s)) => {
+                    classes.push(s.clone());
+                }
+                _ => {}
+            }
+        }
+        // Process 'class' prop (static Tailwind classes)
+        if let Some(value) = props.get("class") {
+            match value {
+                AuraPropValue::Expr(AuraExpr::Literal(s)) => {
+                    classes.push(s.clone());
                 }
                 _ => {}
             }
@@ -4040,6 +4120,33 @@ impl VueGenerator {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{{{}}}", pairs_vue.join(", ")))
             }
+            AuraExpr::Binary { left, op, right } => {
+                let left_str = self.expr_to_vue_bound_value(left)?;
+                let right_str = self.expr_to_vue_bound_value(right)?;
+                let op_str = match op {
+                    AuraBinOp::Eq => "==",
+                    AuraBinOp::Ne => "!=",
+                    AuraBinOp::Lt => "<",
+                    AuraBinOp::Gt => ">",
+                    AuraBinOp::Le => "<=",
+                    AuraBinOp::Ge => ">=",
+                    AuraBinOp::And => "&&",
+                    AuraBinOp::Or => "||",
+                    AuraBinOp::Add => "+",
+                    AuraBinOp::Sub => "-",
+                    AuraBinOp::Mul => "*",
+                    AuraBinOp::Div => "/",
+                    AuraBinOp::Mod => "%",
+                };
+                Ok(format!("{} {} {}", left_str, op_str, right_str))
+            }
+            AuraExpr::Unary { op, operand } => {
+                let expr_str = self.expr_to_vue_bound_value(operand)?;
+                match op {
+                    AuraUnaryOp::Not => Ok(format!("!{}", expr_str)),
+                    AuraUnaryOp::Neg => Ok(format!("-{}", expr_str)),
+                }
+            }
             _ => Ok("null".to_string()),
         }
     }
@@ -4262,10 +4369,14 @@ impl VueGenerator {
             }
 
             // === Layout Elements (Row, Col, Scroll, etc.) ===
-            // These need default flex classes + user style
+            // These need default flex classes + user style, but skip defaults when user provides class/style
             "row" => {
-                // Default: flex flex-row + user style
-                let mut classes = vec!["flex".to_string(), "flex-row".to_string()];
+                let has_user_class = props.contains_key("class") || props.contains_key("style");
+                let mut classes = Vec::new();
+                if !has_user_class {
+                    classes.push("flex".to_string());
+                    classes.push("flex-row".to_string());
+                }
                 if let Some(value) = self.get_style_class(props) {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
@@ -4276,8 +4387,12 @@ impl VueGenerator {
             }
 
             "col" | "column" => {
-                // Default: flex flex-col + user style
-                let mut classes = vec!["flex".to_string(), "flex-col".to_string()];
+                let has_user_class = props.contains_key("class") || props.contains_key("style");
+                let mut classes = Vec::new();
+                if !has_user_class {
+                    classes.push("flex".to_string());
+                    classes.push("flex-col".to_string());
+                }
                 if let Some(value) = self.get_style_class(props) {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
@@ -4557,17 +4672,17 @@ impl VueGenerator {
 
             // === Checkbox ===
             "checkbox" => {
-                // v-model:checked for checked state (dynamic) or :default-checked (static)
+                // reka-ui CheckboxRoot uses modelValue (not checked), so use v-model / :model-value
                 if let Some(value) = props.get("checked") {
                     if let Some(model) = self.extract_state_ref(value) {
-                        attrs.push(format!("v-model:checked=\"{}\"", model));
+                        attrs.push(format!("v-model=\"{}\"", model));
                     } else if self.extract_bool_value(value) {
-                        // Static true value - use default-checked for uncontrolled mode
-                        attrs.push(":default-checked=\"true\"".to_string());
+                        // Static true value - use :model-value for controlled mode
+                        attrs.push(":model-value=\"true\"".to_string());
                     } else if let AuraPropValue::Expr(expr) = value {
-                        // Dynamic expression (e.g., todo.done) — use one-way :checked binding
+                        // Dynamic expression (e.g., todo.done) — one-way :model-value binding
                         if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
-                            attrs.push(format!(":checked=\"{}\"", js_expr));
+                            attrs.push(format!(":model-value=\"{}\"", js_expr));
                         }
                     }
                 }
@@ -7195,6 +7310,10 @@ impl VueGenerator {
             "onclick" | "onClick" | "on_click" => "@click".to_string(),
             "oninput" | "onInput" => "@input".to_string(),
             "onchange" | "onChange" => "@change".to_string(),
+            "onenter" | "onEnter" => "@keyup.enter".to_string(),
+            "onblur" | "onBlur" => "@blur".to_string(),
+            "ondblclick" | "onDblClick" | "on_double_click" => "@dblclick".to_string(),
+            "onsubmit" | "onSubmit" => "@submit.prevent".to_string(),
             _ => format!("@{}", event.trim_start_matches("on")),
         }
     }
@@ -7674,7 +7793,7 @@ mod tests {
         assert!(sfc.contains("import { ref } from 'vue'"));
         assert!(sfc.contains("const count = ref<number>(0)"));
         assert!(sfc.contains("<template>"));
-        assert!(sfc.contains("<style scoped>"));
+        assert!(sfc.contains("<style>"));
     }
 
     #[test]
@@ -7917,11 +8036,11 @@ mod tests {
         let mut props = HashMap::new();
         let events = HashMap::new();
 
-        // Test checkbox with v-model:checked
+        // Test checkbox with v-model (reka-ui uses modelValue, not checked)
         props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("done".to_string())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("checkbox", &props, &events);
 
-        assert!(attrs.iter().any(|a| a.contains("v-model:checked=\"done\"")));
+        assert!(attrs.iter().any(|a| a.contains("v-model=\"done\"")));
     }
 
     #[test]

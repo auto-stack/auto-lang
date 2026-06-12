@@ -524,6 +524,25 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             write!(out, "]").ok();
         }
 
+        // Closure: x => expr or (a, b) => expr
+        // Must use transpile_expr (not delegate) so StateRef gets .value inside closures
+        Expr::Closure(closure) => {
+            if closure.params.len() == 1 {
+                write!(out, "{}", closure.params[0].name).ok();
+            } else {
+                write!(out, "(").ok();
+                for (i, param) in closure.params.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ").ok();
+                    }
+                    write!(out, "{}", param.name).ok();
+                }
+                write!(out, ")").ok();
+            }
+            write!(out, " => ").ok();
+            transpile_expr(&closure.body, ctx, out);
+        }
+
         // === Delegate to a2ts for everything else ===
         _ => delegate_expr(expr, ctx, out),
     }

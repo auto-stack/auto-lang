@@ -1,49 +1,158 @@
 widget App {
-    msg Msg { Init, AddTodo, ToggleTodo(int), DeleteTodo(int), InputChanged }
+    msg Msg {
+        Init,
+        AddTodo,
+        ToggleTodo(int),
+        DeleteTodo(int),
+        ToggleAll,
+        EditTodo(int),
+        CommitEdit,
+        EditInputChanged,
+        FilterAll,
+        FilterActive,
+        FilterCompleted,
+        ClearCompleted
+    }
 
     model {
         var input str = ""
         var todos = []
-        var next_id int = 3
-        var active_count int = 1
+        var next_id int = 1
+        var filter str = "all"
+        var editing_id int = -1
+        var edit_text str = ""
+        var active_count int = 0
     }
 
     view {
-        center {
+        col {
+            class: "bg-[#f5f5f5] min-h-screen text-[14px] text-[#111] leading-[1.4] font-['Helvetica_Neue',Helvetica,Arial,sans-serif] font-light antialiased"
+
+            // Todoapp container
             col {
-                row {
-                    input { placeholder: "Add todo", value: .input, oninput: .InputChanged }
-                    button "Add" { onclick: .AddTodo, style: "px-4 py-2 bg-blue-500 text-white rounded" }
-                    style: "w-full max-w-xs gap-2 items-center"
-                }
-                for todo in .todos {
-                    row {
-                        checkbox { checked: todo.done, onclick: .ToggleTodo(todo.id) }
-                        if todo.done {
-                            text todo.text {
-                                class: "line-through"
-                            }
-                        } else {
-                            text todo.text
-                        }
-                        button "x" { onclick: .DeleteTodo(todo.id) }
-                        class: "w-full items-center gap-3 py-3 border-b"
+                class: "bg-white mt-[130px] mb-10 relative shadow-[0_2px_4px_0_rgba(0,0,0,0.2),0_25px_50px_0_rgba(0,0,0,0.1)] max-w-[550px] mx-auto"
+
+                // Header
+                col {
+                    class: "relative"
+                    h1 "todos" {
+                        class: "absolute -top-[140px] w-full text-[80px] font-extralight text-center text-[#b83f45]"
+                    }
+                    input {
+                        class: "w-full text-2xl font-inherit leading-[1.4] text-inherit px-4 pl-[60px] h-[65px] border-none outline-none placeholder:italic placeholder:font-normal placeholder:text-black/40",
+                        placeholder: "What needs to be done?",
+                        value: .input,
+                        onenter: .AddTodo,
+                        oninput: .EditInputChanged
                     }
                 }
-                text `Active: ${.active_count}`
-                class: "w-full max-w-lg p-8 bg-white"
+
+                // Main section — only show when there are todos
+                if .todos.len() > 0 {
+                    col {
+                        class: "relative z-10 border-t border-[#e6e6e6]"
+
+                        // Toggle all arrow
+                        col {
+                            class: "relative h-0"
+                            checkbox {
+                                id: "toggle-all",
+                                class: "w-px h-px opacity-0 absolute",
+                                checked: .active_count == 0
+                                onclick: .ToggleAll
+                            }
+                            label "❯" {
+                                class: "absolute -top-[65px] left-[8px] text-[22px] text-[#949494] cursor-pointer px-[9px] py-[10px] rotate-90"
+                            }
+                        }
+
+                        // Todo list
+                        tree {
+                            class: "m-0 p-0 list-none"
+                            for todo in .todos {
+                                if .filter == "all" || (.filter == "active" && todo.done == false) || (.filter == "completed" && todo.done == true) {
+                                    tree_item {
+                                        style: { completed: todo.done, editing: .editing_id == todo.id }
+                                        class: "relative text-2xl border-b border-[#ededed] group"
+                                        if .editing_id == todo.id {
+                                            input {
+                                                class: "w-[calc(100%-43px)] py-3 px-4 ml-[43px] text-2xl font-inherit leading-[1.4] text-inherit border border-[#999] shadow-[inset_0_-1px_5px_0_rgba(0,0,0,0.2)] outline-none",
+                                                value: .edit_text,
+                                                oninput: .EditInputChanged,
+                                                onenter: .CommitEdit,
+                                                onblur: .CommitEdit
+                                            }
+                                        }
+                                        if .editing_id != todo.id {
+                                            row {
+                                                class: "flex items-center relative"
+                                                checkbox {
+                                                    class: "w-[30px] h-[30px] cursor-pointer accent-[#59A193] shrink-0 ml-2",
+                                                    checked: todo.done
+                                                    onclick: .ToggleTodo(todo.id)
+                                                }
+                                                label todo.text {
+                                                    class: "break-words py-[15px] px-[15px] block leading-[1.2] font-normal cursor-pointer flex-1",
+                                                    ondblclick: .EditTodo(todo.id)
+                                                }
+                                                button "×" {
+                                                    class: "hidden group-hover:block absolute top-0 right-[10px] bottom-0 w-[40px] h-[40px] my-auto text-[30px] text-[#949494] hover:text-[#C18585] transition-colors duration-200",
+                                                    onclick: .DeleteTodo(todo.id)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Footer
+                if .todos.len() > 0 {
+                    row {
+                        class: "flex items-center justify-between px-4 py-[10px] min-h-[40px] text-[15px] border-t border-[#e6e6e6] relative"
+                        text f"${.active_count} items left" { class: "text-left whitespace-nowrap" }
+                        row {
+                            class: "flex flex-1 justify-center gap-1 m-0 p-0"
+                            if .filter == "all" {
+                                button "All" { onclick: .FilterAll, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-[#CE4646] rounded-[3px] cursor-pointer bg-transparent shadow-[0_0_2px_1px_#CF7D7D]" }
+                            }
+                            if .filter != "all" {
+                                button "All" { onclick: .FilterAll, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-transparent rounded-[3px] cursor-pointer bg-transparent hover:border-[#DB7676]" }
+                            }
+                            if .filter == "active" {
+                                button "Active" { onclick: .FilterActive, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-[#CE4646] rounded-[3px] cursor-pointer bg-transparent shadow-[0_0_2px_1px_#CF7D7D]" }
+                            }
+                            if .filter != "active" {
+                                button "Active" { onclick: .FilterActive, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-transparent rounded-[3px] cursor-pointer bg-transparent hover:border-[#DB7676]" }
+                            }
+                            if .filter == "completed" {
+                                button "Completed" { onclick: .FilterCompleted, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-[#CE4646] rounded-[3px] cursor-pointer bg-transparent shadow-[0_0_2px_1px_#CF7D7D]" }
+                            }
+                            if .filter != "completed" {
+                                button "Completed" { onclick: .FilterCompleted, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-transparent rounded-[3px] cursor-pointer bg-transparent hover:border-[#DB7676]" }
+                            }
+                        }
+                        button "Clear completed" { onclick: .ClearCompleted, class: "whitespace-nowrap cursor-pointer hover:underline bg-transparent border-none text-inherit" }
+                    }
+                }
+            }
+
+            // Info (outside todoapp)
+            col {
+                class: "mt-16 mx-auto text-[11px] text-center text-[#4d4d4d]"
+                text "Double-click to edit a todo" { class: "block leading-none" }
+                text "Written with Auto Language" { class: "block leading-none" }
+                text "Part of TodoMVC" { class: "block leading-none" }
             }
         }
     }
 
     on {
         .Init -> {
-            todos.push({ id: 1, text: "Hello", done: false })
-            todos.push({ id: 2, text: "World", done: true })
-            .active_count = 1
+            .active_count = 0
         }
-
-        .InputChanged -> { .input = .input }
 
         .AddTodo -> {
             if .input != "" {
@@ -58,7 +167,11 @@ widget App {
             let idx = todos.findIndex(t => t.id == id)
             if idx >= 0 {
                 let todo = todos[idx]
-                if todo.done { .active_count = .active_count + 1 } else { .active_count = .active_count - 1 }
+                if todo.done {
+                    .active_count = .active_count + 1
+                } else {
+                    .active_count = .active_count - 1
+                }
                 todo.done = !todo.done
             }
         }
@@ -69,6 +182,71 @@ widget App {
                 let todo = todos[idx]
                 if todo.done == false { .active_count = .active_count - 1 }
                 todos.remove(idx)
+            }
+        }
+
+        .ToggleAll -> {
+            if .active_count > 0 {
+                for todo in .todos {
+                    if todo.done == false {
+                        todo.done = true
+                    }
+                }
+                .active_count = 0
+            } else {
+                for todo in .todos {
+                    if todo.done {
+                        todo.done = false
+                    }
+                }
+                .active_count = .todos.len()
+            }
+        }
+
+        .EditTodo -> {
+            .editing_id = id
+            let idx = todos.findIndex(t => t.id == id)
+            if idx >= 0 {
+                .edit_text = todos[idx].text
+            }
+        }
+
+        .CommitEdit -> {
+            if .editing_id >= 0 {
+                if .edit_text == "" {
+                    let idx = todos.findIndex(t => t.id == .editing_id)
+                    if idx >= 0 {
+                        let todo = todos[idx]
+                        if todo.done == false { .active_count = .active_count - 1 }
+                        todos.remove(idx)
+                    }
+                } else {
+                    let idx = todos.findIndex(t => t.id == .editing_id)
+                    if idx >= 0 {
+                        todos[idx].text = .edit_text
+                    }
+                }
+                .editing_id = -1
+                .edit_text = ""
+            }
+        }
+
+        .EditInputChanged -> { .input = .input }
+
+        .FilterAll -> { .filter = "all" }
+        .FilterActive -> { .filter = "active" }
+        .FilterCompleted -> { .filter = "completed" }
+
+        .ClearCompleted -> {
+            var i = .todos.len() - 1
+            for i >= 0 {
+                if i < .todos.len() {
+                    let todo = todos[i]
+                    if todo.done {
+                        todos.remove(i)
+                    }
+                }
+                i = i - 1
             }
         }
     }
