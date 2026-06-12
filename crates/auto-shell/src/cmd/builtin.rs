@@ -251,44 +251,79 @@ fn help_command() -> String {
     r#"AutoShell v0.1.0
 
 File System Commands:
-  ls [path]       List directory contents
-  cd <path>       Change directory
-  mkdir <path>     Create directory (use -p for parents)
-  rm <path>       Remove file/directory (use -r for recursive)
-  mv <src> <dst>  Move/rename file
-  cp <src> <dst>  Copy file (use -r for recursive)
+  ls [path]              List directory contents
+  cd <path>              Change directory (cd - for previous)
+  mkdir [-p] <path>      Create directory
+  rm [-r] <path>         Remove file/directory
+  mv <src> <dst>         Move/rename file
+  cp [-r] <src> <dst>    Copy file
+  pushd <dir>            Push directory onto stack and cd
+  popd                   Pop directory from stack
+  dirs                   Show directory stack
 
 Data Manipulation:
-  sort [-r] [-u]  Sort lines (-r: reverse, -u: unique)
-  uniq [-c]       Remove duplicate lines (-c: count occurrences)
-  head [-n N]     Show first N lines (default: 10)
-  tail [-n N]     Show last N lines (default: 10)
-  wc              Count lines, words, and bytes
-  grep <pattern>  Search for pattern
+  sort [-r] [-u]         Sort lines
+  uniq [-c]              Remove duplicate lines
+  head [-n N]            Show first N lines
+  tail [-n N]            Show last N lines
+  wc                     Count lines, words, bytes
+  grep <pattern>         Search for pattern
 
 Variable Commands:
-  set <name=value>     Set a local shell variable
-  export <name=value>  Set an environment variable
-  unset <name>         Remove a variable
+  set <name=value>       Set a local shell variable
+  export <name=value>    Set an environment variable
+  unset <name>           Remove a variable
+  $name / ${name}        Variable expansion
 
-  Variables can be used with $name or ${name} syntax
-  Example: set name=world; echo hello $name
+Shell Features:
+  alias name=command     Define command alias
+  unalias <name>         Remove alias
+  abbr -a <n> <exp>      Define abbreviation (Fish-style)
+  source <file> / . <f>  Execute script file
+  def name { body }      Define shell function
+  hook <event> <func>    Register event hook
 
-Basic Commands:
-  pwd             Print working directory
-  echo <args>     Print arguments
-  clear           Clear screen
-  help            Show this help message
-  exit            Exit the shell
+Configuration:
+  config list            Show all settings
+  config set <key> <val> Set configuration value
+  config get <key>       Get configuration value
 
-Pipelines:
-  Commands can be chained with |
-  Example: ls | grep test | sort
+Job Control:
+  cmd &                  Run in background
+  jobs                   List background jobs
+  fg [%n]                Bring job to foreground
+  bg [%n]                Resume job in background
 
-AutoLang expressions:
-  1 + 2           Evaluate arithmetic
-  let x = 1       Define variables
-  fn f() {}       Define functions
+Special Variables:
+  $?     Exit code of last command
+  $_     Last command line
+  $@     All arguments of last command
+  $#     Number of arguments
+  $PWD   Current directory
+  $OLDPWD  Previous directory
+
+History Expansion:
+  !!      Last command
+  !n      Command by number
+  !string Last command starting with string
+  Ctrl+R  Reverse history search
+
+Pipelines & Chains:
+  cmd1 | cmd2            Pipe output
+  cmd1 && cmd2           Run cmd2 if cmd1 succeeds
+  cmd1 || cmd2           Run cmd2 if cmd1 fails
+  cmd > file             Redirect output to file
+  cmd >> file            Append output to file
+  cmd < file             Redirect input from file
+  cmd 2> file            Redirect stderr
+  cmd <<EOF ... EOF      Heredoc
+
+AutoLang Integration:
+  1 + 2                  Evaluate arithmetic
+  let x = 1              Define immutable variable
+  var x = 1              Define mutable variable
+  fn f() int { ... }     Define Auto function
+  for i in 0..10 { }     Range loop
 "#
     .to_string()
 }

@@ -40,6 +40,7 @@ pub struct Shell {
     last_command_line: Option<String>,   // $_ / !! — last executed command line
     last_command_args: Vec<String>,      // $@ — args of last command
     last_command_last_arg: Option<String>, // !$ — last arg of last command
+    temp_files_for_cleanup: Vec<std::path::PathBuf>, // process substitution temp files
 }
 
 impl Shell {
@@ -150,6 +151,7 @@ impl Shell {
             last_command_line: None,
             last_command_args: Vec::new(),
             last_command_last_arg: None,
+            temp_files_for_cleanup: Vec::new(),
         }
     }
 
@@ -159,6 +161,12 @@ impl Shell {
     /// (0 for success, non-zero for failure).
     pub fn execute(&mut self, input: &str) -> Result<Option<String>> {
         self.last_exit_code = 0; // reset; execute_inner may override
+
+        // Cleanup temp files from previous process substitution
+        for path in self.temp_files_for_cleanup.drain(..) {
+            let _ = std::fs::remove_file(path);
+        }
+
         let _guard = crate::signal::CtrlCGuard::new();
 
         // Track special variables before execution
@@ -195,8 +203,11 @@ impl Shell {
         // Reap any finished background jobs and notify
         self.reap_jobs();
 
+        // Plan 304: Process substitution — expand <(cmd) into temp file paths
+        let processed = self.expand_process_substitution(input.trim());
+        let trimmed = processed.trim();
+
         // Check for background execution suffix: `cmd &`
-        let trimmed = input.trim();
         if trimmed.ends_with('&') {
             // Strip the trailing `&` and any whitespace before it
             let cmd_part = trimmed.trim_end_matches('&').trim();
@@ -224,6 +235,7 @@ impl Shell {
                 "hook" => return self.cmd_hook(&parts),
                 "abbr" => return self.cmd_abbr(&parts),
                 "config" => return self.cmd_config(&parts),
+                "bind" => return self.cmd_bind(&parts),
                 _ => {}
             }
         }
@@ -982,6 +994,82 @@ impl Shell {
     /// Expand aliases in the input. Only the first word of each pipe-segment
     /// is checked against the alias table. Supports multi-segment chains
     /// (e.g. `ll && ga` where both `ll` and `ga` are aliases).
+    /// Expand process substitution `<(...)` into temp file paths.
+    ///
+    /// `diff <(sort file1) <(sort file2)` → `diff /tmp/ash_ps_0 /tmp/ash_ps_1`
+    ///
+    /// Each `<(...)` spawns the command, captures its stdout to a temp file,
+    /// and replaces the expression with the file path.
+    fn expand_process_substitution(&mut self, input: &str) -> String {
+        let mut result = String::new();
+        let mut chars = input.char_indices().peekable();
+        let mut temp_files: Vec<std::path::PathBuf> = Vec::new();
+
+        while let Some((i, c)) = chars.next() {
+            // Detect <( pattern
+            if c == '<' && chars.peek().map(|(_, c)| *c) == Some('(') {
+                // Skip the '('
+                chars.next();
+                // Find matching closing )
+                let mut depth = 1;
+                let start = i + 2; // after <(
+                let mut end = start;
+                while let Some((j, ch)) = chars.next() {
+                    if ch == '(' {
+                        depth += 1;
+                    } else if ch == ')' {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = j;
+                            break;
+                        }
+                    }
+                }
+                if depth != 0 {
+                    // Unmatched — leave as-is
+                    result.push_str(&input[i..]);
+                    break;
+                }
+                let cmd = &input[start..end];
+                // Execute the command and capture output to temp file
+                if let Ok(tmp_path) = self.capture_to_temp(cmd) {
+                    result.push_str(&tmp_path.to_string_lossy());
+                    temp_files.push(tmp_path);
+                } else {
+                    // On failure, leave the <(...) as-is
+                    result.push_str("<(");
+                    result.push_str(cmd);
+                    result.push(')');
+                }
+            } else {
+                result.push(c);
+            }
+        }
+
+        // Store temp files for cleanup (they'll be cleaned on shell drop or next command)
+        self.temp_files_for_cleanup = temp_files;
+
+        result
+    }
+
+    /// Execute a command and capture its stdout to a temporary file.
+    fn capture_to_temp(&mut self, cmd: &str) -> Result<std::path::PathBuf> {
+        let tmp_dir = std::env::temp_dir();
+        let tmp_name = format!("ash_ps_{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos());
+        let tmp_path = tmp_dir.join(tmp_name);
+
+        // Execute the command and capture output
+        let output = self.execute(cmd)?;
+        let content = output.unwrap_or_default();
+        std::fs::write(&tmp_path, &content)
+            .map_err(|e| miette::miette!("process substitution: {}", e))?;
+
+        Ok(tmp_path)
+    }
+
     ///
     /// Prevents infinite recursion with a max expansion depth of 10.
     fn expand_aliases(&self, input: &str) -> String {
@@ -1338,6 +1426,64 @@ impl Shell {
             }
             _ => Err(miette::miette!("config: unknown subcommand '{}'. Use list, get, or set", parts[1])),
         }
+    }
+
+    /// Manage key bindings: `bind <key> <action>` or `bind list`
+    /// Bindings are saved to ~/.config/ash/bindings.toml and loaded on next start.
+    fn cmd_bind(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        if parts.len() < 2 {
+            return Ok(Some(
+                "bind — manage key bindings\n\nUSAGE:\n  bind list                    List current bindings\n  bind <key> <action>          Bind a key to an action\n\nKEYS (examples):\n  ctrl+r, ctrl+s, ctrl+e, ctrl+f\n  alt+left, alt+right\n  f1, f2, ... f12\n  enter, tab, escape, backspace\n\nACTIONS:\n  history-search    Search history\n  complete          Accept autosuggestion\n  edit-line         Open in $EDITOR\n  repaint           Repaint prompt\n\nBindings take effect on next shell start.\n".to_string()
+            ));
+        }
+
+        match parts[1] {
+            "list" | "ls" => {
+                let bindings_path = dirs::config_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("ash")
+                    .join("bindings.toml");
+
+                if bindings_path.exists() {
+                    let content = std::fs::read_to_string(&bindings_path)
+                        .map_err(|e| miette::miette!("bind: {}", e))?;
+                    Ok(Some(format!("Custom bindings ({}):\n{}\n", bindings_path.display(), content)))
+                } else {
+                    Ok(Some("No custom bindings configured.\nDefault bindings:\n  Ctrl+R  — history search\n  Ctrl+S  — forward search\n  Ctrl+E  — edit in $EDITOR\n  Ctrl+F  — accept autosuggestion\n  Ctrl+→  — accept next word\n  Tab     — completion\n\nUse 'bind <key> <action>' to add bindings.\n".to_string()))
+                }
+            }
+            key => {
+                if parts.len() < 3 {
+                    return Err(miette::miette!("bind: missing action for key '{}'", key));
+                }
+                let action = parts[2];
+                self.save_binding(key, action)?;
+                Ok(Some(format!("bind: {} → {} (saved, takes effect on next start)\n", key, action)))
+            }
+        }
+    }
+
+    /// Save a key binding to ~/.config/ash/bindings.toml
+    fn save_binding(&mut self, key: &str, action: &str) -> Result<()> {
+        let bindings_dir = dirs::config_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("ash");
+        let bindings_path = bindings_dir.join("bindings.toml");
+
+        let _ = std::fs::create_dir_all(&bindings_dir);
+
+        // Read existing or create new
+        let mut doc = if bindings_path.exists() {
+            let content = std::fs::read_to_string(&bindings_path).unwrap_or_default();
+            content.parse::<toml_edit::DocumentMut>().unwrap_or_default()
+        } else {
+            toml_edit::DocumentMut::new()
+        };
+
+        doc[key] = toml_edit::Item::Value(toml_edit::Value::from(action));
+
+        std::fs::write(&bindings_path, doc.to_string())
+            .map_err(|e| miette::miette!("bind: failed to write: {}", e))
     }
 
     /// Write a config value to ~/.config/ash.toml

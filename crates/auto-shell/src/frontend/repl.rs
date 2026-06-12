@@ -133,6 +133,12 @@ impl Repl {
                 KeyCode::Char('s'),
                 ReedlineEvent::SearchHistory,
             );
+            // Plan 304: Ctrl+E — edit in $EDITOR (sends \x05 prefix)
+            keybindings.add_binding(
+                KeyModifiers::CONTROL,
+                KeyCode::Char('e'),
+                ReedlineEvent::Edit(vec![EditCommand::InsertString("\x05".to_string())]),
+            );
         }
 
         let edit_mode: Box<dyn reedline::EditMode> = if use_vi {
@@ -241,6 +247,48 @@ impl Repl {
         }
     }
 
+    /// Open the current input line in $EDITOR (or vim/notepad) and return the result.
+    /// Plan 304: Multi-line edit via Ctrl+E.
+    fn edit_in_editor(&self, initial_content: &str) -> Result<String> {
+        let tmp_dir = std::env::temp_dir();
+        let tmp_file = tmp_dir.join("ash_edit_buffer.txt");
+        std::fs::write(&tmp_file, initial_content)
+            .map_err(|e| miette::miette!("editor: failed to write temp file: {}", e))?;
+
+        // Determine editor: $VISUAL > $EDITOR > platform default
+        let editor = std::env::var("VISUAL")
+            .or_else(|_| std::env::var("EDITOR"))
+            .unwrap_or_else(|_| {
+                if cfg!(windows) { "notepad".to_string() } else { "vim".to_string() }
+            });
+
+        // Parse editor command (may have args like "code --wait")
+        let parts: Vec<&str> = editor.split_whitespace().collect();
+        let (cmd, extra_args) = match parts.split_first() {
+            Some((c, args)) => (*c, args.to_vec()),
+            None => ("vim", vec![]),
+        };
+
+        let mut command = std::process::Command::new(cmd);
+        command.args(&extra_args).arg(&tmp_file);
+
+        // Inherit terminal for the editor
+        let status = command.status()
+            .map_err(|e| miette::miette!("editor: failed to launch '{}': {}", cmd, e))?;
+
+        if !status.success() {
+            return Err(miette::miette!("editor: exited with status {}", status));
+        }
+
+        let content = std::fs::read_to_string(&tmp_file)
+            .map_err(|e| miette::miette!("editor: failed to read temp file: {}", e))?;
+
+        // Clean up temp file
+        let _ = std::fs::remove_file(&tmp_file);
+
+        Ok(content.trim().to_string())
+    }
+
     /// Run the REPL loop
     pub fn run(&mut self) -> Result<()> {
         // One-time Ctrl+C handler init (protects ASH during commands)
@@ -256,6 +304,23 @@ impl Repl {
             match sig {
                 Ok(Signal::Success(line)) => {
                     let mut line = line.trim().to_string();
+
+                    // Plan 304: Ctrl+E — open line in editor
+                    // If line starts with "\x05" (Ctrl+E character), edit in $EDITOR
+                    if line.starts_with('\x05') {
+                        line = line[1..].trim().to_string();
+                        line = match self.edit_in_editor(&line) {
+                            Ok(edited) => edited,
+                            Err(e) => {
+                                eprintln!("editor: {}", e);
+                                continue;
+                            }
+                        };
+                        if line.is_empty() {
+                            continue;
+                        }
+                        println!("{}", line); // show edited command
+                    }
 
                     // Plan 302 Step 2.3: Multi-line input handling
                     // Detect trailing backslash or unclosed quotes, then read continuation lines
