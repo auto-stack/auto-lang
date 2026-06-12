@@ -205,7 +205,19 @@ impl<'a> Parser<'a> {
             Some(ch) if ch.is_ascii_digit() || ch == '-' || ch == '+' => self.parse_number(),
             Some(ch) if is_ident_start(ch) => {
                 let ident = self.parse_identifier()?;
-                self.parse_identifier_value(ident)
+                let ident_str = ident.as_str();
+                match ident_str {
+                    "true" | "false" | "null" | "nil" => self.parse_identifier_value(ident),
+                    _ => {
+                        self.skip_whitespace_and_comments();
+                        if self.peek() == Some('(') || self.peek() == Some('{') {
+                            let atom = self.parse_node(ident)?;
+                            Ok(atom.to_value())
+                        } else {
+                            self.parse_identifier_value(ident)
+                        }
+                    }
+                }
             }
             Some(ch) => Err(self.error(format!("unexpected character '{}'", ch))),
             None => Err(self.error("unexpected end of input")),
