@@ -1315,6 +1315,67 @@ impl RustGenerator {
                     }
                 }
 
+                // Special handling for checkbox — View::Checkbox { ... } direct construction
+                // View::checkbox() returns View<M> (enum), not a builder, so we can't chain
+                // .style() / .on_click() / .build(). Use direct struct literal instead.
+                if tag == "checkbox" {
+                    let is_checked = props.get("checked")
+                        .or_else(|| props.get("is_checked"))
+                        .map(|v| match v {
+                            AuraPropValue::Expr(AuraExpr::Bool(b)) => b.to_string(),
+                            AuraPropValue::Expr(AuraExpr::StateRef(name)) => format!("self.{}", name),
+                            AuraPropValue::Expr(AuraExpr::FieldAccess { object, field }) => {
+                                let obj_str = match object.as_ref() {
+                                    AuraExpr::StateRef(name) => {
+                                        if self.is_loop_var(name) && self.value_loop_vars.contains(name) {
+                                            name.clone()
+                                        } else {
+                                            format!("self.{}", name)
+                                        }
+                                    }
+                                    _ => format!("{:?}", object),
+                                };
+                                self.value_field_access(&obj_str, field)
+                            }
+                            _ => "false".to_string(),
+                        })
+                        .unwrap_or_else(|| "false".to_string());
+                    let label = props.get("label")
+                        .or_else(|| props.get("text"))
+                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_default();
+
+                    // Parse class/style into Style
+                    let class_str = props.get("class")
+                        .or_else(|| props.get("style"))
+                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_default();
+                    let style_expr = if class_str.is_empty() {
+                        "None".to_string()
+                    } else {
+                        format!("Some(auto_lang::ui::style::Style::parse(\"{}\").unwrap())", class_str)
+                    };
+
+                    // Build on_click handler
+                    let on_click = events.iter()
+                        .find(|(e, _)| e.as_str() == "onclick" || e.as_str() == "onClick" || e.as_str() == "on_click")
+                        .map(|(_, handler)| {
+                            self.handler_to_rust_closure_with_params(&handler.handler, &handler.params)
+                        });
+
+                    let result = match on_click {
+                        Some(handler) => format!(
+                            "View::Checkbox {{ is_checked: {}, label: \"{}\".to_string(), on_toggle: Some({}), style: {} }}",
+                            is_checked, label, handler, style_expr
+                        ),
+                        None => format!(
+                            "View::Checkbox {{ is_checked: {}, label: \"{}\".to_string(), on_toggle: None, style: {} }}",
+                            is_checked, label, style_expr
+                        ),
+                    };
+                    return result;
+                }
+
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
                     if let Some(ref name) = text_state_ref {
                         if tag == "button" {
@@ -1868,8 +1929,8 @@ impl RustGenerator {
             "tr" => "tr",
             "th" => "th",
             "td" => "td",
-            "tree" => "tree",
-            "tree_item" => "tree_item",
+            "tree" => "col",
+            "tree_item" => "col",
 
             // Navigation
             "tabs" => "tabs",
@@ -2098,6 +2159,43 @@ impl RustGenerator {
                 parts.join(" ")
             }
             _ => format!("/* unhandled stmt */"),
+            crate::ast::Stmt::For(for_stmt) => {
+                let body_stmts: Vec<String> = for_stmt.body.stmts.iter()
+                    .map(|s| self.ast_stmt_to_rust(s))
+                    .collect();
+                let body_str = body_stmts.join("; ");
+                match &for_stmt.iter {
+                    crate::ast::Iter::Named(name) => {
+                        // for todo in .todos { ... } → for todo in self.todos.iter() { ... }
+                        let iter_name = name.as_str();
+                        let collection = self.ast_expr_to_rust(&for_stmt.range);
+                        format!("for {} in {}.iter() {{ {} }}", iter_name, collection, body_str)
+                    }
+                    crate::ast::Iter::Cond => {
+                        // for i >= 0 { ... } → while i >= 0 { ... }
+                        let cond = self.ast_expr_to_rust(&for_stmt.range);
+                        format!("while {} {{ {} }}", cond, body_str)
+                    }
+                    crate::ast::Iter::Ever => {
+                        // loop { ... }
+                        format!("loop {{ {} }}", body_str)
+                    }
+                    crate::ast::Iter::Indexed(idx, name) => {
+                        // for i, todo in .todos { ... } → for (i, todo) in self.todos.iter().enumerate() { ... }
+                        let collection = self.ast_expr_to_rust(&for_stmt.range);
+                        format!("for ({}, {}) in {}.iter().enumerate() {{ {} }}", idx.as_str(), name.as_str(), collection, body_str)
+                    }
+                    crate::ast::Iter::Destructured(key, val) => {
+                        let collection = self.ast_expr_to_rust(&for_stmt.range);
+                        format!("for ({}, {}) in {}.iter() {{ {} }}", key.as_str(), val.as_str(), collection, body_str)
+                    }
+                    crate::ast::Iter::Call(_) => {
+                        // Fallback for Call-based iterators
+                        let collection = self.ast_expr_to_rust(&for_stmt.range);
+                        format!("for __item in {}.iter() {{ {} }}", collection, body_str)
+                    }
+                }
+            }
         }
     }
 
@@ -2107,7 +2205,7 @@ impl RustGenerator {
     fn value_field_access(&self, obj_expr: &str, field: &str) -> String {
         if field == "id" || field.ends_with("_id") {
             format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", obj_expr, field)
-        } else if field == "deleted" || field.starts_with("is_") {
+        } else if field == "done" || field == "deleted" || field.starts_with("is_") {
             format!("{}[\"{}\"].as_bool().unwrap_or(false)", obj_expr, field)
         } else {
             format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", obj_expr, field)
@@ -2412,6 +2510,12 @@ impl RustGenerator {
                         format!("println!({})", print_args.join(", "))
                     }
                     _ => {
+                        // findIndex(closure) → iter().position(closure).map(|i| i as i32).unwrap_or(-1)
+                        if fn_name.ends_with(".findIndex") {
+                            let obj = &fn_name[..fn_name.len() - ".findIndex".len()];
+                            let closure_arg = args.first().map(|s| s.as_str()).unwrap_or("|_| false");
+                            return format!("{}.iter().position({}).map(|i| i as i32).unwrap_or(-1)", obj, closure_arg);
+                        }
                         let result = if fn_name.ends_with(".remove") {
                             // .remove() takes usize, cast args
                             let casted_args: Vec<String> = args.iter()
@@ -2469,6 +2573,52 @@ impl RustGenerator {
                 let target_str = self.ast_expr_to_rust(target);
                 let index_str = self.ast_expr_to_rust(index);
                 format!("{}[{}]", target_str, index_str)
+            }
+            Expr::Unary(op, operand) => {
+                let val = self.ast_expr_to_rust(operand);
+                match op {
+                    Op::Not => format!("!({})", val),
+                    Op::Sub => format!("-{}", val),
+                    _ => format!("/* unimplemented unary {:?} */", op),
+                }
+            }
+            Expr::Closure(closure) => {
+                // (t => t.id == id) → |t| t["id"].as_i64().unwrap_or(0) as i32 == id
+                let params: Vec<String> = closure.params.iter()
+                    .map(|p| p.name.as_str().to_string())
+                    .collect();
+                let body = self.ast_expr_to_rust(&closure.body);
+                format!("|{}| {}", params.join(", "), body)
+            }
+            Expr::FStr(fstr) => {
+                // f"${.active_count} items left" → format!("{} items left", self.active_count)
+                let mut fmt_str = String::new();
+                let mut args = Vec::new();
+                for part in &fstr.parts {
+                    match part {
+                        Expr::Str(s) | Expr::CStr(s) => {
+                            fmt_str.push_str(&s.as_str().replace('{', "{{").replace('}', "}}"));
+                        }
+                        _ => {
+                            fmt_str.push_str("{}");
+                            args.push(self.ast_expr_to_rust(part));
+                        }
+                    }
+                }
+                if args.is_empty() {
+                    format!("\"{}\".to_string()", fmt_str)
+                } else {
+                    format!("format!(\"{}\", {})", fmt_str, args.join(", "))
+                }
+            }
+            Expr::Range(range) => {
+                let start = self.ast_expr_to_rust(&range.start);
+                let end = self.ast_expr_to_rust(&range.end);
+                if range.eq {
+                    format!("{}..={}", start, end)
+                } else {
+                    format!("{}..{}", start, end)
+                }
             }
             Expr::Nil | Expr::Null => "serde_json::Value::Null".to_string(),
             _ => format!("/* expr */"),
