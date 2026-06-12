@@ -98,6 +98,12 @@ pub enum StyleClass {
     /// Margin Top: mt-{0-12} (L2)
     MarginTop(SizeValue),
 
+    /// Margin Left: ml-{0-12} (L2)
+    MarginLeft(SizeValue),
+
+    /// Margin Right: mr-{0-12} (L2)
+    MarginRight(SizeValue),
+
     /// Margin Left Auto: ml-auto — push element to the right in a row
     MarginLeftAuto,
 
@@ -509,7 +515,7 @@ impl StyleClass {
             return Ok(StyleClass::MarginTop(size));
         }
 
-        // Parse margin auto classes
+        // Parse margin auto classes (exact matches before ml-/mr- prefix)
         if class == "ml-auto" {
             return Ok(StyleClass::MarginLeftAuto);
         }
@@ -519,6 +525,18 @@ impl StyleClass {
         if class == "mx-auto" {
             // mx-auto = center horizontally (both margins auto)
             return Ok(StyleClass::MarginXAuto);
+        }
+
+        // Parse margin left: ml-{0-12} or ml-[Npx]
+        if let Some(rest) = class.strip_prefix("ml-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::MarginLeft(size));
+        }
+
+        // Parse margin right: mr-{0-12} or mr-[Npx]
+        if let Some(rest) = class.strip_prefix("mr-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::MarginRight(size));
         }
 
         // Parse gap: gap-{0-12} or gap-[Npx]

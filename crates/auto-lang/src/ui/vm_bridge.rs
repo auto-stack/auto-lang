@@ -34,7 +34,7 @@ use crate::vm::generic_registry::GenericInstanceData;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::AutoTask;
 use crate::vm::virt_memory::VirtualFlash;
-use crate::aura::{AuraExpr, AuraWidget, AuraStateDef, AuraNode, LogicPayload};
+use crate::aura::{AuraExpr, AuraWidget, AuraStateDef, AuraNode, LogicPayload, AuraUnaryOp};
 use auto_val::{Op, Value};
 
 // ============================================================================
@@ -827,7 +827,21 @@ fn eval_aura_expr_to_value(expr: &AuraExpr) -> Value {
             // Binary expressions in initial values: evaluate simple cases
             Value::Int(0)
         }
-        AuraExpr::Unary { .. } => Value::Int(0),
+        AuraExpr::Unary { op, operand } => {
+            let val = eval_aura_expr_to_value(operand);
+            match op {
+                AuraUnaryOp::Neg => match val {
+                    Value::Int(i) => Value::Int(-i),
+                    Value::Double(f) => Value::Double(-f),
+                    Value::Float(f) => Value::Float(-f),
+                    _ => Value::Int(0),
+                },
+                AuraUnaryOp::Not => match val {
+                    Value::Bool(b) => Value::Bool(!b),
+                    _ => Value::Bool(true),
+                },
+            }
+        }
         AuraExpr::Array(elements) => {
             // Array literals: evaluate each element
             let values: Vec<Value> = elements.iter()
@@ -1304,6 +1318,28 @@ mod tests {
 
         let value = bridge.read_state("active").unwrap();
         assert_eq!(value, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_read_state_unary_neg() {
+        // This mirrors how `var editing_id int = -1` is parsed:
+        // Expr::Unary(Sub, Int(1)) → AuraExpr::Unary { Neg, Int(1) }
+        // eval_aura_expr_to_value should produce Value::Int(-1), NOT Value::Int(0)
+        let widget = make_test_widget("Todo", vec![
+            AuraStateDef {
+                name: "editing_id".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Unary {
+                    op: AuraUnaryOp::Neg,
+                    operand: Box::new(AuraExpr::Int(1)),
+                },
+                decorators: vec![],
+            },
+        ]);
+
+        let bridge = VmBridge::new(&widget).unwrap();
+        let value = bridge.read_state("editing_id").unwrap();
+        assert_eq!(value, Value::Int(-1), "expected -1, got {:?}", value);
     }
 
     #[test]

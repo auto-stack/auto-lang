@@ -77,6 +77,7 @@ impl Color {
         match name {
             "white" => Ok(Color::White),
             "black" => Ok(Color::Black),
+            "transparent" => Ok(Color::Rgba { r: 0, g: 0, b: 0, a: 0 }),
             _ => {
                 // Try to parse "color-shade" format
                 if let Some(pos) = name.find('-') {

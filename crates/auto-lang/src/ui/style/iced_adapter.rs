@@ -25,6 +25,8 @@ pub struct IcedStyle {
     pub margin_x: Option<f32>,       // Not supported by Iced
     pub margin_y: Option<f32>,       // Not supported by Iced
     pub margin_top: Option<f32>,      // Converted to external top spacing
+    pub margin_left: Option<f32>,     // ml-N: converted to external left spacing
+    pub margin_right: Option<f32>,    // mr-N: converted to external right spacing
     pub margin_left_auto: bool,       // ml-auto: push element to right in row
     pub margin_right_auto: bool,      // mr-auto: push element to left in row
     pub gap: Option<f32>,
@@ -198,6 +200,8 @@ impl IcedStyle {
             margin_x: None,    // Not supported by Iced
             margin_y: None,    // Not supported by Iced
             margin_top: None,
+            margin_left: None,
+            margin_right: None,
             margin_left_auto: false,
             margin_right_auto: false,
             gap: None,
@@ -305,6 +309,12 @@ impl IcedStyle {
             }
             StyleClass::MarginTop(size) => {
                 self.margin_top = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginLeft(size) => {
+                self.margin_left = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginRight(size) => {
+                self.margin_right = Some(size.to_pixels() as f32);
             }
             StyleClass::MarginLeftAuto => {
                 self.margin_left_auto = true;
@@ -712,8 +722,27 @@ fn convert_size(size: &SizeValue) -> IcedSize {
 
 /// Convert a Color to iced::Color
 fn convert_color(color: &Color) -> iced::Color {
-    let (r, g, b) = color.to_rgb8();
-    iced::Color::from_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
+    match color {
+        Color::Rgba { r, g, b, a } => {
+            iced::Color::from_rgba(*r as f32 / 255.0, *g as f32 / 255.0, *b as f32 / 255.0, *a as f32 / 255.0)
+        }
+        Color::Hex(value) => {
+            let r = ((value >> 16) & 0xFF) as f32 / 255.0;
+            let g = ((value >> 8) & 0xFF) as f32 / 255.0;
+            let b = (value & 0xFF) as f32 / 255.0;
+            // 8-digit hex: AARRGGBB, 6-digit hex: RRGGBB (alpha = 1.0)
+            let a = if *value > 0xFFFFFF {
+                ((value >> 24) & 0xFF) as f32 / 255.0
+            } else {
+                1.0
+            };
+            iced::Color::from_rgba(r, g, b, a)
+        }
+        _ => {
+            let (r, g, b) = color.to_rgb8();
+            iced::Color::from_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
+        }
+    }
 }
 
 #[cfg(test)]

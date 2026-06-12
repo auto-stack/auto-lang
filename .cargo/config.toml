@@ -17,6 +17,10 @@ linker = "rust-lld.exe"
 [build]
 jobs = 8
 
+[env]
+# Pin Python path so pyo3 doesn't rerun on PATH changes (Claude sandbox vs user terminal)
+PYO3_PYTHON = "C:\\Python314\\python.exe"
+
 [alias]
 t = "nextest run -p auto-lang --lib"
 tv = "nextest run -p auto-lang --lib --features test-vm-files"

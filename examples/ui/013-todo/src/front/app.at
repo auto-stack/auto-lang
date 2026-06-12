@@ -26,25 +26,24 @@ widget App {
 
     view {
         col {
-            class: "bg-[#f5f5f5] min-h-screen text-[14px] text-[#111] leading-[1.4] font-['Helvetica_Neue',Helvetica,Arial,sans-serif] font-light antialiased"
+            class: "items-center bg-[#f5f5f5] h-full pt-[100px] text-[14px] text-[#111] leading-[1.4] font-['Helvetica_Neue',Helvetica,Arial,sans-serif] font-light antialiased"
 
-            // Todoapp container
+            // Title — in gray area above the white card
+            h1 "todos" {
+                class: "text-[80px] font-extralight text-center text-[#b83f45]"
+            }
+
+            // Todoapp container — white card
             col {
-                class: "bg-white mt-[130px] mb-10 relative shadow-[0_2px_4px_0_rgba(0,0,0,0.2),0_25px_50px_0_rgba(0,0,0,0.1)] max-w-[550px] mx-auto"
+                class: "bg-white mb-10 shadow-[0_2px_4px_0_rgba(0,0,0,0.2),0_25px_50px_0_rgba(0,0,0,0.1)] max-w-[550px] mx-auto"
 
-                // Header
-                col {
-                    class: "relative"
-                    h1 "todos" {
-                        class: "absolute -top-[140px] w-full text-[80px] font-extralight text-center text-[#b83f45]"
-                    }
-                    input {
-                        class: "w-full text-2xl font-inherit leading-[1.4] text-inherit px-4 pl-[60px] h-[65px] border-none outline-none placeholder:italic placeholder:font-normal placeholder:text-black/40",
-                        placeholder: "What needs to be done?",
-                        value: .input,
-                        onenter: .AddTodo,
-                        oninput: .EditInputChanged
-                    }
+                // Input
+                input {
+                    class: "w-full text-2xl font-inherit leading-[1.4] text-inherit px-4 pl-[60px] h-[65px] border-none outline-none placeholder:italic placeholder:font-normal placeholder:text-black/40",
+                    placeholder: "What needs to be done?",
+                    value: .input,
+                    onenter: .AddTodo,
+                    oninput: .EditInputChanged
                 }
 
                 // Main section — only show when there are todos
@@ -73,7 +72,7 @@ widget App {
                                 if .filter == "all" || (.filter == "active" && todo.done == false) || (.filter == "completed" && todo.done == true) {
                                     tree_item {
                                         style: { completed: todo.done, editing: .editing_id == todo.id }
-                                        class: "relative text-2xl border-b border-[#ededed] group"
+                                        class: "text-2xl border-b border-[#ededed]"
                                         if .editing_id == todo.id {
                                             input {
                                                 class: "w-[calc(100%-43px)] py-3 px-4 ml-[43px] text-2xl font-inherit leading-[1.4] text-inherit border border-[#999] shadow-[inset_0_-1px_5px_0_rgba(0,0,0,0.2)] outline-none",
@@ -85,18 +84,17 @@ widget App {
                                         }
                                         if .editing_id != todo.id {
                                             row {
-                                                class: "flex items-center relative"
+                                                class: "flex items-center"
                                                 checkbox {
-                                                    class: "w-[30px] h-[30px] cursor-pointer accent-[#59A193] shrink-0 ml-2",
+                                                    class: "w-[30px] h-[30px] shrink-0 ml-2",
                                                     checked: todo.done
                                                     onclick: .ToggleTodo(todo.id)
                                                 }
-                                                label todo.text {
-                                                    class: "break-words py-[15px] px-[15px] block leading-[1.2] font-normal cursor-pointer flex-1",
-                                                    ondblclick: .EditTodo(todo.id)
+                                                text todo.text {
+                                                    class: "py-[15px] px-[15px] font-normal flex-1 text-[24px]"
                                                 }
                                                 button "×" {
-                                                    class: "hidden group-hover:block absolute top-0 right-[10px] bottom-0 w-[40px] h-[40px] my-auto text-[30px] text-[#949494] hover:text-[#C18585] transition-colors duration-200",
+                                                    class: "bg-transparent border-none w-[40px] h-[40px] text-[24px] text-[#949494]",
                                                     onclick: .DeleteTodo(todo.id)
                                                 }
                                             }
@@ -141,10 +139,10 @@ widget App {
 
             // Info (outside todoapp)
             col {
-                class: "mt-16 mx-auto text-[11px] text-center text-[#4d4d4d]"
-                text "Double-click to edit a todo" { class: "block leading-none" }
-                text "Written with Auto Language" { class: "block leading-none" }
-                text "Part of TodoMVC" { class: "block leading-none" }
+                class: "mt-16 mx-auto text-[11px] text-[#4d4d4d]"
+                text "Double-click to edit a todo" { class: "block leading-none text-center w-full" }
+                text "Written with Auto Language" { class: "block leading-none text-center w-full" }
+                text "Part of TodoMVC" { class: "block leading-none text-center w-full" }
             }
         }
     }

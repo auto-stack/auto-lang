@@ -262,6 +262,8 @@ fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
 /// Wrap an iced element with external spacing for margin simulation.
 /// Handles:
 /// - `margin_top` (mt-*): external top spacing via container padding
+/// - `margin_left` (ml-*): external left spacing via container padding
+/// - `margin_right` (mr-*): external right spacing via container padding
 /// - `mx-auto` (both flags): container fills remaining width, content centered
 /// - `ml-auto` alone: container fills remaining width, content pushed right
 /// - `mr-auto` alone: container fills remaining width, content pushed left
@@ -271,17 +273,20 @@ fn wrap_with_margin_top<M: Clone + Debug + 'static>(
 ) -> iced::Element<'static, M> {
     use iced::widget::container;
     let top = is.margin_top.unwrap_or(0.0);
-    let needs_wrap = top > 0.0 || is.margin_left_auto || is.margin_right_auto;
+    let left = is.margin_left.unwrap_or(0.0);
+    let right = is.margin_right.unwrap_or(0.0);
+    let needs_wrap = top > 0.0 || left > 0.0 || right > 0.0
+        || is.margin_left_auto || is.margin_right_auto;
     if !needs_wrap {
         return el;
     }
     let mut cont = container(el);
-    if top > 0.0 {
+    if top > 0.0 || left > 0.0 || right > 0.0 {
         cont = cont.padding(iced::Padding {
             top,
-            right: 0.0,
+            right,
             bottom: 0.0,
-            left: 0.0,
+            left,
         });
     }
     if is.margin_left_auto && is.margin_right_auto {
@@ -335,6 +340,13 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         if !needs_v_align {
             if let Some(ref h) = is.height {
                 col = col.height(iced_length(h));
+            } else if let Some(mh) = is.min_height {
+                // min-h-screen (marker 9999.0) → Fill; other px values → Fixed
+                if mh >= 9999.0 {
+                    col = col.height(iced::Length::Fill);
+                } else {
+                    col = col.height(iced::Length::Fixed(mh));
+                }
             }
         }
         // Alignment
@@ -369,7 +381,8 @@ fn apply_column_style<M: Clone + Debug + 'static>(
                 let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
                     || is.width.is_none();
                 if col_width_fill { cont = cont.width(iced::Length::Fill); }
-                let col_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)));
+                let col_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                    || is.min_height.map_or(false, |mh| mh >= 9999.0);
                 if col_height_fill { cont = cont.height(iced::Length::Fill); }
                 if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
             }
@@ -606,9 +619,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     if let Some(ref weight) = iced_style.font_weight {
                         text_widget = text_widget.font(font_weight_to_iced(weight));
                     }
+                    // Apply width (e.g., from flex-1)
+                    if let Some(ref w) = iced_style.width {
+                        text_widget = text_widget.width(iced_length(w));
+                    }
                     if let Some(ref align) = iced_style.text_align {
                         use crate::ui::style::iced_adapter::IcedTextAlign;
-                        text_widget = text_widget.width(iced::Length::Fill);
+                        if iced_style.width.is_none() {
+                            text_widget = text_widget.width(iced::Length::Fill);
+                        }
                         match align {
                             IcedTextAlign::Center => {
                                 text_widget = text_widget.align_x(iced::alignment::Horizontal::Center);
@@ -653,7 +672,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 if let Some(ref is) = iced_style {
                     let has_visual = is.background_color.is_some()
                         || is.border || is.rounded || is.border_radius.is_some()
-                        || is.shadow;
+                        || is.shadow
+                        || is.border_width.map_or(false, |w| w == 0.0);
                     if has_visual {
                         let bs = build_button_style(is);
                         btn = btn.style(move |_, _| bs);
@@ -1376,6 +1396,18 @@ struct TodoItem {
     done: bool,
 }
 
+/// Sync `state.todos` (Rust-side) to VM state so the `for todo in .todos` loop can read them.
+fn sync_todos_to_vm(todos: &[TodoItem], component: &mut DynamicComponent) {
+    let values: Vec<auto_val::Value> = todos.iter().enumerate().map(|(i, t)| {
+        let mut obj = auto_val::Obj::new();
+        obj.set("id", auto_val::Value::Int(i as i32));
+        obj.set("text", auto_val::Value::str(&t.text));
+        obj.set("done", auto_val::Value::Bool(t.done));
+        auto_val::Value::Obj(obj)
+    }).collect();
+    let _ = component.write_state("todos", auto_val::Value::Array(auto_val::Array::from(values)));
+}
+
 /// Parse an indexed event name like "Toggle:3" into (base, Some(index)).
 /// Returns (event_name, None) if no colon-index suffix.
 fn parse_indexed_event(event: &str) -> (&str, Option<usize>) {
@@ -1991,13 +2023,12 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
     let boot = move || -> DynamicState {
         let mut comp = init.borrow_mut().take()
             .expect("boot should only be called once");
-        let initial_todos = vec![
-            TodoItem { text: "Hello".into(), done: false },
-            TodoItem { text: "World".into(), done: true },
-        ];
+        // Sync initial VM state to renderer-side todos (empty by default —
+        // the app's .Init handler or user actions populate todos)
+        let initial_todos: Vec<TodoItem> = Vec::new();
         // Write derived counts to VM state
-        let _ = comp.write_state("active_count", auto_val::Value::Int(1));
-        let _ = comp.write_state("todo_count", auto_val::Value::Int(2));
+        let _ = comp.write_state("active_count", auto_val::Value::Int(0));
+        let _ = comp.write_state("todo_count", auto_val::Value::Int(0));
         DynamicState {
             component: comp,
             input_values: std::collections::HashMap::new(),
@@ -2442,16 +2473,17 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
         {
             let (base, idx) = parse_indexed_event(&event_name);
             match base {
-                "Toggle" => {
+                "Toggle" | "ToggleTodo" => {
                     if let Some(i) = idx {
                         if i < state.todos.len() {
                             state.todos[i].done = !state.todos[i].done;
                             let active = state.todos.iter().filter(|t| !t.done).count() as i32;
                             let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
+                            sync_todos_to_vm(&state.todos, &mut state.component);
                         }
                     }
                 }
-                "Delete" => {
+                "Delete" | "DeleteTodo" => {
                     if let Some(i) = idx {
                         // Indexed Delete:N — todo item deletion
                         if i < state.todos.len() {
@@ -2459,6 +2491,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                             let active = state.todos.iter().filter(|t| !t.done).count() as i32;
                             let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                             let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
+                            sync_todos_to_vm(&state.todos, &mut state.component);
                         }
                     } else {
                         // Bare Delete (no index) — notes deletion from EditorPanel
@@ -2479,31 +2512,43 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     }
                 }
                 "AddTodo" => {
-                    eprintln!("[DEBUG] AddTodo handler: saved_input={:?} input_state_map={:?}", saved_input, state.component.input_state_map());
-                    // Also try reading from input_values map
                     let from_input_values = state.input_values.get("EditInputChanged").cloned();
-                    eprintln!("[DEBUG] AddTodo: input_values EditInputChanged={:?}, all_keys={:?}", from_input_values, state.input_values.keys().collect::<Vec<_>>());
                     if !saved_input.is_empty() {
                         state.todos.push(TodoItem { text: saved_input, done: false });
                         let active = state.todos.iter().filter(|t| !t.done).count() as i32;
                         let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                         let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
                         let _ = state.component.write_state("input", auto_val::Value::str(""));
+                        sync_todos_to_vm(&state.todos, &mut state.component);
                         state.input_values.remove("EditInputChanged");
                         state.input_values.remove("InputChanged");
                     } else if let Some(text) = from_input_values {
                         // Fallback: use the last tracked input value
-                        eprintln!("[DEBUG] AddTodo fallback: using input_values text={:?}", text);
                         state.todos.push(TodoItem { text, done: false });
                         let active = state.todos.iter().filter(|t| !t.done).count() as i32;
                         let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                         let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
                         let _ = state.component.write_state("input", auto_val::Value::str(""));
+                        sync_todos_to_vm(&state.todos, &mut state.component);
                         state.input_values.remove("EditInputChanged");
                         state.input_values.remove("InputChanged");
-                    } else {
-                        eprintln!("[DEBUG] AddTodo: both saved_input and input_values are empty!");
                     }
+                }
+                "ClearCompleted" => {
+                    state.todos.retain(|t| !t.done);
+                    let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                    let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
+                    let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
+                    sync_todos_to_vm(&state.todos, &mut state.component);
+                }
+                "ToggleAll" => {
+                    let any_active = state.todos.iter().any(|t| !t.done);
+                    for todo in &mut state.todos {
+                        todo.done = any_active; // if any active → mark all done; else → mark all undone
+                    }
+                    let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                    let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
+                    sync_todos_to_vm(&state.todos, &mut state.component);
                 }
                 // Notes app: handle SelectNote:N / NewNote / DeleteNote
                 "SelectNote" => {

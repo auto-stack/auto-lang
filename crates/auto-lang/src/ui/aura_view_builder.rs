@@ -681,7 +681,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Input widgets
             "input" => self.convert_input(props, events, bindings),
             "textarea" => self.convert_textarea(props, events, bindings),
-            "checkbox" | "check" => self.convert_checkbox(props, events),
+            "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
             "container" | "div" => self.convert_container(props, children, bindings),
 
             // Image placeholder
@@ -702,10 +702,11 @@ impl<'a> AuraViewBuilder<'a> {
                     }
                 }
 
-                // Fallback: wrap children in a column
+                // Fallback: wrap children in a column, filtering out Empty views
                 let views: Vec<View<DynamicMessage>> = children
                     .iter()
                     .map(|n| self.convert_node_with(n, bindings))
+                    .filter(|v| !matches!(v, View::Empty))
                     .collect();
                 if views.is_empty() {
                     View::Empty
@@ -1215,20 +1216,19 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let label = self.extract_string(props, "text")
             .or_else(|| self.extract_string(props, "label"))
             .unwrap_or_default();
 
-        // Resolve checked from state ref or literal
+        // Resolve checked from state ref, literal, or binding path (e.g., todo.done)
         let is_checked = props.get("checked")
             .or_else(|| props.get("is_checked"))
             .map(|v| match v {
-                AuraPropValue::Expr(AuraExpr::Bool(b)) => Some(*b),
-                AuraPropValue::Expr(AuraExpr::StateRef(name)) => {
-                    self.bridge.read_state(name)
+                AuraPropValue::Expr(expr) => {
+                    self.resolve_expr_to_value(expr, bindings)
                         .map(|val| val.as_bool())
-                        .ok()
                 }
                 _ => None,
             })
@@ -1238,7 +1238,7 @@ impl<'a> AuraViewBuilder<'a> {
         let on_toggle = events.get("onclick")
             .or_else(|| events.get("change"))
             .or_else(|| events.get("onchange"))
-            .map(|event| self.event_to_message(&event.handler));
+            .map(|event| self.event_to_message_with(event, bindings));
 
         let style = self.extract_style(props);
 
@@ -1403,6 +1403,27 @@ impl<'a> AuraViewBuilder<'a> {
         self.eval_condition_with(condition, &Bindings::new())
     }
 
+    /// Find an operator (e.g., " || " or " && ") at parenthesis depth 0 only.
+    /// Returns the byte position of the operator start, or None if not found at top level.
+    fn find_operator_at_depth0(cond: &str, op: &str) -> Option<usize> {
+        let mut depth = 0i32;
+        let op_bytes = op.as_bytes();
+        let cond_bytes = cond.as_bytes();
+        let mut i = 0;
+        while i + op_bytes.len() <= cond_bytes.len() {
+            match cond_bytes[i] {
+                b'(' => depth += 1,
+                b')' => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 && cond_bytes[i..].starts_with(op_bytes) {
+                return Some(i);
+            }
+            i += 1;
+        }
+        None
+    }
+
     /// Evaluate a condition string against current state with loop variable bindings.
     ///
     /// Supports patterns like:
@@ -1413,30 +1434,74 @@ impl<'a> AuraViewBuilder<'a> {
     fn eval_condition_with(&self, condition: &str, bindings: &Bindings) -> bool {
         let cond = condition.trim();
 
-        // Strip leading dot for state ref
-        let (lhs, op, rhs) = if let Some(rest) = cond.strip_prefix('.') {
-            // Find operator
-            if let Some(pos) = rest.find(" == ") {
-                (&rest[..pos], "==", rest[pos + 4..].trim())
-            } else if let Some(pos) = rest.find(" != ") {
-                (&rest[..pos], "!=", rest[pos + 4..].trim())
-            } else if let Some(pos) = rest.find(" > ") {
-                (&rest[..pos], ">", rest[pos + 3..].trim())
-            } else if let Some(pos) = rest.find(" < ") {
-                (&rest[..pos], "<", rest[pos + 3..].trim())
-            } else if let Some(pos) = rest.find(" >= ") {
-                (&rest[..pos], ">=", rest[pos + 4..].trim())
-            } else if let Some(pos) = rest.find(" <= ") {
-                (&rest[..pos], "<=", rest[pos + 4..].trim())
+        // Strip outer parentheses for grouped expressions like (...) —
+        // do this BEFORE operator splitting so that inner || / && are not split prematurely.
+        // Repeat in case of nested parens like ((expr)).
+        let mut cond = cond;
+        loop {
+            if cond.starts_with('(') && cond.ends_with(')') {
+                // Verify the closing ')' matches the opening '(' (balanced)
+                let mut depth = 0i32;
+                let mut matched = true;
+                for (i, ch) in cond.char_indices() {
+                    match ch {
+                        '(' => depth += 1,
+                        ')' => depth -= 1,
+                        _ => {}
+                    }
+                    if depth == 0 && i < cond.len() - 1 {
+                        // Closing paren found before end — outer parens don't match
+                        matched = false;
+                        break;
+                    }
+                }
+                if matched {
+                    cond = cond[1..cond.len()-1].trim();
+                } else {
+                    break;
+                }
             } else {
-                // Bare state ref — truthy check
-                return self.bridge.read_state(rest)
-                    .map(|v| v.as_bool())
-                    .unwrap_or(false);
+                break;
             }
+        }
+
+        // Handle || (OR) — split at top level only (paren depth 0)
+        if let Some(pos) = Self::find_operator_at_depth0(cond, " || ") {
+            let left = &cond[..pos];
+            let right = &cond[pos + 4..];
+            return self.eval_condition_with(left, bindings)
+                || self.eval_condition_with(right, bindings);
+        }
+
+        // Handle && (AND) — split at top level only (paren depth 0)
+        if let Some(pos) = Self::find_operator_at_depth0(cond, " && ") {
+            let left = &cond[..pos];
+            let right = &cond[pos + 4..];
+            return self.eval_condition_with(left, bindings)
+                && self.eval_condition_with(right, bindings);
+        }
+
+        // Find operator to split into lhs op rhs
+        let (lhs, op, rhs) = if let Some(pos) = cond.find(" == ") {
+            (&cond[..pos], "==", cond[pos + 4..].trim())
+        } else if let Some(pos) = cond.find(" != ") {
+            (&cond[..pos], "!=", cond[pos + 4..].trim())
+        } else if let Some(pos) = cond.find(" > ") {
+            (&cond[..pos], ">", cond[pos + 3..].trim())
+        } else if let Some(pos) = cond.find(" < ") {
+            (&cond[..pos], "<", cond[pos + 3..].trim())
+        } else if let Some(pos) = cond.find(" >= ") {
+            (&cond[..pos], ">=", cond[pos + 4..].trim())
+        } else if let Some(pos) = cond.find(" <= ") {
+            (&cond[..pos], "<=", cond[pos + 4..].trim())
+        } else if cond.starts_with('.') {
+            // Bare state ref — truthy check
+            return self.bridge.read_state(&cond[1..])
+                .map(|v| v.as_bool())
+                .unwrap_or(false);
         } else {
-            // No leading dot — treat as bare bool state ref
-            return self.bridge.read_state(cond)
+            // Try binding path truthy check
+            return self.resolve_binding_path(cond, bindings)
                 .map(|v| v.as_bool())
                 .unwrap_or(false);
         };
@@ -1446,6 +1511,8 @@ impl<'a> AuraViewBuilder<'a> {
         // The parser may produce "len ( )" with spaces inside the parens.
         let lhs_normalized = lhs.replace(" ( ", "(").replace("( ", "(").replace(" )", ")");
         let lhs_val = if let Some(field_name) = lhs_normalized.strip_suffix(".len()") {
+            // Strip leading dot from state ref (e.g., ".todos" → "todos")
+            let field_name = field_name.trim_start_matches('.');
             match self.bridge.read_state(field_name) {
                 Ok(Value::Array(arr)) => arr.len().to_string(),
                 Ok(other) => {
@@ -1455,6 +1522,16 @@ impl<'a> AuraViewBuilder<'a> {
                         Err(_) => value_to_display_string(&other),
                     }
                 }
+                Err(_) => return false,
+            }
+        } else if let Some(val) = self.resolve_binding_path(lhs, bindings) {
+            // Binding path (e.g., "todo.done")
+            value_to_display_string(&val)
+        } else if lhs.starts_with('.') {
+            // State ref (e.g., ".filter")
+            let name = &lhs[1..];
+            match self.bridge.read_state(name) {
+                Ok(v) => value_to_display_string(&v),
                 Err(_) => return false,
             }
         } else {
@@ -1467,6 +1544,8 @@ impl<'a> AuraViewBuilder<'a> {
         // Resolve rhs: check loop bindings first, then try as literal
         let rhs_val = if let Some(val) = bindings.get(rhs) {
             value_to_display_string(val)
+        } else if let Some(val) = self.resolve_binding_path(rhs, bindings) {
+            value_to_display_string(&val)
         } else {
             rhs.trim_matches('"').to_string()
         };
@@ -2095,5 +2174,119 @@ mod tests {
         assert_eq!(value_to_display_string(&Value::Bool(true)), "true");
         assert_eq!(value_to_display_string(&Value::str("hello")), "hello");
         assert_eq!(value_to_display_string(&Value::Nil), "");
+    }
+
+    #[test]
+    fn test_eval_condition_with_bindings() {
+        // Simulate a todo item as a binding
+        let mut bindings = Bindings::new();
+        let mut todo_obj = auto_val::Obj::new();
+        todo_obj.set("id", Value::Int(0));
+        todo_obj.set("text", Value::str("Buy milk"));
+        todo_obj.set("done", Value::Bool(false));
+        bindings.insert("todo".to_string(), Value::Obj(todo_obj));
+
+        // Set up state: filter = "active"
+        let widget = make_test_widget("App", vec![
+            AuraStateDef {
+                name: "filter".to_string(),
+                type_info: Type::StrOwned,
+                initial: AuraExpr::Literal("active".to_string()),
+                decorators: vec![],
+            },
+            AuraStateDef {
+                name: "todos".to_string(),
+                type_info: Type::StrOwned,
+                initial: AuraExpr::Literal("[]".to_string()),
+                decorators: vec![],
+            },
+        ]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+
+        // Test: .filter == "active" && todo.done == false → should be true
+        let cond1 = ".filter == \"active\" && todo.done == false";
+        let r1 = builder.eval_condition_with(cond1, &bindings);
+        eprintln!("cond1='{}' result={}", cond1, r1);
+        assert!(r1, "Expected true for active filter with done=false, got false");
+
+        // Test: .filter == "all" → should be true when filter is "active"? No, false
+        let cond2 = ".filter == \"all\"";
+        let r2 = builder.eval_condition_with(cond2, &bindings);
+        eprintln!("cond2='{}' result={}", cond2, r2);
+        assert!(!r2, "Expected false for 'all' filter when filter is 'active'");
+
+        // Test the full compound condition: .filter == "all" || ( .filter == "active" && todo.done == false )
+        let cond_full = ".filter == \"all\" || ( .filter == \"active\" && todo.done == false )";
+        let r_full = builder.eval_condition_with(cond_full, &bindings);
+        eprintln!("cond_full='{}' result={}", cond_full, r_full);
+
+        // Also test the inner part directly
+        let inner = ".filter == \"active\" && todo.done == false";
+        eprintln!("inner='{}' result={}", inner, builder.eval_condition_with(inner, &bindings));
+
+        // Test right side of || directly
+        let right = "( .filter == \"active\" && todo.done == false )";
+        eprintln!("right='{}' result={}", right, builder.eval_condition_with(right, &bindings));
+
+        assert!(r_full, "Expected true for full condition with active filter + undone todo");
+
+        // Test with done=true AND filter="completed"
+        let mut todo_done = auto_val::Obj::new();
+        todo_done.set("id", Value::Int(0));
+        todo_done.set("text", Value::str("Done item"));
+        todo_done.set("done", Value::Bool(true));
+        let mut bindings_done = Bindings::new();
+        bindings_done.insert("todo".to_string(), Value::Obj(todo_done));
+
+        // Create a builder with filter="completed" state
+        let widget_completed = make_test_widget("App", vec![
+            AuraStateDef {
+                name: "filter".to_string(),
+                type_info: Type::StrOwned,
+                initial: AuraExpr::Literal("completed".to_string()),
+                decorators: vec![],
+            },
+        ]);
+        let bridge_completed = VmBridge::new(&widget_completed).unwrap();
+        let builder_completed = AuraViewBuilder::new(&bridge_completed, "App");
+
+        let cond_completed = "( .filter == \"completed\" && todo.done == true )";
+        assert!(builder_completed.eval_condition_with(cond_completed, &bindings_done)
+            || {
+                // Also try without parens (parser may produce either)
+                let cond2 = ".filter == \"completed\" && todo.done == true";
+                builder_completed.eval_condition_with(cond2, &bindings_done)
+            },
+            "Expected true for completed filter + done todo");
+
+        // Active filter should NOT match done item
+        let cond_active_done = ".filter == \"active\" && todo.done == false";
+        assert!(!builder.eval_condition_with(cond_active_done, &bindings_done),
+            "Expected false for active filter + done=true todo");
+
+        // Test editing_id conditions (the "double input" bug)
+        // When editing_id=-1 and todo.id=0, editing_id != todo.id
+        // Need a builder with editing_id state
+        let widget_edit = make_test_widget("App", vec![
+            AuraStateDef {
+                name: "editing_id".to_string(),
+                type_info: Type::StrOwned,
+                initial: AuraExpr::Literal("-1".to_string()),
+                decorators: vec![],
+            },
+        ]);
+        let bridge_edit = VmBridge::new(&widget_edit).unwrap();
+        let builder_edit = AuraViewBuilder::new(&bridge_edit, "App");
+
+        let cond_edit_eq = ".editing_id == todo.id";
+        let r_eq = builder_edit.eval_condition_with(cond_edit_eq, &bindings);
+        eprintln!("editing_id==-1, todo.id=0: '.editing_id == todo.id' => {}", r_eq);
+        assert!(!r_eq, "editing_id=-1 should NOT equal todo.id=0");
+
+        let cond_edit_neq = ".editing_id != todo.id";
+        let r_neq = builder_edit.eval_condition_with(cond_edit_neq, &bindings);
+        eprintln!("editing_id==-1, todo.id=0: '.editing_id != todo.id' => {}", r_neq);
+        assert!(r_neq, "editing_id=-1 should NOT equal todo.id=0 (neq)");
     }
 }
