@@ -1138,13 +1138,9 @@ impl PythonTrans {
     }
 
     fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
-        let has_methods = !type_decl.methods.is_empty();
-
-        // Use @dataclass only if there are no methods
-        if !has_methods {
-            self.print_indent(out)?;
-            out.write(b"@dataclass\n")?;
-        }
+        // Plan 283 Task 3.1: Always use @dataclass for consistency and Pythonic output
+        self.print_indent(out)?;
+        out.write(b"@dataclass\n")?;
 
         // Plan 213 Task 6: Skip generic type params (<T> erased in Python)
         self.print_indent(out)?;
@@ -1153,59 +1149,24 @@ impl PythonTrans {
         out.write(b":\n")?;
         self.indent();
 
-        // Emit fields
-        if has_methods {
-            // For classes with methods, use __init__ instead of @dataclass
-            if !type_decl.members.is_empty() {
-                self.print_indent(out)?;
-                out.write(b"def __init__(self")?;
-                for member in &type_decl.members {
-                    out.write(b", ")?;
-                    out.write_all(member.name.as_bytes())?;
-                    // Plan 213 Task 6: Skip type annotation for generic params
-                    if !self.is_type_decl_generic_param(&member.ty, type_decl) {
-                        out.write(b": ")?;
-                        let type_name = self.python_type_name(&member.ty);
-                        out.write_all(type_name.as_bytes())?;
-                    }
-                }
-                out.write(b"):\n")?;
-                self.indent();
-
-                for member in &type_decl.members {
-                    self.print_indent(out)?;
-                    out.write(b"self.")?;
-                    out.write_all(member.name.as_bytes())?;
-                    out.write(b" = ")?;
-                    out.write_all(member.name.as_bytes())?;
-                    out.write(b"\n")?;
-                }
-
-                self.dedent();
-                // Don't add newline here - let the method emission handle it
+        // Emit fields using @dataclass style (field: type)
+        for member in &type_decl.members {
+            self.print_indent(out)?;
+            out.write_all(member.name.as_bytes())?;
+            out.write(b": ")?;
+            // Plan 213 Task 6: Use Any for generic param types
+            if self.is_type_decl_generic_param(&member.ty, type_decl) {
+                out.write(b"Any")?;
+            } else {
+                let type_name = self.python_type_name(&member.ty);
+                out.write_all(type_name.as_bytes())?;
             }
-        } else {
-            // For @dataclass, just list the fields
-            for member in &type_decl.members {
-                self.print_indent(out)?;
-                out.write_all(member.name.as_bytes())?;
-                out.write(b": ")?;
-                // Plan 213 Task 6: Use Any for generic param types
-                if self.is_type_decl_generic_param(&member.ty, type_decl) {
-                    out.write(b"Any")?;
-                } else {
-                    let type_name = self.python_type_name(&member.ty);
-                    out.write_all(type_name.as_bytes())?;
-                }
-                out.write(b"\n")?;
-            }
+            out.write(b"\n")?;
         }
 
         // Emit methods (add blank line before first method)
-        for (i, method) in type_decl.methods.iter().enumerate() {
-            if i == 0 && has_methods {
-                out.write(b"\n")?;
-            }
+        for method in type_decl.methods.iter() {
+            out.write(b"\n")?;
             self.fn_decl_in_class(method, type_decl, out)?;
         }
 

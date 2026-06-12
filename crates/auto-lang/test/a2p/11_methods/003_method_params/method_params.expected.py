@@ -1,3 +1,4 @@
+@dataclass
 class Calculator:
 
     def multiply(self, a: int, b: int) -> int:

@@ -3,6 +3,7 @@ from typing import Protocol
 class Flyer(Protocol):
     def fly(self): ...
 
+@dataclass
 class Pigeon:
 
     def fly(self):

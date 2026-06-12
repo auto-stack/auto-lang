@@ -1,3 +1,4 @@
+@dataclass
 class Math:
 
     @staticmethod

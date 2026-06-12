@@ -1,6 +1,6 @@
+@dataclass
 class Holder:
-    def __init__(self, val: int):
-        self.val = val
+    val: int
 
     def get(self) -> int:
         return self.val
