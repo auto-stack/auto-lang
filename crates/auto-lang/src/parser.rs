@@ -4845,10 +4845,12 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Use(uses))
     }
 
-    /// Plan 214: Parse `use.py module::{items}` statement
+    /// Plan 214/300.1: Parse `use.py module: items` statement
+    ///
+    /// Syntax: `use.py a.b.c` or `use.py a.b.c: x, y`
     pub fn use_py_stmt(&mut self) -> AutoResult<Stmt> {
         // Already consumed: use . py
-        // Now parse: module::{items}
+        // Now parse: module: items
 
         let mut paths = Vec::new();
 
@@ -4862,22 +4864,7 @@ impl<'a> Parser<'a> {
             paths.push(segment.into());
         }
 
-        // Check for :: style paths (Python submodules)
-        while self.is_kind(TokenKind::Colon) {
-            self.next();
-            if !self.is_kind(TokenKind::Colon) {
-                break;
-            }
-            self.next();
-
-            if self.is_kind(TokenKind::LBrace) {
-                break;
-            }
-
-            let segment = self.expect_ident_str()?;
-            paths.push(segment.into());
-        }
-
+        // Parse items after colon: use.py math: sqrt, pow
         let (items, is_wildcard) = self.parse_use_items()?;
 
         let uses = Use {

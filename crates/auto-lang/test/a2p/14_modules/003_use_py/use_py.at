@@ -1,5 +1,5 @@
 use.py numpy
-use.py pandas::{DataFrame}
+use.py pandas: DataFrame
 
 fn main() {
     print("use.py test")

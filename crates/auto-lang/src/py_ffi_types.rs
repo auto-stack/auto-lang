@@ -41,6 +41,17 @@ impl PySignature {
         self
     }
 
+    /// All-auto signature: runtime NanoValue tag detection for all params and return.
+    /// Each param's type is auto-detected from the VM stack's NanoValue tag at call time.
+    /// Return type uses `py_auto_marshal_return` for dynamic Python→VM conversion.
+    /// Plan 300: Replaces hardcoded `default_string_string()` as the default registration.
+    pub fn all_auto(param_count: usize) -> Self {
+        Self {
+            params: vec![PyType::Auto; param_count],
+            returns: PyType::Auto,
+        }
+    }
+
     /// Default string→string signature (backward compat with Plan 214)
     pub fn default_string_string() -> Self {
         Self::new().param(PyType::String).returns(PyType::String)
@@ -82,6 +93,22 @@ mod tests {
             .param(PyType::Int)
             .returns(PyType::Auto);
         assert_eq!(sig.params.len(), 2);
+        assert_eq!(sig.returns, PyType::Auto);
+    }
+
+    #[test]
+    fn test_all_auto_signature() {
+        let sig = PySignature::all_auto(2);
+        assert_eq!(sig.params.len(), 2);
+        assert_eq!(sig.params[0], PyType::Auto);
+        assert_eq!(sig.params[1], PyType::Auto);
+        assert_eq!(sig.returns, PyType::Auto);
+    }
+
+    #[test]
+    fn test_all_auto_zero_params() {
+        let sig = PySignature::all_auto(0);
+        assert!(sig.params.is_empty());
         assert_eq!(sig.returns, PyType::Auto);
     }
 }

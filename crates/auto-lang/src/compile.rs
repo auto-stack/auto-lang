@@ -907,7 +907,7 @@ impl CompileSession {
 
         for use_stmt in &use_statements {
 
-            if !use_stmt.is_python_import || use_stmt.items.is_empty() {
+            if !use_stmt.is_python_import {
 
                 continue;
 

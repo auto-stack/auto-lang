@@ -455,11 +455,15 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
     Some(native_interface)
 }
 
-/// Plan 214: Initialize Python FFI bridge if there are use.py imports
+/// Plan 214/300: Initialize Python FFI bridge if there are use.py imports
 ///
 /// Creates a PyFfiBridge, imports the requested Python modules,
-/// registers each function as a native shim, and returns the
-/// NativeInterface for merging into the VM.
+/// registers each function as a native shim with auto-type marshalling,
+/// and returns the NativeInterface for merging into the VM.
+///
+/// Plan 300: Uses Python `inspect.signature()` to detect param count,
+/// then registers with `PySignature::all_auto(count)` for runtime
+/// NanoValue tag-based type detection instead of hardcoded string→string.
 #[cfg(feature = "python")]
 fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::NativeInterface> {
     let py_imports = session.py_imports();
@@ -482,11 +486,29 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
             continue;
         }
 
+        // Plan 300: For bare module imports (empty items), discover callables via dir()
+        if functions.is_empty() {
+            let discovered = bridge.discover_module_callables(module_name);
+            for (func_name, param_count) in discovered {
+                let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                if let Ok(native_id) = bridge.register_function(module_name, &func_name, sig) {
+                    // Register with module-qualified name so codegen can find it
+                    let qualified = format!("py.{}.{}", module_name, func_name);
+                    if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                        registry.register_with_id(&qualified, native_id);
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Named function imports — use inspect to get param count
         for func_name in functions {
-            let sig = crate::py_ffi_types::PySignature::default_string_string();
+            let param_count = bridge.inspect_param_count(module_name, &func_name, 1);
+            let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
             match bridge.register_function(module_name, func_name, sig) {
                 Ok(native_id) => {
-                    log::info!("Registered Python FFI: {}.{} (native_id={})", module_name, func_name, native_id);
+                    log::info!("Registered Python FFI: {}.{} (native_id={}, params={})", module_name, func_name, native_id, param_count);
 
                     // Also register in BIGVM_NATIVES so codegen can find it
                     let qualified = format!("py.{}", func_name);

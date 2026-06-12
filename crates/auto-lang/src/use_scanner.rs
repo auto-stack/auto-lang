@@ -362,9 +362,9 @@ fn parse_rust_import(line: &str) -> Option<UseStatement> {
     Some(UseStatement::rust_import(module, items))
 }
 
-/// Plan 214: Parse Python module import
+/// Plan 214/300.1: Parse Python module import
 ///
-/// Parses: `json5::{dumps, loads}` or `json5`
+/// Parses: `a.b.c: x, y` (from a.b.c import x, y) or `a.b.c` (import a.b.c)
 fn parse_python_import(line: &str) -> Option<UseStatement> {
     let line = line.trim();
 
@@ -372,33 +372,23 @@ fn parse_python_import(line: &str) -> Option<UseStatement> {
         return None;
     }
 
-    // Find items in braces: {item1, item2}
-    let (module_part, items) = if let Some(brace_start) = line.find('{') {
-        let module = line[..brace_start].trim();
-        let rest = &line[brace_start + 1..];
-
-        let items_str = if let Some(brace_end) = rest.find('}') {
-            &rest[..brace_end]
-        } else {
-            rest
-        };
-
-        let module = module.trim_end_matches(':').trim();
-
+    // Plan 300.1: colon-separated items (Pythonic style)
+    // use.py a.b.c: x, y  → module="a.b.c", items=["x", "y"]
+    // use.py a.b.c         → module="a.b.c", items=[]
+    let (module_part, items) = if let Some(colon_pos) = line.find(':') {
+        let module = line[..colon_pos].trim();
+        let items_str = &line[colon_pos + 1..];
         let items: Vec<String> = items_str
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-
         (module, items)
     } else {
         (line, Vec::new())
     };
 
-    let module = module_part.trim_end_matches(':').trim();
-
-    Some(UseStatement::python_import(module, items))
+    Some(UseStatement::python_import(module_part, items))
 }
 #[cfg(test)]
 mod tests {
@@ -624,7 +614,7 @@ use local_mod
 
     #[test]
     fn test_py_import_with_items() {
-        let source = "use.py json5::{dumps, loads}";
+        let source = "use.py json5: dumps, loads";
         let uses = scan_use_statements(source);
         assert_eq!(uses.len(), 1);
         assert!(uses[0].is_python_import);
@@ -646,7 +636,7 @@ use local_mod
         let source = r#"
 use std.io
 use.rust serde::json::{from_str}
-use.py json::{dumps, loads}
+use.py json: dumps, loads
 use c <stdio.h>
 "#;
         let uses = scan_use_statements(source);

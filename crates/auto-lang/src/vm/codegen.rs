@@ -270,6 +270,10 @@ pub struct Codegen {
     /// Maps local function name → PyType (from py_ffi_types, no pyo3 dependency)
     py_return_types: HashMap<String, crate::py_ffi_types::PyType>,
 
+    /// Plan 300: Bare Python module names (from `use.py math` without items).
+    /// Used to resolve `module.method()` dot-calls at compile time.
+    py_modules: std::collections::HashSet<String>,
+
     /// Plan 212 Phase 2.2: Maps variable name → opaque crate name
     /// Tracks which variables hold opaque handles (e.g., "re" → "regex")
     /// Set when `let var = OpaqueType.new(...)` is compiled
@@ -347,6 +351,7 @@ impl Codegen {
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
+            py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
         };
@@ -503,6 +508,7 @@ impl Codegen {
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
+            py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
         };
@@ -3355,11 +3361,14 @@ impl Codegen {
         }
     }
 
-    /// Plan 214: Handle `use.py module::{items}` statement.
+    /// Plan 214/300: Handle `use.py module::{items}` statement.
     ///
     /// Records each imported Python function name in `py_native_map` so that
     /// when the codegen encounters a call to that function, it can emit
-    /// CALL_NAT instead of a regular CALL. Also sets return type to Str.
+    /// CALL_NAT instead of a regular CALL. Also sets return type to Auto.
+    ///
+    /// Plan 300: For bare `use.py module` (no items), records the module name
+    /// in `py_modules` so dot-calls like `module.method()` can be resolved.
     fn handle_py_import(&mut self, use_stmt: &crate::ast::Use) {
         let module_path = if let Some(ref mp) = use_stmt.module_path {
             mp.display()
@@ -3377,11 +3386,13 @@ impl Codegen {
                     local_name.to_string(),
                     (module_path.to_string(), full_path),
                 );
-                // Python FFI functions return String via the string-pool bridge
+                // Plan 300: Auto return type for dynamic marshalling
                 self.fn_return_types.insert(local_name.to_string(), Type::StrFixed(0));
-                // Plan 222: Record PyType::Auto as default return type
                 self.py_return_types.insert(local_name.to_string(), crate::py_ffi_types::PyType::Auto);
             }
+        } else {
+            // Plan 300: Bare module import (`use.py math`) — record for dot-call resolution
+            self.py_modules.insert(module_path.to_string());
         }
     }
 
@@ -5569,15 +5580,19 @@ impl Codegen {
 
                 // VM-1: Route float math methods (x.sin(), x.sqrt(), etc.) to auto.math.*
                 // Must happen BEFORE native_id lookup so the rewritten name is resolved correctly.
+                // Plan 300: Skip routing if the function is a Python FFI import (e.g., use.py math::{sqrt})
                 if let Some(ref fname) = func_name {
                     let method = fname.rsplit('.').next().unwrap_or("");
+                    let is_py_ffi = self.py_native_map.contains_key(fname)
+                        || self.py_native_map.contains_key(method)
+                        || self.py_modules.contains(fname.split('.').next().unwrap_or(""));
                     const MATH_METHODS: &[&str] = &[
                         "sin", "cos", "tan", "sqrt", "abs", "floor", "ceil", "round",
                         "pow", "powf", "powi", "exp", "ln", "log2", "log10",
                         "signum", "asin", "acos", "atan", "atan2",
                         "to_radians", "to_degrees",
                     ];
-                    if MATH_METHODS.contains(&method) && !fname.starts_with("auto.math.") {
+                    if !is_py_ffi && MATH_METHODS.contains(&method) && !fname.starts_with("auto.math.") {
                         let new_name = format!("auto.math.{}", method);
                         let mut reg = BIGVM_NATIVES.lock().unwrap();
                         if reg.resolve_qualified(&new_name).is_some() {
@@ -5896,6 +5911,26 @@ impl Codegen {
                             drop(reg);
                             let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
                             Some(id)
+                        }
+                    }
+                    // Plan 300: Bare py module dot-call (e.g., math.sqrt from `use.py math`)
+                    // When func_name is "module.method" and module is a known py module,
+                    // dynamically register as "py.module.method" native.
+                    else if name.contains('.') {
+                        let parts: Vec<&str> = name.splitn(2, '.').collect();
+                        if parts.len() == 2 && self.py_modules.contains(parts[0]) {
+                            let qualified = format!("py.{}", name);
+                            let mut reg = BIGVM_NATIVES.lock().unwrap();
+                            if let Some(id) = reg.resolve_qualified(&qualified) {
+                                drop(reg);
+                                Some(id)
+                            } else {
+                                drop(reg);
+                                let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
+                                Some(id)
+                            }
+                        } else {
+                            None
                         }
                     }
                     // Then check BIGVM_NATIVES (List methods, etc.)
