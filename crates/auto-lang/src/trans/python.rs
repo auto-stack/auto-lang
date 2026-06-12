@@ -554,6 +554,13 @@ impl PythonTrans {
     fn fn_decl_in_class(&mut self, func: &Fn, _type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
         self.print_indent(out)?;
 
+        // Plan 283 Task 2.2: Static methods get @staticmethod decorator
+        let is_static = func.is_static;
+        if is_static {
+            out.write(b"@staticmethod\n")?;
+            self.print_indent(out)?;
+        }
+
         // Plan 213 Task 7: async def for ~T return types
         if self.is_async_fn(func) {
             out.write(b"async ")?;
@@ -561,11 +568,22 @@ impl PythonTrans {
 
         out.write(b"def ")?;
         out.write_all(func.name.as_bytes())?;
-        out.write(b"(self")?;
+        // Plan 283 Task 2.2: Static methods don't have self parameter
+        if !is_static {
+            out.write(b"(self")?;
+        } else {
+            out.write(b"(")?;
+        }
 
         // Plan 213 Task 4: Parameters with type annotations
-        for param in &func.params {
-            out.write(b", ")?;
+        for (i, param) in func.params.iter().enumerate() {
+            // Add comma separator: instance methods already have "self", static methods need comma after first param
+            if !is_static || i > 0 {
+                out.write(b", ")?;
+            } else {
+                // First param of static method — no preceding comma needed
+                // (we opened with "(" above, so just write the param)
+            }
             out.write_all(param.name.as_bytes())?;
             // Add type annotation if known
             if !matches!(param.ty, Type::Unknown) {
@@ -767,6 +785,14 @@ impl PythonTrans {
     }
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 283 Task 1.3: Intercept method calls where call.name is Expr::Dot.
+        // Parser generates Expr::Call { name: Expr::Dot(obj, method_name), args: [...] }
+        // for method calls like items.push(4), "hello".trim(), etc.
+        // Note: Expr::Dot(Box<Expr>, Name) — Name is already AutoStr, not Expr.
+        if let Expr::Dot(obj, method_name) = call.name.as_ref() {
+            return self.method_call(obj, method_name, &call.args, out);
+        }
+
         // Plan 283 Task 1.2: Map AutoLang builtins to Python stdlib equivalents
         if let Some(ident) = self.extract_call_name(&call.name) {
             match ident.as_ref() {
@@ -864,9 +890,196 @@ impl PythonTrans {
     }
 
     fn dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 283 Task 1.3: Intercept method calls for Pythonic mapping
+        // Method call pattern: lhs.method(args) → rhs is Expr::Call
+        if let Expr::Call(call) = rhs {
+            if let Expr::Ident(method_name) = call.name.as_ref() {
+                return self.method_call(lhs, method_name, &call.args, out);
+            }
+        }
+
+        // Default: lhs.rhs
         self.expr(lhs, out)?;
         out.write(b".")?;
         self.expr(rhs, out)?;
+        Ok(())
+    }
+
+    /// Plan 283 Task 1.3: Map AutoLang method calls to Pythonic equivalents
+    fn method_call(
+        &mut self,
+        receiver: &Expr,
+        method: &AutoStr,
+        args: &Args,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        match method.as_ref() {
+            // ── List methods ──
+            // .push(item) → .append(item)
+            "push" => {
+                self.expr(receiver, out)?;
+                out.write(b".append(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .pop() → .pop()
+            "pop" => {
+                self.expr(receiver, out)?;
+                out.write(b".pop(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .len() → len(receiver)
+            "len" => {
+                out.write(b"len(")?;
+                self.expr(receiver, out)?;
+                out.write(b")")?;
+            }
+            // .contains(item) → item in receiver
+            "contains" => {
+                if let Some(first_arg) = args.args.first() {
+                    self.arg(first_arg, out)?;
+                    out.write(b" in ")?;
+                    self.expr(receiver, out)?;
+                } else {
+                    self.expr(receiver, out)?;
+                    out.write(b".contains(")?;
+                    self.emit_args(args, out)?;
+                    out.write(b")")?;
+                }
+            }
+            // .join(sep) → sep.join(receiver)  (Python string.join takes iterable)
+            "join" => {
+                // Auto: list.join(sep) → Python: sep.join(list)
+                if let Some(first_arg) = args.args.first() {
+                    self.arg(first_arg, out)?;
+                    out.write(b".join(")?;
+                    self.expr(receiver, out)?;
+                    out.write(b")")?;
+                } else {
+                    self.expr(receiver, out)?;
+                    out.write(b".join(")?;
+                    self.emit_args(args, out)?;
+                    out.write(b")")?;
+                }
+            }
+
+            // ── Dict/Map methods ──
+            // .set(key, val) → receiver[key] = val  (as statement)
+            // Note: this only works as a statement, not expression. For now emit as method.
+            "set" | "insert" => {
+                // Emit as dict[key] = val only when used as statement
+                // As expression fallback: dict.__setitem__(key, val)
+                self.expr(receiver, out)?;
+                out.write(b"[")?;
+                if let Some(first) = args.args.first() {
+                    self.arg(first, out)?;
+                }
+                out.write(b"] = ")?;
+                if args.args.len() > 1 {
+                    self.arg(&args.args[1], out)?;
+                } else {
+                    out.write(b"None")?;
+                }
+            }
+            // .get(key) → receiver.get(key) (same in Python)
+            "get" => {
+                self.expr(receiver, out)?;
+                out.write(b".get(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .has(key) → key in receiver
+            "has" | "contains_key" => {
+                if let Some(first_arg) = args.args.first() {
+                    self.arg(first_arg, out)?;
+                    out.write(b" in ")?;
+                    self.expr(receiver, out)?;
+                } else {
+                    self.expr(receiver, out)?;
+                    out.write(b".has(")?;
+                    self.emit_args(args, out)?;
+                    out.write(b")")?;
+                }
+            }
+            // .keys() / .values() / .items() — pass through
+            "keys" | "values" | "items" => {
+                self.expr(receiver, out)?;
+                out.write(b".")?;
+                out.write_all(method.as_bytes())?;
+                out.write(b"(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+
+            // ── String methods ──
+            // .trim() → .strip()
+            "trim" => {
+                self.expr(receiver, out)?;
+                out.write(b".strip(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .split(sep) → .split(sep) (same in Python)
+            "split" => {
+                self.expr(receiver, out)?;
+                out.write(b".split(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .to_upper() → .upper()
+            "to_upper" | "upper" => {
+                self.expr(receiver, out)?;
+                out.write(b".upper()")?;
+            }
+            // .to_lower() → .lower()
+            "to_lower" | "lower" => {
+                self.expr(receiver, out)?;
+                out.write(b".lower()")?;
+            }
+            // .starts_with(s) → .startswith(s)
+            "starts_with" | "startswith" => {
+                self.expr(receiver, out)?;
+                out.write(b".startswith(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .ends_with(s) → .endswith(s)
+            "ends_with" | "endswith" => {
+                self.expr(receiver, out)?;
+                out.write(b".endswith(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .replace(old, new) → .replace(old, new) (same in Python)
+            "replace" => {
+                self.expr(receiver, out)?;
+                out.write(b".replace(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+
+            // ── Default: pass through as receiver.method(args) ──
+            _ => {
+                self.expr(receiver, out)?;
+                out.write(b".")?;
+                out.write_all(method.as_bytes())?;
+                out.write(b"(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Emit call arguments
+    fn emit_args(&mut self, args: &Args, out: &mut impl Write) -> AutoResult<()> {
+        for (i, arg) in args.args.iter().enumerate() {
+            if i > 0 {
+                out.write(b", ")?;
+            }
+            self.arg(arg, out)?;
+        }
         Ok(())
     }
 
@@ -2067,5 +2280,17 @@ mod tests {
     #[test]
     fn test_16_001_builtin_map() {
         test_a2p("16_python_std/001_builtin_map").unwrap();
+    }
+
+    // Plan 283 Task 1.3: Collection method mapping tests
+    #[test]
+    fn test_16_002_method_map() {
+        test_a2p("16_python_std/002_method_map").unwrap();
+    }
+
+    // Plan 283 Task 2.2: Static method decorator test
+    #[test]
+    fn test_11_004_static_decorator() {
+        test_a2p("11_methods/004_static_decorator").unwrap();
     }
 }

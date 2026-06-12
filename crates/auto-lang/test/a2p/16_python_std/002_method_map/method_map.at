@@ -1,0 +1,13 @@
+fn main() {
+    let items = [1, 2, 3]
+    items.push(4)
+    let last = items.pop()
+    let n = items.len()
+    let has = items.contains(2)
+    let name = "  hello  ".trim()
+    let parts = "a,b,c".split(",")
+    let upper = "hello".to_upper()
+    let lower = "HELLO".to_lower()
+    let yes = "hello".starts_with("he")
+    print(n)
+}

@@ -1,0 +1,10 @@
+type Math {
+    static fn add(a int, b int) int {
+        a + b
+    }
+}
+
+fn main() {
+    let result = Math.add(3, 4)
+    print(result)
+}
