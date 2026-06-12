@@ -286,6 +286,33 @@ fn resolve_action_from_view(
                 state_value: Some(auto_val::Value::Float(fval as f64)),
             })
         }
+
+        UiActionType::Clear => {
+            // Valid for Input, Textarea — clear sends empty string
+            if target.kind != "Input" && target.kind != "Textarea" {
+                return Err(ActionError::InvalidAction {
+                    action: action.clone(),
+                    component_kind: target.kind.clone(),
+                });
+            }
+
+            let handler = target.actions.iter()
+                .find(|a| a.name == "type")
+                .map(|a| a.handler.trim_start_matches('.').to_string())
+                .ok_or(ActionError::NoHandler {
+                    action: action.clone(),
+                    element_id: target.id,
+                })?;
+
+            let state_field = input_map.get(&handler).cloned();
+
+            Ok(ResolvedAction {
+                event_name: handler,
+                needs_state_write: state_field.is_some(),
+                state_field,
+                state_value: Some(auto_val::Value::str("")),
+            })
+        }
     }
 }
 

@@ -104,6 +104,8 @@ pub enum UiActionType {
     SelectOption,
     /// Set a slider value
     SetValue,
+    /// Clear an input/textarea (Plan 299)
+    Clear,
 }
 
 impl fmt::Display for UiActionType {
@@ -114,6 +116,7 @@ impl fmt::Display for UiActionType {
             UiActionType::Toggle => write!(f, "toggle"),
             UiActionType::SelectOption => write!(f, "select_option"),
             UiActionType::SetValue => write!(f, "set_value"),
+            UiActionType::Clear => write!(f, "clear"),
         }
     }
 }
