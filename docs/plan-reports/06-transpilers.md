@@ -32,6 +32,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 187 | a2ts Vue Adapter | Planned | Replace Vue generator's inline JS with a2ts delegation for proper TypeScript output |
 | 204 | a2r Transpiler Completeness | Complete | Close a2r feature gap: Result, spec, struct, enum, stdlib method mapping — all 6 phases done |
 | 213 | a2py Python Transpiler Maturation | Complete | Expand Python transpiler from 18% to 80%+ coverage (Option/Result, closures, generics) |
+| 283 | a2py Pythonic Maturation | Complete | Import system, stdlib/builtin/method mapping, @dataclass/@staticmethod, struct destructuring, type tracking |
 | 215 | a2ts TypeScript Transpiler Maturation | Complete | Expand TypeScript transpiler from 24 to 80+ tests (Option/Result, collections, async) |
 | 216 | C FFI Bindgen | Complete | Auto-bindgen for C headers with libloading runtime, a2c auto-bind, CLI integration |
 | 219 | Playground Source Map | Complete | Source map generation for playground editor with AST-to-output position mapping |
@@ -44,7 +45,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 
 ## Status
 
-**Implemented**: a2p (Python, 10 tests), a2j (JavaScript, 9 tests), a2c generics monomorphization, r2a reverse transpiler (116 tests), a2r core struct support (static fn, pub, tokio main, mut self, field attrs), a2r list implementation and .as(Type) cast, test suite reorganization for a2r/a2c/a2ts, C FFI bindgen with libloading runtime and CLI integration (Plan 216), a2r lexer compilation fixes (Plan 232).
+**Implemented**: a2p (Python, 96 tests), a2j (JavaScript, 9 tests), a2c generics monomorphization, r2a reverse transpiler (116 tests), a2r core struct support (static fn, pub, tokio main, mut self, field attrs), a2r list implementation and .as(Type) cast, test suite reorganization for a2r/a2c/a2ts, C FFI bindgen with libloading runtime and CLI integration (Plan 216), a2r lexer compilation fixes (Plan 232).
 
 **Partial**: a2r (144 tests, 38% parity with a2c, ongoing gap closure), a2r .rs.at platform-specific files, a2ts migration from a2js (Phase 2-3 done, Phase 4 pending).
 
@@ -66,7 +67,7 @@ The a2c transpiler supports generic type monomorphization, which specializes gen
 
 The a2p (Python) and a2j (JavaScript) transpilers are complete and production-ready. Both benefit from the dynamic nature of their target languages, which eliminates type system friction. A notable design insight is that AutoLang f-strings map directly to Python f-strings and JavaScript template literals with only minor syntax changes: `$name` becomes `{name}` in Python and `${name}` in JavaScript, while the surrounding quotes change to backticks for JS template literals.
 
-The Python transpiler maps AutoLang `type` declarations to `@dataclass` decorated classes, `enum` to `enum.Enum`, and `is` pattern matching to Python 3.10+ `match/case` (requiring Python 3.10 as a minimum). The JavaScript transpiler produces ES6+ code with `class` for structs, `Object.freeze()` for enums, `switch/case` for pattern matching, and `const`/`let` based on AutoLang's `let`/`var` distinction. The JavaScript transpiler was notably completed faster than estimated because all core features fit naturally into a single implementation phase.
+The Python transpiler maps AutoLang `type` declarations to `@dataclass` decorated classes, `enum` to `enum.Enum`, and `is` pattern matching to Python 3.10+ `match/case` (requiring Python 3.10 as a minimum). Plan 283 significantly enhanced the Python transpiler with: import system (`use`/`use.py` → Python imports), stdlib builtin mapping (`type_name` → `type(x).__name__`, `sleep_ms` → `time.sleep(ms/1000)`), collection method mapping (`push` → `append`, `len` → `len()`, `contains` → `in`, `trim` → `strip`, etc.), consistent `@dataclass` usage for all types, `@staticmethod` for `static fn`, struct destructuring patterns (`Point { x, y }` → `case Point(x, y)`), type tracking infrastructure (`local_var_types` + `infer_type_from_expr()`), and Python syntax fixes (`!` → `not`, empty class `pass`). The transpiler now has 96 tests with all generated code validated by `py_compile`.
 
 ### TypeScript Migration and ArkTS
 
@@ -111,10 +112,11 @@ The transpiler system extends beyond language targets to UI-specific code genera
 
 ## Source Plans
 
-Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 215, 216, 219, 220, 232, 240, 241, 264.
+Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 283, 215, 216, 219, 220, 232, 240, 241, 264.
 
 - [204-a2r-transpiler-completeness.md](../plans/old/204-a2r-transpiler-completeness.md)
 - [213-a2py-maturation.md](../plans/213-a2py-maturation.md)
+- [283-a2py-maturation-plan.md](../plans/old/283-a2py-maturation-plan.md)
 - [215-a2ts-maturation.md](../plans/215-a2ts-maturation.md)
 - [216-cffi-bindgen.md](../plans/216-cffi-bindgen.md)
 - [219-playground-source-map.md](../plans/219-playground-source-map.md)
