@@ -18,6 +18,7 @@ use crate::vm::opcode::OpCode;
 use crate::vm::task::TaskId;
 use crate::vm::virt_memory::VirtualFlash;
 use crate::Parser;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Debug logging macro - only prints when VM debug mode is enabled
@@ -847,12 +848,133 @@ impl AutovmReplSession {
             .unwrap_or_default()
     }
 
-    /// Get list of local variables
+    /// Get list of local variable names
     pub fn locals(&self) -> Vec<String> {
         self.codegen
             .as_ref()
-            .map(|c| c.locals.keys().cloned().collect())
+            .map(|c| {
+                c.scope_stack.iter()
+                    .flat_map(|scope| scope.keys().cloned())
+                    .collect()
+            })
             .unwrap_or_default()
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 303 Step 3: Variable export for ASH shell-command interpolation
+    // -----------------------------------------------------------------------
+
+    /// Get a string representation of a local variable's value.
+    ///
+    /// Used by ASH to interpolate `$var` in `>` shell-command lines.
+    /// Reads the NaN-boxed value from `raw_nv` (the VM's primary stack).
+    pub fn get_var_string(&self, name: &str) -> Option<String> {
+        let codegen = self.codegen.as_ref()?;
+
+        // Variables live in scope_stack (not the `locals` field).
+        // Search from innermost scope to outermost (same as codegen's lookup_var).
+        let mut local_idx: Option<usize> = None;
+        for scope in codegen.scope_stack.iter().rev() {
+            if let Some(&idx) = scope.get(name) {
+                local_idx = Some(idx);
+                break;
+            }
+        }
+        let local_idx = local_idx?;
+
+        // Read NaN-boxed value from raw_nv at bp + 1 + local_idx
+        let task_arc = self.vm.tasks.get(&self.main_task_id)?;
+        let task = task_arc.blocking_lock();
+
+        let bp = task.bp;
+        let stack_pos = bp + 1 + local_idx;
+
+        if stack_pos >= task.ram.raw_nv.len() {
+            return None;
+        }
+
+        let nv = task.ram.raw_nv[stack_pos];
+        drop(task); // Release lock before further lookups
+
+        Some(self.decode_nv_value(nv))
+    }
+
+    /// Get all local variable names and their string values.
+    pub fn get_all_vars(&self) -> HashMap<String, String> {
+        let Some(codegen) = &self.codegen else { return HashMap::new(); };
+        let Some(task_arc) = self.vm.tasks.get(&self.main_task_id) else { return HashMap::new(); };
+        let task = task_arc.blocking_lock();
+
+        let bp = task.bp;
+        let mut vars = HashMap::new();
+
+        for scope in &codegen.scope_stack {
+            for (name, &idx) in scope {
+                let pos = bp + 1 + idx;
+                if pos < task.ram.raw_nv.len() {
+                    let nv = task.ram.raw_nv[pos];
+                    vars.insert(name.clone(), self.decode_nv_value(nv));
+                }
+            }
+        }
+
+        vars
+    }
+
+    /// Decode a NaN-boxed NanoValue from the VM stack into a display string.
+    ///
+    /// Uses the same tagging convention as the VM engine's `decode_tagged_nv`.
+    fn decode_nv_value(&self, nv: auto_val::NanoValue) -> String {
+        if auto_val::is_string(nv) {
+            let str_idx = auto_val::decode_string(nv) as usize;
+            let strings = self.vm.strings.read().unwrap();
+            if let Some(bytes) = strings.get(str_idx) {
+                return String::from_utf8_lossy(bytes).to_string();
+            }
+            return format!("<str#{}>", str_idx);
+        }
+
+        if auto_val::is_i32(nv) {
+            let i = auto_val::decode_i32(nv);
+
+            // Heap object / array reference
+            if i >= 2_000_000 {
+                let id = i as u64;
+                if let Some(arc) = self.vm.arrays.get(&id) {
+                    let guard = arc.read().unwrap();
+                    let elems: Vec<String> = guard.iter()
+                        .map(|v| match v {
+                            auto_val::Value::Int(n) => n.to_string(),
+                            auto_val::Value::Str(s) => s.as_str().to_string(),
+                            auto_val::Value::Bool(b) => b.to_string(),
+                            auto_val::Value::Nil => "nil".to_string(),
+                            _ => "?".to_string(),
+                        })
+                        .collect();
+                    return format!("[{}]", elems.join(", "));
+                }
+            }
+
+            return i.to_string();
+        }
+
+        if auto_val::is_bool(nv) {
+            return auto_val::decode_bool(nv).to_string();
+        }
+
+        if auto_val::is_f64(nv) {
+            return auto_val::decode_f64(nv).to_string();
+        }
+
+        // List / object references
+        if auto_val::is_list(nv) {
+            return format!("<list#{}>", auto_val::decode_list(nv));
+        }
+        if auto_val::is_object(nv) {
+            return format!("<obj#{}>", auto_val::decode_object(nv));
+        }
+
+        "<unknown>".to_string()
     }
 
     /// Get the last result (Plan 080)

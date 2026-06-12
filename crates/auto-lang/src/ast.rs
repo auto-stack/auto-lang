@@ -16,7 +16,7 @@ mod ext;
 pub use ext::*;
 mod fun;
 pub use fun::*;
-mod fstr;
+pub mod fstr;
 pub use fstr::*;
 mod grid;
 pub use grid::*;

@@ -1142,22 +1142,217 @@ impl Shell {
     /// Execute each line of a file in the current shell context.
     ///
     /// Used by both `~/.ashrc` loading and the `source` builtin.
-    /// Lines starting with `#` and blank lines are skipped.
+    /// Supports `>` prefix syntax for shell commands within mixed scripts.
     pub fn source_file(&mut self, path: &std::path::Path) -> Result<()> {
         let content = std::fs::read_to_string(path)
             .into_diagnostic()
             .map_err(|e| miette::miette!("source: {}: {}", path.display(), e))?;
 
+        self.execute_script_content(&content)
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 303 Step 2: Script execution with `>` shell syntax
+    // -----------------------------------------------------------------------
+
+    /// Execute a script file with `>` shell syntax support.
+    ///
+    /// Usage: `ash deploy.at` — runs the file, treating `>`-prefixed lines
+    /// as shell commands and everything else as AutoLang code.
+    pub fn execute_script_file(&mut self, path: &std::path::Path) -> Result<()> {
+        let content = std::fs::read_to_string(path)
+            .into_diagnostic()
+            .map_err(|e| miette::miette!("ash: {}: {}", path.display(), e))?;
+
+        self.execute_script_content(&content)
+    }
+
+    /// Execute script content with `>` shell syntax support.
+    ///
+    /// Pre-processes lines into two categories:
+    /// 1. **Auto blocks** (non-`>` lines) — accumulated and sent to the VM as
+    ///    a single block so multi-line constructs (`fn`, `for`, `if`) work.
+    /// 2. **Shell lines** (`>` prefix) — interpolated and executed one-by-one.
+    fn execute_script_content(&mut self, content: &str) -> Result<()> {
+        let mut auto_block = String::new();
+
         for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
+            let trimmed = line.trim();
+
+            // Skip empty lines
+            if trimmed.is_empty() {
+                if !auto_block.is_empty() {
+                    auto_block.push('\n');
+                }
                 continue;
             }
-            // Silently ignore errors in RC files (like bash does)
-            let _ = self.execute(line);
+
+            // Skip comments (both // and #)
+            if trimmed.starts_with('#') || trimmed.starts_with("//") {
+                if !auto_block.is_empty() {
+                    auto_block.push('\n');
+                }
+                continue;
+            }
+
+            // Shell line: starts with >
+            if trimmed.starts_with('>') {
+                // Flush accumulated Auto block first
+                self.flush_auto_block(&mut auto_block)?;
+
+                // Strip > prefix
+                let cmd = trimmed[1..].trim();
+
+                if cmd.is_empty() {
+                    continue;
+                }
+
+                // Interpolate Auto variables ($var → value)
+                let cmd = self.interpolate_auto_vars(cmd);
+
+                // Execute as shell command, print output
+                match self.execute(&cmd) {
+                    Ok(Some(output)) => println!("{}", output),
+                    Ok(None) => {}
+                    Err(e) => eprintln!("Error: {}", e),
+                }
+                continue;
+            }
+
+            // Plan 303 Step 5: Assignment capture — let/var name = > cmd
+            // Detect pattern where a shell command's output is assigned to an Auto variable.
+            if let Some(captured) = self.try_capture_assignment(trimmed) {
+                // Flush any pending Auto block first
+                self.flush_auto_block(&mut auto_block)?;
+                // Run the captured assignment as Auto code
+                let _ = self.session.run(&captured);
+                continue;
+            }
+
+            // Regular Auto line: accumulate
+            auto_block.push_str(line);
+            auto_block.push('\n');
         }
 
+        // Flush remaining Auto block
+        self.flush_auto_block(&mut auto_block)?;
+
         Ok(())
+    }
+
+    /// Flush accumulated Auto code block to the VM.
+    fn flush_auto_block(&mut self, block: &mut String) -> Result<()> {
+        if block.trim().is_empty() {
+            return Ok(());
+        }
+        let result = self.session.run(block);
+        if let Err(e) = result {
+            eprintln!("Error: {}", e);
+        }
+        block.clear();
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 303 Step 5: Assignment capture (let x = > cmd)
+    // -----------------------------------------------------------------------
+
+    /// Try to parse an assignment-capture line: `let x = > cmd` or `var x = > cmd`.
+    ///
+    /// Returns `Some(auto_code)` if the pattern matches, where `auto_code` is
+    /// an Auto `let`/`var` statement with the captured stdout as a string value.
+    /// Returns `None` if this is a regular Auto line.
+    fn try_capture_assignment(&mut self, line: &str) -> Option<String> {
+        // Check for `let ` or `var ` prefix
+        let rest = if let Some(r) = line.strip_prefix("let ") {
+            r
+        } else if let Some(r) = line.strip_prefix("var ") {
+            r
+        } else {
+            return None;
+        };
+
+        // Look for `= >` separator
+        let eq_pos = rest.find("= >")?;
+        let var_name = rest[..eq_pos].trim();
+
+        // Validate variable name
+        if var_name.is_empty() || var_name.chars().next()?.is_ascii_digit() {
+            return None;
+        }
+
+        // Extract the shell command after `= >`
+        let cmd = rest[eq_pos + 3..].trim();
+        if cmd.is_empty() {
+            return None;
+        }
+
+        // Interpolate Auto variables in the command
+        let cmd = self.interpolate_auto_vars(cmd);
+
+        // Execute and capture stdout
+        let output = match self.execute(&cmd) {
+            Ok(Some(out)) => out,
+            Ok(None) => String::new(),
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                String::new()
+            }
+        };
+
+        // Escape the output for embedding in an Auto string literal
+        let escaped = output
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "");
+
+        // Build the Auto assignment
+        let keyword = if line.starts_with("var") { "var" } else { "let" };
+        Some(format!("{} {} = \"{}\"", keyword, var_name, escaped))
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 303 Step 3: Auto variable interpolation
+    // -----------------------------------------------------------------------
+
+    /// Replace `$var` in shell command text with Auto VM variable values.
+    ///
+    /// Lookup priority: Auto VM locals → Shell local vars → Environment vars.
+    fn interpolate_auto_vars(&self, cmd: &str) -> String {
+        let mut result = String::with_capacity(cmd.len());
+        let mut chars = cmd.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            if c == '$' {
+                // Read variable name
+                let mut name = String::new();
+                while let Some(&ch) = chars.peek() {
+                    if ch.is_alphanumeric() || ch == '_' {
+                        name.push(ch);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                if name.is_empty() {
+                    result.push('$');
+                    continue;
+                }
+
+                // Priority: Auto VM vars > Shell vars > Env vars
+                let value = self.session.get_var_string(&name)
+                    .or_else(|| self.vars.get_local(&name).cloned())
+                    .or_else(|| self.vars.get_env(&name))
+                    .unwrap_or_default();
+
+                result.push_str(&value);
+            } else {
+                result.push(c);
+            }
+        }
+
+        result
     }
 
     /// Handle the `source` and `.` builtin commands.

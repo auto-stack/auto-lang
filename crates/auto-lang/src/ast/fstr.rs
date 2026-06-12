@@ -2,6 +2,15 @@ use super::{AtomWriter, Expr, ToAtom, ToAtomStr, ToNode};
 use auto_val::Node as AutoNode;
 use std::{fmt, io as stdio};
 
+/// A single part of an f-string: either a literal text segment or an expression.
+#[derive(Debug, Clone)]
+pub enum FStrPart {
+    /// Literal text segment (no interpolation)
+    Literal(String),
+    /// Interpolated expression
+    Expr(Expr),
+}
+
 #[derive(Debug, Clone)]
 pub struct FStr {
     pub parts: Vec<Expr>,
