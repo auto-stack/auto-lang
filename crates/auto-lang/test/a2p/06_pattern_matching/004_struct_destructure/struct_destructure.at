@@ -1,0 +1,11 @@
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let p = Point(x: 3, y: 4)
+    is p {
+        Point { x, y } -> print(x)
+    }
+}

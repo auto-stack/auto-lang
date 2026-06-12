@@ -3,7 +3,7 @@ use crate::ast::*;
 use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 /// Plan 283 Task 4.2: Tracked third-party Python package dependency
@@ -25,6 +25,9 @@ pub struct PythonTrans {
     /// Third-party Python package dependencies (for requirements.txt generation)
     /// Plan 283 Task 4.2
     py_deps: Vec<PyDep>,
+    /// Plan 283 Task 2.1: Local variable type tracking for ErrorPropagate and type-aware codegen.
+    /// Populated from store.ty (explicit annotations) and basic expression inference.
+    local_var_types: HashMap<AutoStr, Type>,
     #[allow(dead_code)]
     name: AutoStr,
 }
@@ -37,6 +40,7 @@ impl PythonTrans {
             py_imports: Vec::new(),
             py_wildcards: Vec::new(),
             py_deps: Vec::new(),
+            local_var_types: HashMap::new(),
             name,
         }
     }
@@ -288,6 +292,38 @@ impl PythonTrans {
                 self.expr(expr, out)
             }
 
+            // Plan 165: Struct destructuring pattern for is match arms
+            // Point { x, y } → Python 3.10+ dataclass pattern: case Point(x, y)
+            Expr::StructPattern(sc) => {
+                match &sc.variant {
+                    Some(variant) => {
+                        // Enum variant with struct destructuring: Type.Variant { field }
+                        out.write_all(variant.as_bytes())?;
+                    }
+                    None => {
+                        // Plain struct destructuring: Type { x, y }
+                        out.write_all(sc.type_name.as_bytes())?;
+                    }
+                }
+                out.write(b"(")?;
+                for (i, fb) in sc.fields.iter().enumerate() {
+                    if i > 0 {
+                        out.write(b", ")?;
+                    }
+                    if fb.field == fb.binding {
+                        // Shorthand: field name equals binding name
+                        out.write_all(fb.field.as_bytes())?;
+                    } else {
+                        // Explicit alias: field=binding
+                        out.write_all(fb.field.as_bytes())?;
+                        out.write(b"=")?;
+                        out.write_all(fb.binding.as_bytes())?;
+                    }
+                }
+                out.write(b")")?;
+                Ok(())
+            }
+
             // Unsupported - return error for now
             _ => Err(format!("Python Transpiler: unsupported expression: {:?}", expr).into()),
         }
@@ -410,6 +446,14 @@ impl PythonTrans {
     }
 
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 283 Task 2.1: Track variable type for type-aware codegen
+        let effective_ty = if matches!(store.ty, Type::Unknown) {
+            self.infer_type_from_expr(&store.expr)
+        } else {
+            store.ty.clone()
+        };
+        self.local_var_types.insert(store.name.clone(), effective_ty);
+
         out.write_all(store.name.as_bytes())?;
         out.write(b" = ")?;
         self.expr(&store.expr, out)?;
@@ -458,6 +502,14 @@ impl PythonTrans {
     }
 
     fn fn_decl(&mut self, func: &Fn, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 283 Task 2.1: Clear and populate local_var_types from function params
+        self.local_var_types.clear();
+        for param in &func.params {
+            if !matches!(param.ty, Type::Unknown) {
+                self.local_var_types.insert(param.name.clone(), param.ty.clone());
+            }
+        }
+
         self.print_indent(out)?;
 
         // Plan 213 Task 7: async def for ~T return types, or main with .await
@@ -561,6 +613,14 @@ impl PythonTrans {
     }
 
     fn fn_decl_in_class(&mut self, func: &Fn, _type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 283 Task 2.1: Clear and populate local_var_types from method params
+        self.local_var_types.clear();
+        for param in &func.params {
+            if !matches!(param.ty, Type::Unknown) {
+                self.local_var_types.insert(param.name.clone(), param.ty.clone());
+            }
+        }
+
         self.print_indent(out)?;
 
         // Plan 283 Task 2.2: Static methods get @staticmethod decorator
@@ -1459,6 +1519,43 @@ impl PythonTrans {
         }
     }
 
+    /// Plan 283 Task 2.1: Basic expression type inference for local variable tracking.
+    /// Simplified version of a2r's infer_type_from_expr (rust.rs line 5611).
+    /// Focuses on detecting Option/Result types for ErrorPropagate codegen.
+    fn infer_type_from_expr(&self, expr: &Expr) -> Type {
+        match expr {
+            Expr::Some(_) => Type::Option(Box::new(Type::Unknown)),
+            Expr::None | Expr::Nil | Expr::Null => Type::Option(Box::new(Type::Unknown)),
+            Expr::Ok(_) => Type::Result(Box::new(Type::Unknown)),
+            Expr::Err(_) => Type::Result(Box::new(Type::Unknown)),
+            Expr::Ident(name) => {
+                self.local_var_types.get(name).cloned().unwrap_or(Type::Unknown)
+            }
+            Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => Type::StrSlice,
+            Expr::Int(_) => Type::Int,
+            Expr::Uint(_) => Type::Uint,
+            Expr::Float(_, _) => Type::Float,
+            Expr::Double(_, _) => Type::Double,
+            Expr::Bool(_) => Type::Bool,
+            Expr::Array(items) => {
+                if let Some(first) = items.first() {
+                    let elem_ty = self.infer_type_from_expr(first);
+                    Type::List(Box::new(elem_ty))
+                } else {
+                    Type::Unknown
+                }
+            }
+            Expr::NullCoalesce(lhs, _) => {
+                let lhs_ty = self.infer_type_from_expr(lhs);
+                match lhs_ty {
+                    Type::Option(inner) => *inner,
+                    other => other,
+                }
+            }
+            _ => Type::Unknown,
+        }
+    }
+
     // ── Plan 283 Task 1.1 + 4.1: use / use.py → Python import ─────────────
 
     /// Collect a `use` statement for later emission at the top of the file.
@@ -2269,5 +2366,11 @@ mod tests {
     #[test]
     fn test_11_004_static_decorator() {
         test_a2p("11_methods/004_static_decorator").unwrap();
+    }
+
+    // Plan 283 Task 2.4: Struct destructuring pattern matching
+    #[test]
+    fn test_06_004_struct_destructure() {
+        test_a2p("06_pattern_matching/004_struct_destructure").unwrap();
     }
 }
