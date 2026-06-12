@@ -1,6 +1,6 @@
 def main():
     flag = True
-    result = !flag
+    result = not flag
     print(result)
 
 if __name__ == "__main__":

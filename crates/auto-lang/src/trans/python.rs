@@ -103,8 +103,17 @@ impl PythonTrans {
 
             // Unary operations
             Expr::Unary(op, expr) => {
-                out.write(format!("{}", op.op()).as_bytes()).to()?;
-                self.expr(expr, out)
+                // Python uses 'not' keyword instead of '!'
+                match op {
+                    Op::Not => {
+                        out.write(b"not ")?;
+                        self.expr(expr, out)
+                    }
+                    _ => {
+                        out.write(format!("{}", op.op()).as_bytes()).to()?;
+                        self.expr(expr, out)
+                    }
+                }
             }
 
             // Function calls
@@ -1162,6 +1171,13 @@ impl PythonTrans {
                 out.write_all(type_name.as_bytes())?;
             }
             out.write(b"\n")?;
+        }
+
+        // Python requires at least one statement in class body
+        let is_empty = type_decl.members.is_empty() && type_decl.methods.is_empty();
+        if is_empty {
+            self.print_indent(out)?;
+            out.write(b"pass\n")?;
         }
 
         // Emit methods (add blank line before first method)
