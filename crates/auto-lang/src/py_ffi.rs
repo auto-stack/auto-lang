@@ -21,7 +21,7 @@ pub struct PyFfiBridge {
 
 impl PyFfiBridge {
     pub fn new() -> Result<Self, VMError> {
-        Python::with_gil(|_py| {});
+        Python::attach(|_py| {});
 
         Ok(Self {
             modules: HashMap::new(),
@@ -32,7 +32,7 @@ impl PyFfiBridge {
     }
 
     pub fn import_module(&mut self, module_name: &str) -> Result<(), VMError> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let module = py.import(module_name).map_err(|e| {
                 VMError::FFI(format!("Failed to import Python module '{}': {}", module_name, e))
             })?;
@@ -62,7 +62,7 @@ impl PyFfiBridge {
         let qualified = format!("{}.{}", module_name, function_name);
         self.functions.insert(qualified, native_id);
 
-        let module: Py<PyModule> = Python::with_gil(|py| {
+        let module: Py<PyModule> = Python::attach(|py| {
             self.modules
                 .get(module_name)
                 .ok_or_else(|| VMError::FFI(format!("Module {} not imported", module_name)))
@@ -73,7 +73,7 @@ impl PyFfiBridge {
         let param_types = signature.params.clone();
 
         let shim = move |task: &mut AutoTask, vm: &AutoVM| {
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 let mod_ref = module.bind(py);
                 let func = mod_ref.getattr(&func_name).map_err(|e| {
                     VMError::FFI(format!("Python function '{}' not found: {}", func_name, e))
@@ -158,10 +158,11 @@ impl PyFfiBridge {
                         task.ram.push_i32(0);
                     }
                     PyType::List => {
-                        let list = py_result.downcast::<PyList>().map_err(|e| {
-                            VMError::FFI(format!("Python return not list: {}", e))
-                        })?;
-                        py_list_to_vm_heap(list, task, vm)?;
+                        if let Ok(list) = py_result.cast::<PyList>() {
+                            py_list_to_vm_heap(list, task, vm)?;
+                        } else {
+                            return Err(VMError::FFI("Python return not list".to_string()));
+                        }
                     }
                     PyType::Auto => {
                         py_auto_marshal_return(&py_result, task, vm)?;
@@ -184,7 +185,7 @@ impl PyFfiBridge {
     /// Plan 300: Use Python `inspect.signature()` to get the number of parameters for a function.
     /// Falls back to `default_count` if introspection fails.
     pub fn inspect_param_count(&self, module_name: &str, func_name: &str, default_count: usize) -> usize {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let Some(mod_ref) = self.modules.get(module_name) else {
                 return default_count;
             };
@@ -242,7 +243,7 @@ impl PyFfiBridge {
     /// Plan 300: Discover all public callable functions in a module.
     /// Returns a list of (func_name, param_count) pairs.
     pub fn discover_module_callables(&self, module_name: &str) -> Vec<(String, usize)> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let Some(mod_ref) = self.modules.get(module_name) else {
                 return Vec::new();
             };
@@ -343,9 +344,9 @@ fn pop_auto_py_arg<'py>(
             Ok(PyString::new(py, &s).into_any())
         }
         3 => {
-            // TAG_BOOL — use to_object to get a PyObject then bind
+            // TAG_BOOL — construct Python bool directly
             let val = auto_val::decode_bool(nv);
-            Ok(val.to_object(py).into_bound(py))
+            Ok(pyo3::types::PyBool::new(py, val).to_owned().into_any())
         }
         4 => {
             // TAG_NULL
@@ -416,7 +417,7 @@ fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>) -> Bound<'py, PyAny>
         auto_val::Value::Float(f) | auto_val::Value::Double(f) => {
             PyFloat::new(py, *f).into_any()
         }
-        auto_val::Value::Bool(b) => (*b).to_object(py).into_bound(py),
+        auto_val::Value::Bool(b) => pyo3::types::PyBool::new(py, *b).to_owned().into_any(),
         auto_val::Value::Str(s) => PyString::new(py, s.as_str()).into_any(),
         auto_val::Value::Nil | auto_val::Value::Null | auto_val::Value::None => {
             py.None().into_bound(py)
@@ -432,9 +433,9 @@ fn py_auto_marshal_return(
     task: &mut AutoTask,
     vm: &AutoVM,
 ) -> Result<(), VMError> {
-    // Order matters: use downcast for bool to avoid float/int confusion
+    // Order matters: use is_instance_of for bool to avoid float/int confusion
     // In Python, bool is a subclass of int, so extract::<bool>() can succeed for floats
-    if py_val.downcast::<pyo3::types::PyBool>().is_ok() {
+    if py_val.is_instance_of::<pyo3::types::PyBool>() {
         let b: bool = py_val.extract().unwrap_or(false);
         task.ram.push_i32(if b { 1 } else { 0 });
     } else if let Ok(i) = py_val.extract::<i32>() {
@@ -466,9 +467,16 @@ fn py_auto_marshal_return(
         }
     } else if py_val.is_none() {
         task.ram.push_i32(0);
-    } else if let Ok(dict) = py_val.downcast::<PyDict>() {
+    } else if py_val.is_instance_of::<PyDict>() {
+        // pyo3 0.29: cast() returns reference, borrow for heap conversion
+        let dict = py_val.cast::<PyDict>().map_err(|e| {
+            VMError::FFI(format!("Cast to PyDict failed: {}", e))
+        })?;
         py_dict_to_vm_heap(dict, task, vm)?;
-    } else if let Ok(list) = py_val.downcast::<PyList>() {
+    } else if py_val.is_instance_of::<PyList>() {
+        let list = py_val.cast::<PyList>().map_err(|e| {
+            VMError::FFI(format!("Cast to PyList failed: {}", e))
+        })?;
         py_list_to_vm_heap(list, task, vm)?;
     } else {
         // Fallback: convert to string repr
@@ -551,7 +559,7 @@ fn py_any_to_value(
         return Ok(auto_val::Value::Nil);
     }
     // Nested list
-    if let Ok(list) = py_val.downcast::<PyList>() {
+    if let Ok(list) = py_val.cast::<PyList>() {
         let mut values = Vec::new();
         for item in list.iter() {
             values.push(py_any_to_value(&item, vm)?);
@@ -559,7 +567,7 @@ fn py_any_to_value(
         return Ok(auto_val::Value::Array(auto_val::Array::from(values)));
     }
     // Nested dict
-    if let Ok(dict) = py_val.downcast::<PyDict>() {
+    if let Ok(dict) = py_val.cast::<PyDict>() {
         let mut obj = auto_val::Obj::new();
         for (key, value) in dict.iter() {
             let key_str: String = key.extract().unwrap_or_default();
@@ -645,7 +653,7 @@ mod tests {
     #[test]
     fn test_py_inspect_param_count() {
         // Test that we can get param count via inspect
-        let result = Python::with_gil(|py| {
+        let result = Python::attach(|py| {
             let math = py.import("math").unwrap();
             let sqrt = math.getattr("sqrt").unwrap();
             let inspect = py.import("inspect").unwrap();
@@ -662,7 +670,7 @@ mod tests {
     #[test]
     fn test_py_inspect_multi_param() {
         // Test with multi-param function
-        let result = Python::with_gil(|py| {
+        let result = Python::attach(|py| {
             let random = py.import("random").unwrap();
             let randint = random.getattr("randint").unwrap();
             let inspect = py.import("inspect").unwrap();
@@ -679,7 +687,7 @@ mod tests {
     #[test]
     fn test_py_value_to_py_roundtrip() {
         // Test AutoVal Value → Python → extract round-trip
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             // Int round-trip
             let val = auto_val::Value::Int(42);
             let py_val = value_to_py(&val, py);

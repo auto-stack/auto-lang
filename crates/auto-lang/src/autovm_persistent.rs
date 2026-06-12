@@ -59,6 +59,11 @@ pub struct AutovmReplSession {
     /// Last result from the previous REPL input (Plan 080)
     /// Stores the result value for access in subsequent inputs
     last_result: Option<i32>,
+
+    /// Plan 300 Phase 2: Persistent Python FFI bridge for REPL.
+    /// Lazily created on first `use.py`, persists across inputs.
+    #[cfg(feature = "python")]
+    py_bridge: Option<crate::py_ffi::PyFfiBridge>,
 }
 
 impl AutovmReplSession {
@@ -102,6 +107,8 @@ impl AutovmReplSession {
             object_keys: Vec::new(),
             object_types: Vec::new(),
             last_result: None, // Plan 080: Initialize last_result
+            #[cfg(feature = "python")]
+            py_bridge: None, // Plan 300 Phase 2: Lazy init on first use.py
         }
     }
 
@@ -118,6 +125,11 @@ impl AutovmReplSession {
                 continue;
             }
 
+            // Skip Python imports - handled by resolve_py_imports()
+            if use_stmt.is_python_import {
+                continue;
+            }
+
             vm_debug!("DEBUG: Processing use statement: module={}, items={:?}",
                 use_stmt.module, use_stmt.items
             );
@@ -126,6 +138,70 @@ impl AutovmReplSession {
             self.load_and_register_module(use_stmt)?;
         }
 
+        Ok(())
+    }
+
+    /// Plan 300 Phase 2: Resolve Python FFI imports for REPL.
+    ///
+    /// Lazily creates a PyFfiBridge on first `use.py`, imports modules,
+    /// registers Python functions as native shims, and merges them into the VM.
+    #[cfg(feature = "python")]
+    fn resolve_py_imports(&mut self, code: &str) -> AutoResult<()> {
+        let use_stmts = scan_use_statements(code);
+        let py_stmts: Vec<_> = use_stmts.iter()
+            .filter(|u| u.is_python_import)
+            .collect();
+        if py_stmts.is_empty() { return Ok(()); }
+
+        // Lazy init: create bridge on first use.py
+        if self.py_bridge.is_none() {
+            self.py_bridge = Some(crate::py_ffi::PyFfiBridge::new()
+                .map_err(|e| AutoError::Msg(format!("PyFfiBridge init failed: {:?}", e)))?);
+        }
+        let bridge = self.py_bridge.as_mut().unwrap();
+
+        for stmt in &py_stmts {
+            if bridge.import_module(&stmt.module).is_err() {
+                continue; // module already imported or not found — skip gracefully
+            }
+
+            if stmt.items.is_empty() {
+                // Bare module: discover all callables, register with module-qualified name
+                let discovered = bridge.discover_module_callables(&stmt.module);
+                for (func_name, param_count) in discovered {
+                    let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                    if let Ok(native_id) = bridge.register_function(&stmt.module, &func_name, sig) {
+                        let qualified = format!("py.{}.{}", stmt.module, func_name);
+                        if let Ok(mut reg) = BIGVM_NATIVES.lock() {
+                            reg.register_with_id(&qualified, native_id);
+                        }
+                    }
+                }
+            } else {
+                // Named imports: register with short name
+                for func_name in &stmt.items {
+                    let param_count = bridge.inspect_param_count(&stmt.module, func_name, 1);
+                    let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                    if let Ok(native_id) = bridge.register_function(&stmt.module, func_name, sig) {
+                        let qualified = format!("py.{}", func_name);
+                        if let Ok(mut reg) = BIGVM_NATIVES.lock() {
+                            reg.register_with_id(&qualified, native_id);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Merge Python native shims into the VM
+        if let Some(ref bridge) = self.py_bridge {
+            self.vm.merge_native_interface(bridge.native_interface());
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "python"))]
+    fn resolve_py_imports(&mut self, _code: &str) -> AutoResult<()> {
         Ok(())
     }
 
@@ -262,6 +338,9 @@ impl AutovmReplSession {
     pub fn run(&mut self, code: &str) -> AutoResult<String> {
         // 0. Plan 094: Resolve use statements first (loads modules, registers functions)
         self.resolve_use_statements(code)?;
+
+        // Plan 300 Phase 2: Resolve Python FFI imports
+        self.resolve_py_imports(code)?;
 
         // 1. Parse the code
         let mut parser = Parser::from(code);
@@ -752,6 +831,12 @@ impl AutovmReplSession {
         self.vm.arrays.clear();
         self.vm.objects.clear();
         self.vm.nodes.clear();
+
+        // Plan 300 Phase 2: Clear Python FFI bridge
+        #[cfg(feature = "python")]
+        {
+            self.py_bridge = None;
+        }
     }
 
     /// Get list of defined functions

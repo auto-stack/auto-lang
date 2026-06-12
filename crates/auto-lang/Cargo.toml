@@ -10,8 +10,7 @@ license = "MIT"
 keywords = ["automation", "language", "scripting"]
 
 [features]
-default = ["with-file-history", "ui-iced", "nanbox"]
-nanbox = []
+default = ["with-file-history", "ui-iced", "python"]
 # Plan 289: Feature-gated test groups for faster daily development
 test-vm-files = []
 test-trans = []
@@ -109,7 +108,7 @@ ureq = { version = "2", features = ["json"], optional = true }
 # Plan 299: Streamable HTTP transport for AutoUI MCP server
 axum = { version = "0.8", features = ["json"], optional = true }
 # Plan 214: Python FFI (optional, requires Python dev headers)
-pyo3 = { version = "0.23", optional = true, features = ["auto-initialize"] }
+pyo3 = { version = "0.29", optional = true, features = ["auto-initialize"] }
 trans = "0.4.0"
 # Plan 173: r2a transpiler (Rust → Auto)
 syn = { version = "2", features = ["full", "parsing", "printing"] }

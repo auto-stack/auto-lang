@@ -19,8 +19,7 @@ simplelog = "0.12"
 colored = { workspace = true }
 
 [features]
-default = ["ui-iced"]
+default = ["ui-iced", "python"]
 ui-iced = ["auto-lang/ui-iced"]
 python = ["auto-lang/python"]
 with-file-history = ["auto-lang/with-file-history"]
-nanbox = ["auto-lang/nanbox"]
