@@ -132,7 +132,14 @@
       "Bash(target/debug/auto.exe tmp/test_builder.at)",
       "Bash(d:/autostack/auto-lang/target/debug/auto.exe run *)",
       "Bash(d:/autostack/auto-lang/target/debug/auto.exe r *)",
-      "WebSearch"
+      "WebSearch",
+      "mcp__zai-mcp-server__analyze_image",
+      "Bash(powershell.exe -Command \"cargo build -p auto\")",
+      "Bash(pwsh.exe -Command \"cargo build -p auto\")",
+      "Bash(pwsh.exe -Command 'Get-ChildItem Env: | Where-Object { $_.Name -match '\\\\''PYO3|PYTHON|VIRTUAL|CONDA'\\\\'' } | Format-Table Name,Value')",
+      "Bash(pwsh.exe -Command 'Get-ChildItem Env: | Where-Object { $_.Name -match \"PYO3|PYTHON|VIRTUAL|CONDA\" } | Format-Table Name,Value')",
+      "Bash(pwsh.exe -Command '[System.Environment]::GetEnvironmentVariables\\(\\) | Out-String')",
+      "Bash(env)"
     ],
     "additionalDirectories": [
       "d:\\autostack\\auto-lang\\docs\\plans",

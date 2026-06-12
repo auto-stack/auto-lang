@@ -921,50 +921,23 @@ impl RustGenerator {
     /// for field reads (e.g., `note.id` → `note["id"]`).
     fn scan_handler_locals(&mut self, widget: &AuraWidget) {
         for (_pattern, payload) in &widget.handlers {
-            match payload {
-                LogicPayload::AstStmts(stmts) => {
-                    for stmt in stmts {
-                        if let crate::ast::Stmt::Store(store) = stmt {
-                            if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const) {
-                                // Check if the value is a function call (likely returns Value)
-                                if matches!(&store.expr, crate::ast::Expr::Call(_)) {
-                                    self.value_locals.insert(store.name.as_str().to_string());
-                                }
-                            }
-                        }
-                    }
-                }
-                LogicPayload::AstBlock(stmts) => {
-                    for stmt in stmts {
-                        if let AuraStmt::Assign { target, value } = stmt {
-                            // Aura Assign with a method call value and no dot in target = local var
-                            if !target.contains('.') {
-                                if matches!(value, AuraExpr::MethodCall { .. }) {
-                                    self.value_locals.insert(target.clone());
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
+            self.scan_payload_locals(payload);
+        }
+        for lc in &widget.lifecycle {
+            self.scan_payload_locals(&lc.payload);
         }
     }
 
-    /// Scan a single LogicPayload for local variables from function calls.
-    /// Extracted from scan_handler_locals for reuse with lifecycle handlers.
+    /// Scan a single LogicPayload for local variables that hold serde_json::Value.
+    /// Detects:
+    /// - `let x = func_call()` — function call results
+    /// - `let x = collection[idx]` — indexing into Vec<Value>
+    /// - `let x = todos[idx]` — same pattern with named collection
+    /// - `for x in collection` — loop variables iterating over Vec<Value>
     fn scan_payload_locals(&mut self, payload: &LogicPayload) {
         match payload {
             LogicPayload::AstStmts(stmts) => {
-                for stmt in stmts {
-                    if let crate::ast::Stmt::Store(store) = stmt {
-                        if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const) {
-                            if matches!(&store.expr, crate::ast::Expr::Call(_)) {
-                                self.value_locals.insert(store.name.as_str().to_string());
-                            }
-                        }
-                    }
-                }
+                self.scan_ast_stmts_for_value_locals(stmts);
             }
             LogicPayload::AstBlock(stmts) => {
                 for stmt in stmts {
@@ -978,6 +951,93 @@ impl RustGenerator {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Recursively scan AST statements for value-typed locals and loop vars
+    fn scan_ast_stmts_for_value_locals(&mut self, stmts: &[crate::ast::Stmt]) {
+        for stmt in stmts {
+            match stmt {
+                crate::ast::Stmt::Store(store) => {
+                    if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const) {
+                        let name = store.name.as_str();
+                        // Check if the value is a function call (likely returns Value)
+                        if matches!(&store.expr, crate::ast::Expr::Call(_)) {
+                            self.value_locals.insert(name.to_string());
+                        }
+                        // Check if the value is an index into a state Vec<Value>
+                        if let crate::ast::Expr::Index(target, _idx) = &store.expr {
+                            if let crate::ast::Expr::Ident(collection) = target.as_ref() {
+                                let coll_name = collection.as_str();
+                                if self.state_types.get(coll_name)
+                                    .map(|ty| ty.starts_with("Vec<"))
+                                    .unwrap_or(false)
+                                {
+                                    self.value_locals.insert(name.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                crate::ast::Stmt::For(for_stmt) => {
+                    // Register loop variable as value var if iterating over a Value collection
+                    match &for_stmt.iter {
+                        crate::ast::Iter::Named(name) => {
+                            // `for todo in .todos` — check if .todos is Vec<Value>
+                            if let crate::ast::Expr::Dot(obj, field) = &for_stmt.range {
+                                if let crate::ast::Expr::Ident(_) = obj.as_ref() {
+                                    if self.state_types.get(field.as_str())
+                                        .map(|ty| ty.starts_with("Vec<"))
+                                        .unwrap_or(false)
+                                    {
+                                        self.value_loop_vars.insert(name.as_str().to_string());
+                                    }
+                                }
+                            } else if let crate::ast::Expr::Ident(name_expr) = &for_stmt.range {
+                                let coll = name_expr.as_str();
+                                if self.state_types.get(coll)
+                                    .map(|ty| ty.starts_with("Vec<"))
+                                    .unwrap_or(false)
+                                {
+                                    self.value_loop_vars.insert(name.as_str().to_string());
+                                }
+                            }
+                        }
+                        crate::ast::Iter::Indexed(_idx, name) => {
+                            if let crate::ast::Expr::Dot(obj, field) = &for_stmt.range {
+                                if let crate::ast::Expr::Ident(_) = obj.as_ref() {
+                                    if self.state_types.get(field.as_str())
+                                        .map(|ty| ty.starts_with("Vec<"))
+                                        .unwrap_or(false)
+                                    {
+                                        self.value_loop_vars.insert(name.as_str().to_string());
+                                    }
+                                }
+                            } else if let crate::ast::Expr::Ident(name_expr) = &for_stmt.range {
+                                let coll = name_expr.as_str();
+                                if self.state_types.get(coll)
+                                    .map(|ty| ty.starts_with("Vec<"))
+                                    .unwrap_or(false)
+                                {
+                                    self.value_loop_vars.insert(name.as_str().to_string());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                    // Recurse into for loop body
+                    self.scan_ast_stmts_for_value_locals(&for_stmt.body.stmts);
+                }
+                crate::ast::Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        self.scan_ast_stmts_for_value_locals(&branch.body.stmts);
+                    }
+                    if let Some(else_body) = &if_stmt.else_ {
+                        self.scan_ast_stmts_for_value_locals(&else_body.stmts);
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -1145,6 +1205,9 @@ impl RustGenerator {
                             return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, class_str);
                         }
                         if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("text") {
+                            if s.contains("${") {
+                                return format!("View::text_styled({}, \"{}\")", self.interpolate_str(s), class_str);
+                            }
                             return format!("View::text_styled(\"{}\".to_string(), \"{}\")", s, class_str);
                         }
                     }
@@ -1237,8 +1300,27 @@ impl RustGenerator {
                 // For leaf tags (text, button) with a "text" prop, use it as the initial value.
                 // For buttons: View::button("-") instead of View::button(())
                 // For text with state ref: View::text(format!("{}", self.name))
+                // Also extract text content from a single Text child (e.g. text f"..." { class: "..." })
+                let child_text_content: Option<AuraTextContent> = if children.len() == 1 {
+                    if let AuraNode::Text(content) = &children[0] {
+                        Some(content.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 let text_prop = props.get("text")
-                    .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None });
+                    .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                    .or_else(|| {
+                        // Fallback: extract literal text from child Text node
+                        match &child_text_content {
+                            Some(AuraTextContent::Literal(s)) => Some(s.clone()),
+                            Some(AuraTextContent::Interpolated { template, .. }) => Some(template.clone()),
+                            None => None,
+                        }
+                    });
 
                 // Check if text prop is a state reference (text .name)
                 let text_state_ref = props.get("text")
@@ -1356,17 +1438,20 @@ impl RustGenerator {
                         format!("Some(auto_lang::ui::style::Style::parse(\"{}\").unwrap())", class_str)
                     };
 
-                    // Build on_click handler
-                    let on_click = events.iter()
+                    // Build on_toggle handler
+                    // NOTE: Checkbox.on_toggle is Option<M>, NOT a closure.
+                    // Must emit the message value directly, e.g. Some(AppMsg::ToggleTodo(42)),
+                    // not Some(|_| AppMsg::ToggleTodo(42)).
+                    let on_toggle = events.iter()
                         .find(|(e, _)| e.as_str() == "onclick" || e.as_str() == "onClick" || e.as_str() == "on_click")
                         .map(|(_, handler)| {
-                            self.handler_to_rust_closure_with_params(&handler.handler, &handler.params)
+                            self.handler_to_rust_direct_msg(&handler.handler, &handler.params)
                         });
 
-                    let result = match on_click {
-                        Some(handler) => format!(
+                    let result = match on_toggle {
+                        Some(msg) => format!(
                             "View::Checkbox {{ is_checked: {}, label: \"{}\".to_string(), on_toggle: Some({}), style: {} }}",
-                            is_checked, label, handler, style_expr
+                            is_checked, label, msg, style_expr
                         ),
                         None => format!(
                             "View::Checkbox {{ is_checked: {}, label: \"{}\".to_string(), on_toggle: None, style: {} }}",
@@ -1408,10 +1493,11 @@ impl RustGenerator {
                 // Check if any styling props exist (class/style)
                 let has_styling = props.keys().any(|k| k == "style" || k == "class");
 
-                // For non-button leaf tags with text content and styling but no children,
+                // For non-button leaf tags with text content and styling,
                 // use View::text_styled() to avoid builder pattern issues
                 // (View::text("str") returns View, not ViewBuilder, so chaining won't work)
-                if self.is_leaf_tag(tag.as_str()) && tag != "button" && children.is_empty() && has_styling {
+                // Also handles text from a single Text child node (e.g. text f"..." { class: "..." })
+                if self.is_leaf_tag(tag.as_str()) && tag != "button" && (children.is_empty() || child_text_content.is_some()) && has_styling {
                     let user_style = props.get("style")
                         .or_else(|| props.get("class"))
                         .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
@@ -1428,6 +1514,10 @@ impl RustGenerator {
                         return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, style_str);
                     }
                     if let Some(label) = &text_prop {
+                        // Check if text contains interpolation like ${.field}
+                        if label.contains("${") {
+                            return format!("View::text_styled({}, \"{}\")", self.interpolate_str(label), style_str);
+                        }
                         return format!("View::text_styled(\"{}\".to_string(), \"{}\")", label, style_str);
                     }
                     if let Some(ref text) = text_rust_expr {
@@ -1440,12 +1530,12 @@ impl RustGenerator {
                 let text_prop_consumed = self.is_leaf_tag(tag.as_str())
                     && (text_prop.is_some() || text_state_ref.is_some() || text_rust_expr.is_some());
 
-                // Non-button leaf tags with text and no styling/children:
+                // Non-button leaf tags with text and no styling:
                 // View::text("str") returns View<M> directly, NOT a builder.
                 // Skip .build() to avoid compile error.
                 // Heading tags (h1-h3) always use text_styled with their default styles.
                 let heading_default = Self::heading_default_style(tag.as_str());
-                if self.is_leaf_tag(tag.as_str()) && tag != "button" && children.is_empty() && !has_styling {
+                if self.is_leaf_tag(tag.as_str()) && tag != "button" && (children.is_empty() || child_text_content.is_some()) && !has_styling {
                     if let Some(ref name) = text_state_ref {
                         if let Some(default) = heading_default {
                             return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, default);
@@ -1657,7 +1747,7 @@ impl RustGenerator {
                         .collect();
                     format!("if {} {{ {} }} else {{ {} }}", rust_condition, Self::wrap_views(&then_code), Self::wrap_views(&else_code))
                 } else {
-                    format!("if {} {{ {} }} else {{ View::empty() }}", rust_condition, Self::wrap_views(&then_code))
+                    format!("if {} {{ {} }} else {{ View::Empty }}", rust_condition, Self::wrap_views(&then_code))
                 }
             }
 
@@ -1849,6 +1939,41 @@ impl RustGenerator {
                 let is_method_call = i > 0
                     && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_' || bytes[i - 1] == b')');
                 if is_method_call {
+                    // This is var.field — check if var is a Value-type loop variable
+                    // Look backwards to find the identifier before the dot
+                    let mut ident_end = i;
+                    let mut ident_start = i;
+                    for j in (0..i).rev() {
+                        if bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_' {
+                            ident_start = j;
+                        } else {
+                            break;
+                        }
+                    }
+                    if ident_start < ident_end {
+                        let var_name = &result[ident_start..ident_end];
+                        if self.value_loop_vars.contains(var_name) {
+                            // Find the field name after the dot
+                            let mut field_end = i + 1;
+                            for j in (i + 1)..bytes.len() {
+                                if bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_' {
+                                    field_end = j + 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            let field_name = &result[i + 1..field_end];
+                            // Replace var.field with bracket access, converting the result
+                            // Remove the var.field from output and replace with bracket access
+                            let output_var_name = var_name.to_string();
+                            let bracket_access = self.value_field_access(&output_var_name, field_name);
+                            // Remove the already-pushed var name and replace with bracket access
+                            output.truncate(output.len() - var_name.len());
+                            output.push_str(&bracket_access);
+                            i = field_end;
+                            continue;
+                        }
+                    }
                     output.push('.');
                 } else {
                     output.push_str("self.");
@@ -1977,13 +2102,22 @@ impl RustGenerator {
                         let class_str = value_str.trim_matches('"')
                             .trim_end_matches(".to_string()")
                             .trim_matches('"');
-                        tailwind_to_methods(builder, class_str)
+                        // Use .style() directly — same Style::parse() path as VM mode
+                        if class_str.is_empty() {
+                            builder.to_string()
+                        } else {
+                            format!("{}.style(\"{}\")", builder, class_str)
+                        }
                     }
                     "style" => {
                         let style_str = value_str.trim_matches('"')
                             .trim_end_matches(".to_string()")
                             .trim_matches('"');
-                        tailwind_to_methods(builder, style_str)
+                        if style_str.is_empty() {
+                            builder.to_string()
+                        } else {
+                            format!("{}.style(\"{}\")", builder, style_str)
+                        }
                     }
                     "padding" => format!("{}.padding({})", builder, value_str),
                     "spacing" => format!("{}.spacing({})", builder, value_str),
@@ -1991,7 +2125,9 @@ impl RustGenerator {
                 }
             }
             AuraPropValue::StyleBinding(bindings) => {
-                // For Rust, generate conditional class application
+                // For Rust, generate conditional style application.
+                // Each binding produces a conditional: if cond { "style" } else { "" }
+                // Uses .with_style() with Style::parse() for safe string construction.
                 let class_conditions: Vec<String> = bindings.iter()
                     .map(|b| {
                         let cond = self.expr_to_rust(&b.condition);
@@ -2000,8 +2136,20 @@ impl RustGenerator {
                     .collect();
                 if class_conditions.is_empty() {
                     builder.to_string()
+                } else if class_conditions.len() == 1 {
+                    // Single condition: if cond { "completed" } else { "" } is &str
+                    format!("{}.style({})", builder, class_conditions[0])
                 } else {
-                    format!("{}.class({})", builder, class_conditions.join(" + \" \" + "))
+                    // Multiple conditions: build concatenated string.
+                    // Rust if-expr returns &str, we need to combine them.
+                    // Use nested format!: format!("{} {}", c1, c2) then .as_str()
+                    // Actually, just construct Style directly from parts
+                    let fmt_str = class_conditions.iter().map(|_| "{}").collect::<Vec<_>>().join(" ");
+                    // Each condition is an `if ... { &str } else { &str }` expression
+                    // format!() needs owned values for interpolation, but &str works fine
+                    let args = class_conditions.join(", ");
+                    let combined = format!("auto_lang::ui::style::Style::parse(&format!(\"{}\", {})).unwrap_or_default()", fmt_str, args);
+                    format!("{}.with_style({})", builder, combined)
                 }
             }
         }
@@ -2041,6 +2189,21 @@ impl RustGenerator {
                 .map(|p| self.convert_param_value_access(p, &variant))
                 .collect();
             format!("|_| {}::{}({})", msg_name, variant, converted_params.join(", "))
+        }
+    }
+
+    /// Convert handler pattern to a direct Rust message expression (no closure wrapper).
+    /// Used for fields like Checkbox.on_toggle which is Option<M>, not Option<impl Fn() -> M>.
+    fn handler_to_rust_direct_msg(&self, handler: &str, params: &[String]) -> String {
+        let variant = self.extract_variant_name(handler);
+        let msg_name = self.current_msg_name();
+        if params.is_empty() {
+            format!("{}::{}", msg_name, variant)
+        } else {
+            let converted_params: Vec<String> = params.iter()
+                .map(|p| self.convert_param_value_access(p, &variant))
+                .collect();
+            format!("{}::{}({})", msg_name, variant, converted_params.join(", "))
         }
     }
 
@@ -2113,7 +2276,47 @@ impl RustGenerator {
                 // Var/Field are state variables — but only if they exist in state_types
                 match store.kind {
                     crate::ast::StoreKind::Let | crate::ast::StoreKind::Const => {
+                        // Check if value is an index into a Vec<Value> (e.g., todos[idx])
+                        // If so, use &mut borrow so that mutations to todo.field affect the array
+                        if let crate::ast::Expr::Index(target, _idx) = &store.expr {
+                            if let crate::ast::Expr::Ident(collection) = target.as_ref() {
+                                let coll_name = collection.as_str();
+                                let resolved_coll = if coll_name.starts_with('.') { &coll_name[1..] } else { coll_name };
+                                if self.state_types.get(resolved_coll)
+                                    .map(|ty| ty.starts_with("Vec<"))
+                                    .unwrap_or(false)
+                                {
+                                    // `let todo = self.todos[idx as usize]` →
+                                    // `let mut todo = &mut self.todos[idx as usize]`
+                                    // Prepend &mut to the collection reference in value
+                                    let target_prefix = if self.state_types.contains_key(resolved_coll) {
+                                        format!("self.{}", resolved_coll)
+                                    } else if resolved_coll != coll_name {
+                                        format!("self.{}", resolved_coll)
+                                    } else {
+                                        coll_name.to_string()
+                                    };
+                                    value = value.replacen(&target_prefix, &format!("&mut {}", target_prefix), 1);
+                                    return format!("let mut {} = {}", name, value);
+                                }
+                            }
+                        }
                         format!("let {} = {}", name, value)
+                    }
+                    crate::ast::StoreKind::Var => {
+                        // `var x = expr` → mutable local binding
+                        if self.state_types.contains_key(resolved) {
+                            // Auto-coerce int → String when assigning to a String field
+                            if self.state_types.get(resolved).map_or(false, |ty| ty == "String")
+                                && !self.ast_expr_is_string(&store.expr)
+                            {
+                                value = format!("{}.to_string()", value);
+                            }
+                            format!("self.{} = {}", resolved, value)
+                        } else {
+                            // Local mutable var in handler context
+                            format!("let mut {} = {}", name, value)
+                        }
                     }
                     _ => {
                         // If name is a known state var, use self. prefix
@@ -2158,7 +2361,6 @@ impl RustGenerator {
                 }
                 parts.join(" ")
             }
-            _ => format!("/* unhandled stmt */"),
             crate::ast::Stmt::For(for_stmt) => {
                 let body_stmts: Vec<String> = for_stmt.body.stmts.iter()
                     .map(|s| self.ast_stmt_to_rust(s))
@@ -2167,9 +2369,13 @@ impl RustGenerator {
                 match &for_stmt.iter {
                     crate::ast::Iter::Named(name) => {
                         // for todo in .todos { ... } → for todo in self.todos.iter() { ... }
+                        // If body mutates loop var (value_loop_var), use iter_mut()
                         let iter_name = name.as_str();
                         let collection = self.ast_expr_to_rust(&for_stmt.range);
-                        format!("for {} in {}.iter() {{ {} }}", iter_name, collection, body_str)
+                        let needs_mut = self.value_loop_vars.contains(iter_name);
+                        let iter_method = if needs_mut { "iter_mut" } else { "iter" };
+                        let mut_prefix = if needs_mut { "mut " } else { "" };
+                        format!("for {}{} in {}.{}() {{ {} }}", mut_prefix, iter_name, collection, iter_method, body_str)
                     }
                     crate::ast::Iter::Cond => {
                         // for i >= 0 { ... } → while i >= 0 { ... }
@@ -2196,6 +2402,7 @@ impl RustGenerator {
                     }
                 }
             }
+            _ => format!("/* unhandled stmt */"),
         }
     }
 
@@ -2272,6 +2479,58 @@ impl RustGenerator {
                 None
             }
             _ => None,
+        }
+    }
+
+    /// Like ast_expr_to_rust, but treats specified param names as serde_json::Value variables.
+    /// Used for closures passed to findIndex/.position() where params iterate over &Value.
+    fn ast_expr_to_rust_with_value_params(&self, expr: &crate::ast::Expr, value_params: &[String]) -> String {
+        use crate::ast::Expr;
+        // Intercept Dot access on value params
+        if let Expr::Dot(obj, field) = expr {
+            if let Expr::Ident(name) = obj.as_ref() {
+                if value_params.contains(&name.to_string()) {
+                    return self.value_field_access(name.as_str(), field.as_str());
+                }
+            }
+        }
+        // For all other cases, delegate to ast_expr_to_rust.
+        // We can't intercept nested closures or deeper expressions that reference value_params,
+        // but the common case is `t.field == value` which is handled above.
+        // For compound expressions, we recursively apply the same logic.
+        match expr {
+            Expr::Bina(left, op, right) => {
+                let left_str = self.ast_expr_to_rust_with_value_params(left, value_params);
+                let right_str = self.ast_expr_to_rust_with_value_params(right, value_params);
+                // Use the same op handling as ast_expr_to_rust
+                use auto_val::Op;
+                let op_str = match op {
+                    Op::Eq => "==",
+                    Op::Neq => "!=",
+                    Op::Lt => "<",
+                    Op::Le => "<=",
+                    Op::Gt => ">",
+                    Op::Ge => ">=",
+                    Op::And => "&&",
+                    Op::Or => "||",
+                    Op::Add => "+",
+                    Op::Sub => "-",
+                    Op::Not => "!",
+                    _ => "?",
+                };
+                format!("{} {} {}", left_str, op_str, right_str)
+            }
+            Expr::Unary(op, operand) => {
+                let val = self.ast_expr_to_rust_with_value_params(operand, value_params);
+                use auto_val::Op;
+                match op {
+                    Op::Not => format!("!({})", val),
+                    Op::Sub => format!("-{}", val),
+                    _ => format!("/* unimplemented unary {:?} */", op),
+                }
+            }
+            // For everything else (idents, literals, etc.), use normal conversion
+            _ => self.ast_expr_to_rust(expr),
         }
     }
 
@@ -2355,6 +2614,37 @@ impl RustGenerator {
                         return self.value_field_access(&obj_str, field_str);
                     }
                 }
+                // Check if object is an index into a Vec<Value>: todos[idx].field
+                // Pattern: Dot(Index(Ident("todos"), idx), "field")
+                if let Expr::Index(target, _idx) = obj.as_ref() {
+                    if let Expr::Ident(collection) = target.as_ref() {
+                        let coll_name = collection.as_str();
+                        let resolved_coll = if coll_name.starts_with('.') { &coll_name[1..] } else { coll_name };
+                        if self.state_types.get(resolved_coll)
+                            .map(|ty| ty.starts_with("Vec<"))
+                            .unwrap_or(false)
+                        {
+                            // Indexing into Vec<Value> produces Value — use bracket access
+                            let idx_str = self.ast_expr_to_rust(_idx);
+                            let target_str = if resolved_coll != coll_name {
+                                format!("self.{}", resolved_coll)
+                            } else if self.state_types.contains_key(coll_name) {
+                                format!("self.{}", coll_name)
+                            } else {
+                                coll_name.to_string()
+                            };
+                            let idx_cast = if idx_str.starts_with("self.")
+                                || (!idx_str.parse::<usize>().is_ok() && idx_str != "0")
+                            {
+                                // State var or local i32 var — cast to usize for indexing
+                                format!("{} as usize", idx_str)
+                            } else {
+                                idx_str
+                            };
+                            return self.value_field_access(&format!("{}[{}]", target_str, idx_cast), field_str);
+                        }
+                    }
+                }
                 let obj_str = self.ast_expr_to_rust(obj);
                 format!("{}.{}", obj_str, field_str)
             }
@@ -2388,6 +2678,46 @@ impl RustGenerator {
                                     let field = &path[dot_pos + 1..];
                                     let value = self.ast_expr_to_rust(right);
                                     return format!("self.{}[\"{}\"] = serde_json::json!({})", first, field, value);
+                                }
+                            }
+                        }
+                    }
+                    // Check for value_local.field = value (e.g., todo.done = !todo.done)
+                    if let Expr::Dot(obj, field) = left.as_ref() {
+                        if let Expr::Ident(name) = obj.as_ref() {
+                            let s = name.as_str();
+                            if self.value_locals.contains(s) || self.needs_index_access(s) {
+                                let value = self.ast_expr_to_rust(right);
+                                return format!("{}[\"{}\"] = serde_json::json!({})", s, field.as_str(), value);
+                            }
+                        }
+                        // Check for indexed.field = value (e.g., todos[idx].text = .edit_text)
+                        // Pattern: Dot(Index(Ident("collection"), idx), "field")
+                        if let Expr::Index(target, _idx) = obj.as_ref() {
+                            if let Expr::Ident(collection) = target.as_ref() {
+                                let coll_name = collection.as_str();
+                                let resolved_coll = if coll_name.starts_with('.') { &coll_name[1..] } else { coll_name };
+                                if self.state_types.get(resolved_coll)
+                                    .map(|ty| ty.starts_with("Vec<"))
+                                    .unwrap_or(false)
+                                {
+                                    let idx_str = self.ast_expr_to_rust(_idx);
+                                    let target_str = if resolved_coll != coll_name {
+                                        format!("self.{}", resolved_coll)
+                                    } else if self.state_types.contains_key(coll_name) {
+                                        format!("self.{}", coll_name)
+                                    } else {
+                                        coll_name.to_string()
+                                    };
+                                    let idx_cast = if idx_str.starts_with("self.")
+                                        || (!idx_str.parse::<usize>().is_ok() && idx_str != "0")
+                                    {
+                                        format!("{} as usize", idx_str)
+                                    } else {
+                                        idx_str
+                                    };
+                                    let value = self.ast_expr_to_rust(right);
+                                    return format!("{}[{}][\"{}\"] = serde_json::json!({})", target_str, idx_cast, field.as_str(), value);
                                 }
                             }
                         }
@@ -2517,11 +2847,13 @@ impl RustGenerator {
                             return format!("{}.iter().position({}).map(|i| i as i32).unwrap_or(-1)", obj, closure_arg);
                         }
                         let result = if fn_name.ends_with(".remove") {
-                            // .remove() takes usize, cast args
+                            // .remove() takes usize, cast args. Discard return value.
+                            // Use drop() instead of `let _ =` because `let` can't be the last
+                            // expression in an `if` block in Rust.
                             let casted_args: Vec<String> = args.iter()
                                 .map(|a| format!("{} as usize", a))
                                 .collect();
-                            format!("{}({})", fn_name, casted_args.join(", "))
+                            format!("drop({}({}))", fn_name, casted_args.join(", "))
                         } else if fn_name.ends_with(".push") {
                             // .push() for Value vectors — clone args that are value_locals
                             // to avoid borrow-after-move when the local is used later
@@ -2572,7 +2904,14 @@ impl RustGenerator {
             Expr::Index(target, index) => {
                 let target_str = self.ast_expr_to_rust(target);
                 let index_str = self.ast_expr_to_rust(index);
-                format!("{}[{}]", target_str, index_str)
+                // Vec<Value> requires usize index — cast non-literal indexes to usize
+                // since handler vars are typically i32 from findIndex or loop counters
+                let index_cast = if index_str.parse::<usize>().is_ok() {
+                    index_str // literal usize, no cast needed
+                } else {
+                    format!("{} as usize", index_str)
+                };
+                format!("{}[{}]", target_str, index_cast)
             }
             Expr::Unary(op, operand) => {
                 let val = self.ast_expr_to_rust(operand);
@@ -2584,11 +2923,18 @@ impl RustGenerator {
             }
             Expr::Closure(closure) => {
                 // (t => t.id == id) → |t| t["id"].as_i64().unwrap_or(0) as i32 == id
-                let params: Vec<String> = closure.params.iter()
+                // Closure params from findIndex/.position() iterate over &Value,
+                // so any dot access on a closure param needs bracket access.
+                let param_names: Vec<String> = closure.params.iter()
                     .map(|p| p.name.as_str().to_string())
                     .collect();
-                let body = self.ast_expr_to_rust(&closure.body);
-                format!("|{}| {}", params.join(", "), body)
+                // Temporarily register closure params as value loop vars so that
+                // dot access on them gets converted to bracket access.
+                // We can't mutate self, so we handle it inline by checking the
+                // param names during Dot processing.
+                // Instead, we convert the closure body manually with param awareness.
+                let body = self.ast_expr_to_rust_with_value_params(&closure.body, &param_names);
+                format!("|{}| {}", param_names.join(", "), body)
             }
             Expr::FStr(fstr) => {
                 // f"${.active_count} items left" → format!("{} items left", self.active_count)
@@ -3007,6 +3353,7 @@ impl Default for RustGenerator {
 ///
 /// Classes that are not recognized are silently skipped so the generated code
 /// always compiles.
+#[allow(dead_code)]
 fn tailwind_to_methods(builder: &str, class_str: &str) -> String {
     let mut result = builder.to_string();
     let mut residual_classes: Vec<&str> = Vec::new();
@@ -3029,6 +3376,7 @@ fn tailwind_to_methods(builder: &str, class_str: &str) -> String {
 }
 
 /// Convert a single Tailwind class token to a builder method call string.
+#[allow(dead_code)]
 fn tailwind_single_to_method(class: &str) -> String {
     // --- Spacing ---
     if let Some(rest) = class.strip_prefix("p-") {
