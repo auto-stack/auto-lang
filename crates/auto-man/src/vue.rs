@@ -195,6 +195,9 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
     "postcss": "^8.4.0",
     "tailwindcss-animate": "^1.0.7",
     "@types/prismjs": "^1.26.0"
+  }},
+  "pnpm": {{
+    "onlyBuiltDependencies": ["esbuild", "vue-demi"]
   }}
 }}
 "#, name, router_dep)
@@ -541,11 +544,6 @@ fn write_project_files(
     // .npmrc — allow esbuild etc. to run postinstall builds (pnpm 9+ blocks them by default)
     fs::write(output_path.join(".npmrc"), "manage-package-manager-versions=true\n")
         .map_err(|e| format!("Failed to write .npmrc: {}", e))?;
-
-    // pnpm-workspace.yaml — approve build scripts for esbuild etc. (pnpm 10+ requirement)
-    fs::write(output_path.join("pnpm-workspace.yaml"),
-        "allowBuilds:\n  esbuild: true\n  vue-demi: true\n")
-        .map_err(|e| format!("Failed to write pnpm-workspace.yaml: {}", e))?;
 
     // components.json (shadcn-vue config)
     let components_json = auto_lang::ui_gen::VueGenerator::generate_components_json();

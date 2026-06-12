@@ -1,5 +1,7 @@
 # Plan 273: AutoUI View Cache — 跳过无变化帧的重建
 
+> **Status: ✅ 已完成** — `view_dirty` 标记 + cached AbstractView 复用已实现在 `crates/auto-lang/src/ui/iced/renderer.rs` 中。
+
 ## Context
 
 AutoUI 的 `dynamic_view()` 每帧都无条件重建整个 AbstractView 树：

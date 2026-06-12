@@ -1,5 +1,7 @@
 # Auto LSP & VSCode Plugin Modernization Plan
 
+> **Status: ✅ Phase 1 已完成** — `auto-lsp` 已用 `tower-lsp-server 0.23` 重写（v0.3.0），恢复 workspace 成员资格，包含 completion/diagnostics/goto_def/hover/signature_help/workspace 模块。Phase 2-6 待实现。
+
 ## Executive Summary
 
 The Auto LSP (`crates/auto-lsp`) is currently **broken and disabled** from the workspace. It uses APIs removed in Plan 091 (`Universe::new()`, `Parser::new(code, scope)`), depends on the unmaintained `tower-lsp 0.20`, and implements features via regex fallbacks instead of the rich compiler infrastructure (`Database`, `QueryEngine`, `Indexer`, `TypeStore`, `ModuleResolver`) that already exists in `auto-lang`.

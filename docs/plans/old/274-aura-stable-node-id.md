@@ -1,5 +1,7 @@
 # Plan 273: AURA 稳定节点 ID 体系重构
 
+> **Status: ✅ 已完成** — `VNodeId` 稳定 ID 体系已实现（`crates/auto-lang/src/ui/vnode.rs`），解析阶段分配 ID 并传播到渲染层。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 重新设计 AURA 节点 ID 体系，在解析阶段分配稳定 ID，一路传播到渲染层，实现精确的双向源码↔组件映射。

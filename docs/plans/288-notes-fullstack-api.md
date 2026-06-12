@@ -1,5 +1,7 @@
 # Plan 288: Notes App Full-Stack API Integration
 
+> **Status: Phase 1 ✅ 已完成** — Vue 前端已对接后端 API，API 函数自动检测已实现。Phase 2（动态发现）和 Phase 3（rustvm 模式）待实现。
+
 ## Context
 
 015-notes 示例有完整的前后端代码，但前端全部是内存硬编码数据，没有调用后端 API。

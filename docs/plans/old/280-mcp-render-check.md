@@ -1,5 +1,7 @@
 # Plan 280: MCP UI 渲染问题检测
 
+> **Status: ✅ 已完成** — `render_status` 标注（FALLBACK/PARTIAL）和 `autoui_render_check` 诊断工具已实现在 `crates/auto-lang/src/ui/mcp_server.rs` 中。
+
 ## Context
 
 Plan 278-279 实现了 MCP 工具（autoui_snapshot, autoui_inspect, autoui_action），snapshot 从 AuraNode 树生成 AURA 源码风格输出。但测试 014-weather 时发现 **MCP 无法反映实际 UI 渲染问题**：

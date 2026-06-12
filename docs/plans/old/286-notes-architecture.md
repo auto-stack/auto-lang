@@ -1,7 +1,7 @@
 # Plan 286: 015-notes 全栈架构重构
 
 > 日期: 2026-06-06
-> 状态: 设计完成，待实现
+> 状态: ✅ 已完成 — 多 Widget（App + Sidebar + NoteItem + Editor + types）、多模块、前后端分离架构均已实现。
 
 ## 目标
 

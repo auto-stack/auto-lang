@@ -1,5 +1,7 @@
 # Smart Regeneration for `auto run --backend=rust`
 
+> **Status: ✅ 已完成** — `needs_regeneration()` 已实现在 `crates/auto-man/src/rust_ui.rs` 中，支持源文件变更检测和增量重生成。
+
 ## Context
 
 `run_rust_ui()` in `crates/auto-man/src/rust_ui.rs` currently only checks `Cargo.toml` existence. If it exists, it **always skips** regeneration — even when the `.at` source files have changed, or when the RustGenerator code itself has been updated. This forces manual deletion of `gen/rust/` during development to pick up codegen changes.

@@ -1,5 +1,7 @@
 # Plan 282: MCP Snapshot 添加实际 Layout Bounds（Phase 2）
 
+> **Status: ✅ 已完成** — LayoutCollector Operation 已实现（`crates/auto-lang/src/ui/iced/layout_collector.rs`），MCP snapshot 中可显示 iced 实际渲染的布局矩形。
+
 ## Context
 
 Plan 281（Phase 1）已实现：从 Tailwind class 字符串提取 **期望的** 布局属性（padding、margin、width、max-w 等）并显示在 MCP snapshot 中。但 AI 只能看到"期望值"，无法看到 iced 实际渲染的布局矩形。

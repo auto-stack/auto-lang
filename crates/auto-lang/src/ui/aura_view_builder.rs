@@ -837,10 +837,21 @@ impl<'a> AuraViewBuilder<'a> {
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
 
-        let child_views: Vec<View<DynamicMessage>> = children
-            .iter()
-            .map(|n| self.convert_node_with(n, bindings))
-            .collect();
+        // Flatten Conditional children: in a row, multiple condition children
+        // should be spread horizontally, not wrapped in a Column
+        let mut child_views: Vec<View<DynamicMessage>> = Vec::new();
+        for n in children {
+            if let AuraNode::Conditional { condition, then_body, else_body, .. } = n {
+                let is_true = self.eval_condition_with(condition, bindings);
+                let empty = Vec::new();
+                let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
+                for child_node in body {
+                    child_views.push(self.convert_node_with(child_node, bindings));
+                }
+            } else {
+                child_views.push(self.convert_node_with(n, bindings));
+            }
+        }
 
         let mut builder = View::<DynamicMessage>::row()
             .spacing(spacing)

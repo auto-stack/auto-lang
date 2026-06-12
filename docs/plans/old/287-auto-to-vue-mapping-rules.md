@@ -1,5 +1,7 @@
 # Plan 287 - Auto Widget → Vue Component Transpilation Rules
 
+> **Status: ✅ 已完成** — 映射规则已实现在 `crates/auto-lang/src/ui_gen/vue.rs` 中，包含 shadcn-vue 组件注册表和完整 API 函数映射。
+
 ## Date: 2026-06-08
 
 ## Overview
