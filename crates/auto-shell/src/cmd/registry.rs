@@ -30,4 +30,9 @@ impl CommandRegistry {
     pub fn params(&self) -> Vec<crate::cmd::Signature> {
         self.commands.values().map(|c| c.signature()).collect()
     }
+
+    /// Get all registered command names
+    pub fn names(&self) -> impl Iterator<Item = &String> {
+        self.commands.keys()
+    }
 }

@@ -94,6 +94,22 @@ impl ExternalStream {
         }
     }
 
+    /// Consume the ExternalStream and return the raw `ChildStdout`.
+    ///
+    /// This is used for **OS-level pipe chaining**: the stdout of one
+    /// external process becomes the stdin of the next without buffering
+    /// in memory. The background exit-status thread continues running
+    /// independently (it owns the `Child`, not the stdout).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `BufReader` internal buffer is not empty (i.e. data
+    /// has already been read from this stream). In practice this is never
+    /// called after reading — only during pipeline construction.
+    pub fn into_raw_stdout(self) -> ChildStdout {
+        self.reader.into_inner()
+    }
+
     /// Get the exit status if the process has finished.
     pub fn exit_status(&self) -> Option<ExitStatus> {
         self.exit_status.lock().unwrap().clone()

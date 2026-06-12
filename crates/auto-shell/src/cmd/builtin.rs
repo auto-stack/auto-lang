@@ -4,6 +4,21 @@ use std::path::Path;
 use super::{data, fs};
 use crate::parser::quote::parse_args;
 
+/// Check whether a command name is handled by the legacy builtin dispatcher.
+///
+/// Used by the pipeline to decide whether to buffer `ExternalStream` data
+/// into text (for builtins) or chain it directly via OS pipe (for externals).
+pub fn is_legacy_builtin(name: &str) -> bool {
+    matches!(
+        name,
+        // execute_builtin commands
+        "pwd" | "echo" | "help" | "clear" | "ls" | "l" | "mkdir" | "rm" | "mv" | "cp"
+        // execute_builtin_with_input commands
+        | "sort" | "uniq" | "head" | "tail" | "wc" | "grep"
+        | "count" | "first" | "last" | "genlines"
+    )
+}
+
 /// Built-in command execution
 ///
 /// Returns Some(output) if command was handled, None if not a built-in

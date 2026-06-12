@@ -105,6 +105,20 @@ impl AtomPipeline {
         matches!(self, AtomPipeline::Text(_))
     }
 
+    /// Check if this is an ExternalStream variant.
+    pub fn is_external_stream(&self) -> bool {
+        matches!(self, AtomPipeline::ExternalStream(_))
+    }
+
+    /// Extract the ExternalStream, if this is that variant.
+    /// Returns `None` for all other variants.
+    pub fn into_external_stream(self) -> Option<ExternalStream> {
+        match self {
+            AtomPipeline::ExternalStream(es) => Some(es),
+            _ => None,
+        }
+    }
+
     /// Check if this is empty.
     pub fn is_empty(&self) -> bool {
         match self {

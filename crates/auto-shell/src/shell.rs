@@ -184,6 +184,7 @@ impl Shell {
                 "pushd" => return self.cmd_pushd(&parts),
                 "popd" => return self.cmd_popd(&parts),
                 "dirs" => return self.cmd_dirs(&parts),
+                "path" => return self.cmd_path(&parts),
                 _ => {}
             }
         }
@@ -331,6 +332,10 @@ impl Shell {
         let result = external::execute_external(input, &self.current_dir, false);
         if let Err(ref e) = result {
             self.last_exit_code = extract_exit_code(&e.to_string());
+            // Plan 304: "did you mean?" suggestion on failure
+            if let Some(suggestion) = suggest_command(self, cmd_name) {
+                eprintln!("  did you mean: {}?", suggestion);
+            }
         }
         result
     }
@@ -521,58 +526,90 @@ impl Shell {
             let cmd_name = &parts[0];
             let args = &parts[1..];
 
-            // Execute the command
-            let output_pipeline = if let Some(registered_cmd) = self.registry.get(cmd_name) {
-                // Registered command (uses AtomPipeline via run_atom)
+            // ── Phase 1: Registered command (uses AtomPipeline via run_atom) ──
+            if let Some(registered_cmd) = self.registry.get(cmd_name) {
                 let signature = registered_cmd.signature();
                 let input = input_pipeline.take().unwrap_or_else(AtomPipeline::empty);
 
                 match crate::cmd::parser::parse_args(&signature, args) {
-                    Ok(parsed_args) => Some(registered_cmd.run_atom(&parsed_args, input, self)?),
+                    Ok(parsed_args) => {
+                        let output = registered_cmd.run_atom(&parsed_args, input, self)?;
+                        input_pipeline = Some(output);
+                    }
                     Err(e) => return Err(e),
                 }
-            } else {
-                // Non-registered command (builtins, auto functions, external)
-                // Convert AtomPipeline to text for legacy commands
-                let input_str = input_pipeline.take().and_then(|p| {
-                    if p.is_empty() {
-                        None
-                    } else {
-                        Some(p.into_text())
-                    }
-                });
+                if is_last {
+                    return Ok(input_pipeline.map(|p| self.format_output(p)));
+                }
+                continue;
+            }
 
-                if let Some(input) = &input_str {
-                    // With pipeline input
-                    if let Some(output) =
-                        builtin::execute_builtin_with_input(cmd, &self.current_dir, Some(input))?
-                    {
-                        Some(AtomPipeline::text(output))
-                    } else if self.has_auto_function(cmd_name) {
-                        let output =
-                            auto::execute_auto_function(self, cmd_name, args, Some(input))?;
-                        output.map(|s| AtomPipeline::text(s))
-                    } else {
-                        // Spawn external command, piping upstream output to stdin
-                        let stream = external::spawn_external_stream_with_input(
-                            cmd,
-                            &self.current_dir,
-                            input,
-                        )?;
-                        Some(AtomPipeline::ExternalStream(stream))
-                    }
+            // ── Phase 2: OS pipe chaining (external → external) ──
+            //
+            // If the previous command produced an ExternalStream AND the current
+            // command is neither a legacy builtin nor an Auto function, we can
+            // connect them with a real OS pipe — no in-memory buffering needed.
+            let prev_is_stream = input_pipeline
+                .as_ref()
+                .map_or(false, |p| p.is_external_stream());
+
+            if prev_is_stream
+                && !builtin::is_legacy_builtin(cmd_name)
+                && !self.has_auto_function(cmd_name)
+            {
+                let stream = input_pipeline
+                    .take()
+                    .and_then(|p| p.into_external_stream())
+                    .expect("just checked is_external_stream");
+                let raw_stdout = stream.into_raw_stdout();
+                let new_stream =
+                    external::spawn_external_chained(cmd, &self.current_dir, raw_stdout)?;
+                input_pipeline = Some(AtomPipeline::ExternalStream(new_stream));
+                if is_last {
+                    return Ok(input_pipeline.map(|p| self.format_output(p)));
+                }
+                continue;
+            }
+
+            // ── Phase 3: Text-based path (builtins, auto functions, first external) ──
+            let input_str = input_pipeline.take().and_then(|p| {
+                if p.is_empty() {
+                    None
                 } else {
-                    // No pipeline input
-                    if let Some(output) = builtin::execute_builtin(cmd, &self.current_dir)? {
-                        Some(AtomPipeline::text(output))
-                    } else if self.has_auto_function(cmd_name) {
-                        let output = auto::execute_auto_function(self, cmd_name, args, None)?;
-                        output.map(|s| AtomPipeline::text(s))
-                    } else {
-                        // Spawn external command with streaming output
-                        let stream = external::spawn_external_stream(cmd, &self.current_dir)?;
-                        Some(AtomPipeline::ExternalStream(stream))
-                    }
+                    Some(p.into_text())
+                }
+            });
+
+            let output_pipeline = if let Some(input) = &input_str {
+                // With pipeline input
+                if let Some(output) =
+                    builtin::execute_builtin_with_input(cmd, &self.current_dir, Some(input))?
+                {
+                    Some(AtomPipeline::text(output))
+                } else if self.has_auto_function(cmd_name) {
+                    let output =
+                        auto::execute_auto_function(self, cmd_name, args, Some(input))?;
+                    output.map(|s| AtomPipeline::text(s))
+                } else {
+                    // Spawn external command, piping upstream output to stdin
+                    let stream = external::spawn_external_stream_with_input(
+                        cmd,
+                        &self.current_dir,
+                        input,
+                    )?;
+                    Some(AtomPipeline::ExternalStream(stream))
+                }
+            } else {
+                // No pipeline input
+                if let Some(output) = builtin::execute_builtin(cmd, &self.current_dir)? {
+                    Some(AtomPipeline::text(output))
+                } else if self.has_auto_function(cmd_name) {
+                    let output = auto::execute_auto_function(self, cmd_name, args, None)?;
+                    output.map(|s| AtomPipeline::text(s))
+                } else {
+                    // Spawn external command with streaming output
+                    let stream = external::spawn_external_stream(cmd, &self.current_dir)?;
+                    Some(AtomPipeline::ExternalStream(stream))
                 }
             };
 
@@ -1173,7 +1210,7 @@ impl Shell {
     /// 1. **Auto blocks** (non-`>` lines) — accumulated and sent to the VM as
     ///    a single block so multi-line constructs (`fn`, `for`, `if`) work.
     /// 2. **Shell lines** (`>` prefix) — interpolated and executed one-by-one.
-    fn execute_script_content(&mut self, content: &str) -> Result<()> {
+    pub fn execute_script_content(&mut self, content: &str) -> Result<()> {
         let mut auto_block = String::new();
 
         for line in content.lines() {
@@ -1454,6 +1491,73 @@ impl Shell {
             parts.push(dir.display().to_string());
         }
         parts.join(" ")
+    }
+
+    /// `path` command — manage the PATH environment variable as a list.
+    ///
+    /// Subcommands:
+    ///   `path add <dir>`     — prepend a directory to PATH
+    ///   `path append <dir>`  — append a directory to PATH
+    ///   `path remove <dir>`  — remove a directory from PATH
+    ///   `path list`          — show PATH entries, one per line
+    ///   `path clear`         — clear PATH
+    fn cmd_path(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        let subcmd = parts.get(1).copied().unwrap_or("list");
+        let separator = if cfg!(windows) { ';' } else { ':' };
+
+        match subcmd {
+            "add" | "prepend" => {
+                if parts.len() < 3 {
+                    miette::bail!("path add: missing directory argument");
+                }
+                let dir = parts[2..].join(" ");
+                let current = self.vars.get_env("PATH").unwrap_or_default();
+                let new_path = if current.is_empty() {
+                    dir
+                } else {
+                    format!("{}{}{}", dir, separator, current)
+                };
+                self.vars.set_env("PATH".to_string(), new_path);
+                Ok(None)
+            }
+            "append" => {
+                if parts.len() < 3 {
+                    miette::bail!("path append: missing directory argument");
+                }
+                let dir = parts[2..].join(" ");
+                let current = self.vars.get_env("PATH").unwrap_or_default();
+                let new_path = if current.is_empty() {
+                    dir
+                } else {
+                    format!("{}{}{}", current, separator, dir)
+                };
+                self.vars.set_env("PATH".to_string(), new_path);
+                Ok(None)
+            }
+            "remove" | "rm" => {
+                if parts.len() < 3 {
+                    miette::bail!("path remove: missing directory argument");
+                }
+                let dir = parts[2..].join(" ");
+                let current = self.vars.get_env("PATH").unwrap_or_default();
+                let entries: Vec<&str> = current.split(separator).filter(|e| *e != dir).collect();
+                let new_path = entries.join(&separator.to_string());
+                self.vars.set_env("PATH".to_string(), new_path);
+                Ok(None)
+            }
+            "list" | "ls" => {
+                let current = self.vars.get_env("PATH").unwrap_or_default();
+                let entries: Vec<&str> = current.split(separator).filter(|e| !e.is_empty()).collect();
+                Ok(Some(entries.join("\n")))
+            }
+            "clear" => {
+                self.vars.set_env("PATH".to_string(), String::new());
+                Ok(None)
+            }
+            _ => {
+                miette::bail!("path: unknown subcommand '{}'. Use: add, append, remove, list, clear", subcmd);
+            }
+        }
     }
 
     /// Get a variable value (checks special vars, local vars, then env vars)
@@ -1788,6 +1892,87 @@ fn extract_exit_code(error_msg: &str) -> i32 {
         }
     }
     1
+}
+
+/// Suggest a similar command name when the user types an unknown command.
+///
+/// Uses simple edit-distance heuristics to find the closest match among:
+/// registered commands, legacy builtins, aliases, and common shell commands.
+///
+/// Returns `None` if no good suggestion is found.
+fn suggest_command(shell: &Shell, name: &str) -> Option<String> {
+    if name.is_empty() || name.len() < 2 {
+        return None;
+    }
+
+    // Collect all known command names
+    let mut candidates: Vec<&str> = Vec::new();
+
+    // Registered commands
+    for cmd_name in shell.registry.names() {
+        candidates.push(cmd_name);
+    }
+
+    // Legacy builtins not in registry
+    const EXTRA_BUILTINS: &[&str] = &[
+        "pwd", "echo", "help", "clear", "ls", "mkdir", "rm", "mv", "cp",
+        "sort", "uniq", "head", "tail", "wc", "grep", "count", "first",
+        "last", "genlines", "set", "export", "unset", "alias", "unalias",
+        "source", "pushd", "popd", "dirs", "jobs", "fg", "bg", "exit",
+    ];
+    for &b in EXTRA_BUILTINS {
+        if !candidates.contains(&b) {
+            candidates.push(b);
+        }
+    }
+
+    // Aliases
+    for alias_name in shell.aliases.keys() {
+        candidates.push(alias_name.as_str());
+    }
+
+    // Find the best match using simple edit distance
+    let mut best: Option<(&str, usize)> = None;
+    let threshold = if name.len() <= 3 { 1 } else { 2 };
+
+    for candidate in &candidates {
+        let dist = levenshtein_distance(name, candidate);
+        if dist <= threshold {
+            match best {
+                None => best = Some((*candidate, dist)),
+                Some((_, best_dist)) if dist < best_dist => best = Some((*candidate, dist)),
+                _ => {}
+            }
+        }
+    }
+
+    best.map(|(name, _)| name.to_string())
+}
+
+/// Simple Levenshtein edit distance for short strings.
+fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let (n, m) = (a.len(), b.len());
+
+    if n == 0 { return m; }
+    if m == 0 { return n; }
+
+    let mut prev: Vec<usize> = (0..=m).collect();
+    let mut curr: Vec<usize> = vec![0; m + 1];
+
+    for i in 1..=n {
+        curr[0] = i;
+        for j in 1..=m {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1)
+                .min(curr[j - 1] + 1)
+                .min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[m]
 }
 
 #[cfg(test)]

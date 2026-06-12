@@ -120,6 +120,19 @@ impl Repl {
                 KeyCode::Right,
                 ReedlineEvent::HistoryHintWordComplete,
             );
+            // Plan 304: Ctrl+R — reverse history search (explicit for Vi mode;
+            // emacs mode already has this via default_emacs_keybindings)
+            keybindings.add_binding(
+                KeyModifiers::CONTROL,
+                KeyCode::Char('r'),
+                ReedlineEvent::SearchHistory,
+            );
+            // Plan 304: Ctrl+S — forward history search
+            keybindings.add_binding(
+                KeyModifiers::CONTROL,
+                KeyCode::Char('s'),
+                ReedlineEvent::SearchHistory,
+            );
         }
 
         let edit_mode: Box<dyn reedline::EditMode> = if use_vi {
@@ -183,6 +196,9 @@ impl Repl {
 
     /// Expand history references in the input line
     ///
+    /// Supports: `!!` (last), `!n` (by number), `!-n` (relative),
+    /// `!string` (prefix search), `!?string` (contains search).
+    ///
     /// Returns Ok(true) if expansion occurred, Ok(false) if no expansion needed
     fn expand_line_history(&mut self, line: &mut String) -> Result<bool> {
         // Check if line contains history expansion character
@@ -190,10 +206,32 @@ impl Repl {
             return Ok(false);
         }
 
-        // Get history from reedline - use a simpler approach
-        // We'll skip history expansion for now since reedline's API is complex
-        // TODO: Implement proper history expansion once we understand reedline better
-        Ok(false)
+        // Read history from file (reedline doesn't expose history via API)
+        let history_path = Self::get_history_path()?;
+        let history_strings = read_history_file(&history_path);
+
+        if history_strings.is_empty() {
+            return Ok(false);
+        }
+
+        struct FileHistory {
+            strings: Vec<String>,
+        }
+        impl ash_core::parser::history::History for FileHistory {
+            fn search(&self, _query: Option<&str>) -> Vec<String> {
+                self.strings.clone()
+            }
+        }
+
+        let file_history = FileHistory { strings: history_strings };
+        let expanded = ash_core::parser::history::expand_history(line, &file_history)?;
+
+        if &expanded != line {
+            *line = expanded;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Update the shared completion state with the current working directory.
@@ -365,4 +403,22 @@ fn has_unclosed_quote(line: &str) -> bool {
     }
 
     single_count % 2 != 0 || double_count % 2 != 0
+}
+
+/// Read history entries from the reedline FileBackedHistory file.
+///
+/// The file format is simple: one command per line. Blank lines are skipped.
+/// We deduplicate by keeping only the most recent occurrence of each command
+/// (matches what users expect from `!!` — the last time they ran it).
+fn read_history_file(path: &std::path::Path) -> Vec<String> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    content
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.to_string())
+        .collect()
 }

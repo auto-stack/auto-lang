@@ -1,6 +1,6 @@
 use miette::{miette, IntoDiagnostic, Result};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdout, Command, Stdio};
 
 use crate::pipeline::ExternalStream;
 
@@ -79,6 +79,41 @@ pub fn spawn_external_stream_with_input(
     stdin_data: &str,
 ) -> Result<ExternalStream> {
     spawn_external_stream_impl(input, current_dir, Some(stdin_data))
+}
+
+/// Spawn an external command with its stdin connected directly to a previous
+/// command's stdout pipe (true OS-level pipe chaining).
+///
+/// This avoids buffering intermediate data in memory: the kernel handles
+/// the data flow between processes. Used for `external A | external B` chains.
+///
+/// Returns a streaming `ExternalStream` for the new process's stdout.
+pub fn spawn_external_chained(
+    input: &str,
+    current_dir: &Path,
+    stdin_source: ChildStdout,
+) -> Result<ExternalStream> {
+    let parts = parse_command(input);
+
+    if parts.is_empty() {
+        return Err(miette!("empty command"));
+    }
+
+    let cmd_name = &parts[0];
+    let args = &parts[1..];
+
+    // Direct spawn — chain only works with direct executables on PATH.
+    // If the command isn't found, the error propagates (no string fallback).
+    let mut cmd = Command::new(cmd_name);
+    cmd.args(args)
+        .current_dir(current_dir)
+        .stdin(Stdio::from(stdin_source)) // OS pipe: prev stdout → this stdin
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+
+    restore_sigint_in_child(&mut cmd);
+    let child = cmd.spawn().into_diagnostic()?;
+    Ok(ExternalStream::new(child))
 }
 
 /// Spawn an external command in the background (for `cmd &` syntax).
