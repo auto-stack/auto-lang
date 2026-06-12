@@ -1,0 +1,5 @@
+use json
+
+fn main() {
+    print("import test")
+}

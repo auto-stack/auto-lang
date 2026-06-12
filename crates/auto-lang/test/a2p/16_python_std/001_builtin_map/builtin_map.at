@@ -1,0 +1,6 @@
+fn main() {
+    let x = type_name(42)
+    let y = sleep_ms(100)
+    let t = time_now()
+    print(x)
+}

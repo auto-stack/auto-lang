@@ -1,0 +1,11 @@
+use json
+
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let p = Point(1, 2)
+    print(p.x)
+}

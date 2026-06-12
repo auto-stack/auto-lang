@@ -1,0 +1,5 @@
+use json: dumps, loads
+
+fn main() {
+    print("from import test")
+}

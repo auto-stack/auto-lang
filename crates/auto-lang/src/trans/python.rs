@@ -6,9 +6,25 @@ use auto_val::Op;
 use std::collections::HashSet;
 use std::io::Write;
 
+/// Plan 283 Task 4.2: Tracked third-party Python package dependency
+#[derive(Debug, Clone)]
+pub struct PyDep {
+    pub name: AutoStr,
+    pub version: AutoStr,
+}
+
 pub struct PythonTrans {
     indent: usize,
+    /// Typing/dataclass imports (Optional, Protocol, dataclass, Enum, etc.)
     imports: HashSet<AutoStr>,
+    /// Python module imports collected from `use` / `use.py` statements
+    /// Each entry: (module_path, imported_items) — items empty means `import module`
+    py_imports: Vec<(AutoStr, Vec<AutoStr>)>,
+    /// Python wildcard imports (e.g., `from module import *`)
+    py_wildcards: Vec<AutoStr>,
+    /// Third-party Python package dependencies (for requirements.txt generation)
+    /// Plan 283 Task 4.2
+    py_deps: Vec<PyDep>,
     #[allow(dead_code)]
     name: AutoStr,
 }
@@ -18,6 +34,9 @@ impl PythonTrans {
         Self {
             indent: 0,
             imports: HashSet::new(),
+            py_imports: Vec::new(),
+            py_wildcards: Vec::new(),
+            py_deps: Vec::new(),
             name,
         }
     }
@@ -368,9 +387,14 @@ impl PythonTrans {
                 Ok(true)
             }
 
-            // Skip alias, use for now
+            // Skip alias for now
             Stmt::Alias(_) => Ok(false),
-            Stmt::Use(_) => Ok(false),
+
+            // Plan 283 Task 1.1 + 4.1: use / use.py → Python import
+            Stmt::Use(use_stmt) => {
+                self.handle_use(use_stmt);
+                Ok(false) // imports are collected, emitted at top of file
+            }
 
             _ => Err(format!("Python Transpiler: unsupported statement: {:?}", stmt).into()),
         }
@@ -743,6 +767,56 @@ impl PythonTrans {
     }
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 283 Task 1.2: Map AutoLang builtins to Python stdlib equivalents
+        if let Some(ident) = self.extract_call_name(&call.name) {
+            match ident.as_ref() {
+                // Identical in Python — just pass through
+                "print" | "len" | "range" | "type" | "abs" | "min" | "max" | "sum"
+                | "sorted" | "reversed" | "enumerate" | "zip" | "map" | "filter"
+                | "isinstance" | "hasattr" | "getattr" | "setattr" => {
+                    return self.emit_plain_call(call, out);
+                }
+                // type_name(x) → type(x).__name__
+                "type_name" => {
+                    out.write(b"type(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, out)?;
+                    }
+                    out.write(b").__name__")?;
+                    return Ok(());
+                }
+                // sleep_ms(ms) → time.sleep(ms / 1000)
+                "sleep_ms" => {
+                    self.py_imports.push(("time".into(), Vec::new()));
+                    out.write(b"time.sleep(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, out)?;
+                    }
+                    out.write(b" / 1000)")?;
+                    return Ok(());
+                }
+                // time_now() → time.time()
+                "time_now" => {
+                    self.py_imports.push(("time".into(), Vec::new()));
+                    out.write(b"time.time()")?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+        self.emit_plain_call(call, out)
+    }
+
+    /// Extract a plain identifier name from a call expression (e.g., Expr::Ident("foo"))
+    fn extract_call_name(&self, expr: &Expr) -> Option<AutoStr> {
+        match expr {
+            Expr::Ident(name) => Some(name.clone()),
+            _ => None,
+        }
+    }
+
+    /// Emit a plain function call without any builtin mapping
+    fn emit_plain_call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         self.expr(&call.name, out)?;
         out.write(b"(")?;
 
@@ -1195,6 +1269,81 @@ impl PythonTrans {
         }
     }
 
+    // ── Plan 283 Task 1.1 + 4.1: use / use.py → Python import ─────────────
+
+    /// Collect a `use` statement for later emission at the top of the file.
+    /// - `UseKind::Auto` / `UseKind::Py` → Python import
+    /// - `UseKind::C` / `UseKind::Rust` → skip (not relevant for Python target)
+    fn handle_use(&mut self, use_stmt: &Use) {
+        match use_stmt.kind {
+            UseKind::C | UseKind::Rust => return, // not relevant for Python
+            UseKind::Auto | UseKind::Py => {}
+        }
+
+        // Resolve the module path
+        let module = if let Some(ref mp) = use_stmt.module_path {
+            // New-style module_path (Plan 131)
+            let display = mp.display();
+            // Strip pac./super. prefixes for Python (they are AutoLang-only concepts)
+            if let Some(stripped) = display.strip_prefix("pac.") {
+                stripped.to_string()
+            } else if let Some(stripped) = display.strip_prefix("super.") {
+                stripped.to_string()
+            } else {
+                display.to_string()
+            }
+        } else if !use_stmt.paths.is_empty() {
+            // Legacy paths — join with dots
+            use_stmt.paths.join(".")
+        } else {
+            return; // no module to import from
+        };
+
+        // Collect into py_imports
+        if use_stmt.is_wildcard {
+            self.py_wildcards.push(module.into());
+        } else if use_stmt.items.is_empty() {
+            // `use json` → `import json`
+            self.py_imports.push((module.into(), Vec::new()));
+        } else {
+            // `use json: dumps, loads` → `from json import dumps, loads`
+            self.py_imports.push((module.into(), use_stmt.items.clone()));
+        }
+    }
+
+    /// Emit collected Python imports to the output. Called once at the top of the file.
+    fn emit_py_imports(&self, out: &mut impl Write) -> AutoResult<()> {
+        // Deduplicate: collect modules seen to avoid duplicate `import time`
+        let mut seen: HashSet<String> = HashSet::new();
+
+        // Emit `import module` (no items) — from use stmts + builtin mappings
+        for (module, items) in &self.py_imports {
+            if items.is_empty() {
+                let key = module.to_string();
+                if seen.contains(&key) {
+                    continue;
+                }
+                seen.insert(key);
+                writeln!(out, "import {}", module)?;
+            } else {
+                let key = format!("{}:{}", module, items.join(","));
+                if seen.contains(&key) {
+                    continue;
+                }
+                seen.insert(key);
+                let items_str = items.join(", ");
+                writeln!(out, "from {} import {}", module, items_str)?;
+            }
+        }
+
+        // Emit wildcard imports
+        for module in &self.py_wildcards {
+            writeln!(out, "from {} import *", module)?;
+        }
+
+        Ok(())
+    }
+
     fn body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
         for stmt in &body.stmts {
             self.stmt(stmt, out)?;
@@ -1228,6 +1377,13 @@ impl Trans for PythonTrans {
                 }
             }
 
+            // Plan 283 Task 1.1: Collect use statements early for import emission
+            if let Stmt::Use(use_stmt) = &stmt {
+                self.handle_use(use_stmt);
+                // Don't push to decls or main_stmts — imports go to file top
+                continue;
+            }
+
             if stmt.is_decl() {
                 decls.push((stmt, line));
             } else {
@@ -1235,7 +1391,7 @@ impl Trans for PythonTrans {
             }
         }
 
-        // First pass: process declarations to collect imports
+        // First pass: process declarations to collect typing/dataclass imports
         for (decl, _line) in &decls {
             if let Stmt::TypeDecl(type_decl) = decl {
                 // Only use dataclass if there are no methods
@@ -1268,7 +1424,82 @@ impl Trans for PythonTrans {
             }
         }
 
-        // Emit imports if needed
+        // ── Phase 2: Generate code body into a temporary buffer ──
+        // Plan 283: We generate body first, then prepend imports.
+        // This allows builtin function calls to add stdlib imports during codegen.
+        let mut code_buf: Vec<u8> = Vec::new();
+
+        // Generate declarations (excluding main)
+        for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.set_source_line(*line);
+            self.stmt(decl, &mut code_buf)?;
+            // Add newline between declarations, but not after the last one
+            if i < decls.len() - 1 {
+                code_buf.write(b"\n")?;
+            }
+        }
+
+        // Generate main function or wrap statements
+        if let Some(main_stmt) = main_func {
+            // Output the main function
+            if !decls.is_empty() {
+                code_buf.write(b"\n")?;
+            }
+            self.stmt(&main_stmt, &mut code_buf)?;
+
+            // Check if main is async (has .await in body or async return type)
+            let main_is_async = if let Stmt::Fn(func) = &main_stmt {
+                self.is_async_fn(func) || Self::has_await(&func.body.stmts)
+            } else {
+                false
+            };
+
+            // Add main guard
+            code_buf.write(b"\nif __name__ == \"__main__\":\n")?;
+            self.indent();
+            if main_is_async {
+                code_buf.write(b"    asyncio.run(main())\n")?;
+            } else {
+                code_buf.write(b"    main()\n")?;
+            }
+            self.dedent();
+        } else if !main_stmts.is_empty() {
+            // Wrap statements in a main function
+            if !decls.is_empty() {
+                code_buf.write(b"\n")?;
+            }
+            code_buf.write(b"def main():\n")?;
+            self.indent();
+            for (stmt, line) in &main_stmts {
+                sink.set_source_line(*line);
+                self.stmt(stmt, &mut code_buf)?;
+            }
+            self.dedent();
+
+            // Add main guard
+            code_buf.write(b"\n\nif __name__ == \"__main__\":\n")?;
+            self.indent();
+            code_buf.write(b"main()\n")?;
+            self.dedent();
+        }
+
+        // ── Phase 3: Now emit imports + code body to sink ──
+        // Collect all imports (from use stmts + builtin mappings + typing/dataclass)
+
+        // Emit Python module imports (from `use` and builtins like time)
+        let has_py_imports = !self.py_imports.is_empty() || !self.py_wildcards.is_empty();
+        self.emit_py_imports(&mut sink.body)?;
+
+        // Emit typing/dataclass/enum imports
+        // Add blank line between Python module imports and typing imports
+        let has_typing_imports = self.imports.contains("Optional")
+            || self.imports.contains("Result")
+            || self.imports.contains("Protocol")
+            || self.imports.contains("dataclass")
+            || self.imports.contains("Enum");
+        if has_py_imports && has_typing_imports {
+            sink.body.write(b"\n")?;
+        }
         let mut typing_imports = Vec::new();
         if self.imports.contains("Optional") {
             typing_imports.push("Optional");
@@ -1288,63 +1519,13 @@ impl Trans for PythonTrans {
         if self.imports.contains("Enum") {
             sink.body.write(b"from enum import Enum, auto\n")?;
         }
-        if !self.imports.is_empty() {
+        // Blank line after all imports, before code body
+        if has_py_imports || has_typing_imports {
             sink.body.write(b"\n")?;
         }
 
-        // Generate declarations (excluding main)
-        for (i, (decl, line)) in decls.iter().enumerate() {
-            sink.set_source_line(*line);
-            self.stmt(decl, &mut sink.body)?;
-            // Add newline between declarations, but not after the last one
-            if i < decls.len() - 1 {
-                sink.body.write(b"\n")?;
-            }
-        }
-
-        // Generate main function or wrap statements
-        if let Some(main_stmt) = main_func {
-            // Output the main function
-            if !decls.is_empty() {
-                sink.body.write(b"\n")?;
-            }
-            self.stmt(&main_stmt, &mut sink.body)?;
-
-            // Check if main is async (has .await in body or async return type)
-            let main_is_async = if let Stmt::Fn(func) = &main_stmt {
-                self.is_async_fn(func) || Self::has_await(&func.body.stmts)
-            } else {
-                false
-            };
-
-            // Add main guard
-            sink.body.write(b"\nif __name__ == \"__main__\":\n")?;
-            self.indent();
-            if main_is_async {
-                sink.body.write(b"    asyncio.run(main())\n")?;
-            } else {
-                sink.body.write(b"    main()\n")?;
-            }
-            self.dedent();
-        } else if !main_stmts.is_empty() {
-            // Wrap statements in a main function
-            if !decls.is_empty() {
-                sink.body.write(b"\n")?;
-            }
-            sink.body.write(b"def main():\n")?;
-            self.indent();
-            for (stmt, line) in &main_stmts {
-                sink.set_source_line(*line);
-                self.stmt(stmt, &mut sink.body)?;
-            }
-            self.dedent();
-
-            // Add main guard
-            sink.body.write(b"\n\nif __name__ == \"__main__\":\n")?;
-            self.indent();
-            sink.body.write(b"main()\n")?;
-            self.dedent();
-        }
+        // Append code body
+        sink.body.write(&code_buf)?;
 
         Ok(())
     }
@@ -1858,5 +2039,33 @@ mod tests {
     #[test]
     fn test_03_046_loop_break() {
         test_a2p("03_control_flow/046_loop_break").unwrap();
+    }
+
+    // Plan 283 Task 1.1: use → Python import tests
+    #[test]
+    fn test_14_001_import() {
+        test_a2p("14_modules/001_import").unwrap();
+    }
+
+    #[test]
+    fn test_14_002_from_import() {
+        test_a2p("14_modules/002_from_import").unwrap();
+    }
+
+    // Plan 283 Task 4.1: use.py → Python import tests
+    #[test]
+    fn test_14_003_use_py() {
+        test_a2p("14_modules/003_use_py").unwrap();
+    }
+
+    #[test]
+    fn test_14_004_import_with_dataclass() {
+        test_a2p("14_modules/004_import_with_dataclass").unwrap();
+    }
+
+    // Plan 283 Task 1.2: Builtin function mapping tests
+    #[test]
+    fn test_16_001_builtin_map() {
+        test_a2p("16_python_std/001_builtin_map").unwrap();
     }
 }
