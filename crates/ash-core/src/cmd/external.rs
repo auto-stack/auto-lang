@@ -514,7 +514,7 @@ fn try_execute_powershell(
 }
 
 /// Parse command into parts (respecting quotes)
-fn parse_command(input: &str) -> Vec<String> {
+pub fn parse_command(input: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
     let mut in_single_quote = false;

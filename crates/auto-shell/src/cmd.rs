@@ -37,7 +37,9 @@ pub struct Argument {
     pub description: String,
     pub required: bool,
     pub is_flag: bool,
+    pub is_option: bool,  // Named option: --name VALUE (takes next arg as value)
     pub short: Option<char>,  // Short flag alias (e.g., 'a' for 'all')
+    pub default: Option<String>, // Default value for optional positionals/options
 }
 
 // Bridge: auto-shell Signature → ash-core CompletionSignature
@@ -69,6 +71,8 @@ pub struct Signature {
     pub name: String,
     pub description: String,
     pub arguments: Vec<Argument>,
+    /// Extra text shown after the argument list in --help
+    pub extra_help: Option<String>,
 }
 
 impl Signature {
@@ -77,51 +81,170 @@ impl Signature {
             name: name.to_string(),
             description: description.to_string(),
             arguments: Vec::new(),
+            extra_help: None,
         }
     }
 
+    /// Add a required positional argument.
     pub fn required(mut self, name: &str, description: &str) -> Self {
         self.arguments.push(Argument {
             name: name.to_string(),
             description: description.to_string(),
             required: true,
             is_flag: false,
+            is_option: false,
             short: None,
+            default: None,
         });
         self
     }
 
+    /// Add an optional positional argument.
     pub fn optional(mut self, name: &str, description: &str) -> Self {
         self.arguments.push(Argument {
             name: name.to_string(),
             description: description.to_string(),
             required: false,
             is_flag: false,
+            is_option: false,
             short: None,
+            default: None,
         });
         self
     }
 
+    /// Add an optional positional argument with a default value.
+    pub fn optional_default(mut self, name: &str, default: &str, description: &str) -> Self {
+        self.arguments.push(Argument {
+            name: name.to_string(),
+            description: description.to_string(),
+            required: false,
+            is_flag: false,
+            is_option: false,
+            short: None,
+            default: Some(default.to_string()),
+        });
+        self
+    }
+
+    /// Add a boolean flag (--name).
     pub fn flag(mut self, name: &str, description: &str) -> Self {
         self.arguments.push(Argument {
             name: name.to_string(),
             description: description.to_string(),
             required: false,
             is_flag: true,
-            short: None,  // Can use flag_with_short() instead
+            is_option: false,
+            short: None,
+            default: None,
         });
         self
     }
 
+    /// Add a boolean flag with a short alias (-s, --short).
     pub fn flag_with_short(mut self, name: &str, short: char, description: &str) -> Self {
         self.arguments.push(Argument {
             name: name.to_string(),
             description: description.to_string(),
             required: false,
             is_flag: true,
+            is_option: false,
             short: Some(short),
+            default: None,
         });
         self
+    }
+
+    /// Add a named option that takes a value (--name VALUE).
+    pub fn option(mut self, name: &str, description: &str) -> Self {
+        self.arguments.push(Argument {
+            name: name.to_string(),
+            description: description.to_string(),
+            required: false,
+            is_flag: false,
+            is_option: true,
+            short: None,
+            default: None,
+        });
+        self
+    }
+
+    /// Add a named option with a short alias (-n VALUE, --name VALUE).
+    pub fn option_with_short(mut self, name: &str, short: char, description: &str) -> Self {
+        self.arguments.push(Argument {
+            name: name.to_string(),
+            description: description.to_string(),
+            required: false,
+            is_flag: false,
+            is_option: true,
+            short: Some(short),
+            default: None,
+        });
+        self
+    }
+
+    /// Add extra help text shown at the bottom of --help output.
+    pub fn extra_help(mut self, text: &str) -> Self {
+        self.extra_help = Some(text.to_string());
+        self
+    }
+
+    /// Generate a --help text string from this signature.
+    pub fn format_help(&self) -> String {
+        let mut help = String::new();
+
+        // Usage line
+        help.push_str(&format!("{} — {}\n\n", self.name, self.description));
+        help.push_str("USAGE:\n");
+        help.push_str(&format!("  {}", self.name));
+
+        for arg in &self.arguments {
+            if arg.is_flag {
+                // Flags shown in options section
+            } else if arg.is_option {
+                help.push_str(&format!(" [--{} <{}>]", arg.name, arg.name));
+            } else if arg.required {
+                help.push_str(&format!(" <{}>", arg.name));
+            } else {
+                help.push_str(&format!(" [{}]", arg.name));
+            }
+        }
+        help.push('\n');
+
+        // Arguments section
+        let has_args = self.arguments.iter().any(|a| !a.is_flag && !a.is_option);
+        if has_args {
+            help.push_str("\nARGS:\n");
+            for arg in &self.arguments {
+                if !arg.is_flag && !arg.is_option {
+                    let default = arg.default.as_ref().map(|d| format!(" [default: {}]", d)).unwrap_or_default();
+                    help.push_str(&format!("  <{}>  {}{}\n", arg.name, arg.description, default));
+                }
+            }
+        }
+
+        // Options section
+        let has_opts = self.arguments.iter().any(|a| a.is_flag || a.is_option);
+        if has_opts {
+            help.push_str("\nOPTIONS:\n");
+            for arg in &self.arguments {
+                if arg.is_flag {
+                    let short = arg.short.map(|s| format!("-{}, ", s)).unwrap_or_default();
+                    help.push_str(&format!("  {}--{}  {}\n", short, arg.name, arg.description));
+                } else if arg.is_option {
+                    let short = arg.short.map(|s| format!("-{}, ", s)).unwrap_or_default();
+                    help.push_str(&format!("  {}--{} <{}>  {}\n", short, arg.name, arg.name, arg.description));
+                }
+            }
+            help.push_str("  --help  Show this help message\n");
+        }
+
+        // Extra help
+        if let Some(ref extra) = self.extra_help {
+            help.push_str(&format!("\n{}\n", extra));
+        }
+
+        help
     }
 }
 

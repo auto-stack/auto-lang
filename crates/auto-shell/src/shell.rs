@@ -29,6 +29,14 @@ pub struct Shell {
     jobs: JobManager,    // Background/suspended job control
     aliases: HashMap<String, String>, // Plan 302 Step 1.4: alias map
     dir_stack: Vec<PathBuf>,           // Plan 302 Step 3.5: directory stack
+
+    // Plan 304: Event hooks — function names to call on events
+    hooks: HashMap<String, String>,     // event name → Auto function name
+
+    // Plan 304: Special variables
+    last_command_line: Option<String>,   // $_ / !! — last executed command line
+    last_command_args: Vec<String>,      // $@ — args of last command
+    last_command_last_arg: Option<String>, // !$ — last arg of last command
 }
 
 impl Shell {
@@ -133,6 +141,11 @@ impl Shell {
             jobs: JobManager::new(),
             aliases: HashMap::new(),
             dir_stack: Vec::new(),
+            hooks: HashMap::new(),
+
+            last_command_line: None,
+            last_command_args: Vec::new(),
+            last_command_last_arg: None,
         }
     }
 
@@ -143,10 +156,25 @@ impl Shell {
     pub fn execute(&mut self, input: &str) -> Result<Option<String>> {
         self.last_exit_code = 0; // reset; execute_inner may override
         let _guard = crate::signal::CtrlCGuard::new();
+
+        // Track special variables before execution
+        let trimmed = input.trim();
+        if !trimmed.is_empty() {
+            self.last_command_line = Some(trimmed.to_string());
+            // Parse args for $@, $#, !$ tracking
+            let parts = crate::core::cmd::external::parse_command(trimmed);
+            if !parts.is_empty() {
+                self.last_command_args = parts[1..].to_vec();
+                self.last_command_last_arg = parts.last().cloned();
+            }
+        }
+
         let result = self.execute_inner(input);
         if result.is_err() && self.last_exit_code == 0 {
             self.last_exit_code = 1;
         }
+        // Fire precmd hook (after command execution, before returning)
+        self.fire_hook("precmd", &[&self.last_exit_code.to_string()]);
         result
     }
 
@@ -157,6 +185,9 @@ impl Shell {
 
     /// Internal: actual command dispatch.
     fn execute_inner(&mut self, input: &str) -> Result<Option<String>> {
+        // Fire preexec hook (before command execution)
+        self.fire_hook("preexec", &[input.trim()]);
+
         // Reap any finished background jobs and notify
         self.reap_jobs();
 
@@ -185,6 +216,8 @@ impl Shell {
                 "popd" => return self.cmd_popd(&parts),
                 "dirs" => return self.cmd_dirs(&parts),
                 "path" => return self.cmd_path(&parts),
+                "def" => return self.cmd_def(trimmed),
+                "hook" => return self.cmd_hook(&parts),
                 _ => {}
             }
         }
@@ -279,6 +312,10 @@ impl Shell {
                 let signature = cmd.signature();
                 match crate::cmd::parser::parse_args(&signature, args) {
                     Ok(parsed_args) => {
+                        // Auto --help generation
+                        if parsed_args.help_requested {
+                            return Ok(Some(signature.format_help()));
+                        }
                         let atom_out = cmd.run_atom(&parsed_args, AtomPipeline::empty(), self)?;
                         let output = self.format_output(atom_out);
                         self.apply_output_redirect(&output, redir)?;
@@ -311,6 +348,10 @@ impl Shell {
             let signature = cmd.signature();
             match crate::cmd::parser::parse_args(&signature, args) {
                 Ok(parsed_args) => {
+                    // Auto --help generation
+                    if parsed_args.help_requested {
+                        return Ok(Some(signature.format_help()));
+                    }
                     let atom_out = cmd.run_atom(&parsed_args, AtomPipeline::empty(), self)?;
                     return Ok(Some(self.format_output(atom_out)));
                 }
@@ -533,6 +574,10 @@ impl Shell {
 
                 match crate::cmd::parser::parse_args(&signature, args) {
                     Ok(parsed_args) => {
+                        // Auto --help generation (prints help, doesn't pipeline)
+                        if parsed_args.help_requested {
+                            return Ok(Some(signature.format_help()));
+                        }
                         let output = registered_cmd.run_atom(&parsed_args, input, self)?;
                         input_pipeline = Some(output);
                     }
@@ -655,11 +700,17 @@ impl Shell {
         if canonical.is_dir() {
             // Update internal state
             self.previous_dir = Some(self.current_dir.clone());
+            let old_dir = self.current_dir.clone();
             self.current_dir = canonical.clone();
             // Update OS state (so Prompt and child processes see it)
             std::env::set_current_dir(&canonical).into_diagnostic()?;
             // Notify git cache: sync refresh + start filesystem watcher
-            crate::prompt::context::on_directory_changed(canonical);
+            crate::prompt::context::on_directory_changed(canonical.clone());
+            // Fire chdir hook
+            self.fire_hook("chdir", &[
+                &old_dir.to_string_lossy(),
+                &canonical.to_string_lossy(),
+            ]);
             Ok(())
         } else {
             miette::bail!("cd: {}: Not a directory", path);
@@ -1204,17 +1255,24 @@ impl Shell {
         self.execute_script_content(&content)
     }
 
-    /// Execute script content with `>` shell syntax support.
+    /// Execute script content with `>` shell syntax and heredoc support.
     ///
-    /// Pre-processes lines into two categories:
+    /// Pre-processes lines into categories:
     /// 1. **Auto blocks** (non-`>` lines) — accumulated and sent to the VM as
     ///    a single block so multi-line constructs (`fn`, `for`, `if`) work.
     /// 2. **Shell lines** (`>` prefix) — interpolated and executed one-by-one.
+    /// 3. **Here documents** (`<<MARKER`) — collect lines until marker, feed as stdin.
     pub fn execute_script_content(&mut self, content: &str) -> Result<()> {
         let mut auto_block = String::new();
+        let mut lines = content.lines().peekable();
 
-        for line in content.lines() {
+        while let Some(line) = lines.next() {
             let trimmed = line.trim();
+
+            // ── Heredoc collection mode ──
+            // If a previous shell command contained <<MARKER, we've already
+            // extracted the marker. The loop below collects the heredoc body.
+            // (Heredocs are handled inline within the shell command section.)
 
             // Skip empty lines
             if trimmed.is_empty() {
@@ -1234,20 +1292,14 @@ impl Shell {
 
             // Shell line: starts with >
             if trimmed.starts_with('>') {
-                // Flush accumulated Auto block first
                 self.flush_auto_block(&mut auto_block)?;
 
-                // Strip > prefix
                 let cmd = trimmed[1..].trim();
-
                 if cmd.is_empty() {
                     continue;
                 }
-
-                // Interpolate Auto variables ($var → value)
                 let cmd = self.interpolate_auto_vars(cmd);
 
-                // Execute as shell command, print output
                 match self.execute(&cmd) {
                     Ok(Some(output)) => println!("{}", output),
                     Ok(None) => {}
@@ -1257,12 +1309,48 @@ impl Shell {
             }
 
             // Plan 303 Step 5: Assignment capture — let/var name = > cmd
-            // Detect pattern where a shell command's output is assigned to an Auto variable.
             if let Some(captured) = self.try_capture_assignment(trimmed) {
-                // Flush any pending Auto block first
                 self.flush_auto_block(&mut auto_block)?;
-                // Run the captured assignment as Auto code
                 let _ = self.session.run(&captured);
+                continue;
+            }
+
+            // ── Plan 304: Heredoc detection in shell/command lines ──
+            // Lines containing <<MARKER (but not in Auto code) are shell heredocs.
+            // Pattern: `command <<MARKER` or `command << MARKER` or `command <<-MARKER`
+            if let Some(heredoc) = Self::parse_heredoc_start(trimmed) {
+                self.flush_auto_block(&mut auto_block)?;
+
+                // Collect heredoc body lines until the marker
+                let mut body = String::new();
+                let mut found_end = false;
+                while let Some(body_line) = lines.next() {
+                    let body_trimmed = if heredoc.strip_tabs {
+                        body_line.trim_start_matches('\t')
+                    } else {
+                        body_line
+                    };
+                    if body_trimmed.trim() == heredoc.marker {
+                        found_end = true;
+                        break;
+                    }
+                    body.push_str(body_line);
+                    body.push('\n');
+                }
+                if !found_end {
+                    eprintln!("ash: warning: heredoc delimited by end-of-file (wanted '{}')", heredoc.marker);
+                }
+
+                // Execute the command with heredoc body as stdin
+                let mut cmd = heredoc.command.clone();
+                if heredoc.expand_vars {
+                    cmd = self.interpolate_auto_vars(&cmd);
+                    // Also expand vars in heredoc body
+                    let expanded_body = self.interpolate_auto_vars(&body);
+                    self.execute_with_stdin(&cmd, &expanded_body)?;
+                } else {
+                    self.execute_with_stdin(&cmd, &body)?;
+                }
                 continue;
             }
 
@@ -1271,10 +1359,108 @@ impl Shell {
             auto_block.push('\n');
         }
 
-        // Flush remaining Auto block
         self.flush_auto_block(&mut auto_block)?;
 
         Ok(())
+    }
+
+    /// Parse a heredoc start: `command <<MARKER` or `command << MARKER` or `command <<-MARKER`
+    ///
+    /// Returns a `HeredocInfo` if the line contains a heredoc, or `None`.
+    fn parse_heredoc_start(line: &str) -> Option<HeredocInfo> {
+        // Find << that is NOT inside quotes
+        let mut in_single = false;
+        let mut in_double = false;
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0;
+
+        while i < chars.len() {
+            match chars[i] {
+                '\'' if !in_double => in_single = !in_single,
+                '"' if !in_single => in_double = !in_double,
+                '<' if !in_single && !in_double && i + 1 < chars.len() && chars[i + 1] == '<' => {
+                    // Found << — extract the rest
+                    let strip_tabs = i + 2 < chars.len() && chars[i + 2] == '-';
+                    let start = if strip_tabs { i + 3 } else { i + 2 };
+
+                    // Skip whitespace
+                    let mut j = start;
+                    while j < chars.len() && chars[j] == ' ' { j += 1; }
+
+                    // Read marker
+                    let mut marker = String::new();
+                    while j < chars.len() && !chars[j].is_whitespace() {
+                        marker.push(chars[j]);
+                        j += 1;
+                    }
+
+                    if marker.is_empty() {
+                        return None; // << without a marker is invalid
+                    }
+
+                    // Check for quoted marker (no expansion)
+                    let expand_vars = !marker.starts_with('\'') && !marker.starts_with('"');
+                    // Strip quotes from marker
+                    let clean_marker = marker.trim_matches('\'').trim_matches('"').to_string();
+
+                    // Command is everything before <<
+                    let command = line[..i].trim().to_string();
+                    if command.is_empty() {
+                        return None;
+                    }
+
+                    return Some(HeredocInfo {
+                        command,
+                        marker: clean_marker,
+                        strip_tabs,
+                        expand_vars,
+                    });
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        None
+    }
+
+    /// Execute a command with the given string piped to stdin.
+    fn execute_with_stdin(&mut self, command: &str, stdin_data: &str) -> Result<Option<String>> {
+        use std::process::{Command, Stdio};
+        use std::io::Write;
+
+        let parts = crate::parser::quote::parse_args(command);
+        if parts.is_empty() {
+            return Ok(None);
+        }
+
+        // Check builtins first — for heredoc, feed stdin_data as pipeline input
+        if let Some(output) = crate::cmd::builtin::execute_builtin_with_input(
+            command, &self.current_dir, Some(stdin_data))?
+        {
+            println!("{}", output);
+            return Ok(None);
+        }
+
+        // External command: pipe stdin_data
+        let mut cmd = Command::new(&parts[0]);
+        cmd.args(&parts[1..])
+            .current_dir(&self.current_dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+
+        let mut child = cmd.spawn().into_diagnostic()?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(stdin_data.as_bytes());
+        }
+
+        let status = child.wait().into_diagnostic()?;
+        if !status.success() {
+            self.last_exit_code = status.code().unwrap_or(1);
+        }
+
+        Ok(None)
     }
 
     /// Flush accumulated Auto code block to the VM.
@@ -1560,11 +1746,142 @@ impl Shell {
         }
     }
 
-    /// Get a variable value (checks special vars, local vars, then env vars)
+    /// `def` command — define a shell function (Fish/Nushell compatible syntax sugar).
+    ///
+    /// Translates to AutoLang `fn` syntax. Supports two forms:
+    ///
+    ///   `def ll [] { ls -la }`          →  `fn ll() { > ls -la }`
+    ///   `def greet [name] { echo $name }` →  `fn greet(name) { > echo $name }`
+    ///
+    /// The body uses `>` prefix for shell commands (ASH convention).
+    fn cmd_def(&mut self, input: &str) -> Result<Option<String>> {
+        // Parse: def name [params] { body }
+        // Strip leading "def "
+        let rest = input.strip_prefix("def ").unwrap_or(input).trim();
+
+        // Find the name (first word)
+        let (name, remainder) = rest.split_once(|c: char| c.is_whitespace() || c == '[' || c == '{')
+            .ok_or_else(|| miette::miette!("def: expected function name"))?;
+
+        let name = name.trim();
+        let remainder = remainder.trim();
+
+        // Extract parameters (between [] or before {)
+        let (params, body) = if remainder.starts_with('[') {
+            // Fish-style: def name [param1 param2] { body }
+            if let Some(end) = remainder.find(']') {
+                let param_str = remainder[1..end].trim();
+                let params: Vec<&str> = if param_str.is_empty() {
+                    vec![]
+                } else {
+                    param_str.split_whitespace().collect()
+                };
+                let auto_params = params.iter().map(|p| format!("{} str", p)).collect::<Vec<_>>().join(", ");
+                let after_bracket = remainder[end + 1..].trim();
+                (auto_params, after_bracket)
+            } else {
+                (String::new(), remainder)
+            }
+        } else {
+            (String::new(), remainder)
+        };
+
+        // Extract body (between { })
+        let body = body.trim_start_matches('{').trim();
+        let body = body.trim_end_matches('}').trim();
+
+        // Convert body lines: shell commands get > prefix, Auto code stays as-is
+        let mut auto_body = String::new();
+        for line in body.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() { continue; }
+
+            // If the line looks like a shell command (not Auto code), prefix with >
+            if !trimmed.starts_with('>')
+                && !trimmed.starts_with("let ")
+                && !trimmed.starts_with("var ")
+                && !trimmed.starts_with("for ")
+                && !trimmed.starts_with("if ")
+                && !trimmed.starts_with("fn ")
+                && !trimmed.starts_with("return ")
+                && !trimmed.starts_with("print")
+            {
+                auto_body.push_str("> ");
+            }
+            auto_body.push_str(trimmed);
+            auto_body.push('\n');
+        }
+
+        // Generate AutoLang fn
+        let auto_fn = if params.is_empty() {
+            format!("fn {}() {{\n{}\n}}", name, auto_body.trim_end())
+        } else {
+            format!("fn {}({}) {{\n{}\n}}", name, params, auto_body.trim_end())
+        };
+
+        self.session.run(&auto_fn).map_err(|e| miette::miette!("def: {}", e))?;
+        Ok(None)
+    }
+
+    /// Manage event hooks: `hook <event> <function_name>` or `hook list`
+    fn cmd_hook(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        if parts.len() < 2 {
+            return Ok(Some(
+                "hook — manage event hooks\n\nUSAGE:\n  hook <event> <function>\n  hook list\n\nEVENTS:\n  chdir    — fired on directory change, args: (old_dir, new_dir)\n  preexec  — fired before command execution, args: (command_line)\n  precmd   — fired after command execution, args: (exit_code)\n".to_string()
+            ));
+        }
+        match parts[1] {
+            "list" | "ls" => {
+                if self.hooks.is_empty() {
+                    return Ok(Some("No hooks registered.\n".to_string()));
+                }
+                let mut out = String::from("Registered hooks:\n");
+                for (event, func) in &self.hooks {
+                    out.push_str(&format!("  {} → {}\n", event, func));
+                }
+                Ok(Some(out))
+            }
+            event @ ("chdir" | "preexec" | "precmd") => {
+                if parts.len() < 3 {
+                    return Err(miette::miette!("hook {}: missing function name", event));
+                }
+                let func_name = parts[2];
+                self.register_hook(event, func_name);
+                Ok(Some(format!("hook: {} → {}\n", event, func_name)))
+            }
+            _ => Err(miette::miette!("hook: unknown event '{}'. Valid: chdir, preexec, precmd", parts[1])),
+        }
+    }
+
+    /// Register an event hook. `event` is one of: chdir, preexec, precmd.
+    /// `func_name` is the name of an Auto function to call.
+    fn register_hook(&mut self, event: &str, func_name: &str) {
+        self.hooks.insert(event.to_string(), func_name.to_string());
+    }
+
+    /// Fire an event hook. Looks up the registered function and runs it.
+    /// Errors are printed but do not propagate (hooks are best-effort).
+    fn fire_hook(&mut self, event: &str, args: &[&str]) {
+        if let Some(func_name) = self.hooks.get(event).cloned() {
+            let args_vec: Vec<String> = args.iter().map(|s| format!("\"{}\"", s.replace('"', "\\\""))).collect();
+            let call = format!("{}({})", func_name, args_vec.join(", "));
+            if let Err(e) = self.session.run(&call) {
+                eprintln!("hook {}:{}: {}", event, func_name, e);
+            }
+        }
+    }
+
     fn get_variable(&self, name: &str) -> Option<String> {
-        // Special variables
-        if name == "?" {
-            return Some(self.last_exit_code.to_string());
+        // Special variables (Plan 304)
+        match name {
+            "?" => return Some(self.last_exit_code.to_string()),
+            "_" => return self.last_command_line.clone(),
+            "!" => return self.last_command_last_arg.clone(),
+            "@" => return Some(self.last_command_args.join(" ")),
+            "#" => return Some(self.last_command_args.len().to_string()),
+            "PWD" => return Some(self.current_dir.to_string_lossy().to_string()),
+            "OLDPWD" => return self.previous_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
+            _ => {}
         }
 
         // First check local shell variables
@@ -1892,6 +2209,14 @@ fn extract_exit_code(error_msg: &str) -> i32 {
         }
     }
     1
+}
+
+/// Parsed heredoc start: `command <<MARKER`
+struct HeredocInfo {
+    command: String,
+    marker: String,
+    strip_tabs: bool,
+    expand_vars: bool,
 }
 
 /// Suggest a similar command name when the user types an unknown command.
