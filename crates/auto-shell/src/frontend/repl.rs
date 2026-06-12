@@ -1,7 +1,8 @@
 use miette::Result;
 use reedline::{
-    default_emacs_keybindings, EditCommand, Emacs, FileBackedHistory,
-    KeyCode, KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal,
+    default_emacs_keybindings, default_vi_insert_keybindings, default_vi_normal_keybindings,
+    CwdAwareHinter, EditCommand, Emacs, FileBackedHistory,
+    KeyCode, KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal, Vi,
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -12,6 +13,7 @@ use crate::completions::definitions;
 use crate::completions::reedline::{CompletionState, ShellCompleter};
 use ash_core::completions::CompletionProvider;
 use crate::{prompt::AshPrompt, shell::Shell};
+use crate::frontend::term::highlight::AshHighlighter;
 
 /// Read-Eval-Print Loop for AutoShell
 pub struct Repl {
@@ -25,12 +27,28 @@ pub struct Repl {
 impl Repl {
     /// Create a new REPL instance
     pub fn new() -> Result<Self> {
-        let shell = Shell::new();
+        let mut shell = Shell::new();
 
-        // Set up history file
+        // Plan 302 Step 4.2: Load ~/.config/ash.toml
+        let shell_config = crate::config::AshShellConfig::load();
+
+        // Apply aliases from config
+        for (name, value) in &shell_config.aliases {
+            shell.set_alias(name, value);
+        }
+
+        // Plan 302 Step 1.3: Load ~/.ashrc if it exists (can override config aliases)
+        if let Some(home) = dirs::home_dir() {
+            let rc_path = home.join(".ashrc");
+            if rc_path.exists() {
+                let _ = shell.source_file(&rc_path); // silently ignore errors
+            }
+        }
+
+        // Set up history file (configurable size)
         let history_path = Self::get_history_path()?;
         let history = Box::new(
-            FileBackedHistory::with_file(1000, history_path)
+            FileBackedHistory::with_file(shell_config.history_size, history_path)
                 .map_err(|e| miette::miette!("Failed to create history: {}", e))?,
         );
 
@@ -57,33 +75,99 @@ impl Repl {
             ..Default::default()
         }));
 
-        // Set up the required keybindings
-        let mut keybindings = default_emacs_keybindings();
-        keybindings.add_binding(
-            KeyModifiers::NONE,
-            KeyCode::Tab,
-            ReedlineEvent::Multiple(vec![
-                ReedlineEvent::UntilFound(vec![
-                    ReedlineEvent::Menu("completion_menu".to_string()),
-                    ReedlineEvent::MenuNext,
-                    ReedlineEvent::Edit(vec![EditCommand::Complete]),
-                ]),
-                ReedlineEvent::Repaint,
-            ]),
-        );
+        // Plan 302 Step 3.2: Determine edit mode (Vi or Emacs)
+        // Priority: $ASH_EDIT_MODE env var > ash.toml edit_mode > ~/.ashrc
+        let use_vi = std::env::var("ASH_EDIT_MODE").map(|v| v == "vi").unwrap_or_else(|_| {
+            if shell_config.is_vi_mode() {
+                return true;
+            }
+            // Fallback: check ~/.ashrc for "set editing-mode vi"
+            if let Some(home) = dirs::home_dir() {
+                let rc = home.join(".ashrc");
+                if let Ok(content) = std::fs::read_to_string(&rc) {
+                    return content.lines().any(|line| {
+                        let line = line.trim();
+                        line == "set editing-mode vi"
+                    });
+                }
+            }
+            false
+        });
 
-        let edit_mode = Box::new(Emacs::new(keybindings));
+        // Helper to add common keybindings to any keybindings object
+        fn add_common_keybindings(keybindings: &mut reedline::Keybindings) {
+            keybindings.add_binding(
+                KeyModifiers::NONE,
+                KeyCode::Tab,
+                ReedlineEvent::Multiple(vec![
+                    ReedlineEvent::UntilFound(vec![
+                        ReedlineEvent::Menu("completion_menu".to_string()),
+                        ReedlineEvent::MenuNext,
+                        ReedlineEvent::Edit(vec![EditCommand::Complete]),
+                    ]),
+                    ReedlineEvent::Repaint,
+                ]),
+            );
+            // Plan 302: Ctrl+F accepts autosuggestion hint (Fish-style)
+            keybindings.add_binding(
+                KeyModifiers::CONTROL,
+                KeyCode::Char('f'),
+                ReedlineEvent::Edit(vec![EditCommand::Complete]),
+            );
+            // Plan 302 Step 3.4: Ctrl+→ accepts next word of autosuggestion
+            keybindings.add_binding(
+                KeyModifiers::CONTROL,
+                KeyCode::Right,
+                ReedlineEvent::HistoryHintWordComplete,
+            );
+        }
+
+        let edit_mode: Box<dyn reedline::EditMode> = if use_vi {
+            let mut insert_kb = default_vi_insert_keybindings();
+            let normal_kb = default_vi_normal_keybindings();
+            add_common_keybindings(&mut insert_kb);
+            Box::new(Vi::new(insert_kb, normal_kb))
+        } else {
+            let mut keybindings = default_emacs_keybindings();
+            add_common_keybindings(&mut keybindings);
+            Box::new(Emacs::new(keybindings))
+        };
 
         // Create modular prompt (AshPrompt)
         let prompt = AshPrompt::new(crate::prompt::AshConfig::load());
 
-        let line_editor = Reedline::create()
+        // Plan 302: Fish-style autosuggestion hinter (configurable)
+        // CwdAwareHinter prefers history items from the current working directory
+        let hinter: Option<Box<CwdAwareHinter>> = if shell_config.autosuggestion {
+            Some(Box::new(
+                CwdAwareHinter::default()
+                    .with_min_chars(shell_config.autosuggestion_min_chars),
+            ))
+        } else {
+            None
+        };
+
+        // Plan 302 Step 3.1: Syntax highlighting (configurable)
+        let highlighter: Option<Box<AshHighlighter>> = if shell_config.syntax_highlighting {
+            Some(Box::new(AshHighlighter::new()))
+        } else {
+            None
+        };
+
+        let mut line_editor = Reedline::create()
             .with_history(history)
             .with_completer(completer)
             .with_menu(ReedlineMenu::EngineCompleter(completion_menu))
             .with_quick_completions(true)
             .with_partial_completions(true)
             .with_edit_mode(edit_mode);
+
+        if let Some(h) = highlighter {
+            line_editor = line_editor.with_highlighter(h);
+        }
+        if let Some(h) = hinter {
+            line_editor = line_editor.with_hinter(h);
+        }
 
         Ok(Self { shell, line_editor, prompt, completion_state })
     }
@@ -134,6 +218,39 @@ impl Repl {
             match sig {
                 Ok(Signal::Success(line)) => {
                     let mut line = line.trim().to_string();
+
+                    // Plan 302 Step 2.3: Multi-line input handling
+                    // Detect trailing backslash or unclosed quotes, then read continuation lines
+                    loop {
+                        let trimmed = line.trim_end_matches(' ');
+                        if trimmed.ends_with('\\') && !trimmed.ends_with("\\\\") {
+                            // Trailing backslash continuation
+                            line = trimmed.to_string();
+                            line.truncate(line.len() - 1); // remove the \
+                            line.push(' ');
+                            let cont = self.line_editor.read_line(&self.prompt);
+                            match cont {
+                                Ok(Signal::Success(next)) => {
+                                    line.push_str(next.trim());
+                                }
+                                Ok(Signal::CtrlD) => break, // Ctrl-D accepts what we have
+                                _ => break,
+                            }
+                        } else if has_unclosed_quote(&line) {
+                            // Unclosed quote — read continuation
+                            line.push('\n');
+                            let cont = self.line_editor.read_line(&self.prompt);
+                            match cont {
+                                Ok(Signal::Success(next)) => {
+                                    line.push_str(&next);
+                                }
+                                Ok(Signal::CtrlD) => break,
+                                _ => break,
+                            }
+                        } else {
+                            break;
+                        }
+                    }
 
                     // Skip empty lines
                     if line.is_empty() {
@@ -220,4 +337,32 @@ impl Repl {
 
         Ok(())
     }
+}
+
+/// Check if a line has unclosed quotes (single or double).
+///
+/// Counts quote characters outside of the other quote type.
+/// An odd count means the quote is unclosed.
+fn has_unclosed_quote(line: &str) -> bool {
+    let mut single_count = 0;
+    let mut double_count = 0;
+    let mut chars = line.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                // Skip escaped character
+                chars.next();
+            }
+            '\'' if double_count % 2 == 0 => {
+                single_count += 1;
+            }
+            '"' if single_count % 2 == 0 => {
+                double_count += 1;
+            }
+            _ => {}
+        }
+    }
+
+    single_count % 2 != 0 || double_count % 2 != 0
 }

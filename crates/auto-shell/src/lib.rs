@@ -18,6 +18,7 @@ pub mod frontend;
 // Legacy modules (will migrate into ash-core or frontend over time)
 pub mod cmd;
 pub mod completions;
+pub mod config;
 pub mod data;
 pub mod job;
 pub mod menu;

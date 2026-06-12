@@ -1,7 +1,9 @@
 use miette::{IntoDiagnostic, Result};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process::Stdio;
 
-use crate::parser::pipeline::parse_pipeline;
+use ash_core::parser::{parse_chain, group_pipe_segments, parse_redirect, ChainOp, Redirect, StderrRedirect};
 use auto_lang::autovm_persistent::AutovmReplSession;
 use auto_val::Value;
 use ash_core::pipeline::AtomPipeline;
@@ -25,6 +27,8 @@ pub struct Shell {
     registry: CommandRegistry,
     last_exit_code: i32, // $? — exit code of the last command
     jobs: JobManager,    // Background/suspended job control
+    aliases: HashMap<String, String>, // Plan 302 Step 1.4: alias map
+    dir_stack: Vec<PathBuf>,           // Plan 302 Step 3.5: directory stack
 }
 
 impl Shell {
@@ -127,6 +131,8 @@ impl Shell {
             registry,
             last_exit_code: 0,
             jobs: JobManager::new(),
+            aliases: HashMap::new(),
+            dir_stack: Vec::new(),
         }
     }
 
@@ -172,6 +178,12 @@ impl Shell {
                 "fg" => return self.cmd_fg(parts.get(1).and_then(|s| s.parse::<u32>().ok())),
                 "bg" => return self.cmd_bg(parts.get(1).and_then(|s| s.parse::<u32>().ok())),
                 "suspend" => return self.cmd_suspend(),
+                "alias" => return self.cmd_alias(trimmed),
+                "unalias" => return self.cmd_unalias(&parts),
+                "source" | "." => return self.cmd_source(&parts),
+                "pushd" => return self.cmd_pushd(&parts),
+                "popd" => return self.cmd_popd(&parts),
+                "dirs" => return self.cmd_dirs(&parts),
                 _ => {}
             }
         }
@@ -181,12 +193,32 @@ impl Shell {
             return self.execute_auto(input);
         }
 
+        // Plan 302 Step 2.4: Expand command substitution ($() and backticks)
+        let expanded = self.expand_command_substitution(input)?;
         // Expand variables in input
-        let expanded = self.expand_variables(input);
+        let expanded = self.expand_variables(&expanded);
 
-        // Check if input contains a pipeline
-        if expanded.contains('|') {
-            let commands = parse_pipeline(&expanded);
+        // Plan 302 Step 1.4: Expand aliases (only first word of each segment)
+        let expanded = self.expand_aliases(&expanded);
+
+        // Plan 302 Step 2.2: Expand ~ and ~/path (outside quotes)
+        let expanded = self.expand_tilde(&expanded);
+
+        // Parse command chain (|, &&, ||) and group pipe segments
+        let segments = parse_chain(&expanded);
+
+        // Check if there are any && or || operators
+        let has_logic_ops = segments.iter().any(|s| matches!(s.op, Some(ChainOp::And | ChainOp::Or)));
+
+        if has_logic_ops {
+            // Execute as a chain with short-circuit evaluation
+            let groups = group_pipe_segments(segments);
+            return self.execute_chain(&groups);
+        }
+
+        // Simple pipeline (no &&/||)
+        let commands: Vec<String> = segments.into_iter().map(|s| s.command).collect();
+        if commands.len() > 1 {
             return self.execute_pipeline_with_auto(&commands);
         }
 
@@ -215,18 +247,64 @@ impl Shell {
     }
 
     /// Execute a single command (built-in, Auto function, or external)
+    ///
+    /// Handles I/O redirection (`>`, `>>`, `<`, `2>`) by stripping redirect
+    /// operators from the command, executing the core command, then applying
+    /// file I/O as needed.
     fn execute_single_command(&mut self, input: &str) -> Result<Option<String>> {
         use crate::cmd::{auto, builtin, external};
         use crate::parser::quote::parse_args;
 
-        let parts = parse_args(input);
+        // Plan 302 Step 1.1: Parse and strip redirections
+        let (clean_input, redirect) = parse_redirect(input);
+
+        let mut parts = parse_args(&clean_input);
         if parts.is_empty() {
             return Ok(None);
+        }
+
+        // Plan 302 Step 2.1: Expand globs in arguments (skip command name)
+        if parts.len() > 1 {
+            parts = self.expand_globs(&parts);
         }
 
         let cmd_name = &parts[0];
         let args = &parts[1..];
 
+        // If there are redirects AND it's an external command, use redirect-aware execution
+        if let Some(ref redir) = redirect {
+            // For registry/builtin/auto commands: execute normally, then write output to file
+            if let Some(cmd) = self.registry.get(cmd_name) {
+                let signature = cmd.signature();
+                match crate::cmd::parser::parse_args(&signature, args) {
+                    Ok(parsed_args) => {
+                        let atom_out = cmd.run_atom(&parsed_args, AtomPipeline::empty(), self)?;
+                        let output = self.format_output(atom_out);
+                        self.apply_output_redirect(&output, redir)?;
+                        return Ok(None); // output went to file
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+
+            if let Some(output) = builtin::execute_builtin(&clean_input, &self.current_dir)? {
+                self.apply_output_redirect(&output, redir)?;
+                return Ok(None);
+            }
+
+            if self.has_auto_function(cmd_name) {
+                let result = auto::execute_auto_function(self, cmd_name, args, None)?;
+                if let Some(ref output) = result {
+                    self.apply_output_redirect(output, redir)?;
+                }
+                return Ok(None);
+            }
+
+            // External command with redirects
+            return self.execute_external_with_redirect(&clean_input, redir);
+        }
+
+        // No redirects — normal execution path
         // Check registry first
         if let Some(cmd) = self.registry.get(cmd_name) {
             let signature = cmd.signature();
@@ -257,6 +335,107 @@ impl Shell {
         result
     }
 
+    /// Write command output to a redirect target file.
+    fn apply_output_redirect(&self, output: &str, redirect: &Redirect) -> Result<()> {
+        use std::fs::File;
+        use std::io::Write;
+
+        if let Some(ref path) = redirect.stdout {
+            let file = if redirect.append_stdout {
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .into_diagnostic()?
+            } else {
+                File::create(path).into_diagnostic()?
+            };
+            let mut writer = std::io::BufWriter::new(file);
+            writer.write_all(output.as_bytes()).into_diagnostic()?;
+            writer.write_all(b"\n").into_diagnostic()?;
+        }
+
+        Ok(())
+    }
+
+    /// Execute an external command with I/O redirection via std::process::Command.
+    fn execute_external_with_redirect(
+        &mut self,
+        clean_input: &str,
+        redirect: &Redirect,
+    ) -> Result<Option<String>> {
+        use std::fs::File;
+        use std::process::Command;
+
+        let parts = crate::parser::quote::parse_args(clean_input);
+        if parts.is_empty() {
+            return Ok(None);
+        }
+
+        let cmd_name = &parts[0];
+        let args = &parts[1..];
+
+        let mut cmd = Command::new(cmd_name);
+        cmd.args(args).current_dir(&self.current_dir);
+
+        // stdin redirect: < file
+        if let Some(ref path) = redirect.stdin {
+            let file = File::open(path).into_diagnostic()?;
+            cmd.stdin(Stdio::from(file));
+        }
+
+        // stdout redirect: > file or >> file
+        if let Some(ref path) = redirect.stdout {
+            let file = if redirect.append_stdout {
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .into_diagnostic()?
+            } else {
+                File::create(path).into_diagnostic()?
+            };
+            cmd.stdout(Stdio::from(file));
+        } else {
+            cmd.stdout(Stdio::inherit());
+        }
+
+        // stderr redirect: 2> file, 2>> file, or 2>&1
+        match &redirect.stderr {
+            Some(StderrRedirect::File(path)) => {
+                let file = File::create(path).into_diagnostic()?;
+                cmd.stderr(Stdio::from(file));
+            }
+            Some(StderrRedirect::Append(path)) => {
+                let file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .into_diagnostic()?;
+                cmd.stderr(Stdio::from(file));
+            }
+            Some(StderrRedirect::ToStdout) => {
+                // If stdout is also redirected, stderr goes to the same file
+                cmd.stderr(Stdio::inherit());
+            }
+            None => {
+                cmd.stderr(Stdio::inherit());
+            }
+        }
+
+        let status = cmd.status().into_diagnostic()?;
+
+        if status.success() {
+            Ok(None) // output went to file
+        } else {
+            self.last_exit_code = status.code().unwrap_or(1);
+            Err(miette::miette!(
+                "Command failed with exit code: {}",
+                status.code().unwrap_or(-1)
+            ))
+        }
+    }
+
     /// Format an AtomPipeline for terminal display.
     ///
     /// Structured data (file lists, etc.) gets rendered as a ratatui table
@@ -278,6 +457,43 @@ impl Shell {
 
         // Fallback: plain text
         pipeline.into_text()
+    }
+
+    /// Execute a command chain with short-circuit `&&` / `||` evaluation.
+    ///
+    /// Each element is a `(pipe_commands, next_operator)` pair:
+    /// - `pipe_commands` are executed as a pipeline (connected by `|`)
+    /// - `next_operator` determines whether the *next* group runs based on exit code
+    fn execute_chain(
+        &mut self,
+        groups: &[(Vec<String>, Option<ChainOp>)],
+    ) -> Result<Option<String>> {
+        let mut last_success = true;
+        let mut final_output: Option<String> = None;
+
+        for (pipe_cmds, next_op) in groups {
+            match next_op {
+                Some(ChainOp::And) if !last_success => {
+                    // && but previous failed → skip this group
+                    continue;
+                }
+                Some(ChainOp::Or) if last_success => {
+                    // || but previous succeeded → skip this group
+                    continue;
+                }
+                _ => {
+                    // Execute this pipe group
+                    if pipe_cmds.len() == 1 {
+                        final_output = self.execute_single_command(&pipe_cmds[0])?;
+                    } else {
+                        final_output = self.execute_pipeline_with_auto(pipe_cmds)?;
+                    }
+                    last_success = self.last_exit_code == 0;
+                }
+            }
+        }
+
+        Ok(final_output)
     }
 
     /// Execute a pipeline with Auto function support
@@ -538,6 +754,511 @@ impl Shell {
         }
 
         result
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 302 Step 2.4: Command substitution ($() and backticks)
+    // -----------------------------------------------------------------------
+
+    /// Expand command substitution: `$(cmd)` and `` `cmd` ``.
+    ///
+    /// - `echo "dir: $(pwd)"` → `echo "dir: /home/user"`
+    /// - `` echo `whoami` `` → `echo user`
+    /// - Supports nesting: `echo $(basename $(pwd))`
+    /// - Trailing newlines stripped (bash behavior)
+    /// - `$()` inside single quotes is NOT expanded
+    fn expand_command_substitution(&mut self, input: &str) -> Result<String> {
+        // First pass: convert backticks to $() syntax
+        let input = Self::convert_backticks(input);
+
+        let mut result = String::new();
+        let mut chars = input.chars().peekable();
+        let mut in_single_quote = false;
+
+        while let Some(c) = chars.next() {
+            if c == '\'' {
+                in_single_quote = !in_single_quote;
+                result.push(c);
+                continue;
+            }
+
+            // Inside single quotes: no expansion
+            if in_single_quote {
+                result.push(c);
+                continue;
+            }
+
+            // Outside single quotes: check for $(
+            if c == '$' {
+                if chars.peek() == Some(&'(') {
+                    chars.next(); // consume (
+                    let mut depth = 1;
+                    let mut cmd = String::new();
+
+                    loop {
+                        match chars.next() {
+                            None => {
+                                // Unmatched $( — keep as-is
+                                result.push_str("$(");
+                                result.push_str(&cmd);
+                                break;
+                            }
+                            Some('$') if chars.peek() == Some(&'(') => {
+                                chars.next(); // consume (
+                                depth += 1;
+                                cmd.push_str("$(");
+                            }
+                            Some(')') => {
+                                depth -= 1;
+                                if depth > 0 {
+                                    cmd.push(')');
+                                } else {
+                                    // Matching ) found — execute the command.
+                                    // self.execute() → execute_inner() will recursively
+                                    // expand any nested $() within `cmd`.
+                                    let output = self.execute(&cmd)?;
+                                    let trimmed: String = output
+                                        .unwrap_or_default()
+                                        .trim_end_matches('\n')
+                                        .trim_end_matches('\r')
+                                        .to_string();
+                                    result.push_str(&trimmed);
+                                    break;
+                                }
+                            }
+                            Some(other) => {
+                                cmd.push(other);
+                            }
+                        }
+                    }
+                } else {
+                    result.push('$');
+                }
+            } else {
+                result.push(c);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Convert backtick command substitution to `$()` syntax.
+    ///
+    /// `` `whoami` `` → `$(whoami)`, respects single quotes (no conversion inside).
+    fn convert_backticks(input: &str) -> String {
+        let mut result = String::with_capacity(input.len());
+        let mut in_single_quote = false;
+        let mut in_backtick = false;
+
+        for c in input.chars() {
+            if c == '\'' && !in_backtick {
+                in_single_quote = !in_single_quote;
+                result.push(c);
+            } else if c == '`' && !in_single_quote {
+                if in_backtick {
+                    result.push(')');
+                } else {
+                    result.push_str("$(");
+                }
+                in_backtick = !in_backtick;
+            } else {
+                result.push(c);
+            }
+        }
+
+        result
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 302 Step 1.4: Alias system
+    // -----------------------------------------------------------------------
+
+    /// Expand aliases in the input. Only the first word of each pipe-segment
+    /// is checked against the alias table. Supports multi-segment chains
+    /// (e.g. `ll && ga` where both `ll` and `ga` are aliases).
+    ///
+    /// Prevents infinite recursion with a max expansion depth of 10.
+    fn expand_aliases(&self, input: &str) -> String {
+        if self.aliases.is_empty() {
+            return input.to_string();
+        }
+
+        // Split by pipe/chain operators, expand first word of each segment,
+        // then reassemble. We reuse parse_chain for splitting.
+        let segments = parse_chain(input);
+        let mut result = String::new();
+
+        for seg in &segments {
+            // Expand the first word of this segment
+            let expanded_cmd = self.expand_alias_first_word(&seg.command, 0);
+            result.push_str(&expanded_cmd);
+            if let Some(ref op) = seg.op {
+                match op {
+                    ChainOp::Pipe => result.push_str(" | "),
+                    ChainOp::And => result.push_str(" && "),
+                    ChainOp::Or => result.push_str(" || "),
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Expand the first word of a single command via aliases, up to `max_depth`.
+    fn expand_alias_first_word(&self, command: &str, depth: usize) -> String {
+        if depth > 10 {
+            return command.to_string(); // prevent infinite recursion
+        }
+
+        let trimmed = command.trim_start();
+        if trimmed.is_empty() {
+            return command.to_string();
+        }
+
+        // Find the first word
+        let first_word_end = trimmed.find(|c: char| c.is_whitespace()).unwrap_or(trimmed.len());
+        let first_word = &trimmed[..first_word_end];
+
+        if let Some(expansion) = self.aliases.get(first_word) {
+            let rest = &trimmed[first_word_end..];
+            let expanded = format!("{}{}", expansion, rest);
+            // Recursively expand in case the alias itself starts with an alias
+            return self.expand_alias_first_word(&expanded, depth + 1);
+        }
+
+        command.to_string()
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 302 Step 2.2: Tilde expansion
+    // -----------------------------------------------------------------------
+
+    /// Expand `~` and `~/path` to the user's home directory.
+    ///
+    /// Only expands `~` at word boundaries (after whitespace or at start of string).
+    /// `~` inside quotes is NOT expanded.
+    fn expand_tilde(&self, input: &str) -> String {
+        let home = match dirs::home_dir() {
+            Some(h) => h.to_string_lossy().to_string(),
+            None => return input.to_string(),
+        };
+
+        let mut result = String::with_capacity(input.len() + 64);
+        let mut chars = input.chars().peekable();
+        let mut in_single_quote = false;
+        let mut in_double_quote = false;
+        let mut word_start = true;
+
+        while let Some(c) = chars.next() {
+            match c {
+                '\'' if !in_double_quote => {
+                    in_single_quote = !in_single_quote;
+                    result.push(c);
+                    word_start = false;
+                }
+                '"' if !in_single_quote => {
+                    in_double_quote = !in_double_quote;
+                    result.push(c);
+                    word_start = false;
+                }
+                ' ' | '\t' | '|' | '&' | ';' if !in_single_quote && !in_double_quote => {
+                    result.push(c);
+                    word_start = true;
+                }
+                '~' if word_start && !in_single_quote && !in_double_quote => {
+                    // Check what follows ~
+                    match chars.peek() {
+                        Some('/') => {
+                            // ~/path → home + /path
+                            chars.next(); // consume /
+                            result.push_str(&home);
+                            result.push('/');
+                        }
+                        Some(&' ') | Some(&'\t') | Some(&'|') | Some(&'&') | Some(&';') | None => {
+                            // Lone ~ → home
+                            result.push_str(&home);
+                        }
+                        _ => {
+                            // ~something (like ~user) — on Windows, just expand to home
+                            result.push_str(&home);
+                        }
+                    }
+                    word_start = false;
+                }
+                _ => {
+                    result.push(c);
+                    word_start = false;
+                }
+            }
+        }
+
+        result
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 302 Step 2.1: Glob expansion
+    // -----------------------------------------------------------------------
+
+    /// Expand glob patterns (`*`, `?`, `**/`) in command arguments.
+    ///
+    /// The first element (command name) is never expanded.
+    /// If a pattern has no matches, the original pattern is kept (like bash).
+    /// Results are sorted alphabetically (like bash).
+    fn expand_globs(&self, parts: &[String]) -> Vec<String> {
+        let mut expanded = Vec::with_capacity(parts.len());
+
+        for (i, part) in parts.iter().enumerate() {
+            if i == 0 {
+                // Command name — never expand
+                expanded.push(part.clone());
+                continue;
+            }
+
+            // Only expand if the argument contains glob metacharacters
+            if !part.contains('*') && !part.contains('?') {
+                expanded.push(part.clone());
+                continue;
+            }
+
+            // Build absolute pattern for glob crate
+            let pattern = if part.starts_with('/') || part.starts_with('\\') {
+                part.clone()
+            } else {
+                format!("{}/{}", self.current_dir.display(), part)
+            };
+
+            // On Windows, normalize path separators for glob
+            #[cfg(windows)]
+            let pattern = pattern.replace('\\', "/");
+
+            match glob::glob(&pattern) {
+                Ok(paths) => {
+                    let mut matches: Vec<String> = paths
+                        .filter_map(|p| p.ok())
+                        .map(|p| {
+                            // Convert back to relative path if it was originally relative
+                            let abs = p.to_string_lossy().to_string();
+                            #[cfg(windows)]
+                            let abs = abs.replace('\\', "/");
+                            if !part.starts_with('/') && !part.starts_with('\\') {
+                                let prefix = format!("{}/", self.current_dir.display());
+                                #[cfg(windows)]
+                                let prefix = prefix.replace('\\', "/");
+                                if let Some(rel) = abs.strip_prefix(&prefix) {
+                                    return rel.to_string();
+                                }
+                            }
+                            abs
+                        })
+                        .collect();
+                    if matches.is_empty() {
+                        // No matches — keep original pattern (bash behaviour)
+                        expanded.push(part.clone());
+                    } else {
+                        matches.sort();
+                        expanded.extend(matches);
+                    }
+                }
+                Err(_) => {
+                    // Invalid pattern — keep original
+                    expanded.push(part.clone());
+                }
+            }
+        }
+
+        expanded
+    }
+
+    /// Handle the `alias` builtin command.
+    ///
+    /// - `alias` — list all aliases
+    /// - `alias name=command` — define an alias (also supports `alias name command`)
+    /// - `alias name='command with args'` — define alias with spaces
+    fn cmd_alias(&mut self, input: &str) -> Result<Option<String>> {
+        // Strip the "alias" keyword
+        let rest = input.trim_start().strip_prefix("alias").unwrap_or("").trim();
+
+        if rest.is_empty() {
+            // List all aliases
+            if self.aliases.is_empty() {
+                return Ok(None);
+            }
+            let mut output = String::new();
+            let mut names: Vec<&String> = self.aliases.keys().collect();
+            names.sort();
+            for name in names {
+                let value = &self.aliases[name];
+                output.push_str(&format!("alias {}='{}'\n", name, value));
+            }
+            return Ok(Some(output.trim_end().to_string()));
+        }
+
+        // Parse: alias name=value or alias name=value
+        // Support: alias ll='ls -la', alias ll=ls, alias ll ls -la
+        if let Some(eq_pos) = rest.find('=') {
+            let name = rest[..eq_pos].trim().to_string();
+            let value = rest[eq_pos + 1..].trim().to_string();
+            let value = value.trim_matches('\'').trim_matches('"').to_string();
+            if !name.is_empty() && !value.is_empty() {
+                self.aliases.insert(name, value);
+            }
+        } else {
+            // Space-separated: alias ll "ls -la"
+            let mut parts = rest.splitn(2, |c: char| c.is_whitespace());
+            if let (Some(name), Some(value)) = (parts.next(), parts.next()) {
+                let name = name.to_string();
+                let value = value.trim_matches('\'').trim_matches('"').to_string();
+                if !name.is_empty() && !value.is_empty() {
+                    self.aliases.insert(name, value);
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Set an alias programmatically (used by ash.toml config loader).
+    pub fn set_alias(&mut self, name: &str, value: &str) {
+        self.aliases.insert(name.to_string(), value.to_string());
+    }
+
+    /// Handle the `unalias` builtin command.
+    fn cmd_unalias(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        if parts.len() < 2 {
+            miette::bail!("unalias: missing alias name");
+        }
+        for name in &parts[1..] {
+            if self.aliases.remove(*name).is_none() {
+                eprintln!("unalias: {}: not found", name);
+            }
+        }
+        Ok(None)
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 302 Step 1.3 + 3.3: RC file / source
+    // -----------------------------------------------------------------------
+
+    /// Execute each line of a file in the current shell context.
+    ///
+    /// Used by both `~/.ashrc` loading and the `source` builtin.
+    /// Lines starting with `#` and blank lines are skipped.
+    pub fn source_file(&mut self, path: &std::path::Path) -> Result<()> {
+        let content = std::fs::read_to_string(path)
+            .into_diagnostic()
+            .map_err(|e| miette::miette!("source: {}: {}", path.display(), e))?;
+
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            // Silently ignore errors in RC files (like bash does)
+            let _ = self.execute(line);
+        }
+
+        Ok(())
+    }
+
+    /// Handle the `source` and `.` builtin commands.
+    fn cmd_source(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        if parts.len() < 2 {
+            miette::bail!("source: missing file path");
+        }
+        let path = std::path::Path::new(parts[1]);
+        // Resolve relative paths against cwd
+        let path = if path.is_relative() {
+            self.current_dir.join(path)
+        } else {
+            path.to_path_buf()
+        };
+        self.source_file(&path)?;
+        Ok(None)
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 302 Step 3.5: Directory stack (pushd / popd / dirs)
+    // -----------------------------------------------------------------------
+
+    /// `pushd [dir]` — push current dir onto stack and cd to `dir`.
+    /// `pushd` (no arg) — swap top two entries (like bash).
+    fn cmd_pushd(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        if parts.len() < 2 {
+            // No arg: swap current dir with top of stack
+            if self.dir_stack.is_empty() {
+                miette::bail!("pushd: no other directory");
+            }
+            let old_current = self.current_dir.clone();
+            let new_dir = self.dir_stack.pop().unwrap();
+            self.cd(&new_dir.to_string_lossy())?;
+            self.dir_stack.push(old_current);
+        } else {
+            let target = parts[1];
+            // Push current dir, then cd to target
+            self.dir_stack.push(self.current_dir.clone());
+            if let Err(e) = self.cd(target) {
+                // cd failed — restore stack
+                self.dir_stack.pop();
+                return Err(e);
+            }
+        }
+        Ok(Some(self.format_dir_stack()))
+    }
+
+    /// `popd` — pop from stack and cd to it.
+    /// `popd +N` — remove the Nth entry (0-indexed from top) without cd.
+    fn cmd_popd(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        if self.dir_stack.is_empty() {
+            miette::bail!("popd: directory stack empty");
+        }
+
+        if parts.len() > 1 && parts[1].starts_with('+') {
+            // popd +N: remove Nth entry from stack (0 = top)
+            if let Ok(n) = parts[1][1..].parse::<usize>() {
+                if n < self.dir_stack.len() {
+                    let idx = self.dir_stack.len() - 1 - n;
+                    self.dir_stack.remove(idx);
+                    return Ok(Some(self.format_dir_stack()));
+                }
+            }
+            miette::bail!("popd: invalid index: {}", parts[1]);
+        }
+
+        let target = self.dir_stack.pop().unwrap();
+        self.cd(&target.to_string_lossy())?;
+        Ok(Some(self.format_dir_stack()))
+    }
+
+    /// `dirs` — display the directory stack.
+    /// `dirs -c` — clear the stack.
+    /// `dirs -v` — verbose (one per line with indices).
+    fn cmd_dirs(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        if parts.len() > 1 {
+            match parts[1] {
+                "-c" => {
+                    self.dir_stack.clear();
+                    return Ok(None);
+                }
+                "-v" => {
+                    let mut output = format!(" 0  {}\n", self.current_dir.display());
+                    for (i, dir) in self.dir_stack.iter().rev().enumerate() {
+                        output.push_str(&format!(" {}  {}\n", i + 1, dir.display()));
+                    }
+                    return Ok(Some(output.trim_end().to_string()));
+                }
+                _ => {}
+            }
+        }
+        Ok(Some(self.format_dir_stack()))
+    }
+
+    /// Format the directory stack as a single line: current_dir dir1 dir2 ...
+    fn format_dir_stack(&self) -> String {
+        let mut parts = vec![self.current_dir.display().to_string()];
+        for dir in self.dir_stack.iter().rev() {
+            parts.push(dir.display().to_string());
+        }
+        parts.join(" ")
     }
 
     /// Get a variable value (checks special vars, local vars, then env vars)
@@ -1097,5 +1818,78 @@ mod tests {
         );
         assert_eq!(extract_exit_code("Command failed: something"), 1);
         assert_eq!(extract_exit_code("generic error"), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 302 Step 2.4: Command substitution tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_convert_backticks_basic() {
+        assert_eq!(Shell::convert_backticks("echo `whoami`"), "echo $(whoami)");
+    }
+
+    #[test]
+    fn test_convert_backticks_multiple() {
+        assert_eq!(
+            Shell::convert_backticks("echo `a` and `b`"),
+            "echo $(a) and $(b)"
+        );
+    }
+
+    #[test]
+    fn test_convert_backticks_in_single_quotes() {
+        // Backticks inside single quotes should NOT be converted
+        assert_eq!(
+            Shell::convert_backticks("echo '`whoami`'"),
+            "echo '`whoami`'"
+        );
+    }
+
+    #[test]
+    fn test_convert_backticks_no_backticks() {
+        assert_eq!(Shell::convert_backticks("echo hello"), "echo hello");
+    }
+
+    #[test]
+    fn test_command_substitution_pwd() {
+        let mut shell = Shell::new();
+        let result = shell.expand_command_substitution("echo $(pwd)").unwrap();
+        // Should have replaced $(pwd) with actual path
+        assert!(!result.contains("$("));
+        assert!(result.starts_with("echo "));
+        // The path should be absolute
+        let path = &result[5..]; // after "echo "
+        assert!(path.starts_with('/') || path.len() > 1);
+    }
+
+    #[test]
+    fn test_command_substitution_no_subst() {
+        let mut shell = Shell::new();
+        let result = shell.expand_command_substitution("echo hello").unwrap();
+        assert_eq!(result, "echo hello");
+    }
+
+    #[test]
+    fn test_command_substitution_single_quote_no_expand() {
+        let mut shell = Shell::new();
+        let result = shell.expand_command_substitution("echo '$(pwd)'").unwrap();
+        // $() inside single quotes should NOT be expanded
+        assert_eq!(result, "echo '$(pwd)'");
+    }
+
+    #[test]
+    fn test_command_substitution_trailing_newline_stripped() {
+        let mut shell = Shell::new();
+        // echo test produces "test\n", the trailing \n should be stripped
+        let result = shell.expand_command_substitution("msg=$(echo test)").unwrap();
+        assert_eq!(result, "msg=test");
+    }
+
+    #[test]
+    fn test_command_substitution_multiple() {
+        let mut shell = Shell::new();
+        let result = shell.expand_command_substitution("echo $(pwd) and $(whoami)").unwrap();
+        assert!(!result.contains("$("));
     }
 }
