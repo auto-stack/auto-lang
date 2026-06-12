@@ -2,6 +2,7 @@
 members = [
     "crates/a2r-std",
     "crates/auto",
+    "crates/auto-atom",
     "crates/auto-gen",
     "crates/auto-lang",
     "crates/auto-macros",

@@ -39,6 +39,7 @@ ui-iced = ["ui", "dep:iced", "ui-interpreter", "dep:image"]
 
 [dependencies]
 auto-val = { path = "../auto-val" }
+auto-atom = { path = "../auto-atom" }
 auto-cache = { path = "../auto-cache" }
 # Plan 216: C FFI Bindgen manifest types
 auto-bindgen = { path = "../auto-bindgen" }

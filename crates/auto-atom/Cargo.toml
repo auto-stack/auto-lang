@@ -1,0 +1,15 @@
+[package]
+name = "auto-atom"
+version = "0.1.0"
+edition = "2021"
+description = "Static Atom data structures and parser for the AutoLang ecosystem"
+license = "MIT"
+
+[dependencies]
+auto-val = { path = "../auto-val" }
+thiserror = { workspace = true }
+serde = { workspace = true, optional = true, features = ["derive"] }
+
+[features]
+default = []
+serde = ["dep:serde"]
