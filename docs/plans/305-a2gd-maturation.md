@@ -295,7 +295,7 @@ Key differences from Python that affect method mapping:
 | `dict[key]` | `dict[key]` | Same |
 | `dict.get(k)` | `dict.get(k)` | Same |
 
-## Success Criteria
+## Success Criteria (Phase A)
 
 - [ ] All existing 9 tests continue to pass
 - [ ] Method mapping works for all String/List/Dict methods listed above
@@ -306,3 +306,208 @@ Key differences from Python that affect method mapping:
 - [ ] Async functions with `await` generate valid GDScript code
 - [ ] Spec declarations generate GDScript class stubs
 - [ ] Total test count reaches 50+ (from current 9)
+
+---
+
+## Phase B Roadmap: GDScript/Godot-Specific Features
+
+*Derived from exhaustive analysis of the GDScript parser in the Godot engine source code (`modules/gdscript/`) and official Godot 4.x documentation.*
+
+Phase A covers generic language features (methods, builtins, imports, types). Phase B adds **GDScript- and Godot-specific features** that have no equivalent in a2py. These are organized by priority and grouped into sub-plans.
+
+### B1: Godot Annotations System (Highest Priority)
+
+GDScript has 30+ annotations that affect code generation. AutoLang needs a way to express these, likely via `#[...]` attributes.
+
+**Annotations to support:**
+
+| Category | Annotations | GDScript Output |
+|---|---|---|
+| **Script** | `@tool`, `@icon(path)`, `@static_unload` | Top-of-file annotations |
+| **Variable** | `@onready` | `@onready var x = $Node` |
+| **Export (basic)** | `@export` | `@export var x = 5` |
+| **Export (typed)** | `@export_range`, `@export_enum`, `@export_file`, `@export_dir`, `@export_multiline`, `@export_placeholder`, `@export_color_no_alpha`, `@export_node_path`, `@export_flags*`, `@export_exp_easing`, `@export_storage`, `@export_custom`, `@export_tool_button` | Various `@export_*` forms |
+| **Export grouping** | `@export_category`, `@export_group`, `@export_subgroup` | Inspector organization |
+| **Networking** | `@rpc(mode, sync, transfer, channel)` | `@rpc` annotation |
+| **Warnings** | `@warning_ignore`, `@warning_ignore_start`, `@warning_ignore_restore` | Warning suppression |
+| **Abstract** | `@abstract` | Abstract class/method marking |
+
+**AutoLang mapping strategy**: Use `#[gd_export]`, `#[gd_onready]`, `#[gd_tool]`, `#[gd_rpc("authority")]`, etc. as attributes, then transpile to GDScript `@` annotations.
+
+### B2: Signal System
+
+GDScript signals are a core inter-node communication mechanism.
+
+```gdscript
+# GDScript
+signal health_changed(old_value: int, new_value: int)
+signal died
+
+# Emitting
+health_changed.emit(old_hp, new_hp)
+
+# Connecting
+button.pressed.connect(_on_button_pressed)
+```
+
+**AutoLang mapping**: `signal` declarations via a new statement type or `#[gd_signal]` attribute. `.emit()` and `.connect()` method mapping.
+
+### B3: Property Setters/Getters
+
+GDScript 4.x uses inline property syntax:
+
+```gdscript
+var health: int = 100:
+    get:
+        return health
+    set(value):
+        health = value
+```
+
+Also supports referencing external functions:
+```gdscript
+var my_prop: get = get_my_prop, set = set_my_prop
+```
+
+**AutoLang mapping**: Map `#[gd_prop(get_fn, set_fn)]` or detect setter/getter patterns from AutoLang's `mut fn` syntax.
+
+### B4: Class System Enhancements
+
+**Inner classes:**
+```gdscript
+class InnerClass:
+    var x = 10
+```
+
+**Inheritance with `super`:**
+```gdscript
+extends BaseClass
+
+func _ready():
+    super()  # Call parent _ready
+    # ... custom code
+```
+
+**Class name and extends customization:**
+- Currently hardcoded `extends Node` — should be configurable
+- `class_name` should be optional (not all scripts need global registration)
+
+**Static variables:**
+```gdscript
+static var count: int = 0
+static func _static_init():
+    count = 0
+```
+
+### B5: Typed Collections
+
+GDScript 4.x supports typed arrays and dictionaries:
+
+```gdscript
+var scores: Array[int] = [10, 20, 30]
+var names: Array[String] = ["Alice", "Bob"]
+var mapping: Dictionary[String, int] = {"a": 1, "b": 2}
+```
+
+Also packed arrays: `PackedByteArray`, `PackedInt32Array`, `PackedStringArray`, etc.
+
+**AutoLang mapping**: Map `List<int>` → `Array[int]`, `Map<str, int>` → `Dictionary[String, int]`. For packed arrays, could use `#[packed]` annotation or specific types.
+
+### B6: Godot Built-in Types
+
+GDScript has rich built-in types that Python/GDScript share natively:
+
+| Type | Example | Notes |
+|---|---|---|
+| `Vector2`, `Vector2i` | `Vector2(1.0, 2.0)` | 2D coordinates |
+| `Vector3`, `Vector3i` | `Vector3(1.0, 0.0, 0.0)` | 3D coordinates |
+| `Color` | `Color(1, 0, 0, 1)` | RGBA color |
+| `Rect2`, `Rect2i` | `Rect2(Vector2.ZERO, Vector2(100, 100))` | 2D rectangles |
+| `Transform2D`, `Transform3D` | — | Spatial transforms |
+| `Quaternion` | — | Rotation representation |
+| `NodePath` | `^"Sprite2D/Label"` | Pre-parsed node path |
+| `StringName` | `&"signal_name"` | Fast-comparison string |
+| `RID` | — | Resource ID |
+| `Callable` | `func(x): return x` | Function reference |
+| `Signal` | — | Signal reference |
+
+**AutoLang mapping**: These are pass-through — AutoLang code using these types should emit them directly. StringName/NodePath literals need special syntax handling.
+
+### B7: Node Access Syntax ($ and %)
+
+```gdscript
+var sprite = $Sprite2D           # get_node("Sprite2D")
+var label = %UniqueLabel         # get_node("%UniqueLabel")
+var child = $Parent/Child        # get_node("Parent/Child")
+```
+
+**AutoLang mapping**: Map from AutoLang's `get_node()` calls or a new `#[gd_node]` syntax to `$`/`%` shorthand.
+
+### B8: Special Constants and Keywords
+
+| Constant | Value | Notes |
+|---|---|---|
+| `PI` | 3.14159... | Circle constant |
+| `TAU` | 6.28318... | Full circle constant |
+| `INF` | `inf` | Positive infinity |
+| `NAN` | `nan` | Not a number |
+| `assert(cond, msg)` | keyword | Debug assertion |
+| `breakpoint` | keyword | Editor breakpoint |
+| `preload(path)` | keyword | Compile-time load |
+| `load(path)` | function | Runtime load |
+
+### B9: Enhanced Match Patterns
+
+GDScript supports rich pattern types beyond simple equality:
+
+```gdscript
+match value:
+    [var x, _, "test"]:       # Array pattern with binding
+        print(x)
+    {"name": "Alice", ..}:    # Dictionary pattern (open-ended)
+        print("Found Alice")
+    [42, ..]:                 # Rest pattern (open-ended array)
+        print("Starts with 42")
+    var bound:                # Binding pattern
+        print("Got: ", bound)
+    1, 2, 3:                  # Multiple patterns
+        print("1-3")
+    [var x, var y] when y > x:  # Guard with when
+        print("y > x")
+```
+
+**Pattern types from Godot parser**: PT_LITERAL, PT_EXPRESSION, PT_BIND, PT_ARRAY, PT_DICTIONARY, PT_REST, PT_WILDCARD
+
+### B10: Lambda `.call()` Requirement
+
+GDScript lambdas create `Callable` objects that must be invoked with `.call()`:
+
+```gdscript
+var add = func (a, b): return a + b
+add.call(1, 2)  # NOT add(1, 2)
+```
+
+**Impact on a2gd**: When emitting lambda invocations, need to use `.call()` instead of direct `()`.
+
+### Feature Coverage Matrix
+
+| Feature | Phase A (current plan) | Phase B (future) |
+|---|---|---|
+| Method mapping (String/List/Dict) | ✅ Task 1-2 | — |
+| Builtin function mapping | ✅ Task 3 | — |
+| Import/preload system | ✅ Task 4 | Enhanced preload |
+| Type tracking | ✅ Task 5 | Typed arrays/dicts |
+| Generics | ✅ Task 6 | — |
+| Async/await | ✅ Task 7 | — |
+| Spec → class stubs | ✅ Task 8 | — |
+| Comprehensive tests | ✅ Task 9 | — |
+| Annotations (@export etc.) | — | B1 |
+| Signal system | — | B2 |
+| Property setters/getters | — | B3 |
+| Inner classes + inheritance + super | — | B4 |
+| Typed collections | — | B5 |
+| Godot built-in types (Vector2, etc.) | — | B6 |
+| $/% node access syntax | — | B7 |
+| PI/TAU/INF/NAN/assert/breakpoint | — | B8 |
+| Enhanced match patterns | — | B9 |
+| Lambda `.call()` requirement | — | B10 |
