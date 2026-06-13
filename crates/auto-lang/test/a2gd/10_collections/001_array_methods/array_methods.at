@@ -1,0 +1,9 @@
+fn main() {
+    let fruits = ["apple", "banana", "cherry"]
+    fruits.push("date")
+    let last = fruits.pop()
+    let count = fruits.len()
+    let has_apple = fruits.contains("apple")
+    print(count)
+    print(has_apple)
+}

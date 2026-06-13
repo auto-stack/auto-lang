@@ -1,0 +1,10 @@
+fn main() {
+    let scores = {"alice": 90, "bob": 85}
+    scores.set("charlie", 95)
+    let score = scores.get("alice")
+    let found = scores.contains_key("bob")
+    let all_keys = scores.keys()
+    print(score)
+    print(found)
+    print(all_keys)
+}

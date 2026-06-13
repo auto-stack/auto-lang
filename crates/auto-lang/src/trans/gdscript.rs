@@ -1095,6 +1095,94 @@ impl GDScriptTrans {
                 out.write(b")")?;
             }
 
+            // ── List/Array methods ──
+            // .push(item) → .append(item) (GDScript uses append)
+            "push" => {
+                self.expr(receiver, out)?;
+                out.write(b".append(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .pop() → .pop() (same in GDScript)
+            "pop" => {
+                self.expr(receiver, out)?;
+                out.write(b".pop(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .contains(item) → item in receiver
+            "contains" => {
+                if let Some(first_arg) = args.args.first() {
+                    self.arg(first_arg, out)?;
+                    out.write(b" in ")?;
+                    self.expr(receiver, out)?;
+                } else {
+                    self.expr(receiver, out)?;
+                    out.write(b".contains(")?;
+                    self.emit_args(args, out)?;
+                    out.write(b")")?;
+                }
+            }
+            // .join(sep) → sep.join(receiver)
+            "join" => {
+                if let Some(first_arg) = args.args.first() {
+                    self.arg(first_arg, out)?;
+                    out.write(b".join(")?;
+                    self.expr(receiver, out)?;
+                    out.write(b")")?;
+                } else {
+                    self.expr(receiver, out)?;
+                    out.write(b".join(")?;
+                    self.emit_args(args, out)?;
+                    out.write(b")")?;
+                }
+            }
+
+            // ── Dict/Map methods ──
+            // .set(k, v) / .insert(k, v) → dict[k] = v
+            "set" | "insert" => {
+                self.expr(receiver, out)?;
+                out.write(b"[")?;
+                if let Some(first) = args.args.first() {
+                    self.arg(first, out)?;
+                }
+                out.write(b"] = ")?;
+                if args.args.len() > 1 {
+                    self.arg(&args.args[1], out)?;
+                } else {
+                    out.write(b"null")?;
+                }
+            }
+            // .get(key) → receiver.get(key)
+            "get" => {
+                self.expr(receiver, out)?;
+                out.write(b".get(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .has(key) / .contains_key(key) → key in receiver
+            "has" | "contains_key" => {
+                if let Some(first_arg) = args.args.first() {
+                    self.arg(first_arg, out)?;
+                    out.write(b" in ")?;
+                    self.expr(receiver, out)?;
+                } else {
+                    self.expr(receiver, out)?;
+                    out.write(b".has(")?;
+                    self.emit_args(args, out)?;
+                    out.write(b")")?;
+                }
+            }
+            // .keys() / .values() — pass through
+            "keys" | "values" => {
+                self.expr(receiver, out)?;
+                out.write(b".")?;
+                out.write_all(method.as_bytes())?;
+                out.write(b"(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+
             // ── Default: pass through as receiver.method(args) ──
             _ => {
                 self.expr(receiver, out)?;
@@ -1409,5 +1497,15 @@ mod tests {
     #[test]
     fn test_string_methods() {
         test_a2gd("04_strings/001_string_methods").unwrap();
+    }
+
+    #[test]
+    fn test_array_methods() {
+        test_a2gd("10_collections/001_array_methods").unwrap();
+    }
+
+    #[test]
+    fn test_dict_methods() {
+        test_a2gd("10_collections/002_dict_methods").unwrap();
     }
 }
