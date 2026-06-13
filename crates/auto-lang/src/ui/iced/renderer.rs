@@ -2246,9 +2246,22 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             // Toggle: if clicking the same element, deselect
             if state.selected_widget.borrow().as_deref() == Some(id.as_str()) {
                 *state.selected_widget.borrow_mut() = None;
+                // Plan 307 Task 17: keep selected_vnode in sync with selected_widget.
+                // The live_cache holds the last frame's VNodeId <-> iced id map,
+                // which is valid for selection (selection persists across frames).
+                *state.selected_vnode.borrow_mut() = None;
                 // Don't close panel on deselect — user may want to inspect other tabs
             } else {
-                *state.selected_widget.borrow_mut() = Some(id);
+                *state.selected_widget.borrow_mut() = Some(id.clone());
+                // Plan 307 Task 17: derive selected_vnode from the aura_N string
+                // via the last frame's live_cache so the left-tree highlight and
+                // inspector panels (keyed on VNodeId) follow the click.
+                let derived_vnode = state
+                    .live_cache
+                    .borrow()
+                    .as_ref()
+                    .and_then(|c| c.iced_to_vnode(&id));
+                *state.selected_vnode.borrow_mut() = derived_vnode;
                 *state.devtools_open.borrow_mut() = true;
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
                 // Cache source code for the Inspector tab
@@ -2300,11 +2313,26 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 if *state.selected_vnode.borrow() == Some(vnode_id) {
                     // Toggle off on re-click (matches the old id-string behavior).
                     *state.selected_vnode.borrow_mut() = None;
+                    // Plan 307 Task 17: keep selected_widget in sync so the
+                    // wrap_debug overlay (keyed on the aura_N string) clears too.
+                    *state.selected_widget.borrow_mut() = None;
                 } else {
                     *state.selected_vnode.borrow_mut() = Some(vnode_id);
-                    // Stub hover: mark the selected node as hovered too (real
-                    // hover wiring via mouse_area is a follow-up).
-                    *state.hovered_vnode.borrow_mut() = Some(vnode_id);
+                    // Plan 307 Task 17: mirror selected_widget from the live_cache
+                    // reverse map (VNodeId -> aura_N) so the wrap_debug orange
+                    // overlay and source-click paths stay consistent with the
+                    // tree selection. If no mapping exists yet (e.g. first frame),
+                    // leave selected_widget as-is — the overlay simply won't draw
+                    // until the next frame builds the map.
+                    let mirrored_widget = state
+                        .live_cache
+                        .borrow()
+                        .as_ref()
+                        .and_then(|c| c.vnode_to_iced(vnode_id))
+                        .cloned();
+                    if let Some(aura) = mirrored_widget {
+                        *state.selected_widget.borrow_mut() = Some(aura);
+                    }
                     *state.devtools_open.borrow_mut() = true;
                     *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
                 }
@@ -3065,6 +3093,20 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // DynamicState for later bounds backfill (Task 13) and inspector panels
         // (tasks 15-16). InspectorCache derives Clone.
         let cache = ctx.inspector_cache.borrow().clone();
+
+        // Plan 307 Task 17: derive `hovered_vnode` from the aura_N hover string
+        // using the freshly-built per-frame cache (VNodeId <-> iced id map).
+        // `hovered_widget` was resolved from pending_hovers earlier in this same
+        // view() pass. Mirror it into hovered_vnode so the left-tree hover tint
+        // (Task 14, keyed on VNodeId) tracks the same node the overlay highlights.
+        // When hovered_widget is None the cursor left all widgets → clear it.
+        // Done before moving `cache` into live_cache.
+        let hovered_aura = state.hovered_widget.borrow().clone();
+        let new_hovered_vnode = hovered_aura
+            .as_deref()
+            .and_then(|s| cache.iced_to_vnode(s));
+        *state.hovered_vnode.borrow_mut() = new_hovered_vnode;
+
         *state.live_cache.borrow_mut() = Some(cache);
     }
 
