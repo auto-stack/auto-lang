@@ -3,17 +3,27 @@ use crate::ast::*;
 use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
+use std::collections::HashMap;
 use std::io::Write;
 
 pub struct GDScriptTrans {
     indent: usize,
     #[allow(dead_code)]
     name: AutoStr,
+    /// Collected preload paths from `use` statements: (module_path, optional_symbols)
+    gd_imports: Vec<(AutoStr, Option<Vec<AutoStr>>)>,
+    /// Local variable type tracking
+    local_var_types: HashMap<AutoStr, Type>,
 }
 
 impl GDScriptTrans {
     pub fn new(name: AutoStr) -> Self {
-        Self { indent: 0, name }
+        Self {
+            indent: 0,
+            name,
+            gd_imports: Vec::new(),
+            local_var_types: HashMap::new(),
+        }
     }
 
     fn indent(&mut self) {
@@ -391,7 +401,10 @@ impl GDScriptTrans {
 
             // Skip alias, use — GDScript uses preload/load, different import system
             Stmt::Alias(_) => Ok(false),
-            Stmt::Use(_) => Ok(false),
+            Stmt::Use(use_stmt) => {
+                self.handle_use(use_stmt);
+                Ok(false)
+            }
             Stmt::TypeAlias(_) => Ok(false),
             Stmt::Dep(_) => Ok(false),
 
@@ -1362,6 +1375,72 @@ impl GDScriptTrans {
             _ => "null".into(),
         }
     }
+
+    // ========================================================================
+    // Import handling
+    // ========================================================================
+
+    /// Process a `use` statement for GDScript import emission
+    fn handle_use(&mut self, use_stmt: &Use) {
+        match &use_stmt.kind {
+            UseKind::Auto => {
+                // Resolve module path
+                let module = if let Some(ref mp) = use_stmt.module_path {
+                    let display = mp.display();
+                    // Strip pac./super. prefixes (AutoLang-only concepts)
+                    if let Some(stripped) = display.strip_prefix("pac.") {
+                        stripped.to_string()
+                    } else if let Some(stripped) = display.strip_prefix("super.") {
+                        stripped.to_string()
+                    } else {
+                        display.to_string()
+                    }
+                } else if !use_stmt.paths.is_empty() {
+                    use_stmt.paths.join("/")
+                } else {
+                    return;
+                };
+
+                let symbols: Option<Vec<AutoStr>> = if use_stmt.items.is_empty() {
+                    None
+                } else {
+                    Some(use_stmt.items.iter().cloned().collect())
+                };
+                self.gd_imports.push((module.into(), symbols));
+            }
+            UseKind::Py | UseKind::C | UseKind::Rust => {
+                // Python/C/Rust imports not relevant for GDScript — skip
+            }
+        }
+    }
+
+    /// Emit collected GDScript imports (preload statements)
+    fn emit_imports(&self, out: &mut impl Write) -> AutoResult<()> {
+        for (path, symbols) in &self.gd_imports {
+            // use module → const Module = preload("res://module.gd")
+            let module_name = path.rsplit('/').next().unwrap_or(path.as_ref());
+            let class_name = capitalize_first(module_name);
+            write!(out, "const {} = preload(\"res://{}.gd\")\n", class_name, path)?;
+            if let Some(syms) = symbols {
+                if !syms.is_empty() {
+                    write!(out, "# imported: {}\n", syms.join(", "))?;
+                }
+            }
+        }
+        if !self.gd_imports.is_empty() {
+            out.write(b"\n")?;
+        }
+        Ok(())
+    }
+}
+
+/// Capitalize the first letter of a string
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
 }
 
 // ============================================================================
@@ -1379,18 +1458,23 @@ impl Trans for GDScriptTrans {
             }
         }).cloned();
 
-        // Split into declarations and main statements
+        // Split into declarations, main statements, and use statements
         let mut decls: Vec<(Stmt, usize)> = Vec::new();
         let mut main_stmts: Vec<(Stmt, usize)> = Vec::new();
 
         let source_lines = ast.source_lines;
         for (i, stmt) in ast.stmts.into_iter().enumerate() {
             let line = source_lines.get(i).copied().unwrap_or(0);
-            // Skip main function declaration — we'll handle it specially
+            // Skip main function — handled specially
             if let Stmt::Fn(func) = &stmt {
                 if func.name == "main" {
                     continue;
                 }
+            }
+            // Phase 1: Collect use statements for import emission
+            if let Stmt::Use(use_stmt) = &stmt {
+                self.handle_use(use_stmt);
+                continue;
             }
 
             if stmt.is_decl() {
@@ -1400,41 +1484,49 @@ impl Trans for GDScriptTrans {
             }
         }
 
-        // 1. File header comment
-        write!(sink.body, "# Auto-generated from {}.at — do not edit\n\n", self.name)?;
+        // Phase 2: Generate code body into temporary buffer
+        let mut code_buf: Vec<u8> = Vec::new();
 
-        // 2. extends Node (default for Godot scripts)
-        sink.body.write(b"extends Node\n\n")?;
-
-        // 3. Emit declarations (types, enums, non-main functions)
+        // Emit declarations (types, enums, non-main functions)
         for (i, (decl, line)) in decls.iter().enumerate() {
             sink.set_source_line(*line);
-            self.stmt(decl, &mut sink.body)?;
+            self.stmt(decl, &mut code_buf)?;
             if i < decls.len() - 1 {
-                sink.body.write(b"\n")?;
+                code_buf.write(b"\n")?;
             }
         }
 
-        // 4. Generate main function or wrap statements
+        // Generate main function or wrap statements
         if let Some(main_stmt) = main_func {
-            // Output the main function as _ready()
             if !decls.is_empty() {
-                sink.body.write(b"\n")?;
+                code_buf.write(b"\n")?;
             }
-            self.stmt(&main_stmt, &mut sink.body)?;
+            self.stmt(&main_stmt, &mut code_buf)?;
         } else if !main_stmts.is_empty() {
-            // Wrap loose statements in a _ready() function
             if !decls.is_empty() {
-                sink.body.write(b"\n")?;
+                code_buf.write(b"\n")?;
             }
-            sink.body.write(b"func _ready():\n")?;
+            code_buf.write(b"func _ready():\n")?;
             self.indent();
             for (stmt, line) in &main_stmts {
                 sink.set_source_line(*line);
-                self.stmt(stmt, &mut sink.body)?;
+                self.stmt(stmt, &mut code_buf)?;
             }
             self.dedent();
         }
+
+        // Phase 3: Assemble final output
+        // 1. File header
+        write!(sink.body, "# Auto-generated from {}.at — do not edit\n\n", self.name)?;
+
+        // 2. extends Node
+        sink.body.write(b"extends Node\n\n")?;
+
+        // 3. Emit collected imports
+        self.emit_imports(&mut sink.body)?;
+
+        // 4. Append code body
+        sink.body.write(&code_buf)?;
 
         Ok(())
     }
@@ -1547,5 +1639,10 @@ mod tests {
     #[test]
     fn test_builtin_map() {
         test_a2gd("16_gdscript_std/001_builtin_map").unwrap();
+    }
+
+    #[test]
+    fn test_import() {
+        test_a2gd("14_modules/001_import").unwrap();
     }
 }

@@ -1,0 +1,6 @@
+use utils
+use math: add, multiply
+
+fn main() {
+    print("hello")
+}
