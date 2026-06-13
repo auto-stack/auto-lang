@@ -372,6 +372,51 @@ func _ready():
 
 ---
 
+### Phase 4：GDScript `signal` 声明（✅ 已完成）
+
+Godot 的 `signal` 是脚本级声明（出现在 .gd 的 `extends` 之后、成员变量/函数之前），用于定义自定义信号。采用「signal 作为 scene 体内的特殊节点」设计（非新关键字、非注解），与 `node`/`instance`/`connect` 同为 scene body 元素：
+
+```auto
+scene Player : Area2D {
+    script = "player.gd"
+
+    signal health_changed(new_health int)
+    signal game_over
+
+    node CollisionShape2D { ... }
+    connect body_entered from "." to "." method "_on_body_entered"
+}
+
+fn take_damage(n int) {
+    health_changed.emit(n)        // 发射信号，原样透传
+}
+```
+→
+```gdscript
+extends Area2D
+
+signal health_changed(new_health: int)
+signal game_over
+
+func take_damage(n: int):
+	health_changed.emit(n)
+```
+
+信号是脚本数据而非场景（.tscn）数据——只输出到 .gd，不进 .tscn。
+
+改动：
+- `ast/ui.rs`：新增 `SceneSignal { name, params: Vec<SceneSignalParam> }` 与 `SceneSignalParam { name, ty }`；`SceneDecl` 新增 `signals: Vec<SceneSignal>` 字段（`pub use ui::*` 自动再导出）
+- `parser.rs`：`parse_scene_decl` body 分发新增 `"signal" =>` 分支；新增 `parse_scene_signal()`（解析 `signal name` 或 `signal name(p T, p2 T2)`，参数用 Auto 空格语法）
+- `trans/gdscript.rs`：扫描 `SceneDecl` 时同时收集 `signals`，在 `extends` 之后逐行输出 `signal name` / `signal name(p: T, ...)`（类型经 `gdscript_type_name` 映射）
+- **顺带修复**：`trans()` 的语句分流循环跳过 `Stmt::SceneDecl`（纯元数据）和 `Stmt::EmptyLine`（空行）——二者原本会落入 `main_stmts`，在没有 `fn main()` 时触发多余的空 `func _ready():` 桩。此修复对任意含空行的 .at 文件均生效，非场景专属
+- 测试：`test/a2gd/17_godot_types/005_signal`（带参信号 + 无参信号 + 嵌套 node/connect + 顶层 fn 发射信号，校验 `extends Area2D` 后正确输出信号、无空 `_ready` 桩）
+
+验证：trans 306 / gdscript 56 / parser 144（含 tscn 006）全通过，0 回归。
+
+**注**：信号发射 `signal.emit(args)` 与连接 `connect` 均原样透传，无需额外处理。后续如需支持 Godot 4 的 `await signal`、自定义信号的 `connect`/`disconnect` 调用，可原样透传。
+
+---
+
 ## 验证方式
 
 1. ✅ 创建 `test/a2gd/tscn/` 测试目录（5 个用例：hello / player / timers / nested / subresource）

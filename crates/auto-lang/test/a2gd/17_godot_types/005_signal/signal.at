@@ -1,0 +1,19 @@
+// Plan 306: signal declarations as a special scene body element.
+scene Player : Area2D {
+    script = "player.gd"
+
+    signal health_changed(new_health int)
+    signal game_over
+
+    node CollisionShape2D {
+        shape = CapsuleShape2D {
+            radius = 5.0
+        }
+    }
+
+    connect body_entered from "." to "." method "_on_body_entered"
+}
+
+fn take_damage(n int) {
+    health_changed.emit(n)
+}

@@ -542,6 +542,9 @@ pub struct SceneDecl {
     pub children: Vec<SceneNode>,
     /// Signal connections (`connect signal from ... to ... method ...`)
     pub connections: Vec<SceneConnection>,
+    /// Plan 306: Signal declarations (`signal name(params)`), emitted into the
+    /// attached .gd as `signal name(param: Type)` lines. Not scene (.tscn) data.
+    pub signals: Vec<SceneSignal>,
 }
 
 /// A single `name = value` property on a scene node (or inside a sub-resource).
@@ -601,6 +604,24 @@ pub struct SceneConnection {
     pub from: AutoStr,
     pub to: AutoStr,
     pub method: AutoStr,
+}
+
+/// A Godot signal declared inside a scene: `signal name(p1 T1, p2 T2)` or `signal name`.
+///
+/// Emitted into the attached .gd as `signal name(p1: T1, p2: T2)`.
+#[derive(Debug, Clone)]
+pub struct SceneSignal {
+    /// Signal name, e.g. "health_changed".
+    pub name: AutoStr,
+    /// Typed parameters; empty for a param-less signal (`signal game_over`).
+    pub params: Vec<SceneSignalParam>,
+}
+
+/// A parameter of a scene signal: `name Type` → `name: Type`.
+#[derive(Debug, Clone)]
+pub struct SceneSignalParam {
+    pub name: Name,
+    pub ty: Type,
 }
 
 // ============================================================================

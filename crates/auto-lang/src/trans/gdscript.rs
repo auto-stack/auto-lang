@@ -1641,13 +1641,17 @@ impl Trans for GDScriptTrans {
         // Plan 306 Phase 2b: when the file declares a `scene`, the generated
         // script should extend the scene's root node type (e.g. Control) so the
         // .gd attaches to the .tscn root correctly. Defaults to Node otherwise.
-        let scene_root = ast.stmts.iter().find_map(|s| {
+        // Plan 306: also collect the scene's signal declarations.
+        let mut scene_root: Option<String> = None;
+        let mut signals: Vec<crate::ast::SceneSignal> = Vec::new();
+        for s in &ast.stmts {
             if let Stmt::SceneDecl(scene) = s {
-                Some(scene.node_type.to_string())
-            } else {
-                None
+                if scene_root.is_none() {
+                    scene_root = Some(scene.node_type.to_string());
+                }
+                signals.extend(scene.signals.iter().cloned());
             }
-        });
+        }
 
         // Split into declarations, main statements, and use statements
         let mut decls: Vec<(Stmt, usize)> = Vec::new();
@@ -1667,6 +1671,18 @@ impl Trans for GDScriptTrans {
             // Phase 1: Collect use statements for import emission
             if let Stmt::Use(use_stmt) = &stmt {
                 self.handle_use(use_stmt);
+                continue;
+            }
+            // Plan 306: SceneDecl carries only scene metadata (root type → `extends`,
+            // signal declarations) already extracted above; it emits no .gd body, so
+            // skip it here to avoid polluting main_stmts (which would add an empty
+            // `func _ready():` stub).
+            if matches!(stmt, Stmt::SceneDecl(_)) {
+                continue;
+            }
+            // EmptyLine carries no code — skip so it doesn't pollute main_stmts
+            // (which would add a spurious empty `func _ready():` stub).
+            if matches!(stmt, Stmt::EmptyLine(_)) {
                 continue;
             }
 
@@ -1724,6 +1740,21 @@ impl Trans for GDScriptTrans {
         // 2. extends <root node type> (scene root, or Node by default)
         let base = scene_root.as_deref().unwrap_or("Node");
         write!(sink.body, "extends {}\n\n", base)?;
+
+        // 2b. Signal declarations (`signal name(p: T)`), right after `extends`.
+        if !signals.is_empty() {
+            for sig in &signals {
+                if sig.params.is_empty() {
+                    write!(sink.body, "signal {}\n", sig.name)?;
+                } else {
+                    let params = sig.params.iter().map(|p| {
+                        format!("{}: {}", p.name, self.gdscript_type_name(&p.ty))
+                    }).collect::<Vec<_>>().join(", ");
+                    write!(sink.body, "signal {}({})\n", sig.name, params)?;
+                }
+            }
+            sink.body.write(b"\n")?;
+        }
 
         // 3. Emit collected imports
         self.emit_imports(&mut sink.body)?;
@@ -1894,6 +1925,10 @@ mod tests {
     // Plan 306 Phase 3: script-level annotations (@tool, @icon) emitted before `extends`.
     #[test]
     fn test_godot_script_annotations() { test_a2gd("17_godot_types/004_tool").unwrap(); }
+
+    // Plan 306: signal declarations inside a scene → `signal name(p: T)` in .gd.
+    #[test]
+    fn test_godot_signals() { test_a2gd("17_godot_types/005_signal").unwrap(); }
 
     #[test]
     fn test_unary_neg() { test_a2gd("01_basics/041_unary_neg").unwrap(); }

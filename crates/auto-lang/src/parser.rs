@@ -9981,6 +9981,7 @@ impl<'a> Parser<'a> {
         let mut script = None;
         let mut children = Vec::new();
         let mut connections = Vec::new();
+        let mut signals = Vec::new();
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -10004,6 +10005,11 @@ impl<'a> Parser<'a> {
                 "connect" => {
                     connections.push(self.parse_scene_connection()?);
                 }
+                // Plan 306: signal declaration — `signal name(p T, ...)` or `signal name`.
+                // Treated as a special scene body element (not a child node; no .tscn output).
+                "signal" => {
+                    signals.push(self.parse_scene_signal()?);
+                }
                 _ => {
                     // property assignment: name = value
                     props.push(self.parse_scene_prop()?);
@@ -10020,6 +10026,7 @@ impl<'a> Parser<'a> {
             script,
             children,
             connections,
+            signals,
         }))
     }
 
@@ -10095,6 +10102,35 @@ impl<'a> Parser<'a> {
             to,
             method,
         })
+    }
+
+    /// Parse a signal declaration inside a scene:
+    /// `signal name` or `signal name(p1 T1, p2 T2)`.
+    /// Params use Auto space syntax (`p1 T1`) and are emitted as GDScript
+    /// typed signal params (`p1: T1`).
+    fn parse_scene_signal(&mut self) -> AutoResult<SceneSignal> {
+        self.expect_ident("signal")?;
+        let name = self.cur.text.clone();
+        self.next();
+
+        let mut params = Vec::new();
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // skip (
+            self.skip_empty_lines();
+            while !self.is_kind(TokenKind::RParen) && !self.is_kind(TokenKind::EOF) {
+                let pname = self.cur.text.clone();
+                self.next();
+                let pty = self.parse_type()?;
+                params.push(SceneSignalParam { name: pname, ty: pty });
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    self.skip_empty_lines();
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+        }
+
+        Ok(SceneSignal { name, params })
     }
 
     /// Parse a single `name = value` scene property.
