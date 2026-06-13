@@ -136,6 +136,12 @@ pub struct Code {
     pub stmts: Vec<Stmt>,
     /// Source line numbers for each statement (parallel to stmts)
     pub source_lines: Vec<usize>,
+    /// Plan 306 Phase 3: Script-level (file-wide) annotations captured verbatim
+    /// (e.g. `tool` from `#[tool]`, `icon("res://icon.png")` from `#[icon(...)]`).
+    /// Transpiler metadata only — NOT serialized by Display/ToNode/ToAtom, since it
+    /// is reconstructed from source on every parse and is irrelevant to the VM/IR.
+    /// GDScript emits these as `@tool` / `@icon(...)` at the script top.
+    pub file_attrs: Vec<Name>,
 }
 
 impl Code {
@@ -143,6 +149,7 @@ impl Code {
         Self {
             stmts: Vec::new(),
             source_lines: Vec::new(),
+            file_attrs: Vec::new(),
         }
     }
 }
@@ -152,6 +159,7 @@ impl Default for Code {
         Self {
             stmts: Vec::default(),
             source_lines: Vec::default(),
+            file_attrs: Vec::default(),
         }
     }
 }

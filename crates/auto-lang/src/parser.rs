@@ -209,6 +209,9 @@ pub struct Parser<'a> {
     pub session: crate::session::CompilerSession,
     /// Plan 159 Phase 6B-2: Collected raw attribute strings for derive/serde passthrough
     raw_attrs: Vec<AutoStr>,
+    /// Plan 306 Phase 3: Script-level GDScript annotations (`tool`, `icon(...)`)
+    /// collected from top-level `#[tool]`/`#[icon]`; drained into Code.file_attrs.
+    file_attrs: Vec<AutoStr>,
     /// Collected doc comment lines (///) to attach to the next declaration
     pending_docs: Vec<AutoStr>,
     /// Track imported module names from `use` statements for check_symbol
@@ -256,6 +259,7 @@ impl<'a> Parser<'a> {
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
+            file_attrs: Vec::new(), // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
         };
@@ -321,6 +325,7 @@ impl<'a> Parser<'a> {
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
+            file_attrs: Vec::new(), // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
         };
@@ -365,6 +370,7 @@ impl<'a> Parser<'a> {
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
+            file_attrs: Vec::new(), // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
         };
@@ -1230,7 +1236,11 @@ impl<'a> Parser<'a> {
         // Post-processing: Merge ext blocks into their target TypeDecl
         stmts = self.merge_ext_blocks(stmts)?;
 
-        Ok(Code { stmts, source_lines })
+        Ok(Code {
+            stmts,
+            source_lines,
+            file_attrs: std::mem::take(&mut self.file_attrs),
+        })
     }
 
     /// Merge ext blocks into their target TypeDecl
@@ -6504,6 +6514,28 @@ impl<'a> Parser<'a> {
                             }
                             ann.store_attrs.push(attr_str.into());
                             // Check for ] or ,
+                            if self.is_kind(TokenKind::RSquare) {
+                                self.next(); // skip ]
+                                break;
+                            }
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next(); // skip ,
+                                continue;
+                            }
+                            continue;
+                        }
+                        // Plan 306 Phase 3: GDScript script-level (file-wide) annotations.
+                        // Unlike the var-level annotations above, these apply to the whole
+                        // script and are collected into the parser (→ Code.file_attrs) for
+                        // top-of-file `@tool` / `@icon(...)` emission. They do NOT attach
+                        // to the following declaration; that decl is parsed normally below.
+                        "tool" | "icon" => {
+                            let mut attr_str = annot.to_string();
+                            self.next(); // skip the annotation name
+                            if let Some(args) = self.collect_annotation_args() {
+                                attr_str.push_str(&args);
+                            }
+                            self.file_attrs.push(attr_str.into());
                             if self.is_kind(TokenKind::RSquare) {
                                 self.next(); // skip ]
                                 break;

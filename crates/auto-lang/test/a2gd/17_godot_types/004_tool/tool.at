@@ -1,0 +1,8 @@
+// Plan 306 Phase 3: script-level annotations.
+// `#[tool]` and `#[icon(...)]` apply to the whole script, not a single var,
+// so they are emitted at the top of the .gd (before `extends`) as @tool/@icon.
+#[tool]
+#[icon("res://icon.png")]
+fn _ready() {
+    print("running in editor")
+}

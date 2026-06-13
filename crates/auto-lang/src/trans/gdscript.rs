@@ -1654,6 +1654,8 @@ impl Trans for GDScriptTrans {
         let mut main_stmts: Vec<(Stmt, usize)> = Vec::new();
 
         let source_lines = ast.source_lines;
+        // Plan 306 Phase 3: script-level annotations (@tool, @icon(...))
+        let file_attrs = ast.file_attrs;
         for (i, stmt) in ast.stmts.into_iter().enumerate() {
             let line = source_lines.get(i).copied().unwrap_or(0);
             // Skip main function — handled specially
@@ -1709,6 +1711,15 @@ impl Trans for GDScriptTrans {
         // Phase 3: Assemble final output
         // 1. File header
         write!(sink.body, "# Auto-generated from {}.at — do not edit\n\n", self.name)?;
+
+        // 1b. Script-level annotations (@tool, @icon(...)) — Godot requires these
+        // before `extends`. Emitted verbatim from #[tool]/#[icon(...)].
+        if !file_attrs.is_empty() {
+            for a in &file_attrs {
+                write!(sink.body, "@{}\n", a.as_str())?;
+            }
+            sink.body.write(b"\n")?;
+        }
 
         // 2. extends <root node type> (scene root, or Node by default)
         let base = scene_root.as_deref().unwrap_or("Node");
@@ -1879,6 +1890,10 @@ mod tests {
     // Plan 306 Phase 3: extended annotations (@onready, @export_range, @export_group).
     #[test]
     fn test_godot_annotations() { test_a2gd("17_godot_types/003_annot").unwrap(); }
+
+    // Plan 306 Phase 3: script-level annotations (@tool, @icon) emitted before `extends`.
+    #[test]
+    fn test_godot_script_annotations() { test_a2gd("17_godot_types/004_tool").unwrap(); }
 
     #[test]
     fn test_unary_neg() { test_a2gd("01_basics/041_unary_neg").unwrap(); }

@@ -338,7 +338,37 @@ GDScript 的 `$Sprite` 等价于 `get_node("Sprite")`。实测 `get_node("Sprite
 
 验证：trans 304 / gdscript 54 / parser 144 全通过，0 回归（`derive` 重构经 a2r 测试确认无影响）。
 
-**注**：`@tool`（脚本级，影响整个脚本而非单变量）属不同机制，未纳入本轮；`@icon` 同理。后续如需可单独走脚本级注解路径。
+#### Phase 3b：脚本级注解 `@tool` / `@icon`（✅ 已完成）
+
+Phase 3 的注解都是**变量级**（附加在某个 `var` 上）。Godot 还有**脚本级**注解——作用于整个脚本、必须出现在 `extends` 之前：
+
+```
+#[tool]
+#[icon("res://icon.png")]
+fn _ready() { ... }
+```
+→
+```gdscript
+# Auto-generated from tool.at — do not edit
+
+@tool
+@icon("res://icon.png")
+
+extends Node
+
+func _ready():
+	...
+```
+
+这与变量级注解是**不同机制**——不能复用 `Store.attrs`（没有目标变量），需收集到文件级。设计：新增 `Code.file_attrs: Vec<Name>`（与 `Store.attrs` 同为转译器元数据，不参与 `Display`/`ToNode`/`ToAtom` 序列化）；解析器在 `parse_fn_annotations` 识别 `#[tool]`/`#[icon(...)]` 时收集到 `self.file_attrs`，在 `parse()` 末尾排入 `Code`（drain）；`#[tool]` 后面紧跟的声明照常解析（注解不附加到它）。
+
+改动：
+- `ast.rs`：`Code` 新增 `file_attrs: Vec<Name>` 字段（`new()`/`Default` 同步；`Display`/`ToNode`/`AtomWriter`/`ToAtom` 四个 trait 故意不动 —— 不序列化）
+- `parser.rs`：`Parser` 新增 `file_attrs: Vec<AutoStr>` 字段（3 处构造函数初始化）；`parse_fn_annotations` 新增 `"tool" | "icon"` 分支（复用 `collect_annotation_args` 收集参数，推入 `self.file_attrs`）；`parse()` 末尾 `Code { ..., file_attrs: std::mem::take(&mut self.file_attrs) }`
+- `trans/gdscript.rs`：`trans()` 头部组装在 `# Auto-generated` 注释之后、`extends` 之前逐行输出 `@{attr}`（Godot 要求脚本级注解在 `extends` 之前）
+- 测试：`test/a2gd/17_godot_types/004_tool`（`#[tool]` + `#[icon("res://icon.png")]` 两注解并排，校验置于 `extends Node` 之前）
+
+验证：trans 305 / gdscript 55 / parser 144 全通过，0 回归。
 
 ---
 
