@@ -1,0 +1,16 @@
+// Plan 306 Phase 5a: typed collections List<T>/Map<K,V> -> Array[T]/Dictionary[K,V]
+var scores List<int> = [1, 2, 3]
+var lookup Map<str, int> = Map.new()
+var grid List<List<int>> = [[1, 2], [3, 4]]
+
+fn sum(xs List<int>) int {
+    0
+}
+
+fn keys(m Map<str, int>) List<str> {
+    []
+}
+
+fn main() {
+    print(scores)
+}

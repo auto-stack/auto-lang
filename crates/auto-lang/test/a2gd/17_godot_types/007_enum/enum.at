@@ -1,0 +1,17 @@
+// Plan 306 Phase 5b: enum explicit values + source-casing preservation.
+enum HttpStatus {
+    OK = 200
+    NotFound = 404
+    ServerError = 500
+}
+
+enum Direction {
+    Up
+    Down
+    Left
+    Right
+}
+
+fn main() {
+    print(HttpStatus.OK)
+}

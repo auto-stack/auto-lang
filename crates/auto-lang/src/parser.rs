@@ -4205,6 +4205,7 @@ impl<'a> Parser<'a> {
             self.next();
 
             let mut scalar_value = None;
+            let mut value_explicit = false;
             let mut payload_type = None;
             let mut payload_types: Vec<Type> = vec![];
 
@@ -4214,6 +4215,7 @@ impl<'a> Parser<'a> {
                 let value = self.parse_ints()?;
                 let value = self.get_int_expr(&value);
                 scalar_value = Some(value as i32);
+                value_explicit = true;
                 last_val = value as i32 + 1;
             } else if self.is_kind(TokenKind::LBrace) {
                 // Plan 201 Phase 1B: Struct-like variant: Name { field1 Type, field2 Type, ... }
@@ -4222,6 +4224,7 @@ impl<'a> Parser<'a> {
                 items.push(EnumItem {
                     name: item_name,
                     scalar_value: None,
+                    value_explicit: false,
                     payload_type: None,
                     payload_types: vec![],
                     fields,
@@ -4264,6 +4267,7 @@ impl<'a> Parser<'a> {
             items.push(EnumItem {
                 name: item_name,
                 scalar_value,
+                value_explicit,
                 payload_type,
                 payload_types,
                 fields: vec![],
@@ -4300,6 +4304,7 @@ impl<'a> Parser<'a> {
             let mut item = EnumItem {
                 name: self.cur.text.clone().into(),
                 scalar_value: None,
+                value_explicit: false,
                 payload_type: None,
                 payload_types: vec![],
                 fields: vec![],
@@ -4310,6 +4315,7 @@ impl<'a> Parser<'a> {
                 let value = self.parse_ints()?;
                 let value = self.get_int_expr(&value);
                 item.scalar_value = Some(value as i32);
+                item.value_explicit = true;
                 last_val = value as i32 + 1;
             } else {
                 item.scalar_value = if last_val != 0 { Some(last_val) } else { None };
@@ -4342,6 +4348,7 @@ impl<'a> Parser<'a> {
             items.push(EnumItem {
                 name: item_name,
                 scalar_value: None,
+                value_explicit: false,
                 payload_type: None,
                 payload_types: vec![],
                 fields: vec![],

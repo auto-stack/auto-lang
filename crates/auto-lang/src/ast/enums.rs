@@ -62,6 +62,11 @@ pub struct EnumItem {
     pub name: AutoStr,
     /// Scalar form: optional explicit integer value (e.g., `OK = 200`).
     pub scalar_value: Option<i32>,
+    /// Plan 306 Phase 5b: true ONLY when the user wrote an explicit `= N` in source.
+    /// Distinguishes from the parser's auto-increment gap-fill (which also sets
+    /// `scalar_value`). GDScript emits `= N` only when this is true, so value-less
+    /// enums like `enum Dir { Up, Down, Left, Right }` stay clean.
+    pub value_explicit: bool,
     /// Heterogeneous form: the payload type for this variant (e.g., `Point` in `Move Point`).
     pub payload_type: Option<Type>,
     /// Multi-argument tuple variant: `ToolUse str str str` → ToolUse(String, String, String).

@@ -2,7 +2,7 @@
 
 extends Node
 
-var waiting: Variant = ["sword", "shield"]
+var waiting: Array[String] = ["sword", "shield"]
 
 var completed = []
 

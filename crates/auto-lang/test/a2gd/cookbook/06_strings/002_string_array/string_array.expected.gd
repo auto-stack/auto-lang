@@ -2,7 +2,7 @@
 
 extends Node
 
-var combo: Variant = ["jab", "jab", "uppercut"]
+var combo: Array[String] = ["jab", "jab", "uppercut"]
 
 func play_animation(name: int):
 	print(name)

@@ -860,9 +860,16 @@ impl GDScriptTrans {
             if i > 0 {
                 out.write(b", ")?;
             }
-            // GDScript convention: uppercase enum values
-            let name_upper = item.name.as_str().to_uppercase();
-            out.write_all(name_upper.as_bytes())?;
+            // Plan 306 Phase 5b: preserve source casing (matches Auto's `Color.Red`
+            // access) and explicit scalar values (`OK = 200`). Only emit `= N` when
+            // the user wrote it explicitly — the parser auto-fills gap values, which
+            // we must NOT surface (would make value-less enums noisy).
+            out.write_all(item.name.as_bytes())?;
+            if item.value_explicit {
+                if let Some(v) = item.scalar_value {
+                    write!(out, " = {}", v)?;
+                }
+            }
         }
 
         out.write(b" }\n")?;
@@ -1433,8 +1440,13 @@ impl GDScriptTrans {
             Type::Void => "void".into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
-            Type::List(_) => "Array".into(),
-            Type::Map(_, _) => "Dictionary".into(),
+            // Plan 306 Phase 5a: typed collections — recurse on element types.
+            Type::List(elem) => format!("Array[{}]", self.gdscript_type_name(elem)).into(),
+            Type::Map(k, v) => format!("Dictionary[{}, {}]", self.gdscript_type_name(k), self.gdscript_type_name(v)).into(),
+            // GDScript has no fixed-size array; [N]T / []T / [expr]T → Array[T]
+            Type::Array(at) => format!("Array[{}]", self.gdscript_type_name(&at.elem)).into(),
+            Type::RuntimeArray(rta) => format!("Array[{}]", self.gdscript_type_name(&rta.elem)).into(),
+            Type::Slice(st) => format!("Array[{}]", self.gdscript_type_name(&st.elem)).into(),
             Type::Option(_) => "Variant".into(),
             Type::Result(_) => "Variant".into(),
             Type::GenericInstance(inst) => {
@@ -1929,6 +1941,14 @@ mod tests {
     // Plan 306: signal declarations inside a scene → `signal name(p: T)` in .gd.
     #[test]
     fn test_godot_signals() { test_a2gd("17_godot_types/005_signal").unwrap(); }
+
+    // Plan 306 Phase 5a: typed collections Array[T]/Dictionary[K,V].
+    #[test]
+    fn test_godot_typed_collections() { test_a2gd("17_godot_types/006_typed").unwrap(); }
+
+    // Plan 306 Phase 5b: enum explicit values + source-casing preservation.
+    #[test]
+    fn test_godot_enum_values() { test_a2gd("17_godot_types/007_enum").unwrap(); }
 
     #[test]
     fn test_unary_neg() { test_a2gd("01_basics/041_unary_neg").unwrap(); }

@@ -433,7 +433,7 @@ func take_damage(n: int):
 
 ---
 
-### Phase 5：类型化集合与枚举值（设计 + 执行计划，⬜ 待实施）
+### Phase 5：类型化集合与枚举值（✅ 已完成）
 
 GDScript 4 支持类型化集合 `Array[int]` / `Dictionary[String, int]`，以及带显式值的枚举 `enum State { IDLE = 0, RUN = 1 }`。当前 a2gd 在这两处都**丢失了信息**。本阶段分两个独立子任务，均**纯转译层改动，无 AST/parser 变更**，低风险。
 
@@ -532,6 +532,25 @@ GDScript 无定长数组概念，`[N]T` / `[]T` / `[expr]T` 一律映射为 `Arr
 - 枚举显式值保留；大小写按用户选定方案一致
 - trans / gdscript / parser 全套测试 0 回归
 - 两个子任务互相独立，可分别提交
+
+#### Phase 5 实施记录（已完成）
+
+**Phase 5a（类型化集合）**：
+- 改动点：`gdscript.rs::gdscript_type_name` 新增递归分支
+  - `Type::List(e)` → `Array[{递归 e}]`
+  - `Type::Map(k, v)` → `Dictionary[{递归 k}, {递归 v}]`
+  - 新增 `Type::Array` / `Type::RuntimeArray` / `Type::Slice` 三分支，取 `.elem` 递归（丢失 size，GDScript 无对应概念）
+- 测试夹具：`test/a2gd/17_godot_types/006_typed/typed.at` + `.expected.gd`（测试函数 `test_godot_typed_collections`）
+- **连带影响（已处理）**：6 个 cookbook 测试因本改进输出从 `Variant` 升级为 `Array[int]`/`Array[String]`，属正确性提升。经用户授权，已更新对应 `.expected.gd`：`10_collections/001_array_methods`、`cookbook/04_loops/003_for_each`、`cookbook/05_arrays/001_create`、`002_append_pop`、`003_index_access`、`cookbook/06_strings/002_string_array`。
+
+**Phase 5b（枚举显式值 + 大小写）**：
+- 用户选定**大小写方案 A**：保留源码大小写，`Color.Red` → GDScript `Color.Red`。已更新 `014_enum/enum.expected.gd`（`RED, GREEN, BLUE` → `Red, Green, Blue`）。
+- **发现并解决的问题**：原设计"靠 `scalar_value` 判断是否输出 `= N`"不可行——parser 对无显式值的枚举项会**自动 gap-fill**（`parser.rs` 约 4314-4316 行：仅当 `last_val != 0` 才填补），导致 `enum Direction { Up, Down, Left, Right }` 会被错误渲染为 `Up, Down = 1, Left = 2, Right = 3`。
+- **解决方案**：为 `EnumItem` 新增 `value_explicit: bool` 字段（`ast/enums.rs`），**仅当源码写了 `= N` 时为 true**。更新 parser 中全部 4 处 `EnumItem` 构造点（4224/4267/4304/4348 行）传入该字段；gdscript `enum_decl` 仅在 `value_explicit` 时输出 `= N`。
+- 测试夹具：`test/a2gd/17_godot_types/007_enum/enum.at` + `.expected.gd`（`HttpStatus` 带显式值 200/404/500；`Direction` 无值枚举保持干净）。
+- 改动范围：`ast/enums.rs`（EnumItem 加字段）、`parser.rs`（4 处构造点 + `parse_enum_items`/`parse_scalar_enum_items` 设置 `value_explicit`）、`gdscript.rs::enum_decl`（去掉 `.to_uppercase()`、按 `value_explicit` 门控）。
+
+**回归**：`cargo test -p auto-lang --lib -- trans` → 308 passed / 0 failed。`cargo build -p auto` 通过。
 
 
 

@@ -2,7 +2,7 @@
 
 extends Node
 
-var inventory: Variant = ["sword", "shield", "potion", "gem", "key", "map", "ring", "scroll", "arrow"]
+var inventory: Array[String] = ["sword", "shield", "potion", "gem", "key", "map", "ring", "scroll", "arrow"]
 
 func use_item(index: int):
 	print(inventory[index])

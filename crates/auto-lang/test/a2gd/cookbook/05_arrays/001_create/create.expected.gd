@@ -2,7 +2,7 @@
 
 extends Node
 
-var items: Variant = [10, 20, 30, 40, 50]
+var items: Array[int] = [10, 20, 30, 40, 50]
 
 func _ready():
 	print(items)

@@ -3,7 +3,7 @@
 extends Node
 
 func _ready():
-	var fruits: Variant = ["apple", "banana", "cherry"]
+	var fruits: Array[String] = ["apple", "banana", "cherry"]
 	fruits.append("date")
 	var last = fruits.pop()
 	var count = len(fruits)

@@ -2,4 +2,4 @@
 
 extends Node
 
-enum Color { RED, GREEN, BLUE }
+enum Color { Red, Green, Blue }

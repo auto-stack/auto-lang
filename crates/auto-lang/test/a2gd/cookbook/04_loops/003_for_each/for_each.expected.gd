@@ -2,7 +2,7 @@
 
 extends Node
 
-var rectangle_sizes: Variant = [200, 140, 80, 200]
+var rectangle_sizes: Array[int] = [200, 140, 80, 200]
 
 func _ready():
 	for size in rectangle_sizes:
