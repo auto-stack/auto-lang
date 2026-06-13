@@ -1803,4 +1803,39 @@ mod tests {
     fn test_basic_spec() {
         test_a2gd("12_specs/001_basic_spec").unwrap();
     }
+
+    // Task 9: Expanded test suite
+
+    #[test]
+    fn test_comments() { test_a2gd("01_basics/040_comments").unwrap(); }
+
+    #[test]
+    fn test_unary_neg() { test_a2gd("01_basics/041_unary_neg").unwrap(); }
+
+    #[test]
+    fn test_unary_not() { test_a2gd("01_basics/042_unary_not").unwrap(); }
+
+    #[test]
+    fn test_const_decl() { test_a2gd("01_basics/044_const_decl").unwrap(); }
+
+    #[test]
+    fn test_boolean_ops() { test_a2gd("01_basics/046_boolean_ops").unwrap(); }
+
+    #[test]
+    fn test_arithmetic() { test_a2gd("01_basics/047_arithmetic").unwrap(); }
+
+    #[test]
+    fn test_lambda() { test_a2gd("05_expressions/010_lambda").unwrap(); }
+
+    #[test]
+    fn test_object() { test_a2gd("05_expressions/021_object").unwrap(); }
+
+    #[test]
+    fn test_chained_method() { test_a2gd("05_expressions/032_chained_method").unwrap(); }
+
+    #[test]
+    fn test_option() { test_a2gd("09_option_result/001_option").unwrap(); }
+
+    #[test]
+    fn test_result_ok() { test_a2gd("09_option_result/003_result_ok").unwrap(); }
 }

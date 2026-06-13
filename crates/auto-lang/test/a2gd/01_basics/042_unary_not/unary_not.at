@@ -1,5 +1,5 @@
 fn main() {
     let flag = true
-    let result = not flag
+    let result = !flag
     print(result)
 }
