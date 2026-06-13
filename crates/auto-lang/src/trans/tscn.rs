@@ -511,7 +511,8 @@ pub fn generate_from_ast(ast: &Code) -> Option<String> {
 mod tests {
     use super::*;
     use crate::parser::Parser;
-    use crate::trans::Sink;
+    use crate::trans::gdscript::GDScriptTrans;
+    use crate::trans::{Sink, Trans};
     use std::fs::read_to_string;
     use std::path::PathBuf;
 
@@ -582,6 +583,56 @@ mod tests {
     #[test]
     fn test_tscn_005_subresource() {
         test_a2tscn("005_subresource").unwrap();
+    }
+
+    /// Plan 306 Phase 2b: one .at file carries both a `scene` (→ .tscn) and
+    /// functions (→ .gd). The .tscn comes from the scene; the GDScript pass
+    /// must skip the SceneDecl without erroring and keep the functions.
+    #[test]
+    fn test_tscn_006_combined_with_gd() {
+        let src = r#"
+scene Counter : Control {
+    script = "counter.gd"
+    node Label "Count" { text = "0" }
+}
+
+fn increment(n int) int { n + 1 }
+"#;
+        let mut parser = Parser::from(src);
+        let ast = parser.parse().unwrap();
+
+        // .tscn side: scene present with its script reference.
+        let tscn = generate_from_ast(&ast).expect("scene present");
+        assert!(
+            tscn.contains(r#"[node name="Counter" type="Control"]"#),
+            "tscn root node: {}",
+            tscn
+        );
+        assert!(
+            tscn.contains(r#"script = ExtResource("1")"#),
+            "tscn script ref: {}",
+            tscn
+        );
+
+        // .gd side: GDScriptTrans consumes the moved AST and skips SceneDecl.
+        let mut sink = Sink::new("counter".into());
+        let mut trans = GDScriptTrans::new("counter".into());
+        trans
+            .trans(ast, &mut sink)
+            .expect("gd transpile must skip SceneDecl");
+        let gd = String::from_utf8_lossy(sink.done().unwrap()).into_owned();
+        assert!(gd.contains("func increment"), "gd keeps functions: {}", gd);
+        assert!(
+            !gd.to_lowercase().contains("scene"),
+            "gd must not leak the scene declaration: {}",
+            gd
+        );
+        // The script extends the scene's root node type, not the Node default.
+        assert!(
+            gd.contains("extends Control"),
+            "gd extends scene root type: {}",
+            gd
+        );
     }
 
     #[test]

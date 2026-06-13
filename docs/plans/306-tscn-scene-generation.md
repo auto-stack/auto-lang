@@ -282,9 +282,17 @@ scene <Name> : <GodotType> {
 
 **已知限制**：sub_resource 属性值若是数组/对象字面量（如 SpriteFrames 的 `animations`），目前按 `Debug` 兜底渲染，非 Godot 原生序列化格式 —— 待后续按 Godot 数组/字典格式补全。
 
-#### Phase 2b/2c（待办）
+#### Phase 2b：a2gd 深度集成 —— 一文件双产物（✅ 已完成）
 
-- 与 a2gd 深度集成（一个 .at 文件同时生成 .tscn + .gd）
+一个 `.at` 文件可同时包含 `scene` 声明（→ .tscn）与函数/逻辑（→ .gd），由 `auto trans --path X.at godot` 一次产出两个文件，二者通过 `script = "X.gd"` 自动绑定。
+
+- `trans/gdscript.rs`：`Stmt::SceneDecl` 由「报错」改为「跳过」（`Ok(false)`），使混合文件可正常转译为 .gd；并扫描 `SceneDecl` 取其根节点类型作为 `.gd` 的 `extends <Type>`（默认 `Node`），让脚本与场景根类型一致
+- `lib.rs`：新增 `trans_godot(path)` —— 先借 `&ast` 生成 .tscn，再 move `ast` 生成 .gd，返回两行产物消息
+- `auto/main.rs`：新增 `TransTarget::Godot`，调用 `trans_godot`
+- 测试：`test_tscn_006_combined_with_gd` —— 校验 .tscn 含根节点 + 脚本引用、.gd 保留函数且不泄漏 scene、`extends Control`
+
+#### Phase 2c（待办）
+
 - `@export` / `$node` / Vector2 类型等 GDScript 端配合
 
 ---

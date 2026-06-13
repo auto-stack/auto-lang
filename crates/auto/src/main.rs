@@ -229,6 +229,11 @@ enum TransTarget {
         #[arg(short, long, help = "Output file path (default: same name with .tscn extension)")]
         output: Option<String>,
     },
+    /// Emit both .tscn (from any `scene`) and .gd (from functions) for one .at file.
+    Godot {
+        #[arg(short, long, help = "Output base name (default: source name; writes <base>.tscn + <base>.gd)")]
+        output: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -1295,6 +1300,14 @@ fn real_main(cli: Cli) -> Result<()> {
                 } else {
                     output_success(ai_mode, &tscn);
                 }
+            }
+            TransTarget::Godot { output: _ } => {
+                // trans_godot writes <base>.tscn and <base>.gd next to the source.
+                let msg = auto_lang::trans_godot(path.as_str()).map_err(|e| {
+                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    to_miette_err(e)
+                })?;
+                output_success(ai_mode, &msg);
             }
         }
         Some(Commands::R2a { path, output }) => {

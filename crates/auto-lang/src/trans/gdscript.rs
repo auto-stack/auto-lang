@@ -404,6 +404,9 @@ impl GDScriptTrans {
             }
             Stmt::TypeAlias(_) => Ok(false),
             Stmt::Dep(_) => Ok(false),
+            // Plan 306 Phase 2b: a `scene` declaration targets the .tscn output,
+            // not the .gd — skip it so a mixed file can emit both.
+            Stmt::SceneDecl(_) => Ok(false),
 
             _ => Err(format!("GDScript Transpiler: unsupported statement: {:?}", stmt).into()),
         }
@@ -1591,6 +1594,17 @@ impl Trans for GDScriptTrans {
             }
         }).cloned();
 
+        // Plan 306 Phase 2b: when the file declares a `scene`, the generated
+        // script should extend the scene's root node type (e.g. Control) so the
+        // .gd attaches to the .tscn root correctly. Defaults to Node otherwise.
+        let scene_root = ast.stmts.iter().find_map(|s| {
+            if let Stmt::SceneDecl(scene) = s {
+                Some(scene.node_type.to_string())
+            } else {
+                None
+            }
+        });
+
         // Split into declarations, main statements, and use statements
         let mut decls: Vec<(Stmt, usize)> = Vec::new();
         let mut main_stmts: Vec<(Stmt, usize)> = Vec::new();
@@ -1652,8 +1666,9 @@ impl Trans for GDScriptTrans {
         // 1. File header
         write!(sink.body, "# Auto-generated from {}.at — do not edit\n\n", self.name)?;
 
-        // 2. extends Node
-        sink.body.write(b"extends Node\n\n")?;
+        // 2. extends <root node type> (scene root, or Node by default)
+        let base = scene_root.as_deref().unwrap_or("Node");
+        write!(sink.body, "extends {}\n\n", base)?;
 
         // 3. Emit collected imports
         self.emit_imports(&mut sink.body)?;

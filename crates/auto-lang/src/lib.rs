@@ -2771,6 +2771,42 @@ pub fn trans_tscn(path: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, tscn_name))
 }
 
+/// Transpile an AutoLang file to a full Godot node: emit BOTH the `.tscn`
+/// scene (from any `scene` declaration) and the `.gd` script (from the rest).
+///
+/// Plan 306 Phase 2b. A single `.at` file may describe a scene tree and the
+/// game logic that drives it; this produces the two Godot files it maps to.
+/// The scene's `script = "name.gd"` reference ties the generated script to
+/// the scene root.
+pub fn trans_godot(path: &str) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let mut parser = Parser::from(code.as_str());
+    let ast = parser.parse().map_err(|e| e.to_string())?;
+
+    let mut messages = Vec::new();
+
+    // 1. Scene -> .tscn (generate before moving `ast` into the GDScript pass).
+    if let Some(tscn) = crate::trans::tscn::generate_from_ast(&ast) {
+        let tscn_name = path.replace(".at", ".tscn");
+        std::fs::write(&tscn_name, tscn)?;
+        messages.push(format!("[trans] {} -> {}", path, tscn_name));
+    }
+
+    // 2. Functions/logic -> .gd (SceneDecl is skipped, not an error).
+    let gdname = path.replace(".at", ".gd");
+    let fname = AutoPath::new(path).filename();
+    let mut sink = Sink::new(fname.clone());
+    let mut trans = crate::trans::gdscript::GDScriptTrans::new(fname);
+    trans.trans(ast, &mut sink)?;
+    std::fs::write(&gdname, sink.done()?)?;
+    messages.push(format!("[trans] {} -> {}", path, gdname));
+
+    Ok(messages.join("\n"))
+}
+
 /// Transpile AutoLang file to TypeScript (Plan 100: a2js → a2ts)
 pub fn trans_typescript(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)
