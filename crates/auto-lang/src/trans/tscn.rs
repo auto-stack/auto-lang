@@ -605,6 +605,16 @@ mod tests {
         test_a2tscn("godot_demos/kinematic_character/001_player").unwrap();
     }
 
+    #[test]
+    fn test_godot_demo_dodge_mob_scene() {
+        test_a2tscn("godot_demos/dodge_the_creeps/001_mob").unwrap();
+    }
+
+    #[test]
+    fn test_godot_demo_dodge_player_scene() {
+        test_a2tscn("godot_demos/dodge_the_creeps/002_player").unwrap();
+    }
+
     /// Plan 306 Phase 2b: one .at file carries both a `scene` (→ .tscn) and
     /// functions (→ .gd). The .tscn comes from the scene; the GDScript pass
     /// must skip the SceneDecl without erroring and keep the functions.

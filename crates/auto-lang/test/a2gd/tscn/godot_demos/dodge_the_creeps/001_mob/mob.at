@@ -1,0 +1,41 @@
+// Reverse-translated from godot-demo-projects/2d/dodge_the_creeps/{mob.gd,mob.tscn} (Plan 308).
+// A RigidBody2D "Mob" that picks a random animation and frees itself off-screen.
+//
+// Translation notes (round-trip divergences from the original):
+//  - `$AnimatedSprite2D` -> `get_node("AnimatedSprite2D")` (no $ sugar).
+//  - `&"walk"` StringName -> plain "walk".
+//  - OMITTED (node-metadata gap): root `groups=["mobs"]`, `collision_mask = 0`,
+//    `gravity_scale = 0.0` (tscn generator has no node-metadata support).
+//  - OMITTED (complex-sub_resource gap): AnimatedSprite2D `sprite_frames`
+//    (SpriteFrames.animations array-of-objects).
+scene Mob : RigidBody2D {
+    script = "mob.gd"
+
+    node AnimatedSprite2D {
+        scale = Vector2(0.75, 0.75)
+        animation = "walk"
+    }
+
+    node CollisionShape2D {
+        rotation = 1.5708
+        shape = CapsuleShape2D {
+            radius = 37.0
+            height = 100.0
+        }
+    }
+
+    node VisibleOnScreenNotifier2D {
+    }
+
+    connect screen_exited from "VisibleOnScreenNotifier2D" to "." method "_on_VisibilityNotifier2D_screen_exited"
+}
+
+fn _ready() {
+    var mob_types = Array(get_node("AnimatedSprite2D").sprite_frames.get_animation_names())
+    get_node("AnimatedSprite2D").animation = mob_types.pick_random()
+    get_node("AnimatedSprite2D").play()
+}
+
+fn _on_VisibilityNotifier2D_screen_exited() {
+    queue_free()
+}

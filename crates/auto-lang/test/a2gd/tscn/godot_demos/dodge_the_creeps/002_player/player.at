@@ -1,0 +1,95 @@
+// Reverse-translated from godot-demo-projects/2d/dodge_the_creeps/{player.gd,player.tscn} (Plan 308).
+// The showcase: an Area2D player with a signal, @export, _process input handling,
+// Vector2 math, signal emission, and a deferred physics toggle.
+//
+// Translation notes (round-trip divergences from the original):
+//  - `$Node` -> `get_node("Node")` (no $ sugar).
+//  - ternary `rotation = PI if velocity.y > 0 else 0` -> if/else statement.
+//  - `velocity.x += 1` etc. -> `velocity.x = velocity.x + 1` (explicit field reassigned).
+//  - OMITTED (complex-sub_resource gap): AnimatedSprite2D `sprite_frames` and the
+//    GPUParticles2D "Trail" with ParticleProcessMaterial (the script still refs
+//    get_node("Trail"); the node is absent from the scene — harmless at codegen).
+scene Player : Area2D {
+    script = "player.gd"
+    signal hit
+    z_index = 10
+
+    node AnimatedSprite2D {
+        scale = Vector2(0.5, 0.5)
+        animation = "right"
+    }
+
+    node CollisionShape2D {
+        shape = CapsuleShape2D {
+            radius = 27.0
+            height = 68.0
+        }
+    }
+
+    connect body_entered from "." to "." method "_on_body_entered"
+}
+
+#[export]
+var speed = 400
+
+var screen_size = Vector2.ZERO
+
+fn _ready() {
+    screen_size = get_viewport_rect().size
+    hide()
+}
+
+fn _process(delta) {
+    var velocity = Vector2.ZERO
+    if Input.is_action_pressed("move_right") {
+        velocity.x = velocity.x + 1
+    }
+    if Input.is_action_pressed("move_left") {
+        velocity.x = velocity.x - 1
+    }
+    if Input.is_action_pressed("move_down") {
+        velocity.y = velocity.y + 1
+    }
+    if Input.is_action_pressed("move_up") {
+        velocity.y = velocity.y - 1
+    }
+
+    if velocity.length() > 0 {
+        velocity = velocity.normalized() * speed
+        get_node("AnimatedSprite2D").play()
+    } else {
+        get_node("AnimatedSprite2D").stop()
+    }
+
+    position = position + velocity * delta
+    position = position.clamp(Vector2.ZERO, screen_size)
+
+    if velocity.x != 0 {
+        get_node("AnimatedSprite2D").animation = "right"
+        get_node("AnimatedSprite2D").flip_v = false
+        get_node("Trail").rotation = 0
+        get_node("AnimatedSprite2D").flip_h = velocity.x < 0
+    } else {
+        if velocity.y != 0 {
+            get_node("AnimatedSprite2D").animation = "up"
+            if velocity.y > 0 {
+                rotation = PI
+            } else {
+                rotation = 0
+            }
+        }
+    }
+}
+
+fn start(pos) {
+    position = pos
+    rotation = 0
+    show()
+    get_node("CollisionShape2D").disabled = false
+}
+
+fn _on_body_entered(body) {
+    hide()
+    hit.emit()
+    get_node("CollisionShape2D").set_deferred("disabled", true)
+}

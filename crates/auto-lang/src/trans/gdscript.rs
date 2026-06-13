@@ -2052,6 +2052,16 @@ mod tests {
     }
 
     #[test]
+    fn test_godot_demo_dodge_mob() {
+        test_a2gd("tscn/godot_demos/dodge_the_creeps/001_mob").unwrap();
+    }
+
+    #[test]
+    fn test_godot_demo_dodge_player() {
+        test_a2gd("tscn/godot_demos/dodge_the_creeps/002_player").unwrap();
+    }
+
+    #[test]
     fn test_cb_dict_create() { test_a2gd("cookbook/08_dictionaries/001_create").unwrap(); }
 
     #[test]
