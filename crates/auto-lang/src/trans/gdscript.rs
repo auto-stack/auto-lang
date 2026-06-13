@@ -417,6 +417,11 @@ impl GDScriptTrans {
     // ========================================================================
 
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 306 2c: #[export] var X T = v → @export var X: T = v
+        // (GDScript accepts the annotation on the same line as the declaration.)
+        if store.attrs.iter().any(|a| a.as_str() == "export") {
+            out.write(b"@export ")?;
+        }
         match store.kind {
             StoreKind::Let | StoreKind::Var => {
                 // Both let/var -> var in GDScript (no immutability concept)
@@ -1865,6 +1870,10 @@ mod tests {
     // Plan 306 Phase 2c: Godot builtin types keep their annotations.
     #[test]
     fn test_godot_vector2_sig() { test_a2gd("17_godot_types/001_vector2").unwrap(); }
+
+    // Plan 306 Phase 2c: #[export] var → GDScript @export var.
+    #[test]
+    fn test_godot_export() { test_a2gd("17_godot_types/002_export").unwrap(); }
 
     #[test]
     fn test_unary_neg() { test_a2gd("01_basics/041_unary_neg").unwrap(); }

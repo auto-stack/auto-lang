@@ -495,6 +495,7 @@ mod tests {
         // Insert and retrieve symbol
         let meta = Rc::new(Meta::Store(ast::Store {
             kind: ast::StoreKind::Let,
+            attrs: vec![],
             name: AutoStr::from("x"),
             ty: ast::Type::Int,
             expr: ast::Expr::Int(42),
@@ -545,6 +546,7 @@ mod tests {
 
         let meta = Rc::new(Meta::Store(ast::Store {
             kind: ast::StoreKind::Let,
+            attrs: vec![],
             name: AutoStr::from("x"),
             ty: ast::Type::Int,
             expr: ast::Expr::Int(42),

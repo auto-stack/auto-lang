@@ -304,13 +304,17 @@ scene <Name> : <GodotType> {
 
 GDScript 的 `$Sprite` 等价于 `get_node("Sprite")`。实测 `get_node("Sprite")`、嵌套路径 `get_node("UI/Label")`、节点字段赋值 `sprite.position = Vector2(...)` 均能原样透传为合法 GDScript。`get_node` 即惯用写法，足以覆盖需求；`$` 简写（需新增 `$` 一元运算符）留作可选增强，非必需。
 
-**待办 —— `@export`（需语法决策，尚未实施）**
+**`@export`（✅ 已完成）**
 
-需让 `var` 携带导出标注：`#[export] var speed float = 300.0` → `@export var speed: float = 300.0`。实测改动面较大：
-- `ast/store.rs`：`Store` 结构体当前只有 `kind/name/ty/expr` 四字段，无标注位；需加 `is_export`/`attrs` 字段，并更新 `Display`/`AtomWriter`/`ToNode`/`ToAtom` 四个 trait 实现
-- `parser.rs`：约 **24 处** `Store { ... }` 构造点需补字段（多为内部 `Meta::Store` 元数据绑定，非用户变量）；且 `#[...]` 注解流程（`parse_fn_annotations`，line 3520/3837/7610）当前只接 `fn`/`type`/`task`，需新增 `var`/`let` 分支把 export 标记透传到 Store
+`#[export] var speed float = 300.0` → `@export var speed: float = 300.0`。采用 `#[export]` 属性语法（与现有 `#[vm]`/`#[c]`/`#[rs]` 注解体系一致）。改动：
 
-属核心 AST 改动，机械但面广。`#[export]` 仅为候选语法，尚未定案 —— 实施前需确认语法（`#[export]` 属性 vs 专用关键字 vs `@export` 字面量）。
+- `ast/store.rs`：`Store` 新增 `attrs: Vec<Name>` 字段（转译器元数据，不参与 `to_atom`/`to_node` 序列化 —— 每次从源码重建，对 VM/IR 无意义）
+- 全仓 **39 处** `Store { ... }` 构造点补 `attrs: vec![]`（`parser.rs` 19 + `infer/stmt.rs` 15 + `infer/context.rs`/`scope.rs`/`trans/c.rs`/`vm/codegen.rs` 各 1~2，多为内部 `Meta::Store` 元数据绑定）；通过 `kind: StoreKind::<Variant>,` 这一 Store 专属锚点批量插入
+- `parser.rs`：`FnAnnotations` 加 `has_export`；`parse_fn_annotations` 识别 `export`；注解后的 `var`/`let`/`mut`/`const`/`shared` 分支把 `attrs` 透传给 `parse_store_stmt(attrs)`
+- `trans/gdscript.rs`：`store()` 检测 `attrs` 含 `export` 时在声明前输出 `@export ` 前缀
+- 测试：`test/a2gd/17_godot_types/002_export`（导出变量带 `@export`，非导出变量无前缀）
+
+**Phase 2 全部完成。**
 
 ---
 

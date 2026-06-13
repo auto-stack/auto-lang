@@ -18,6 +18,11 @@ pub struct Store {
     pub name: Name,
     pub ty: Type,
     pub expr: Expr,
+    /// Source-level annotations (e.g. `export` from `#[export] var ...`).
+    /// Transpiler metadata only — NOT serialized by to_atom/to_node, since it
+    /// is reconstructed from source on every parse and is irrelevant to the
+    /// VM/IR. GDScript reads `attrs` to emit `@export` and similar prefixes.
+    pub attrs: Vec<Name>,
 }
 
 impl fmt::Display for Store {

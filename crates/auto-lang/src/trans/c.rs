@@ -131,6 +131,7 @@ impl CTrans {
         if let Some(ty) = self.local_var_types.get(name) {
             let store = Store {
                 kind: StoreKind::Var,
+                attrs: vec![],
                 name: name.into(),
                 ty: ty.clone(),
                 expr: Expr::Nil,

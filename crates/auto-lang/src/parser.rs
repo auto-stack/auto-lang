@@ -166,6 +166,7 @@ struct FnAnnotations {
     has_rs: bool,
     has_pub: bool,
     has_test: bool,
+    has_export: bool,
     with_params: Vec<crate::ast::TypeParam>,
 }
 
@@ -1162,6 +1163,7 @@ impl<'a> Parser<'a> {
                                 Meta::Store(Store {
                                     name: name.into(),
                                     kind: StoreKind::Var,
+                                    attrs: vec![],
                                     ty: Type::Unknown,
                                     expr: *value.clone(),
                                 }),
@@ -3510,11 +3512,11 @@ impl<'a> Parser<'a> {
             TokenKind::HashIs => self.hash_is_stmt()?,
             TokenKind::HashBrace => self.hash_brace_expr()?,
             TokenKind::HashIdent => self.macro_call_stmt()?,
-            TokenKind::Var => self.parse_store_stmt()?,
-            TokenKind::Let => self.parse_store_stmt()?,
-            TokenKind::Mut => self.parse_store_stmt()?,
-            TokenKind::Const => self.parse_store_stmt()?,
-            TokenKind::Shared => self.parse_store_stmt()?,
+            TokenKind::Var => self.parse_store_stmt(vec![])?,
+            TokenKind::Let => self.parse_store_stmt(vec![])?,
+            TokenKind::Mut => self.parse_store_stmt(vec![])?,
+            TokenKind::Const => self.parse_store_stmt(vec![])?,
+            TokenKind::Shared => self.parse_store_stmt(vec![])?,
             TokenKind::Fn => self.fn_decl_stmt("")?,
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
@@ -3629,9 +3631,20 @@ impl<'a> Parser<'a> {
                         // Regular Auto use statement
                         self.use_stmt()?
                     }
-                } else if self.is_kind(TokenKind::Let) {
-                    // Let statement with annotation
-                    self.parse_store_stmt()?
+                } else if self.is_kind(TokenKind::Let)
+                    || self.is_kind(TokenKind::Var)
+                    || self.is_kind(TokenKind::Mut)
+                    || self.is_kind(TokenKind::Const)
+                    || self.is_kind(TokenKind::Shared)
+                {
+                    // Variable declaration with annotation (Plan 306 2c):
+                    // e.g. `#[export] var speed float = 300.0` → GDScript `@export var speed: float = 300.0`
+                    let attrs = if ann.has_export {
+                        vec![AutoStr::from("export")]
+                    } else {
+                        vec![]
+                    };
+                    self.parse_store_stmt(attrs)?
                 } else if self.is_kind(TokenKind::Task) {
                     // Plan 121: Task with #[single] annotation
                     // Parse single annotation - we already consumed #[single], now check what annotation it was
@@ -3640,7 +3653,7 @@ impl<'a> Parser<'a> {
                     self.parse_task_with_attrs(vec![TaskAttr::Single])?
                 } else {
                     return Err(SyntaxError::Generic {
-                        message: "Expected 'fn', 'type', 'use', 'let', or 'task' after annotation"
+                        message: "Expected 'fn', 'type', 'use', 'let', 'var', or 'task' after annotation"
                             .to_string(),
                         span: pos_to_span(self.cur.pos),
                     }
@@ -4365,6 +4378,7 @@ impl<'a> Parser<'a> {
                 for item in &enum_decl.items {
                     let store = Store {
                         kind: StoreKind::Let,
+                        attrs: vec![],
                         name: item.name.clone(),
                         ty: Type::Int,
                         expr: Expr::Int(item.value()),
@@ -5443,6 +5457,7 @@ impl<'a> Parser<'a> {
                     Meta::Store(Store {
                         name: binding.clone(),
                         kind: StoreKind::Let,
+                        attrs: vec![],
                         ty: Type::Unknown,
                         expr: Expr::OptionUncover(crate::ast::cover::OptionUncover {
                             src: target.repr(),
@@ -5464,6 +5479,7 @@ impl<'a> Parser<'a> {
                     Meta::Store(Store {
                         name: binding.clone(),
                         kind: StoreKind::Let,
+                        attrs: vec![],
                         ty: Type::Unknown,
                         expr: Expr::ResultUncover(crate::ast::cover::ResultUncover {
                             src: target.repr(),
@@ -5502,7 +5518,7 @@ impl<'a> Parser<'a> {
             || self.is_kind(TokenKind::Mut)
         {
             // Parse the initializer statement
-            let init_stmt = Some(Box::new(self.parse_store_stmt()?));
+            let init_stmt = Some(Box::new(self.parse_store_stmt(vec![])?));
 
             // Expect semicolon after initializer
             self.expect(TokenKind::Semi)?;
@@ -5531,6 +5547,7 @@ impl<'a> Parser<'a> {
             self.enter_scope();
             let meta_key = Meta::Store(Store {
                 kind: StoreKind::Var,
+                attrs: vec![],
                 name: key.clone(),
                 expr: Expr::Nil,
                 ty: Type::Int,
@@ -5538,6 +5555,7 @@ impl<'a> Parser<'a> {
             self.define(key.as_str(), meta_key);
             let meta_val = Meta::Store(Store {
                 kind: StoreKind::Var,
+                attrs: vec![],
                 name: val.clone(),
                 expr: Expr::Nil,
                 ty: Type::Int,
@@ -5570,6 +5588,7 @@ impl<'a> Parser<'a> {
                 self.enter_scope();
                 let meta = Meta::Store(Store {
                     kind: StoreKind::Var,
+                    attrs: vec![],
                     name: ident.clone(),
                     expr: Expr::Nil,
                     ty: Type::Int,
@@ -5595,6 +5614,7 @@ impl<'a> Parser<'a> {
                 self.enter_scope();
                 let meta = Meta::Store(Store {
                     kind: StoreKind::Var,
+                    attrs: vec![],
                     name: ident2.clone(),
                     expr: Expr::Nil,
                     ty: Type::Int,
@@ -5765,6 +5785,7 @@ impl<'a> Parser<'a> {
         self.enter_scope();
         let meta = Meta::Store(Store {
             kind: StoreKind::Var,
+            attrs: vec![],
             name: var.clone(),
             expr: Expr::Nil,
             ty: Type::Int, // Default type, will be inferred later
@@ -5875,6 +5896,7 @@ impl<'a> Parser<'a> {
                                 self.define(binding.as_str(), Meta::Store(Store {
                                     name: binding.clone(),
                                     kind: StoreKind::Let,
+                                    attrs: vec![],
                                     ty: tag_field_type.clone(),
                                     expr: Expr::Uncover(TagUncover {
                                         src: tgt.repr(),
@@ -6038,6 +6060,7 @@ impl<'a> Parser<'a> {
                                     Meta::Store(Store {
                                         name: binding.clone(),
                                         kind: StoreKind::Let,
+                                        attrs: vec![],
                                         ty: tag_field_type.clone(),
                                         expr: Expr::Uncover(TagUncover {
                                             src: tgt.repr(),
@@ -6062,6 +6085,7 @@ impl<'a> Parser<'a> {
                             Meta::Store(Store {
                                 name: binding.clone(),
                                 kind: StoreKind::Let,
+                                attrs: vec![],
                                 ty: Type::Unknown, // TODO: Infer from Option<T>
                                 expr: Expr::OptionUncover(crate::ast::cover::OptionUncover {
                                     src: tgt.repr(),
@@ -6087,6 +6111,7 @@ impl<'a> Parser<'a> {
                             Meta::Store(Store {
                                 name: binding.clone(),
                                 kind: StoreKind::Let,
+                                attrs: vec![],
                                 ty: Type::Unknown, // TODO: Infer from Result<T, E>
                                 expr: Expr::ResultUncover(crate::ast::cover::ResultUncover {
                                     src: tgt.repr(),
@@ -6116,7 +6141,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_store_stmt(&mut self) -> AutoResult<Stmt> {
+    pub fn parse_store_stmt(&mut self, attrs: Vec<AutoStr>) -> AutoResult<Stmt> {
         // Plan 6B-4.19: Check for 'shared' modifier
         let is_shared = self.is_kind(TokenKind::Shared);
         if is_shared {
@@ -6212,6 +6237,7 @@ impl<'a> Parser<'a> {
             name: name.clone(),
             ty,
             expr: expr.clone(),
+            attrs,
         };
         if let Expr::Lambda(lambda) = &expr {
             self.define(name.as_str(), Meta::Ref(lambda.name.clone()));
@@ -6419,6 +6445,7 @@ impl<'a> Parser<'a> {
                         "vm" => ann.has_vm = true,
                         "rs" => ann.has_rs = true,
                         "test" => ann.has_test = true,
+                        "export" => ann.has_export = true, // Plan 306 2c: #[export] var → GDScript @export
                         "single" => {
                             // Plan 121: #[single] annotation for singleton tasks
                             // This is handled by the caller, just skip here
@@ -6732,6 +6759,7 @@ impl<'a> Parser<'a> {
                 "self",
                 Meta::Store(Store {
                     kind: StoreKind::Let,
+                    attrs: vec![],
                     name: "self".into(),
                     ty,
                     expr: Expr::Ident("self".into()),
@@ -6945,6 +6973,7 @@ impl<'a> Parser<'a> {
                 "self",
                 Meta::Store(Store {
                     kind: StoreKind::Let,
+                    attrs: vec![],
                     name: "self".into(),
                     ty,
                     expr: Expr::Ident("self".into()),
@@ -7133,6 +7162,7 @@ impl<'a> Parser<'a> {
             // 5. define param in current scope (currently in fn scope)
             let var = Store {
                 kind: StoreKind::Var,
+                attrs: vec![],
                 name: name.clone(),
                 expr: default.clone().unwrap_or(Expr::Nil),
                 ty: ty.clone(),
@@ -7865,6 +7895,7 @@ impl<'a> Parser<'a> {
                 None => Expr::Nil,
             },
             kind: StoreKind::Field,
+            attrs: vec![],
         };
         self.define(name.as_str(), Meta::Store(store));
 
@@ -11263,6 +11294,7 @@ impl<'a> Parser<'a> {
             for param in &params {
                 let meta = Meta::Store(Store {
                     kind: StoreKind::Var,
+                    attrs: vec![],
                     name: param.clone().into(),
                     expr: Expr::Nil,
                     ty: Type::Unknown,

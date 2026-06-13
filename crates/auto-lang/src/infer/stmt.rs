@@ -421,6 +421,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("x"),
             ty: Type::Int,
             expr: Expr::Int(42),
@@ -436,6 +437,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("y"),
             ty: Type::Unknown,
             expr: Expr::Bool(true),
@@ -454,6 +456,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("z"),
             ty: Type::Int,
             expr: Expr::Bool(false),
@@ -522,6 +525,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("pi"),
             ty: Type::Float,
             expr: Expr::Float(3.14, "3.14".into()),
@@ -537,6 +541,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("e"),
             ty: Type::Double,
             expr: Expr::Double(2.718, "2.718".into()),
@@ -552,6 +557,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("greeting"),
             ty: Type::StrFixed(5),  // Match actual string length
             expr: Expr::Str("hello".into()),
@@ -571,6 +577,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("letter"),
             ty: Type::Char,
             expr: Expr::Char('A'),
@@ -586,6 +593,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("flag"),
             ty: Type::Bool,
             expr: Expr::Bool(true),
@@ -601,6 +609,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("count"),
             ty: Type::Uint,
             expr: Expr::Uint(42),
@@ -616,6 +625,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("byte_val"),
             ty: Type::Byte,
             expr: Expr::Byte(255),
@@ -631,6 +641,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Var,
+            attrs: vec![],
             name: Name::from("dynamic"),
             ty: Type::Unknown,
             expr: Expr::Int(42),
@@ -646,6 +657,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::CVar,
+            attrs: vec![],
             name: Name::from("c_var"),
             ty: Type::Int,
             expr: Expr::Int(100),
@@ -661,6 +673,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("matrix"),
             ty: Type::Unknown,
             expr: Expr::Array(vec![
@@ -832,6 +845,7 @@ mod tests {
         let mut ctx = InferenceContext::new();
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("nothing"),
             ty: Type::Unknown,
             expr: Expr::Nil,
@@ -848,6 +862,7 @@ mod tests {
         // int to uint coercion should work with warning
         let store = Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("coerced"),
             ty: Type::Uint,
             expr: Expr::Int(42),  // int expr, uint type

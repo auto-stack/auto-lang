@@ -1,0 +1,12 @@
+// Plan 306 Phase 2c: #[export] var → GDScript @export var
+#[export]
+var speed float = 300.0
+
+#[export]
+var player_name str = "Player"
+
+var internal_count int = 0
+
+fn main() {
+    print(speed)
+}

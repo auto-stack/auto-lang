@@ -10139,6 +10139,7 @@ mod tests {
         // Compile: let x = 5
         let stmt = Stmt::Store(crate::ast::Store {
             kind: StoreKind::Let,
+            attrs: vec![],
             name: Name::from("x"),
             ty: Type::Unknown,
             expr: Expr::Int(5),
