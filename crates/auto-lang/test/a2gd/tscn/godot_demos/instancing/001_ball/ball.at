@@ -1,0 +1,17 @@
+// Reverse-translated from godot-demo-projects/2d/instancing/ball.tscn (Plan 308).
+// A RigidBody2D ball with a physics material, sprite, and collision circle.
+scene Ball : RigidBody2D {
+    physics_material_override = PhysicsMaterial {
+        bounce = 0.4
+    }
+
+    node Sprite2D {
+        texture = load("res://bowling_ball.png")
+    }
+
+    node CollisionShape2D "Collision" {
+        shape = CircleShape2D {
+            radius = 30.0
+        }
+    }
+}

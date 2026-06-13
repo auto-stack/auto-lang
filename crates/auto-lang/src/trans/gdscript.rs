@@ -2035,6 +2035,12 @@ mod tests {
     #[test]
     fn test_cb_return_value() { test_a2gd("cookbook/07_functions/001_return_value").unwrap(); }
 
+    // Plan 308: reverse-translated Godot demo scripts.
+    #[test]
+    fn test_godot_demo_instancing_ball_factory() {
+        test_a2gd("tscn/godot_demos/instancing/002_ball_factory").unwrap();
+    }
+
     #[test]
     fn test_cb_dict_create() { test_a2gd("cookbook/08_dictionaries/001_create").unwrap(); }
 

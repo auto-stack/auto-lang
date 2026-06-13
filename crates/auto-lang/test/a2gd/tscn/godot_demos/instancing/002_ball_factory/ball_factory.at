@@ -1,0 +1,33 @@
+// Reverse-translated from godot-demo-projects/2d/instancing/ball_factory.gd (Plan 308).
+// Spawns Ball instances on left mouse click. The `scene` wrapper exists only so
+// a2gd emits `extends Node2D` (it derives extends from the scene root type).
+//
+// Translation notes (round-trip divergences from the original):
+//  - `x is Type` (GDScript type-check) -> `x.is_class("Type")` (Auto `is` is the
+//    pattern-match keyword; is_class preserves runtime semantics and passes through).
+//  - `and` chains -> nested `if` (avoids relying on Auto's boolean-operator form).
+scene BallFactory : Node2D {
+    script = "ball_factory.gd"
+}
+
+#[export]
+var ball_scene PackedScene = preload("res://ball.tscn")
+
+fn _unhandled_input(input_event InputEvent) {
+    if input_event.is_echo() {
+        return
+    }
+    if input_event.is_class("InputEventMouseButton") {
+        if input_event.is_pressed() {
+            if input_event.button_index == MOUSE_BUTTON_LEFT {
+                spawn_ball(get_global_mouse_position())
+            }
+        }
+    }
+}
+
+fn spawn_ball(spawn_global_position Vector2) {
+    var instance = ball_scene.instantiate()
+    instance.global_position = spawn_global_position
+    add_child(instance)
+}
