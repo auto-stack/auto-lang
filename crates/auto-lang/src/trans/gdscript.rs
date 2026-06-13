@@ -943,6 +943,17 @@ impl GDScriptTrans {
     // ========================================================================
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        // Intercept method calls where call.name is Expr::Dot(obj, method_name)
+        // Parser generates Expr::Call { name: Expr::Dot(obj, method), args } for obj.method(args)
+        if let Expr::Dot(obj, method_name) = call.name.as_ref() {
+            return self.method_call(obj, method_name, &call.args, out);
+        }
+
+        self.emit_plain_call(call, out)
+    }
+
+    /// Emit a plain function call without any builtin mapping
+    fn emit_plain_call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         self.expr(&call.name, out)?;
         out.write(b"(")?;
 
@@ -955,6 +966,25 @@ impl GDScriptTrans {
 
         out.write(b")")?;
         Ok(())
+    }
+
+    /// Emit call arguments as comma-separated list
+    fn emit_args(&mut self, args: &Args, out: &mut impl Write) -> AutoResult<()> {
+        for (i, arg) in args.args.iter().enumerate() {
+            if i > 0 {
+                out.write(b", ")?;
+            }
+            self.arg(arg, out)?;
+        }
+        Ok(())
+    }
+
+    /// Extract a plain identifier name from a call expression
+    fn extract_call_name(&self, expr: &Expr) -> Option<AutoStr> {
+        match expr {
+            Expr::Ident(name) => Some(name.clone()),
+            _ => None,
+        }
     }
 
     fn arg(&mut self, arg: &Arg, out: &mut impl Write) -> AutoResult<()> {
@@ -990,9 +1020,91 @@ impl GDScriptTrans {
     }
 
     fn dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        // Intercept method calls: lhs.method(args) where rhs is Expr::Call
+        if let Expr::Call(call) = rhs {
+            if let Expr::Ident(method_name) = call.name.as_ref() {
+                return self.method_call(lhs, method_name, &call.args, out);
+            }
+        }
+        // Default: lhs.rhs
         self.expr(lhs, out)?;
         out.write(b".")?;
         self.expr(rhs, out)?;
+        Ok(())
+    }
+
+    /// Map AutoLang method calls to GDScript equivalents
+    fn method_call(
+        &mut self,
+        receiver: &Expr,
+        method: &AutoStr,
+        args: &Args,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        match method.as_ref() {
+            // ── String methods ──
+            // .trim() → .strip()
+            "trim" => {
+                self.expr(receiver, out)?;
+                out.write(b".strip(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .split(sep) → .split(sep) (same in GDScript)
+            "split" => {
+                self.expr(receiver, out)?;
+                out.write(b".split(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .to_upper() → .to_upper() (same in GDScript)
+            "to_upper" | "upper" => {
+                self.expr(receiver, out)?;
+                out.write(b".to_upper()")?;
+            }
+            // .to_lower() → .to_lower() (same in GDScript)
+            "to_lower" | "lower" => {
+                self.expr(receiver, out)?;
+                out.write(b".to_lower()")?;
+            }
+            // .starts_with(s) → .begins_with(s) (GDScript uses begins_with)
+            "starts_with" | "startswith" => {
+                self.expr(receiver, out)?;
+                out.write(b".begins_with(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .ends_with(s) → .ends_with(s) (same in GDScript)
+            "ends_with" | "endswith" => {
+                self.expr(receiver, out)?;
+                out.write(b".ends_with(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .replace(old, new) → .replace(old, new) (same in GDScript)
+            "replace" => {
+                self.expr(receiver, out)?;
+                out.write(b".replace(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+            // .len() → len(receiver)
+            "len" => {
+                out.write(b"len(")?;
+                self.expr(receiver, out)?;
+                out.write(b")")?;
+            }
+
+            // ── Default: pass through as receiver.method(args) ──
+            _ => {
+                self.expr(receiver, out)?;
+                out.write(b".")?;
+                out.write_all(method.as_bytes())?;
+                out.write(b"(")?;
+                self.emit_args(args, out)?;
+                out.write(b")")?;
+            }
+        }
         Ok(())
     }
 
@@ -1292,5 +1404,10 @@ mod tests {
     #[test]
     fn test_015_string() {
         test_a2gd("015_string").unwrap();
+    }
+
+    #[test]
+    fn test_string_methods() {
+        test_a2gd("04_strings/001_string_methods").unwrap();
     }
 }

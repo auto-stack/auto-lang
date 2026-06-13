@@ -1,0 +1,14 @@
+fn main() {
+    let greeting = "  Hello, World!  "
+    let trimmed = greeting.trim()
+    let upper = greeting.to_upper()
+    let lower = greeting.to_lower()
+    let hello = greeting.starts_with("  Hello")
+    let world = greeting.ends_with("World!  ")
+    let replaced = greeting.replace("World", "GDScript")
+    let length = greeting.len()
+    print(trimmed)
+    print(upper)
+    print(replaced)
+    print(length)
+}
