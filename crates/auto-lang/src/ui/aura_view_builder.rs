@@ -763,14 +763,18 @@ impl<'a> AuraViewBuilder<'a> {
         path: &mut Vec<usize>,
         probe: &mut BuildProbe,
     ) -> String {
-        let probe_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
         let mut result = template.to_string();
-        for field_name in tpl_bindings {
-            let pattern = format!("${{{}}}", format!(".{}", field_name));
-            let value_str = self.read_state_as_string_with(field_name, loop_bindings);
-            // Record the state binding at the current node's path.
-            probe.record_state(&probe_path, pattern.clone(), value_str.clone());
-            result = result.replace(&pattern, &value_str);
+        // Only build the probe path when there is at least one binding to record;
+        // an empty `tpl_bindings` needs no probe entries.
+        if !tpl_bindings.is_empty() {
+            let probe_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+            for field_name in tpl_bindings {
+                let pattern = format!("${{{}}}", format!(".{}", field_name));
+                let value_str = self.read_state_as_string_with(field_name, loop_bindings);
+                // Record the state binding at the current node's path.
+                probe.record_state(&probe_path, pattern.clone(), value_str.clone());
+                result = result.replace(&pattern, &value_str);
+            }
         }
         result
     }
@@ -832,10 +836,8 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
 
-        // NOTE: the untracked `convert_text_element` applies heading styling to
-        // `styled_content` but assigns it back to `content` unchanged; we mirror
-        // that here for parity.
-        let _ = &content;
+        // Heading styling is applied via the `style` field, not by transforming
+        // `content`; matches untracked behaviour.
         View::Text {
             content,
             style,
@@ -984,6 +986,7 @@ impl<'a> AuraViewBuilder<'a> {
     // ========================================================================
 
     /// Convert a column element.
+    // Tracked twin: convert_column_tracked_ctx — keep widget logic in sync.
     fn convert_column(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -1015,6 +1018,7 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Convert a row element.
+    // Tracked twin: convert_row_tracked_ctx — keep widget logic in sync.
     fn convert_row(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -1057,6 +1061,7 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Convert a container element.
+    // Tracked twin: convert_container_tracked_ctx — keep widget logic in sync.
     fn convert_container(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -1100,6 +1105,7 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Convert a center element: wraps child in a centered container.
+    // Tracked twin: convert_center_tracked_ctx — keep widget logic in sync.
     fn convert_center(
         &self,
         props: &HashMap<String, AuraPropValue>,

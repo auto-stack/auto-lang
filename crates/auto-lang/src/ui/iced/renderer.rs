@@ -2875,6 +2875,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         let cached = state.cached_converted_view.borrow();
         if let Some(ref converted) = *cached {
             let debug_id_map = state.cached_debug_id_map.borrow().clone();
+            // `live_probe` is intentionally NOT refreshed here: the probe is
+            // template-derived and stable across cache hits, so the retained
+            // probe from the last dirty rebuild remains valid.
             (converted.clone(), debug_id_map)
         } else {
             drop(cached);
