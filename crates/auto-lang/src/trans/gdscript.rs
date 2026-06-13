@@ -2047,6 +2047,11 @@ mod tests {
     }
 
     #[test]
+    fn test_godot_demo_kinematic_player() {
+        test_a2gd("tscn/godot_demos/kinematic_character/001_player").unwrap();
+    }
+
+    #[test]
     fn test_cb_dict_create() { test_a2gd("cookbook/08_dictionaries/001_create").unwrap(); }
 
     #[test]

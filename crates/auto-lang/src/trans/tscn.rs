@@ -327,6 +327,10 @@ impl TscnGenerator {
             }
             Expr::Str(s) => format!("\"{}\"", escape_tscn_str(s)),
             Expr::Call(call) => self.render_call(call),
+            // Plan 308: unary negation on a numeric literal (e.g. `-0.315559`
+            // inside `Vector2(-0.315559, 0.157784)`). Without this arm the value
+            // fell through to the debug-`{:?}` fallback and emitted broken Godot.
+            Expr::Unary(op, e) => format!("{}{}", op.repr(), self.render_value(e)),
             // Fallback: best-effort literal rendering.
             _ => format!("\"{}\"", escape_tscn_str(&format!("{:?}", expr))),
         }
@@ -594,6 +598,11 @@ mod tests {
     #[test]
     fn test_godot_demo_hexagonal_troll_scene() {
         test_a2tscn("godot_demos/hexagonal_map/001_troll").unwrap();
+    }
+
+    #[test]
+    fn test_godot_demo_kinematic_player_scene() {
+        test_a2tscn("godot_demos/kinematic_character/001_player").unwrap();
     }
 
     /// Plan 306 Phase 2b: one .at file carries both a `scene` (→ .tscn) and
