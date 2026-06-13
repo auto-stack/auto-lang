@@ -340,8 +340,15 @@ GDScript 的 `$Sprite` 等价于 `get_node("Sprite")`。实测 `get_node("Sprite
 
 #### Phase 3b：脚本级注解 `@tool` / `@icon`（✅ 已完成）
 
-Phase 3 的注解都是**变量级**（附加在某个 `var` 上）。Godot 还有**脚本级**注解——作用于整个脚本、必须出现在 `extends` 之前：
+**设计决策**：Phase 3 的注解都是**变量级**（附加在某个 `var` 上，走 `Store.attrs`）。Godot 还有**脚本级**注解——作用于整个脚本、必须出现在 `extends` **之前**。三种可选机制：
 
+- **A（采用）**：`#[tool]`/`#[icon(...)]` 注解，收集到新增的 `Code.file_attrs`，在文件头 `extends` 之前输出
+- B：新增 `tool`/`icon` 顶层关键字 —— 引入新关键字成本高，拒绝
+- C：复用 `Store.attrs` —— 无目标变量，语义不符，拒绝
+
+关键约束：Godot 要求 `@tool`/`@icon` 在 `extends` 之前，否则编译报错——这是「输出位置必须在 extends 之前」的硬性要求，决定了收集目标必须是文件级（`Code`）而非语句级。
+
+**语法**：
 ```
 #[tool]
 #[icon("res://icon.png")]
@@ -360,13 +367,15 @@ func _ready():
 	...
 ```
 
-这与变量级注解是**不同机制**——不能复用 `Store.attrs`（没有目标变量），需收集到文件级。设计：新增 `Code.file_attrs: Vec<Name>`（与 `Store.attrs` 同为转译器元数据，不参与 `Display`/`ToNode`/`ToAtom` 序列化）；解析器在 `parse_fn_annotations` 识别 `#[tool]`/`#[icon(...)]` 时收集到 `self.file_attrs`，在 `parse()` 末尾排入 `Code`（drain）；`#[tool]` 后面紧跟的声明照常解析（注解不附加到它）。
+`#[tool]` 后紧跟的声明照常解析（注解不附加到它）——因为 `parse_fn_annotations` 把 tool/icon 推入 parser 级 `self.file_attrs` 而非 `FnAnnotations`，返回后 dispatcher 照常分发后续 `fn`/`var`。
 
-改动：
-- `ast.rs`：`Code` 新增 `file_attrs: Vec<Name>` 字段（`new()`/`Default` 同步；`Display`/`ToNode`/`AtomWriter`/`ToAtom` 四个 trait 故意不动 —— 不序列化）
-- `parser.rs`：`Parser` 新增 `file_attrs: Vec<AutoStr>` 字段（3 处构造函数初始化）；`parse_fn_annotations` 新增 `"tool" | "icon"` 分支（复用 `collect_annotation_args` 收集参数，推入 `self.file_attrs`）；`parse()` 末尾 `Code { ..., file_attrs: std::mem::take(&mut self.file_attrs) }`
-- `trans/gdscript.rs`：`trans()` 头部组装在 `# Auto-generated` 注释之后、`extends` 之前逐行输出 `@{attr}`（Godot 要求脚本级注解在 `extends` 之前）
+**改动**：
+- `ast.rs`：`Code` 新增 `file_attrs: Vec<Name>` 字段（`new()`/`Default` 同步；`Display`/`ToNode`/`AtomWriter`/`ToAtom` 四个 trait 故意不动 —— 与 `Store.attrs` 同理，转译器元数据不序列化）
+- `parser.rs`：`Parser` 新增 `file_attrs: Vec<AutoStr>` 字段（3 处构造函数初始化）；`parse_fn_annotations` 新增 `"tool" | "icon"` 分支（复用 Phase 3 的 `collect_annotation_args` 收集参数，推入 `self.file_attrs`）；`parse()` 末尾 `Code { ..., file_attrs: std::mem::take(&mut self.file_attrs) }`
+- `trans/gdscript.rs`：`trans()` 头部组装在 `# Auto-generated` 注释之后、`extends` 之前逐行输出 `@{attr}`
 - 测试：`test/a2gd/17_godot_types/004_tool`（`#[tool]` + `#[icon("res://icon.png")]` 两注解并排，校验置于 `extends Node` 之前）
+
+**执行步骤（实际已按此完成）**：写夹具 → 运行测试生成 `.wrong.gd` → 核对后改名 `.expected.gd` → 改 parser/gdscript → `cargo build -p auto` → 测试通过 → 回归 trans/parser → 提交。
 
 验证：trans 305 / gdscript 55 / parser 144 全通过，0 回归。
 
@@ -374,8 +383,15 @@ func _ready():
 
 ### Phase 4：GDScript `signal` 声明（✅ 已完成）
 
-Godot 的 `signal` 是脚本级声明（出现在 .gd 的 `extends` 之后、成员变量/函数之前），用于定义自定义信号。采用「signal 作为 scene 体内的特殊节点」设计（非新关键字、非注解），与 `node`/`instance`/`connect` 同为 scene body 元素：
+**设计决策**：Godot 的 `signal` 是脚本级声明（出现在 .gd 的 `extends` 之后、成员变量/函数之前）。声明语法的三种可选方案（经与用户确认）：
 
+- A：新增 `signal` 顶层关键字 —— 引入新关键字，拒绝
+- B：`#[signal]` 注解挂在无体 fn 上 —— 把信号当函数，语义不符，拒绝
+- **C（采用，用户指定）**：`signal` 作为 **scene 体内的特殊节点**，与 `node`/`instance`/`connect` 同为 scene body 元素
+
+关键定位：信号是**脚本数据**（→ .gd），不是**场景数据**（→ .tscn）——所以 `parse_scene_decl` 收集进 `SceneDecl.signals`，tscn 生成器忽略它，gdscript 生成器在 `extends` 之后输出。信号发射 `signal.emit(args)` 与连接 `connect` 均原样透传，无需处理。
+
+**语法**：
 ```auto
 scene Player : Area2D {
     script = "player.gd"
@@ -402,18 +418,122 @@ func take_damage(n: int):
 	health_changed.emit(n)
 ```
 
-信号是脚本数据而非场景（.tscn）数据——只输出到 .gd，不进 .tscn。
-
-改动：
+**改动**：
 - `ast/ui.rs`：新增 `SceneSignal { name, params: Vec<SceneSignalParam> }` 与 `SceneSignalParam { name, ty }`；`SceneDecl` 新增 `signals: Vec<SceneSignal>` 字段（`pub use ui::*` 自动再导出）
-- `parser.rs`：`parse_scene_decl` body 分发新增 `"signal" =>` 分支；新增 `parse_scene_signal()`（解析 `signal name` 或 `signal name(p T, p2 T2)`，参数用 Auto 空格语法）
-- `trans/gdscript.rs`：扫描 `SceneDecl` 时同时收集 `signals`，在 `extends` 之后逐行输出 `signal name` / `signal name(p: T, ...)`（类型经 `gdscript_type_name` 映射）
-- **顺带修复**：`trans()` 的语句分流循环跳过 `Stmt::SceneDecl`（纯元数据）和 `Stmt::EmptyLine`（空行）——二者原本会落入 `main_stmts`，在没有 `fn main()` 时触发多余的空 `func _ready():` 桩。此修复对任意含空行的 .at 文件均生效，非场景专属
+- `parser.rs`：`parse_scene_decl` body 分发新增 `"signal" =>` 分支；新增 `parse_scene_signal()`（解析 `signal name` 或 `signal name(p T, p2 T2)`，参数用 Auto 空格语法，类型用 `parse_type()`）
+- `trans/gdscript.rs`：扫描 `SceneDecl` 时同时收集 `signals`（`.cloned()` 以释放 `ast.stmts` 借用），在 `extends` 之后逐行输出 `signal name` / `signal name(p: T, ...)`（类型经 `gdscript_type_name` 映射）
+- **顺带修复（发现的 bug）**：`trans()` 的语句分流循环跳过 `Stmt::SceneDecl`（纯元数据）和 `Stmt::EmptyLine`（空行）——二者原本会落入 `main_stmts`，在没有 `fn main()` 时触发多余的空 `func _ready():` 桩。此修复对任意含空行的 .at 文件均生效，非场景专属
 - 测试：`test/a2gd/17_godot_types/005_signal`（带参信号 + 无参信号 + 嵌套 node/connect + 顶层 fn 发射信号，校验 `extends Area2D` 后正确输出信号、无空 `_ready` 桩）
+
+**执行步骤（实际已按此完成）**：写夹具 → CLI 试跑发现空 `_ready` 桩 → 临时 debug 打印定位到 `Stmt::EmptyLine` 落入 main_stmts → 加 SceneDecl/EmptyLine 跳过 → 核对输出 → 改名 `.expected.gd` → 回归 → 提交。
 
 验证：trans 306 / gdscript 56 / parser 144（含 tscn 006）全通过，0 回归。
 
-**注**：信号发射 `signal.emit(args)` 与连接 `connect` 均原样透传，无需额外处理。后续如需支持 Godot 4 的 `await signal`、自定义信号的 `connect`/`disconnect` 调用，可原样透传。
+**注**：后续如需支持 Godot 4 的 `await signal`、自定义信号的 `connect`/`disconnect` 调用，可原样透传。
+
+---
+
+### Phase 5：类型化集合与枚举值（设计 + 执行计划，⬜ 待实施）
+
+GDScript 4 支持类型化集合 `Array[int]` / `Dictionary[String, int]`，以及带显式值的枚举 `enum State { IDLE = 0, RUN = 1 }`。当前 a2gd 在这两处都**丢失了信息**。本阶段分两个独立子任务，均**纯转译层改动，无 AST/parser 变更**，低风险。
+
+#### 调研结论（实施前已核实）
+
+- `trans/gdscript.rs::gdscript_type_name`（≈1427 行）当前：
+  - `Type::List(_)` → `"Array"`（**丢弃元素类型**）
+  - `Type::Map(_, _)` → `"Dictionary"`（**丢弃 K/V 类型**）
+  - `Type::Array(ArrayType)` / `Type::RuntimeArray` / `Type::Slice` → 落入 `_ => "Variant"`（**完全丢失**）
+  - `Type::GenericInstance(Future<T>)` 已递归取 inner —— 是现成的递归范例
+- `trans/gdscript.rs::enum_decl`（≈853 行）当前：
+  - 对每个 `item.name` 强制 `.to_uppercase()`（GDScript 惯例，但与 Auto 源码里的变体名大小写可能不一致）
+  - **丢弃** `EnumItem.scalar_value`（`enum State { IDLE = 0 }` → `enum State { IDLE }`）
+- AST 已具备全部所需信息：`EnumItem.scalar_value: Option<i32>`；`Type::List(Box<Type>)`、`Type::Map(Box<Type>, Box<Type>)`、`ArrayType`/`SliceType` 含元素类型
+
+---
+
+#### Phase 5a：类型化集合 `Array[T]` / `Dictionary[K, V]`
+
+**设计**：让 `gdscript_type_name` 递归渲染元素类型，与现有 `Future<T>` 递归一致。
+
+| Auto 类型 | 当前输出 | 目标输出 |
+|---|---|---|
+| `List<int>` | `Array` | `Array[int]` |
+| `List<Vector2>` | `Array` | `Array[Vector2]` |
+| `Map<str, int>` | `Dictionary` | `Dictionary[String, int]` |
+| `[N]int` / `[]int` | `Variant` | `Array[int]` |
+| `List<List<int>>` | `Array` | `Array[Array[int]]`（递归） |
+
+GDScript 无定长数组概念，`[N]T` / `[]T` / `[expr]T` 一律映射为 `Array[T]`（元素类型取自 `ArrayType.elem` / `SliceType`，丢失 size 是可接受的，Godot 无对应概念）。
+
+**边界**：元素类型若递归到 `Option`/`Result` → `Variant`，输出 `Array[Variant]`，合法。`Future<T>` 已有递归分支，保持不变。
+
+**改动范围**：仅 `gdscript.rs::gdscript_type_name` 的 3 个 match 分支（`List`/`Map` 改为递归，新增 `Array`/`RuntimeArray`/`Slice` 分支）。无 AST/parser 变更。
+
+**执行步骤（TDD）**：
+1. 写测试夹具 `test/a2gd/17_godot_types/006_typed_collections/typed.at`：
+   ```auto
+   var scores List<int> = [1, 2, 3]
+   var lookup Map<str, int> = Map.new()
+   fn sum(xs List<int>) int { 0 }
+   fn keys(m Map<str, int>) List<str> { [] }
+   fn main() { print(scores) }
+   ```
+2. 运行 `cargo test -p auto-lang --lib test_godot_typed_collections`（先失败：输出 `Array`/`Dictionary`）
+3. 改 `gdscript_type_name`：`Type::List(e) => format!("Array[{}]", self.gdscript_type_name(e))`，`Type::Map(k,v) => format!("Dictionary[{}, {}]", …)`，新增 `Array`/`RuntimeArray`/`Slice` 三分支取 elem 递归
+4. `cargo build -p auto` → 重跑测试 → 通过；核对 `.expected.gd` 含 `Array[int]` / `Dictionary[String, int]`
+5. 回归：`cargo test -p auto-lang --lib -- trans parser`
+6. 提交：`feat(a2gd): emit typed Array[T]/Dictionary[K,V] instead of untyped`
+
+**风险**：极低。`gdscript_type_name` 的所有调用点（参数/返回值/变量标注/信号参数）自动受益，无需逐点改。
+
+---
+
+#### Phase 5b：枚举显式值
+
+**设计**：`enum_decl` 渲染时，若 `item.scalar_value` 为 `Some(v)` 则输出 `NAME = v`，否则保持 `NAME`。
+
+| Auto 源码 | 当前输出 | 目标输出 |
+|---|---|---|
+| `enum State { IDLE = 0, RUN = 1 }` | `enum State { IDLE, RUN }` | `enum State { IDLE = 0, RUN = 1 }` |
+| `enum Color { Red, Green }` | `enum Color { RED, GREEN }` | （见下方决策）|
+
+**大小写决策（需用户确认）**：当前强制 `.to_uppercase()` 是 GDScript 惯例，但与 Auto 源码变体名（如 `Color.Red`）不一致——GDScript 端引用会变成 `Color.RED`。两个选项：
+- **A（推荐）**：保留源码大小写，`Color.Red` → `Color.Red`，与 Auto 的点访问一致
+- **B**：维持现状大写，仅补显式值
+
+选项 A 会改变现有枚举测试的期望输出（若有）。**实施前需 grep 现有 enum 测试期望；若存在且受影响，需用户授权修改期望文件**（遵守 CLAUDE.md 测试期望规则）。
+
+**改动范围**：仅 `gdscript.rs::enum_decl`（≈853 行）。
+
+**执行步骤（TDD）**：
+1. grep 现有枚举 a2gd 测试：`find crates/auto-lang/test/a2gd -name '*.expected.gd' | xargs grep -l 'enum '` —— 确认是否有受影响期望
+2. 写测试夹具 `test/a2gd/17_godot_types/007_enum_values/enum.at`：
+   ```auto
+   enum HttpStatus {
+       OK = 200
+       NotFound = 404
+       ServerError = 500
+   }
+   fn main() { print(HttpStatus.OK) }
+   ```
+3. 运行测试（先失败：值被丢弃）
+4. 改 `enum_decl`：`if let Some(v) = item.scalar_value { write NAME = v } else { NAME }`
+5. 按大小写决策（A/B）调整 `item.name` 渲染；若选 A 且有现存期望受影响，向用户申请授权
+6. `cargo build -p auto` → 测试通过 → 回归
+7. 提交：`feat(a2gd): preserve enum explicit values`
+
+**风险**：低。大小写变更若波及现存期望需授权；纯值保留为增量改动。
+
+---
+
+#### Phase 5 验收标准
+
+- `Array[T]` / `Dictionary[K, V]` 在变量/参数/返回值/信号参数位置均正确输出
+- 枚举显式值保留；大小写按用户选定方案一致
+- trans / gdscript / parser 全套测试 0 回归
+- 两个子任务互相独立，可分别提交
+
+
 
 ---
 
