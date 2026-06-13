@@ -1,0 +1,8 @@
+spec Drawable {
+    fn draw()
+    fn area() float
+}
+
+fn main() {
+    print("Spec defined")
+}

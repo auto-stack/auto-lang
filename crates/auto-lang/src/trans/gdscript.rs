@@ -390,12 +390,9 @@ impl GDScriptTrans {
                 Ok(true)
             }
 
-            // Spec declarations -> GDScript has no Protocol, skip with comment
+            // Spec declarations -> GDScript inner class with method stubs
             Stmt::SpecDecl(spec_decl) => {
-                self.print_indent(out)?;
-                out.write(b"# spec ")?;
-                out.write_all(spec_decl.name.as_bytes())?;
-                out.write(b" (not directly representable in GDScript)\n")?;
+                self.spec_decl(spec_decl, out)?;
                 Ok(true)
             }
 
@@ -971,6 +968,61 @@ impl GDScriptTrans {
 
     fn fn_decl_in_class_for_tag(&mut self, func: &Fn, _tag: &Tag, out: &mut impl Write) -> AutoResult<()> {
         self.fn_decl_in_class(func, &TypeDecl::builtin(&_tag.name), out)
+    }
+
+    // ========================================================================
+    // Spec declarations
+    // ========================================================================
+
+    fn spec_decl(&mut self, spec_decl: &SpecDecl, out: &mut impl Write) -> AutoResult<()> {
+        self.print_indent(out)?;
+        out.write(b"# Protocol: ")?;
+        out.write_all(spec_decl.name.as_bytes())?;
+        out.write(b"\n")?;
+
+        self.print_indent(out)?;
+        out.write(b"class ")?;
+        out.write_all(spec_decl.name.as_bytes())?;
+        out.write(b":\n")?;
+
+        self.indent();
+        if spec_decl.methods.is_empty() {
+            self.print_indent(out)?;
+            out.write(b"pass\n")?;
+        } else {
+            for method in &spec_decl.methods {
+                self.print_indent(out)?;
+                out.write(b"# Abstract: must override\n")?;
+                self.print_indent(out)?;
+                out.write(b"func ")?;
+                out.write_all(method.name.as_bytes())?;
+                out.write(b"(")?;
+                for (i, param) in method.params.iter().enumerate() {
+                    if i > 0 {
+                        out.write(b", ")?;
+                    }
+                    out.write_all(param.name.as_bytes())?;
+                    if !matches!(param.ty, Type::Unknown) {
+                        out.write(b": ")?;
+                        let type_name = self.gdscript_type_name(&param.ty);
+                        out.write_all(type_name.as_bytes())?;
+                    }
+                }
+                out.write(b")")?;
+                if !matches!(method.ret, Type::Unknown | Type::Void) {
+                    out.write(b" -> ")?;
+                    let type_name = self.gdscript_type_name(&method.ret);
+                    out.write_all(type_name.as_bytes())?;
+                }
+                out.write(b":\n")?;
+                self.indent();
+                self.print_indent(out)?;
+                out.write(b"pass\n")?;
+                self.dedent();
+            }
+        }
+        self.dedent();
+        Ok(())
     }
 
     // ========================================================================
@@ -1745,5 +1797,10 @@ mod tests {
     #[test]
     fn test_async_func() {
         test_a2gd("03_control_flow/040_async_func").unwrap();
+    }
+
+    #[test]
+    fn test_basic_spec() {
+        test_a2gd("12_specs/001_basic_spec").unwrap();
     }
 }
