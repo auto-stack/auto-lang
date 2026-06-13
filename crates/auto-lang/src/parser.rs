@@ -166,7 +166,9 @@ struct FnAnnotations {
     has_rs: bool,
     has_pub: bool,
     has_test: bool,
-    has_export: bool,
+    /// Plan 306 Phase 3: GDScript variable annotations (`#[export]`, `#[onready]`,
+    /// `#[export_range(0,100)]`, …) captured as full text to emit verbatim after `@`.
+    store_attrs: Vec<AutoStr>,
     with_params: Vec<crate::ast::TypeParam>,
 }
 
@@ -3637,13 +3639,10 @@ impl<'a> Parser<'a> {
                     || self.is_kind(TokenKind::Const)
                     || self.is_kind(TokenKind::Shared)
                 {
-                    // Variable declaration with annotation (Plan 306 2c):
-                    // e.g. `#[export] var speed float = 300.0` → GDScript `@export var speed: float = 300.0`
-                    let attrs = if ann.has_export {
-                        vec![AutoStr::from("export")]
-                    } else {
-                        vec![]
-                    };
+                    // Variable declaration with annotation (Plan 306 2c/3):
+                    // e.g. `#[export] var speed float = 300.0` → `@export var speed: float = 300.0`
+                    //      `#[export_range(0,100)] var hp int = 50` → `@export_range(0, 100) var hp: int = 50`
+                    let attrs = ann.store_attrs.clone();
                     self.parse_store_stmt(attrs)?
                 } else if self.is_kind(TokenKind::Task) {
                     // Plan 121: Task with #[single] annotation
@@ -6425,6 +6424,53 @@ impl<'a> Parser<'a> {
     /// Annotations must start with # prefix (Rust-style).
     /// Returns FnAnnotations struct.
     ///
+    /// Plan 306 Phase 3: Collect a parenthesized argument list following an
+    /// annotation name. If the current token is `(`, consumes through the matching
+    /// `)` and returns the rendered text e.g. `"(0, 100, 1)"` or `("Combat")`;
+    /// otherwise returns `None` and consumes nothing.
+    fn collect_annotation_args(&mut self) -> Option<String> {
+        if !self.is_kind(TokenKind::LParen) {
+            return None;
+        }
+        let mut s = String::from("(");
+        let mut depth = 1;
+        self.next(); // skip (
+        while depth > 0 && !self.is_kind(TokenKind::EOF) {
+            if self.is_kind(TokenKind::LParen) {
+                depth += 1;
+                s.push('(');
+            } else if self.is_kind(TokenKind::RParen) {
+                depth -= 1;
+                if depth > 0 {
+                    s.push(')');
+                }
+            } else if self.is_kind(TokenKind::Comma) {
+                s.push_str(", ");
+            } else if self.is_kind(TokenKind::Asn) {
+                s.push_str(" = ");
+            } else if self.is_kind(TokenKind::Str) {
+                s.push('"');
+                s.push_str(&self.cur.text);
+                s.push('"');
+            } else {
+                s.push_str(&self.cur.text);
+            }
+            if depth > 0 {
+                self.next();
+            }
+        }
+        self.next(); // skip final )
+        s.push(')');
+        Some(s)
+    }
+
+    /// Parse function annotations: [c], [vm], [c,vm], [pub]
+    ///
+    /// Parse function annotations: #[c], #[vm], #[rs], #[c,vm], #[with(T as Spec)], etc.
+    /// Note: `pub` is handled separately as a keyword prefix, not an annotation.
+    /// Annotations must start with # prefix (Rust-style).
+    /// Returns FnAnnotations struct.
+    ///
     /// Plan 061: Added support for #[with(T as Spec)] generic constraints
     /// Plan 083: Added support for #[rs] (Rust transpiler)
     /// Plan 260: Added support for #[test], refactored to struct
@@ -6445,7 +6491,29 @@ impl<'a> Parser<'a> {
                         "vm" => ann.has_vm = true,
                         "rs" => ann.has_rs = true,
                         "test" => ann.has_test = true,
-                        "export" => ann.has_export = true, // Plan 306 2c: #[export] var → GDScript @export
+                        // Plan 306 Phase 3: GDScript variable annotations.
+                        // Capture full text (name + optional args) for verbatim @-prefix emission.
+                        "export" | "onready" | "export_range" | "export_enum"
+                        | "export_group" | "export_subgroup" | "export_flags"
+                        | "export_node_path" | "export_file" | "export_dir"
+                        | "export_multiline" | "export_color_no_alpha" => {
+                            let mut attr_str = annot.to_string();
+                            self.next(); // skip the annotation name
+                            if let Some(args) = self.collect_annotation_args() {
+                                attr_str.push_str(&args);
+                            }
+                            ann.store_attrs.push(attr_str.into());
+                            // Check for ] or ,
+                            if self.is_kind(TokenKind::RSquare) {
+                                self.next(); // skip ]
+                                break;
+                            }
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next(); // skip ,
+                                continue;
+                            }
+                            continue;
+                        }
                         "single" => {
                             // Plan 121: #[single] annotation for singleton tasks
                             // This is handled by the caller, just skip here
@@ -6463,36 +6531,8 @@ impl<'a> Parser<'a> {
                             // Collect the raw attribute text: #[derive(Debug, Clone)] -> "derive(Debug, Clone)"
                             let mut attr_str = annot.to_string();
                             self.next(); // skip the annotation name
-                            if self.is_kind(TokenKind::LParen) {
-                                attr_str.push('(');
-                                // Collect tokens until matching )
-                                let mut depth = 1;
-                                self.next(); // skip (
-                                while depth > 0 && !self.is_kind(TokenKind::EOF) {
-                                    if self.is_kind(TokenKind::LParen) {
-                                        depth += 1;
-                                        attr_str.push_str("(");
-                                    } else if self.is_kind(TokenKind::RParen) {
-                                        depth -= 1;
-                                        if depth > 0 {
-                                            attr_str.push_str(")");
-                                        }
-                                    } else if self.is_kind(TokenKind::Comma) {
-                                        attr_str.push_str(", ");
-                                    } else if self.is_kind(TokenKind::Asn) {
-                                        attr_str.push_str(" = ");
-                                    } else if self.is_kind(TokenKind::Str) {
-                                        // Plan 163: Restore quotes around string literals in attributes
-                                        attr_str.push_str(&format!("\"{}\"", self.cur.text));
-                                    } else {
-                                        attr_str.push_str(&self.cur.text);
-                                    }
-                                    if depth > 0 {
-                                        self.next();
-                                    }
-                                }
-                                self.next(); // skip final )
-                                attr_str.push(')');
+                            if let Some(args) = self.collect_annotation_args() {
+                                attr_str.push_str(&args);
                             }
                             self.raw_attrs.push(attr_str.into());
                             // Check for ] or ,

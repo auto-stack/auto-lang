@@ -417,10 +417,11 @@ impl GDScriptTrans {
     // ========================================================================
 
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
-        // Plan 306 2c: #[export] var X T = v → @export var X: T = v
-        // (GDScript accepts the annotation on the same line as the declaration.)
-        if store.attrs.iter().any(|a| a.as_str() == "export") {
-            out.write(b"@export ")?;
+        // Plan 306 Phase 2c/3: emit each annotation as a GDScript @-prefix.
+        // store.attrs holds the full text e.g. "export", "onready",
+        // "export_range(0, 100)", so `@{a} ` renders verbatim on the same line.
+        for a in &store.attrs {
+            write!(out, "@{} ", a.as_str())?;
         }
         match store.kind {
             StoreKind::Let | StoreKind::Var => {
@@ -1874,6 +1875,10 @@ mod tests {
     // Plan 306 Phase 2c: #[export] var → GDScript @export var.
     #[test]
     fn test_godot_export() { test_a2gd("17_godot_types/002_export").unwrap(); }
+
+    // Plan 306 Phase 3: extended annotations (@onready, @export_range, @export_group).
+    #[test]
+    fn test_godot_annotations() { test_a2gd("17_godot_types/003_annot").unwrap(); }
 
     #[test]
     fn test_unary_neg() { test_a2gd("01_basics/041_unary_neg").unwrap(); }

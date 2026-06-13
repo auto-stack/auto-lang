@@ -318,6 +318,30 @@ GDScript 的 `$Sprite` 等价于 `get_node("Sprite")`。实测 `get_node("Sprite
 
 ---
 
+### Phase 3：扩展 GDScript 注解（✅ 已完成）
+
+在 `@export` 基础上，支持 Godot 常用变量注解（含带参数的形式）：
+
+```
+#[export_range(0, 100, 1)] var hp int = 50       → @export_range(0, 100, 1) var hp: int = 50
+#[onready] var sprite = get_node("Sprite")       → @onready var sprite = get_node("Sprite")
+#[export_group("Combat")] var damage int = 10    → @export_group("Combat") var damage: int = 10
+#[export_enum("A,B,C")] var mode int = 0         → @export_enum("A,B,C") var mode: int = 0
+```
+
+设计：复用 Phase 2c 加的 `Store.attrs: Vec<Name>`，**不改类型**——每项存完整注解文本（`"export"` / `"onready"` / `"export_range(0, 100, 1)"`），gdscript 直接逐项输出 `@{text} ` 前缀。
+
+改动：
+- `parser.rs`：`FnAnnotations.has_export`（bool）升级为 `store_attrs: Vec<AutoStr>`（完整文本）；新增 `collect_annotation_args()` 辅助函数收集括号内参数文本（含字符串字面量、嵌套括号），同时重构 `derive`/`serde` 旁路改用该辅助函数（消除 ~25 行重复）；`parse_fn_annotations` 对 `export`/`onready`/`export_range`/`export_enum`/`export_group`/`export_subgroup`/`export_flags`/`export_node_path`/`export_file`/`export_dir`/`export_multiline`/`export_color_no_alpha` 收集名+参数
+- `trans/gdscript.rs`：`store()` 由「仅 export」改为遍历 `attrs` 逐项输出 `@`-前缀
+- 测试：`test/a2gd/17_godot_types/003_annot`（参数化 `export_range`、无参 `onready`、字符串参数 `export_group`、`export` 并存）
+
+验证：trans 304 / gdscript 54 / parser 144 全通过，0 回归（`derive` 重构经 a2r 测试确认无影响）。
+
+**注**：`@tool`（脚本级，影响整个脚本而非单变量）属不同机制，未纳入本轮；`@icon` 同理。后续如需可单独走脚本级注解路径。
+
+---
+
 ## 验证方式
 
 1. ✅ 创建 `test/a2gd/tscn/` 测试目录（5 个用例：hello / player / timers / nested / subresource）

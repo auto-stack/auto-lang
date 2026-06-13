@@ -1,0 +1,17 @@
+// Plan 306 Phase 3: extended GDScript annotations
+// - @export (simple), @onready (no args), @export_range/@export_group (parameterized)
+#[export_range(0, 100, 1)]
+var hp int = 50
+
+#[onready]
+var sprite = get_node("Sprite")
+
+#[export_group("Combat")]
+var damage int = 10
+
+#[export]
+var speed float = 300.0
+
+fn main() {
+    print(hp)
+}
