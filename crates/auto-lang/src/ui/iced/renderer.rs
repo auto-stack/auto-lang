@@ -1926,6 +1926,11 @@ struct DynamicState {
     /// (Plan 307 Task 9). Holds per-path AutoUI data (state bindings etc.)
     /// captured during the tracked view build. Consumed by later tasks.
     live_probe: std::cell::RefCell<Option<crate::ui::debug::BuildProbe>>,
+    /// Live `InspectorCache` snapshot rebuilt each frame for DevTools inspection
+    /// (Plan 307 Task 12). Holds the `VNodeId <-> iced widget id` map captured
+    /// during the per-frame render. `None` on non-debug frames. Consumed by
+    /// later tasks (13 = bounds backfill, 15-16 = inspector panels).
+    live_cache: std::cell::RefCell<Option<crate::ui::debug::InspectorCache>>,
     /// Currently editing element ID (Inspector edit mode).
     editing_element: std::cell::RefCell<Option<String>>,
     /// Key for the TEXTAREA_CONTENTS storage used by the inline source editor.
@@ -2070,6 +2075,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             component_tree: std::cell::RefCell::new(None),
             live_vtree: std::cell::RefCell::new(None),
             live_probe: std::cell::RefCell::new(None),
+            live_cache: std::cell::RefCell::new(None),
             editing_element: std::cell::RefCell::new(None),
             edit_textarea_key: std::cell::RefCell::new(None),
             edit_span: std::cell::RefCell::new(None),
@@ -2917,6 +2923,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     } else {
         *state.live_vtree.borrow_mut() = None;
         *state.live_probe.borrow_mut() = None;
+        *state.live_cache.borrow_mut() = None;
     }
 
     // Clear view_dirty after consuming the change.
@@ -2939,6 +2946,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             tree_stack: std::cell::RefCell::new(Vec::new()),
             component_tree: std::cell::RefCell::new(None),
             debug_mode: state.debug_mode,
+            inspector_cache: std::cell::RefCell::new(crate::ui::debug::InspectorCache::new()),
         })
     } else {
         None
@@ -2956,6 +2964,11 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // Cache aura_to_id mapping for source-click → component-highlight reverse lookup
         let aura_map = ctx.aura_to_id.borrow();
         *state.aura_to_id_cache.borrow_mut() = aura_map.clone();
+        // Plan 307 Task 12: copy the `VNodeId <-> iced widget id` map into
+        // DynamicState for later bounds backfill (Task 13) and inspector panels
+        // (tasks 15-16). InspectorCache derives Clone.
+        let cache = ctx.inspector_cache.borrow().clone();
+        *state.live_cache.borrow_mut() = Some(cache);
     }
 
     let result: iced::Element<'static, IcedMessage> = if state.debug_mode {
@@ -3720,6 +3733,13 @@ struct DebugRenderCtx {
     /// When false, bounds probe containers are still created for MCP snapshot,
     /// but mouse_area / hover highlights are skipped.
     debug_mode: bool,
+    /// Bidirectional `VNodeId <-> iced widget id` map (Plan 307 Task 12).
+    /// Populated in `wrap_debug` only when `debug_mode` is true; mirrors the
+    /// View-structural path scheme used by `view_to_vtree_with_paths` (Task 4)
+    /// so the VNodeIds align with the live VTree. Copied into
+    /// `DynamicState::live_cache` after each render for later bounds backfill
+    /// (Task 13) and inspector panels (tasks 15-16).
+    inspector_cache: std::cell::RefCell<crate::ui::debug::InspectorCache>,
 }
 
 /// Debug metadata for a single UI element.
@@ -3795,6 +3815,21 @@ impl DebugRenderCtx {
             // Record bidirectional mapping
             self.id_to_aura.borrow_mut().insert(id_str.clone(), aura_id);
             self.aura_to_id.borrow_mut().insert(aura_id, id_str.clone());
+            // Plan 307 Task 12: record the `VNodeId <-> iced widget id` mapping.
+            // `view_path` here is View-structural — the SAME scheme
+            // `view_to_vtree_with_paths` (Task 4) uses to derive VTree VNodeIds,
+            // so `VNodeId::new(id_from_path(&view_path_as_u16))` matches the
+            // corresponding VTree node's VNodeId. Only recorded when debug mode
+            // is active (the ctx only exists then, but gate defensively).
+            if self.debug_mode {
+                let path_u16: Vec<u16> = view_path.iter().map(|&x| x as u16).collect();
+                let vnode_id = crate::ui::vnode::VNodeId::new(
+                    crate::ui::vnode::id_from_path(&path_u16),
+                );
+                self.inspector_cache
+                    .borrow_mut()
+                    .set_iced_map(vnode_id, id_str.clone());
+            }
             (id_str, span)
         } else {
             // Fallback: synthetic wrapper node
