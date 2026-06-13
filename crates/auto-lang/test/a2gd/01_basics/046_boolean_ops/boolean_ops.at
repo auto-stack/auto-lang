@@ -1,0 +1,10 @@
+fn main() {
+    let a = true
+    let b = false
+    let c = a and b
+    let d = a or b
+    let e = not a
+    print(c)
+    print(d)
+    print(e)
+}

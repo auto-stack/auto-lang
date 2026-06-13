@@ -1,0 +1,6 @@
+fn main() {
+    let a = Some(42)
+    let b = None
+    print(a)
+    print(b)
+}

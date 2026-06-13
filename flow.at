@@ -1,0 +1,25 @@
+flows {
+    flow feature_X {       
+         phase design {           
+           mode: "serial"
+           flow_id: "design_only"
+           task: "Design feature X"
+         }
+         run impl_a {           
+           flow_id: "post_discovery"
+           task: "Implement module A"
+           depends_on: [design]
+         },
+         run impl_b {
+           flow_id: "post_discovery"
+           task: "Implement module B"
+           depends_on: [design]
+         },
+         phase integrate {
+           mode: "serial"
+           flow_id: "integration"
+           task: "Integrate and test"
+           depends_on: [impl_a, impl_b]
+         }
+    }
+}

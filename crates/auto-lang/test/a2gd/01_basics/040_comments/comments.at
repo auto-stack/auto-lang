@@ -1,0 +1,5 @@
+fn main() {
+    // This is a comment
+    let x = 10
+    print(x)
+}

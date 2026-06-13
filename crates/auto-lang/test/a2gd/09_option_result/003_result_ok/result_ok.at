@@ -1,0 +1,6 @@
+fn main() {
+    let ok = Ok(100)
+    let err = Err("failed")
+    print(ok)
+    print(err)
+}

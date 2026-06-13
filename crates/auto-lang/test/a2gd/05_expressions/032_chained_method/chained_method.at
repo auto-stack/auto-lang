@@ -1,0 +1,4 @@
+fn main() {
+    let result = "  Hello  ".trim().to_upper()
+    print(result)
+}

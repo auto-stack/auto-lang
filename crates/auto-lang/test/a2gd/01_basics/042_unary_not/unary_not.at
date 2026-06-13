@@ -1,0 +1,5 @@
+fn main() {
+    let flag = true
+    let result = not flag
+    print(result)
+}
