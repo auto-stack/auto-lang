@@ -1877,6 +1877,8 @@ const DEBUG_EDIT_PREFIX: &str = "__edit_";
 const DEBUG_EDIT_APPLY: &str = "__edit_apply";
 const DEBUG_EDIT_CANCEL: &str = "__edit_cancel";
 const SRC_CLICK_PREFIX: &str = "__src_click_";
+/// Select a VNode by its u64 id (Plan 307 Task 14): `__select_vnode_<id>`.
+const DEBUG_SELECT_VNODE_PREFIX: &str = "__select_vnode_";
 
 /// DevTools panel tab selector.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1906,6 +1908,12 @@ struct DynamicState {
     debug_element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
     /// ID of the currently selected element (click-to-select, orange highlight).
     selected_widget: std::cell::RefCell<Option<String>>,
+    /// Currently selected VNode (Plan 307 Task 14) — keys the live VTree tree
+    /// selection so later tasks (breadcrumb, tabs, hover) can use a stable id.
+    selected_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
+    /// Currently hovered VNode (Plan 307 Task 14). Stubbed: set alongside click
+    /// selection for now (no separate mouse_area hover wiring).
+    hovered_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
     /// Whether the DevTools panel is open on the right side.
     devtools_open: std::cell::RefCell<bool>,
     /// Currently active DevTools tab.
@@ -2066,6 +2074,8 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             pending_hovers: std::cell::RefCell::new(Vec::new()),
             debug_element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
             selected_widget: std::cell::RefCell::new(None),
+            selected_vnode: std::cell::RefCell::new(None),
+            hovered_vnode: std::cell::RefCell::new(None),
             devtools_open: std::cell::RefCell::new(false),
             devtools_tab: std::cell::RefCell::new(DevToolsTab::Inspector),
             console_output: std::cell::RefCell::new(Vec::new()),
@@ -2172,6 +2182,8 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 // Closing: clear all debug state
                 *state.hovered_widget.borrow_mut() = None;
                 *state.selected_widget.borrow_mut() = None;
+                *state.selected_vnode.borrow_mut() = None;
+                *state.hovered_vnode.borrow_mut() = None;
                 *state.devtools_open.borrow_mut() = false;
                 state.pending_hovers.borrow_mut().clear();
             }
@@ -2231,7 +2243,25 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             ui_changed = true;
             return iced::Task::none();
         }
-        // Handle DevTools panel tab switching and close
+        // Handle VNode selection from the live VTree (Plan 307 Task 14).
+        if let Some(id_str) = msg.event.strip_prefix(DEBUG_SELECT_VNODE_PREFIX) {
+            if let Ok(raw) = id_str.parse::<u64>() {
+                let vnode_id = crate::ui::vnode::VNodeId::new(raw);
+                if *state.selected_vnode.borrow() == Some(vnode_id) {
+                    // Toggle off on re-click (matches the old id-string behavior).
+                    *state.selected_vnode.borrow_mut() = None;
+                } else {
+                    *state.selected_vnode.borrow_mut() = Some(vnode_id);
+                    // Stub hover: mark the selected node as hovered too (real
+                    // hover wiring via mouse_area is a follow-up).
+                    *state.hovered_vnode.borrow_mut() = Some(vnode_id);
+                    *state.devtools_open.borrow_mut() = true;
+                    *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
+                }
+            }
+            ui_changed = true;
+            return iced::Task::none();
+        }
         match msg.event.as_str() {
             "__tab_elements" => {
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Elements;
@@ -3171,25 +3201,145 @@ fn tab_style_fn(active: bool) -> Box<dyn Fn(&iced::Theme) -> container::Style> {
 /// Render the Properties tab: show selected element's style properties.
 /// Render the Elements tab: component tree visualization.
 fn render_elements_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
-    let tree = state.component_tree.borrow();
-    match tree.as_ref() {
-        Some(root) => {
-            let selected_id = state.selected_widget.borrow().clone();
-            let mut rows: Vec<iced::Element<'static, IcedMessage>> = Vec::new();
-            render_tree_into(&root, 0, &selected_id, &mut rows);
-            let mut col = column![].spacing(1);
-            for row in rows {
-                col = col.push(row);
-            }
-            col.into()
+    // Plan 307 Task 14: the left tree now reads from the live VTree (the runtime
+    // DOM) instead of the legacy DebugTreeNode / component_tree. The old path is
+    // kept (Task 19/20 removes it); render_tree_into simply isn't called here.
+    let vtree = state.live_vtree.borrow();
+    let has_root = vtree.as_ref().and_then(|t| t.root()).is_some();
+    if has_root {
+        // Clone the tree out so we don't hold the RefCell borrow while building rows.
+        let tree = vtree.clone().expect("checked root above");
+        let selected = state.selected_vnode.borrow().clone();
+        let hovered = state.hovered_vnode.borrow().clone();
+        let mut rows: Vec<iced::Element<'static, IcedMessage>> = Vec::new();
+        if let Some(root) = tree.root() {
+            render_vtree_into(&tree, root, 0, &selected, &hovered, &mut rows);
         }
-        None => {
-            column![
-                text("组件树不可用").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
-                text("开启 Debug 模式后显示").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
-            ]
-                .spacing(4)
-                .into()
+        drop(vtree);
+        let mut col = column![].spacing(1);
+        for row in rows {
+            col = col.push(row);
+        }
+        col.into()
+    } else {
+        drop(vtree);
+        column![
+            text("组件树不可用").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+            text("开启 Debug 模式后显示").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
+        ]
+            .spacing(4)
+            .into()
+    }
+}
+
+/// Render a per-kind summary string for a VNode's props (Plan 307 Task 14).
+fn vnode_summary(node: &crate::ui::vnode::VNode) -> String {
+    use crate::ui::vnode::{VNodeKind, VNodeProps};
+    let child_count = node.children.len();
+    match (&node.kind, &node.props) {
+        (VNodeKind::Text, VNodeProps::Text { content }) => {
+            let snippet: String = content.chars().take(20).collect();
+            if content.chars().count() > 20 {
+                format!("\"{}…\"", snippet)
+            } else {
+                format!("\"{}\"", snippet)
+            }
+        }
+        (VNodeKind::Button, VNodeProps::Button { label }) => {
+            let snippet: String = label.chars().take(20).collect();
+            format!("[{}]", snippet)
+        }
+        (VNodeKind::Input, VNodeProps::Input { placeholder, .. }) => {
+            format!("placeholder=\"{}\"", placeholder)
+        }
+        (VNodeKind::Textarea, VNodeProps::Textarea { placeholder, .. }) => {
+            format!("placeholder=\"{}\"", placeholder)
+        }
+        (VNodeKind::Checkbox, VNodeProps::Checkbox { label, is_checked }) => {
+            format!("{}={}", label, if *is_checked { "✓" } else { "✗" })
+        }
+        (VNodeKind::Radio, VNodeProps::Radio { label, is_selected }) => {
+            format!("{}={}", label, if *is_selected { "✓" } else { "✗" })
+        }
+        (VNodeKind::Select, VNodeProps::Select { options, selected_index }) => {
+            format!("{} opts, sel {:?}", options.len(), selected_index)
+        }
+        (VNodeKind::Slider, VNodeProps::Slider { value, .. }) => {
+            format!("value={:.2}", value)
+        }
+        (VNodeKind::ProgressBar, VNodeProps::ProgressBar { progress }) => {
+            format!("{:.0}%", progress * 100.0)
+        }
+        // Containers: show child count
+        (_, _) if child_count > 0 => format!("({} children)", child_count),
+        _ => String::new(),
+    }
+}
+
+/// Recursively render live VTree nodes into a flat column of clickable rows
+/// (Plan 307 Task 14). Modeled on the legacy `render_tree_into` row style —
+/// all nodes start expanded (no collapse state yet).
+fn render_vtree_into(
+    tree: &crate::ui::vnode::VTree,
+    node: &crate::ui::vnode::VNode,
+    depth: usize,
+    selected: &Option<crate::ui::vnode::VNodeId>,
+    hovered: &Option<crate::ui::vnode::VNodeId>,
+    rows: &mut Vec<iced::Element<'static, IcedMessage>>,
+) {
+    let indent = "  ".repeat(depth);
+    let is_selected = *selected == Some(node.id);
+    let is_hovered = *hovered == Some(node.id);
+
+    let has_children = !node.children.is_empty();
+    let prefix = if has_children { "▼ " } else { "  " };
+    let summary = vnode_summary(node);
+    let label = if summary.is_empty() {
+        format!("{}{}{}", indent, prefix, node.kind)
+    } else {
+        format!("{}{}{} {}", indent, prefix, node.kind, summary)
+    };
+
+    let text_color = if is_selected {
+        iced::Color::from_rgb(0.85, 0.4, 0.1)
+    } else if is_hovered {
+        iced::Color::from_rgb(0.3, 0.55, 0.3)
+    } else if has_children {
+        iced::Color::from_rgb(0.2, 0.4, 0.7)
+    } else {
+        iced::Color::from_rgb(0.4, 0.4, 0.4)
+    };
+
+    let click_area = mouse_area(
+        container(text(label).size(10).color(text_color))
+            .style(move |_: &iced::Theme| {
+                if is_selected {
+                    container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.95, 0.85, 0.7, 0.6))),
+                        ..Default::default()
+                    }
+                } else if is_hovered {
+                    container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.8, 0.9, 0.8, 0.4))),
+                        ..Default::default()
+                    }
+                } else {
+                    container::Style::default()
+                }
+            })
+            .padding(iced::Padding::new(2.0))
+    )
+        .on_press(IcedMessage {
+            widget: String::new(),
+            event: format!("{}{}", DEBUG_SELECT_VNODE_PREFIX, node.id.as_u64()),
+            input_value: None,
+        });
+
+    rows.push(click_area.into());
+
+    if let Some(children) = tree.children(node.id) {
+        for child in children {
+            render_vtree_into(tree, child, depth + 1, selected, hovered, rows);
         }
     }
 }
