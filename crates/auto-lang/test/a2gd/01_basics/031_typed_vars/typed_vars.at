@@ -1,0 +1,8 @@
+fn main() {
+    let x int = 42
+    let name str = "Alice"
+    let active bool = true
+    let score float = 95.5
+    print(x)
+    print(name)
+}

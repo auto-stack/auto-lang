@@ -430,6 +430,13 @@ impl GDScriptTrans {
                 }
                 out.write(b" = ")?;
                 self.expr(&store.expr, out)?;
+                // Track variable type
+                let ty = if matches!(store.ty, Type::Unknown) {
+                    self.infer_type_from_expr(&store.expr)
+                } else {
+                    store.ty.clone()
+                };
+                self.local_var_types.insert(store.name.clone(), ty);
             }
             StoreKind::Const => {
                 // const X = 10 -> const X = 10
@@ -466,6 +473,14 @@ impl GDScriptTrans {
     // ========================================================================
 
     fn fn_decl(&mut self, func: &Fn, out: &mut impl Write) -> AutoResult<()> {
+        // Track parameter types
+        self.local_var_types.clear();
+        for param in &func.params {
+            if !matches!(param.ty, Type::Unknown) {
+                self.local_var_types.insert(param.name.clone(), param.ty.clone());
+            }
+        }
+
         self.print_indent(out)?;
 
         // GDScript: func name(params) -> RetType:
@@ -1432,6 +1447,24 @@ impl GDScriptTrans {
         }
         Ok(())
     }
+
+    /// Basic type inference from expression
+    fn infer_type_from_expr(&self, expr: &Expr) -> Type {
+        match expr {
+            Expr::Int(_) => Type::Int,
+            Expr::Uint(_) => Type::Uint,
+            Expr::Float(_, _) => Type::Float,
+            Expr::Double(_, _) => Type::Double,
+            Expr::Bool(_) => Type::Bool,
+            Expr::Str(_) => Type::StrOwned,
+            Expr::Array(_) => Type::List(Box::new(Type::Unknown)),
+            Expr::Object(_) => Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown)),
+            Expr::Ident(name) => {
+                self.local_var_types.get(name).cloned().unwrap_or(Type::Unknown)
+            }
+            _ => Type::Unknown,
+        }
+    }
 }
 
 /// Capitalize the first letter of a string
@@ -1644,5 +1677,10 @@ mod tests {
     #[test]
     fn test_import() {
         test_a2gd("14_modules/001_import").unwrap();
+    }
+
+    #[test]
+    fn test_typed_vars() {
+        test_a2gd("01_basics/031_typed_vars").unwrap();
     }
 }
