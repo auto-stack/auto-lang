@@ -9902,15 +9902,8 @@ impl<'a> Parser<'a> {
                     connections.push(self.parse_scene_connection()?);
                 }
                 _ => {
-                    // property assignment: name = expr
-                    let prop_name = self.cur.text.clone();
-                    self.next();
-                    self.expect(TokenKind::Asn)?;
-                    let value = self.parse_expr()?;
-                    props.push(SceneProp {
-                        name: prop_name,
-                        value,
-                    });
+                    // property assignment: name = value
+                    props.push(self.parse_scene_prop()?);
                 }
             }
             self.skip_empty_lines();
@@ -9958,14 +9951,7 @@ impl<'a> Parser<'a> {
                 "node" => children.push(self.parse_scene_node()?),
                 "instance" => children.push(self.parse_scene_instance()?),
                 _ => {
-                    let prop_name = self.cur.text.clone();
-                    self.next();
-                    self.expect(TokenKind::Asn)?;
-                    let value = self.parse_expr()?;
-                    props.push(SceneProp {
-                        name: prop_name,
-                        value,
-                    });
+                    props.push(self.parse_scene_prop()?);
                 }
             }
             self.skip_empty_lines();
@@ -10006,6 +9992,67 @@ impl<'a> Parser<'a> {
             to,
             method,
         })
+    }
+
+    /// Parse a single `name = value` scene property.
+    ///
+    /// Shared by the scene root, child nodes, and inline sub-resources. The
+    /// value may be an ordinary expression or a typed inline sub-resource.
+    fn parse_scene_prop(&mut self) -> AutoResult<SceneProp> {
+        let prop_name = self.cur.text.clone();
+        self.next();
+        self.expect(TokenKind::Asn)?;
+        let value = self.parse_scene_value()?;
+        Ok(SceneProp {
+            name: prop_name,
+            value,
+        })
+    }
+
+    /// Parse a scene property value — either a typed inline sub-resource
+    /// (`TypeName { ... }`) or a regular expression.
+    fn parse_scene_value(&mut self) -> AutoResult<SceneValue> {
+        if self.looks_like_subresource() {
+            Ok(SceneValue::SubResource(self.parse_scene_subresource()?))
+        } else {
+            Ok(SceneValue::Expr(self.parse_expr()?))
+        }
+    }
+
+    /// Two-token lookahead: is this `Ident {`? (a typed inline sub-resource).
+    /// Fully restores the cursor regardless of the answer.
+    fn looks_like_subresource(&mut self) -> bool {
+        if !self.is_kind(TokenKind::Ident) {
+            return false;
+        }
+        let ident_tok = self.cur.clone();
+        self.next();
+        let is_brace = self.is_kind(TokenKind::LBrace);
+        // Restore: push the current token back, then the ident, then resync.
+        self.lexer.push_token(self.cur.clone());
+        self.lexer.push_token(ident_tok);
+        self.next();
+        is_brace
+    }
+
+    /// Parse an inline typed sub-resource: `TypeName { name = value; ... }`.
+    fn parse_scene_subresource(&mut self) -> AutoResult<SceneSubResource> {
+        let res_type = self.cur.text.clone();
+        self.next(); // consume type identifier
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut props = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            props.push(self.parse_scene_prop()?);
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(SceneSubResource { res_type, props })
     }
 
     /// Parse widget props: (name: type, name: type = default, ...)

@@ -269,9 +269,21 @@ scene <Name> : <GodotType> {
 - ✅ 确定性 uid 生成（FNV-1a → base32，Godot 兼容）
 - ✅ `auto_steps` 自动计算（1 + ext_resource 数）
 
-### Phase 2：完整特性（待办）
+### Phase 2：完整特性
 
-- sub_resource 内联定义（`CapsuleShape2D { ... }`）—— 目前属性值中的 inline 对象未生成 `[sub_resource]` 段
+#### Phase 2a：sub_resource 内联定义（✅ 已完成）
+
+属性值中使用 `TypeName { props }` 语法的，自动生成独立的 `[sub_resource]` 段并替换为 `SubResource("N")` 引用。
+
+- `ast/ui.rs`：新增 `SceneValue` 枚举（`Expr` | `SubResource`）与 `SceneSubResource` 结构；`SceneProp.value` 类型由 `Expr` 改为 `SceneValue`
+- `parser.rs`：新增 `looks_like_subresource()`（两 token 前瞻识别 `Ident {`）、`parse_scene_value()`、`parse_scene_subresource()`；根节点/子节点/sub_resource 共用 `parse_scene_prop()`
+- `trans/tscn.rs`：生成器三阶段化 —— 收集 ext_resource → 分配 sub_resource id（按 AST 地址去重，1 起独立编号）→ 渲染；`load_steps = 1 + ext + sub`；ext/sub id 空间独立（符合 Godot 4）
+- 测试：`test/a2gd/tscn/005_subresource/`（CapsuleShape2D + Color 构造器值）
+
+**已知限制**：sub_resource 属性值若是数组/对象字面量（如 SpriteFrames 的 `animations`），目前按 `Debug` 兜底渲染，非 Godot 原生序列化格式 —— 待后续按 Godot 数组/字典格式补全。
+
+#### Phase 2b/2c（待办）
+
 - 与 a2gd 深度集成（一个 .at 文件同时生成 .tscn + .gd）
 - `@export` / `$node` / Vector2 类型等 GDScript 端配合
 
@@ -279,8 +291,8 @@ scene <Name> : <GodotType> {
 
 ## 验证方式
 
-1. ✅ 创建 `test/a2gd/tscn/` 测试目录（4 个用例）
-2. ✅ 每个 .at 场景文件 → 生成 .tscn → 与 .expected.tscn 比对（5 个测试全通过）
+1. ✅ 创建 `test/a2gd/tscn/` 测试目录（5 个用例：hello / player / timers / nested / subresource）
+2. ✅ 每个 .at 场景文件 → 生成 .tscn → 与 .expected.tscn 比对（6 个测试全通过，含 uid 确定性）
 3. ✅ `auto trans --path scene.at tscn` CLI 端到端验证通过
 4. ⬜ 生成的 .tscn 文件在 Godot 4.x 编辑器中打开验证（需人工）
 5. ⬜ examples/godot/ 中的手工 .tscn 可替换为自动生成

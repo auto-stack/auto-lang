@@ -544,11 +544,36 @@ pub struct SceneDecl {
     pub connections: Vec<SceneConnection>,
 }
 
-/// A single `name = value` property on a scene node.
+/// A single `name = value` property on a scene node (or inside a sub-resource).
 #[derive(Debug, Clone)]
 pub struct SceneProp {
     pub name: Name,
-    pub value: Expr,
+    pub value: SceneValue,
+}
+
+/// The value of a scene property.
+///
+/// Most values are ordinary expressions (`5`, `Vector2(1, 2)`, `load("res://x")`),
+/// but a typed inline resource such as `CapsuleShape2D { radius = 5.0 }` is
+/// emitted as its own `[sub_resource]` section and referenced via `SubResource("N")`.
+#[derive(Debug, Clone)]
+pub enum SceneValue {
+    /// A regular expression value.
+    Expr(Expr),
+    /// An inline typed sub-resource: `TypeName { props }` → `[sub_resource]`.
+    SubResource(SceneSubResource),
+}
+
+/// An inline typed sub-resource value, e.g. `CapsuleShape2D { radius = 5.0 }`.
+///
+/// Emits a `[sub_resource type="CapsuleShape2D" id="N"]` section and is
+/// referenced elsewhere as `SubResource("N")`.
+#[derive(Debug, Clone)]
+pub struct SceneSubResource {
+    /// Godot resource type, e.g. "CapsuleShape2D", "SpriteFrames".
+    pub res_type: Name,
+    /// The sub-resource's own properties (`key = value`).
+    pub props: Vec<SceneProp>,
 }
 
 /// A child of a scene node — either a typed node or an instance of another scene.

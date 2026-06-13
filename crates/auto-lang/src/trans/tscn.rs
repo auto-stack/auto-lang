@@ -17,7 +17,7 @@
 //! [connection signal="timeout" from="Child" to="." method="on_timeout"]
 //! ```
 
-use crate::ast::{Code, Expr, SceneDecl, SceneNode, Stmt};
+use crate::ast::{Code, Expr, SceneDecl, SceneNode, SceneProp, SceneSubResource, SceneValue, Stmt};
 use auto_val::AutoStr;
 
 /// External resource reference collected from the scene (scripts, packed
@@ -28,6 +28,17 @@ struct ExtResource {
     res_type: String,
     /// `res://`-prefixed path.
     path: String,
+}
+
+/// An inline sub-resource collected for a `[sub_resource]` section.
+///
+/// `id` is its 1-based position in `TscnGenerator::sub_resources` (separate
+/// from the ext_resource id space, matching Godot 4's `.tscn` format).
+struct SubResourceRec {
+    /// Godot resource type, e.g. "CapsuleShape2D".
+    res_type: String,
+    /// Cloned property list, rendered in a second pass once all ids are known.
+    props: Vec<SceneProp>,
 }
 
 /// A flattened, ordered node ready for `[node ...]` emission.
@@ -49,6 +60,11 @@ pub struct TscnGenerator {
     ext_resources: Vec<ExtResource>,
     /// Dedup map: `res://` path → ext_resource id (1-based, as string).
     ext_path_to_id: std::collections::HashMap<String, String>,
+    /// Ordered list of inline sub-resources (id = index + 1).
+    sub_resources: Vec<SubResourceRec>,
+    /// Map from a sub-resource's AST address → its 1-based id string.
+    /// Lets node prop rendering reference a sub-resource by identity.
+    sub_ptr_to_id: std::collections::HashMap<usize, String>,
 }
 
 impl TscnGenerator {
@@ -56,17 +72,20 @@ impl TscnGenerator {
         Self {
             ext_resources: Vec::new(),
             ext_path_to_id: std::collections::HashMap::new(),
+            sub_resources: Vec::new(),
+            sub_ptr_to_id: std::collections::HashMap::new(),
         }
     }
 
     /// Generate a `.tscn` string from a parsed scene declaration.
     pub fn generate(&mut self, scene: &SceneDecl) -> String {
-        // Phase 1: collect external resources.
-        // Script is always id 1 when present, then instances and load() calls
-        // are appended in document order.
+        // Phase 1: collect external resources and inline sub-resources.
+        // Script is always id 1 when present, then root props, instances and
+        // load() calls are appended in document order.
         if let Some(script) = &scene.script {
             self.add_ext_resource("Script".into(), self.res_path(script));
         }
+        self.collect_from_props(&scene.props);
         self.collect_ext_from_nodes(&scene.children);
 
         // Phase 2: flatten the node tree (assigns parent paths) and emit.
@@ -132,13 +151,43 @@ impl TscnGenerator {
                     self.add_ext_resource("PackedScene".into(), p);
                 }
                 SceneNode::Node { props, children, .. } => {
-                    for prop in props {
-                        self.collect_loads(&prop.value);
-                    }
+                    self.collect_from_props(props);
                     self.collect_ext_from_nodes(children);
                 }
             }
         }
+    }
+
+    /// Walk a property list, collecting loads (ext) and inline sub-resources.
+    fn collect_from_props(&mut self, props: &[SceneProp]) {
+        for prop in props {
+            self.collect_value(&prop.value);
+        }
+    }
+
+    /// Dispatch collection by value kind.
+    fn collect_value(&mut self, value: &SceneValue) {
+        match value {
+            SceneValue::Expr(e) => self.collect_loads(e),
+            SceneValue::SubResource(sr) => self.add_sub_resource(sr),
+        }
+    }
+
+    /// Register an inline sub-resource, assigning it a 1-based id (separate
+    /// from ext_resource ids), then recurse into its own properties.
+    fn add_sub_resource(&mut self, sr: &SceneSubResource) {
+        let key = std::ptr::from_ref(sr) as *const SceneSubResource as usize;
+        if self.sub_ptr_to_id.contains_key(&key) {
+            return;
+        }
+        let id = (self.sub_resources.len() + 1).to_string();
+        self.sub_ptr_to_id.insert(key, id);
+        self.sub_resources.push(SubResourceRec {
+            res_type: sr.res_type.to_string(),
+            props: sr.props.clone(),
+        });
+        // Nested loads / sub-resources inside this sub-resource.
+        self.collect_from_props(&sr.props);
     }
 
     /// Scan an expression tree for `load("res://...")` calls and register them.
@@ -179,7 +228,7 @@ impl TscnGenerator {
     ) {
         let prop_lines: Vec<(String, String)> = props
             .iter()
-            .map(|p| (p.name.to_string(), self.render_value(&p.value)))
+            .map(|p| (p.name.to_string(), self.render_scene_value(&p.value)))
             .collect();
         out.push(FlatNode {
             name: name.to_string(),
@@ -234,6 +283,22 @@ impl TscnGenerator {
     }
 
     // ---- value rendering ----------------------------------------------------
+
+    /// Render a scene property value to its `.tscn` text form.
+    fn render_scene_value(&self, value: &SceneValue) -> String {
+        match value {
+            SceneValue::Expr(e) => self.render_value(e),
+            SceneValue::SubResource(sr) => {
+                let key = std::ptr::from_ref(sr) as *const SceneSubResource as usize;
+                let id = self
+                    .sub_ptr_to_id
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| "1".into());
+                format!("SubResource(\"{}\")", id)
+            }
+        }
+    }
 
     fn render_value(&self, expr: &Expr) -> String {
         match expr {
@@ -306,7 +371,7 @@ impl TscnGenerator {
 
     fn render(&self, scene: &SceneDecl, nodes: &[FlatNode]) -> String {
         let mut out = String::new();
-        let load_steps = 1 + self.ext_resources.len();
+        let load_steps = 1 + self.ext_resources.len() + self.sub_resources.len();
 
         // Header
         out.push_str(&format!(
@@ -323,6 +388,22 @@ impl TscnGenerator {
                 res.path,
                 i + 1
             ));
+        }
+
+        // Sub-resources (inline typed values, e.g. shapes, materials)
+        for (i, sub) in self.sub_resources.iter().enumerate() {
+            out.push_str(&format!(
+                "\n[sub_resource type=\"{}\" id=\"{}\"]\n",
+                sub.res_type,
+                i + 1
+            ));
+            for prop in &sub.props {
+                out.push_str(&format!(
+                    "{} = {}\n",
+                    prop.name,
+                    self.render_scene_value(&prop.value)
+                ));
+            }
         }
 
         // Nodes
@@ -496,6 +577,11 @@ mod tests {
     #[test]
     fn test_tscn_004_nested() {
         test_a2tscn("004_nested").unwrap();
+    }
+
+    #[test]
+    fn test_tscn_005_subresource() {
+        test_a2tscn("005_subresource").unwrap();
     }
 
     #[test]

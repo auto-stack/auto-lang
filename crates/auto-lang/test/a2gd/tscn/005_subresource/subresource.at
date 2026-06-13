@@ -1,0 +1,16 @@
+// Plan 306 (Phase 2a): inline sub-resources emit [sub_resource] sections.
+scene Player : Area2D {
+    script = "player.gd"
+
+    node CollisionShape2D {
+        shape = CapsuleShape2D {
+            radius = 5.0
+            height = 12.0
+        }
+    }
+
+    node Line2D "Trail" {
+        width = 2.0
+        default_color = Color(1, 0, 0, 1)
+    }
+}
