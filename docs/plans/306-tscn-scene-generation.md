@@ -291,7 +291,7 @@ scene <Name> : <GodotType> {
 - `auto/main.rs`：新增 `TransTarget::Godot`，调用 `trans_godot`
 - 测试：`test_tscn_006_combined_with_gd` —— 校验 .tscn 含根节点 + 脚本引用、.gd 保留函数且不泄漏 scene、`extends Control`
 
-#### Phase 2c：GDScript 端类型配合（部分完成）
+#### Phase 2c：GDScript 端类型配合（✅ 已完成）
 
 **已完成 —— Godot 内建类型标注（Vector2 等）**
 
