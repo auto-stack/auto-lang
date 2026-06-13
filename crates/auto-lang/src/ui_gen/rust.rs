@@ -77,8 +77,9 @@ pub struct RustGenerator {
     /// Loop variables in scope (for generating correct references)
     loop_vars: Vec<String>,
 
-    /// Maps input event variant name to field name for input text parsing
-    input_fields: std::collections::HashMap<String, String>,
+    /// Maps input event variant name to field names for input text parsing
+    /// Multiple inputs can share the same event (e.g., main input + edit input both fire EditInputChanged)
+    input_fields: std::collections::HashMap<String, Vec<String>>,
 
     /// State var types for lookup during handler generation
     state_types: std::collections::HashMap<String, String>,
@@ -711,36 +712,46 @@ impl RustGenerator {
                 }
 
                 // If this event is from an input, prepend input text parsing
-                if let Some(field_name) = self.input_fields.get(&variant_name) {
-                    let rust_type = self.state_types.get(field_name).map(|s| s.as_str()).unwrap_or("f64");
+                if let Some(field_names) = self.input_fields.get(&variant_name) {
                     code.push_str(&format!(
                         "                let _text = auto_lang::ui::iced::last_input_text();\n"
                     ));
-                    if rust_type == "String" {
-                        code.push_str(&format!(
-                            "                self.{} = _text;\n",
-                            field_name
-                        ));
-                    } else {
-                        let parse_method = match rust_type {
-                            "i32" => "parse::<i32>()",
-                            "i64" => "parse::<i64>()",
-                            "u32" => "parse::<u32>()",
-                            "u64" => "parse::<u64>()",
-                            "f32" => "parse::<f32>()",
-                            "f64" => "parse::<f64>()",
-                            "bool" => "parse::<bool>()",
-                            _ => "parse::<f64>()",
-                        };
-                        code.push_str(&format!(
-                            "                self.{} = _text.{}.unwrap_or(self.{});\n",
-                            field_name, parse_method, field_name
-                        ));
+                    // Set ALL bound fields to the input text (multiple inputs may share one event)
+                    let last_idx = field_names.len() - 1;
+                    for (i, field_name) in field_names.iter().enumerate() {
+                        let rust_type = self.state_types.get(field_name).map(|s| s.as_str()).unwrap_or("f64");
+                        if rust_type == "String" {
+                            // Last field can consume _text directly; others must clone
+                            let text_expr = if i == last_idx { "_text".to_string() } else { "_text.clone()".to_string() };
+                            code.push_str(&format!(
+                                "                self.{} = {};\n",
+                                field_name, text_expr
+                            ));
+                        } else {
+                            let parse_method = match rust_type {
+                                "i32" => "parse::<i32>()",
+                                "i64" => "parse::<i64>()",
+                                "u32" => "parse::<u32>()",
+                                "u64" => "parse::<u64>()",
+                                "f32" => "parse::<f32>()",
+                                "f64" => "parse::<f64>()",
+                                "bool" => "parse::<bool>()",
+                                _ => "parse::<f64>()",
+                            };
+                            code.push_str(&format!(
+                                "                self.{} = _text.{}.unwrap_or(self.{});\n",
+                                field_name, parse_method, field_name
+                            ));
+                        }
                     }
 
                     // Skip redundant self-assignment body (e.g. `.email = .email`)
-                    let self_assign = format!("self.{} = self.{}", field_name, field_name);
-                    if !body.trim().eq(&self_assign) && !body.trim().is_empty() {
+                    // Check if the body is entirely composed of self-assignments for the bound fields
+                    let all_self_assign = field_names.iter().all(|f| {
+                        let self_assign = format!("self.{} = self.{}", f, f);
+                        body.trim() == self_assign
+                    });
+                    if !all_self_assign && !body.trim().is_empty() {
                         code.push_str(&format!("                {}\n", body));
                     }
                 } else {
@@ -1088,7 +1099,7 @@ impl RustGenerator {
                         for (event, handler) in events {
                             if matches!(event.as_str(), "oninput" | "onInput" | "onchange" | "onChange") {
                                 let variant = self.extract_variant_name(&handler.handler);
-                                self.input_fields.insert(variant, name.clone());
+                                self.input_fields.entry(variant).or_default().push(name.clone());
                             }
                         }
                     }
@@ -1242,6 +1253,7 @@ impl RustGenerator {
                     }
 
                     // Events: oninput/onchange → on_change (takes M, not a closure)
+                    //         onenter → on_submit (fires on Enter key)
                     for (event, handler) in events {
                         match event.as_str() {
                             "oninput" | "onInput" | "onchange" | "onChange" => {
@@ -1250,8 +1262,13 @@ impl RustGenerator {
                                 builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 // Record event→field mapping for handler generation
                                 if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
-                                    self.input_fields.insert(variant, name.clone());
+                                    self.input_fields.entry(variant).or_default().push(name.clone());
                                 }
+                            }
+                            "onenter" | "onEnter" | "onsubmit" | "onSubmit" => {
+                                let variant = self.extract_variant_name(&handler.handler);
+                                let msg_name = self.current_msg_name();
+                                builder = format!("{}.on_submit({}::{})", builder, msg_name, variant);
                             }
                             _ => {}
                         }
@@ -1287,7 +1304,7 @@ impl RustGenerator {
                                 let msg_name = self.current_msg_name();
                                 builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
-                                    self.input_fields.insert(variant, name.clone());
+                                    self.input_fields.entry(variant).or_default().push(name.clone());
                                 }
                             }
                             _ => {}

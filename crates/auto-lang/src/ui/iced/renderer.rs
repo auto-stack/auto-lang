@@ -720,7 +720,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 placeholder,
                 value,
                 on_change,
-                on_submit: _,
+                on_submit,
                 width,
                 password: _,
                 style,
@@ -755,14 +755,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                 }
 
+                // Wire on_input for text change tracking
                 if let Some(msg) = on_change {
-                    input_widget.on_input(move |text| {
+                    input_widget = input_widget.on_input(move |text| {
                         INPUT_TEXT.with(|t| *t.borrow_mut() = text.to_string());
                         msg.clone()
-                    }).into()
-                } else {
-                    input_widget.into()
+                    });
                 }
+
+                // Wire on_submit for Enter key press
+                if let Some(msg) = on_submit {
+                    input_widget = input_widget.on_submit(msg);
+                }
+
+                input_widget.into()
             }
 
             AbstractView::Textarea { placeholder, value, on_change, height, style: _ } => {
@@ -812,9 +818,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                 }
 
-                row![checkbox_with_handler, label_widget]
-                    .spacing(4)
-                    .into()
+                let mut row_widget = row![checkbox_with_handler, label_widget].spacing(4);
+
+                // Apply width/height from style to the checkbox row
+                if let Some(ref s) = style {
+                    let iced_style = IcedStyle::from_style(s);
+                    if let Some(ref w) = iced_style.width {
+                        row_widget = row_widget.width(iced_length(w));
+                    }
+                    if let Some(ref h) = iced_style.height {
+                        row_widget = row_widget.height(iced_length(h));
+                    }
+                }
+
+                row_widget.into()
             }
 
             AbstractView::Container {
