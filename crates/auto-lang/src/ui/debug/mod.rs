@@ -9,6 +9,7 @@
 mod edit_sink;
 mod hit_test;
 mod inspector;
+mod inspector_cache;
 mod overlay;
 mod primitives;
 mod source_map;
@@ -20,6 +21,7 @@ use crate::ui::vnode::{VNodeKind, VNodeId};
 pub use edit_sink::DebugEditSink;
 pub use hit_test::hit_test;
 pub use inspector::{inspect_node, NodeInfo};
+pub use inspector_cache::*;
 pub use overlay::{generate_overlay, OverlayColor, OverlayInfo, OverlayRect};
 pub use primitives::{BoxModel, EdgeInsets, Rect};
 pub use source_map::{SourceLocation, SourceMap};
