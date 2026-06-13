@@ -159,6 +159,35 @@ impl InspectorCache {
 }
 
 // =====================================================================
+// Free helpers
+// =====================================================================
+
+/// Backfill layout bounds (as reported by the iced backend) into the cache.
+///
+/// For each `(id_str, (x, y, w, h))`, if `id_str` maps to a known [`VNodeId`],
+/// set that node's `bounds` and a zero-padding `box_model` (so `content ==
+/// bounds`). Padding/margin refinement from `raw_class` is deferred to a later
+/// task (the declared `class` value is not yet populated into `ComputedNode`).
+///
+/// (Plan 307, Task 13.)
+pub fn backfill_bounds(
+    cache: &mut InspectorCache,
+    bounds: &HashMap<String, (f32, f32, f32, f32)>,
+) {
+    for (id_str, (x, y, w, h)) in bounds {
+        if let Some(vnid) = cache.iced_to_vnode(id_str) {
+            let node = cache.get_mut_or_default(vnid);
+            let rect = Rect::new(*x, *y, *w, *h);
+            node.bounds = Some(rect);
+            // Zero padding/margin for now: content == bounds. Padding refinement
+            // (content = bounds − declared padding) is deferred until raw_class
+            // is populated by a later task.
+            node.box_model = Some(BoxModel::from_bounds(rect));
+        }
+    }
+}
+
+// =====================================================================
 // Tests
 // =====================================================================
 
@@ -242,5 +271,59 @@ mod tests {
         assert!(s.contains("Button"));
         assert!(s.contains("10"));
         assert!(s.contains("120"));
+    }
+
+    // -----------------------------------------------------------------
+    // backfill_bounds (Plan 307, Task 13)
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn backfill_bounds_sets_bounds_and_box_model() {
+        let mut cache = InspectorCache::new();
+        let id = VNodeId::new(7);
+        cache.set_iced_map(id, "aura_3_42".into());
+
+        let mut bounds = std::collections::HashMap::new();
+        bounds.insert("aura_3_42".to_string(), (10.0, 20.0, 120.0, 36.0));
+
+        backfill_bounds(&mut cache, &bounds);
+
+        let node = cache.get(id).expect("node inserted");
+        let b = node.bounds.expect("bounds set");
+        assert_eq!((b.x, b.y, b.width, b.height), (10.0, 20.0, 120.0, 36.0));
+
+        let bm = node.box_model.as_ref().expect("box_model set");
+        // Zero padding/margin for now → content == bounds.
+        assert!((bm.content.x - 10.0).abs() < f32::EPSILON);
+        assert!((bm.content.y - 20.0).abs() < f32::EPSILON);
+        assert!((bm.content.width - 120.0).abs() < f32::EPSILON);
+        assert!((bm.content.height - 36.0).abs() < f32::EPSILON);
+        assert!(bm.padding.is_zero());
+        assert!(bm.margin.is_zero());
+    }
+
+    #[test]
+    fn backfill_bounds_skips_unknown_id_str() {
+        let mut cache = InspectorCache::new();
+        cache.set_iced_map(VNodeId::new(7), "aura_3_42".into());
+
+        let mut bounds = std::collections::HashMap::new();
+        // No mapping for "aura_9_99".
+        bounds.insert("aura_9_99".to_string(), (1.0, 2.0, 3.0, 4.0));
+
+        backfill_bounds(&mut cache, &bounds);
+
+        // Known node untouched, and no spurious entry created.
+        assert!(cache.get(VNodeId::new(7)).is_none());
+        assert_eq!(cache.ids().count(), 0);
+    }
+
+    #[test]
+    fn backfill_bounds_empty_map_is_noop() {
+        let mut cache = InspectorCache::new();
+        cache.set_iced_map(VNodeId::new(1), "aura_0_0".into());
+        let bounds = std::collections::HashMap::new();
+        backfill_bounds(&mut cache, &bounds);
+        assert_eq!(cache.ids().count(), 0);
     }
 }

@@ -2116,6 +2116,15 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
         if msg.event == "__bounds_collected" {
             if let Some(ref json) = msg.input_value {
                 if let Ok(bounds_map) = serde_json::from_str::<std::collections::HashMap<String, (f32,f32,f32,f32)>>(json) {
+                    // Backfill layout bounds into the debug InspectorCache first
+                    // (Plan 307, Task 13) — borrows `bounds_map` by ref.
+                    // `live_cache` is `None` outside debug mode (Task 12 clears
+                    // it), so this borrow is the debug gate. Padding/margin
+                    // refinement is deferred until `raw_class` is populated by a
+                    // later task.
+                    if let Some(cache) = state.live_cache.borrow_mut().as_mut() {
+                        crate::ui::debug::backfill_bounds(cache, &bounds_map);
+                    }
                     if let Some(ref mcp) = state.mcp_shared {
                         mcp.lock().unwrap().set_layout_bounds(bounds_map);
                     }
