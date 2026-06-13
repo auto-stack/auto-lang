@@ -1920,6 +1920,8 @@ struct DynamicState {
     console_buffer: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     /// Component tree for DevTools Elements tab, rebuilt each frame.
     component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
+    /// Live VTree snapshot rebuilt each frame for DevTools inspection (Plan 307).
+    live_vtree: std::cell::RefCell<Option<crate::ui::vnode::VTree>>,
     /// Currently editing element ID (Inspector edit mode).
     editing_element: std::cell::RefCell<Option<String>>,
     /// Key for the TEXTAREA_CONTENTS storage used by the inline source editor.
@@ -2062,6 +2064,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             source_line_offsets: std::cell::RefCell::new(Vec::new()),
             console_buffer: crate::libs::builtin::enable_ui_console(),
             component_tree: std::cell::RefCell::new(None),
+            live_vtree: std::cell::RefCell::new(None),
             editing_element: std::cell::RefCell::new(None),
             edit_textarea_key: std::cell::RefCell::new(None),
             edit_span: std::cell::RefCell::new(None),
@@ -2880,6 +2883,28 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             (converted, debug_id_map)
         }
     };
+
+    // Plan 307 Task 5: build a live VTree once per frame for the DevTools inspector.
+    // `converted` is the exact View<IcedMessage> tree about to be rendered. Built
+    // here (before `converted` is moved into render_dynamic_view and before
+    // `debug_id_map` is moved into debug_ctx) as a side-effect snapshot only.
+    if let Some(id_map) = &debug_id_map {
+        let span_map = state.component.span_map().clone();
+        let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
+            converted.clone(),
+            |path: &[u16]| {
+                let p: Vec<usize> = path.iter().map(|&x| x as usize).collect();
+                id_map
+                    .get(&p)
+                    .and_then(|aura_id| span_map.get(&aura_id))
+                    .and_then(|info| info.span)
+                    .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
+            },
+        );
+        *state.live_vtree.borrow_mut() = Some(vtree);
+    } else {
+        *state.live_vtree.borrow_mut() = None;
+    }
 
     // Clear view_dirty after consuming the change.
     // Do this BEFORE rendering so that subscriptions/events arriving during
