@@ -300,10 +300,17 @@ scene <Name> : <GodotType> {
 - `trans/gdscript.rs`：新增 `is_godot_builtin_type(name)` 内建类型白名单（数学类型 / 节点 / 资源）；`is_generic_param` 与 `is_type_decl_generic_param` 的启发式增加该白名单豁免 —— 真正的泛型参数 `T` 仍被丢弃（GDScript 无泛型），Godot 类型标注得以保留
 - 测试：`test/a2gd/17_godot_types/001_vector2`（Vector2/Color 在签名中保留标注，与 `08_generics` 中 `T` 被丢弃形成对照）
 
-**待办 —— `@export` / `$node`（需设计决策）**
+**`$node`（✅ 已验证 — 无需改动）**
 
-- **`@export`**：需让 `var` 携带标注。当前 `#[...]` 注解只解析到 `fn`/`type` 之前，`Store` 无标注字段。拟用 `#[export] var speed float = 300.0` → `@export var speed: float = 300.0`，但需：(1) 给 `Store` 加 `is_export`/`attrs` 字段并更新全部构造点（约 8 处）；(2) 在 parser 的 `#[...]` 分支增加对 `var`/`let` 的处理。属核心 AST 改动，风险较高，待确认语法后再做。
-- **`$node`**：GDScript 的 `$Sprite`（= `get_node("Sprite")`）。Auto 无 `$` 一元运算符。拟以约定支持：`get_node("Sprite")` 直接透传（已是合法 GDScript），或新增 `$` 语法。优先验证现有 `get_node` 透传是否够用。
+GDScript 的 `$Sprite` 等价于 `get_node("Sprite")`。实测 `get_node("Sprite")`、嵌套路径 `get_node("UI/Label")`、节点字段赋值 `sprite.position = Vector2(...)` 均能原样透传为合法 GDScript。`get_node` 即惯用写法，足以覆盖需求；`$` 简写（需新增 `$` 一元运算符）留作可选增强，非必需。
+
+**待办 —— `@export`（需语法决策，尚未实施）**
+
+需让 `var` 携带导出标注：`#[export] var speed float = 300.0` → `@export var speed: float = 300.0`。实测改动面较大：
+- `ast/store.rs`：`Store` 结构体当前只有 `kind/name/ty/expr` 四字段，无标注位；需加 `is_export`/`attrs` 字段，并更新 `Display`/`AtomWriter`/`ToNode`/`ToAtom` 四个 trait 实现
+- `parser.rs`：约 **24 处** `Store { ... }` 构造点需补字段（多为内部 `Meta::Store` 元数据绑定，非用户变量）；且 `#[...]` 注解流程（`parse_fn_annotations`，line 3520/3837/7610）当前只接 `fn`/`type`/`task`，需新增 `var`/`let` 分支把 export 标记透传到 Store
+
+属核心 AST 改动，机械但面广。`#[export]` 仅为候选语法，尚未定案 —— 实施前需确认语法（`#[export]` 属性 vs 专用关键字 vs `@export` 字面量）。
 
 ---
 
