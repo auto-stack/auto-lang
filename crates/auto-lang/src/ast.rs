@@ -203,6 +203,8 @@ pub enum Stmt {
     MsgDecl(MsgDecl),
     ModelBlock(ModelBlock),
     ViewBlock(ViewBlock),
+    // Plan 306: Godot scene declaration (.tscn generation)
+    SceneDecl(SceneDecl),
     // Plan 121: Task/Msg system
     TaskDef(TaskDef),
     // Plan 095: Compile-time execution
@@ -279,6 +281,8 @@ impl fmt::Display for Stmt {
             Stmt::MsgDecl(msg) => write!(f, "(msg {})", msg.name),
             Stmt::ModelBlock(model) => write!(f, "(model {} fields)", model.fields.len()),
             Stmt::ViewBlock(_view) => write!(f, "(view)"),
+            // Plan 306: Godot scene declaration
+            Stmt::SceneDecl(scene) => write!(f, "(scene {} : {})", scene.name, scene.node_type),
             // Plan 121: Task/Msg system
             Stmt::TaskDef(task) => write!(f, "{}", task),
             // Plan 095: Compile-time execution
@@ -1135,6 +1139,13 @@ impl ToNode for Stmt {
                 node
             }
             Stmt::ViewBlock(_) => AutoNode::new("view"),
+            // Plan 306: Godot scene declaration
+            Stmt::SceneDecl(scene) => {
+                let mut node = AutoNode::new("scene");
+                node.add_arg(auto_val::Arg::Pos(Value::str(scene.name.as_str())));
+                node.set_prop("type", Value::str(scene.node_type.as_str()));
+                node
+            }
             // Plan 121: Task/Msg system
             Stmt::TaskDef(task) => task.to_node(),
             // Plan 124 Phase 2.3: reply statement for ask/reply RPC
@@ -1193,6 +1204,8 @@ impl ToAtom for Stmt {
             Stmt::MsgDecl(msg) => format!("(msg {})", msg.name).into(),
             Stmt::ModelBlock(model) => format!("(model {} fields)", model.fields.len()).into(),
             Stmt::ViewBlock(_) => "(view)".into(),
+            // Plan 306: Godot scene declaration
+            Stmt::SceneDecl(scene) => format!("(scene {} : {})", scene.name, scene.node_type).into(),
             // Plan 121: Task/Msg system
             Stmt::TaskDef(task) => task.to_atom(),
             // Plan 124 Phase 2.3: reply statement for ask/reply RPC

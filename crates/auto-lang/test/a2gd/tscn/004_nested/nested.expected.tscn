@@ -1,0 +1,10 @@
+[gd_scene load_steps=1 format=3 uid="uid://tnah3cot3ig6"]
+
+[node name="World" type="Node2D"]
+
+[node name="Level" type="Node2D" parent="."]
+
+[node name="Spawns" type="Node2D" parent="Level"]
+
+[node name="Spawn1" type="Marker2D" parent="Level/Spawns"]
+position = Vector2(10, 20)

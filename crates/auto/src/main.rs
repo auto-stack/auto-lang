@@ -225,6 +225,10 @@ enum TransTarget {
         #[arg(short, long, help = "Output file path (default: same name with .gd extension)")]
         output: Option<String>,
     },
+    Tscn {
+        #[arg(short, long, help = "Output file path (default: same name with .tscn extension)")]
+        output: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -1278,6 +1282,18 @@ fn real_main(cli: Cli) -> Result<()> {
                     println!("[trans] {} -> {}", path, out);
                 } else {
                     output_success(ai_mode, &gd);
+                }
+            }
+            TransTarget::Tscn { output } => {
+                let tscn = auto_lang::trans_tscn(path.as_str()).map_err(|e| {
+                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    to_miette_err(e)
+                })?;
+                if let Some(out) = output {
+                    std::fs::write(&out, &tscn).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    println!("[trans] {} -> {}", path, out);
+                } else {
+                    output_success(ai_mode, &tscn);
                 }
             }
         }

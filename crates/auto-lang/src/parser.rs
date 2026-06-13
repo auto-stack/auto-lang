@@ -3654,19 +3654,25 @@ impl<'a> Parser<'a> {
             TokenKind::LBrace => Stmt::Block(self.body()?),
             // Node Instance or UI contextual keywords
             TokenKind::Ident => {
-                // Plan 096: Check for UI contextual keywords
-                let ident = self.cur.text.as_str();
-                if self.is_contextual_keyword(ident) {
-                    match ident {
-                        "widget" => self.parse_widget_decl()?,
-                        "msg" => self.parse_msg_decl()?,
-                        "model" => self.parse_model_block()?,
-                        "view" => self.parse_view_block()?,
-                        "on" => Stmt::OnEvents(self.parse_on_events()?),
-                        _ => self.parse_node_or_call_stmt()?,
-                    }
+                // Plan 306: Godot scene declaration (recognized in any scenario).
+                // Checked before borrowing `ident` to satisfy the borrow checker.
+                if self.looks_like_scene_decl() {
+                    self.parse_scene_decl()?
                 } else {
-                    self.parse_node_or_call_stmt()?
+                    let ident = self.cur.text.as_str();
+                    if self.is_contextual_keyword(ident) {
+                        // Plan 096: UI contextual keywords
+                        match ident {
+                            "widget" => self.parse_widget_decl()?,
+                            "msg" => self.parse_msg_decl()?,
+                            "model" => self.parse_model_block()?,
+                            "view" => self.parse_view_block()?,
+                            "on" => Stmt::OnEvents(self.parse_on_events()?),
+                            _ => self.parse_node_or_call_stmt()?,
+                        }
+                    } else {
+                        self.parse_node_or_call_stmt()?
+                    }
                 }
             }
             // Enum Definition
@@ -9808,6 +9814,198 @@ impl<'a> Parser<'a> {
             routes,
             lifecycle: vec![],
         }))
+    }
+
+    // ========================================================================
+    // Plan 306: Godot scene declaration parsing
+    // ========================================================================
+
+    /// Check if the current position is `scene <Ident>` — a scene declaration.
+    /// Uses one-token lookahead so `scene.foo()` or `scene()` still parse as
+    /// ordinary expressions/statements.
+    fn looks_like_scene_decl(&mut self) -> bool {
+        if !(self.cur.kind == TokenKind::Ident && self.cur.text == "scene") {
+            return false;
+        }
+        let scene_tok = self.cur.clone();
+        self.next(); // advance past 'scene'
+        let is_name_next = self.cur.kind == TokenKind::Ident;
+        // Restore both tokens (push in reverse consumption order: name first, scene last)
+        self.lexer.push_token(self.cur.clone());
+        self.lexer.push_token(scene_tok);
+        self.next(); // restore cur to 'scene'
+        is_name_next
+    }
+
+    /// Parse a string literal token, returning its (unquoted) text content.
+    fn parse_string_lit(&mut self) -> AutoResult<AutoStr> {
+        if self.is_kind(TokenKind::Str) {
+            let s = self.cur.text.clone();
+            self.next();
+            Ok(s)
+        } else {
+            Err(SyntaxError::UnexpectedToken {
+                expected: "string literal".to_string(),
+                found: self.cur.text.to_string(),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into())
+        }
+    }
+
+    /// Plan 306: Parse a Godot scene declaration.
+    ///
+    /// ```text
+    /// scene Name : Type {
+    ///     script = "path.gd"
+    ///     prop = value
+    ///     node Type ["Name"] { ... }
+    ///     instance Name "res://path.tscn"
+    ///     connect signal from "NodePath" to "NodePath" method "method_name"
+    /// }
+    /// ```
+    pub fn parse_scene_decl(&mut self) -> AutoResult<Stmt> {
+        self.expect_ident("scene")?;
+        let name = self.cur.text.clone();
+        self.next();
+        self.expect(TokenKind::Colon)?;
+        let node_type = self.cur.text.clone();
+        self.next();
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut props = Vec::new();
+        let mut script = None;
+        let mut children = Vec::new();
+        let mut connections = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            let kw = self.cur.text.as_str();
+            match kw {
+                "script" => {
+                    self.next();
+                    self.expect(TokenKind::Asn)?;
+                    script = Some(self.parse_string_lit()?);
+                }
+                "node" => {
+                    children.push(self.parse_scene_node()?);
+                }
+                "instance" => {
+                    children.push(self.parse_scene_instance()?);
+                }
+                "connect" => {
+                    connections.push(self.parse_scene_connection()?);
+                }
+                _ => {
+                    // property assignment: name = expr
+                    let prop_name = self.cur.text.clone();
+                    self.next();
+                    self.expect(TokenKind::Asn)?;
+                    let value = self.parse_expr()?;
+                    props.push(SceneProp {
+                        name: prop_name,
+                        value,
+                    });
+                }
+            }
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(Stmt::SceneDecl(SceneDecl {
+            name,
+            node_type,
+            props,
+            script,
+            children,
+            connections,
+        }))
+    }
+
+    /// Parse a child scene node: `node Type ["Name"] { props; children }`
+    fn parse_scene_node(&mut self) -> AutoResult<SceneNode> {
+        self.expect_ident("node")?;
+        let node_type = self.cur.text.clone();
+        self.next();
+
+        // Optional explicit instance name: node Type "Name"
+        let name = if self.is_kind(TokenKind::Str) {
+            let n = self.cur.text.clone();
+            self.next();
+            Some(n)
+        } else {
+            None
+        };
+
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut props = Vec::new();
+        let mut children = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            let kw = self.cur.text.as_str();
+            match kw {
+                "node" => children.push(self.parse_scene_node()?),
+                "instance" => children.push(self.parse_scene_instance()?),
+                _ => {
+                    let prop_name = self.cur.text.clone();
+                    self.next();
+                    self.expect(TokenKind::Asn)?;
+                    let value = self.parse_expr()?;
+                    props.push(SceneProp {
+                        name: prop_name,
+                        value,
+                    });
+                }
+            }
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(SceneNode::Node {
+            node_type,
+            name,
+            props,
+            children,
+        })
+    }
+
+    /// Parse a scene instance: `instance Name "res://path.tscn"`
+    fn parse_scene_instance(&mut self) -> AutoResult<SceneNode> {
+        self.expect_ident("instance")?;
+        let name = self.cur.text.clone();
+        self.next();
+        let path = self.parse_string_lit()?;
+        Ok(SceneNode::Instance { name, path })
+    }
+
+    /// Parse a signal connection:
+    /// `connect <signal> from "NodePath" to "NodePath" method "method_name"`
+    fn parse_scene_connection(&mut self) -> AutoResult<SceneConnection> {
+        self.expect_ident("connect")?;
+        let signal = self.cur.text.clone();
+        self.next();
+        self.expect_ident("from")?;
+        let from = self.parse_string_lit()?;
+        self.expect_ident("to")?;
+        let to = self.parse_string_lit()?;
+        self.expect_ident("method")?;
+        let method = self.parse_string_lit()?;
+        Ok(SceneConnection {
+            signal,
+            from,
+            to,
+            method,
+        })
     }
 
     /// Parse widget props: (name: type, name: type = default, ...)

@@ -1,0 +1,15 @@
+// Plan 306: Player scene — Area2D root with typed children + a signal connection.
+scene Player : Area2D {
+    script = "player.gd"
+    z_index = 10
+
+    node AnimatedSprite2D {
+        position = Vector2(0, 0)
+    }
+
+    node CollisionShape2D "Collision" {
+        visible = true
+    }
+
+    connect body_entered from "." to "." method "_on_body_entered"
+}

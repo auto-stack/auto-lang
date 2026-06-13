@@ -1,0 +1,10 @@
+// Plan 306: Nested nodes — verifies parent path is computed as "A/B".
+scene World : Node2D {
+    node Node2D "Level" {
+        node Node2D "Spawns" {
+            node Marker2D "Spawn1" {
+                position = Vector2(10, 20)
+            }
+        }
+    }
+}

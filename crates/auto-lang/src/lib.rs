@@ -2751,6 +2751,26 @@ pub fn trans_gdscript(path: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, gdname))
 }
 
+/// Transpile an AutoLang scene declaration to a Godot `.tscn` file (Plan 306).
+///
+/// Reads `path` (an `.at` file containing a `scene` declaration), parses it,
+/// finds the `SceneDecl`, and writes a `.tscn` file next to the source.
+pub fn trans_tscn(path: &str) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let tscn_name = path.replace(".at", ".tscn");
+
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let mut parser = Parser::from(code.as_str());
+    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let tscn = crate::trans::tscn::generate_from_ast(&ast)
+        .ok_or_else(|| format!("No `scene` declaration found in {}", path))?;
+
+    std::fs::write(&tscn_name, tscn)?;
+    Ok(format!("[trans] {} -> {}", path, tscn_name))
+}
+
 /// Transpile AutoLang file to TypeScript (Plan 100: a2js → a2ts)
 pub fn trans_typescript(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)

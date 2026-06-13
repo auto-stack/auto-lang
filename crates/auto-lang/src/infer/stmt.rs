@@ -112,6 +112,9 @@ pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoE
             Ok(Type::Void)
         }
 
+        // Plan 306: Godot scene declaration - declarative, no type checking
+        Stmt::SceneDecl(_) => Ok(Type::Void),
+
         // Plan 121: Task/Msg system - no type checking needed
         Stmt::TaskDef(_) => Ok(Type::Void),
 

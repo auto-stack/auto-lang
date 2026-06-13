@@ -153,6 +153,9 @@ impl<'db> Indexer<'db> {
                     // Phase 2: Could index widget declarations
                 }
 
+                // Plan 306: Godot scene declaration - skip for indexing
+                Stmt::SceneDecl(_) => {}
+
                 // Plan 121: Task/Msg system
                 Stmt::TaskDef(_) => {
                     // For now, skip task declarations

@@ -1,0 +1,24 @@
+// Plan 306: Main scene — instances + timers + signal connections.
+scene Main : Node {
+    script = "main.gd"
+
+    instance Player "res://player.tscn"
+
+    node Timer "MobTimer" {
+        wait_time = 0.5
+    }
+
+    node Timer "ScoreTimer" {
+        wait_time = 1.0
+    }
+
+    node Timer "StartTimer" {
+        wait_time = 2.0
+        one_shot = true
+    }
+
+    instance HUD "res://hud.tscn"
+
+    connect timeout from "MobTimer" to "." method "_on_MobTimer_timeout"
+    connect timeout from "ScoreTimer" to "." method "_on_ScoreTimer_timeout"
+}

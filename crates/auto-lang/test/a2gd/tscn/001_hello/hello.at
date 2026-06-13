@@ -1,0 +1,9 @@
+// Plan 306: Minimal scene — one Control root, one Label child, a script.
+scene HelloWorld : Control {
+    script = "hello.gd"
+
+    node Label "Title" {
+        text = "Hello, Godot!"
+        position = Vector2(100, 200)
+    }
+}

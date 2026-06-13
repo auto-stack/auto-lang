@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3 uid="uid://bp3p6bbyrpr4"]
+
+[ext_resource type="Script" path="res://hello.gd" id="1"]
+
+[node name="HelloWorld" type="Control"]
+script = ExtResource("1")
+
+[node name="Title" type="Label" parent="."]
+text = "Hello, Godot!"
+position = Vector2(100, 200)

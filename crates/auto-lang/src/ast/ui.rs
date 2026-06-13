@@ -5,6 +5,7 @@
 
 use super::{Body, Expr, Name, Type};
 use super::route::RoutesBlock;
+use auto_val::AutoStr;
 
 // ============================================================================
 // Widget Declaration
@@ -503,6 +504,78 @@ impl ViewNode {
         }
         self
     }
+}
+
+// ============================================================================
+// Godot Scene Declaration (Plan 306)
+// ============================================================================
+//
+// Describes a Godot scene tree that the TscnGenerator emits as a `.tscn` file.
+// `scene` is a top-level contextual keyword (Plan 306). It is parsed in any
+// scenario but only meaningful when targeting Godot.
+
+/// A Godot scene declaration that generates a `.tscn` file.
+///
+/// ```auto
+/// scene Player : Area2D {
+///     script = "player.gd"
+///     z_index = 10
+///
+///     node AnimatedSprite2D {
+///         ...
+///     }
+///
+///     connect body_entered from "." to "." method "_on_body_entered"
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct SceneDecl {
+    /// Scene (root node) name, e.g. "Player"
+    pub name: Name,
+    /// Godot root node type, e.g. "Area2D", "Control", "Node"
+    pub node_type: Name,
+    /// Root node properties (`key = value`)
+    pub props: Vec<SceneProp>,
+    /// Attached script path, e.g. `"player.gd"` (emits an ext_resource)
+    pub script: Option<AutoStr>,
+    /// Child nodes and scene instances, in declaration order
+    pub children: Vec<SceneNode>,
+    /// Signal connections (`connect signal from ... to ... method ...`)
+    pub connections: Vec<SceneConnection>,
+}
+
+/// A single `name = value` property on a scene node.
+#[derive(Debug, Clone)]
+pub struct SceneProp {
+    pub name: Name,
+    pub value: Expr,
+}
+
+/// A child of a scene node — either a typed node or an instance of another scene.
+#[derive(Debug, Clone)]
+pub enum SceneNode {
+    /// `node Type ["Name"] { props; children }`
+    Node {
+        node_type: Name,
+        /// Optional explicit instance name; defaults to node_type
+        name: Option<AutoStr>,
+        props: Vec<SceneProp>,
+        children: Vec<SceneNode>,
+    },
+    /// `instance Name "res://path.tscn"`
+    Instance {
+        name: AutoStr,
+        path: AutoStr,
+    },
+}
+
+/// A signal connection: `connect signal from <path> to <path> method <name>`
+#[derive(Debug, Clone)]
+pub struct SceneConnection {
+    pub signal: AutoStr,
+    pub from: AutoStr,
+    pub to: AutoStr,
+    pub method: AutoStr,
 }
 
 // ============================================================================
