@@ -591,6 +591,11 @@ mod tests {
         test_a2tscn("godot_demos/instancing/001_ball").unwrap();
     }
 
+    #[test]
+    fn test_godot_demo_hexagonal_troll_scene() {
+        test_a2tscn("godot_demos/hexagonal_map/001_troll").unwrap();
+    }
+
     /// Plan 306 Phase 2b: one .at file carries both a `scene` (→ .tscn) and
     /// functions (→ .gd). The .tscn comes from the scene; the GDScript pass
     /// must skip the SceneDecl without erroring and keep the functions.
