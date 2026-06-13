@@ -495,6 +495,18 @@ impl<'a> AuraViewBuilder<'a> {
         probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
+        // Record event handler bindings for this element, at this node's own
+        // path (set by the caller's `path.push(child_index)`). Runs before the
+        // `match tag` dispatch so it is unconditional — every element with
+        // events (button/input/textarea/checkbox, etc.) is captured regardless
+        // of whether its tag falls into the tracked or untracked converter arm.
+        if !events.is_empty() {
+            let ev_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+            for (event_name, ev) in events.iter() {
+                probe.record_event(&ev_path, event_name, &ev.handler);
+            }
+        }
+
         match tag {
             // Core layout widgets — recurse children with path tracking.
             "col" | "column" => self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings),
@@ -2264,6 +2276,86 @@ mod tests {
         assert_eq!(by_index, vec![(0, "apple"), (1, "banana"), (2, "cherry")]);
         assert_eq!(for_entries[0].var, "item");
         assert_eq!(for_entries[0].iterable_repr, ".items");
+    }
+
+    // ========================================================================
+    // Plan 307 Task 11 — event handler binding capture
+    // ========================================================================
+
+    #[test]
+    fn build_with_debug_captures_event_handler() {
+        use crate::aura::AuraEvent;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::Element {
+            tag: "button".to_string(),
+            props: HashMap::from([
+                ("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Inc".to_string()))),
+            ]),
+            events: HashMap::from([
+                ("onclick".to_string(), AuraEvent {
+                    handler: ".Inc".to_string(),
+                    params: vec![],
+                }),
+            ]),
+            children: vec![],
+            span: None,
+            debug_id: None,
+        };
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        let all_events: Vec<_> = snap.values().flat_map(|e| e.events.iter()).collect();
+        assert_eq!(all_events.len(), 1);
+        assert_eq!(all_events[0].event, "onclick");
+        assert_eq!(all_events[0].handler, ".Inc");
+    }
+
+    #[test]
+    fn build_with_debug_captures_event_handlers_distinct_paths() {
+        use crate::aura::AuraEvent;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let button = |handler: &str| AuraNode::Element {
+            tag: "button".to_string(),
+            props: HashMap::new(),
+            events: HashMap::from([
+                ("onclick".to_string(), AuraEvent {
+                    handler: handler.to_string(),
+                    params: vec![],
+                }),
+            ]),
+            children: vec![],
+            span: None,
+            debug_id: None,
+        };
+
+        let node = AuraNode::Element {
+            tag: "col".to_string(),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            children: vec![button(".Inc"), button(".Dec")],
+            span: None,
+            debug_id: None,
+        };
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        // Each button is captured at its own child path with one event each.
+        let event_paths: Vec<(Vec<u16>, &str)> = snap.iter()
+            .flat_map(|(path, e)| e.events.iter().map(move |ev| (path.clone(), ev.handler.as_str())))
+            .collect();
+        assert_eq!(event_paths.len(), 2, "two events captured");
+        let handlers: Vec<&str> = {
+            let mut h = event_paths.iter().map(|(_, h)| *h).collect::<Vec<_>>();
+            h.sort();
+            h
+        };
+        assert_eq!(handlers, vec![".Dec", ".Inc"]);
+        // distinct paths
+        assert_ne!(event_paths[0].0, event_paths[1].0, "distinct child paths");
     }
 
     #[test]
