@@ -572,12 +572,13 @@ impl IcedStyle {
             StyleClass::Flex1 => {
                 // flex-1: expand to fill available space along the main axis.
                 // In CSS Tailwind, flex-1 means flex-grow:1 flex-shrink:1 flex-basis:0%.
-                // IcedStyle doesn't know the parent's flex direction, so we only set
-                // width=Full (the most common case: items in a Row). Setting height=Full
-                // here causes unintended vertical stretching (e.g. buttons in a Row).
-                // For vertical flex-1, users should add h-full explicitly.
+                // Set both width and height to Fill so it works in both Row (horizontal)
+                // and Column (vertical) parent contexts. Only set when not already specified.
                 if self.width.is_none() {
                     self.width = Some(IcedSize::Full);
+                }
+                if self.height.is_none() {
+                    self.height = Some(IcedSize::Full);
                 }
             }
             StyleClass::ItemsCenter => {
