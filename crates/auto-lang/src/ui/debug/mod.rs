@@ -6,6 +6,7 @@
 //!
 //! When disabled the layer is inert -- zero overhead on the render path.
 
+mod build_probe;
 mod edit_sink;
 mod hit_test;
 mod inspector;
@@ -19,6 +20,7 @@ use std::collections::HashMap;
 
 use crate::ui::vnode::{VNodeKind, VNodeId};
 
+pub use build_probe::*;
 pub use edit_sink::DebugEditSink;
 pub use hit_test::hit_test;
 pub use inspector::{inspect_node, NodeInfo};
