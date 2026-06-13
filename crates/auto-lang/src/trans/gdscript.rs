@@ -949,6 +949,41 @@ impl GDScriptTrans {
             return self.method_call(obj, method_name, &call.args, out);
         }
 
+        // Builtin function mapping
+        if let Some(ident) = self.extract_call_name(&call.name) {
+            match ident.as_ref() {
+                // Identical in GDScript — just pass through
+                "print" | "len" | "range" | "abs" | "min" | "max" | "str" | "int" | "float"
+                | "clamp" | "lerp" | "wrapi" | "wrapf" => {
+                    return self.emit_plain_call(call, out);
+                }
+                // type_name(x) → typeof(x)
+                "type_name" => {
+                    out.write(b"typeof(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, out)?;
+                    }
+                    out.write(b")")?;
+                    return Ok(());
+                }
+                // sleep_ms(ms) → await get_tree().create_timer(ms / 1000.0).timeout
+                "sleep_ms" => {
+                    out.write(b"await get_tree().create_timer(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, out)?;
+                    }
+                    out.write(b" / 1000.0).timeout")?;
+                    return Ok(());
+                }
+                // time_now() → Time.get_ticks_msec() / 1000.0
+                "time_now" => {
+                    out.write(b"Time.get_ticks_msec() / 1000.0")?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
         self.emit_plain_call(call, out)
     }
 
@@ -1507,5 +1542,10 @@ mod tests {
     #[test]
     fn test_dict_methods() {
         test_a2gd("10_collections/002_dict_methods").unwrap();
+    }
+
+    #[test]
+    fn test_builtin_map() {
+        test_a2gd("16_gdscript_std/001_builtin_map").unwrap();
     }
 }

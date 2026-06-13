@@ -1,0 +1,11 @@
+fn main() {
+    let x = -5
+    let absolute = abs(x)
+    let bigger = max(3, 7)
+    let smaller = min(3, 7)
+    let t = type_name(x)
+    let nums = range(0, 10)
+    print(absolute)
+    print(bigger)
+    print(t)
+}
