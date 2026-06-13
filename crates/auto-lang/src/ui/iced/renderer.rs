@@ -1922,6 +1922,10 @@ struct DynamicState {
     component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
     /// Live VTree snapshot rebuilt each frame for DevTools inspection (Plan 307).
     live_vtree: std::cell::RefCell<Option<crate::ui::vnode::VTree>>,
+    /// Live BuildProbe snapshot rebuilt each frame for DevTools inspection
+    /// (Plan 307 Task 9). Holds per-path AutoUI data (state bindings etc.)
+    /// captured during the tracked view build. Consumed by later tasks.
+    live_probe: std::cell::RefCell<Option<crate::ui::debug::BuildProbe>>,
     /// Currently editing element ID (Inspector edit mode).
     editing_element: std::cell::RefCell<Option<String>>,
     /// Key for the TEXTAREA_CONTENTS storage used by the inline source editor.
@@ -2065,6 +2069,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             console_buffer: crate::libs::builtin::enable_ui_console(),
             component_tree: std::cell::RefCell::new(None),
             live_vtree: std::cell::RefCell::new(None),
+            live_probe: std::cell::RefCell::new(None),
             editing_element: std::cell::RefCell::new(None),
             edit_textarea_key: std::cell::RefCell::new(None),
             edit_span: std::cell::RefCell::new(None),
@@ -2798,7 +2803,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         }
         let state_vals = state.component.read_all_state();
         let input_map = state.component.input_state_map().clone();
-        let (view, id_map) = state.component.view_with_debug();
+        let (view, id_map, _probe) = state.component.view_with_debug();
         let view_template = Some(state.component.view_template().clone());
         mcp.update(view, id_map, state_vals, input_map, view_template);
         // Sync window size for layout annotations (Plan 281)
@@ -2853,8 +2858,10 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     let (converted, debug_id_map) = if dirty {
         // Full rebuild: construct AbstractView from template, cache the result.
-        let (mut view, debug_id_map) = state.component.view_with_debug();
+        let (mut view, debug_id_map, probe) = state.component.view_with_debug();
         let debug_id_map = Some(debug_id_map);
+        // Store the live probe snapshot for DevTools (consumed in later tasks).
+        *state.live_probe.borrow_mut() = Some(probe);
         inject_todo_list(&mut view, &state.todos, state.component.widget_name());
         if !state.input_values.is_empty() {
             patch_input_values(&mut view, &state.input_values);
@@ -2871,8 +2878,10 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             (converted.clone(), debug_id_map)
         } else {
             drop(cached);
-            let (mut view, debug_id_map) = state.component.view_with_debug();
+            let (mut view, debug_id_map, probe) = state.component.view_with_debug();
             let debug_id_map = Some(debug_id_map);
+            // Store the live probe snapshot for DevTools (consumed in later tasks).
+            *state.live_probe.borrow_mut() = Some(probe);
             inject_todo_list(&mut view, &state.todos, state.component.widget_name());
             if !state.input_values.is_empty() {
                 patch_input_values(&mut view, &state.input_values);
@@ -2904,6 +2913,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         *state.live_vtree.borrow_mut() = Some(vtree);
     } else {
         *state.live_vtree.borrow_mut() = None;
+        *state.live_probe.borrow_mut() = None;
     }
 
     // Clear view_dirty after consuming the change.
