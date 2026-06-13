@@ -1,0 +1,14 @@
+// Lesson 9: Adding and Subtracting — Taking Damage
+// Source: learn-gdscript/course/lesson-09-adding-and-subtracting
+var health = 100
+
+fn take_damage(amount) {
+    health = health - amount
+}
+
+fn main() {
+    take_damage(30)
+    print(health)
+    take_damage(25)
+    print(health)
+}

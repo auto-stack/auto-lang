@@ -1,0 +1,17 @@
+// Lesson 13: Conditions — Prevent Health Below Zero
+// Source: learn-gdscript/course/lesson-13-conditions
+var health = 20
+
+fn take_damage(amount) {
+    health = health - amount
+    if health < 0 {
+        health = 0
+    }
+}
+
+fn main() {
+    take_damage(10)
+    print(health)
+    take_damage(50)
+    print(health)
+}

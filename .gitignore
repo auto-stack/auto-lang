@@ -28,6 +28,8 @@ history.txt
 *.wrong.out
 *.wrong.result
 *.wrong.ets
+*.wrong.gd
+*.wrong.tscn
 
 # IAR IDE
 .arts/

@@ -1,0 +1,11 @@
+// Lesson 25: Creating Dictionaries
+// Source: learn-gdscript/course/lesson-25-creating-dictionaries
+var inventory = {
+    healing_heart: 3,
+    gems: 9,
+    sword: 1
+}
+
+fn main() {
+    print(inventory)
+}

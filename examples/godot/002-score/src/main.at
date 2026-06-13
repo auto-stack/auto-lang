@@ -1,0 +1,30 @@
+// 002-score: Score tracking system with functions
+// Based on: Godot "Your first 2D game" — score counting logic
+// Tests: var (mutable), functions, if/else, arithmetic, string concat
+
+var score int = 0
+var high_score int = 0
+
+fn add_score(points int) void {
+    score = score + points
+    if score > high_score {
+        high_score = score
+    }
+    print(score)
+}
+
+fn reset_score() void {
+    score = 0
+    print(0)
+}
+
+fn main() {
+    add_score(10)
+    add_score(25)
+    add_score(50)
+    add_score(15)
+    print(high_score)
+    reset_score()
+    add_score(5)
+    print(high_score)
+}

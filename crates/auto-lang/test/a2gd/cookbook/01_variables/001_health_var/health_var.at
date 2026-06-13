@@ -1,0 +1,7 @@
+// Lesson 8: Defining Variables
+// Source: learn-gdscript/course/lesson-08-defining-variables
+var health = 100
+
+fn main() {
+    print(health)
+}

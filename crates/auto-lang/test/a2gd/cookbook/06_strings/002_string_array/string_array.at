@@ -1,0 +1,13 @@
+// Lesson 21: Strings — Array of Strings
+// Source: learn-gdscript/course/lesson-21-strings
+var combo = ["jab", "jab", "uppercut"]
+
+fn play_animation(name) {
+    print(name)
+}
+
+fn main() {
+    for animation_name in combo {
+        play_animation(animation_name)
+    }
+}

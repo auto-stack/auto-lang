@@ -1,0 +1,13 @@
+// Lesson 12: Using Variables for Clarity
+// Source: learn-gdscript/course/lesson-12-using-variables
+var angular_speed = 4
+
+fn set_angular_speed(new_speed) {
+    angular_speed = new_speed
+}
+
+fn main() {
+    print(angular_speed)
+    set_angular_speed(8)
+    print(angular_speed)
+}

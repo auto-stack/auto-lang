@@ -1,0 +1,35 @@
+// 004-waves: Enemy wave spawning system
+// Based on: Godot "Your first 2D game" — mob spawning with difficulty scaling
+// Tests: for-in range, loops, functions, collections (arrays), variable mutation
+
+fn spawn_wave(wave_num int, base_count int) int {
+    let count = base_count + wave_num * 2
+    var hp_mult = 1.0
+    hp_mult = 1.0 + wave_num * 0.1
+
+    for i in 0..count {
+        let enemy_hp = 50 * hp_mult
+        print(enemy_hp)
+    }
+
+    return count
+}
+
+fn run_game() void {
+    let base = 3
+    var total = 0
+    var wave = 1
+
+    for wave <= 5 {
+        let spawned = spawn_wave(wave, base)
+        total = total + spawned
+        print(total)
+        wave = wave + 1
+    }
+
+    print(total)
+}
+
+fn main() {
+    run_game()
+}

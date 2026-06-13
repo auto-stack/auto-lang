@@ -1,0 +1,9 @@
+// Lesson 21: Strings — Concatenation
+// Source: learn-gdscript/course/lesson-21-strings
+var robot_name = "Robi"
+
+fn main() {
+    print("Hi, " + robot_name + "!")
+    let msg = "The robot is " + robot_name
+    print(msg)
+}

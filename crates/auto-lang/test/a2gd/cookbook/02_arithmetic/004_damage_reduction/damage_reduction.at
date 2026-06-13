@@ -1,0 +1,21 @@
+// Lesson 14: Multiplying — Damage Reduction at Higher Levels
+// Source: learn-gdscript/course/lesson-14-multiplying
+var level = 3
+var health = 100
+
+fn take_damage(amount) {
+    if level > 2 {
+        amount = amount * 0.5
+    }
+    health = health - amount
+    if health < 0 {
+        health = 0
+    }
+}
+
+fn main() {
+    take_damage(60)
+    print(health)
+    take_damage(40)
+    print(health)
+}

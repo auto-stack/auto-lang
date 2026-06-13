@@ -1,0 +1,17 @@
+// Lesson 13: Conditions — Limiting Health to Max
+// Source: learn-gdscript/course/lesson-13-conditions
+var health = 20
+
+fn heal(amount) {
+    health = health + amount
+    if health > 80 {
+        health = 80
+    }
+}
+
+fn main() {
+    heal(30)
+    print(health)
+    heal(50)
+    print(health)
+}

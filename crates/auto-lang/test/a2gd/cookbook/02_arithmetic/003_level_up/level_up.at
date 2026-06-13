@@ -1,0 +1,18 @@
+// Lesson 14: Multiplying — Level Up
+// Source: learn-gdscript/course/lesson-14-multiplying
+var level = 1
+var max_health = 100
+
+fn level_up() {
+    level = level + 1
+    max_health = max_health * 1.1
+}
+
+fn main() {
+    level_up()
+    print(level)
+    print(max_health)
+    level_up()
+    print(level)
+    print(max_health)
+}

@@ -1,0 +1,12 @@
+// Lesson 18: For Loops — Drawing with Range
+// Source: learn-gdscript/course/lesson-18-for-loops
+fn draw_rectangle(width, height) {
+    print(width)
+    print(height)
+}
+
+fn main() {
+    for number in 0..3 {
+        draw_rectangle(100, 100)
+    }
+}

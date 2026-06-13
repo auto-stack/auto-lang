@@ -1,0 +1,9 @@
+// Lesson 20: Looping Over Arrays
+// Source: learn-gdscript/course/lesson-20-looping-over-arrays
+var rectangle_sizes = [200, 140, 80, 200]
+
+fn main() {
+    for size in rectangle_sizes {
+        print(size)
+    }
+}

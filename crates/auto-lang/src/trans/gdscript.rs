@@ -1838,4 +1838,68 @@ mod tests {
 
     #[test]
     fn test_result_ok() { test_a2gd("09_option_result/003_result_ok").unwrap(); }
+
+    // Cookbook tests from learn-gdscript (GDQuest)
+    #[test]
+    fn test_cb_health_var() { test_a2gd("cookbook/01_variables/001_health_var").unwrap(); }
+
+    #[test]
+    fn test_cb_angular_speed() { test_a2gd("cookbook/01_variables/002_angular_speed").unwrap(); }
+
+    #[test]
+    fn test_cb_take_damage() { test_a2gd("cookbook/02_arithmetic/001_take_damage").unwrap(); }
+
+    #[test]
+    fn test_cb_heal() { test_a2gd("cookbook/02_arithmetic/002_heal").unwrap(); }
+
+    #[test]
+    fn test_cb_level_up() { test_a2gd("cookbook/02_arithmetic/003_level_up").unwrap(); }
+
+    #[test]
+    fn test_cb_damage_reduction() { test_a2gd("cookbook/02_arithmetic/004_damage_reduction").unwrap(); }
+
+    #[test]
+    fn test_cb_comparisons() { test_a2gd("cookbook/03_conditions/001_comparisons").unwrap(); }
+
+    #[test]
+    fn test_cb_limit_health() { test_a2gd("cookbook/03_conditions/002_limit_health").unwrap(); }
+
+    #[test]
+    fn test_cb_prevent_zero() { test_a2gd("cookbook/03_conditions/003_prevent_zero").unwrap(); }
+
+    #[test]
+    fn test_cb_for_range() { test_a2gd("cookbook/04_loops/001_for_range").unwrap(); }
+
+    #[test]
+    fn test_cb_while_move() { test_a2gd("cookbook/04_loops/002_while_move").unwrap(); }
+
+    #[test]
+    fn test_cb_for_each() { test_a2gd("cookbook/04_loops/003_for_each").unwrap(); }
+
+    #[test]
+    fn test_cb_array_create() { test_a2gd("cookbook/05_arrays/001_create").unwrap(); }
+
+    #[test]
+    fn test_cb_append_pop() { test_a2gd("cookbook/05_arrays/002_append_pop").unwrap(); }
+
+    #[test]
+    fn test_cb_index_access() { test_a2gd("cookbook/05_arrays/003_index_access").unwrap(); }
+
+    #[test]
+    fn test_cb_string_concat() { test_a2gd("cookbook/06_strings/001_concat").unwrap(); }
+
+    #[test]
+    fn test_cb_string_array() { test_a2gd("cookbook/06_strings/002_string_array").unwrap(); }
+
+    #[test]
+    fn test_cb_return_value() { test_a2gd("cookbook/07_functions/001_return_value").unwrap(); }
+
+    #[test]
+    fn test_cb_dict_create() { test_a2gd("cookbook/08_dictionaries/001_create").unwrap(); }
+
+    #[test]
+    fn test_cb_dict_loop() { test_a2gd("cookbook/08_dictionaries/002_loop").unwrap(); }
+
+    #[test]
+    fn test_cb_type_conversion() { test_a2gd("cookbook/09_types/001_conversion").unwrap(); }
 }

@@ -1,0 +1,58 @@
+// 005-stats: Player and enemy stat management
+// Based on: RPG stat systems — leveling, equipment, stat bonuses
+// Tests: type definitions, arrays, for-in loops, method-style logic, string methods
+
+type Stats {
+    name str
+    health int
+    max_health int
+    attack int
+    defense int
+    speed int
+}
+
+fn create_hero(name str) Stats {
+    return Stats(name, 100, 100, 15, 8, 12)
+}
+
+fn create_enemy(name str) Stats {
+    return Stats(name, 60, 60, 10, 4, 8)
+}
+
+fn is_alive(stats Stats) bool {
+    return stats.health > 0
+}
+
+fn heal(stats Stats, amount int) Stats {
+    var new_hp = stats.health + amount
+    if new_hp > stats.max_health {
+        new_hp = stats.max_health
+    }
+    return Stats(stats.name, new_hp, stats.max_health, stats.attack, stats.defense, stats.speed)
+}
+
+fn battle_round(hero Stats, enemy Stats) Stats {
+    let damage = hero.attack - enemy.defense
+    var new_hp = enemy.health - damage
+    if new_hp < 0 {
+        new_hp = 0
+    }
+    return Stats(enemy.name, new_hp, enemy.max_health, enemy.attack, enemy.defense, enemy.speed)
+}
+
+fn main() {
+    var hero = create_hero("Knight")
+    var enemy = create_enemy("Goblin")
+
+    print(hero.health)
+    print(enemy.health)
+
+    enemy = battle_round(hero, enemy)
+    print(enemy.health)
+
+    hero = heal(hero, 20)
+    print(hero.health)
+
+    let alive = is_alive(enemy)
+    print(alive)
+}

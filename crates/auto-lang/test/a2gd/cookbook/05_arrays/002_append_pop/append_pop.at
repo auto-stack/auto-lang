@@ -1,0 +1,17 @@
+// Lesson 23: Appending and Popping Arrays
+// Source: learn-gdscript/course/lesson-23-append-to-arrays
+var waiting = ["sword", "shield"]
+var completed = []
+
+fn complete_order() {
+    let item = waiting.pop()
+    completed.push(item)
+}
+
+fn main() {
+    print(len(waiting))
+    complete_order()
+    print(len(waiting))
+    print(len(completed))
+    print(completed)
+}

@@ -1,0 +1,8 @@
+// Lesson 19: Creating Arrays
+// Source: learn-gdscript/course/lesson-19-creating-arrays
+var items = [10, 20, 30, 40, 50]
+
+fn main() {
+    print(items)
+    print(len(items))
+}

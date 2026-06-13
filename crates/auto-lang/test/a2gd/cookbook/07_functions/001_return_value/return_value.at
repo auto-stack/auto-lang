@@ -1,0 +1,14 @@
+// Lesson 22: Functions that Return Values
+// Source: learn-gdscript/course/lesson-22-functions-return-values
+var cell_size = 80
+
+fn convert_to_world(cell) {
+    return cell * cell_size
+}
+
+fn main() {
+    let world_x = convert_to_world(3)
+    print(world_x)
+    let world_y = convert_to_world(5)
+    print(world_y)
+}

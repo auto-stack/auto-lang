@@ -1,0 +1,11 @@
+// Lesson 17: While Loops — Move to End of Board
+// Source: learn-gdscript/course/lesson-17-while-loops
+var cell_y = 0
+var board_size = 8
+
+fn main() {
+    for cell_y < board_size - 1 {
+        cell_y = cell_y + 1
+    }
+    print(cell_y)
+}

@@ -1,0 +1,11 @@
+// Lesson 27: Value Types — Type Conversions
+// Source: learn-gdscript/course/lesson-27-value-types
+var energy = 80
+var player_input = "42"
+
+fn main() {
+    let energy_text = str(energy)
+    print(energy_text)
+    let input_num = int(player_input)
+    print(input_num)
+}

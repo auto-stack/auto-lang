@@ -1,0 +1,13 @@
+// Lesson 24: Accessing Array Indices
+// Source: learn-gdscript/course/lesson-24-access-array-indices
+var inventory = ["sword", "shield", "potion", "gem", "key", "map", "ring", "scroll", "arrow"]
+
+fn use_item(index) {
+    print(inventory[index])
+}
+
+fn main() {
+    use_item(0)
+    use_item(6)
+    use_item(8)
+}

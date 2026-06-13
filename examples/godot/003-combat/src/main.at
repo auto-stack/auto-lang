@@ -1,0 +1,64 @@
+// 003-combat: Turn-based combat damage calculation
+// Based on: RPG combat systems — attack, defense, critical hits
+// Tests: functions, if/elif/else, math, control flow
+
+fn get_multiplier(enemy str) float {
+    if enemy == "dragon" {
+        return 3.0
+    } else if enemy == "orc" {
+        return 1.5
+    } else if enemy == "goblin" {
+        return 0.5
+    } else {
+        return 1.0
+    }
+}
+
+fn calculate_damage(attack int, enemy str) int {
+    let multiplier = get_multiplier(enemy)
+    let damage = attack * multiplier
+    return damage
+}
+
+fn apply_damage(health int, damage int, defense int) int {
+    let actual = damage - defense
+    if actual < 0 {
+        return health
+    }
+    let remaining = health - actual
+    if remaining < 0 {
+        return 0
+    }
+    return remaining
+}
+
+fn is_alive(health int) bool {
+    return health > 0
+}
+
+fn main() {
+    let player_attack = 15
+    let enemy_defense = 3
+
+    let goblin_dmg = calculate_damage(player_attack, "goblin")
+    print(goblin_dmg)
+
+    let orc_dmg = calculate_damage(player_attack, "orc")
+    print(orc_dmg)
+
+    let dragon_dmg = calculate_damage(player_attack, "dragon")
+    print(dragon_dmg)
+
+    var enemy_hp = 80
+    enemy_hp = apply_damage(enemy_hp, orc_dmg, enemy_defense)
+    print(enemy_hp)
+
+    let alive = is_alive(enemy_hp)
+    print(alive)
+
+    enemy_hp = apply_damage(enemy_hp, dragon_dmg, enemy_defense)
+    print(enemy_hp)
+
+    let dead = is_alive(enemy_hp)
+    print(dead)
+}

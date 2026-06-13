@@ -1,0 +1,14 @@
+// Lesson 9: Adding and Subtracting — Healing
+// Source: learn-gdscript/course/lesson-09-adding-and-subtracting
+var health = 50
+
+fn heal(amount) {
+    health = health + amount
+}
+
+fn main() {
+    heal(20)
+    print(health)
+    heal(30)
+    print(health)
+}

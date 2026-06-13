@@ -1,0 +1,19 @@
+// Lesson 26: Looping Over Dictionaries
+// Source: learn-gdscript/course/lesson-26-looping-over-dictionaries
+var inventory = {
+    healing_heart: 3,
+    gems: 5,
+    sword: 1
+}
+
+fn display_item(name, count) {
+    print(name)
+    print(count)
+}
+
+fn main() {
+    for item_name in inventory {
+        let item_count = inventory[item_name]
+        display_item(item_name, item_count)
+    }
+}
