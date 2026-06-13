@@ -1,0 +1,10 @@
+fn fetch_data() ~str {
+    get_data().await
+    let result = get_result()
+    result
+}
+
+fn main() {
+    let data = fetch_data()
+    print(data)
+}

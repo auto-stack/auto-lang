@@ -1741,4 +1741,9 @@ mod tests {
     fn test_generic_struct() {
         test_a2gd("08_generics/002_generic_struct").unwrap();
     }
+
+    #[test]
+    fn test_async_func() {
+        test_a2gd("03_control_flow/040_async_func").unwrap();
+    }
 }
