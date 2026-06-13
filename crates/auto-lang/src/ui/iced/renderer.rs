@@ -3569,11 +3569,10 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
     let subtab = *state.inspector_subtab.borrow();
     let body = match subtab {
         InspectorSubTab::Layout => render_inspector_layout_tab(state),
-        // Placeholders — Task 16 fills these.
-        InspectorSubTab::Computed => placeholder_panel("(待实现 — Task 16)"),
-        InspectorSubTab::Props => placeholder_panel("(待实现 — Task 16)"),
-        InspectorSubTab::AutoUI => placeholder_panel("(待实现 — Task 16)"),
-        InspectorSubTab::Source => placeholder_panel("(待实现 — Task 16)"),
+        InspectorSubTab::Computed => render_inspector_computed_tab(state),
+        InspectorSubTab::Props => render_inspector_props_tab(state),
+        InspectorSubTab::AutoUI => render_inspector_autoui_tab(state),
+        InspectorSubTab::Source => render_inspector_source_tab(state),
     };
     col = col.push(body);
 
@@ -3836,6 +3835,347 @@ fn layout_pending_panel() -> iced::Element<'static, IcedMessage> {
         .size(11)
         .color(iced::Color::from_rgb(0.55, 0.55, 0.55))
         .into()
+}
+
+/// Resolve a byte offset → 0-based line number via `source_line_offsets`.
+///
+/// Mirrors the `partition_point` logic from the preserved
+/// `render_inspector_source_section` (Plan 307 Task 15) so the Source tab and
+/// any future span→line rendering stays consistent.
+fn offset_to_line(offset: usize, line_offsets: &[usize]) -> usize {
+    line_offsets
+        .partition_point(|&pos| pos <= offset)
+        .saturating_sub(1)
+}
+
+/// Helper: clone the selected VNode out of `live_vtree`, or return a grey
+/// placeholder Element if there is no tree / no selection.
+fn with_selected_vnode<F>(state: &DynamicState, on_missing: &str, f: F) -> iced::Element<'static, IcedMessage>
+where
+    F: FnOnce(&crate::ui::vnode::VNode) -> iced::Element<'static, IcedMessage>,
+{
+    let vtree = state.live_vtree.borrow().clone();
+    let selected = state.selected_vnode.borrow().clone();
+    match (vtree, selected) {
+        (Some(tree), Some(id)) => match tree.get(id) {
+            Some(node) => f(node),
+            None => placeholder_panel(on_missing),
+        },
+        _ => placeholder_panel(on_missing),
+    }
+}
+
+/// One `key: value` row, used by the Props / Computed tabs.
+fn kv_row(key: &str, value: String) -> iced::Element<'static, IcedMessage> {
+    row![
+        text(format!("{}:", key))
+            .size(10)
+            .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+        text(value)
+            .size(10)
+            .color(iced::Color::from_rgb(0.2, 0.2, 0.2)),
+    ]
+    .spacing(6)
+    .into()
+}
+
+/// Props sub-tab: render the selected VNode's `VNodeProps` fields plus `kind`
+/// and `path` (Plan 307 Task 16).
+///
+/// Data source: `live_vtree` only (the VNode carries its own props). No probe /
+/// cache dependency, so it always works whenever a node is selected.
+fn render_inspector_props_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    with_selected_vnode(state, "无选中元素", |node| {
+        let mut col = column![].spacing(3);
+
+        col = col.push(kv_row("kind", format!("{:?}", node.kind)));
+        col = col.push(kv_row(
+            "path",
+            format!(
+                "[{}]",
+                node.path
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        ));
+
+        use crate::ui::vnode::VNodeProps;
+        match &node.props {
+            VNodeProps::Empty => {}
+            VNodeProps::Text { content } => col = col.push(kv_row("content", content.clone())),
+            VNodeProps::Button { label } => col = col.push(kv_row("label", label.clone())),
+            VNodeProps::Input {
+                placeholder,
+                value,
+                password,
+            } => {
+                col = col.push(kv_row("placeholder", placeholder.clone()));
+                col = col.push(kv_row("value", value.clone()));
+                col = col.push(kv_row("password", password.to_string()));
+            }
+            VNodeProps::Textarea { placeholder, value } => {
+                col = col.push(kv_row("placeholder", placeholder.clone()));
+                col = col.push(kv_row("value", value.clone()));
+            }
+            VNodeProps::Checkbox { label, is_checked } => {
+                col = col.push(kv_row("label", label.clone()));
+                col = col.push(kv_row("is_checked", is_checked.to_string()));
+            }
+            VNodeProps::Radio { label, is_selected } => {
+                col = col.push(kv_row("label", label.clone()));
+                col = col.push(kv_row("is_selected", is_selected.to_string()));
+            }
+            VNodeProps::Select {
+                options,
+                selected_index,
+            } => {
+                col = col.push(kv_row(
+                    "options",
+                    format!("[{}]", options.join(", ")),
+                ));
+                col = col.push(kv_row("selected_index", format!("{:?}", selected_index)));
+            }
+            VNodeProps::Layout { spacing, padding } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+                col = col.push(kv_row("padding", padding.to_string()));
+            }
+            VNodeProps::Container {
+                padding,
+                center_x,
+                center_y,
+            } => {
+                col = col.push(kv_row("padding", padding.to_string()));
+                col = col.push(kv_row("center_x", center_x.to_string()));
+                col = col.push(kv_row("center_y", center_y.to_string()));
+            }
+            VNodeProps::Scrollable => {}
+            VNodeProps::Slider {
+                min,
+                max,
+                value,
+                step,
+            } => {
+                col = col.push(kv_row("min", format!("{}", min)));
+                col = col.push(kv_row("max", format!("{}", max)));
+                col = col.push(kv_row("value", format!("{}", value)));
+                col = col.push(kv_row("step", format!("{:?}", step)));
+            }
+            VNodeProps::ProgressBar { progress } => {
+                col = col.push(kv_row("progress", format!("{}", progress)));
+            }
+            VNodeProps::List { spacing } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+            }
+            VNodeProps::Table {
+                spacing,
+                col_spacing,
+            } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+                col = col.push(kv_row("col_spacing", col_spacing.to_string()));
+            }
+        }
+
+        col.into()
+    })
+}
+
+/// AutoUI sub-tab: `state_bindings` / `for_context` / `events` for the selected
+/// node (Plan 307 Task 16).
+///
+/// Path-scheme caveat: the probe is keyed by build-time (AuraNode-structural)
+/// path, while `VNode.path` is the View-structural path. They coincide for
+/// non-loop nodes, so we look the probe up via `snapshot().get(&node.path)`.
+/// For loop-body nodes the schemes diverge and the lookup misses — we degrade
+/// gracefully to a grey hint rather than panicking (design §6.1).
+fn render_inspector_autoui_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    with_selected_vnode(state, "无选中元素", |node| {
+        let probe = state.live_probe.borrow().clone();
+        let Some(probe) = probe else {
+            return placeholder_panel("(AutoUI 探针未启用)");
+        };
+
+        let Some(entry) = probe.snapshot().get(&node.path) else {
+            // Path-scheme divergence (e.g. for-loop body) or genuinely no
+            // AutoUI metadata for this node — degrade gracefully.
+            return placeholder_panel("(本节点无 AutoUI 元数据)");
+        };
+
+        let mut col = column![].spacing(3);
+
+        if !entry.state_bindings.is_empty() {
+            col = col.push(
+                text("状态绑定")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.3, 0.6, 0.3)),
+            );
+            for sb in &entry.state_bindings {
+                let val = if sb.current_value.is_empty() {
+                    "<unresolved>".to_string()
+                } else {
+                    sb.current_value.clone()
+                };
+                col = col.push(kv_row(&sb.expr, val));
+            }
+        }
+
+        if let Some(fc) = &entry.for_context {
+            col = col.push(
+                text("循环上下文")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.3, 0.6, 0.3)),
+            );
+            col = col.push(kv_row(
+                "for",
+                format!(
+                    "{}={}, i={}",
+                    fc.var,
+                    fc.value_repr,
+                    match fc.index {
+                        Some(i) => i.to_string(),
+                        None => "-".to_string(),
+                    }
+                ),
+            ));
+        }
+
+        if !entry.events.is_empty() {
+            col = col.push(
+                text("事件")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.3, 0.6, 0.3)),
+            );
+            for ev in &entry.events {
+                col = col.push(kv_row(&ev.event, ev.handler.clone()));
+            }
+        }
+
+        if entry.state_bindings.is_empty()
+            && entry.for_context.is_none()
+            && entry.events.is_empty()
+        {
+            // Entry exists but is empty.
+            return placeholder_panel("(本节点无 AutoUI 元数据)");
+        }
+
+        col.into()
+    })
+}
+
+/// Source sub-tab: render `app.at:LINE` for the selected node's source span
+/// (Plan 307 Task 16).
+///
+/// Data source: `live_vtree` → `VNode.source_span` → line via
+/// `source_line_offsets`. File basename from `component.source_path()`.
+/// Navigation is intentionally NOT wired yet (Phase 5 is compile-verified; a
+/// styled line is acceptable per the task spec).
+fn render_inspector_source_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    with_selected_vnode(state, "无选中元素", |node| {
+        let Some(span) = node.source_span else {
+            return placeholder_panel("(无源码定位)");
+        };
+
+        let line_offsets = state.source_line_offsets.borrow();
+        let line = offset_to_line(span.offset, &line_offsets);
+        // 1-based for display.
+        let display_line = line + 1;
+
+        let basename = state
+            .component
+            .source_path()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+            .unwrap_or_else(|| "source".to_string());
+
+        let mut col = column![].spacing(4);
+        col = col.push(
+            text(format!("{}:{}", basename, display_line))
+                .size(11)
+                .color(iced::Color::from_rgb(0.2, 0.4, 0.7)),
+        );
+        col = col.push(
+            text("(点击导航待接入)")
+                .size(9)
+                .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+        );
+        col.into()
+    })
+}
+
+/// Computed sub-tab: interim "computed layout" view (Plan 307 Task 16).
+///
+/// Honest limitation: `VNodeProps` carries no CSS class/style, and
+/// `ComputedNode.computed_style`/`raw_class` are not yet populated by the cache
+/// builder, so a full CSS computed-style sheet is not possible. We render the
+/// layout-relevant props from `VNodeProps` plus the live_cache `bounds` /
+/// `box_model` summary, and note that class resolution is pending.
+fn render_inspector_computed_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    with_selected_vnode(state, "无选中元素", |node| {
+        let mut col = column![].spacing(3);
+
+        // --- Layout-relevant props from VNodeProps ---
+        use crate::ui::vnode::VNodeProps;
+        match &node.props {
+            VNodeProps::Layout { spacing, padding } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+                col = col.push(kv_row("padding", padding.to_string()));
+            }
+            VNodeProps::Container {
+                padding,
+                center_x,
+                center_y,
+            } => {
+                col = col.push(kv_row("padding", padding.to_string()));
+                col = col.push(kv_row("center_x", center_x.to_string()));
+                col = col.push(kv_row("center_y", center_y.to_string()));
+            }
+            VNodeProps::List { spacing } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+            }
+            VNodeProps::Table {
+                spacing,
+                col_spacing,
+            } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+                col = col.push(kv_row("col_spacing", col_spacing.to_string()));
+            }
+            _ => {
+                col = col.push(
+                    text("(本节点类型无布局计算属性)")
+                        .size(10)
+                        .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+                );
+            }
+        }
+
+        // --- Live bounds / box model from InspectorCache (if available) ---
+        let cache = state.live_cache.borrow().clone();
+        if let Some(cache) = cache {
+            if let Some(computed) = cache.get(node.id) {
+                if let Some(bm) = &computed.box_model {
+                    let c = &bm.content;
+                    col = col.push(kv_row(
+                        "content",
+                        format!("{:.0}×{:.0} @({:.0},{:.0})", c.width, c.height, c.x, c.y),
+                    ));
+                } else if let Some(b) = &computed.bounds {
+                    col = col.push(kv_row(
+                        "bounds",
+                        format!("{:.0}×{:.0} @({:.0},{:.0})", b.width, b.height, b.x, b.y),
+                    ));
+                }
+            }
+        }
+
+        // --- Pending class resolution note ---
+        col = col.push(
+            text("(CSS class 解析待接入)")
+                .size(9)
+                .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+        );
+
+        col.into()
+    })
 }
 
 /// Generic greyed placeholder body for not-yet-implemented sub-tabs.
