@@ -291,9 +291,19 @@ scene <Name> : <GodotType> {
 - `auto/main.rs`：新增 `TransTarget::Godot`，调用 `trans_godot`
 - 测试：`test_tscn_006_combined_with_gd` —— 校验 .tscn 含根节点 + 脚本引用、.gd 保留函数且不泄漏 scene、`extends Control`
 
-#### Phase 2c（待办）
+#### Phase 2c：GDScript 端类型配合（部分完成）
 
-- `@export` / `$node` / Vector2 类型等 GDScript 端配合
+**已完成 —— Godot 内建类型标注（Vector2 等）**
+
+此前 `is_generic_param` 的启发式「空 members/methods 的 `Type::User` 即泛型参数」过于激进，把 Godot 内建类型（Vector2/Color/Node…，其 TypeDecl 同样为空）误判为泛型参数，导致**函数参数与返回值的类型标注被丢弃**（局部变量标注未受影响）。修复：
+
+- `trans/gdscript.rs`：新增 `is_godot_builtin_type(name)` 内建类型白名单（数学类型 / 节点 / 资源）；`is_generic_param` 与 `is_type_decl_generic_param` 的启发式增加该白名单豁免 —— 真正的泛型参数 `T` 仍被丢弃（GDScript 无泛型），Godot 类型标注得以保留
+- 测试：`test/a2gd/17_godot_types/001_vector2`（Vector2/Color 在签名中保留标注，与 `08_generics` 中 `T` 被丢弃形成对照）
+
+**待办 —— `@export` / `$node`（需设计决策）**
+
+- **`@export`**：需让 `var` 携带标注。当前 `#[...]` 注解只解析到 `fn`/`type` 之前，`Store` 无标注字段。拟用 `#[export] var speed float = 300.0` → `@export var speed: float = 300.0`，但需：(1) 给 `Store` 加 `is_export`/`attrs` 字段并更新全部构造点（约 8 处）；(2) 在 parser 的 `#[...]` 分支增加对 `var`/`let` 的处理。属核心 AST 改动，风险较高，待确认语法后再做。
+- **`$node`**：GDScript 的 `$Sprite`（= `get_node("Sprite")`）。Auto 无 `$` 一元运算符。拟以约定支持：`get_node("Sprite")` 直接透传（已是合法 GDScript），或新增 `$` 语法。优先验证现有 `get_node` 透传是否够用。
 
 ---
 

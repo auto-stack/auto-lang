@@ -1,0 +1,15 @@
+// Plan 306 Phase 2c: Godot builtin types keep their annotations in signatures
+// (Vector2/Color/etc.), unlike generic type params which are dropped.
+fn move_towards(pos Vector2, vel Vector2) Vector2 {
+    pos + vel
+}
+
+fn tint(base Color, alpha float) Color {
+    base
+}
+
+fn main() {
+    var p Vector2 = Vector2(0, 0)
+    var moved = move_towards(p, Vector2(1, 1))
+    print(moved)
+}

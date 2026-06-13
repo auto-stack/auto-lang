@@ -1540,8 +1540,14 @@ impl GDScriptTrans {
                     return true;
                 }
             }
-            // Heuristic: synthetic TypeDecl for generic params has empty members & methods
-            if type_decl.members.is_empty() && type_decl.methods.is_empty() {
+            // Heuristic: a synthetic TypeDecl for a generic type parameter has empty
+            // members & methods. But Godot builtin types (Vector2, Color, Node, ...)
+            // are also opaque here, so exempt them — their annotations must survive.
+            // (Plan 306 Phase 2c)
+            if type_decl.members.is_empty()
+                && type_decl.methods.is_empty()
+                && !is_godot_builtin_type(&type_decl.name)
+            {
                 return true;
             }
         }
@@ -1561,13 +1567,45 @@ impl GDScriptTrans {
                     GenericParam::Const(_) => {}
                 }
             }
-            // Heuristic fallback: synthetic TypeDecl with empty members/methods
-            if type_decl.members.is_empty() && type_decl.methods.is_empty() {
+            // Heuristic fallback: synthetic TypeDecl with empty members/methods,
+            // but exempt Godot builtin types so their annotations survive.
+            // (Plan 306 Phase 2c)
+            if type_decl.members.is_empty()
+                && type_decl.methods.is_empty()
+                && !is_godot_builtin_type(&type_decl.name)
+            {
                 return true;
             }
         }
         false
     }
+}
+
+/// Whether a type name is a Godot builtin class (so its Type::User form, even
+/// with an opaque/empty TypeDecl, is concrete and must keep its annotation
+/// rather than being mistaken for a generic type parameter). (Plan 306 Phase 2c)
+fn is_godot_builtin_type(name: &str) -> bool {
+    matches!(
+        name,
+        // Math types
+        "Vector2" | "Vector2i" | "Vector3" | "Vector3i" | "Vector4" | "Vector4i"
+            | "Color" | "Rect2" | "Rect2i" | "AABB" | "Plane" | "Quaternion"
+            | "Basis" | "Transform2D" | "Transform3D" | "Projection"
+            // Core nodes
+            | "Node" | "Node2D" | "Node3D" | "Control" | "CanvasItem"
+            | "Sprite2D" | "AnimatedSprite2D" | "Area2D" | "Area3D"
+            | "RigidBody2D" | "RigidBody3D" | "CharacterBody2D" | "CharacterBody3D"
+            | "CollisionShape2D" | "CollisionShape3D" | "CollisionPolygon2D"
+            | "Timer" | "Label" | "Button" | "Line2D" | "Marker2D" | "Marker3D"
+            | "Camera2D" | "Camera3D" | "PathFollow2D" | "Path2D"
+            // Resources
+            | "Resource" | "PackedScene" | "Texture2D" | "SpriteFrames"
+            | "Shader" | "Material" | "StandardMaterial3D" | "FontFile" | "Font"
+            | "AudioStream" | "StyleBox" | "Theme" | "Curve" | "Curve2D"
+            | "InputEvent" | "RID" | "StringName" | "Callable" | "Signal"
+            | "Tween" | "RefCounted" | "Object" | "Array" | "Dictionary"
+            | "PackedStringArray" | "PackedInt32Array" | "PackedFloat32Array"
+    )
 }
 
 /// Capitalize the first letter of a string
@@ -1823,6 +1861,10 @@ mod tests {
 
     #[test]
     fn test_comments() { test_a2gd("01_basics/040_comments").unwrap(); }
+
+    // Plan 306 Phase 2c: Godot builtin types keep their annotations.
+    #[test]
+    fn test_godot_vector2_sig() { test_a2gd("17_godot_types/001_vector2").unwrap(); }
 
     #[test]
     fn test_unary_neg() { test_a2gd("01_basics/041_unary_neg").unwrap(); }
