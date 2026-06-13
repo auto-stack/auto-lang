@@ -41,7 +41,7 @@ type Bindings = HashMap<String, Value>;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::vm_bridge::VmBridge;
 use crate::ui::debug_id_map::DebugIdMap;
-use crate::ui::debug::BuildProbe;
+use crate::ui::debug::{BuildProbe, ForIter};
 use crate::ui::view::View;
 use crate::ui::style::{Style, StyleClass, SizeValue};
 
@@ -367,6 +367,19 @@ impl<'a> AuraViewBuilder<'a> {
                             .filter_map(|(bi, n)| {
                                 path.push(i);   // iteration index
                                 path.push(bi);  // body node index
+                                // Record this iteration's context against the
+                                // body node's path (Plan 307 Task 10). `index`
+                                // is the 0-based iteration counter `i`, NOT the
+                                // loop's optional index-variable name. Keep
+                                // `iterable_repr` in its original ".notes" form.
+                                let for_path: Vec<u16> =
+                                    path.iter().map(|&x| x as u16).collect();
+                                probe.record_for(&for_path, ForIter {
+                                    var: var.clone(),
+                                    index: Some(i),
+                                    value_repr: value_to_display_string(item),
+                                    iterable_repr: iterable.clone(),
+                                });
                                 let v = self.convert_node_tracked_ctx(n, path, id_map, probe, &loop_bindings);
                                 path.pop();
                                 path.pop();
@@ -2200,6 +2213,57 @@ mod tests {
         let (_view, _id_map, probe) = builder.build_with_debug(&node);
         let snap = probe.snapshot();
         assert!(snap.is_empty(), "literal-only text must not be probed");
+    }
+
+    #[test]
+    fn build_with_debug_captures_for_loop_context() {
+        use crate::ui::debug::ForIter;
+        // Widget declares an `items` state field (initial dummy, overwritten
+        // below). `AuraExpr` has no array literal, so we seed via write_state.
+        let widget = make_test_widget("List", vec![
+            AuraStateDef {
+                name: "items".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: AuraExpr::Literal(String::new()),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge.write_state(
+            "items",
+            Value::Array(auto_val::Array::from(vec![
+                Value::str("apple"),
+                Value::str("banana"),
+                Value::str("cherry"),
+            ])),
+        ).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "List");
+
+        // for item in .items { text("${.item}") }
+        let node = AuraNode::ForLoop {
+            var: "item".to_string(),
+            index: None,
+            iterable: ".items".to_string(),
+            body: vec![AuraNode::Text(AuraTextContent::Interpolated {
+                template: "${.item}".to_string(),
+                bindings: vec!["item".to_string()],
+            })],
+            span: None,
+            debug_id: None,
+        };
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        let for_entries: Vec<&ForIter> = snap.values()
+            .filter_map(|e| e.for_context.as_ref())
+            .collect();
+        assert_eq!(for_entries.len(), 3, "three iterations captured");
+        let mut by_index: Vec<(usize, &str)> = for_entries.iter()
+            .map(|f| (f.index.unwrap(), f.value_repr.as_str()))
+            .collect();
+        by_index.sort_by_key(|(i, _)| *i);
+        assert_eq!(by_index, vec![(0, "apple"), (1, "banana"), (2, "cherry")]);
+        assert_eq!(for_entries[0].var, "item");
+        assert_eq!(for_entries[0].iterable_repr, ".items");
     }
 
     #[test]
