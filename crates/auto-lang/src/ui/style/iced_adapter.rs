@@ -25,6 +25,7 @@ pub struct IcedStyle {
     pub margin_x: Option<f32>,       // Not supported by Iced
     pub margin_y: Option<f32>,       // Not supported by Iced
     pub margin_top: Option<f32>,      // Converted to external top spacing
+    pub margin_bottom: Option<f32>,   // mb-N: stored (limited Iced support)
     pub margin_left: Option<f32>,     // ml-N: converted to external left spacing
     pub margin_right: Option<f32>,    // mr-N: converted to external right spacing
     pub margin_left_auto: bool,       // ml-auto: push element to right in row
@@ -200,6 +201,7 @@ impl IcedStyle {
             margin_x: None,    // Not supported by Iced
             margin_y: None,    // Not supported by Iced
             margin_top: None,
+            margin_bottom: None,
             margin_left: None,
             margin_right: None,
             margin_left_auto: false,
@@ -309,6 +311,9 @@ impl IcedStyle {
             }
             StyleClass::MarginTop(size) => {
                 self.margin_top = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginBottom(size) => {
+                self.margin_bottom = Some(size.to_pixels() as f32);
             }
             StyleClass::MarginLeft(size) => {
                 self.margin_left = Some(size.to_pixels() as f32);

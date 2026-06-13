@@ -3158,8 +3158,12 @@ impl VueGenerator {
         let normalized_tag = Self::normalize_tag(tag);
 
         // In shadcn mode, skip default classes for components that have shadcn versions
-        // (shadcn components have their own styling)
-        let skip_defaults = self.is_shadcn() && self.widget_registry.is_backend_supported("vue", tag);
+        // (shadcn components have their own styling).
+        // However, layout primitives (row, col, etc.) always need their flex classes
+        // regardless of mode — they map to <div> and have no shadcn styling of their own.
+        let layout_primitives = ["row", "col", "column", "grid", "scroll", "center", "container"];
+        let is_layout_primitive = layout_primitives.contains(&normalized_tag);
+        let skip_defaults = !is_layout_primitive && self.is_shadcn() && self.widget_registry.is_backend_supported("vue", tag);
 
         // Check if user has provided a class or style attribute
         let has_user_class = props.contains_key("class") || props.contains_key("style");
@@ -3170,8 +3174,6 @@ impl VueGenerator {
         let user_class_skip_elements = [
             // Semantic HTML5
             "header", "nav", "main", "aside", "footer", "article", "section",
-            // Layout
-            "col", "column", "row",
             // Typography
             "h1", "h2", "h3", "h4", "h5", "h6", "text", "p",
             // Form
@@ -3303,7 +3305,17 @@ impl VueGenerator {
                     dynamic_binding = Some(format!("{{ {} }}", binding_strs.join(", ")));
                 }
                 AuraPropValue::Expr(AuraExpr::Literal(s)) => {
-                    classes.push(s.clone());
+                    // Dedup: for layout primitives, split user classes and skip any already present
+                    if is_layout_primitive {
+                        for c in s.split_whitespace() {
+                            let existing: Vec<&str> = classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
+                            if !existing.contains(&c) {
+                                classes.push(c.to_string());
+                            }
+                        }
+                    } else {
+                        classes.push(s.clone());
+                    }
                 }
                 _ => {}
             }
@@ -3312,7 +3324,16 @@ impl VueGenerator {
         if let Some(value) = props.get("class") {
             match value {
                 AuraPropValue::Expr(AuraExpr::Literal(s)) => {
-                    classes.push(s.clone());
+                    if is_layout_primitive {
+                        for c in s.split_whitespace() {
+                            let existing: Vec<&str> = classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
+                            if !existing.contains(&c) {
+                                classes.push(c.to_string());
+                            }
+                        }
+                    } else {
+                        classes.push(s.clone());
+                    }
                 }
                 _ => {}
             }
@@ -4369,34 +4390,33 @@ impl VueGenerator {
             }
 
             // === Layout Elements (Row, Col, Scroll, etc.) ===
-            // These need default flex classes + user style, but skip defaults when user provides class/style
+            // These always need their structural flex classes, even when user provides style/class.
+            // User classes are appended after the structural defaults (deduped to avoid repetition).
             "row" => {
-                let has_user_class = props.contains_key("class") || props.contains_key("style");
-                let mut classes = Vec::new();
-                if !has_user_class {
-                    classes.push("flex".to_string());
-                    classes.push("flex-row".to_string());
-                }
+                let mut classes = vec!["flex".to_string(), "flex-row".to_string()];
                 if let Some(value) = self.get_style_class(props) {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
-                        classes.push(user_class.to_string());
+                        for c in user_class.split_whitespace() {
+                            if !classes.iter().any(|d| d == c) {
+                                classes.push(c.to_string());
+                            }
+                        }
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
             }
 
             "col" | "column" => {
-                let has_user_class = props.contains_key("class") || props.contains_key("style");
-                let mut classes = Vec::new();
-                if !has_user_class {
-                    classes.push("flex".to_string());
-                    classes.push("flex-col".to_string());
-                }
+                let mut classes = vec!["flex".to_string(), "flex-col".to_string()];
                 if let Some(value) = self.get_style_class(props) {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
-                        classes.push(user_class.to_string());
+                        for c in user_class.split_whitespace() {
+                            if !classes.iter().any(|d| d == c) {
+                                classes.push(c.to_string());
+                            }
+                        }
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));

@@ -98,6 +98,9 @@ pub enum StyleClass {
     /// Margin Top: mt-{0-12} (L2)
     MarginTop(SizeValue),
 
+    /// Margin Bottom: mb-{0-12} (L2)
+    MarginBottom(SizeValue),
+
     /// Margin Left: ml-{0-12} (L2)
     MarginLeft(SizeValue),
 
@@ -497,6 +500,18 @@ impl StyleClass {
             return Ok(StyleClass::Margin(size));
         }
 
+        // Parse margin auto classes (exact matches BEFORE prefix matches)
+        if class == "mx-auto" {
+            // mx-auto = center horizontally (both margins auto)
+            return Ok(StyleClass::MarginXAuto);
+        }
+        if class == "ml-auto" {
+            return Ok(StyleClass::MarginLeftAuto);
+        }
+        if class == "mr-auto" {
+            return Ok(StyleClass::MarginRightAuto);
+        }
+
         // Parse margin X: mx-{0-12} or mx-[Npx]
         if let Some(rest) = class.strip_prefix("mx-") {
             let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
@@ -515,16 +530,10 @@ impl StyleClass {
             return Ok(StyleClass::MarginTop(size));
         }
 
-        // Parse margin auto classes (exact matches before ml-/mr- prefix)
-        if class == "ml-auto" {
-            return Ok(StyleClass::MarginLeftAuto);
-        }
-        if class == "mr-auto" {
-            return Ok(StyleClass::MarginRightAuto);
-        }
-        if class == "mx-auto" {
-            // mx-auto = center horizontally (both margins auto)
-            return Ok(StyleClass::MarginXAuto);
+        // Parse margin bottom: mb-{0-12} or mb-[Npx]
+        if let Some(rest) = class.strip_prefix("mb-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::MarginBottom(size));
         }
 
         // Parse margin left: ml-{0-12} or ml-[Npx]
@@ -605,9 +614,18 @@ impl StyleClass {
         }
 
         // Parse arbitrary text size: text-[80px], text-[14px], text-[11px]
-        if class == "text" {
+        // Also handle text-[#hex] as text color (e.g. text-[#111], text-[#333])
+        // NOTE: When arbitrary brackets are present, class becomes "text-" (dash before [)
+        // so we check both "text" and "text-".
+        if class == "text" || class == "text-" {
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::TextArbitrary(px));
+            }
+            // Try as hex color for text-[#hex]
+            if let Some(av) = arbitrary_value {
+                if let Ok(color) = Color::from_hex(av) {
+                    return Ok(StyleClass::TextColor(color));
+                }
             }
         }
 
@@ -650,7 +668,8 @@ impl StyleClass {
 
         // ========== Line Height ==========
         // Parse leading-[1.4], leading-[1.2]
-        if class == "leading" {
+        // NOTE: With arbitrary brackets, class becomes "leading-" (dash before [)
+        if class == "leading" || class == "leading-" {
             if let Some(av) = arbitrary_value {
                 if let Ok(lh) = av.parse::<f32>() {
                     return Ok(StyleClass::LineHeight(lh));
@@ -888,7 +907,13 @@ impl StyleClass {
 
         // Parse shadow variants
         match class {
-            "shadow" => return Ok(StyleClass::Shadow),
+            "shadow" | "shadow-" => {
+                // "shadow-" is the prefix when arbitrary value present (shadow-[...])
+                if let Some(av) = arbitrary_value {
+                    return Ok(StyleClass::ShadowArbitrary(av.to_string()));
+                }
+                return Ok(StyleClass::Shadow);
+            }
             "shadow-sm" => return Ok(StyleClass::ShadowSm),
             "shadow-md" => return Ok(StyleClass::ShadowMd),
             "shadow-lg" => return Ok(StyleClass::ShadowLg),
@@ -896,13 +921,6 @@ impl StyleClass {
             "shadow-2xl" => return Ok(StyleClass::Shadow2Xl),
             "shadow-none" => return Ok(StyleClass::ShadowNone),
             _ => {}
-        }
-
-        // Parse arbitrary shadow: shadow-[0_2px_4px_0_rgba(...)]
-        if class == "shadow" {
-            if let Some(av) = arbitrary_value {
-                return Ok(StyleClass::ShadowArbitrary(av.to_string()));
-            }
         }
 
         // Parse opacity: opacity-{0-100}
@@ -1348,4 +1366,5 @@ mod tests {
         assert_eq!(StyleClass::parse_single("col-start-2"), Ok(StyleClass::ColStart(2)));
         assert_eq!(StyleClass::parse_single("row-start-1"), Ok(StyleClass::RowStart(1)));
     }
+
 }

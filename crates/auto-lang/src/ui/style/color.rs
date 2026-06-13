@@ -62,6 +62,15 @@ impl Color {
     pub fn from_hex(hex: &str) -> Result<Self, String> {
         let hex = hex.trim_start_matches('#');
 
+        // Expand 3-digit hex (#RGB → RRGGBB) and 4-digit hex (#RGBA → RRGGBBAA)
+        let expanded: String;
+        let hex = if hex.len() == 3 || hex.len() == 4 {
+            expanded = hex.chars().flat_map(|c| [c, c]).collect();
+            &expanded
+        } else {
+            hex
+        };
+
         if hex.len() != 6 && hex.len() != 8 {
             return Err(format!("Invalid hex color length: {}", hex.len()));
         }
