@@ -13,6 +13,7 @@ mod inspector_cache;
 mod overlay;
 mod primitives;
 mod source_map;
+mod style_probe;
 
 use std::collections::HashMap;
 
@@ -25,6 +26,7 @@ pub use inspector_cache::*;
 pub use overlay::{generate_overlay, OverlayColor, OverlayInfo, OverlayRect};
 pub use primitives::{BoxModel, EdgeInsets, Rect};
 pub use source_map::{SourceLocation, SourceMap};
+pub use style_probe::compute_style;
 
 // =====================================================================
 // SourceSpan
