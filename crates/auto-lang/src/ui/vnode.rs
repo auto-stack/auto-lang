@@ -258,6 +258,11 @@ pub struct VNode {
 
     /// 调试标签（用于日志和调试）
     pub label: String,
+
+    /// 稳定的逻辑路径（从根到本节点的子索引序列）
+    pub path: Vec<u16>,
+    /// 源码 span（来自 DebugIdMap → AuraNodeId → span_map）
+    pub source_span: Option<crate::ui::debug::SourceSpan>,
 }
 
 impl VNode {
@@ -270,6 +275,8 @@ impl VNode {
             children: Vec::new(),
             props,
             label: String::new(),
+            path: Vec::new(),
+            source_span: None,
         }
     }
 
@@ -282,6 +289,18 @@ impl VNode {
     /// 设置父节点
     pub fn with_parent(mut self, parent: VNodeId) -> Self {
         self.parent = Some(parent);
+        self
+    }
+
+    /// 设置稳定的逻辑路径（从根到本节点的子索引序列）
+    pub fn with_path(mut self, path: Vec<u16>) -> Self {
+        self.path = path;
+        self
+    }
+
+    /// 设置源码 span
+    pub fn with_source_span(mut self, span: crate::ui::debug::SourceSpan) -> Self {
+        self.source_span = Some(span);
         self
     }
 
@@ -926,5 +945,17 @@ mod tests {
         .with_label("MyTextNode");
 
         assert_eq!(node.label, "MyTextNode");
+    }
+
+    #[test]
+    fn vnode_has_path_and_source_span() {
+        let id = VNodeId::new(1);
+        let mut node = VNode::new(id, VNodeKind::Text, VNodeProps::Text { content: "x".into() });
+        assert!(node.path.is_empty());
+        assert!(node.source_span.is_none());
+
+        node.path = vec![0, 1, 2];
+        node.source_span = Some(crate::ui::debug::SourceSpan { offset: 10, len: 3 });
+        assert_eq!(node.path, vec![0, 1, 2]);
     }
 }

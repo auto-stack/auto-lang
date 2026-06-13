@@ -23,6 +23,17 @@ pub use overlay::{generate_overlay, OverlayColor, OverlayInfo, OverlayRect};
 pub use source_map::{SourceLocation, SourceMap};
 
 // =====================================================================
+// SourceSpan
+// =====================================================================
+
+/// 源码 span（字节偏移区间），用于检视器定位。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SourceSpan {
+    pub offset: usize,
+    pub len: usize,
+}
+
+// =====================================================================
 // Rect
 // =====================================================================
 
