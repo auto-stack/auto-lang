@@ -312,9 +312,27 @@ impl DynamicComponent {
 
     /// Build a View with debug sideband data (Plan 274 / 307 Task 9).
     /// Returns (View, DebugIdMap, BuildProbe) for use by DevTools.
+    ///
+    /// The probe is **enabled** (records normally). For F12-off / MCP
+    /// zero-overhead capture bypass (Plan 307 Task 18), use
+    /// [`view_with_debug_gated`] with `capture_probe = false`.
     pub fn view_with_debug(&self) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
         let builder = AuraViewBuilder::with_registry(&self.bridge, &self.widget_name, &self.widget_registry);
         builder.build_with_debug(&self.view_template)
+    }
+
+    /// Gated variant of [`view_with_debug`] (Plan 307 Task 18 perf gate).
+    ///
+    /// When `capture_probe` is false, the returned `BuildProbe` is disabled so
+    /// all `record_*` calls during the node walk are no-ops — near-zero
+    /// overhead for the F12-off render path and the MCP sync path (which never
+    /// needs probe data). The `DebugIdMap` is still populated.
+    pub fn view_with_debug_gated(
+        &self,
+        capture_probe: bool,
+    ) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
+        let builder = AuraViewBuilder::with_registry(&self.bridge, &self.widget_name, &self.widget_registry);
+        builder.build_with_debug_gated(&self.view_template, capture_probe)
     }
 
     /// Get the span map (AuraNodeId → SpanInfo) for DevTools.

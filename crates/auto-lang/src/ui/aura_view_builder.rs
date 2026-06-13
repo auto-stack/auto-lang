@@ -137,9 +137,34 @@ impl<'a> AuraViewBuilder<'a> {
     /// - the `BuildProbe` records AutoUI-specific per-path data (state bindings,
     ///   for-context, events) captured while walking the node tree. Task 9 fills
     ///   text-interpolation state bindings only.
+    ///
+    /// The probe is **enabled** (records normally). This preserves the
+    /// historical behaviour relied on by Task 9-11 tests. For F12-off / MCP
+    /// zero-overhead capture bypass (Plan 307 Task 18), use
+    /// [`build_with_debug_gated`] with `capture_probe = false`.
     pub fn build_with_debug(&self, node: &AuraNode) -> (View<DynamicMessage>, DebugIdMap, BuildProbe) {
+        self.build_with_debug_gated(node, true)
+    }
+
+    /// Gated variant of [`build_with_debug`] (Plan 307 Task 18 perf gate).
+    ///
+    /// When `capture_probe` is false, the returned `BuildProbe` is constructed
+    /// disabled via [`BuildProbe::new_disabled`], so every `record_*` call
+    /// during the node walk is a no-op — giving near-zero overhead when the
+    /// debug layer is inactive (F12 off) or for the MCP sync path (which never
+    /// needs probe data). The `DebugIdMap` is still populated (it is cheap and
+    /// required by MCP), but no probe work happens.
+    pub fn build_with_debug_gated(
+        &self,
+        node: &AuraNode,
+        capture_probe: bool,
+    ) -> (View<DynamicMessage>, DebugIdMap, BuildProbe) {
         let mut id_map = DebugIdMap::default();
-        let mut probe = BuildProbe::new();
+        let mut probe = if capture_probe {
+            BuildProbe::new()
+        } else {
+            BuildProbe::new_disabled()
+        };
         let mut path = Vec::new();
         let view = self.convert_node_tracked_ctx(node, &mut path, &mut id_map, &mut probe, &Bindings::new());
         (view, id_map, probe)

@@ -2934,7 +2934,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         }
         let state_vals = state.component.read_all_state();
         let input_map = state.component.input_state_map().clone();
-        let (view, id_map, _probe) = state.component.view_with_debug();
+        // Plan 307 Task 18: MCP sync never needs the probe — capture_probe=false
+        // makes the returned probe a disabled no-op (zero probe overhead here).
+        let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let view_template = Some(state.component.view_template().clone());
         mcp.update(view, id_map, state_vals, input_map, view_template);
         // Sync window size for layout annotations (Plan 281)
@@ -2989,10 +2991,17 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     let (converted, debug_id_map) = if dirty {
         // Full rebuild: construct AbstractView from template, cache the result.
-        let (mut view, debug_id_map, probe) = state.component.view_with_debug();
+        // Plan 307 Task 18: gate the probe by debug_mode. When F12 is off the
+        // probe is disabled (all record_* no-ops → zero overhead), and
+        // live_probe is set to None so the inspector UI degrades to placeholders.
+        let (mut view, debug_id_map, probe) =
+            state.component.view_with_debug_gated(state.debug_mode);
         let debug_id_map = Some(debug_id_map);
-        // Store the live probe snapshot for DevTools (consumed in later tasks).
-        *state.live_probe.borrow_mut() = Some(probe);
+        if state.debug_mode {
+            *state.live_probe.borrow_mut() = Some(probe);
+        } else {
+            *state.live_probe.borrow_mut() = None;
+        }
         inject_todo_list(&mut view, &state.todos, state.component.widget_name());
         if !state.input_values.is_empty() {
             patch_input_values(&mut view, &state.input_values);
@@ -3012,10 +3021,16 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             (converted.clone(), debug_id_map)
         } else {
             drop(cached);
-            let (mut view, debug_id_map, probe) = state.component.view_with_debug();
+            // Plan 307 Task 18: gate the probe by debug_mode (same as the dirty
+            // branch above). When F12 off, probe is disabled + live_probe None.
+            let (mut view, debug_id_map, probe) =
+                state.component.view_with_debug_gated(state.debug_mode);
             let debug_id_map = Some(debug_id_map);
-            // Store the live probe snapshot for DevTools (consumed in later tasks).
-            *state.live_probe.borrow_mut() = Some(probe);
+            if state.debug_mode {
+                *state.live_probe.borrow_mut() = Some(probe);
+            } else {
+                *state.live_probe.borrow_mut() = None;
+            }
             inject_todo_list(&mut view, &state.todos, state.component.widget_name());
             if !state.input_values.is_empty() {
                 patch_input_values(&mut view, &state.input_values);
@@ -3107,7 +3122,15 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             .and_then(|s| cache.iced_to_vnode(s));
         *state.hovered_vnode.borrow_mut() = new_hovered_vnode;
 
-        *state.live_cache.borrow_mut() = Some(cache);
+        // Plan 307 Task 18: retain the per-frame cache only when F12/debug is
+        // on. When off, drop it to None so no inspector data lingers and the
+        // inspector panels degrade to placeholders. (The cache object is always
+        // constructed above — this just gates whether it is retained.)
+        if state.debug_mode {
+            *state.live_cache.borrow_mut() = Some(cache);
+        } else {
+            *state.live_cache.borrow_mut() = None;
+        }
     }
 
     let result: iced::Element<'static, IcedMessage> = if state.debug_mode {
