@@ -492,13 +492,13 @@ impl GDScriptTrans {
 
         out.write(b"(")?;
 
-        // Parameters with type annotations
+        // Parameters with type annotations (skip generic params)
         for (i, param) in func.params.iter().enumerate() {
             if i > 0 {
                 out.write(b", ")?;
             }
             out.write_all(param.name.as_bytes())?;
-            if !matches!(param.ty, Type::Unknown) {
+            if !matches!(param.ty, Type::Unknown) && !self.is_generic_param(&param.ty, func) {
                 out.write(b": ")?;
                 let type_name = self.gdscript_type_name(&param.ty);
                 out.write_all(type_name.as_bytes())?;
@@ -507,8 +507,11 @@ impl GDScriptTrans {
 
         out.write(b")")?;
 
-        // Return type annotation (skip for main/_ready and void)
-        if func.name != "main" && !matches!(func.ret, Type::Unknown | Type::Void) {
+        // Return type annotation (skip for main/_ready, void, and generic params)
+        if func.name != "main"
+            && !matches!(func.ret, Type::Unknown | Type::Void)
+            && !self.is_generic_param(&func.ret, func)
+        {
             out.write(b" -> ")?;
             let type_name = self.gdscript_type_name(&func.ret);
             out.write_all(type_name.as_bytes())?;
@@ -814,13 +817,17 @@ impl GDScriptTrans {
         out.write_all(type_decl.name.as_bytes())?;
         out.write(b"\n\n")?;
 
-        // Emit fields as member variables
+        // Emit fields as member variables (use Variant for generic type params)
         for member in &type_decl.members {
             self.print_indent(out)?;
             out.write(b"var ")?;
             out.write_all(member.name.as_bytes())?;
             out.write(b": ")?;
-            let type_name = self.gdscript_type_name(&member.ty);
+            let type_name = if self.is_type_decl_generic_param(&member.ty, &type_decl.generic_params) {
+                AutoStr::from("Variant")
+            } else {
+                self.gdscript_type_name(&member.ty)
+            };
             out.write_all(type_name.as_bytes())?;
             out.write(b"\n")?;
         }
@@ -1465,6 +1472,47 @@ impl GDScriptTrans {
             _ => Type::Unknown,
         }
     }
+
+    /// Check if a type is a generic type parameter (e.g., T in fn foo<T>)
+    /// The parser creates synthetic TypeDecl stubs for generic params — they have
+    /// no members, no methods, and kind UserType. Real type declarations always
+    /// have at least members or are registered differently.
+    fn is_generic_param(&self, ty: &Type, _func: &Fn) -> bool {
+        if let Type::User(type_decl) = ty {
+            // Check func.type_params first (set by fn expression path)
+            for tp in &_func.type_params {
+                if tp.name == type_decl.name {
+                    return true;
+                }
+            }
+            // Heuristic: synthetic TypeDecl for generic params has empty members & methods
+            if type_decl.members.is_empty() && type_decl.methods.is_empty() {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check if a type matches one of the TypeDecl's generic type params
+    fn is_type_decl_generic_param(&self, ty: &Type, generic_params: &[GenericParam]) -> bool {
+        if let Type::User(type_decl) = ty {
+            for gp in generic_params {
+                match gp {
+                    GenericParam::Type(tp) => {
+                        if tp.name == type_decl.name {
+                            return true;
+                        }
+                    }
+                    GenericParam::Const(_) => {}
+                }
+            }
+            // Heuristic fallback: synthetic TypeDecl with empty members/methods
+            if type_decl.members.is_empty() && type_decl.methods.is_empty() {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 /// Capitalize the first letter of a string
@@ -1682,5 +1730,15 @@ mod tests {
     #[test]
     fn test_typed_vars() {
         test_a2gd("01_basics/031_typed_vars").unwrap();
+    }
+
+    #[test]
+    fn test_generic_func() {
+        test_a2gd("08_generics/001_generic_func").unwrap();
+    }
+
+    #[test]
+    fn test_generic_struct() {
+        test_a2gd("08_generics/002_generic_struct").unwrap();
     }
 }

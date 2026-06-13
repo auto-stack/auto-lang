@@ -1,0 +1,8 @@
+type Container<T> {
+    value T
+}
+
+fn main() {
+    let c = Container(value: 10)
+    print(c.value)
+}
