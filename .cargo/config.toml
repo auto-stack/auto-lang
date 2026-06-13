@@ -17,9 +17,9 @@ linker = "rust-lld.exe"
 [build]
 jobs = 8
 
-[env]
-# Pin Python path so pyo3 doesn't rerun on PATH changes (Claude sandbox vs user terminal)
-PYO3_PYTHON = "C:\\Python314\\python.exe"
+# PYO3_PYTHON is set per-platform via the user shell environment
+# (not here, since [env] is global and cannot differ by target).
+# Windows: C:\Python314\python.exe | Linux: /usr/bin/python3
 
 [alias]
 t = "nextest run -p auto-lang --lib"
