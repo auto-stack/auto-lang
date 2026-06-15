@@ -50,6 +50,7 @@ impl Command for StrJoinCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auto_val::Array;
 
     #[test]
     fn test_join_comma() {

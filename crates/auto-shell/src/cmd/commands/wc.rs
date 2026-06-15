@@ -318,6 +318,7 @@ mod tests {
             positionals: vec![],
             flags,
             named: std::collections::HashMap::new(),
+            ..Default::default()
         };
 
         // Create an array like ls would return

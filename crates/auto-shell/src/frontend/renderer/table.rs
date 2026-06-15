@@ -344,6 +344,26 @@ fn file_icon_by_name(_name: &str) -> &'static str {
 mod tests {
     use super::*;
 
+    /// Strip CSI ANSI escapes so multi-char text assertions work despite
+    /// `buffer_to_ansi` emitting styling per buffer cell.
+    fn strip_ansi(s: &str) -> String {
+        let mut out = String::new();
+        let mut chars = s.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\x1b' && chars.peek() == Some(&'[') {
+                chars.next();
+                while let Some(csi) = chars.next() {
+                    if csi.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
     #[test]
     fn test_column_display_name() {
         assert_eq!(column_display_name("name"), "Name");
@@ -400,14 +420,15 @@ mod tests {
         assert!(result.is_some());
 
         let output = result.unwrap();
+        let plain = strip_ansi(&output);
         // Should contain border characters
         assert!(output.contains('╭') || output.contains('┌'));
         assert!(output.contains('╰') || output.contains('└'));
-        // Should contain data
-        assert!(output.contains("file.txt"));
-        assert!(output.contains("src/"));
+        // Should contain data (strip ANSI: text is per-cell styled, not contiguous)
+        assert!(plain.contains("file.txt"));
+        assert!(plain.contains("src/"));
         // Should contain header
-        assert!(output.contains("Name"));
+        assert!(plain.contains("Name"));
     }
 
     #[test]
@@ -433,12 +454,13 @@ mod tests {
         let val = Value::Array(arr);
 
         let output = render_table(&val, 60).unwrap();
+        let plain = strip_ansi(&output);
         // Icon column present: dir → 📁, file → 📄
         assert!(output.contains('📁'), "missing dir icon: {output}");
         assert!(output.contains('📄'), "missing file icon: {output}");
-        // Names still render.
-        assert!(output.contains("src"));
-        assert!(output.contains("main.rs"));
+        // Names still render (strip ANSI: per-cell styled).
+        assert!(plain.contains("src"));
+        assert!(plain.contains("main.rs"));
     }
 
     #[test]

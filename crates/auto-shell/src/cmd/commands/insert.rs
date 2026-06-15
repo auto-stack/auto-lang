@@ -98,6 +98,7 @@ fn parse_value(s: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auto_val::{Array, Obj};
 
     #[test]
     fn test_insert_new_field() {

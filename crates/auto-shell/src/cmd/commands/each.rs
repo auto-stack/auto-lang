@@ -68,6 +68,7 @@ fn extract_field(arr: &Array, field: &str) -> Array {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auto_val::{Array, Obj};
 
     #[test]
     fn test_extract_field() {

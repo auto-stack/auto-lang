@@ -100,6 +100,7 @@ fn f64_to_value(f: f64) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auto_val::{Array, Obj};
 
     #[test]
     fn test_max_integers() {
