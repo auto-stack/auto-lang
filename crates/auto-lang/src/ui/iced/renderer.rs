@@ -1877,17 +1877,26 @@ const DEBUG_EDIT_PREFIX: &str = "__edit_";
 const DEBUG_EDIT_APPLY: &str = "__edit_apply";
 const DEBUG_EDIT_CANCEL: &str = "__edit_cancel";
 const SRC_CLICK_PREFIX: &str = "__src_click_";
-/// Select a VNode by its u64 id (Plan 307 Task 14): `__select_vnode_<id>`.
-const DEBUG_SELECT_VNODE_PREFIX: &str = "__select_vnode_";
+/// Select a VNode by its u64 id (Plan 307 Task 14): `__vnode_select_<id>`.
+///
+/// NOTE (Plan 309 续篇): this prefix MUST NOT share a leading segment with
+/// `DEBUG_SELECT_PREFIX` (`"__select_"`). The select-widget handler does
+/// `event.strip_prefix("__select_")`, and `"__select_vnode_"` is prefixed by
+/// it — so a tree-node click message was hijacked by the widget handler (id
+/// misread as `"vnode_42"`) and the VNode block never ran, making tree nodes
+/// un-selectable. Renaming the prefix breaks the overlap.
+const DEBUG_SELECT_VNODE_PREFIX: &str = "__vnode_select_";
 /// Switch the inspector right-panel inner sub-tab (Plan 307 Task 15):
 /// `__inspector_subtab_<Variant>`.
 const DEBUG_INSPECTOR_SUBTAB_PREFIX: &str = "__inspector_subtab_";
 
-/// DevTools panel tab selector.
+/// DevTools panel top-level mode (Plan 309 续篇: 元素树与检视已统一为同屏
+/// 分屏，不再是互斥 tab；控制台仍为独立整宽模式).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DevToolsTab {
-    Elements,
-    Inspector,
+    /// 同屏分屏：左元素树 (VTree) | 右检视 (面包屑 + 子标签).
+    Inspect,
+    /// 控制台占满整宽.
     Console,
 }
 
@@ -2018,6 +2027,15 @@ struct DynamicState {
     cached_highlighted: std::cell::RefCell<Option<Vec<Vec<(String, iced::Color)>>>>,
     /// Fixed ID for the DevTools inspector scrollable, used for programmatic scroll.
     inspector_scroll_id: iced::widget::Id,
+    /// Fixed ID for the DevTools elements-tree (left pane) scrollable.
+    elements_scroll_id: iced::widget::Id,
+    /// Split ratio (0..1) for the inner Tree|Inspector divider within the
+    /// DevTools panel — `ratio` is the Tree pane's share of the panel width.
+    /// Dragged via the inner divider (Plan 309 续篇).
+    inspector_split_ratio: std::cell::RefCell<f32>,
+    /// True while the inner (Tree|Inspector) divider is being dragged; drives
+    /// ratio updates from the window-level `__mouse_moved` subscription.
+    dragging_inner_divider: std::cell::RefCell<bool>,
     /// When set, the next update() cycle will scroll to center this line index.
     pending_scroll_to_center: std::cell::RefCell<Option<usize>>,
     /// When true, next update() will trigger a layout bounds collection Task (Plan 282).
@@ -2132,7 +2150,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             inspect_mode: std::cell::RefCell::new(false),
             inspector_subtab: std::cell::RefCell::new(InspectorSubTab::default()),
             devtools_open: std::cell::RefCell::new(false),
-            devtools_tab: std::cell::RefCell::new(DevToolsTab::Inspector),
+            devtools_tab: std::cell::RefCell::new(DevToolsTab::Inspect),
             console_output: std::cell::RefCell::new(Vec::new()),
             source_code: std::cell::RefCell::new(None),
             source_line_offsets: std::cell::RefCell::new(Vec::new()),
@@ -2151,10 +2169,14 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             cached_rendered: std::cell::RefCell::new(None),
             cached_highlighted: std::cell::RefCell::new(None),
             inspector_scroll_id: iced::widget::Id::unique(),
+            elements_scroll_id: iced::widget::Id::unique(),
+            // Plan 309 续篇: Tree | Inspector 同屏分屏，树占 38%；分隔栏可拖拽。
+            inspector_split_ratio: std::cell::RefCell::new(0.38),
+            dragging_inner_divider: std::cell::RefCell::new(false),
             pending_scroll_to_center: std::cell::RefCell::new(None),
             needs_bounds: std::cell::RefCell::new(false),
             screenshot_request: std::cell::RefCell::new(None),
-            devtools_panel_width: std::cell::RefCell::new(420.0),
+            devtools_panel_width: std::cell::RefCell::new(600.0),
             window_size: std::cell::RefCell::new(iced::Size::new(1024.0, 768.0)),
             dragging_divider: std::cell::RefCell::new(false),
             line_to_aura_ids: std::cell::RefCell::new(std::collections::HashMap::new()),
@@ -2271,11 +2293,11 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     .and_then(|c| c.iced_to_vnode(&id));
                 *state.selected_vnode.borrow_mut() = derived_vnode;
                 *state.devtools_open.borrow_mut() = true;
-                *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
+                *state.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                 // Cache source code (shared loader; Plan 309 Phase 4.1).
                 ensure_source_loaded(state);
-                // Plan 309 Phase 5.1: Chrome's picker auto-exits after a click.
-                *state.inspect_mode.borrow_mut() = false;
+                // Plan 309 续篇: 检视光标改为常驻 —— 点击后不再自动退出，便于连点
+                // 多个画布元素；由 🔍 按钮手动关闭。
             }
             // Try to set pending scroll from element's span
             if let Some(ref sel_id) = *state.selected_widget.borrow() {
@@ -2319,7 +2341,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         *state.selected_widget.borrow_mut() = Some(aura);
                     }
                     *state.devtools_open.borrow_mut() = true;
-                    *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
+                    *state.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                     // Plan 309 Phase 4: load source so the Source sub-tab can
                     // render the listing on a tree-click (no element click yet).
                     ensure_source_loaded(state);
@@ -2358,18 +2380,15 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             return iced::Task::none();
         }
         match msg.event.as_str() {
-            "__tab_elements" => {
-                *state.devtools_tab.borrow_mut() = DevToolsTab::Elements;
-                ui_changed = true;
-                return iced::Task::none();
-            }
-            "__tab_inspector" => {
-                *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
-                ui_changed = true;
-                return iced::Task::none();
-            }
+            // Plan 309 续篇: 元素树与检视已合并为同屏分屏 (Inspect 模式)，
+            // 不再有独立的元素/检视 tab；__tab_console 在控制台与分屏间切换。
             "__tab_console" => {
-                *state.devtools_tab.borrow_mut() = DevToolsTab::Console;
+                let cur = *state.devtools_tab.borrow();
+                *state.devtools_tab.borrow_mut() = if cur == DevToolsTab::Console {
+                    DevToolsTab::Inspect
+                } else {
+                    DevToolsTab::Console
+                };
                 ui_changed = true;
                 return iced::Task::none();
             }
@@ -2391,6 +2410,13 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     state.debug_mode = true;
                     *state.devtools_open.borrow_mut() = true;
                 }
+                ui_changed = true;
+                return iced::Task::none();
+            }
+            // Plan 309 续篇: 内层 Tree|Inspector 分隔栏按下 → 进入拖拽。实际
+            // 位移由窗口级 `__mouse_moved` 订阅用绝对坐标计算（同外层分隔栏）。
+            "__inner_divider_press" => {
+                *state.dragging_inner_divider.borrow_mut() = true;
                 ui_changed = true;
                 return iced::Task::none();
             }
@@ -2418,7 +2444,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                                     .and_then(|c| c.iced_to_vnode(&debug_id));
                                 *state.selected_vnode.borrow_mut() = derived_vnode;
                                 *state.devtools_open.borrow_mut() = true;
-                                *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
+                                *state.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                                 // Scroll source to the selected element's span
                                 let styles = state.debug_element_styles.borrow();
                                 if let Some(elem_info) = styles.get(&debug_id) {
@@ -2464,23 +2490,44 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 *state.dragging_divider.borrow_mut() = true;
                 return iced::Task::none();
             }
-            // Mouse move: update panel width when dragging
+            // Mouse move: update panel width when dragging the OUTER divider, or
+            // the inner Tree|Inspector split ratio when dragging the INNER divider.
             "__mouse_moved" => {
-                if *state.dragging_divider.borrow() {
-                    if let Some(ref val) = msg.input_value {
-                        let x: f32 = val.split(',').next().unwrap_or("0").parse().unwrap_or(0.0);
+                if let Some(ref val) = msg.input_value {
+                    let (mx, _my) = {
+                        let mut it = val.split(',');
+                        let x: f32 = it.next().unwrap_or("0").parse().unwrap_or(0.0);
+                        let y: f32 = it.next().unwrap_or("0").parse().unwrap_or(0.0);
+                        (x, y)
+                    };
+                    if *state.dragging_divider.borrow() {
                         let win_w = state.window_size.borrow().width;
-                        let new_width = (win_w - x).max(200.0).min(win_w - 200.0);
+                        let new_width = (win_w - mx).max(200.0).min(win_w - 200.0);
                         *state.devtools_panel_width.borrow_mut() = new_width;
+                        ui_changed = true;
+                    }
+                    // Plan 309 续篇: inner Tree|Inspector divider. The panel's
+                    // left edge sits at win_w - panel_width; the divider's share
+                    // of the panel is (mx - panel_left) / panel_width.
+                    if *state.dragging_inner_divider.borrow() {
+                        let win_w = state.window_size.borrow().width;
+                        let panel_w = (*state.devtools_panel_width.borrow()).max(1.0);
+                        let panel_left = win_w - panel_w;
+                        let ratio = ((mx - panel_left) / panel_w).clamp(0.1, 0.9);
+                        *state.inspector_split_ratio.borrow_mut() = ratio;
                         ui_changed = true;
                     }
                 }
                 return iced::Task::none();
             }
-            // Mouse release: stop dragging
+            // Mouse release: stop dragging either divider
             "__mouse_released" => {
                 if *state.dragging_divider.borrow() {
                     *state.dragging_divider.borrow_mut() = false;
+                    ui_changed = true;
+                }
+                if *state.dragging_inner_divider.borrow() {
+                    *state.dragging_inner_divider.borrow_mut() = false;
                     ui_changed = true;
                 }
                 return iced::Task::none();
@@ -3246,34 +3293,24 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 }
 
 /// Render the DevTools panel on the right side of the window.
+///
+/// Plan 309 续篇: 元素树 (VTree) 与检视 (面包屑 + 子标签) 合并为同屏分屏 ——
+/// 左树点任意 VNode 即设 `selected_vnode`，右侧检视随之更新；两者始终同屏，
+/// 不再有互斥 tab。控制台保留为独立整宽模式（点「控制台」按钮切换）。
 fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
     let current_tab = *state.devtools_tab.borrow();
 
-    // Tab bar: [元素] [检查] [控制台] [×]
-    let tab_elements_style = tab_style_fn(current_tab == DevToolsTab::Elements);
-    let tab_inspector_style = tab_style_fn(current_tab == DevToolsTab::Inspector);
-    let tab_console_style = tab_style_fn(current_tab == DevToolsTab::Console);
-
-    let tab_elements = container(
-        mouse_area(text("元素").size(11))
+    // Header: [🔍 检视] [控制台] ... [×]
+    let inspect_active = *state.inspect_mode.borrow();
+    let tab_inspect = container(
+        mouse_area(text("🔍 检视").size(11))
             .on_press(IcedMessage {
                 widget: String::new(),
-                event: "__tab_elements".to_string(),
+                event: "__toggle_inspect".to_string(),
                 input_value: None,
             })
     )
-        .style(tab_elements_style)
-        .padding(iced::Padding::new(4.0));
-
-    let tab_inspector = container(
-        mouse_area(text("检查").size(11))
-            .on_press(IcedMessage {
-                widget: String::new(),
-                event: "__tab_inspector".to_string(),
-                input_value: None,
-            })
-    )
-        .style(tab_inspector_style)
+        .style(tab_style_fn(inspect_active))
         .padding(iced::Padding::new(4.0));
 
     let tab_console = container(
@@ -3284,22 +3321,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
                 input_value: None,
             })
     )
-        .style(tab_console_style)
-        .padding(iced::Padding::new(4.0));
-
-    // Plan 309 Phase 5.2: Chrome-style inspect-element cursor toggle. Active
-    // (highlighted) when inspect_mode is on; click enters/exits the picker.
-    let inspect_active = *state.inspect_mode.borrow();
-    let tab_inspect_style = tab_style_fn(inspect_active);
-    let tab_inspect = container(
-        mouse_area(text("🔍 检视").size(11))
-            .on_press(IcedMessage {
-                widget: String::new(),
-                event: "__toggle_inspect".to_string(),
-                input_value: None,
-            })
-    )
-        .style(tab_inspect_style)
+        .style(tab_style_fn(current_tab == DevToolsTab::Console))
         .padding(iced::Padding::new(4.0));
 
     let close_btn = container(
@@ -3320,7 +3342,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         })
         .padding(iced::Padding::new(4.0));
 
-    let tab_bar = row![tab_elements, tab_inspector, tab_console, tab_inspect]
+    let tab_bar = row![tab_inspect, tab_console]
         .spacing(2)
         .width(iced::Length::Fill);
     let header = row![tab_bar, close_btn]
@@ -3328,23 +3350,64 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         .width(iced::Length::Fill)
         .align_y(iced::Alignment::Center);
 
-    // Tab content
+    // Content: split view (Inspect) or full-width console.
+    let panel_width = *state.devtools_panel_width.borrow();
     let content: iced::Element<'static, IcedMessage> = match current_tab {
-        DevToolsTab::Elements => render_elements_tab(state),
-        DevToolsTab::Inspector => render_inspector_tab(state),
-        DevToolsTab::Console => render_console_tab(state),
+        DevToolsTab::Inspect => {
+            // Plan 309 续篇: 同屏分屏 [Tree | divider | Inspector]。分隔栏
+            // 用 mouse_area::on_press 设拖拽标志，实际位移由窗口级
+            // `__mouse_moved` 订阅按绝对坐标计算（与外层 DevTools 分隔栏同
+            // 一套机制；pane_grid 的组件借用 State 与本渲染器返回的
+            // `Element<'static>` 契约不兼容，故手写分屏）。
+            let ratio = (*state.inspector_split_ratio.borrow()).clamp(0.1, 0.9);
+            let is_dragging = *state.dragging_inner_divider.borrow();
+            let divider_bg = if is_dragging {
+                iced::Color::from_rgb(0.3, 0.5, 0.9) // blue while dragging
+            } else {
+                iced::Color::from_rgb(0.82, 0.82, 0.82) // gray normally
+            };
+            let tree_pane = scrollable(render_elements_tab(state))
+                .id(state.elements_scroll_id.clone())
+                .width(iced::Length::FillPortion((ratio * 1000.0) as u16))
+                .height(iced::Length::Fill);
+            let inspector_pane = scrollable(render_inspector_tab(state))
+                .id(state.inspector_scroll_id.clone())
+                .width(iced::Length::FillPortion(((1.0 - ratio) * 1000.0) as u16))
+                .height(iced::Length::Fill);
+            let inner_divider = mouse_area(
+                container(iced::widget::Space::new().width(6))
+                    .style(move |_: &iced::Theme| container::Style {
+                        background: Some(iced::Background::Color(divider_bg)),
+                        ..Default::default()
+                    })
+                    .width(6)
+                    .height(iced::Length::Fill),
+            )
+            .on_press(IcedMessage {
+                widget: String::new(),
+                event: "__inner_divider_press".to_string(),
+                input_value: None,
+            });
+            row![tree_pane, inner_divider, inspector_pane]
+                .spacing(0)
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .into()
+        }
+        DevToolsTab::Console => container(
+            scrollable(render_console_tab(state))
+                .id(state.inspector_scroll_id.clone())
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill),
+        )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .into(),
     };
 
-    let panel_col = column![header, container(
-        scrollable(content)
-            .id(state.inspector_scroll_id.clone())
-            .width(iced::Length::Fill)
-            .height(iced::Length::Fill)
-    )
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fill)]
+    let panel_col = column![header, content]
         .spacing(4)
-        .width(*state.devtools_panel_width.borrow())
+        .width(panel_width)
         .height(iced::Length::Fill);
 
     container(panel_col)
@@ -3358,7 +3421,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
             ..Default::default()
         })
         .padding(iced::Padding::new(6.0))
-        .width(*state.devtools_panel_width.borrow())
+        .width(panel_width)
         .height(iced::Length::Fill)
         .into()
 }
@@ -5160,19 +5223,28 @@ impl DebugRenderCtx {
             el
         };
 
-        // --- Debug mode gate ---
-        // The interactive overlay (mouse_area hover/click + highlights) requires
-        // BOTH debug_mode (F12) and inspect_mode (Plan 309 Phase 5 picker). When
-        // either is off, skip the overlay and return the bounds-probed element
-        // — the bounds probe + metadata storage above stay un-gated so MCP
-        // snapshots and the InspectorCache still populate.
-        if !(self.debug_mode && self.inspect_mode) {
+        // --- Overlay gate ---
+        // Plan 309 续篇: decouple the SELECTED highlight (orange) from the
+        // inspect picker. A selection made by clicking the element-tree pane
+        // (no picker engaged) must still draw its highlight on the live canvas
+        // so the user sees what they're inspecting. The HOVER overlay (blue)
+        // and the interactive mouse_area stay picker-only (inspect_mode) to keep
+        // the canvas quiet otherwise. Both require F12 debug_mode.
+        if !self.debug_mode {
             self.tree_exit();
             return el;
         }
 
-        let hovered = self.is_hovered(&id);
         let selected = self.selected_id.as_deref() == Some(&id);
+        if !self.inspect_mode && !selected {
+            // Picker off and nothing selected → plain element (the bounds probe
+            // + metadata storage above stay un-gated for MCP snapshots /
+            // InspectorCache).
+            self.tree_exit();
+            return el;
+        }
+
+        let hovered = self.inspect_mode && self.is_hovered(&id);
         let move_id = format!("{}{}:{}", DEBUG_HOVER_MOVE, counter_val, id);
         let enter_msg = IcedMessage {
             widget: String::new(),
@@ -5189,15 +5261,22 @@ impl DebugRenderCtx {
             event: format!("{}{}", DEBUG_SELECT_PREFIX, id),
             input_value: None,
         };
-        let ma = mouse_area(el)
-            .on_enter(enter_msg)
-            .on_exit(exit_msg)
-            .on_move(move |_point| IcedMessage {
-                widget: String::new(),
-                event: move_id.clone(),
-                input_value: None,
-            })
-            .on_press(press_msg);
+        // mouse_area interaction only in picker mode; otherwise pass the
+        // bounds-probed element through so the selected border can still wrap it.
+        let ma: iced::Element<'static, IcedMessage> = if self.inspect_mode {
+            mouse_area(el)
+                .on_enter(enter_msg)
+                .on_exit(exit_msg)
+                .on_move(move |_point| IcedMessage {
+                    widget: String::new(),
+                    event: move_id.clone(),
+                    input_value: None,
+                })
+                .on_press(press_msg)
+                .into()
+        } else {
+            el
+        };
 
         let result: iced::Element<'static, IcedMessage> = if selected {
             // Selected element: orange border + tooltip
@@ -5284,7 +5363,7 @@ impl DebugRenderCtx {
                 .gap(4.0)
                 .into()
         } else {
-            ma.into()
+            ma
         };
 
         self.tree_exit();
