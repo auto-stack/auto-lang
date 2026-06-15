@@ -11,6 +11,7 @@ pub mod javascript;
 pub mod typescript;
 pub mod r2a;
 pub mod tscn;
+pub mod escape;
 
 /// A single entry in the source map, mapping a source line to an output line.
 /// Both line numbers are 1-based.

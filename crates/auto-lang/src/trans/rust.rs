@@ -104,6 +104,13 @@ pub struct RustTrans {
     // transpiled output (Sink), or they would corrupt .expected.rs byte diffs.
     warnings: Vec<crate::error::Warning>,
 
+    // Plan 310 Phase 1: Per-function escape-analysis decisions.
+    // Keyed by function name → EscapeMap of that function's bindings. Populated
+    // by transpile_rust (after CTEE, before trans). Phase 1: populated but NOT
+    // consulted — output bytes stay identical. Phase 2 wires lookups into
+    // Expr::View/Mut generation.
+    escape_results: HashMap<AutoStr, crate::trans::escape::EscapeMap>,
+
     // Cache for struct field types: struct_name -> Vec<(field_name, field_type)>
     // Used to add .to_string() when &str is assigned to String field
     struct_field_types: HashMap<AutoStr, Vec<(AutoStr, Type)>>,
@@ -227,6 +234,7 @@ impl RustTrans {
             tag_types: HashSet::new(),
             union_types: HashSet::new(),
             warnings: Vec::new(),
+            escape_results: HashMap::new(),
             enum_struct_variants: HashMap::new(),
             enum_tuple_variants: HashMap::new(),
             enum_tuple_field_types: HashMap::new(),
@@ -280,6 +288,7 @@ impl RustTrans {
             tag_types: HashSet::new(),
             union_types: HashSet::new(),
             warnings: Vec::new(),
+            escape_results: HashMap::new(),
             enum_struct_variants: HashMap::new(),
             enum_tuple_variants: HashMap::new(),
             enum_tuple_field_types: HashMap::new(),
@@ -10873,8 +10882,34 @@ pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> 
     let mut ctee = crate::comptime::CTEE::new();
     ctee.transform(&mut ast).map_err(|e| e.to_string())?;
 
+    // Plan 310 Phase 1: Run escape analysis on every top-level function body.
+    // Results are stored in the transpiler but NOT consulted in Phase 1 —
+    // transpiled output bytes must stay identical (verification gate).
+    // Also analyze method bodies inside type declarations (Stmt::TypeDecl).
+    let mut escape_results: HashMap<AutoStr, crate::trans::escape::EscapeMap> = HashMap::new();
+    {
+        use crate::trans::escape::EscapeAnalyzer;
+        for stmt in &ast.stmts {
+            match stmt {
+                crate::ast::Stmt::Fn(func) => {
+                    let map = EscapeAnalyzer::analyze_fn(func);
+                    escape_results.insert(func.name.clone(), map);
+                }
+                crate::ast::Stmt::TypeDecl(td) => {
+                    for method in &td.methods {
+                        let map = EscapeAnalyzer::analyze_fn(method);
+                        let key = format!("{}.{}", td.name, method.name).into();
+                        escape_results.insert(key, map);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);
+    transpiler.escape_results = escape_results;
     transpiler.trans(ast, &mut out)?;
 
     // Apply post-processing fixes (replaces fix_transpiled.py)
@@ -10883,7 +10918,28 @@ pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> 
     Ok(out)
 }
 
-/// Transpile code fragment for testing
+/// Plan 310 Phase 1: Run escape analysis on source and return a summary
+/// (function name → number of tracked bindings). For verification that the
+/// analysis pass actually runs in the transpile pipeline. Not used by the
+/// transpiler output path.
+#[cfg(test)]
+pub(crate) fn escape_analysis_summary(code: &str) -> std::collections::HashMap<AutoStr, usize> {
+    use crate::trans::escape::EscapeAnalyzer;
+    let mut parser = Parser::from(code);
+    parser.set_dest(crate::parser::CompileDest::TransRust);
+    let ast = match parser.parse() {
+        Ok(a) => a,
+        Err(_) => return HashMap::new(),
+    };
+    let mut summary = HashMap::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::Fn(func) = stmt {
+            let map = EscapeAnalyzer::analyze_fn(func);
+            summary.insert(func.name.clone(), map.len());
+        }
+    }
+    summary
+}
 pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     let _scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);

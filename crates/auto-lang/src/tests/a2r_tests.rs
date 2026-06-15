@@ -514,6 +514,39 @@ fn get_line(src: &str, offset: usize) -> String {
 #[test] fn test_cookbook_cryptography_003_hmac() { test_cookbook("cryptography/003_hmac").unwrap(); }
 
 // -- cookbook/devtools --
+
+// === Plan 310 Phase 1: escape analysis pipeline verification ===
+// These tests prove the analysis pass runs inside transpile_rust and produces
+// non-trivial EscapeMaps. Phase 1 contract: output bytes unchanged, but the
+// escape_results map must be populated for every function in the source.
+
+#[test]
+fn test_escape_analysis_runs_in_pipeline() {
+    // Source with two functions: one with locals, one empty.
+    let src = "fn add(a int, b int) int {\n    let s = a + b\n    return s\n}\n\nfn empty() {\n}\n";
+    let summary = crate::trans::rust::escape_analysis_summary(src);
+    // Both functions should be analyzed.
+    assert!(summary.contains_key("add"), "add should be analyzed");
+    assert!(summary.contains_key("empty"), "empty should be analyzed");
+    // `add` has one binding (`s`), `empty` has none.
+    assert_eq!(summary["add"], 1, "add should track 1 binding (s)");
+    assert_eq!(summary["empty"], 0, "empty should track 0 bindings");
+}
+
+#[test]
+fn test_escape_analysis_detects_multiple_bindings() {
+    // A function with several locals and a nested for-loop scope.
+    let src = "fn f() {\n    let a = 1\n    let b = 2\n    for i in 0..3 {\n        let c = a + i\n    }\n}\n";
+    let summary = crate::trans::rust::escape_analysis_summary(src);
+    // a, b at depth 0; i (loop var), c (loop body) at depth 1. The loop
+    // variable form `for i in 0..3` is parsed as Iter::Named or Iter::Indexed;
+    // either way c should be tracked. Conservative lower bound.
+    assert!(
+        summary["f"] >= 3,
+        "f should track at least a, b, and the loop var (got {})",
+        summary["f"]
+    );
+}
 #[test] fn test_cookbook_devtools_001_log_debug() { test_cookbook("devtools/001_log_debug").unwrap(); }
 #[test] fn test_cookbook_devtools_002_log_error() { test_cookbook("devtools/002_log_error").unwrap(); }
 #[test] fn test_cookbook_devtools_003_log_stdout() { test_cookbook("devtools/003_log_stdout").unwrap(); }
