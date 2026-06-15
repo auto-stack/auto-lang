@@ -1191,3 +1191,69 @@ Run: `cargo test -p auto-lang -- f12_off_zero_overhead` + `cargo build -p auto`
 - 上文 DoD 中「手动验收清单全过」仍待本续篇人工验收完成后勾选。
 - 「`DebugLayer` 与 `DebugTreeNode`/`element_styles` 已删除」仍为 ⏳：本续篇未删除（`render_inspector_source_section` 仍 `#[allow(dead_code)]` 保留，与 `render_source_viewer` 逻辑重复），归入 307 Task 19/20 清理批次统一退役，避免两份实现漂移。
 - 路径方案分歧项：阶段 1 已对常见单 body 循环场景调和，DoD 中「按 §6.1 降级」风险项对应不再是常见失败路径。
+
+---
+
+# 续篇 II：F12 检视 — Alt = 原生事件，普通点击/hover = 检视
+
+## 背景
+
+阶段 5 的 🔍 检视光标模式上线后，发现带自身事件处理器的组件（典型是 button）不配合检视器：
+
+- 鼠标 hover 一个 button，**不显示**检视的黄色框。
+- 点击一个 button，触发的是它**原生的 `onclick`**（例如打开某个 note 内容），而不是在检视窗口里选中该元素。
+
+根因（经代码确认）：button 用 iced 原生 `button(text).on_press(onclick)` 构建，再被 `wrap_debug` 外包一层 `mouse_area(...).on_press(select)`。iced 中**内层交互组件会捕获 press**，因此外层 `wrap_debug` 的 mouse_area 的 `on_press`/`on_move` 在 button 之上根本不触发——检视的选中与 hover 同时被遮蔽。Input/Slider/Checkbox 等同理。
+
+一旦 `on_press` 在元素构建时烘焙进 widget，事后无法剥离。要让 `wrap_debug` 的 mouse_area 能捕获，底层 widget 必须在检视模式下被构建为**无处理器（非交互）**。
+
+**用户确认的设计：检视模式下，普通点击/hover 选中任意元素（含 button）；按住 Alt + 点击/hover = 原生事件。** 修饰键 = **Alt**。
+
+## 选定方案：线程局部「检视捕获」标志 + 逐组件处理器门控
+
+当标志置位时，交互组件构建时**省略其处理器**，iced 不让它们捕获——于是既有的、经过验证的 `wrap_debug` mouse_area 即可对所有元素统一捕获 hover + click。无需命中测试代码，不依赖 iced `stack` 的事件顺序。
+
+**被否决的替代——捕获叠加层**（`stack![content, overlay_mouse_area]`）：概念上更干净，且 bounds 是窗口相对坐标故命中测试在几何上可行；但它依赖 iced stack 是否阻塞子元素 press（不确定），且新增一条基于坐标的 hover/选中路径。门控方案整体复用既有 `wrap_debug` 流程，风险更低。
+
+唯一事实源是一个线程局部 `INSPECT_CAPTURE`，每次 view 构建置位一次，由 `into_iced`（门控处理器）与 `wrap_debug`（门控捕获 mouse_area + 黄色框）共同读取。之所以用线程局部，是因为 `IntoIcedElement::into_iced` 是泛型 trait 方法，签名是纯的 `fn into_iced(self) -> Element`，无法加标志位；文件本身已用此模式（`INPUT_TEXT`）。
+
+### 条件表
+
+`INSPECT_CAPTURE = state.debug_mode && state.inspect_mode && !alt_held`
+
+| 模式 | INSPECT_CAPTURE | 组件处理器 | wrap_debug mouse_area | 结果 |
+|---|---|---|---|---|
+| debug 关 | false | 附着 | `el`（不捕获） | 仅原生 |
+| 检视，无 Alt | **true** | **省略** | 激活（捕获） | 检视 hover+click 覆盖一切 |
+| 检视 + Alt | false | 附着 | `el`（不捕获） | 仅原生（黄色框关） |
+
+## 实施（全部在 `crates/auto-lang/src/ui/iced/renderer.rs`）
+
+- **跟踪 Alt 修饰键：** `DynamicState` 增 `current_modifiers: RefCell<iced::keyboard::Modifiers>`；窗口级 `iced::event::listen_with` 订阅内新增 `ModifiersChanged(m)` 分支，将最新修饰键写入线程局部 `LAST_MODIFIERS`（订阅闭包无法借用 state，故用线程局部暂存）；`dynamic_view` 入口把 `LAST_MODIFIERS` 复制进 `state.current_modifiers`。
+- **`INSPECT_CAPTURE` 线程局部 + view 入口置位：** `dynamic_view` 顶部、`render_dynamic_view` 之前，计算 `alt = current_modifiers.alt()` 后 `INSPECT_CAPTURE.with(|c| c.set(debug_mode && inspect_mode && !alt))`。
+- **逐组件门控处理器**（捕获时省略 → 非交互 → wrap_debug mouse_area 接管）：
+  - **Button**：`let mut btn = button(text); if !capture { btn = btn.on_press(onclick); }`（button 自有忽略 Status 的自定义 style，即便非交互也正常渲染）。
+  - **Checkbox / Radio**：捕获时 `on_toggle`/`on_select` 置 `None`，走既有 None 分支。
+  - **Select**：捕获时 `on_select` 置 `None`，None 分支渲染静态文本。
+  - **Slider**：捕获分支渲染 `text(format!("{}", value))`，否则交互 slider。
+  - **Input**（`render_dynamic_view`）：`on_change`/`on_submit` 捕获时置 `None` → 只读显示值。
+  - **Textarea**（`render_dynamic_view`）：`on_change` 捕获时置 `None` → 只读显示。
+- **`wrap_debug` 门控切换到捕获标志：** 用 `inspect_capture_active()` 替换原先的 `self.inspect_mode`，作为 mouse_area 决策与 `hovered` 计算的依据（Alt 时同时压下捕获叠加层与黄色框）；`selected` 橙色 overlay 分支仍按 `selected`（经树点击或检视设置）绘制，与 Alt 无关，不变。
+
+> 注：`render_dynamic_view` 与 `into_iced` 是两个函数，但单次 view 构建期间运行于同一线程，故 `dynamic_view` 置位的线程局部在两者（含 `into_iced` 的递归容器调用）中均可见。
+
+## 已知局限（记录，本次不修）
+
+- **无自定义 style 的交互组件**（Checkbox/Radio/Select/Slider/Input/Textarea，即没有「忽略 Status」的样式闭包）在 `INSPECT_CAPTURE` 置位时，可能呈现 iced 的「disabled」外观——因为省略了处理器使其变非交互。Button 不受影响（自定义 style 忽略 Status）。对验收用的 `examples/ui/015-notes`（带样式 note button）无影响；若他处观感不对，给门控组件补一个忽略 Status 的 `style` 闭包（后续跟进）。
+- Alt 按下与组件翻转交互式之间有约一帧延迟：Alt 触发 `ModifiersChanged` → 重建 → 下一帧组件即交互。可接受。
+
+## 验证
+
+- `cargo build -p auto` 通过（仅既有 warning，无新增 error）。
+- `cargo test -p auto-lang --lib 'ui::debug'`：80 全绿。
+- **待人工验收（VM 模式 `examples/ui/015-notes`）：**
+  1. F12 → 🔍 开。hover 一个 **note button** → 其上出现黄色检视框（此前没有）。普通点击该 button → 在检视器中**被选中**；note **不**被打开。
+  2. 按住 **Alt** + hover 一个 note button → 无黄色框；button 显示原生 hover。**Alt+click** → note 被打开（原生 `onclick`），检视选中不变。
+  3. 在文本元素 / 容器上重复 → 普通点击仍选中（续篇基线无回归）。
+  4. 关掉 🔍 → button 恢复原生行为。
+  5. 确认树点击 → 橙色 overlay 路径仍工作（无回归）。

@@ -28,6 +28,30 @@ thread_local! {
     static INPUT_TEXT: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
 }
 
+/// Plan 309 续篇 II: when true, interactive widgets are built WITHOUT their
+/// event handlers so they don't capture presses/hovers — letting the
+/// `wrap_debug` mouse_area capture inspect hover/click over EVERY element
+/// (buttons, inputs, sliders, …). Set once per view build at `dynamic_view`
+/// entry from `debug_mode && inspect_mode && !alt_held`. Read in `into_iced`
+/// (to gate handlers) and `wrap_debug` (to gate the capturing mouse_area).
+thread_local! {
+    static INSPECT_CAPTURE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Plan 309 续篇 II: latest keyboard modifiers, written from the window-level
+/// event subscription (which can't borrow `DynamicState`) and read at view
+/// entry to decide `INSPECT_CAPTURE`. `Modifiers` is `Copy`.
+thread_local! {
+    static LAST_MODIFIERS: std::cell::Cell<iced::keyboard::Modifiers> =
+        const { std::cell::Cell::new(iced::keyboard::Modifiers::empty()) };
+}
+
+/// Helper: is the inspect picker currently in "capture" mode (plain click =
+/// inspect over all widgets)?
+fn inspect_capture_active() -> bool {
+    INSPECT_CAPTURE.with(|c| c.get())
+}
+
 /// Static storage for textarea editor contents.
 /// Required because iced's `text_editor` widget needs `&'static Content<Renderer>`.
 /// Each entry is a leaked Box that lives for the entire process lifetime.
@@ -666,7 +690,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                 }
 
-                let mut btn = button(text_widget).on_press(onclick);
+                // Plan 309 续篇 II: in inspect-capture mode, render the button
+                // WITHOUT on_press so it doesn't capture the press — the
+                // `wrap_debug` mouse_area then captures inspect hover/click over
+                // it. The button keeps its custom `move |_, _| bs` style below,
+                // so it still renders normally (status is ignored). Alt (capture
+                // off) restores the native onclick.
+                let mut btn = button(text_widget);
+                if !inspect_capture_active() {
+                    btn = btn.on_press(onclick);
+                }
 
                 // Apply visual styling to button
                 if let Some(ref is) = iced_style {
@@ -800,7 +833,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
                 let checkbox_widget = checkbox(is_checked);
 
-                let checkbox_with_handler = if let Some(msg) = on_toggle {
+                // Plan 309 续篇 II: drop the handler in inspect-capture mode so
+                // the checkbox is non-interactive (wrap_debug mouse_area picks).
+                let handler = if inspect_capture_active() { None } else { on_toggle };
+                let checkbox_with_handler = if let Some(msg) = handler {
                     checkbox_widget.on_toggle(move |_| msg.clone())
                 } else {
                     checkbox_widget
@@ -894,7 +930,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             } => {
                 let checkbox_widget = checkbox(is_selected);
 
-                let checkbox_with_handler = if let Some(msg) = on_select {
+                // Plan 309 续篇 II: drop the handler in inspect-capture mode.
+                let handler = if inspect_capture_active() { None } else { on_select };
+                let checkbox_with_handler = if let Some(msg) = handler {
                     checkbox_widget.on_toggle(move |_| msg.clone())
                 } else {
                     checkbox_widget
@@ -925,6 +963,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             } => {
                 let selected_value = selected_index.and_then(|i| options.get(i).cloned());
 
+                // Plan 309 续篇 II: in inspect-capture mode, render as static
+                // text (the None branch) so it doesn't capture the press.
+                let on_select = if inspect_capture_active() { None } else { on_select };
                 match on_select {
                     Some(callback) => {
                         let options_clone = options.clone();
@@ -1003,14 +1044,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 step,
                 style: _,
             } => {
-                use iced::widget::slider;
-                let mut slider_widget = slider(min..=max, value, on_change);
+                // Plan 309 续篇 II: in inspect-capture mode render a static
+                // read-out instead of the interactive slider (iced's slider
+                // requires a callback). Cosmetic-only; 015-notes has no sliders.
+                if inspect_capture_active() {
+                    text(format!("{}", value)).into()
+                } else {
+                    use iced::widget::slider;
+                    let mut slider_widget = slider(min..=max, value, on_change);
 
-                if let Some(step_value) = step {
-                    slider_widget = slider_widget.step(step_value);
+                    if let Some(step_value) = step {
+                        slider_widget = slider_widget.step(step_value);
+                    }
+
+                    slider_widget.into()
                 }
-
-                slider_widget.into()
             }
 
             AbstractView::ProgressBar { progress, style } => {
@@ -1973,6 +2021,10 @@ struct DynamicState {
     /// sub-state of debug mode that gates the always-on hover overlay. When
     /// on, hovering highlights elements; a click selects + auto-exits.
     inspect_mode: std::cell::RefCell<bool>,
+    /// Latest keyboard modifiers (Plan 309 续篇 II). Refreshed from the
+    /// `LAST_MODIFIERS` thread-local at each view build; Alt gates the inspect
+    /// picker between plain (inspect) and Alt (native) interaction.
+    current_modifiers: std::cell::RefCell<iced::keyboard::Modifiers>,
     /// Inspector right-panel inner sub-tab (Plan 307 Task 15): Layout /
     /// Computed / Props / AutoUI / Source.
     inspector_subtab: std::cell::RefCell<InspectorSubTab>,
@@ -2148,6 +2200,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             selected_vnode: std::cell::RefCell::new(None),
             hovered_vnode: std::cell::RefCell::new(None),
             inspect_mode: std::cell::RefCell::new(false),
+            current_modifiers: std::cell::RefCell::new(iced::keyboard::Modifiers::empty()),
             inspector_subtab: std::cell::RefCell::new(InspectorSubTab::default()),
             devtools_open: std::cell::RefCell::new(false),
             devtools_tab: std::cell::RefCell::new(DevToolsTab::Inspect),
@@ -2530,6 +2583,14 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     *state.dragging_inner_divider.borrow_mut() = false;
                     ui_changed = true;
                 }
+                return iced::Task::none();
+            }
+            // Plan 309 续篇 II: keyboard modifiers changed (e.g. Alt press/
+            // release). The actual value is stashed in LAST_MODIFIERS by the
+            // subscription and copied into state at view build; this just forces
+            // a rebuild so widgets flip interactive↔non-interactive.
+            "__modifiers_changed" => {
+                ui_changed = true;
                 return iced::Task::none();
             }
             // --- Edit mode messages (E4) ---
@@ -2993,6 +3054,27 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     event: "__mouse_released".to_string(),
                     input_value: None,
                 }),
+                // Plan 309 续篇 II: track keyboard modifiers so the inspect
+                // picker can switch plain-click (inspect) ↔ Alt-click (native).
+                // The subscription closure can't borrow `state`, so stash the
+                // value in a thread-local; `dynamic_view` copies it into state.
+                //
+                // We read modifiers from BOTH `ModifiersChanged` AND every
+                // `KeyPressed`/`KeyReleased` (which carry their own `modifiers`
+                // field). On Windows, pressing Alt ALONE frequently does not
+                // emit `ModifiersChanged` (the key is eaten by the window system
+                // menu), so the per-key-event fallback is what actually catches
+                // Alt-hold during an Alt+click.
+                iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(m))
+                | iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { modifiers: m, .. })
+                | iced::Event::Keyboard(iced::keyboard::Event::KeyReleased { modifiers: m, .. }) => {
+                    LAST_MODIFIERS.with(|cell| cell.set(m));
+                    Some(IcedMessage {
+                        widget: String::new(),
+                        event: "__modifiers_changed".to_string(),
+                        input_value: None,
+                    })
+                }
                 _ => None,
             }));
             iced::Subscription::batch(subs)
@@ -3007,6 +3089,17 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
 /// This is a standalone function (not a closure) so that Rust can correctly
 /// infer the higher-ranked lifetime bound `for<'a> ViewFn<'a, ...>`.
 fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
+    // Plan 309 续篇 II: refresh the cached modifiers from the thread-local the
+    // window-level subscription writes (it can't borrow `state`), then set the
+    // single INSPECT_CAPTURE flag read by `into_iced` + `wrap_debug` during this
+    // build. Plain click/hover = inspect over all widgets; Alt held = native.
+    LAST_MODIFIERS.with(|m| {
+        *state.current_modifiers.borrow_mut() = m.get();
+    });
+    let alt_held = state.current_modifiers.borrow().alt();
+    let capture = state.debug_mode && *state.inspect_mode.borrow() && !alt_held;
+    INSPECT_CAPTURE.with(|c| c.set(capture));
+
     // Sync state to MCP shared handle for AI agent inspection (Plan 278)
     // Must run in view() — not update() — because iced may not fire any events
     // initially, meaning update() might never run before an MCP client connects.
@@ -5235,8 +5328,14 @@ impl DebugRenderCtx {
             return el;
         }
 
+        // Inspect-capture: inspect picker is on AND Alt is NOT held. When on,
+        // interactive widgets have been built without handlers (Task 3) so this
+        // capturing mouse_area can select/hover EVERY element incl. buttons.
+        // Alt temporarily lifts capture (yellow box + capturing overlay off) so
+        // the user can reach the native event for one interaction.
+        let capture = inspect_capture_active();
         let selected = self.selected_id.as_deref() == Some(&id);
-        if !self.inspect_mode && !selected {
+        if !capture && !selected {
             // Picker off and nothing selected → plain element (the bounds probe
             // + metadata storage above stay un-gated for MCP snapshots /
             // InspectorCache).
@@ -5244,7 +5343,7 @@ impl DebugRenderCtx {
             return el;
         }
 
-        let hovered = self.inspect_mode && self.is_hovered(&id);
+        let hovered = capture && self.is_hovered(&id);
         let move_id = format!("{}{}:{}", DEBUG_HOVER_MOVE, counter_val, id);
         let enter_msg = IcedMessage {
             widget: String::new(),
@@ -5263,7 +5362,7 @@ impl DebugRenderCtx {
         };
         // mouse_area interaction only in picker mode; otherwise pass the
         // bounds-probed element through so the selected border can still wrap it.
-        let ma: iced::Element<'static, IcedMessage> = if self.inspect_mode {
+        let ma: iced::Element<'static, IcedMessage> = if capture {
             mouse_area(el)
                 .on_enter(enter_msg)
                 .on_exit(exit_msg)
@@ -5538,7 +5637,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 if w > 0 { input_widget = input_widget.width(iced::Length::Fixed(w as f32)); }
             }
 
-            // Wire on_change → on_input (captures typed text)
+            // Wire on_change → on_input (captures typed text).
+            // In inspect-capture mode, omit the handler so the widget is
+            // non-interactive and wrap_debug's mouse_area can capture hover/click.
+            let on_change = if inspect_capture_active() { None } else { on_change };
             if let Some(msg) = on_change {
                 let msg_clone = msg.clone();
                 input_widget = input_widget.on_input(move |text| {
@@ -5552,6 +5654,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
             // Wire on_submit → on_submit (fires on Enter key press)
             // Note: iced's on_submit takes a plain Message, not a closure
+            let on_submit = if inspect_capture_active() { None } else { on_submit };
             if let Some(msg) = on_submit {
                 input_widget = input_widget.on_submit(msg);
             }
@@ -5579,7 +5682,11 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 editor = editor.height(iced::Length::Fixed(100.0));
             }
 
-            let el: iced::Element<'static, IcedMessage> = if let Some(msg) = on_change {
+            let el: iced::Element<'static, IcedMessage> = {
+                // In inspect-capture mode, render read-only (no on_action) so
+                // wrap_debug's mouse_area can capture hover/click.
+                let on_change = if inspect_capture_active() { None } else { on_change };
+                if let Some(msg) = on_change {
                 let msg_clone = msg.clone();
                 editor.on_action(move |action| {
                     let action_key = format!("{}_{}", msg_clone.widget, msg_clone.event);
@@ -5590,8 +5697,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                         input_value: Some(text),
                     }
                 }).into()
-            } else {
-                editor.into()
+                } else {
+                    editor.into()
+                }
             };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![], None) } else { el }
         }
