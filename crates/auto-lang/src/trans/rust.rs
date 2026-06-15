@@ -613,11 +613,18 @@ impl RustTrans {
                 }
             }
             OwnershipTier::ArcMutex => {
-                // Phase 3 territory; conservatively clone for now.
+                // Phase 3: Send boundary detected (.go/tokio::spawn capture).
+                // The value needs Arc<Mutex<T>> for thread-safe sharing, but
+                // Phase 3 only does detection + warning + clone fallback.
+                // Full Arc declaration rewrite is deferred to Phase 4.
                 self.expr(inner, out)?;
                 write!(out, ".clone()")?;
                 if let Some(name) = binding_name {
-                    self.emit_escape_warning(name, tier, "value crosses thread boundary");
+                    self.emit_escape_warning(
+                        name,
+                        tier,
+                        "captured across Send boundary (.go); consider Arc<Mutex<T>> for thread-safe sharing",
+                    );
                 }
             }
             // Owned, BorrowView, BorrowMut, or unknown → unchanged behavior.
@@ -2540,8 +2547,11 @@ impl RustTrans {
 
             // Plan 124: Async/Future/Await system
             Expr::AsyncBlock { body, return_type: _ } => {
-                // ~{ stmts } -> async { stmts }
-                write!(out, "async {{ ")?;
+                // Plan 310 Phase 3: ~{ stmts } -> async move { stmts }
+                // Force move capture: Auto's ownership model defaults async blocks
+                // to owning their captured variables, avoiding lifetime issues
+                // across await points (the #1 async footgun in Rust).
+                write!(out, "async move {{ ")?;
                 for stmt in &body.stmts {
                     match stmt {
                         Stmt::Expr(expr) => {

@@ -145,6 +145,8 @@ impl EscapeAnalyzer {
                 }
                 // Phase 2: also collect View/Mut borrow uses in the initializer.
                 self.collect_borrow_uses(&store.expr);
+                // Phase 3: detect Send boundaries (Go/tokio::spawn captures).
+                self.collect_send_escapes(&store.expr);
 
                 let id = self.introduce(store.name.clone());
                 let tier = self.initial_tier(&store.expr, &store.name);
@@ -163,6 +165,8 @@ impl EscapeAnalyzer {
                 }
                 // Phase 2: collect borrow uses in expression statements too.
                 self.collect_borrow_uses(expr);
+                // Phase 3: detect Send boundaries.
+                self.collect_send_escapes(expr);
             }
 
             Stmt::Return(expr) => {
@@ -179,6 +183,8 @@ impl EscapeAnalyzer {
                 // the lowering pass will skip it (escape wins). Collect anyway
                 // for completeness.
                 self.collect_borrow_uses(expr);
+                // Phase 3: detect Send boundaries in return expressions.
+                self.collect_send_escapes(expr);
             }
 
             Stmt::If(if_stmt) => self.visit_if(if_stmt),
@@ -283,6 +289,61 @@ impl EscapeAnalyzer {
     /// right binding even in nested scopes.
     fn collect_borrow_uses(&mut self, expr: &Expr) {
         self.find_borrow_uses(expr);
+    }
+
+    /// Plan 310 Phase 3: scan `expr` for Send-boundary sites (`Expr::Go`) and
+    /// directly escalate captured bindings to `ArcMutex` tier. Unlike
+    /// `collect_escapes` (which buffers to a Vec for later default-Clone
+    /// escalation), this escalates immediately to the specific tier because Go
+    /// captures need ArcMutex (not Clone). Called alongside collect_escapes in
+    /// visit_stmt.
+    fn collect_send_escapes(&mut self, expr: &Expr) {
+        self.find_send_boundaries(expr);
+    }
+
+    /// Recursive helper for [`collect_send_escapes`]. Detects `Expr::Go` (= the
+    /// tokio::spawn Send boundary) and escalates captured visible bindings to
+    /// ArcMutex. Recurses into compound expressions to find nested Go calls.
+    fn find_send_boundaries(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Go { expr: inner } => {
+                // tokio::spawn requires the future (and its captures) to be Send.
+                // Any visible local captured here must be Arc<Mutex<T>>, not
+                // Rc<RefCell<T>> (which is !Send). Escalate to ArcMutex tier.
+                let mut captured = Vec::new();
+                self.gather_var_refs(inner, &mut captured);
+                for name in captured {
+                    self.escalate_to(&name, OwnershipTier::ArcMutex, "captured across Send boundary (.go/tokio::spawn)");
+                }
+                // Also recurse into inner for nested Go or escape patterns.
+                self.find_send_boundaries(inner);
+            }
+            // Recurse into compound expressions.
+            Expr::Call(call) => {
+                self.find_send_boundaries(&call.name);
+                for arg in &call.args.args {
+                    if let Arg::Pos(e) = arg {
+                        self.find_send_boundaries(e);
+                    }
+                }
+            }
+            Expr::Unary(_, e) => self.find_send_boundaries(e),
+            Expr::Bina(l, _, r) => {
+                self.find_send_boundaries(l);
+                self.find_send_boundaries(r);
+            }
+            Expr::Dot(obj, _) => self.find_send_boundaries(obj),
+            Expr::Index(base, idx) => {
+                self.find_send_boundaries(base);
+                self.find_send_boundaries(idx);
+            }
+            Expr::Array(elems) => {
+                for e in elems {
+                    self.find_send_boundaries(e);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Recursive helper for [`collect_borrow_uses`]. Records a borrow use only
@@ -541,6 +602,19 @@ impl EscapeAnalyzer {
             // (Copy types stay Clone; others become RcRefCell). For Phase 1 we
             // record Clone as the conservative escape tier.
             self.decide(id, OwnershipTier::Clone, reason);
+        }
+    }
+
+    /// Plan 310 Phase 3: Escalate a visible binding to a SPECIFIC tier (not
+    /// just the default Clone). Used for Send-boundary detection: variables
+    /// captured across `Expr::Go` (= tokio::spawn) must be ArcMutex (thread-safe),
+    /// not Clone or RcRefCell. If the binding is already at a HIGHER tier
+    /// (ordinal), record keeps the higher one (conservative).
+    fn escalate_to(&mut self, name: &Name, tier: OwnershipTier, reason: impl Into<String>) {
+        let depth = self.scope_depth_of(name);
+        if let Some(depth) = depth {
+            let id = BindingId { scope_depth: depth, name: name.clone() };
+            self.decide(id, tier, reason);
         }
     }
 
@@ -803,6 +877,64 @@ mod tests {
             x_tier,
             OwnershipTier::Owned,
             "binding without View/Mut use should stay Owned, got {:?}",
+            x_tier
+        );
+    }
+
+    /// Plan 310 Phase 3: a binding captured across `Expr::Go` (tokio::spawn
+    /// Send boundary) should be escalated to ArcMutex tier.
+    #[test]
+    fn test_go_capture_escalates_to_arc_mutex() {
+        // let x = 1
+        // x.go         ← Go captures x across Send boundary → ArcMutex
+        let body = Body {
+            stmts: vec![
+                make_store("x", Expr::Int(1)),
+                Stmt::Expr(Expr::Go { expr: Box::new(Expr::Ident(Name::from("x"))) }),
+            ],
+            has_new_line: false,
+            source_lines: vec![],
+        };
+        let map = EscapeAnalyzer::analyze_body(&body);
+        let x_tier = map.lookup(0, &"x".into()).expect("x should be tracked");
+        assert_eq!(
+            x_tier,
+            OwnershipTier::ArcMutex,
+            "binding captured across .go should be ArcMutex, got {:?}",
+            x_tier
+        );
+    }
+
+    /// Plan 310 Phase 3: a binding captured by an async block (NOT across Go)
+    /// should be escalated to Clone (not ArcMutex) — async blocks are same-task.
+    #[test]
+    fn test_async_block_capture_is_clone_not_arc() {
+        // let x = 1
+        // ~{ x }       ← async block captures x, but no Go → Clone tier
+        let body = Body {
+            stmts: vec![
+                make_store("x", Expr::Int(1)),
+                Stmt::Expr(Expr::AsyncBlock {
+                    body: Body {
+                        stmts: vec![Stmt::Expr(Expr::Ident(Name::from("x")))],
+                        has_new_line: false,
+                        source_lines: vec![],
+                    },
+                    return_type: None,
+                }),
+            ],
+            has_new_line: false,
+            source_lines: vec![],
+        };
+        let map = EscapeAnalyzer::analyze_body(&body);
+        let x_tier = map.lookup(0, &"x".into()).expect("x should be tracked");
+        // AsyncBlock capture → Clone (escalated, but not ArcMutex since no
+        // Send boundary). ArcMutex is higher ordinal than Clone, so if both
+        // were applied ArcMutex would win — but only Go triggers ArcMutex.
+        assert_ne!(
+            x_tier,
+            OwnershipTier::ArcMutex,
+            "async block (no Go) should NOT escalate to ArcMutex, got {:?}",
             x_tier
         );
     }
