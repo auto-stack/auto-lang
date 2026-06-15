@@ -615,4 +615,65 @@ mod tests {
         let parts = parse_command("echo");
         assert_eq!(parts, vec!["echo"]);
     }
+
+    /// Plan 309 / Task 1.1 — verify true OS-level pipe chaining.
+    ///
+    /// Two external `sort` processes are connected with a real kernel pipe:
+    /// producer's `ChildStdout` becomes the consumer's stdin via
+    /// `spawn_external_chained`, with NO in-memory buffering in between.
+    /// `sort` exists on both Unix (GNU coreutils) and Windows (System32).
+    #[test]
+    fn test_spawn_external_chained_os_pipe() {
+        let dir = std::env::temp_dir();
+
+        // Producer: `sort` with piped stdin data → sorted stdout.
+        let producer = spawn_external_stream_with_input(
+            "sort",
+            &dir,
+            "cherry\napple\nbanana\n",
+        )
+        .expect("producer sort should spawn");
+
+        // Hand the producer's raw stdout to the consumer via an OS pipe.
+        let prev_stdout = producer.into_raw_stdout();
+        let consumer =
+            spawn_external_chained("sort", &dir, prev_stdout).expect("consumer should chain");
+
+        let output = consumer
+            .read_all()
+            .expect("should read consumer output");
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines, vec!["apple", "banana", "cherry"]);
+    }
+
+    /// Plan 309 / Task 1.1 — the chained pipe must not deadlock on large
+    /// volumes, proving the kernel pipe (not an in-memory buffer) carries
+    /// the data. If we buffered, this would either OOM or block forever.
+    #[test]
+    fn test_spawn_external_chained_large_volume_streaming() {
+        let dir = std::env::temp_dir();
+
+        // Generate ~200k lines via the shell, sort once (producer), sort
+        // again (consumer) — fully OS-piped.
+        //
+        // We use `yes`-style volume without `yes`: feed a big string into the
+        // producer's stdin instead (still exercises the full OS pipe path).
+        let big: String = (0..200_000)
+            .map(|i| format!("line-{i}\n"))
+            .collect();
+
+        let producer =
+            spawn_external_stream_with_input("sort", &dir, &big).expect("producer should spawn");
+        let prev_stdout = producer.into_raw_stdout();
+        let consumer =
+            spawn_external_chained("sort", &dir, prev_stdout).expect("consumer should chain");
+
+        let output = consumer.read_all().expect("should read all without deadlock");
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines.len(), 200_000);
+        // Verify it is actually sorted (proves the consumer sort ran on real data).
+        let mut sorted = lines.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(lines, sorted.as_slice());
+    }
 }

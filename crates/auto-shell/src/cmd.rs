@@ -19,12 +19,10 @@ pub mod builtin;
 pub mod commands;
 pub mod fs;
 pub mod parser;
-pub mod pipeline;
 pub mod pipeline_convert;
 pub mod pipeline_data;
 pub mod registry;
 
-pub use pipeline::execute_pipeline;
 pub use pipeline_data::PipelineData;
 pub use registry::CommandRegistry;
 
