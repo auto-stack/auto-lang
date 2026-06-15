@@ -1100,3 +1100,94 @@ Run: `cargo test -p auto-lang -- f12_off_zero_overhead` + `cargo build -p auto`
 - **风险**（已发现）：两套路径方案在 for 循环体节点分歧 → AutoUI 标签查不到 probe 数据。
   **缓解**：按 §6.1 降级显示，不改动全局方案。
 - **回退**：任一阶段失败可 `git revert` 该阶段提交，旧通路（删之前）仍可用。
+
+---
+
+# 续篇：Chrome-DevTools-Style Refinements（原暂存计划「Plan 309」）
+
+> 本节为 307 检视器落地后的细化工作。用户原始诉求：「请参考 DevTool（Chrome），继续细化 F12 Debug 的更多内容。」经 AskUserQuestion 确认实施全部四个方向。因 `docs/plans/309` 已被 ash roadmap 占用，本续篇按用户决定合并写入 307（下文沿用「细化阶段」表述）。
+
+## 背景：四个差距
+
+1. **AutoUI 数据标签对 `for` 循环体节点为空**（最常见场景：列表每项一个 widget）。根因：tracked 构建路径与扁平化 VTree 路径方案分歧。
+2. **Box Model + Computed Style 显示 0 / 「(待入)」** —— `ComputedNode.computed_style`/`raw_class`/box-model insets 从未写入。
+3. **事件监听器 + 源码导航** —— Source 子标签是占位符；行点击设置了错误的状态字段。
+4. **元素检视光标模式** —— hover overlay 常开（噪声大）；无 Chrome 式取色器开关。
+
+## 细化阶段设计（5 个独立、可回滚阶段，按 1→5 实施）
+
+### 阶段 1 — 路径调和（Fix A）
+
+**问题：** tracked 构建对 ForLoop 体节点记录 `[p, i, 0]`（push `[iter, body_index]`），但 `body.len()==1` 时迭代直接产出裸 body view（无包裹 Column），VTree 实际路径是 `[p, i]`。路径不匹配 → `probe.snapshot().get(&node.path)` 落空 → AutoUI 标签为空；`debug_id_map.get(view_path)` 落空 → 走合成回退分支。
+
+**修复：** 仅当 body 节点数 >1 时才 push body-index 段（ForLoop 与 Conditional 两处同形 bug）。
+
+- `aura_view_builder.rs` ForLoop 臂：`let body_len = body.len();` 后 `path.push(i); if body_len > 1 { path.push(bi); }`，pop 对称。
+- Conditional 臂：同样门控。
+- 新增测试：`build_with_debug_for_loop_single_body_path_matches_vtree`（断言键是 `[0],[1]` 而非 `[0,0]`）、`build_with_debug_for_loop_multi_body_path_keeps_body_index`。
+
+**已知范围外限制（记录不修）：** `matches_search` 会过滤迭代、使后续 VTree 子索引偏移 —— 既有问题，见 307 Known Issues。
+
+### 阶段 2 — Computed style + raw_class 填充
+
+- **2a computed_style：** `wrap_debug` 把已解析 `props`（`debug_style_props` 输出）克隆写入 `ComputedNode.computed_style`（aura 与回退两分支）。
+- **2b raw_class：** `ProbeEntry` 增 `raw_class: Option<String>` + `record_raw_class`（disabled 或 None 时 no-op，避免无 class 元素产生空条目）；`convert_element_tracked_ctx` 经 `extract_string(props,"class")`（回退 `"style"`）记录；renderer 脏构建分支把 probe snapshot 按 path→VNodeId 合并进 cache。
+- **2c Computed 标签：** 占位符 `(CSS class 解析待入)` 替换为 `class` 行 + 遍历 `computed_style`；皆空时才回退 `(无 computed 样式)`。
+- 测试：`record_raw_class` 往返 + disabled no-op。
+
+### 阶段 3 — Box Model 图 + 各边 insets
+
+- **3.1 `BoxModel.border`：** `primitives.rs` 增 `border: EdgeInsets` 字段、`border_box()`（padding_box+border）；`margin_box()` 改为包 border_box；`EdgeInsets` derive 加 `PartialEq`；`render()` 增 Border 行。
+- **3.2 `backfill_bounds` 保留 insets：** 不再用零 insets 的 `from_bounds` 覆盖；保留 wrap_debug 写入的 padding/border/margin，从测量 rect（=border-box）减去 padding+border（`.max(0.0)` 钳制）派生 `content`。
+- **3.3 `wrap_debug` 读 Style：** 增 `style: Option<&Style>` 参数；新增 `debug_style_insets(style)`（per-side > axis > uniform；border 取 `border_width` 统一值），把含 insets 的 `BoxModel` 写入 cache；7 处调用点更新（input/col/row/container/scroll 传 `style.as_ref()`；textarea 传 `None`；catch-all 先 `extract_view_style(&view).cloned()` 再 move）。
+- **3.4 Layout 标签图：** `render_box_model_diagram(bm)` 嵌套容器 margin→border→padding→content，着色背景 + 图例条，insets 封顶 28px；插入「盒模型」标题下方；「Border box」行改用 `bm.border_box()`。
+- 测试：`box_model_border_box`、`backfill_bounds_preserves_declared_insets_and_derives_content`。
+
+### 阶段 4 — 源码导航：真实 viewer + 双向选中
+
+- **4.1：** 抽出 `fn render_source_viewer(state, highlight_range)` + `fn ensure_source_loaded(state)`（懒加载源码/行偏移/高亮缓存/line→AuraNodeId 索引）；`render_inspector_source_tab` 由选中 VNode 的 `source_span` 经 partition_point 解析为 0 基半开 `(start,end)` 高亮区间，委托 viewer；删除 `(点击导航待接入)` 占位符。
+- **4.2：** `SRC_CLICK_PREFIX` 处理器在设 `selected_widget` 后，经 `live_cache.iced_to_vnode(&debug_id)` 派生 `selected_vnode`（右栏以 VNodeId 为键，此前点击源码行后右栏为空）。
+- **4.3：** `DEBUG_SELECT_VNODE_PREFIX` 处理器增 `ensure_source_loaded` + 按 VNode span 设 `pending_scroll_to_center`（**有意偏离计划**：计划建议在 render 内设，实际放进 update 处理器以保持 render 无副作用）。
+
+### 阶段 5 — 元素检视光标模式
+
+- **5.1：** `DynamicState` 增 `inspect_mode: RefCell<bool>`（默认 false）；F12 关闭 / `__close_devtools` / DEBUG_SELECT_PREFIX 选中后三处复位；`__toggle_inspect` 处理器（开启时强制 `debug_mode=true`+`devtools_open=true`）。
+- **5.2：** `render_devtools_panel` 增「🔍 检视」开关按钮（`tab_style_fn(inspect_active)` 高亮），发 `__toggle_inspect`。
+- **5.3：** `DebugRenderCtx` 增 `inspect_mode: bool`；`wrap_debug` 末尾门控由 `if !self.debug_mode` 改为 `if !(self.debug_mode && self.inspect_mode)`。bounds-probe 容器 + InspectorCache 写入 + `set_iced_map` 均在门控之前，MCP 快照与 cache 不受影响。
+
+## 实施结果（截至本节写入）
+
+| 阶段 | 状态 | 单测 | 构建 |
+|---|---|---|---|
+| 1 路径调和 | ✅ 完成（spec+质量两段评审 APPROVED） | `ui::debug` 80 / `aura_view_builder` 20 通过 | ✅ |
+| 2 Computed style + raw_class | ✅ APPROVED | 通过 | ✅ |
+| 3 Box Model 图 + insets | ✅ APPROVED | 通过 | ✅ |
+| 4 源码导航 + 双向选中 | ✅ APPROVED（记录 1 处有益偏离） | 通过 | ✅ |
+| 5 检视光标模式 | ✅ APPROVED（采用计划字面全门控，非拆分门控） | 通过 | ✅ |
+
+**改动文件：** `crates/auto-lang/src/ui/iced/renderer.rs`、`crates/auto-lang/src/ui/aura_view_builder.rs`、`crates/auto-lang/src/ui/debug/primitives.rs`、`crates/auto-lang/src/ui/debug/inspector_cache.rs`、`crates/auto-lang/src/ui/debug/build_probe.rs`。
+
+**关键设计判定（评审中确认）：**
+- 阶段 3 测量 rect 模型 = border-box；`content = 测量 − padding − border`；margin 仅声明（iced 不测量）。
+- 阶段 4 `SRC_CLICK` 的 `debug_id` 与 `live_cache.iced_to_id` 键同形（均为 `aura_N` / `aura_N_cnt`），查表不会静默失败。
+- 阶段 5 门控要求 F12 **与** 检视模式同时开；普通 F12 模式下应用内点击不再直接选中（选中改经 Elements 树，发 `DEBUG_SELECT_VNODE_PREFIX`）。评审认定此为可接受的、噪声更低的模型；如需「普通 F12 也能点击选中」可局部拆分门控（提 mouse_area+selected 至门控前，仅 hover 分支保持门控）。
+
+**验证：**
+- `cargo build -p auto` 通过（仅既有 warning，无新增 error）。
+- `ui::debug`（80）、`ui::aura_view_builder`（20）全绿。
+- `view::tests`/`style::layout_extract`/`vm_bridge` 中 4 个失败为 **既有失败**（git stash 验证基线即失败，且不在本次触及文件中）。
+
+**⚠️ 仍待人工验收（无法 headless 验证）：** VM 模式运行 `examples/ui/015-notes`，F12 后点一个 note 按钮（循环体），确认：
+1. AutoUI 标签显示 `for_context` + 事件（阶段 1，此前为空）。
+2. Computed 标签显示真实 `class` + 样式属性（阶段 2）。
+3. Layout 标签显示彩色盒模型图 + 各边数值（阶段 3）。
+4. Source 标签源码居中于该元素；行点击可回选（阶段 4）。
+5. 🔍 检视开关门控 hover overlay；点击后自动退出（阶段 5）。
+
+**未提交：** 遵循项目约定（除非用户要求否则不提交）。视觉验收通过后再统一提交。
+
+## 与 307 既有「验收标准」的衔接
+
+- 上文 DoD 中「手动验收清单全过」仍待本续篇人工验收完成后勾选。
+- 「`DebugLayer` 与 `DebugTreeNode`/`element_styles` 已删除」仍为 ⏳：本续篇未删除（`render_inspector_source_section` 仍 `#[allow(dead_code)]` 保留，与 `render_source_viewer` 逻辑重复），归入 307 Task 19/20 清理批次统一退役，避免两份实现漂移。
+- 路径方案分歧项：阶段 1 已对常见单 body 循环场景调和，DoD 中「按 §6.1 降级」风险项对应不再是常见失败路径。

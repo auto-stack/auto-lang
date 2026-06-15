@@ -1960,6 +1960,10 @@ struct DynamicState {
     /// Currently hovered VNode (Plan 307 Task 14). Stubbed: set alongside click
     /// selection for now (no separate mouse_area hover wiring).
     hovered_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
+    /// Inspect-element cursor mode (Plan 309 Phase 5): a Chrome-style picker
+    /// sub-state of debug mode that gates the always-on hover overlay. When
+    /// on, hovering highlights elements; a click selects + auto-exits.
+    inspect_mode: std::cell::RefCell<bool>,
     /// Inspector right-panel inner sub-tab (Plan 307 Task 15): Layout /
     /// Computed / Props / AutoUI / Source.
     inspector_subtab: std::cell::RefCell<InspectorSubTab>,
@@ -2125,6 +2129,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             selected_widget: std::cell::RefCell::new(None),
             selected_vnode: std::cell::RefCell::new(None),
             hovered_vnode: std::cell::RefCell::new(None),
+            inspect_mode: std::cell::RefCell::new(false),
             inspector_subtab: std::cell::RefCell::new(InspectorSubTab::default()),
             devtools_open: std::cell::RefCell::new(false),
             devtools_tab: std::cell::RefCell::new(DevToolsTab::Inspector),
@@ -2234,6 +2239,9 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 *state.selected_widget.borrow_mut() = None;
                 *state.selected_vnode.borrow_mut() = None;
                 *state.hovered_vnode.borrow_mut() = None;
+                // Plan 309 Phase 5: inspect cursor mode is a sub-state of debug
+                // mode — reset it whenever F12 turns debug off.
+                *state.inspect_mode.borrow_mut() = false;
                 *state.devtools_open.borrow_mut() = false;
                 state.pending_hovers.borrow_mut().clear();
             }
@@ -2264,33 +2272,10 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 *state.selected_vnode.borrow_mut() = derived_vnode;
                 *state.devtools_open.borrow_mut() = true;
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
-                // Cache source code for the Inspector tab
-                if state.source_code.borrow().is_none() {
-                    if let Some(path) = state.component.source_path() {
-                        if let Ok(code) = std::fs::read_to_string(path) {
-                            // Compute line byte offsets for span→line mapping
-                            let mut offsets = vec![0usize];
-                            for (i, ch) in code.char_indices() {
-                                if ch == '\n' {
-                                    offsets.push(i + 1);
-                                }
-                            }
-                            *state.source_line_offsets.borrow_mut() = offsets;
-                            *state.source_code.borrow_mut() = Some(code);
-                            // Build syntax highlight cache for all lines
-                            if let Some(ref c) = *state.source_code.borrow() {
-                                *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
-                            }
-                            // Build line → AuraNodeId index for source-click → component-highlight
-                            {
-                                let span_map = state.component.span_map().clone();
-                                if let Some(ref src) = *state.source_code.borrow() {
-                                    *state.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, src);
-                                }
-                            }
-                        }
-                    }
-                }
+                // Cache source code (shared loader; Plan 309 Phase 4.1).
+                ensure_source_loaded(state);
+                // Plan 309 Phase 5.1: Chrome's picker auto-exits after a click.
+                *state.inspect_mode.borrow_mut() = false;
             }
             // Try to set pending scroll from element's span
             if let Some(ref sel_id) = *state.selected_widget.borrow() {
@@ -2335,6 +2320,30 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     }
                     *state.devtools_open.borrow_mut() = true;
                     *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
+                    // Plan 309 Phase 4: load source so the Source sub-tab can
+                    // render the listing on a tree-click (no element click yet).
+                    ensure_source_loaded(state);
+                    // Plan 309 Phase 4.3: auto-scroll the Source tab to the
+                    // selected node's line (the deferred-scroll path at the
+                    // bottom of update() only covers selected_widget spans).
+                    let scroll_line = state
+                        .live_vtree
+                        .borrow()
+                        .as_ref()
+                        .and_then(|tree| {
+                            tree.get(vnode_id).and_then(|node| {
+                                node.source_span.map(|span| {
+                                    state
+                                        .source_line_offsets
+                                        .borrow()
+                                        .partition_point(|&p| p <= span.offset)
+                                        .saturating_sub(1)
+                                })
+                            })
+                        });
+                    if let Some(line) = scroll_line {
+                        *state.pending_scroll_to_center.borrow_mut() = Some(line);
+                    }
                 }
             }
             ui_changed = true;
@@ -2366,6 +2375,22 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             }
             "__close_devtools" => {
                 *state.devtools_open.borrow_mut() = false;
+                // Plan 309 Phase 5: closing the panel also exits the picker so
+                // no always-on overlay renders behind a closed panel.
+                *state.inspect_mode.borrow_mut() = false;
+                ui_changed = true;
+                return iced::Task::none();
+            }
+            // Plan 309 Phase 5.1: Chrome-style inspect-element cursor toggle.
+            // Turning it on also forces debug mode + opens the panel so the
+            // picker is usable from a single click; turning off just clears it.
+            "__toggle_inspect" => {
+                let new_mode = !*state.inspect_mode.borrow();
+                *state.inspect_mode.borrow_mut() = new_mode;
+                if new_mode {
+                    state.debug_mode = true;
+                    *state.devtools_open.borrow_mut() = true;
+                }
                 ui_changed = true;
                 return iced::Task::none();
             }
@@ -2381,6 +2406,17 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                                 drop(cache);
                                 drop(line_map);
                                 *state.selected_widget.borrow_mut() = Some(debug_id.clone());
+                                // Plan 309 Phase 4.2: derive selected_vnode from
+                                // the aura_N id so the right panel (keyed on
+                                // VNodeId) shows the clicked line's full data —
+                                // without this the panel stayed empty after a
+                                // source-line click.
+                                let derived_vnode = state
+                                    .live_cache
+                                    .borrow()
+                                    .as_ref()
+                                    .and_then(|c| c.iced_to_vnode(&debug_id));
+                                *state.selected_vnode.borrow_mut() = derived_vnode;
                                 *state.devtools_open.borrow_mut() = true;
                                 *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
                                 // Scroll source to the selected element's span
@@ -3086,6 +3122,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             tree_stack: std::cell::RefCell::new(Vec::new()),
             component_tree: std::cell::RefCell::new(None),
             debug_mode: state.debug_mode,
+            inspect_mode: *state.inspect_mode.borrow(),
             inspector_cache: std::cell::RefCell::new(crate::ui::debug::InspectorCache::new()),
         })
     } else {
@@ -3107,7 +3144,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // Plan 307 Task 12: copy the `VNodeId <-> iced widget id` map into
         // DynamicState for later bounds backfill (Task 13) and inspector panels
         // (tasks 15-16). InspectorCache derives Clone.
-        let cache = ctx.inspector_cache.borrow().clone();
+        let mut cache = ctx.inspector_cache.borrow().clone();
 
         // Plan 307 Task 17: derive `hovered_vnode` from the aura_N hover string
         // using the freshly-built per-frame cache (VNodeId <-> iced id map).
@@ -3121,6 +3158,24 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             .as_deref()
             .and_then(|s| cache.iced_to_vnode(s));
         *state.hovered_vnode.borrow_mut() = new_hovered_vnode;
+
+        // Plan 309 Phase 2b: merge `raw_class` from `live_probe` into the cache
+        // by path → VNodeId, so the Computed tab (which reads the cache) can
+        // render the declared class string. The probe is keyed by the SAME
+        // build path the VTree flattens to (Plan 309 Phase 1 Fix A reconciled
+        // the ForLoop single-body case), so `id_from_path` resolves to the
+        // VNodeId the Computed tab selects by. Probe entries without a class
+        // are skipped (no-op record_raw_class never created them).
+        if let Some(probe) = state.live_probe.borrow().as_ref() {
+            for (path_u16, entry) in probe.snapshot() {
+                if entry.raw_class.is_some() {
+                    let vid = crate::ui::vnode::VNodeId::new(
+                        crate::ui::vnode::id_from_path(path_u16),
+                    );
+                    cache.get_mut_or_default(vid).raw_class = entry.raw_class.clone();
+                }
+            }
+        }
 
         // Plan 307 Task 18: retain the per-frame cache only when F12/debug is
         // on. When off, drop it to None so no inspector data lingers and the
@@ -3232,6 +3287,21 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         .style(tab_console_style)
         .padding(iced::Padding::new(4.0));
 
+    // Plan 309 Phase 5.2: Chrome-style inspect-element cursor toggle. Active
+    // (highlighted) when inspect_mode is on; click enters/exits the picker.
+    let inspect_active = *state.inspect_mode.borrow();
+    let tab_inspect_style = tab_style_fn(inspect_active);
+    let tab_inspect = container(
+        mouse_area(text("🔍 检视").size(11))
+            .on_press(IcedMessage {
+                widget: String::new(),
+                event: "__toggle_inspect".to_string(),
+                input_value: None,
+            })
+    )
+        .style(tab_inspect_style)
+        .padding(iced::Padding::new(4.0));
+
     let close_btn = container(
         mouse_area(text("✕").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)))
             .on_press(IcedMessage {
@@ -3250,7 +3320,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         })
         .padding(iced::Padding::new(4.0));
 
-    let tab_bar = row![tab_elements, tab_inspector, tab_console]
+    let tab_bar = row![tab_elements, tab_inspector, tab_console, tab_inspect]
         .spacing(2)
         .width(iced::Length::Fill);
     let header = row![tab_bar, close_btn]
@@ -3809,6 +3879,11 @@ fn render_inspector_layout_tab(state: &DynamicState) -> iced::Element<'static, I
             .color(iced::Color::from_rgb(0.2, 0.4, 0.8)),
     );
 
+    // Chrome-style nested box-model diagram (Plan 309 Phase 3.4). Each layer's
+    // drawn inset is capped so oversized margins stay within the panel; numeric
+    // rows below remain truthful.
+    col = col.push(render_box_model_diagram(&bm));
+
     // Content rect: x,y  W×H
     let content = bm.content;
     col = col.push(
@@ -3837,14 +3912,14 @@ fn render_inspector_layout_tab(state: &DynamicState) -> iced::Element<'static, I
     col = col.push(layout_inset_row("Margin", &bm.margin, None));
 
     // Border box + margin box summaries (derived).
-    let pb = bm.padding_box();
+    let bb = bm.border_box();
     let mb = bm.margin_box();
     col = col.push(
         row![
             text("Border box:")
                 .size(9)
                 .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
-            text(format!("{:.0} × {:.0}", pb.width, pb.height))
+            text(format!("{:.0} × {:.0}", bb.width, bb.height))
                 .size(9)
                 .color(iced::Color::from_rgb(0.35, 0.35, 0.35)),
         ]
@@ -3894,6 +3969,80 @@ fn layout_inset_row(
     row.into()
 }
 
+/// Nested box-model diagram (Plan 309 Phase 3.4): margin → border → padding →
+/// content, each layer a colored `container` wrapping the next. Drawn insets
+/// are capped (`cap`) so large declared margins fit the narrow inspector panel;
+/// the numeric rows in the Layout tab hold the exact values.
+fn render_box_model_diagram(bm: &crate::ui::debug::BoxModel) -> iced::Element<'static, IcedMessage> {
+    use iced::widget::container;
+    // Cap each side's drawn inset at 28px for display only.
+    let cap = |v: f32| v.min(28.0);
+    let pad = |ei: &crate::ui::debug::EdgeInsets| iced::Padding {
+        top: cap(ei.top),
+        right: cap(ei.right),
+        bottom: cap(ei.bottom),
+        left: cap(ei.left),
+    };
+
+    // Innermost: content (light blue), labelled with its measured W×H.
+    let content_label = text(format!(
+        "{} × {}",
+        bm.content.width.round() as i32,
+        bm.content.height.round() as i32
+    ))
+    .size(9)
+    .color(iced::Color::from_rgb(0.1, 0.2, 0.5));
+    let content_layer = container(content_label)
+        .padding(2.0)
+        .style(|_t| container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgba(0.91, 0.94, 0.99, 1.0))),
+            ..Default::default()
+        });
+
+    // Padding layer (pale yellow) wraps content.
+    let padding_layer = container(content_layer)
+        .padding(pad(&bm.padding))
+        .style(|_t| container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgba(1.0, 0.98, 0.85, 1.0))),
+            ..Default::default()
+        });
+
+    // Border layer (dark line) wraps padding.
+    let border_layer = container(padding_layer)
+        .padding(pad(&bm.border))
+        .style(move |_t| container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgba(0.95, 0.95, 0.95, 1.0))),
+            border: iced::Border {
+                color: iced::Color::from_rgb(0.3, 0.3, 0.3),
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        });
+
+    // Margin layer (transparent w/ dashed-look label) wraps border.
+    let margin_layer = container(border_layer)
+        .padding(pad(&bm.margin))
+        .style(|_t| container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgba(0.85, 0.85, 0.85, 0.25))),
+            ..Default::default()
+        });
+
+    // Legend strip above the nested diagram.
+    let legend = row![
+        text("margin").size(8).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+        text("•").size(8),
+        text("border").size(8).color(iced::Color::from_rgb(0.3, 0.3, 0.3)),
+        text("•").size(8),
+        text("padding").size(8).color(iced::Color::from_rgb(0.7, 0.6, 0.2)),
+        text("•").size(8),
+        text("content").size(8).color(iced::Color::from_rgb(0.1, 0.2, 0.5)),
+    ]
+    .spacing(4);
+
+    column![legend, margin_layer].spacing(4).into()
+}
+
 /// "布局中…" placeholder for nodes not yet laid out (design §6.1).
 fn layout_pending_panel() -> iced::Element<'static, IcedMessage> {
     text("(布局中…)")
@@ -3911,6 +4060,36 @@ fn offset_to_line(offset: usize, line_offsets: &[usize]) -> usize {
     line_offsets
         .partition_point(|&pos| pos <= offset)
         .saturating_sub(1)
+}
+
+/// Lazily load the component source + derived indexes into `DynamicState`
+/// (Plan 309 Phase 4.1). Shared by the element-select (`__select_`) and
+/// VNode-select (`__select_vnode_`) handlers so the Source sub-tab can render
+/// the source listing regardless of which selection path opened it. No-op once
+/// already loaded.
+fn ensure_source_loaded(state: &DynamicState) {
+    if state.source_code.borrow().is_some() {
+        return;
+    }
+    let Some(path) = state.component.source_path() else {
+        return;
+    };
+    let Ok(code) = std::fs::read_to_string(path) else {
+        return;
+    };
+    // Compute line byte offsets for span→line mapping.
+    let mut offsets = vec![0usize];
+    for (i, ch) in code.char_indices() {
+        if ch == '\n' {
+            offsets.push(i + 1);
+        }
+    }
+    *state.source_line_offsets.borrow_mut() = offsets;
+    *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(&code));
+    // Build line → AuraNodeId index for source-click → component-highlight.
+    let span_map = state.component.span_map().clone();
+    *state.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, &code);
+    *state.source_code.borrow_mut() = Some(code);
 }
 
 /// Helper: clone the selected VNode out of `live_vtree`, or return a grey
@@ -4128,23 +4307,24 @@ fn render_inspector_autoui_tab(state: &DynamicState) -> iced::Element<'static, I
     })
 }
 
-/// Source sub-tab: render `app.at:LINE` for the selected node's source span
-/// (Plan 307 Task 16).
+/// Source sub-tab (Plan 307 Task 16; real viewer wired in Plan 309 Phase 4.1).
 ///
-/// Data source: `live_vtree` → `VNode.source_span` → line via
-/// `source_line_offsets`. File basename from `component.source_path()`.
-/// Navigation is intentionally NOT wired yet (Phase 5 is compile-verified; a
-/// styled line is acceptable per the task spec).
+/// Resolves the selected VNode's `source_span` → a 0-based half-open
+/// `(start_line, end_line)` highlight range, then delegates to
+/// [`render_source_viewer`] for the syntax-highlighted listing. Clicking a
+/// line that has an associated AuraNodeId (handled by `SRC_CLICK_PREFIX`)
+/// selects the corresponding element — bidirectional navigation.
 fn render_inspector_source_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
-        let Some(span) = node.source_span else {
-            return placeholder_panel("(无源码定位)");
-        };
-
-        let line_offsets = state.source_line_offsets.borrow();
-        let line = offset_to_line(span.offset, &line_offsets);
-        // 1-based for display.
-        let display_line = line + 1;
+        // Resolve the span → a 0-based half-open (start, end) line range.
+        let highlight_range = node.source_span.map(|span| {
+            let line_offsets = state.source_line_offsets.borrow();
+            let start_line = line_offsets
+                .partition_point(|&pos| pos <= span.offset)
+                .saturating_sub(1);
+            let end_line = line_offsets.partition_point(|&pos| pos < span.offset + span.len);
+            (start_line, end_line.max(start_line))
+        });
 
         let basename = state
             .component
@@ -4152,19 +4332,137 @@ fn render_inspector_source_tab(state: &DynamicState) -> iced::Element<'static, I
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
             .unwrap_or_else(|| "source".to_string());
 
+        let header_line = highlight_range
+            .map(|(s, _)| format!("{}:{}", basename, s + 1))
+            .unwrap_or_else(|| basename);
+
         let mut col = column![].spacing(4);
         col = col.push(
-            text(format!("{}:{}", basename, display_line))
+            text(header_line)
                 .size(11)
                 .color(iced::Color::from_rgb(0.2, 0.4, 0.7)),
         );
-        col = col.push(
-            text("(点击导航待接入)")
-                .size(9)
-                .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
-        );
+        col = col.push(render_source_viewer(state, highlight_range));
         col.into()
     })
+}
+
+/// Reusable source-code listing for the Source sub-tab (Plan 309 Phase 4.1).
+///
+/// Renders the cached component source with syntax highlighting; highlights
+/// `highlight_range` (0-based half-open `(start_line, end_line)`; `None` = no
+/// highlight); wraps lines that have an associated AuraNodeId in a
+/// `mouse_area` emitting `SRC_CLICK_PREFIX<line>` so a line click selects the
+/// element (bidirectional with element/tree selection).
+fn render_source_viewer(
+    state: &DynamicState,
+    highlight_range: Option<(usize, usize)>,
+) -> iced::Element<'static, IcedMessage> {
+    let source = state.source_code.borrow().clone();
+    let path_display = state
+        .component
+        .source_path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let mut col = column![].spacing(2);
+
+    match source {
+        Some(code) => {
+            col = col.push(
+                text(path_display)
+                    .size(9)
+                    .color(iced::Color::from_rgb(0.4, 0.6, 0.8)),
+            );
+
+            let cached = state.cached_highlighted.borrow();
+            let all_lines: Vec<&str> = code.lines().collect();
+            let total = all_lines.len();
+            let line_map = state.line_to_aura_ids.borrow();
+
+            for i in 0..total {
+                let line_num = format!("{:>4}", i + 1);
+                let is_highlighted = highlight_range
+                    .map(|(hs, he)| i >= hs && i < he)
+                    .unwrap_or(false);
+                let has_aura = line_map.contains_key(&i);
+
+                let mut line_row = row![].spacing(0);
+                if is_highlighted {
+                    line_row = line_row.push(
+                        text(line_num)
+                            .size(10)
+                            .color(iced::Color::from_rgb(0.8, 0.4, 0.1)),
+                    );
+                } else {
+                    line_row = line_row.push(
+                        text(line_num)
+                            .size(10)
+                            .color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
+                    );
+                }
+
+                if let Some(ref cache) = *cached {
+                    if let Some(cached_line) = cache.get(i) {
+                        for (fragment, color) in cached_line {
+                            line_row =
+                                line_row.push(text(fragment.clone()).size(10).color(*color));
+                        }
+                    } else if let Some(line) = all_lines.get(i) {
+                        line_row = line_row.push(
+                            text(line.to_string())
+                                .size(10)
+                                .color(iced::Color::from_rgb(0.3, 0.3, 0.3)),
+                        );
+                    }
+                } else if let Some(line) = all_lines.get(i) {
+                    line_row = line_row.push(
+                        text(line.to_string())
+                            .size(10)
+                            .color(iced::Color::from_rgb(0.3, 0.3, 0.3)),
+                    );
+                }
+
+                let bg_color = if is_highlighted {
+                    iced::Color::from_rgb(1.0, 0.95, 0.85)
+                } else if has_aura {
+                    iced::Color::from_rgb(0.94, 0.96, 1.0)
+                } else {
+                    iced::Color::TRANSPARENT
+                };
+
+                let line_container = container(line_row.spacing(4))
+                    .style(move |_: &iced::Theme| container::Style {
+                        background: Some(iced::Background::Color(bg_color)),
+                        ..Default::default()
+                    })
+                    .padding(iced::Padding::new(1.0))
+                    .width(iced::Length::Fill);
+
+                if has_aura {
+                    let line_idx = i;
+                    let ma = mouse_area(line_container).on_press(IcedMessage {
+                        widget: String::new(),
+                        event: format!("{}{}", SRC_CLICK_PREFIX, line_idx),
+                        input_value: None,
+                    });
+                    col = col.push(ma);
+                } else {
+                    col = col.push(line_container);
+                }
+            }
+            drop(line_map);
+        }
+        None => {
+            col = col.push(
+                text("(源码未加载)")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+            );
+        }
+    }
+
+    col.into()
 }
 
 /// Computed sub-tab: interim "computed layout" view (Plan 307 Task 16).
@@ -4213,8 +4511,9 @@ fn render_inspector_computed_tab(state: &DynamicState) -> iced::Element<'static,
             }
         }
 
-        // --- Live bounds / box model from InspectorCache (if available) ---
+        // --- Live bounds / box model + computed style from InspectorCache ---
         let cache = state.live_cache.borrow().clone();
+        let mut have_computed = false;
         if let Some(cache) = cache {
             if let Some(computed) = cache.get(node.id) {
                 if let Some(bm) = &computed.box_model {
@@ -4229,15 +4528,27 @@ fn render_inspector_computed_tab(state: &DynamicState) -> iced::Element<'static,
                         format!("{:.0}×{:.0} @({:.0},{:.0})", b.width, b.height, b.x, b.y),
                     ));
                 }
+                // Plan 309 Phase 2c: raw class + computed style. `raw_class`
+                // is the faithful `class="..."` declaration (via BuildProbe);
+                // `computed_style` is the parsed props (via debug_style_props).
+                if let Some(class_str) = &computed.raw_class {
+                    col = col.push(kv_row("class", class_str.clone()));
+                    have_computed = true;
+                }
+                for (k, v) in &computed.computed_style {
+                    col = col.push(kv_row(k.as_str(), v.clone()));
+                    have_computed = true;
+                }
             }
         }
 
-        // --- Pending class resolution note ---
-        col = col.push(
-            text("(CSS class 解析待接入)")
-                .size(9)
-                .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
-        );
+        if !have_computed {
+            col = col.push(
+                text("(无 computed 样式)")
+                    .size(9)
+                    .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+            );
+        }
 
         col.into()
     })
@@ -4668,6 +4979,10 @@ struct DebugRenderCtx {
     /// When false, bounds probe containers are still created for MCP snapshot,
     /// but mouse_area / hover highlights are skipped.
     debug_mode: bool,
+    /// Inspect-element cursor mode (Plan 309 Phase 5): gates the always-on
+    /// hover overlay so highlighting only shows when the picker is engaged.
+    /// `debug_mode` alone is NOT sufficient — the overlay requires both.
+    inspect_mode: bool,
     /// Bidirectional `VNodeId <-> iced widget id` map (Plan 307 Task 12).
     /// Populated in `wrap_debug` only when `debug_mode` is true; mirrors the
     /// View-structural path scheme used by `view_to_vtree_with_paths` (Task 4)
@@ -4718,7 +5033,7 @@ impl DebugRenderCtx {
     /// Wrap any element with mouse_area for hover/click detection + store style metadata.
     fn wrap_debug(
         &self, view_path: &[usize], kind: &str, el: iced::Element<'static, IcedMessage>,
-        props: Vec<(String, String)>,
+        props: Vec<(String, String)>, style: Option<&Style>,
     ) -> iced::Element<'static, IcedMessage> {
         // Try to get AuraNodeId from debug_id_map
         let aura_id = self.debug_id_map.get(view_path);
@@ -4767,9 +5082,55 @@ impl DebugRenderCtx {
             }
             (id_str, span)
         } else {
-            // Fallback: synthetic wrapper node
-            (format!("wrap_{}", counter_val), None)
+            // Fallback: synthetic wrapper node (no AuraNodeId at this path).
+            //
+            // Plan 307: this branch is reached for ForLoop body nodes. The
+            // tracked builder records their `debug_id_map` entry under a
+            // two-segment `[iter, body]` path, but by the time the View tree
+            // reaches the renderer the loop is flattened into a `Column`, so the
+            // node's View-structural `view_path` is the one-segment `[k, i]` —
+            // a mismatch that makes `debug_id_map.get(view_path)` return None.
+            // The node is nonetheless real and present in the VTree at exactly
+            // this `view_path`, so record the `VNodeId <-> id_str` mapping here
+            // (mirroring the aura branch). Without it, clicking loop-body
+            // widgets yields `selected_vnode = None` and an empty inspector.
+            let id_str = format!("wrap_{}", counter_val);
+            if self.debug_mode {
+                let path_u16: Vec<u16> = view_path.iter().map(|&x| x as u16).collect();
+                let vnode_id = crate::ui::vnode::VNodeId::new(
+                    crate::ui::vnode::id_from_path(&path_u16),
+                );
+                self.inspector_cache
+                    .borrow_mut()
+                    .set_iced_map(vnode_id, id_str.clone());
+            }
+            (id_str, None)
         };
+
+        // Plan 309 Phase 2a + 3.3: populate `computed_style` (from the parsed
+        // style props) and `box_model` (declared padding/border/margin insets
+        // from `IcedStyle`) for this node's cache entry. `content` is left as
+        // a zero placeholder here — `backfill_bounds` refines it from the
+        // measured iced rect (border-box) post-render. `props` is cloned
+        // because it is moved into `element_styles` below. The VNodeId transform
+        // mirrors the set_iced_map calls above, landing on the same entry the
+        // inspector selects by.
+        if self.debug_mode {
+            let path_u16: Vec<u16> = view_path.iter().map(|&x| x as u16).collect();
+            let vnode_id = crate::ui::vnode::VNodeId::new(
+                crate::ui::vnode::id_from_path(&path_u16),
+            );
+            let (pad, border, margin) = debug_style_insets(style);
+            let mut cache_ref = self.inspector_cache.borrow_mut();
+            let node = cache_ref.get_mut_or_default(vnode_id);
+            node.computed_style = props.clone();
+            node.box_model = Some(crate::ui::debug::BoxModel {
+                content: crate::ui::debug::Rect::default(),
+                padding: pad,
+                border,
+                margin,
+            });
+        }
 
         // Track this node in the component tree
         self.tree_enter(id.clone(), kind.to_string());
@@ -4800,9 +5161,12 @@ impl DebugRenderCtx {
         };
 
         // --- Debug mode gate ---
-        // When debug_mode is off (no F12 pressed), skip mouse_area wrapping and
-        // hover/selected highlights. Only return the bounds-probed element.
-        if !self.debug_mode {
+        // The interactive overlay (mouse_area hover/click + highlights) requires
+        // BOTH debug_mode (F12) and inspect_mode (Plan 309 Phase 5 picker). When
+        // either is off, skip the overlay and return the bounds-probed element
+        // — the bounds probe + metadata storage above stay un-gated so MCP
+        // snapshots and the InspectorCache still populate.
+        if !(self.debug_mode && self.inspect_mode) {
             self.tree_exit();
             return el;
         }
@@ -4933,6 +5297,49 @@ impl DebugRenderCtx {
 ///
 /// When `debug_ctx` is `Some`, container elements (Column, Row, Container, Scrollable)
 /// get wrapped in `MouseArea` for hover detection and a blue border overlay when hovered.
+/// Extract declared per-side padding / border / margin insets from a `Style`
+/// for the box-model (Plan 309 Phase 3.3).
+///
+/// Precedence per axis: explicit per-side (`padding_top` etc.) > axis
+/// (`padding_x`/`padding_y`) > uniform (`padding`). Border is uniform
+/// (`IcedStyle` has only `border_width`). Margin is declared-only — iced does
+/// not measure it, so it is never refined from layout.
+fn debug_style_insets(
+    style: Option<&Style>,
+) -> (
+    crate::ui::debug::EdgeInsets,
+    crate::ui::debug::EdgeInsets,
+    crate::ui::debug::EdgeInsets,
+) {
+    use crate::ui::debug::EdgeInsets;
+    let Some(style) = style else {
+        return Default::default();
+    };
+    let is = IcedStyle::from_style(style);
+
+    let px = is.padding_x.or(is.padding);
+    let py = is.padding_y.or(is.padding);
+    let padding = EdgeInsets::only(
+        is.padding_top.or(py).unwrap_or(0.0),
+        is.padding_right.or(px).unwrap_or(0.0),
+        is.padding_bottom.or(py).unwrap_or(0.0),
+        is.padding_left.or(px).unwrap_or(0.0),
+    );
+
+    let border = EdgeInsets::uniform(is.border_width.unwrap_or(0.0));
+
+    let mx = is.margin_x.or(is.margin);
+    let my = is.margin_y.or(is.margin);
+    let margin = EdgeInsets::only(
+        is.margin_top.or(my).unwrap_or(0.0),
+        is.margin_right.or(mx).unwrap_or(0.0),
+        is.margin_bottom.or(my).unwrap_or(0.0),
+        is.margin_left.or(mx).unwrap_or(0.0),
+    );
+
+    (padding, border, margin)
+}
+
 /// Extract style properties from an IcedStyle for debug tooltip display.
 fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
     let Some(s) = style else { return vec![] };
@@ -5071,7 +5478,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             }
 
             let el: iced::Element<'static, IcedMessage> = input_widget.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props, style.as_ref()) } else { el }
         }
 
         AbstractView::Textarea { placeholder, value, on_change, height, style: _ } => {
@@ -5107,7 +5514,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 editor.into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![]) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![], None) } else { el }
         }
 
         // Layout containers: recursively render children through render_dynamic_view
@@ -5129,7 +5536,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             }
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
             let el = apply_column_style(col_w, padding, style.as_ref(), widget_id);
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el }
         }
 
         AbstractView::Row { children, spacing, padding, style } => {
@@ -5149,7 +5556,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             }
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
             let el = apply_row_style(row_w, padding, style.as_ref(), widget_id);
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref()) } else { el }
         }
 
         AbstractView::Container { child, padding, width, height, center_x, center_y, style } => {
@@ -5167,7 +5574,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let cont = container(child_el);
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
             let el = apply_container_style(cont, padding, width, height, center_x, center_y, style.as_ref(), widget_id);
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el }
         }
 
         AbstractView::Scrollable { child, width, height, style } => {
@@ -5200,15 +5607,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 }
             }
             let el: iced::Element<'static, IcedMessage> = s.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props, style.as_ref()) } else { el }
         }
 
         // Everything else delegates to the unified IntoIcedElement renderer
         _ => {
             let kind = view_kind(&view);
-            let dbg_props = debug_style_props(extract_view_style(&view));
+            // Clone the style off `view` before `into_iced()` moves it, so
+            // wrap_debug can still derive box-model insets from it.
+            let view_style = extract_view_style(&view).cloned();
+            let dbg_props = debug_style_props(view_style.as_ref());
             let el: iced::Element<'static, IcedMessage> = view.into_iced();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, kind, el, dbg_props) } else { el }
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, kind, el, dbg_props, view_style.as_ref()) } else { el }
         }
     }
 }

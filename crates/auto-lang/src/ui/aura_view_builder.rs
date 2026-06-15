@@ -386,12 +386,26 @@ impl<'a> AuraViewBuilder<'a> {
                         }
                         // Include iteration index in path to ensure unique debug IDs
                         // across loop iterations (without this, all iterations produce
-                        // identical paths, causing duplicate iced widget IDs)
+                        // identical paths, causing duplicate iced widget IDs).
+                        //
+                        // Plan 309 Phase 1 (Fix A): only push the body-node index
+                        // when the body has >1 node. When the body is a single
+                        // node, the iteration yields that node *directly* (no
+                        // wrapping Column — see the `views.len() == 1` unwrap
+                        // below), so the node's flattened VTree path is `[p, i]`.
+                        // Unconditionally pushing `bi` (=0) recorded it at
+                        // `[p, i, 0]`, diverging from the VTree path and leaving
+                        // the inspector's AutoUI / source data empty for loop
+                        // bodies. The multi-node case still wraps each iteration
+                        // in a Column, so `bi` must be pushed there to match the
+                        // extra VTree level. `record_for` is computed after the
+                        // push, so it auto-reflects the corrected depth.
+                        let body_len = body.len();
                         let views: Vec<View<DynamicMessage>> = body.iter()
                             .enumerate()
                             .filter_map(|(bi, n)| {
                                 path.push(i);   // iteration index
-                                path.push(bi);  // body node index
+                                if body_len > 1 { path.push(bi); }  // body node index (multi-node only)
                                 // Record this iteration's context against the
                                 // body node's path (Plan 307 Task 10). `index`
                                 // is the 0-based iteration counter `i`, NOT the
@@ -406,7 +420,7 @@ impl<'a> AuraViewBuilder<'a> {
                                     iterable_repr: iterable.clone(),
                                 });
                                 let v = self.convert_node_tracked_ctx(n, path, id_map, probe, &loop_bindings);
-                                path.pop();
+                                if body_len > 1 { path.pop(); }
                                 path.pop();
                                 Some(v)
                             })
@@ -431,13 +445,21 @@ impl<'a> AuraViewBuilder<'a> {
                 } else {
                     else_body.as_ref().unwrap_or(&empty)
                 };
+                // Plan 309 Phase 1 (Fix A, companion to the ForLoop fix):
+                // mirror the loop's behaviour — only push the child index when
+                // there is >1 child, because the single-child `child_views.len()
+                // == 1` unwrap below yields that child directly (no wrapping
+                // Column), so the node's flattened VTree path drops the index
+                // level. Pushing it unconditionally diverged from the VTree path
+                // for single-child conditionals, leaving inspector data empty.
+                let body_len = body.len();
                 let child_views: Vec<View<DynamicMessage>> = body
                     .iter()
                     .enumerate()
                     .map(|(i, n)| {
-                        path.push(i);
+                        if body_len > 1 { path.push(i); }
                         let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                        path.pop();
+                        if body_len > 1 { path.pop(); }
                         v
                     })
                     .collect();
@@ -530,6 +552,22 @@ impl<'a> AuraViewBuilder<'a> {
             for (event_name, ev) in events.iter() {
                 probe.record_event(&ev_path, event_name, &ev.handler);
             }
+        }
+
+        // Plan 309 Phase 2b: record the declared class string (the `class`
+        // prop, falling back to the inline `style=` prop) against this node's
+        // path, so the inspector's Computed tab can show the original tokens.
+        // `extract_string` resolves interpolations (static classes verbatim);
+        // `Style` parsing (used by `extract_style`) would discard
+        // whitespace/order and the `style=` fallback, so the probe keeps the
+        // fuller string. `record_raw_class` is a no-op for `None`, so
+        // class-less elements never gain a spurious probe entry.
+        let raw_class = self
+            .extract_string(props, "class")
+            .or_else(|| self.extract_string(props, "style"));
+        if raw_class.is_some() {
+            let rc_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+            probe.record_raw_class(&rc_path, raw_class);
         }
 
         match tag {
@@ -2301,6 +2339,108 @@ mod tests {
         assert_eq!(by_index, vec![(0, "apple"), (1, "banana"), (2, "cherry")]);
         assert_eq!(for_entries[0].var, "item");
         assert_eq!(for_entries[0].iterable_repr, ".items");
+    }
+
+    #[test]
+    fn build_with_debug_for_loop_single_body_path_matches_vtree() {
+        // Plan 309 Phase 1 (Fix A): a ForLoop whose body is a single node
+        // yields that node *directly* per iteration (no wrapping Column), so
+        // its flattened VTree path is the one-segment `[i]`. The tracked
+        // builder must record under the SAME path, or the renderer's
+        // `probe.snapshot().get(&node.path)` lookup misses and the inspector's
+        // AutoUI/source data stays empty for loop bodies.
+        //
+        // Before Fix A the builder recorded at `[i, 0]` (it pushed the
+        // body-index unconditionally) — this test would fail with len==2.
+        let widget = make_test_widget("List", vec![
+            AuraStateDef {
+                name: "items".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: AuraExpr::Literal(String::new()),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge.write_state(
+            "items",
+            Value::Array(auto_val::Array::from(vec![
+                Value::str("apple"),
+                Value::str("banana"),
+            ])),
+        ).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "List");
+
+        // for item in .items { text("${.item}") }  — body.len() == 1
+        let node = AuraNode::ForLoop {
+            var: "item".to_string(),
+            index: None,
+            iterable: ".items".to_string(),
+            body: vec![AuraNode::Text(AuraTextContent::Interpolated {
+                template: "${.item}".to_string(),
+                bindings: vec!["item".to_string()],
+            })],
+            span: None,
+            debug_id: None,
+        };
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        let mut path_keys: Vec<Vec<u16>> = snap.keys().cloned().collect();
+        path_keys.sort();
+        // one entry per iteration (each combines for_context + state binding),
+        // each at a single-segment path
+        assert_eq!(path_keys, vec![vec![0u16], vec![1u16]],
+            "Fix A: single-body loop body paths are [i], not [i, 0]");
+        // each entry carries both the for-context and the state binding
+        for k in &path_keys {
+            let entry = snap.get(k).unwrap();
+            assert!(entry.for_context.is_some(), "for_context present at {:?}", k);
+            assert_eq!(entry.state_bindings.len(), 1, "state binding present at {:?}", k);
+        }
+    }
+
+    #[test]
+    fn build_with_debug_for_loop_multi_body_path_keeps_body_index() {
+        // Plan 309 Phase 1 (Fix A) regression guard: a multi-node body is
+        // wrapped in a Column per iteration, so the body-index level IS
+        // present in the VTree — the builder must STILL push it (`[i, bi]`).
+        let widget = make_test_widget("List", vec![
+            AuraStateDef {
+                name: "items".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: AuraExpr::Literal(String::new()),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge.write_state(
+            "items",
+            Value::Array(auto_val::Array::from(vec![Value::str("x")])),
+        ).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "List");
+
+        // for item in .items { text("${.item}"); text("tail") }  — body.len() == 2
+        let node = AuraNode::ForLoop {
+            var: "item".to_string(),
+            index: None,
+            iterable: ".items".to_string(),
+            body: vec![
+                AuraNode::Text(AuraTextContent::Interpolated {
+                    template: "${.item}".to_string(),
+                    bindings: vec!["item".to_string()],
+                }),
+                AuraNode::Text(AuraTextContent::Literal("tail".to_string())),
+            ],
+            span: None,
+            debug_id: None,
+        };
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        // first body node at [0, 0]; literal "tail" produces no probe entry.
+        // The interpolated node keeps the two-segment path (body-index present).
+        assert!(snap.contains_key(&vec![0u16, 0u16]),
+            "multi-body loop keeps body-index level: key [0,0] expected");
+        assert!(!snap.contains_key(&vec![0u16]),
+            "multi-body loop must NOT collapse to single-segment [0]");
     }
 
     // ========================================================================

@@ -32,6 +32,12 @@ pub struct ProbeEntry {
     pub for_context: Option<ForIter>,
     /// Event handlers attached to this node.
     pub events: Vec<EventHandlerInfo>,
+    /// Raw `class` attribute string from the source (Plan 309 Phase 2b).
+    /// Captured via `extract_string`, which resolves interpolations (an
+    /// `f"p-{$level}"` class stores the *resolved* value); static classes are
+    /// stored verbatim. Retains the full token string — `Style` parsing
+    /// discards whitespace/order and the inline `style=` fallback.
+    pub raw_class: Option<String>,
 }
 
 // =====================================================================
@@ -153,6 +159,24 @@ impl BuildProbe {
         });
     }
 
+    /// Record the declared `class` attribute string at `path`.
+    ///
+    /// Plan 309 Phase 2b: `class` is captured via `extract_string`, which
+    /// resolves interpolations (static classes are verbatim). No-op when the
+    /// probe is disabled OR when `class` is `None` (avoids creating spurious
+    /// empty entries for class-less elements, which would change the snapshot
+    /// cardinality that other tests/assertions rely on).
+    pub fn record_raw_class(&mut self, path: &[u16], class: Option<String>) {
+        if !self.enabled {
+            return;
+        }
+        let class = match class {
+            Some(c) => c,
+            None => return,
+        };
+        self.entry(path).raw_class = Some(class);
+    }
+
     /// Read-only snapshot of all collected entries, keyed by path.
     ///
     /// Tasks 12-13 query this by path and merge into `InspectorCache`.
@@ -263,6 +287,35 @@ mod tests {
         // and the normal debug build path keep recording without changes.
         let probe = BuildProbe::new();
         assert!(probe.is_enabled(), "new() must default to enabled");
+    }
+
+    // -----------------------------------------------------------------
+    // Plan 309 Phase 2b — raw_class recording
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn record_raw_class_round_trip_and_none_is_noop() {
+        // Recording Some stores the faithful class string.
+        let mut probe = BuildProbe::new();
+        probe.record_raw_class(&[3], Some("p-4 bg-white".into()));
+        let e = probe.snapshot().get(&vec![3]).unwrap();
+        assert_eq!(e.raw_class.as_deref(), Some("p-4 bg-white"));
+
+        // Recording None must NOT create an entry (avoids polluting the
+        // snapshot for class-less elements).
+        let mut probe2 = BuildProbe::new();
+        probe2.record_raw_class(&[7], None);
+        assert!(
+            probe2.snapshot().get(&vec![7]).is_none(),
+            "None class must not create a probe entry"
+        );
+    }
+
+    #[test]
+    fn record_raw_class_disabled_is_noop() {
+        let mut probe = BuildProbe::new_disabled();
+        probe.record_raw_class(&[0], Some("p-4".into()));
+        assert!(probe.snapshot().is_empty(), "disabled probe must not record");
     }
 
     // -----------------------------------------------------------------

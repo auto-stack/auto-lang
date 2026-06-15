@@ -165,11 +165,15 @@ impl InspectorCache {
 /// Backfill layout bounds (as reported by the iced backend) into the cache.
 ///
 /// For each `(id_str, (x, y, w, h))`, if `id_str` maps to a known [`VNodeId`],
-/// set that node's `bounds` and a zero-padding `box_model` (so `content ==
-/// bounds`). Padding/margin refinement from `raw_class` is deferred to a later
-/// task (the declared `class` value is not yet populated into `ComputedNode`).
+/// set that node's `bounds` and refine its `box_model`. The measured rect is
+/// the **border-box** iced lays out; `content` is derived by subtracting the
+/// declared padding + border (written into `box_model` by `wrap_debug` from
+/// `IcedStyle` in Plan 309 Phase 3.3). Declared padding/border/margin are
+/// PRESERVED — only `content` (and `bounds`) are overwritten — so the
+/// box-model layers stay truthful even though iced does not measure insets
+/// directly.
 ///
-/// (Plan 307, Task 13.)
+/// (Plan 307, Task 13; refined in Plan 309, Phase 3.2.)
 pub fn backfill_bounds(
     cache: &mut InspectorCache,
     bounds: &HashMap<String, (f32, f32, f32, f32)>,
@@ -179,10 +183,27 @@ pub fn backfill_bounds(
             let node = cache.get_mut_or_default(vnid);
             let rect = Rect::new(*x, *y, *w, *h);
             node.bounds = Some(rect);
-            // Zero padding/margin for now: content == bounds. Padding refinement
-            // (content = bounds − declared padding) is deferred until raw_class
-            // is populated by a later task.
-            node.box_model = Some(BoxModel::from_bounds(rect));
+            // Preserve any insets wrap_debug already wrote (Plan 309 Phase 3.3).
+            let (pad, border, margin) = node
+                .box_model
+                .as_ref()
+                .map(|bm| (bm.padding, bm.border, bm.margin))
+                .unwrap_or_default();
+            // The measured rect is the border-box; content sits inside
+            // padding+border. Clamp at 0 in case declarations exceed the
+            // measured size (iced's actual layout can differ from declared).
+            let content = Rect::new(
+                rect.x + border.left + pad.left,
+                rect.y + border.top + pad.top,
+                (rect.width - border.left - border.right - pad.left - pad.right).max(0.0),
+                (rect.height - border.top - border.bottom - pad.top - pad.bottom).max(0.0),
+            );
+            node.box_model = Some(BoxModel {
+                content,
+                padding: pad,
+                border,
+                margin,
+            });
         }
     }
 }
@@ -325,5 +346,48 @@ mod tests {
         let bounds = std::collections::HashMap::new();
         backfill_bounds(&mut cache, &bounds);
         assert_eq!(cache.ids().count(), 0);
+    }
+
+    // -----------------------------------------------------------------
+    // Plan 309 Phase 3.2 — preserve declared insets, derive content
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn backfill_bounds_preserves_declared_insets_and_derives_content() {
+        // A node whose `box_model` already carries declared padding/border/
+        // margin (written by wrap_debug). backfill must keep those insets and
+        // derive `content` from the measured border-box minus padding+border.
+        use crate::ui::debug::primitives::EdgeInsets;
+        let mut cache = InspectorCache::new();
+        let id = VNodeId::new(7);
+        cache.set_iced_map(id, "aura_3_42".into());
+        cache.get_mut_or_default(id).box_model = Some(BoxModel {
+            content: Rect::new(0.0, 0.0, 0.0, 0.0), // placeholder, pre-measure
+            padding: EdgeInsets::only(4.0, 8.0, 4.0, 8.0),
+            border: EdgeInsets::uniform(2.0),
+            margin: EdgeInsets::only(6.0, 6.0, 6.0, 6.0),
+        });
+
+        let mut bounds = std::collections::HashMap::new();
+        // measured border-box: 100×60 at (10,20)
+        bounds.insert("aura_3_42".to_string(), (10.0, 20.0, 100.0, 60.0));
+
+        backfill_bounds(&mut cache, &bounds);
+
+        let node = cache.get(id).unwrap();
+        let bm = node.box_model.as_ref().unwrap();
+        // content = border-box shrunk by border(2) + padding on each side.
+        // x = 10 + border.left(2) + padding.left(8) = 20
+        // y = 20 + border.top(2) + padding.top(4) = 26
+        // w = 100 - border(2+2) - padding(8+8) = 80
+        // h = 60 - border(2+2) - padding(4+4) = 48
+        assert!((bm.content.x - 20.0).abs() < f32::EPSILON);
+        assert!((bm.content.y - 26.0).abs() < f32::EPSILON);
+        assert!((bm.content.width - 80.0).abs() < f32::EPSILON);
+        assert!((bm.content.height - 48.0).abs() < f32::EPSILON);
+        // Insets preserved verbatim.
+        assert_eq!(bm.padding, EdgeInsets::only(4.0, 8.0, 4.0, 8.0));
+        assert_eq!(bm.border, EdgeInsets::uniform(2.0));
+        assert_eq!(bm.margin, EdgeInsets::only(6.0, 6.0, 6.0, 6.0));
     }
 }
