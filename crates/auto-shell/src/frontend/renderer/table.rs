@@ -36,9 +36,19 @@ pub fn render_table(value: &Value, term_width: u16) -> Option<String> {
     }
 
     // Collect columns (all unique keys across all objects)
-    let columns = collect_columns(arr);
+    let mut columns = collect_columns(arr);
     if columns.is_empty() {
         return None;
+    }
+
+    // File listings (have both `name` and `type`): prepend an icon column so
+    // directories and files are visually distinct at a glance. The icon is
+    // purely presentational — it does not pollute the underlying data, so
+    // `ls | select name` etc. stay clean. (Plan: extensible to per-type icons.)
+    let is_file_listing = columns.iter().any(|c| c == "name")
+        && columns.iter().any(|c| c == "type");
+    if is_file_listing {
+        columns.insert(0, "icon".to_string());
     }
 
     // Calculate column widths based on content
@@ -60,10 +70,33 @@ pub fn render_table(value: &Value, term_width: u16) -> Option<String> {
         .iter()
         .enumerate()
         .map(|(row_idx, item)| {
+            // Row-level file context: type + name, used to color the Name column
+            // (dirs → blue) and to compute the icon column.
+            let (row_type, row_name): (Option<String>, String) = if let Value::Obj(obj) = item {
+                let t = match obj.get("type") {
+                    Some(Value::Str(s)) => Some(s.to_string()),
+                    _ => None,
+                };
+                let n = match obj.get("name") {
+                    Some(Value::Str(s)) => s.to_string(),
+                    _ => String::new(),
+                };
+                (t, n)
+            } else {
+                (None, String::new())
+            };
+
             let cells: Vec<Cell> = columns
                 .iter()
                 .enumerate()
                 .map(|(_col_idx, col)| {
+                    // Synthetic icon column — not in the data.
+                    if col == "icon" {
+                        let icon = file_icon(row_type.as_deref(), &row_name);
+                        let style = cell_style(&row_name, "name", row_type.as_deref());
+                        return Cell::from(Text::styled(icon, style));
+                    }
+
                     let text = if let Value::Obj(obj) = item {
                         if let Some(v) = obj.get(col.as_str()) {
                             format_cell_value(&v)
@@ -74,8 +107,8 @@ pub fn render_table(value: &Value, term_width: u16) -> Option<String> {
                         String::new()
                     };
 
-                    // Apply per-cell styling based on content
-                    let style = cell_style(&text, col);
+                    // Apply per-cell styling based on content + row context.
+                    let style = cell_style(&text, col, row_type.as_deref());
                     Cell::from(Text::styled(text, style))
                 })
                 .collect();
@@ -128,6 +161,8 @@ pub fn render_table(value: &Value, term_width: u16) -> Option<String> {
 /// Column display names (capitalize known columns)
 fn column_display_name(col: &str) -> String {
     match col {
+        // The icon column has no text header (icons are self-explanatory).
+        "icon" => String::new(),
         "permissions" => "Permissions".to_string(),
         "owner" => "Owner".to_string(),
         "size" => "Size".to_string(),
@@ -194,6 +229,11 @@ fn calculate_column_widths(
     let mut widths: Vec<u16> = columns
         .iter()
         .map(|col| {
+            // The synthetic icon column holds a double-width glyph; fix its
+            // width and never let the shrink pass below it.
+            if col == "icon" {
+                return 2u16;
+            }
             let header_width = column_display_name(col).len() as u16;
             let max_data_width = arr.iter().fold(0u16, |max, item| {
                 if let Value::Obj(obj) = item {
@@ -211,14 +251,18 @@ fn calculate_column_widths(
     // Clamp total width to available space
     let total: u16 = widths.iter().sum::<u16>();
     if total > available {
-        // Shrink columns proportionally, keeping minimum of 4 chars
+        // Shrink columns proportionally, keeping minimum of 4 chars.
+        // (saturating_sub avoids underflow on narrow columns like the icon col.)
         let excess = total - available;
         let mut remaining = excess;
-        for w in widths.iter_mut().rev() {
+        for (col, w) in columns.iter().zip(widths.iter_mut()).rev() {
             if remaining == 0 {
                 break;
             }
-            let shrink = (*w - 4).min(remaining);
+            if col == "icon" {
+                continue; // never shrink the fixed-width icon column
+            }
+            let shrink = (*w).saturating_sub(4).min(remaining);
             *w -= shrink;
             remaining -= shrink;
         }
@@ -241,30 +285,59 @@ fn format_cell_value(val: &Value) -> String {
     }
 }
 
-/// Apply per-cell styling based on content.
-fn cell_style(text: &str, _col: &str) -> Style {
-    // Directory names get light blue
-    if text.ends_with('/') || text.ends_with('\\') {
-        return Style::default().fg(Color::LightBlue);
+/// Apply per-cell styling based on content + the row's `type` context.
+///
+/// Coloring for file listings is by **file type / extension**, not git status:
+///   - Directory Name → LightBlue (matches the Type column, so dirs stand out
+///     from files at a glance).
+///   - File Name → by extension: `.at`/`.rs` green, `.exe`/`.dll` light cyan,
+///     `.toml`/`.json`/`.yaml` yellow.
+///   - The literal "dir" value in the Type column → LightBlue.
+fn cell_style(text: &str, col: &str, row_type: Option<&str>) -> Style {
+    if col == "name" {
+        // Directory name → blue (matches Type column) for clear dir/file contrast.
+        if row_type == Some("dir") {
+            return Style::default().fg(Color::LightBlue);
+        }
+        // File name → color by extension.
+        if text.ends_with(".at") || text.ends_with(".rs") {
+            return Style::default().fg(Color::Green);
+        }
+        if text.ends_with(".exe") || text.ends_with(".dll") {
+            return Style::default().fg(Color::LightCyan);
+        }
+        if text.ends_with(".toml") || text.ends_with(".json") || text.ends_with(".yaml") {
+            return Style::default().fg(Color::Yellow);
+        }
+        return Style::default();
     }
 
-    // File type coloring
-    if text.ends_with(".at") || text.ends_with(".rs") {
-        return Style::default().fg(Color::Green);
-    }
-    if text.ends_with(".exe") || text.ends_with(".dll") {
-        return Style::default().fg(Color::LightCyan);
-    }
-    if text.ends_with(".toml") || text.ends_with(".json") || text.ends_with(".yaml") {
-        return Style::default().fg(Color::Yellow);
-    }
-
-    // "dir" type value
+    // Type column: the "dir" value → blue.
     if text == "dir" {
         return Style::default().fg(Color::LightBlue);
     }
 
     Style::default()
+}
+
+/// Pick a leading icon glyph for a file-listing row.
+///
+/// Currently distinguishes **directory vs file** only (per request). The
+/// `file_icon_by_name` extension point is where per-extension icons
+/// (images, video, source files, …) can be added later as one-line match arms.
+fn file_icon(row_type: Option<&str>, name: &str) -> &'static str {
+    match row_type {
+        Some("dir") => "📁",
+        _ => file_icon_by_name(name),
+    }
+}
+
+/// Per-file-name icon (extension point for future file-type icons).
+fn file_icon_by_name(_name: &str) -> &'static str {
+    // TODO(future): match on extension, e.g.
+    //   png/jpg/gif/webp → "🖼️", mp4/mov/mkv → "🎬", mp3/wav → "🎵",
+    //   rs/at/py/js/ts → "📜", zip/tar/gz → "🗜️", …
+    "📄"
 }
 
 #[cfg(test)]
@@ -335,5 +408,53 @@ mod tests {
         assert!(output.contains("src/"));
         // Should contain header
         assert!(output.contains("Name"));
+    }
+
+    #[test]
+    fn test_file_icon_dir_vs_file() {
+        assert_eq!(file_icon(Some("dir"), "anything"), "📁");
+        assert_eq!(file_icon(Some("file"), "readme.md"), "📄");
+        assert_eq!(file_icon(None, "readme.md"), "📄");
+    }
+
+    #[test]
+    fn test_render_table_file_listing_has_icons() {
+        use auto_val::Obj;
+
+        let mut obj1 = Obj::new();
+        obj1.set("name", Value::str("src"));
+        obj1.set("type", Value::str("dir"));
+
+        let mut obj2 = Obj::new();
+        obj2.set("name", Value::str("main.rs"));
+        obj2.set("type", Value::str("file"));
+
+        let arr = auto_val::Array::from_vec(vec![Value::Obj(obj1), Value::Obj(obj2)]);
+        let val = Value::Array(arr);
+
+        let output = render_table(&val, 60).unwrap();
+        // Icon column present: dir → 📁, file → 📄
+        assert!(output.contains('📁'), "missing dir icon: {output}");
+        assert!(output.contains('📄'), "missing file icon: {output}");
+        // Names still render.
+        assert!(output.contains("src"));
+        assert!(output.contains("main.rs"));
+    }
+
+    #[test]
+    fn test_render_table_non_file_listing_has_no_icon_column() {
+        // A table without a `type` column is not a file listing → no icon column.
+        use auto_val::Obj;
+
+        let mut obj = Obj::new();
+        obj.set("name", Value::str("widget"));
+        obj.set("value", Value::Int(7));
+
+        let arr = auto_val::Array::from_vec(vec![Value::Obj(obj)]);
+        let val = Value::Array(arr);
+
+        let output = render_table(&val, 60).unwrap();
+        assert!(!output.contains('📁'));
+        assert!(!output.contains('📄'));
     }
 }
