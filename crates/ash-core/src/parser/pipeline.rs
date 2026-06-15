@@ -190,6 +190,86 @@ pub fn group_pipe_segments(segments: Vec<ChainSegment>) -> Vec<(Vec<String>, Opt
     groups
 }
 
+// ---------------------------------------------------------------------------
+// Plan 301 §3.4 / Plan 309 Task 1.2 Phase 3 — inline `K=V` env prefixes.
+// ---------------------------------------------------------------------------
+
+/// Parse leading `KEY=VALUE` prefixes from a command string.
+///
+/// `NODE_ENV=production auto build`  →  `([("NODE_ENV","production")], "auto build")`
+/// `FOO="a b" ls`                    →  `([("FOO","a b")], "ls")`
+/// `A=1 B=2 cmd`                     →  `([("A","1"),("B","2")], "cmd")`
+///
+/// Rules (Plan 301 §1.3):
+/// - Prefixes must appear at the start of the command (only leading whitespace
+///   before them).
+/// - `KEY` must match `[A-Za-z_][A-Za-z0-9_]*`, immediately followed by `=`.
+/// - `VALUE` runs until the next top-level whitespace; quotes (`"..."` /
+///   `'...'`) may contain spaces and are stripped from the value.
+/// - Scanning stops at the first token that is not a `KEY=VALUE` pair; that
+///   token and everything after it become the remaining command.
+///
+/// Returns `(env_pairs, remaining_command)`. With no prefixes, `env_pairs` is
+/// empty and `remaining_command` is the trimmed input unchanged.
+pub fn parse_env_prefixes(input: &str) -> (Vec<(String, String)>, String) {
+    let chars: Vec<char> = input.chars().collect();
+    let n = chars.len();
+    let mut pos = 0usize;
+    let mut env_pairs = Vec::new();
+
+    loop {
+        // Skip leading whitespace.
+        while pos < n && chars[pos].is_whitespace() {
+            pos += 1;
+        }
+        if pos >= n {
+            break;
+        }
+
+        // Key must start with a letter or underscore.
+        if !(chars[pos].is_ascii_alphabetic() || chars[pos] == '_') {
+            break;
+        }
+        let key_start = pos;
+        pos += 1;
+        while pos < n && (chars[pos].is_ascii_alphanumeric() || chars[pos] == '_') {
+            pos += 1;
+        }
+        let key_end = pos;
+
+        // '=' must follow the key immediately.
+        if pos >= n || chars[pos] != '=' {
+            // Not a prefix — rewind so the remaining command includes this token.
+            pos = key_start;
+            break;
+        }
+        pos += 1; // consume '='
+
+        // Read the value up to top-level whitespace, honouring quotes.
+        let mut value = String::new();
+        let mut in_single = false;
+        let mut in_double = false;
+        while pos < n {
+            let c = chars[pos];
+            if c.is_whitespace() && !in_single && !in_double {
+                break;
+            }
+            match c {
+                '\'' if !in_double => in_single = !in_single,
+                '"' if !in_single => in_double = !in_double,
+                _ => value.push(c),
+            }
+            pos += 1;
+        }
+
+        let key: String = chars[key_start..key_end].iter().collect();
+        env_pairs.push((key, value));
+    }
+
+    let remaining: String = chars[pos..].iter().collect();
+    (env_pairs, remaining.trim_start().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,4 +427,81 @@ mod tests {
         assert_eq!(groups[2].0, vec!["echo missing"]);
         assert_eq!(groups[2].1, None);
     }
+
+    // ---- parse_env_prefixes (Plan 301 §3.4 / Plan 309 Task 1.2 Phase 3) ----
+
+    #[test]
+    fn test_env_prefix_single() {
+        let (pairs, rest) = parse_env_prefixes("NODE_ENV=production auto build");
+        assert_eq!(pairs, vec![("NODE_ENV".to_string(), "production".to_string())]);
+        assert_eq!(rest, "auto build");
+    }
+
+    #[test]
+    fn test_env_prefix_multiple() {
+        let (pairs, rest) = parse_env_prefixes("A=1 B=2 cmd arg");
+        assert_eq!(
+            pairs,
+            vec![("A".to_string(), "1".to_string()), ("B".to_string(), "2".to_string())]
+        );
+        assert_eq!(rest, "cmd arg");
+    }
+
+    #[test]
+    fn test_env_prefix_quoted_value_with_space() {
+        let (pairs, rest) = parse_env_prefixes("FOO=\"a b\" ls");
+        assert_eq!(pairs, vec![("FOO".to_string(), "a b".to_string())]);
+        assert_eq!(rest, "ls");
+    }
+
+    #[test]
+    fn test_env_prefix_single_quoted_value() {
+        let (pairs, rest) = parse_env_prefixes("X='hello world' echo $X");
+        assert_eq!(pairs, vec![("X".to_string(), "hello world".to_string())]);
+        assert_eq!(rest, "echo $X");
+    }
+
+    #[test]
+    fn test_env_prefix_none() {
+        // No prefix → pairs empty, rest is trimmed input.
+        let (pairs, rest) = parse_env_prefixes("ls -la");
+        assert!(pairs.is_empty());
+        assert_eq!(rest, "ls -la");
+    }
+
+    #[test]
+    fn test_env_prefix_not_misinterpreted_as_command() {
+        // `let x=5` is an Auto expression, not an env prefix: the key candidate
+        // "let" is followed by whitespace (not '='), so scanning stops.
+        let (pairs, rest) = parse_env_prefixes("let x=5");
+        assert!(pairs.is_empty());
+        assert_eq!(rest, "let x=5");
+    }
+
+    #[test]
+    fn test_env_prefix_underscore_and_digits_in_key() {
+        let (pairs, rest) = parse_env_prefixes("_FOO_2=bar run");
+        assert_eq!(pairs, vec![("_FOO_2".to_string(), "bar".to_string())]);
+        assert_eq!(rest, "run");
+    }
+
+    #[test]
+    fn test_env_prefix_empty_and_whitespace() {
+        let (pairs, rest) = parse_env_prefixes("");
+        assert!(pairs.is_empty());
+        assert_eq!(rest, "");
+
+        let (pairs, rest) = parse_env_prefixes("   ");
+        assert!(pairs.is_empty());
+        assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn test_env_prefix_value_without_command() {
+        // `FOO=bar` with no trailing command: assignment only.
+        let (pairs, rest) = parse_env_prefixes("FOO=bar");
+        assert_eq!(pairs, vec![("FOO".to_string(), "bar".to_string())]);
+        assert_eq!(rest, "");
+    }
 }
+

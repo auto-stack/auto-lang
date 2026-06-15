@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 
-use ash_core::parser::{parse_chain, group_pipe_segments, parse_redirect, ChainOp, Redirect, StderrRedirect};
+use ash_core::parser::{
+    parse_chain, parse_env_prefixes, group_pipe_segments, parse_redirect, ChainOp, Redirect,
+    StderrRedirect,
+};
 use auto_lang::autovm_persistent::AutovmReplSession;
 use auto_val::Value;
 use ash_core::pipeline::AtomPipeline;
@@ -181,12 +184,47 @@ impl Shell {
             }
         }
 
-        let result = self.execute_inner(input);
+        let result = self.execute_with_env_prefixes(input);
         if result.is_err() && self.last_exit_code == 0 {
             self.last_exit_code = 1;
         }
         // Fire precmd hook (after command execution, before returning)
         self.fire_hook("precmd", &[&self.last_exit_code.to_string()]);
+        result
+    }
+
+    /// Plan 301 §3.4 / Plan 309 Task 1.2 — Phase 3 (execution side).
+    ///
+    /// Strips leading `KEY=VALUE` env prefixes from the command, then:
+    /// - **Assignment-only** (`FOO=bar` with no command): sets the vars
+    ///   persistently in the current shell (bash semantics).
+    /// - **Prefix + command** (`FOO=bar cmd`): sets the vars in a temporary
+    ///   scope, runs the command, then restores — so the change does not leak
+    ///   past this command. The scope wraps `execute_inner` at its single call
+    ///   site, so `pop_scope` runs on every path (ok or error).
+    fn execute_with_env_prefixes(&mut self, input: &str) -> Result<Option<String>> {
+        let (env_pairs, rest) = parse_env_prefixes(input.trim());
+
+        // Assignment-only: persist, no command to run.
+        if rest.is_empty() {
+            for (k, v) in &env_pairs {
+                self.vars.set_env(k.clone(), v.clone());
+            }
+            return Ok(None);
+        }
+
+        // Prefix + command: apply in a scope around execution.
+        let scoped = !env_pairs.is_empty();
+        if scoped {
+            self.vars.push_scope();
+            for (k, v) in &env_pairs {
+                self.vars.set_env_scoped(k.clone(), v.clone());
+            }
+        }
+        let result = self.execute_inner(&rest);
+        if scoped {
+            self.vars.pop_scope();
+        }
         result
     }
 
@@ -231,6 +269,7 @@ impl Shell {
                 "popd" => return self.cmd_popd(&parts),
                 "dirs" => return self.cmd_dirs(&parts),
                 "path" => return self.cmd_path(&parts),
+                "env" | "env.path" => return self.cmd_env(&parts),
                 "def" => return self.cmd_def(trimmed),
                 "hook" => return self.cmd_hook(&parts),
                 "abbr" => return self.cmd_abbr(&parts),
@@ -2121,7 +2160,161 @@ impl Shell {
         }
     }
 
-    /// `def` command — define a shell function (Fish/Nushell compatible syntax sugar).
+    /// `env` / `env.path` commands — environment variable and PATH management.
+    /// (Plan 301 / Plan 309 Task 1.2 — Phase 2)
+    ///
+    /// Subcommands use a **space** separator (works with the exact-match
+    /// builtin dispatch); the dotted form `env.path.add` is a future alias.
+    ///
+    ///   `env`                → list all env vars (table)
+    ///   `env NAME`           → query single var (empty string if absent)
+    ///   `env NAME=val`       → set env var
+    ///   `env -rm NAME`       → remove env var (PATH refused)
+    ///   `env.path`           → list PATH entries (table: #, path, exists, dup)
+    ///   `env.path add DIR`   → append to PATH
+    ///   `env.path pre DIR`   → prepend to PATH
+    ///   `env.path rm DIR|#N` → remove by path or index
+    ///   `env.path dedup`     → deduplicate (case-insensitive)
+    ///   `env.path clean`     → dedup + drop nonexistent dirs
+    ///   `env.path move #N to #M` → reorder entry
+    fn cmd_env(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        if parts[0] == "env.path" {
+            return self.cmd_env_path(&parts[1..]);
+        }
+
+        // head == "env"
+        let args = &parts[1..];
+        if args.is_empty() {
+            return Ok(Some(self.format_env_table()));
+        }
+
+        let first = args[0];
+        if first == "-rm" {
+            let name = args
+                .get(1)
+                .ok_or_else(|| miette::miette!("env -rm: missing NAME"))?;
+            if name.eq_ignore_ascii_case("PATH") {
+                miette::bail!("不能删除 PATH，请使用 env.path 命令操作");
+            }
+            self.vars.unset_env(name);
+            return Ok(None);
+        }
+        if first.starts_with('-') {
+            miette::bail!("env: unknown flag '{}'", first);
+        }
+        if let Some((name, val)) = first.split_once('=') {
+            if name.is_empty() {
+                miette::bail!("env: empty variable name");
+            }
+            self.vars.set_env(name.to_string(), val.to_string());
+            return Ok(None);
+        }
+        // Query single var: empty string if absent (no error), per Plan 301 §1.6.
+        Ok(Some(self.vars.get_env(first).unwrap_or_default()))
+    }
+
+    /// `env.path` subcommand dispatcher.
+    fn cmd_env_path(&mut self, args: &[&str]) -> Result<Option<String>> {
+        let sub = args.get(0).copied().unwrap_or("list");
+        match sub {
+            "list" | "show" => Ok(Some(self.format_path_table())),
+            "add" | "append" => {
+                let dir = args
+                    .get(1)
+                    .ok_or_else(|| miette::miette!("env.path add: missing DIR"))?;
+                self.vars.path_add(dir);
+                Ok(None)
+            }
+            "pre" | "prepend" => {
+                let dir = args
+                    .get(1)
+                    .ok_or_else(|| miette::miette!("env.path pre: missing DIR"))?;
+                self.vars.path_prepend(dir);
+                Ok(None)
+            }
+            "rm" | "remove" => {
+                let arg = args
+                    .get(1)
+                    .ok_or_else(|| miette::miette!("env.path rm: missing argument"))?;
+                if let Some(n) = arg.strip_prefix('#').and_then(|s| s.parse::<usize>().ok()) {
+                    self.vars
+                        .path_remove_index(n)
+                        .map_err(|e| miette::miette!("{}", e))?;
+                } else {
+                    self.vars.path_remove(arg);
+                }
+                Ok(None)
+            }
+            "dedup" => {
+                self.vars.path_dedup();
+                Ok(None)
+            }
+            "clean" => {
+                self.vars.path_clean();
+                Ok(None)
+            }
+            "move" => {
+                let from = args
+                    .get(1)
+                    .and_then(|s| s.strip_prefix('#'))
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .ok_or_else(|| miette::miette!("env.path move: usage: move #N to #M"))?;
+                // layout: `move #N to #M`
+                let to = args
+                    .get(3)
+                    .and_then(|s| s.strip_prefix('#'))
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .ok_or_else(|| miette::miette!("env.path move: usage: move #N to #M"))?;
+                self.vars
+                    .path_move(from, to)
+                    .map_err(|e| miette::miette!("{}", e))?;
+                Ok(None)
+            }
+            other => miette::bail!("env.path: unknown subcommand '{}'", other),
+        }
+    }
+
+    /// Render all environment variables as a two-column aligned table.
+    fn format_env_table(&self) -> String {
+        // Source of truth is the live process env (set_env keeps it in sync).
+        let mut entries: Vec<(String, String)> = std::env::vars().collect();
+        entries.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+
+        let name_w = entries.iter().map(|(n, _)| n.chars().count()).max().unwrap_or(4).max(4);
+        let mut out = String::new();
+        out.push_str(&format!("{:<width$}  VALUE\n", "NAME", width = name_w));
+        out.push_str(&format!("{}  ─────\n", "─".repeat(name_w)));
+        for (name, value) in entries {
+            // Show value on one line; collapse nothing.
+            out.push_str(&format!("{:<width$}  {}\n", name, value, width = name_w));
+        }
+        out
+    }
+
+    /// Render PATH entries as a table with index / path / exists / duplicate.
+    fn format_path_table(&self) -> String {
+        let entries = self.vars.get_path_entries();
+        let path_w = entries
+            .iter()
+            .map(|e| e.path.chars().count())
+            .max()
+            .unwrap_or(4)
+            .max(4);
+        let mut out = String::new();
+        out.push_str(&format!("{:>2}  {:<width$}  EXISTS\n", "#", "PATH", width = path_w));
+        out.push_str(&format!("{:─>2}  {}  ──────\n", "", "─".repeat(path_w)));
+        for e in &entries {
+            let mark = if e.exists { '✓' } else { '✗' };
+            let dup = if e.duplicate { "  (duplicate)" } else { "" };
+            out.push_str(&format!(
+                "{:>2}  {:<width$}  {}{}\n",
+                e.index, e.path, mark, dup, width = path_w
+            ));
+        }
+        out
+    }
+
+
     ///
     /// Translates to AutoLang `fn` syntax. Supports two forms:
     ///
