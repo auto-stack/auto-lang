@@ -1877,6 +1877,11 @@ const DEBUG_EDIT_PREFIX: &str = "__edit_";
 const DEBUG_EDIT_APPLY: &str = "__edit_apply";
 const DEBUG_EDIT_CANCEL: &str = "__edit_cancel";
 const SRC_CLICK_PREFIX: &str = "__src_click_";
+/// Select a VNode by its u64 id (Plan 307 Task 14): `__select_vnode_<id>`.
+const DEBUG_SELECT_VNODE_PREFIX: &str = "__select_vnode_";
+/// Switch the inspector right-panel inner sub-tab (Plan 307 Task 15):
+/// `__inspector_subtab_<Variant>`.
+const DEBUG_INSPECTOR_SUBTAB_PREFIX: &str = "__inspector_subtab_";
 
 /// DevTools panel tab selector.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1884,6 +1889,49 @@ enum DevToolsTab {
     Elements,
     Inspector,
     Console,
+}
+
+/// Inspector right-panel inner sub-tab (Plan 307 Task 15). `Layout` is fully
+/// implemented here (box model); the others are placeholders filled by Task 16.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InspectorSubTab {
+    Layout,
+    Computed,
+    Props,
+    AutoUI,
+    Source,
+}
+
+impl Default for InspectorSubTab {
+    fn default() -> Self {
+        InspectorSubTab::Layout
+    }
+}
+
+impl InspectorSubTab {
+    /// Display label for the sub-tab chip.
+    fn label(self) -> &'static str {
+        match self {
+            InspectorSubTab::Layout => "Layout",
+            InspectorSubTab::Computed => "Computed",
+            InspectorSubTab::Props => "Props",
+            InspectorSubTab::AutoUI => "AutoUI",
+            InspectorSubTab::Source => "Source",
+        }
+    }
+
+    /// Parse a sub-tab name from a `__inspector_subtab_<name>` message tail.
+    /// Returns `None` for unknown names so `update()` can ignore garbage.
+    fn from_message_tail(tail: &str) -> Option<Self> {
+        Some(match tail {
+            "Layout" => InspectorSubTab::Layout,
+            "Computed" => InspectorSubTab::Computed,
+            "Props" => InspectorSubTab::Props,
+            "AutoUI" => InspectorSubTab::AutoUI,
+            "Source" => InspectorSubTab::Source,
+            _ => return None,
+        })
+    }
 }
 
 /// Wrapper holding `DynamicComponent` as iced's application state.
@@ -1906,6 +1954,15 @@ struct DynamicState {
     debug_element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
     /// ID of the currently selected element (click-to-select, orange highlight).
     selected_widget: std::cell::RefCell<Option<String>>,
+    /// Currently selected VNode (Plan 307 Task 14) — keys the live VTree tree
+    /// selection so later tasks (breadcrumb, tabs, hover) can use a stable id.
+    selected_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
+    /// Currently hovered VNode (Plan 307 Task 14). Stubbed: set alongside click
+    /// selection for now (no separate mouse_area hover wiring).
+    hovered_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
+    /// Inspector right-panel inner sub-tab (Plan 307 Task 15): Layout /
+    /// Computed / Props / AutoUI / Source.
+    inspector_subtab: std::cell::RefCell<InspectorSubTab>,
     /// Whether the DevTools panel is open on the right side.
     devtools_open: std::cell::RefCell<bool>,
     /// Currently active DevTools tab.
@@ -1920,6 +1977,17 @@ struct DynamicState {
     console_buffer: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     /// Component tree for DevTools Elements tab, rebuilt each frame.
     component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
+    /// Live VTree snapshot rebuilt each frame for DevTools inspection (Plan 307).
+    live_vtree: std::cell::RefCell<Option<crate::ui::vnode::VTree>>,
+    /// Live BuildProbe snapshot rebuilt each frame for DevTools inspection
+    /// (Plan 307 Task 9). Holds per-path AutoUI data (state bindings etc.)
+    /// captured during the tracked view build. Consumed by later tasks.
+    live_probe: std::cell::RefCell<Option<crate::ui::debug::BuildProbe>>,
+    /// Live `InspectorCache` snapshot rebuilt each frame for DevTools inspection
+    /// (Plan 307 Task 12). Holds the `VNodeId <-> iced widget id` map captured
+    /// during the per-frame render. `None` on non-debug frames. Consumed by
+    /// later tasks (13 = bounds backfill, 15-16 = inspector panels).
+    live_cache: std::cell::RefCell<Option<crate::ui::debug::InspectorCache>>,
     /// Currently editing element ID (Inspector edit mode).
     editing_element: std::cell::RefCell<Option<String>>,
     /// Key for the TEXTAREA_CONTENTS storage used by the inline source editor.
@@ -2055,6 +2123,9 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             pending_hovers: std::cell::RefCell::new(Vec::new()),
             debug_element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
             selected_widget: std::cell::RefCell::new(None),
+            selected_vnode: std::cell::RefCell::new(None),
+            hovered_vnode: std::cell::RefCell::new(None),
+            inspector_subtab: std::cell::RefCell::new(InspectorSubTab::default()),
             devtools_open: std::cell::RefCell::new(false),
             devtools_tab: std::cell::RefCell::new(DevToolsTab::Inspector),
             console_output: std::cell::RefCell::new(Vec::new()),
@@ -2062,6 +2133,9 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             source_line_offsets: std::cell::RefCell::new(Vec::new()),
             console_buffer: crate::libs::builtin::enable_ui_console(),
             component_tree: std::cell::RefCell::new(None),
+            live_vtree: std::cell::RefCell::new(None),
+            live_probe: std::cell::RefCell::new(None),
+            live_cache: std::cell::RefCell::new(None),
             editing_element: std::cell::RefCell::new(None),
             edit_textarea_key: std::cell::RefCell::new(None),
             edit_span: std::cell::RefCell::new(None),
@@ -2102,6 +2176,15 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
         if msg.event == "__bounds_collected" {
             if let Some(ref json) = msg.input_value {
                 if let Ok(bounds_map) = serde_json::from_str::<std::collections::HashMap<String, (f32,f32,f32,f32)>>(json) {
+                    // Backfill layout bounds into the debug InspectorCache first
+                    // (Plan 307, Task 13) — borrows `bounds_map` by ref.
+                    // `live_cache` is `None` outside debug mode (Task 12 clears
+                    // it), so this borrow is the debug gate. Padding/margin
+                    // refinement is deferred until `raw_class` is populated by a
+                    // later task.
+                    if let Some(cache) = state.live_cache.borrow_mut().as_mut() {
+                        crate::ui::debug::backfill_bounds(cache, &bounds_map);
+                    }
                     if let Some(ref mcp) = state.mcp_shared {
                         mcp.lock().unwrap().set_layout_bounds(bounds_map);
                     }
@@ -2149,6 +2232,8 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 // Closing: clear all debug state
                 *state.hovered_widget.borrow_mut() = None;
                 *state.selected_widget.borrow_mut() = None;
+                *state.selected_vnode.borrow_mut() = None;
+                *state.hovered_vnode.borrow_mut() = None;
                 *state.devtools_open.borrow_mut() = false;
                 state.pending_hovers.borrow_mut().clear();
             }
@@ -2161,9 +2246,22 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             // Toggle: if clicking the same element, deselect
             if state.selected_widget.borrow().as_deref() == Some(id.as_str()) {
                 *state.selected_widget.borrow_mut() = None;
+                // Plan 307 Task 17: keep selected_vnode in sync with selected_widget.
+                // The live_cache holds the last frame's VNodeId <-> iced id map,
+                // which is valid for selection (selection persists across frames).
+                *state.selected_vnode.borrow_mut() = None;
                 // Don't close panel on deselect — user may want to inspect other tabs
             } else {
-                *state.selected_widget.borrow_mut() = Some(id);
+                *state.selected_widget.borrow_mut() = Some(id.clone());
+                // Plan 307 Task 17: derive selected_vnode from the aura_N string
+                // via the last frame's live_cache so the left-tree highlight and
+                // inspector panels (keyed on VNodeId) follow the click.
+                let derived_vnode = state
+                    .live_cache
+                    .borrow()
+                    .as_ref()
+                    .and_then(|c| c.iced_to_vnode(&id));
+                *state.selected_vnode.borrow_mut() = derived_vnode;
                 *state.devtools_open.borrow_mut() = true;
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
                 // Cache source code for the Inspector tab
@@ -2208,7 +2306,48 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             ui_changed = true;
             return iced::Task::none();
         }
-        // Handle DevTools panel tab switching and close
+        // Handle VNode selection from the live VTree (Plan 307 Task 14).
+        if let Some(id_str) = msg.event.strip_prefix(DEBUG_SELECT_VNODE_PREFIX) {
+            if let Ok(raw) = id_str.parse::<u64>() {
+                let vnode_id = crate::ui::vnode::VNodeId::new(raw);
+                if *state.selected_vnode.borrow() == Some(vnode_id) {
+                    // Toggle off on re-click (matches the old id-string behavior).
+                    *state.selected_vnode.borrow_mut() = None;
+                    // Plan 307 Task 17: keep selected_widget in sync so the
+                    // wrap_debug overlay (keyed on the aura_N string) clears too.
+                    *state.selected_widget.borrow_mut() = None;
+                } else {
+                    *state.selected_vnode.borrow_mut() = Some(vnode_id);
+                    // Plan 307 Task 17: mirror selected_widget from the live_cache
+                    // reverse map (VNodeId -> aura_N) so the wrap_debug orange
+                    // overlay and source-click paths stay consistent with the
+                    // tree selection. If no mapping exists yet (e.g. first frame),
+                    // leave selected_widget as-is — the overlay simply won't draw
+                    // until the next frame builds the map.
+                    let mirrored_widget = state
+                        .live_cache
+                        .borrow()
+                        .as_ref()
+                        .and_then(|c| c.vnode_to_iced(vnode_id))
+                        .cloned();
+                    if let Some(aura) = mirrored_widget {
+                        *state.selected_widget.borrow_mut() = Some(aura);
+                    }
+                    *state.devtools_open.borrow_mut() = true;
+                    *state.devtools_tab.borrow_mut() = DevToolsTab::Inspector;
+                }
+            }
+            ui_changed = true;
+            return iced::Task::none();
+        }
+        // Switch the inspector right-panel inner sub-tab (Plan 307 Task 15).
+        if let Some(tail) = msg.event.strip_prefix(DEBUG_INSPECTOR_SUBTAB_PREFIX) {
+            if let Some(sub) = InspectorSubTab::from_message_tail(tail) {
+                *state.inspector_subtab.borrow_mut() = sub;
+            }
+            ui_changed = true;
+            return iced::Task::none();
+        }
         match msg.event.as_str() {
             "__tab_elements" => {
                 *state.devtools_tab.borrow_mut() = DevToolsTab::Elements;
@@ -2795,7 +2934,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         }
         let state_vals = state.component.read_all_state();
         let input_map = state.component.input_state_map().clone();
-        let (view, id_map) = state.component.view_with_debug();
+        // Plan 307 Task 18: MCP sync never needs the probe — capture_probe=false
+        // makes the returned probe a disabled no-op (zero probe overhead here).
+        let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let view_template = Some(state.component.view_template().clone());
         mcp.update(view, id_map, state_vals, input_map, view_template);
         // Sync window size for layout annotations (Plan 281)
@@ -2850,8 +2991,17 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     let (converted, debug_id_map) = if dirty {
         // Full rebuild: construct AbstractView from template, cache the result.
-        let (mut view, debug_id_map) = state.component.view_with_debug();
+        // Plan 307 Task 18: gate the probe by debug_mode. When F12 is off the
+        // probe is disabled (all record_* no-ops → zero overhead), and
+        // live_probe is set to None so the inspector UI degrades to placeholders.
+        let (mut view, debug_id_map, probe) =
+            state.component.view_with_debug_gated(state.debug_mode);
         let debug_id_map = Some(debug_id_map);
+        if state.debug_mode {
+            *state.live_probe.borrow_mut() = Some(probe);
+        } else {
+            *state.live_probe.borrow_mut() = None;
+        }
         inject_todo_list(&mut view, &state.todos, state.component.widget_name());
         if !state.input_values.is_empty() {
             patch_input_values(&mut view, &state.input_values);
@@ -2865,11 +3015,22 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         let cached = state.cached_converted_view.borrow();
         if let Some(ref converted) = *cached {
             let debug_id_map = state.cached_debug_id_map.borrow().clone();
+            // `live_probe` is intentionally NOT refreshed here: the probe is
+            // template-derived and stable across cache hits, so the retained
+            // probe from the last dirty rebuild remains valid.
             (converted.clone(), debug_id_map)
         } else {
             drop(cached);
-            let (mut view, debug_id_map) = state.component.view_with_debug();
+            // Plan 307 Task 18: gate the probe by debug_mode (same as the dirty
+            // branch above). When F12 off, probe is disabled + live_probe None.
+            let (mut view, debug_id_map, probe) =
+                state.component.view_with_debug_gated(state.debug_mode);
             let debug_id_map = Some(debug_id_map);
+            if state.debug_mode {
+                *state.live_probe.borrow_mut() = Some(probe);
+            } else {
+                *state.live_probe.borrow_mut() = None;
+            }
             inject_todo_list(&mut view, &state.todos, state.component.widget_name());
             if !state.input_values.is_empty() {
                 patch_input_values(&mut view, &state.input_values);
@@ -2880,6 +3041,30 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             (converted, debug_id_map)
         }
     };
+
+    // Plan 307 Task 5: build a live VTree once per frame for the DevTools inspector.
+    // `converted` is the exact View<IcedMessage> tree about to be rendered. Built
+    // here (before `converted` is moved into render_dynamic_view and before
+    // `debug_id_map` is moved into debug_ctx) as a side-effect snapshot only.
+    if let Some(id_map) = &debug_id_map {
+        let span_map = state.component.span_map().clone();
+        let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
+            converted.clone(),
+            |path: &[u16]| {
+                let p: Vec<usize> = path.iter().map(|&x| x as usize).collect();
+                id_map
+                    .get(&p)
+                    .and_then(|aura_id| span_map.get(&aura_id))
+                    .and_then(|info| info.span)
+                    .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
+            },
+        );
+        *state.live_vtree.borrow_mut() = Some(vtree);
+    } else {
+        *state.live_vtree.borrow_mut() = None;
+        *state.live_probe.borrow_mut() = None;
+        *state.live_cache.borrow_mut() = None;
+    }
 
     // Clear view_dirty after consuming the change.
     // Do this BEFORE rendering so that subscriptions/events arriving during
@@ -2901,6 +3086,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             tree_stack: std::cell::RefCell::new(Vec::new()),
             component_tree: std::cell::RefCell::new(None),
             debug_mode: state.debug_mode,
+            inspector_cache: std::cell::RefCell::new(crate::ui::debug::InspectorCache::new()),
         })
     } else {
         None
@@ -2918,6 +3104,33 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // Cache aura_to_id mapping for source-click → component-highlight reverse lookup
         let aura_map = ctx.aura_to_id.borrow();
         *state.aura_to_id_cache.borrow_mut() = aura_map.clone();
+        // Plan 307 Task 12: copy the `VNodeId <-> iced widget id` map into
+        // DynamicState for later bounds backfill (Task 13) and inspector panels
+        // (tasks 15-16). InspectorCache derives Clone.
+        let cache = ctx.inspector_cache.borrow().clone();
+
+        // Plan 307 Task 17: derive `hovered_vnode` from the aura_N hover string
+        // using the freshly-built per-frame cache (VNodeId <-> iced id map).
+        // `hovered_widget` was resolved from pending_hovers earlier in this same
+        // view() pass. Mirror it into hovered_vnode so the left-tree hover tint
+        // (Task 14, keyed on VNodeId) tracks the same node the overlay highlights.
+        // When hovered_widget is None the cursor left all widgets → clear it.
+        // Done before moving `cache` into live_cache.
+        let hovered_aura = state.hovered_widget.borrow().clone();
+        let new_hovered_vnode = hovered_aura
+            .as_deref()
+            .and_then(|s| cache.iced_to_vnode(s));
+        *state.hovered_vnode.borrow_mut() = new_hovered_vnode;
+
+        // Plan 307 Task 18: retain the per-frame cache only when F12/debug is
+        // on. When off, drop it to None so no inspector data lingers and the
+        // inspector panels degrade to placeholders. (The cache object is always
+        // constructed above — this just gates whether it is retained.)
+        if state.debug_mode {
+            *state.live_cache.borrow_mut() = Some(cache);
+        } else {
+            *state.live_cache.borrow_mut() = None;
+        }
     }
 
     let result: iced::Element<'static, IcedMessage> = if state.debug_mode {
@@ -3111,25 +3324,145 @@ fn tab_style_fn(active: bool) -> Box<dyn Fn(&iced::Theme) -> container::Style> {
 /// Render the Properties tab: show selected element's style properties.
 /// Render the Elements tab: component tree visualization.
 fn render_elements_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
-    let tree = state.component_tree.borrow();
-    match tree.as_ref() {
-        Some(root) => {
-            let selected_id = state.selected_widget.borrow().clone();
-            let mut rows: Vec<iced::Element<'static, IcedMessage>> = Vec::new();
-            render_tree_into(&root, 0, &selected_id, &mut rows);
-            let mut col = column![].spacing(1);
-            for row in rows {
-                col = col.push(row);
-            }
-            col.into()
+    // Plan 307 Task 14: the left tree now reads from the live VTree (the runtime
+    // DOM) instead of the legacy DebugTreeNode / component_tree. The old path is
+    // kept (Task 19/20 removes it); render_tree_into simply isn't called here.
+    let vtree = state.live_vtree.borrow();
+    let has_root = vtree.as_ref().and_then(|t| t.root()).is_some();
+    if has_root {
+        // Clone the tree out so we don't hold the RefCell borrow while building rows.
+        let tree = vtree.clone().expect("checked root above");
+        let selected = state.selected_vnode.borrow().clone();
+        let hovered = state.hovered_vnode.borrow().clone();
+        let mut rows: Vec<iced::Element<'static, IcedMessage>> = Vec::new();
+        if let Some(root) = tree.root() {
+            render_vtree_into(&tree, root, 0, &selected, &hovered, &mut rows);
         }
-        None => {
-            column![
-                text("组件树不可用").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
-                text("开启 Debug 模式后显示").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
-            ]
-                .spacing(4)
-                .into()
+        drop(vtree);
+        let mut col = column![].spacing(1);
+        for row in rows {
+            col = col.push(row);
+        }
+        col.into()
+    } else {
+        drop(vtree);
+        column![
+            text("组件树不可用").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+            text("开启 Debug 模式后显示").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
+        ]
+            .spacing(4)
+            .into()
+    }
+}
+
+/// Render a per-kind summary string for a VNode's props (Plan 307 Task 14).
+fn vnode_summary(node: &crate::ui::vnode::VNode) -> String {
+    use crate::ui::vnode::{VNodeKind, VNodeProps};
+    let child_count = node.children.len();
+    match (&node.kind, &node.props) {
+        (VNodeKind::Text, VNodeProps::Text { content }) => {
+            let snippet: String = content.chars().take(20).collect();
+            if content.chars().count() > 20 {
+                format!("\"{}…\"", snippet)
+            } else {
+                format!("\"{}\"", snippet)
+            }
+        }
+        (VNodeKind::Button, VNodeProps::Button { label }) => {
+            let snippet: String = label.chars().take(20).collect();
+            format!("[{}]", snippet)
+        }
+        (VNodeKind::Input, VNodeProps::Input { placeholder, .. }) => {
+            format!("placeholder=\"{}\"", placeholder)
+        }
+        (VNodeKind::Textarea, VNodeProps::Textarea { placeholder, .. }) => {
+            format!("placeholder=\"{}\"", placeholder)
+        }
+        (VNodeKind::Checkbox, VNodeProps::Checkbox { label, is_checked }) => {
+            format!("{}={}", label, if *is_checked { "✓" } else { "✗" })
+        }
+        (VNodeKind::Radio, VNodeProps::Radio { label, is_selected }) => {
+            format!("{}={}", label, if *is_selected { "✓" } else { "✗" })
+        }
+        (VNodeKind::Select, VNodeProps::Select { options, selected_index }) => {
+            format!("{} opts, sel {:?}", options.len(), selected_index)
+        }
+        (VNodeKind::Slider, VNodeProps::Slider { value, .. }) => {
+            format!("value={:.2}", value)
+        }
+        (VNodeKind::ProgressBar, VNodeProps::ProgressBar { progress }) => {
+            format!("{:.0}%", progress * 100.0)
+        }
+        // Containers: show child count
+        (_, _) if child_count > 0 => format!("({} children)", child_count),
+        _ => String::new(),
+    }
+}
+
+/// Recursively render live VTree nodes into a flat column of clickable rows
+/// (Plan 307 Task 14). Modeled on the legacy `render_tree_into` row style —
+/// all nodes start expanded (no collapse state yet).
+fn render_vtree_into(
+    tree: &crate::ui::vnode::VTree,
+    node: &crate::ui::vnode::VNode,
+    depth: usize,
+    selected: &Option<crate::ui::vnode::VNodeId>,
+    hovered: &Option<crate::ui::vnode::VNodeId>,
+    rows: &mut Vec<iced::Element<'static, IcedMessage>>,
+) {
+    let indent = "  ".repeat(depth);
+    let is_selected = *selected == Some(node.id);
+    let is_hovered = *hovered == Some(node.id);
+
+    let has_children = !node.children.is_empty();
+    let prefix = if has_children { "▼ " } else { "  " };
+    let summary = vnode_summary(node);
+    let label = if summary.is_empty() {
+        format!("{}{}{}", indent, prefix, node.kind)
+    } else {
+        format!("{}{}{} {}", indent, prefix, node.kind, summary)
+    };
+
+    let text_color = if is_selected {
+        iced::Color::from_rgb(0.85, 0.4, 0.1)
+    } else if is_hovered {
+        iced::Color::from_rgb(0.3, 0.55, 0.3)
+    } else if has_children {
+        iced::Color::from_rgb(0.2, 0.4, 0.7)
+    } else {
+        iced::Color::from_rgb(0.4, 0.4, 0.4)
+    };
+
+    let click_area = mouse_area(
+        container(text(label).size(10).color(text_color))
+            .style(move |_: &iced::Theme| {
+                if is_selected {
+                    container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.95, 0.85, 0.7, 0.6))),
+                        ..Default::default()
+                    }
+                } else if is_hovered {
+                    container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.8, 0.9, 0.8, 0.4))),
+                        ..Default::default()
+                    }
+                } else {
+                    container::Style::default()
+                }
+            })
+            .padding(iced::Padding::new(2.0))
+    )
+        .on_press(IcedMessage {
+            widget: String::new(),
+            event: format!("{}{}", DEBUG_SELECT_VNODE_PREFIX, node.id.as_u64()),
+            input_value: None,
+        });
+
+    rows.push(click_area.into());
+
+    if let Some(children) = tree.children(node.id) {
+        for child in children {
+            render_vtree_into(tree, child, depth + 1, selected, hovered, rows);
         }
     }
 }
@@ -3282,6 +3615,659 @@ fn build_highlight_cache(source: &str) -> Vec<Vec<(String, iced::Color)>> {
 
 /// Render the Inspector tab: source code + properties, stacked vertically.
 fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    // Plan 307 Task 15: the right panel is rebuilt around the VNodeId-based
+    // selection. Structure: [breadcrumb] › [sub-tab row] › [active sub-tab body].
+    //
+    // All prior source-code display logic now lives in
+    // `render_inspector_source_section` (preserved for Task 16's Source tab /
+    // Task 19-20 cleanup); it is intentionally left callable-but-unused here.
+
+    let mut col = column![].spacing(6);
+
+    // --- Breadcrumb: root › … › selected (clickable ancestors) ---
+    col = col.push(render_inspector_breadcrumb(state));
+
+    // --- Inner sub-tab row: Layout | Computed | Props | AutoUI | Source ---
+    col = col.push(render_inspector_subtab_row(state));
+
+    // --- Active sub-tab body ---
+    let subtab = *state.inspector_subtab.borrow();
+    let body = match subtab {
+        InspectorSubTab::Layout => render_inspector_layout_tab(state),
+        InspectorSubTab::Computed => render_inspector_computed_tab(state),
+        InspectorSubTab::Props => render_inspector_props_tab(state),
+        InspectorSubTab::AutoUI => render_inspector_autoui_tab(state),
+        InspectorSubTab::Source => render_inspector_source_tab(state),
+    };
+    col = col.push(body);
+
+    col.into()
+}
+
+/// Render the breadcrumb from the selected VNode up to root as clickable chips
+/// (Plan 307 Task 15). Each ancestor chip click re-selects that node via the
+/// existing `__select_vnode_<u64>` message from Task 14.
+///
+/// Reads `live_vtree` and walks the `parent` chain, cloning the tree out first
+/// so no RefCell borrow is held across the closure-driven widget construction.
+fn render_inspector_breadcrumb(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    let vtree = state.live_vtree.borrow().clone();
+    let selected = state.selected_vnode.borrow().clone();
+
+    let (tree, sel_id) = match (vtree, selected) {
+        (Some(tree), Some(id)) => (tree, id),
+        // No live tree or no selection: show the empty-state prompt.
+        _ => {
+            return column![
+                text("无选中元素").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+                text("点击元素以查看").size(10).color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+            ]
+            .spacing(2)
+            .into();
+        }
+    };
+
+    // Walk parent chain: selected → … → root, then reverse for display order.
+    let mut chain: Vec<crate::ui::vnode::VNodeId> = Vec::new();
+    let mut cursor = Some(sel_id);
+    // Guard against cycles / runaway walks with a sane depth cap.
+    for _ in 0..256 {
+        let Some(id) = cursor else { break };
+        let Some(node) = tree.get(id) else { break };
+        chain.push(id);
+        cursor = node.parent;
+    }
+    chain.reverse(); // root first
+
+    // Build the chip row: root › col › row ▸ [selected]
+    let mut row = row![].spacing(2).align_y(iced::Alignment::Center);
+    let total = chain.len();
+    for (idx, &id) in chain.iter().enumerate() {
+        let is_last = idx == total - 1;
+        let label_text = match tree.get(id) {
+            Some(node) => {
+                // Prefer the debug label; fall back to the kind.
+                if !node.label.is_empty() {
+                    node.label.clone()
+                } else {
+                    format!("{:?}", node.kind)
+                }
+            }
+            None => "?".to_string(),
+        };
+
+        let chip = if is_last {
+            // Selected (leaf): emphasize with ▸ and a tinted background.
+            container(
+                mouse_area(
+                    container(text(format!("▸ {}", label_text)).size(10))
+                        .style(|_: &iced::Theme| container::Style {
+                            background: Some(iced::Background::Color(iced::Color::from_rgba(
+                                0.95, 0.85, 0.7, 0.7,
+                            ))),
+                            border: iced::Border {
+                                radius: 3.0.into(),
+                                color: iced::Color::from_rgb(0.8, 0.6, 0.3),
+                                width: 1.0,
+                            },
+                            ..Default::default()
+                        })
+                        .padding(iced::Padding::new(2.0)),
+                )
+                .on_press(select_vnode_message(id)),
+            )
+            .padding(iced::Padding::new(0.0))
+        } else {
+            // Clickable ancestor.
+            container(
+                mouse_area(
+                    container(
+                        text(label_text).size(10).color(iced::Color::from_rgb(0.2, 0.4, 0.7)),
+                    )
+                    .padding(iced::Padding::new(2.0)),
+                )
+                .on_press(select_vnode_message(id)),
+            )
+        };
+        row = row.push(chip);
+
+        if !is_last {
+            row = row.push(
+                text("›")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+            );
+        }
+    }
+
+    row.into()
+}
+
+/// Build the inner sub-tab chip row (Plan 307 Task 15). Clicking a chip sends
+/// `__inspector_subtab_<Variant>`, parsed in `update()`.
+fn render_inspector_subtab_row(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    let active = *state.inspector_subtab.borrow();
+    let variants = [
+        InspectorSubTab::Layout,
+        InspectorSubTab::Computed,
+        InspectorSubTab::Props,
+        InspectorSubTab::AutoUI,
+        InspectorSubTab::Source,
+    ];
+
+    let mut row = row![].spacing(2);
+    for v in variants {
+        let is_active = v == active;
+        let chip = container(
+            mouse_area(text(v.label()).size(10)).on_press(IcedMessage {
+                widget: String::new(),
+                event: format!("{}{}", DEBUG_INSPECTOR_SUBTAB_PREFIX, v.label()),
+                input_value: None,
+            }),
+        )
+        .style(tab_style_fn(is_active))
+        .padding(iced::Padding::new(3.0));
+        row = row.push(chip);
+    }
+    row.into()
+}
+
+/// Layout sub-tab: box model visualization for the selected node
+/// (Plan 307 Task 15).
+///
+/// Reads `live_cache` (bounds/box_model). Falls back to "(布局中…)" when the
+/// node isn't laid out yet or has no cache entry, per design §6.1.
+fn render_inspector_layout_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    let selected = state.selected_vnode.borrow().clone();
+    let Some(sel_id) = selected else {
+        return placeholder_panel("无选中元素");
+    };
+
+    let cache = state.live_cache.borrow().clone();
+    let Some(cache) = cache else {
+        // Not in debug mode (no cache built this frame).
+        return layout_pending_panel();
+    };
+
+    let Some(computed) = cache.get(sel_id) else {
+        // Selected node has no entry in the cache yet.
+        return layout_pending_panel();
+    };
+
+    // Need a layout: box_model is preferred, else bounds alone.
+    let bm = match (&computed.box_model, &computed.bounds) {
+        (Some(bm), _) => bm.clone(),
+        (None, Some(b)) => crate::ui::debug::BoxModel::from_bounds(*b),
+        (None, None) => return layout_pending_panel(),
+    };
+
+    let mut col = column![].spacing(4);
+
+    col = col.push(
+        text("盒模型 (Box Model)")
+            .size(11)
+            .color(iced::Color::from_rgb(0.2, 0.4, 0.8)),
+    );
+
+    // Content rect: x,y  W×H
+    let content = bm.content;
+    col = col.push(
+        row![
+            text("Content:")
+                .size(10)
+                .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+            text(format!(
+                "x={:.0} y={:.0}   {:.0} × {:.0}",
+                content.x, content.y, content.width, content.height
+            ))
+            .size(10)
+            .color(iced::Color::from_rgb(0.2, 0.2, 0.2)),
+        ]
+        .spacing(6),
+    );
+
+    // Padding (declared value; currently zero from Task 13 — label is
+    // forward-looking per the design).
+    col = col.push(layout_inset_row(
+        "Padding",
+        &bm.padding,
+        Some("(声明值)"),
+    ));
+    // Margin.
+    col = col.push(layout_inset_row("Margin", &bm.margin, None));
+
+    // Border box + margin box summaries (derived).
+    let pb = bm.padding_box();
+    let mb = bm.margin_box();
+    col = col.push(
+        row![
+            text("Border box:")
+                .size(9)
+                .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+            text(format!("{:.0} × {:.0}", pb.width, pb.height))
+                .size(9)
+                .color(iced::Color::from_rgb(0.35, 0.35, 0.35)),
+        ]
+        .spacing(6),
+    );
+    col = col.push(
+        row![
+            text("Margin box:")
+                .size(9)
+                .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+            text(format!("{:.0} × {:.0}", mb.width, mb.height))
+                .size(9)
+                .color(iced::Color::from_rgb(0.35, 0.35, 0.35)),
+        ]
+        .spacing(6),
+    );
+
+    col.into()
+}
+
+/// One labeled padding/margin row: `Label:  t / r / b / l  [annotation]`.
+fn layout_inset_row(
+    label: &str,
+    ei: &crate::ui::debug::EdgeInsets,
+    annotation: Option<&str>,
+) -> iced::Element<'static, IcedMessage> {
+    let mut row = row![
+        text(format!("{}:", label))
+            .size(10)
+            .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+        text(format!(
+            "{:.0} / {:.0} / {:.0} / {:.0}",
+            ei.top, ei.right, ei.bottom, ei.left
+        ))
+        .size(10)
+            .color(iced::Color::from_rgb(0.2, 0.2, 0.2)),
+    ]
+    .spacing(6);
+    if let Some(note) = annotation {
+        // Own the string so the returned Element can be 'static.
+        row = row.push(
+            text(note.to_string())
+                .size(9)
+                .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+        );
+    }
+    row.into()
+}
+
+/// "布局中…" placeholder for nodes not yet laid out (design §6.1).
+fn layout_pending_panel() -> iced::Element<'static, IcedMessage> {
+    text("(布局中…)")
+        .size(11)
+        .color(iced::Color::from_rgb(0.55, 0.55, 0.55))
+        .into()
+}
+
+/// Resolve a byte offset → 0-based line number via `source_line_offsets`.
+///
+/// Mirrors the `partition_point` logic from the preserved
+/// `render_inspector_source_section` (Plan 307 Task 15) so the Source tab and
+/// any future span→line rendering stays consistent.
+fn offset_to_line(offset: usize, line_offsets: &[usize]) -> usize {
+    line_offsets
+        .partition_point(|&pos| pos <= offset)
+        .saturating_sub(1)
+}
+
+/// Helper: clone the selected VNode out of `live_vtree`, or return a grey
+/// placeholder Element if there is no tree / no selection.
+fn with_selected_vnode<F>(state: &DynamicState, on_missing: &str, f: F) -> iced::Element<'static, IcedMessage>
+where
+    F: FnOnce(&crate::ui::vnode::VNode) -> iced::Element<'static, IcedMessage>,
+{
+    let vtree = state.live_vtree.borrow().clone();
+    let selected = state.selected_vnode.borrow().clone();
+    match (vtree, selected) {
+        (Some(tree), Some(id)) => match tree.get(id) {
+            Some(node) => f(node),
+            None => placeholder_panel(on_missing),
+        },
+        _ => placeholder_panel(on_missing),
+    }
+}
+
+/// One `key: value` row, used by the Props / Computed tabs.
+fn kv_row(key: &str, value: String) -> iced::Element<'static, IcedMessage> {
+    row![
+        text(format!("{}:", key))
+            .size(10)
+            .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+        text(value)
+            .size(10)
+            .color(iced::Color::from_rgb(0.2, 0.2, 0.2)),
+    ]
+    .spacing(6)
+    .into()
+}
+
+/// Props sub-tab: render the selected VNode's `VNodeProps` fields plus `kind`
+/// and `path` (Plan 307 Task 16).
+///
+/// Data source: `live_vtree` only (the VNode carries its own props). No probe /
+/// cache dependency, so it always works whenever a node is selected.
+fn render_inspector_props_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    with_selected_vnode(state, "无选中元素", |node| {
+        let mut col = column![].spacing(3);
+
+        col = col.push(kv_row("kind", format!("{:?}", node.kind)));
+        col = col.push(kv_row(
+            "path",
+            format!(
+                "[{}]",
+                node.path
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        ));
+
+        use crate::ui::vnode::VNodeProps;
+        match &node.props {
+            VNodeProps::Empty => {}
+            VNodeProps::Text { content } => col = col.push(kv_row("content", content.clone())),
+            VNodeProps::Button { label } => col = col.push(kv_row("label", label.clone())),
+            VNodeProps::Input {
+                placeholder,
+                value,
+                password,
+            } => {
+                col = col.push(kv_row("placeholder", placeholder.clone()));
+                col = col.push(kv_row("value", value.clone()));
+                col = col.push(kv_row("password", password.to_string()));
+            }
+            VNodeProps::Textarea { placeholder, value } => {
+                col = col.push(kv_row("placeholder", placeholder.clone()));
+                col = col.push(kv_row("value", value.clone()));
+            }
+            VNodeProps::Checkbox { label, is_checked } => {
+                col = col.push(kv_row("label", label.clone()));
+                col = col.push(kv_row("is_checked", is_checked.to_string()));
+            }
+            VNodeProps::Radio { label, is_selected } => {
+                col = col.push(kv_row("label", label.clone()));
+                col = col.push(kv_row("is_selected", is_selected.to_string()));
+            }
+            VNodeProps::Select {
+                options,
+                selected_index,
+            } => {
+                col = col.push(kv_row(
+                    "options",
+                    format!("[{}]", options.join(", ")),
+                ));
+                col = col.push(kv_row("selected_index", format!("{:?}", selected_index)));
+            }
+            VNodeProps::Layout { spacing, padding } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+                col = col.push(kv_row("padding", padding.to_string()));
+            }
+            VNodeProps::Container {
+                padding,
+                center_x,
+                center_y,
+            } => {
+                col = col.push(kv_row("padding", padding.to_string()));
+                col = col.push(kv_row("center_x", center_x.to_string()));
+                col = col.push(kv_row("center_y", center_y.to_string()));
+            }
+            VNodeProps::Scrollable => {}
+            VNodeProps::Slider {
+                min,
+                max,
+                value,
+                step,
+            } => {
+                col = col.push(kv_row("min", format!("{}", min)));
+                col = col.push(kv_row("max", format!("{}", max)));
+                col = col.push(kv_row("value", format!("{}", value)));
+                col = col.push(kv_row("step", format!("{:?}", step)));
+            }
+            VNodeProps::ProgressBar { progress } => {
+                col = col.push(kv_row("progress", format!("{}", progress)));
+            }
+            VNodeProps::List { spacing } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+            }
+            VNodeProps::Table {
+                spacing,
+                col_spacing,
+            } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+                col = col.push(kv_row("col_spacing", col_spacing.to_string()));
+            }
+        }
+
+        col.into()
+    })
+}
+
+/// AutoUI sub-tab: `state_bindings` / `for_context` / `events` for the selected
+/// node (Plan 307 Task 16).
+///
+/// Path-scheme caveat: the probe is keyed by build-time (AuraNode-structural)
+/// path, while `VNode.path` is the View-structural path. They coincide for
+/// non-loop nodes, so we look the probe up via `snapshot().get(&node.path)`.
+/// For loop-body nodes the schemes diverge and the lookup misses — we degrade
+/// gracefully to a grey hint rather than panicking (design §6.1).
+fn render_inspector_autoui_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    with_selected_vnode(state, "无选中元素", |node| {
+        let probe = state.live_probe.borrow().clone();
+        let Some(probe) = probe else {
+            return placeholder_panel("(AutoUI 探针未启用)");
+        };
+
+        let Some(entry) = probe.snapshot().get(&node.path) else {
+            // Path-scheme divergence (e.g. for-loop body) or genuinely no
+            // AutoUI metadata for this node — degrade gracefully.
+            return placeholder_panel("(本节点无 AutoUI 元数据)");
+        };
+
+        let mut col = column![].spacing(3);
+
+        if !entry.state_bindings.is_empty() {
+            col = col.push(
+                text("状态绑定")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.3, 0.6, 0.3)),
+            );
+            for sb in &entry.state_bindings {
+                let val = if sb.current_value.is_empty() {
+                    "<unresolved>".to_string()
+                } else {
+                    sb.current_value.clone()
+                };
+                col = col.push(kv_row(&sb.expr, val));
+            }
+        }
+
+        if let Some(fc) = &entry.for_context {
+            col = col.push(
+                text("循环上下文")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.3, 0.6, 0.3)),
+            );
+            col = col.push(kv_row(
+                "for",
+                format!(
+                    "{}={}, i={}",
+                    fc.var,
+                    fc.value_repr,
+                    match fc.index {
+                        Some(i) => i.to_string(),
+                        None => "-".to_string(),
+                    }
+                ),
+            ));
+        }
+
+        if !entry.events.is_empty() {
+            col = col.push(
+                text("事件")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.3, 0.6, 0.3)),
+            );
+            for ev in &entry.events {
+                col = col.push(kv_row(&ev.event, ev.handler.clone()));
+            }
+        }
+
+        if entry.state_bindings.is_empty()
+            && entry.for_context.is_none()
+            && entry.events.is_empty()
+        {
+            // Entry exists but is empty.
+            return placeholder_panel("(本节点无 AutoUI 元数据)");
+        }
+
+        col.into()
+    })
+}
+
+/// Source sub-tab: render `app.at:LINE` for the selected node's source span
+/// (Plan 307 Task 16).
+///
+/// Data source: `live_vtree` → `VNode.source_span` → line via
+/// `source_line_offsets`. File basename from `component.source_path()`.
+/// Navigation is intentionally NOT wired yet (Phase 5 is compile-verified; a
+/// styled line is acceptable per the task spec).
+fn render_inspector_source_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    with_selected_vnode(state, "无选中元素", |node| {
+        let Some(span) = node.source_span else {
+            return placeholder_panel("(无源码定位)");
+        };
+
+        let line_offsets = state.source_line_offsets.borrow();
+        let line = offset_to_line(span.offset, &line_offsets);
+        // 1-based for display.
+        let display_line = line + 1;
+
+        let basename = state
+            .component
+            .source_path()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+            .unwrap_or_else(|| "source".to_string());
+
+        let mut col = column![].spacing(4);
+        col = col.push(
+            text(format!("{}:{}", basename, display_line))
+                .size(11)
+                .color(iced::Color::from_rgb(0.2, 0.4, 0.7)),
+        );
+        col = col.push(
+            text("(点击导航待接入)")
+                .size(9)
+                .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+        );
+        col.into()
+    })
+}
+
+/// Computed sub-tab: interim "computed layout" view (Plan 307 Task 16).
+///
+/// Honest limitation: `VNodeProps` carries no CSS class/style, and
+/// `ComputedNode.computed_style`/`raw_class` are not yet populated by the cache
+/// builder, so a full CSS computed-style sheet is not possible. We render the
+/// layout-relevant props from `VNodeProps` plus the live_cache `bounds` /
+/// `box_model` summary, and note that class resolution is pending.
+fn render_inspector_computed_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    with_selected_vnode(state, "无选中元素", |node| {
+        let mut col = column![].spacing(3);
+
+        // --- Layout-relevant props from VNodeProps ---
+        use crate::ui::vnode::VNodeProps;
+        match &node.props {
+            VNodeProps::Layout { spacing, padding } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+                col = col.push(kv_row("padding", padding.to_string()));
+            }
+            VNodeProps::Container {
+                padding,
+                center_x,
+                center_y,
+            } => {
+                col = col.push(kv_row("padding", padding.to_string()));
+                col = col.push(kv_row("center_x", center_x.to_string()));
+                col = col.push(kv_row("center_y", center_y.to_string()));
+            }
+            VNodeProps::List { spacing } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+            }
+            VNodeProps::Table {
+                spacing,
+                col_spacing,
+            } => {
+                col = col.push(kv_row("spacing", spacing.to_string()));
+                col = col.push(kv_row("col_spacing", col_spacing.to_string()));
+            }
+            _ => {
+                col = col.push(
+                    text("(本节点类型无布局计算属性)")
+                        .size(10)
+                        .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+                );
+            }
+        }
+
+        // --- Live bounds / box model from InspectorCache (if available) ---
+        let cache = state.live_cache.borrow().clone();
+        if let Some(cache) = cache {
+            if let Some(computed) = cache.get(node.id) {
+                if let Some(bm) = &computed.box_model {
+                    let c = &bm.content;
+                    col = col.push(kv_row(
+                        "content",
+                        format!("{:.0}×{:.0} @({:.0},{:.0})", c.width, c.height, c.x, c.y),
+                    ));
+                } else if let Some(b) = &computed.bounds {
+                    col = col.push(kv_row(
+                        "bounds",
+                        format!("{:.0}×{:.0} @({:.0},{:.0})", b.width, b.height, b.x, b.y),
+                    ));
+                }
+            }
+        }
+
+        // --- Pending class resolution note ---
+        col = col.push(
+            text("(CSS class 解析待接入)")
+                .size(9)
+                .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+        );
+
+        col.into()
+    })
+}
+
+/// Generic greyed placeholder body for not-yet-implemented sub-tabs.
+fn placeholder_panel(msg: &str) -> iced::Element<'static, IcedMessage> {
+    text(msg.to_string())
+        .size(11)
+        .color(iced::Color::from_rgb(0.55, 0.55, 0.55))
+        .into()
+}
+
+/// Construct the `__select_vnode_<u64>` selection message (Task 14 pattern).
+fn select_vnode_message(id: crate::ui::vnode::VNodeId) -> IcedMessage {
+    IcedMessage {
+        widget: String::new(),
+        event: format!("{}{}", DEBUG_SELECT_VNODE_PREFIX, id.as_u64()),
+        input_value: None,
+    }
+}
+
+/// Legacy source-code display section (Plan 307 Task 15).
+///
+/// This is the *previous* body of `render_inspector_tab`, preserved verbatim so
+/// Task 16 (Source tab) can reuse it and Task 19/20 can retire it cleanly. It
+/// is intentionally not wired into the new right panel yet — keep it here as
+/// `#[allow(dead_code)]` until then.
+#[allow(dead_code)]
+fn render_inspector_source_section(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
     let selected_id = state.selected_widget.borrow().clone();
     let styles = state.debug_element_styles.borrow();
     let info = selected_id.as_ref().and_then(|id| styles.get(id));
@@ -3682,6 +4668,13 @@ struct DebugRenderCtx {
     /// When false, bounds probe containers are still created for MCP snapshot,
     /// but mouse_area / hover highlights are skipped.
     debug_mode: bool,
+    /// Bidirectional `VNodeId <-> iced widget id` map (Plan 307 Task 12).
+    /// Populated in `wrap_debug` only when `debug_mode` is true; mirrors the
+    /// View-structural path scheme used by `view_to_vtree_with_paths` (Task 4)
+    /// so the VNodeIds align with the live VTree. Copied into
+    /// `DynamicState::live_cache` after each render for later bounds backfill
+    /// (Task 13) and inspector panels (tasks 15-16).
+    inspector_cache: std::cell::RefCell<crate::ui::debug::InspectorCache>,
 }
 
 /// Debug metadata for a single UI element.
@@ -3757,6 +4750,21 @@ impl DebugRenderCtx {
             // Record bidirectional mapping
             self.id_to_aura.borrow_mut().insert(id_str.clone(), aura_id);
             self.aura_to_id.borrow_mut().insert(aura_id, id_str.clone());
+            // Plan 307 Task 12: record the `VNodeId <-> iced widget id` mapping.
+            // `view_path` here is View-structural — the SAME scheme
+            // `view_to_vtree_with_paths` (Task 4) uses to derive VTree VNodeIds,
+            // so `VNodeId::new(id_from_path(&view_path_as_u16))` matches the
+            // corresponding VTree node's VNodeId. Only recorded when debug mode
+            // is active (the ctx only exists then, but gate defensively).
+            if self.debug_mode {
+                let path_u16: Vec<u16> = view_path.iter().map(|&x| x as u16).collect();
+                let vnode_id = crate::ui::vnode::VNodeId::new(
+                    crate::ui::vnode::id_from_path(&path_u16),
+                );
+                self.inspector_cache
+                    .borrow_mut()
+                    .set_iced_map(vnode_id, id_str.clone());
+            }
             (id_str, span)
         } else {
             // Fallback: synthetic wrapper node

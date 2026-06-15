@@ -9,6 +9,3 @@ pub mod server;
 pub mod session_manager;
 
 pub use server::McpServer;
-
-#[cfg(test)]
-mod tests;

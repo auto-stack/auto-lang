@@ -258,6 +258,11 @@ pub struct VNode {
 
     /// 调试标签（用于日志和调试）
     pub label: String,
+
+    /// 稳定的逻辑路径（从根到本节点的子索引序列）
+    pub path: Vec<u16>,
+    /// 源码 span（来自 DebugIdMap → AuraNodeId → span_map）
+    pub source_span: Option<crate::ui::debug::SourceSpan>,
 }
 
 impl VNode {
@@ -270,6 +275,8 @@ impl VNode {
             children: Vec::new(),
             props,
             label: String::new(),
+            path: Vec::new(),
+            source_span: None,
         }
     }
 
@@ -282,6 +289,18 @@ impl VNode {
     /// 设置父节点
     pub fn with_parent(mut self, parent: VNodeId) -> Self {
         self.parent = Some(parent);
+        self
+    }
+
+    /// 设置稳定的逻辑路径（从根到本节点的子索引序列）
+    pub fn with_path(mut self, path: Vec<u16>) -> Self {
+        self.path = path;
+        self
+    }
+
+    /// 设置源码 span
+    pub fn with_source_span(mut self, span: crate::ui::debug::SourceSpan) -> Self {
+        self.source_span = Some(span);
         self
     }
 
@@ -546,6 +565,28 @@ impl VTree {
 
         stats
     }
+
+    /// 由逻辑路径派生稳定的 VNodeId。
+    /// 结构不变 → id 不变；for 不同迭代 path 不同 → id 不同。
+    pub fn id_for_path(&self, path: &[u16]) -> VNodeId {
+        VNodeId(id_from_path(path))
+    }
+}
+
+/// 由逻辑路径派生稳定的 VNodeId 数值。
+/// 结构不变 → id 不变；for 不同迭代 path 不同 → id 不同。
+/// FNV-1a 风格，确定性，禁止用任何随机源。
+pub fn id_from_path(path: &[u16]) -> u64 {
+    // 非零种子，避免与默认/0 冲突
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &seg in path {
+        h ^= seg as u64;
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    if h == 0 {
+        h = 1;
+    } // 保证非 0
+    h
 }
 
 impl Default for VTree {
@@ -926,5 +967,38 @@ mod tests {
         .with_label("MyTextNode");
 
         assert_eq!(node.label, "MyTextNode");
+    }
+
+    #[test]
+    fn vnode_has_path_and_source_span() {
+        let id = VNodeId::new(1);
+        let mut node = VNode::new(id, VNodeKind::Text, VNodeProps::Text { content: "x".into() });
+        assert!(node.path.is_empty());
+        assert!(node.source_span.is_none());
+
+        node.path = vec![0, 1, 2];
+        node.source_span = Some(crate::ui::debug::SourceSpan { offset: 10, len: 3 });
+        assert_eq!(node.path, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn vnode_id_from_path_is_stable() {
+        use crate::ui::vnode::id_from_path;
+        // 同一 path → 同一 id
+        assert_eq!(id_from_path(&[0, 1, 2]), id_from_path(&[0, 1, 2]));
+        // 不同 path → 不同 id
+        assert_ne!(id_from_path(&[0, 1, 2]), id_from_path(&[0, 1, 3]));
+        // 空 path（根）→ 固定 id
+        assert_eq!(id_from_path(&[]), id_from_path(&[]));
+        // id 不为 0（避免与默认冲突）
+        assert_ne!(id_from_path(&[]), 0);
+    }
+
+    #[test]
+    fn vnode_id_from_path_distinguishes_for_iterations() {
+        use crate::ui::vnode::id_from_path;
+        // for 展开第 0、1、2 项应有不同 id
+        let a = id_from_path(&[0, 0]); let b = id_from_path(&[0, 1]); let c = id_from_path(&[0, 2]);
+        assert_ne!(a, b); assert_ne!(b, c); assert_ne!(a, c);
     }
 }

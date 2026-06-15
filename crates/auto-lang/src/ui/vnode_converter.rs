@@ -28,7 +28,7 @@
 //! ```
 
 use super::view::View;
-use super::vnode::{VNode, VNodeId, VNodeKind, VNodeProps, VTree};
+use super::vnode::{id_from_path, VNode, VNodeId, VNodeKind, VNodeProps, VTree};
 
 // 导入 DynamicMessage 和 EventRouter（仅在 interpreter feature 启用时）
 #[cfg(feature = "interpreter")]
@@ -74,6 +74,79 @@ where
     tree.set_root(root_node);
 
     tree
+}
+
+/// 带路径与 span 的 View → VTree 转换（Task 4）
+///
+/// 与 [`view_to_vtree`] 行为一致，区别在于：
+///
+/// - 每个节点的 `VNodeId` 由其逻辑 `path`（从根的子索引序列）经
+///   [`id_from_path`] 派生，而非顺序分配。结构不变 → id 不变。
+/// - `vnode.path` 被设置为该节点的完整 path。
+/// - `vnode.source_span` 通过 `span_for` 回调按 path 查询填充（允许返回
+///   `None` 表示无可用 span）。
+///
+/// 根节点 path = `[]`。
+///
+/// 现有的 [`view_to_vtree`]（顺序 id）保持不变，GPUI/headless 路径仍使用它。
+pub fn view_to_vtree_with_paths<M, F>(view: View<M>, span_for: F) -> VTree
+where
+    M: Clone + std::fmt::Debug,
+    F: Fn(&[u16]) -> Option<crate::ui::debug::SourceSpan>,
+{
+    let mut tree = VTree::new();
+    let mut path: Vec<u16> = Vec::new();
+
+    let root_node = convert_view_to_vnode_with_path(&view, None, &mut path, &mut tree, &span_for);
+    tree.set_root(root_node);
+
+    tree
+}
+
+/// `view_to_vtree_with_paths` 的递归 walker。
+///
+/// 复用 [`extract_kind_and_props`] / [`extract_children`]，不做重复的 View 映射。
+/// `path` 维护当前节点从根开始的子索引序列；进入子节点前 `push`，返回后 `pop`，
+/// 保证不泄漏到兄弟节点。
+fn convert_view_to_vnode_with_path<M, F>(
+    view: &View<M>,
+    parent_id: Option<VNodeId>,
+    path: &mut Vec<u16>,
+    tree: &mut VTree,
+    span_for: &F,
+) -> VNode
+where
+    M: Clone + std::fmt::Debug,
+    F: Fn(&[u16]) -> Option<crate::ui::debug::SourceSpan>,
+{
+    let id = VNodeId::new(id_from_path(path));
+    let (kind, props) = extract_kind_and_props(view);
+
+    let mut vnode = VNode::new(id, kind, props)
+        .with_label(format!("{}", kind))
+        .with_path(path.clone());
+
+    if let Some(span) = span_for(path) {
+        vnode = vnode.with_source_span(span);
+    }
+    if let Some(parent) = parent_id {
+        vnode = vnode.with_parent(parent);
+    }
+
+    // 处理子节点：按 children 数组顺序，child_index 从 0 起
+    let children = extract_children(view);
+    for (child_index, child_view) in children.into_iter().enumerate() {
+        path.push(child_index as u16);
+        let child_id = VNodeId::new(id_from_path(path));
+        let child_node =
+            convert_view_to_vnode_with_path(&child_view, Some(id), path, tree, span_for);
+        path.pop();
+
+        tree.add_node(child_node);
+        vnode.add_child(child_id);
+    }
+
+    vnode
 }
 
 /// 将单个 View 转换为 VNode（递归处理子节点）
@@ -803,6 +876,89 @@ mod tests {
         assert_eq!(stats.layout_nodes, 1);
         assert_eq!(stats.leaf_nodes, 2);
         assert_eq!(stats.max_depth, 2);
+    }
+
+    // =================================================================
+    // view_to_vtree_with_paths tests (Task 4)
+    // =================================================================
+
+    #[test]
+    fn vtree_with_paths_assigns_path_derived_ids() {
+        use super::view_to_vtree_with_paths;
+        use crate::ui::vnode::id_from_path;
+
+        // root col -> [ text, row -> [ button ] ]
+        let view: View<u32> = View::Column {
+            children: vec![
+                View::Text { content: "a".into(), style: None },
+                View::Row { children: vec![
+                    View::Button { label: "b".into(), onclick: 0, style: None },
+                ], spacing: 0, padding: 0, style: None },
+            ],
+            spacing: 0, padding: 0, style: None,
+        };
+        let tree = view_to_vtree_with_paths(view, |_| None);
+
+        // root id 由空 path 派生
+        let root = tree.root().expect("has root");
+        assert_eq!(root.id.as_u64(), id_from_path(&[]));
+        assert_eq!(root.path, Vec::<u16>::new());
+        assert_eq!(root.source_span, None);
+
+        // 第一个子节点 path [0]
+        let kids = tree.children(root.id).unwrap();
+        assert_eq!(kids.len(), 2);
+        assert_eq!(kids[0].path, vec![0]);
+        assert_eq!(kids[0].id.as_u64(), id_from_path(&[0]));
+        // row 的子按钮 path [1,0]
+        let row_kids = tree.children(kids[1].id).unwrap();
+        assert_eq!(row_kids[0].path, vec![1, 0]);
+        assert_eq!(row_kids[0].id.as_u64(), id_from_path(&[1, 0]));
+    }
+
+    #[test]
+    fn vtree_with_paths_span_callback_invoked_per_path() {
+        use super::view_to_vtree_with_paths;
+        let view: View<u32> = View::Column {
+            children: vec![View::Text { content: "x".into(), style: None }],
+            spacing: 0, padding: 0, style: None,
+        };
+        let tree = view_to_vtree_with_paths(view, |path| {
+            Some(crate::ui::debug::SourceSpan {
+                offset: path.iter().map(|&x| x as usize).sum::<usize>(),
+                len: 1,
+            })
+        });
+        let root = tree.root().unwrap();
+        assert_eq!(
+            root.source_span,
+            Some(crate::ui::debug::SourceSpan { offset: 0, len: 1 })
+        );
+        let kid = &tree.children(root.id).unwrap()[0];
+        assert_eq!(
+            kid.source_span,
+            Some(crate::ui::debug::SourceSpan { offset: 0, len: 1 })
+        ); // path [0] -> offset 0
+    }
+
+    #[test]
+    fn vtree_with_paths_ids_stable_across_builds() {
+        use super::view_to_vtree_with_paths;
+        fn build() -> View<u32> {
+            View::Column {
+                children: vec![View::Text { content: "c".into(), style: None }],
+                spacing: 0,
+                padding: 0,
+                style: None,
+            }
+        }
+        let t1 = view_to_vtree_with_paths(build(), |_| None);
+        let t2 = view_to_vtree_with_paths(build(), |_| None);
+        assert_eq!(t1.root().unwrap().id, t2.root().unwrap().id);
+        // 子节点 id 也一致
+        let c1 = t1.children(t1.root().unwrap().id).unwrap()[0].id;
+        let c2 = t2.children(t2.root().unwrap().id).unwrap()[0].id;
+        assert_eq!(c1, c2);
     }
 }
 

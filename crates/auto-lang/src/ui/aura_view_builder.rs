@@ -41,8 +41,27 @@ type Bindings = HashMap<String, Value>;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::vm_bridge::VmBridge;
 use crate::ui::debug_id_map::DebugIdMap;
+use crate::ui::debug::{BuildProbe, ForIter};
 use crate::ui::view::View;
 use crate::ui::style::{Style, StyleClass, SizeValue};
+
+// ============================================================================
+// Tracked conversion side-channels — Plan 307 Task 9
+// ============================================================================
+//
+// The *tracked* path (`build_with_debug`) threads three mutable accumulators
+// down through every converter: `path` (the AuraNode-structural descent path,
+// each segment = child index in its parent's `children` slice), `id_map`
+// (path → AuraNodeId), and `probe` (per-path AutoUI data).
+//
+// `path` is the AuraNode-structural descent path. The probe stores it as
+// `Vec<u16>` (cast from `usize`). For plain col/row containers this matches
+// the View-structural path used by `view_to_vtree_with_paths`; for ForLoop
+// output the two schemes may diverge — see the OPEN ISSUE in the Task 9
+// report (reconciled in Task 12).
+//
+// The **untracked** `build()` path never reaches these methods, so its
+// behaviour is byte-for-byte identical to before Task 9.
 
 // ============================================================================
 // AuraViewBuilder
@@ -110,15 +129,45 @@ impl<'a> AuraViewBuilder<'a> {
         self.convert_node_with(node, &Bindings::new())
     }
 
-    /// Build a `View<DynamicMessage>` with DebugIdMap sideband mapping (Plan 274).
+    /// Build a `View<DynamicMessage>` with debug sideband data (Plan 274 / 307 Task 9).
     ///
-    /// Returns `(View, DebugIdMap)` where the DebugIdMap records which AuraNodeId
-    /// produced each View node, keyed by the View tree path (`Vec<usize>`).
-    pub fn build_with_debug(&self, node: &AuraNode) -> (View<DynamicMessage>, DebugIdMap) {
+    /// Returns `(View, DebugIdMap, BuildProbe)` where:
+    /// - the `DebugIdMap` records which AuraNodeId produced each View node, keyed
+    ///   by the AuraNode-structural path (`Vec<usize>`);
+    /// - the `BuildProbe` records AutoUI-specific per-path data (state bindings,
+    ///   for-context, events) captured while walking the node tree. Task 9 fills
+    ///   text-interpolation state bindings only.
+    ///
+    /// The probe is **enabled** (records normally). This preserves the
+    /// historical behaviour relied on by Task 9-11 tests. For F12-off / MCP
+    /// zero-overhead capture bypass (Plan 307 Task 18), use
+    /// [`build_with_debug_gated`] with `capture_probe = false`.
+    pub fn build_with_debug(&self, node: &AuraNode) -> (View<DynamicMessage>, DebugIdMap, BuildProbe) {
+        self.build_with_debug_gated(node, true)
+    }
+
+    /// Gated variant of [`build_with_debug`] (Plan 307 Task 18 perf gate).
+    ///
+    /// When `capture_probe` is false, the returned `BuildProbe` is constructed
+    /// disabled via [`BuildProbe::new_disabled`], so every `record_*` call
+    /// during the node walk is a no-op — giving near-zero overhead when the
+    /// debug layer is inactive (F12 off) or for the MCP sync path (which never
+    /// needs probe data). The `DebugIdMap` is still populated (it is cheap and
+    /// required by MCP), but no probe work happens.
+    pub fn build_with_debug_gated(
+        &self,
+        node: &AuraNode,
+        capture_probe: bool,
+    ) -> (View<DynamicMessage>, DebugIdMap, BuildProbe) {
         let mut id_map = DebugIdMap::default();
+        let mut probe = if capture_probe {
+            BuildProbe::new()
+        } else {
+            BuildProbe::new_disabled()
+        };
         let mut path = Vec::new();
-        let view = self.convert_node_tracked_with(node, &mut path, &mut id_map, &Bindings::new());
-        (view, id_map)
+        let view = self.convert_node_tracked_ctx(node, &mut path, &mut id_map, &mut probe, &Bindings::new());
+        (view, id_map, probe)
     }
 
     // ========================================================================
@@ -287,22 +336,16 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
-    /// Tracked version of convert_node that records View path → AuraNodeId mappings.
-    fn convert_node_tracked(
+    /// Tracked node conversion: deep recursion that records per-path data into
+    /// both `DebugIdMap` (AuraNodeId) and `BuildProbe` (state bindings). This is
+    /// the Plan 307 Task 9 deep-threaded path; the untracked `build()` path
+    /// never reaches here, so its behaviour is unchanged.
+    fn convert_node_tracked_ctx(
         &self,
         node: &AuraNode,
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
-    ) -> View<DynamicMessage> {
-        self.convert_node_tracked_with(node, path, id_map, &Bindings::new())
-    }
-
-    /// Tracked version with loop variable bindings.
-    fn convert_node_tracked_with(
-        &self,
-        node: &AuraNode,
-        path: &mut Vec<usize>,
-        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         // Record this node's debug_id at the current path
@@ -320,10 +363,10 @@ impl<'a> AuraViewBuilder<'a> {
 
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
-                self.convert_element_tracked_with(tag, props, events, children, path, id_map, bindings)
+                self.convert_element_tracked_ctx(tag, props, events, children, path, id_map, probe, bindings)
             }
             AuraNode::Text(text_content) => {
-                self.convert_text_with(text_content, bindings)
+                self.convert_text_tracked_ctx(text_content, path, probe, bindings)
             }
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
@@ -349,7 +392,20 @@ impl<'a> AuraViewBuilder<'a> {
                             .filter_map(|(bi, n)| {
                                 path.push(i);   // iteration index
                                 path.push(bi);  // body node index
-                                let v = self.convert_node_tracked_with(n, path, id_map, &loop_bindings);
+                                // Record this iteration's context against the
+                                // body node's path (Plan 307 Task 10). `index`
+                                // is the 0-based iteration counter `i`, NOT the
+                                // loop's optional index-variable name. Keep
+                                // `iterable_repr` in its original ".notes" form.
+                                let for_path: Vec<u16> =
+                                    path.iter().map(|&x| x as u16).collect();
+                                probe.record_for(&for_path, ForIter {
+                                    var: var.clone(),
+                                    index: Some(i),
+                                    value_repr: value_to_display_string(item),
+                                    iterable_repr: iterable.clone(),
+                                });
+                                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, &loop_bindings);
                                 path.pop();
                                 path.pop();
                                 Some(v)
@@ -380,7 +436,7 @@ impl<'a> AuraViewBuilder<'a> {
                     .enumerate()
                     .map(|(i, n)| {
                         path.push(i);
-                        let v = self.convert_node_tracked_with(n, path, id_map, bindings);
+                        let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
                         path.pop();
                         v
                     })
@@ -426,7 +482,7 @@ impl<'a> AuraViewBuilder<'a> {
                         .enumerate()
                         .map(|(i, n)| {
                             path.push(i);
-                            let v = self.convert_node_tracked_with(n, path, id_map, bindings);
+                            let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
                             path.pop();
                             v
                         })
@@ -449,8 +505,11 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
-    /// Tracked version of convert_element that passes path/id_map to child conversions.
-    fn convert_element_tracked(
+    /// Tracked convert_element: dispatches by tag and recurses children with
+    /// path/probe tracking (deep), instead of delegating to the untracked
+    /// converters. Layout/prop extraction mirrors the untracked converters
+    /// exactly; only the child recursion differs (it carries the side-channels).
+    fn convert_element_tracked_ctx(
         &self,
         tag: &str,
         props: &HashMap<String, AuraPropValue>,
@@ -458,35 +517,92 @@ impl<'a> AuraViewBuilder<'a> {
         children: &[AuraNode],
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
-    ) -> View<DynamicMessage> {
-        self.convert_element_tracked_with(tag, props, events, children, path, id_map, &Bindings::new())
-    }
-
-    /// Tracked convert_element with bindings support.
-    /// For tracked mode, we delegate to the same _with methods used by untracked mode
-    /// since the debug ID tracking is handled at the node level in convert_node_tracked_with.
-    fn convert_element_tracked_with(
-        &self,
-        tag: &str,
-        props: &HashMap<String, AuraPropValue>,
-        events: &HashMap<String, AuraEvent>,
-        children: &[AuraNode],
-        path: &mut Vec<usize>,
-        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        // Delegate to the untracked-with methods — they already handle bindings.
-        // Debug ID tracking is done at the AuraNode level in convert_node_tracked_with.
-        self.convert_element(tag, props, events, children, bindings)
+        // Record event handler bindings for this element, at this node's own
+        // path (set by the caller's `path.push(child_index)`). Runs before the
+        // `match tag` dispatch so it is unconditional — every element with
+        // events (button/input/textarea/checkbox, etc.) is captured regardless
+        // of whether its tag falls into the tracked or untracked converter arm.
+        if !events.is_empty() {
+            let ev_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+            for (event_name, ev) in events.iter() {
+                probe.record_event(&ev_path, event_name, &ev.handler);
+            }
+        }
+
+        match tag {
+            // Core layout widgets — recurse children with path tracking.
+            "col" | "column" => self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "row" => self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "center" => self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "container" | "div" => self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings),
+
+            // Text-bearing elements. The text/interpolation state bindings are
+            // captured at this node's current path (the text element's path),
+            // which is what the inspector wants.
+            "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
+                self.convert_text_element_tracked_ctx(tag, props, children, path, probe, bindings)
+            }
+
+            // Leaf/atom widgets with no AuraNode children — fall back to the
+            // untracked converter. They have no nested text to probe (Task 9
+            // scope is text interpolation only).
+            "button" | "btn" => self.convert_button(props, events, bindings),
+            "input" => self.convert_input(props, events, bindings),
+            "textarea" => self.convert_textarea(props, events, bindings),
+            "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
+            "img" | "image" => self.convert_image(props),
+            "progress" => self.convert_progress(props),
+            "spacer" => self.convert_spacer(props),
+            "divider" | "hr" => self.convert_divider(props),
+            "avatar" => self.convert_avatar(props),
+
+            // Child widget lookup or fallback.
+            _ => {
+                if let Some(registry) = self.widget_registry {
+                    if let Some(child_widget) = registry.get(tag) {
+                        return self.render_child_widget(child_widget, props, events, bindings);
+                    }
+                }
+                // Fallback: recurse children with path tracking, filtering Empty.
+                let views: Vec<View<DynamicMessage>> = children
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, n)| {
+                        path.push(i);
+                        let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
+                        path.pop();
+                        if matches!(v, View::Empty) { None } else { Some(v) }
+                    })
+                    .collect();
+                if views.is_empty() {
+                    View::Empty
+                } else if views.len() == 1 {
+                    views.into_iter().next().unwrap()
+                } else {
+                    View::Column {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                    }
+                }
+            }
+        }
     }
 
-    /// Tracked convert_column
-    fn convert_column_tracked(
+    /// Tracked convert_column — mirrors `convert_column` but recurses via
+    /// `convert_node_tracked_ctx` so each child gets its own path + probe data.
+    fn convert_column_tracked_ctx(
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
@@ -497,7 +613,7 @@ impl<'a> AuraViewBuilder<'a> {
             .enumerate()
             .map(|(i, n)| {
                 path.push(i);
-                let v = self.convert_node_tracked(n, path, id_map);
+                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
                 path.pop();
                 v
             })
@@ -506,63 +622,72 @@ impl<'a> AuraViewBuilder<'a> {
         let mut builder = View::<DynamicMessage>::col()
             .spacing(spacing)
             .padding(padding);
-
         if let Some(s) = style {
             builder = builder.with_style(s);
         }
-
         for child in child_views {
             builder = builder.child(child);
         }
-
         builder.build()
     }
 
-    /// Tracked convert_row
-    fn convert_row_tracked(
+    /// Tracked convert_row — mirrors `convert_row`'s Conditional-flattening but
+    /// recurses via tracked converters. (For Task 9 scope, only text bindings
+    /// matter; the flattening is preserved for behavioural parity.)
+    fn convert_row_tracked_ctx(
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
 
-        let child_views: Vec<View<DynamicMessage>> = children
-            .iter()
-            .enumerate()
-            .map(|(i, n)| {
+        let mut child_views: Vec<View<DynamicMessage>> = Vec::new();
+        for (i, n) in children.iter().enumerate() {
+            if let AuraNode::Conditional { condition, then_body, else_body, .. } = n {
+                let is_true = self.eval_condition_with(condition, bindings);
+                let empty = Vec::new();
+                let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
+                for child_node in body {
+                    path.push(i);
+                    let v = self.convert_node_tracked_ctx(child_node, path, id_map, probe, bindings);
+                    path.pop();
+                    child_views.push(v);
+                }
+            } else {
                 path.push(i);
-                let v = self.convert_node_tracked(n, path, id_map);
+                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
                 path.pop();
-                v
-            })
-            .collect();
+                child_views.push(v);
+            }
+        }
 
         let mut builder = View::<DynamicMessage>::row()
             .spacing(spacing)
             .padding(padding);
-
         if let Some(s) = style {
             builder = builder.with_style(s);
         }
-
         for child in child_views {
             builder = builder.child(child);
         }
-
         builder.build()
     }
 
-    /// Tracked convert_container
-    fn convert_container_tracked(
+    /// Tracked convert_container — mirrors `convert_container`.
+    fn convert_container_tracked_ctx(
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let width = self.extract_u16(props, "width");
@@ -573,7 +698,7 @@ impl<'a> AuraViewBuilder<'a> {
             View::Empty
         } else if children.len() == 1 {
             path.push(0);
-            let v = self.convert_node_tracked(&children[0], path, id_map);
+            let v = self.convert_node_tracked_ctx(&children[0], path, id_map, probe, bindings);
             path.pop();
             v
         } else {
@@ -582,7 +707,7 @@ impl<'a> AuraViewBuilder<'a> {
                 .enumerate()
                 .map(|(i, n)| {
                     path.push(i);
-                    let v = self.convert_node_tracked(n, path, id_map);
+                    let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
                     path.pop();
                     v
                 })
@@ -605,17 +730,18 @@ impl<'a> AuraViewBuilder<'a> {
         if let Some(s) = style {
             builder = builder.with_style(s);
         }
-
         builder.build()
     }
 
-    /// Tracked convert_center
-    fn convert_center_tracked(
+    /// Tracked convert_center — mirrors `convert_center`.
+    fn convert_center_tracked_ctx(
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let style = self.extract_style(props);
 
@@ -623,7 +749,7 @@ impl<'a> AuraViewBuilder<'a> {
             View::Empty
         } else if children.len() == 1 {
             path.push(0);
-            let v = self.convert_node_tracked(&children[0], path, id_map);
+            let v = self.convert_node_tracked_ctx(&children[0], path, id_map, probe, bindings);
             path.pop();
             v
         } else {
@@ -632,7 +758,7 @@ impl<'a> AuraViewBuilder<'a> {
                 .enumerate()
                 .map(|(i, n)| {
                     path.push(i);
-                    let v = self.convert_node_tracked(n, path, id_map);
+                    let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
                     path.pop();
                     v
                 })
@@ -651,8 +777,121 @@ impl<'a> AuraViewBuilder<'a> {
         };
         let mut builder = View::container(child_view).center_x().center_y();
         builder = builder.with_style(full_style);
-
         builder.build()
+    }
+
+    /// Tracked plain text node conversion. For an interpolated text node this
+    /// records each `${.field}` binding at the current node's path. Literal text
+    /// records nothing. The produced View is identical to `convert_text_with`.
+    fn convert_text_tracked_ctx(
+        &self,
+        content: &AuraTextContent,
+        path: &mut Vec<usize>,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let resolved = match content {
+            AuraTextContent::Literal(s) => s.clone(),
+            AuraTextContent::Interpolated { template, bindings: tpl_bindings } => {
+                self.resolve_interpolation_tracked(template, tpl_bindings, bindings, path, probe)
+            }
+        };
+        View::Text {
+            content: resolved,
+            style: None,
+        }
+    }
+
+    /// Resolve an interpolation template AND record each binding into the probe
+    /// at the current path. Returns the same resolved string as
+    /// `resolve_interpolation_with`.
+    fn resolve_interpolation_tracked(
+        &self,
+        template: &str,
+        tpl_bindings: &[String],
+        loop_bindings: &Bindings,
+        path: &mut Vec<usize>,
+        probe: &mut BuildProbe,
+    ) -> String {
+        let mut result = template.to_string();
+        // Only build the probe path when there is at least one binding to record;
+        // an empty `tpl_bindings` needs no probe entries.
+        if !tpl_bindings.is_empty() {
+            let probe_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+            for field_name in tpl_bindings {
+                let pattern = format!("${{{}}}", format!(".{}", field_name));
+                let value_str = self.read_state_as_string_with(field_name, loop_bindings);
+                // Record the state binding at the current node's path.
+                probe.record_state(&probe_path, pattern.clone(), value_str.clone());
+                result = result.replace(&pattern, &value_str);
+            }
+        }
+        result
+    }
+
+    /// Tracked convert_text_element — mirrors `convert_text_element`'s content
+    /// extraction but, when the content comes from an interpolated child text
+    /// node, records the binding at the current (text element) path.
+    fn convert_text_element_tracked_ctx(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let probe_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+        let content = self.extract_string_with(props, "text", bindings)
+            .or_else(|| self.extract_string_with(props, "content", bindings))
+            .or_else(|| self.extract_string_with(props, "label", bindings))
+            .unwrap_or_else(|| {
+                // Try to get content from child text nodes. For interpolated
+                // children, also record each binding at this element's path.
+                children.iter()
+                    .filter_map(|c| match c {
+                        AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
+                        AuraNode::Text(AuraTextContent::Interpolated { template, bindings: tpl_bindings }) => {
+                            // Record bindings for this child, attributed to the
+                            // text element (current path) — consistent with the
+                            // plain-text-node case.
+                            for field_name in tpl_bindings {
+                                let pattern = format!("${{{}}}", format!(".{}", field_name));
+                                let value_str = self.read_state_as_string_with(field_name, bindings);
+                                probe.record_state(&probe_path, pattern, value_str);
+                            }
+                            Some(self.resolve_interpolation_with(template, tpl_bindings, bindings))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<String>>()
+                    .join("")
+            });
+
+        let mut style = self.extract_style(props);
+
+        // Apply default heading styles, merging with user-provided styles
+        if matches!(tag, "h1" | "h2" | "h3") {
+            let default = match tag {
+                "h1" => Style::parse("text-4xl font-bold").ok(),
+                "h2" => Style::parse("text-3xl font-bold").ok(),
+                "h3" => Style::parse("text-xl font-semibold").ok(),
+                _ => None,
+            };
+            if let Some(mut default) = default {
+                if let Some(user) = style.take() {
+                    default.classes.extend(user.classes);
+                }
+                style = Some(default);
+            }
+        }
+
+        // Heading styling is applied via the `style` field, not by transforming
+        // `content`; matches untracked behaviour.
+        View::Text {
+            content,
+            style,
+        }
     }
 
     /// Convert an AuraNode::Element to a View variant based on the tag name.
@@ -797,6 +1036,7 @@ impl<'a> AuraViewBuilder<'a> {
     // ========================================================================
 
     /// Convert a column element.
+    // Tracked twin: convert_column_tracked_ctx — keep widget logic in sync.
     fn convert_column(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -828,6 +1068,7 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Convert a row element.
+    // Tracked twin: convert_row_tracked_ctx — keep widget logic in sync.
     fn convert_row(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -870,6 +1111,7 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Convert a container element.
+    // Tracked twin: convert_container_tracked_ctx — keep widget logic in sync.
     fn convert_container(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -913,6 +1155,7 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Convert a center element: wraps child in a centered container.
+    // Tracked twin: convert_center_tracked_ctx — keep widget logic in sync.
     fn convert_center(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -1917,6 +2160,227 @@ mod tests {
             }
             _ => panic!("Expected View::Text"),
         }
+    }
+
+    // ========================================================================
+    // Plan 307 Task 9 — deep BuildProbe threading tests
+    // ========================================================================
+
+    #[test]
+    fn build_with_debug_captures_nested_state_binding() {
+        let widget = make_test_widget("Counter", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(42),
+                decorators: vec![],
+            },
+        ]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Counter");
+
+        let node = AuraNode::Element {
+            tag: "col".to_string(),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            children: vec![
+                AuraNode::Text(AuraTextContent::Interpolated {
+                    template: "Count: ${.count}".to_string(),
+                    bindings: vec!["count".to_string()],
+                }),
+            ],
+            span: None,
+            debug_id: None,
+        };
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        // exactly one path captured (the nested text node), with one state binding
+        assert_eq!(snap.len(), 1, "nested text node should be probed");
+        let entry = snap.values().next().unwrap();
+        assert_eq!(entry.state_bindings.len(), 1);
+        assert_eq!(entry.state_bindings[0].expr, "${.count}");
+        assert_eq!(entry.state_bindings[0].current_value, "42");
+    }
+
+    #[test]
+    fn build_with_debug_skips_literal_text_sibling() {
+        // col with two text children: one interpolated, one literal.
+        // Only the interpolated one should produce a probe entry.
+        let widget = make_test_widget("Counter", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(42),
+                decorators: vec![],
+            },
+        ]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Counter");
+
+        let node = AuraNode::Element {
+            tag: "col".to_string(),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            children: vec![
+                AuraNode::Text(AuraTextContent::Interpolated {
+                    template: "Count: ${.count}".to_string(),
+                    bindings: vec!["count".to_string()],
+                }),
+                AuraNode::Text(AuraTextContent::Literal("static".to_string())),
+            ],
+            span: None,
+            debug_id: None,
+        };
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        assert_eq!(snap.len(), 1, "only the interpolated text node is probed");
+        let entry = snap.values().next().unwrap();
+        assert_eq!(entry.state_bindings.len(), 1);
+        assert_eq!(entry.state_bindings[0].expr, "${.count}");
+    }
+
+    #[test]
+    fn build_with_debug_records_nothing_for_literal_text() {
+        // A literal-only text node at top level records nothing.
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::Text(AuraTextContent::Literal("just text".to_string()));
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        assert!(snap.is_empty(), "literal-only text must not be probed");
+    }
+
+    #[test]
+    fn build_with_debug_captures_for_loop_context() {
+        use crate::ui::debug::ForIter;
+        // Widget declares an `items` state field (initial dummy, overwritten
+        // below). `AuraExpr` has no array literal, so we seed via write_state.
+        let widget = make_test_widget("List", vec![
+            AuraStateDef {
+                name: "items".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: AuraExpr::Literal(String::new()),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge.write_state(
+            "items",
+            Value::Array(auto_val::Array::from(vec![
+                Value::str("apple"),
+                Value::str("banana"),
+                Value::str("cherry"),
+            ])),
+        ).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "List");
+
+        // for item in .items { text("${.item}") }
+        let node = AuraNode::ForLoop {
+            var: "item".to_string(),
+            index: None,
+            iterable: ".items".to_string(),
+            body: vec![AuraNode::Text(AuraTextContent::Interpolated {
+                template: "${.item}".to_string(),
+                bindings: vec!["item".to_string()],
+            })],
+            span: None,
+            debug_id: None,
+        };
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        let for_entries: Vec<&ForIter> = snap.values()
+            .filter_map(|e| e.for_context.as_ref())
+            .collect();
+        assert_eq!(for_entries.len(), 3, "three iterations captured");
+        let mut by_index: Vec<(usize, &str)> = for_entries.iter()
+            .map(|f| (f.index.unwrap(), f.value_repr.as_str()))
+            .collect();
+        by_index.sort_by_key(|(i, _)| *i);
+        assert_eq!(by_index, vec![(0, "apple"), (1, "banana"), (2, "cherry")]);
+        assert_eq!(for_entries[0].var, "item");
+        assert_eq!(for_entries[0].iterable_repr, ".items");
+    }
+
+    // ========================================================================
+    // Plan 307 Task 11 — event handler binding capture
+    // ========================================================================
+
+    #[test]
+    fn build_with_debug_captures_event_handler() {
+        use crate::aura::AuraEvent;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::Element {
+            tag: "button".to_string(),
+            props: HashMap::from([
+                ("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Inc".to_string()))),
+            ]),
+            events: HashMap::from([
+                ("onclick".to_string(), AuraEvent {
+                    handler: ".Inc".to_string(),
+                    params: vec![],
+                }),
+            ]),
+            children: vec![],
+            span: None,
+            debug_id: None,
+        };
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        let all_events: Vec<_> = snap.values().flat_map(|e| e.events.iter()).collect();
+        assert_eq!(all_events.len(), 1);
+        assert_eq!(all_events[0].event, "onclick");
+        assert_eq!(all_events[0].handler, ".Inc");
+    }
+
+    #[test]
+    fn build_with_debug_captures_event_handlers_distinct_paths() {
+        use crate::aura::AuraEvent;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let button = |handler: &str| AuraNode::Element {
+            tag: "button".to_string(),
+            props: HashMap::new(),
+            events: HashMap::from([
+                ("onclick".to_string(), AuraEvent {
+                    handler: handler.to_string(),
+                    params: vec![],
+                }),
+            ]),
+            children: vec![],
+            span: None,
+            debug_id: None,
+        };
+
+        let node = AuraNode::Element {
+            tag: "col".to_string(),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            children: vec![button(".Inc"), button(".Dec")],
+            span: None,
+            debug_id: None,
+        };
+        let (_view, _id_map, probe) = builder.build_with_debug(&node);
+        let snap = probe.snapshot();
+        // Each button is captured at its own child path with one event each.
+        let event_paths: Vec<(Vec<u16>, &str)> = snap.iter()
+            .flat_map(|(path, e)| e.events.iter().map(move |ev| (path.clone(), ev.handler.as_str())))
+            .collect();
+        assert_eq!(event_paths.len(), 2, "two events captured");
+        let handlers: Vec<&str> = {
+            let mut h = event_paths.iter().map(|(_, h)| *h).collect::<Vec<_>>();
+            h.sort();
+            h
+        };
+        assert_eq!(handlers, vec![".Dec", ".Inc"]);
+        // distinct paths
+        assert_ne!(event_paths[0].0, event_paths[1].0, "distinct child paths");
     }
 
     #[test]
