@@ -131,7 +131,9 @@ pub fn public_function() int;
 
 ## Detailed Design Documents
 
-Organized as a design reference book (originals preserved in `docs/design/raw/`):
+Organized as a design reference book — see [docs/design/00-intro.md](docs/design/00-intro.md) for full overview.
+
+**Language Core:**
 - [docs/design/01-architecture.md](docs/design/01-architecture.md) — Compiler pipeline, core components, AIE
 - [docs/design/02-type-system.md](docs/design/02-type-system.md) — Types, inference, generics, enums, unions
 - [docs/design/03-error-handling.md](docs/design/03-error-handling.md) — Option/Result/Panic, error messages
@@ -139,10 +141,15 @@ Organized as a design reference book (originals preserved in `docs/design/raw/`)
 - [docs/design/05-vm-runtime.md](docs/design/05-vm-runtime.md) — Bytecode ISA, AutoVM, BigVM, concurrency
 - [docs/design/06-code-generation.md](docs/design/06-code-generation.md) — a2c, a2ark, a2jet, autogen, C interop
 - [docs/design/07-data-structures.md](docs/design/07-data-structures.md) — Node, Atom format, serialization
-- [docs/design/08-ui-systems.md](docs/design/08-ui-systems.md) — AURA, design tokens, frontend-backend
 - [docs/design/09-compiler.md](docs/design/09-compiler.md) — Incremental compilation, caching, comptime
 - [docs/design/10-language-syntax.md](docs/design/10-language-syntax.md) — Dot notation, functions, OOP, stdlib
-- [docs/design/11-shell-tools.md](docs/design/11-shell-tools.md) — AutoShell, coreutils, SmartCmd
+
+**Application Framework:**
+- [docs/design/08-ui-systems.md](docs/design/08-ui-systems.md) — AURA, design tokens, frontend-backend
+- [docs/design/11-shell-tools.md](docs/design/11-shell-tools.md) — AutoShell/ASH, coreutils, SmartCmd, pipelines
+- [docs/design/12-concurrency.md](docs/design/12-concurrency.md) — Task/Actor model, async/await, .go operator
+- [docs/design/13-networking.md](docs/design/13-networking.md) — HTTP server stdlib, async I/O, JSON/url modules
+- [docs/design/14-developer-tools.md](docs/design/14-developer-tools.md) — LSP, Web Playground, AutoLab, MCP Server
 
 ## Common Development Tasks
 
