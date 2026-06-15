@@ -5,8 +5,16 @@ union MyUnion {
     f: f64,
     c: char,
 }
+impl MyUnion {
+    pub fn new_i(value: i32) -> Self { unsafe { Self { i: value } } }
+    pub fn i(&self) -> i32 { unsafe { self.i } }
+    pub fn new_f(value: f64) -> Self { unsafe { Self { f: value } } }
+    pub fn f(&self) -> f64 { unsafe { self.f } }
+    pub fn new_c(value: char) -> Self { unsafe { Self { c: value } } }
+    pub fn c(&self) -> char { unsafe { self.c } }
+}
 
 fn main() {
-    let my_union = MyUnion { i: 42 };
-    println!("int value: {}", my_union.i);
+    let my_union = MyUnion::new_i(42);
+    println!("int value: {}", my_union.i());
 }

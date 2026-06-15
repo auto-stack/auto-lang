@@ -93,6 +93,17 @@ pub struct RustTrans {
     // Cache for tag type names (for tag construction detection)
     tag_types: HashSet<AutoStr>,
 
+    // Plan 310 Phase 0.2: Cache for union type names (to rewrite construction
+    // and field-access into safe accessor methods, since Rust union fields
+    // require `unsafe`).
+    union_types: HashSet<AutoStr>,
+
+    // Plan 310 Phase 0.4: Ownership escape-analysis warnings.
+    // Populated when a value falls back from a borrow (Tier 1) to clone (Tier 2)
+    // or Rc<RefCell<T>> (Tier 3). CRITICAL: these must never be written into the
+    // transpiled output (Sink), or they would corrupt .expected.rs byte diffs.
+    warnings: Vec<crate::error::Warning>,
+
     // Cache for struct field types: struct_name -> Vec<(field_name, field_type)>
     // Used to add .to_string() when &str is assigned to String field
     struct_field_types: HashMap<AutoStr, Vec<(AutoStr, Type)>>,
@@ -214,6 +225,8 @@ impl RustTrans {
             struct_field_types: HashMap::new(),
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
+            union_types: HashSet::new(),
+            warnings: Vec::new(),
             enum_struct_variants: HashMap::new(),
             enum_tuple_variants: HashMap::new(),
             enum_tuple_field_types: HashMap::new(),
@@ -265,6 +278,8 @@ impl RustTrans {
             struct_field_types: HashMap::new(),
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
+            union_types: HashSet::new(),
+            warnings: Vec::new(),
             enum_struct_variants: HashMap::new(),
             enum_tuple_variants: HashMap::new(),
             enum_tuple_field_types: HashMap::new(),
@@ -2267,6 +2282,26 @@ impl RustTrans {
                     field.as_str(),
                     "len" | "is_empty" | "capacity" | "count" | "push" | "pop"
                 );
+
+                // Plan 310 Phase 0.2: Union field read `u.field` → `u.field()`.
+                // Rust union fields require `unsafe` to read; we route through
+                // the safe accessor methods generated in union_decl (only for
+                // Copy-type fields, which is what we emit accessors for).
+                let is_union_access = if let Expr::Ident(var_name) = object.as_ref() {
+                    if let Some(Type::User(td)) = self.local_var_types.get(var_name) {
+                        self.union_types.contains(&td.name)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                if is_union_access {
+                    self.expr(object, out)?;
+                    write!(out, ".{}()", field)?;
+                    return Ok(());
+                }
+
                 self.expr(object, out)?;
                 write!(out, ".{}", field)?;
                 if is_rust_method {
@@ -2536,6 +2571,29 @@ impl RustTrans {
                 }
                 write!(out, ")")?;
                 return Ok(());
+            }
+        }
+
+        // Plan 310 Phase 0.2: Union construction `Union(field: val)` →
+        // `Union::new_field(val)`. Rust requires `unsafe` to construct a union
+        // via `Union { field: val }`; we route through the safe `new_<f>`
+        // accessor generated in union_decl. Only the first named field is used
+        // (union semantics: only one variant active at a time).
+        if let Expr::Ident(type_name) = call.name.as_ref() {
+            if self.union_types.contains(type_name) {
+                if let Some(Arg::Pair(field_name, val_expr)) = call.args.args.first() {
+                    write!(out, "{}::new_{}(", type_name, field_name)?;
+                    self.expr(val_expr, out)?;
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+                // Positional arg: use the first union field name
+                if let Some(field) = call.args.args.first() {
+                    write!(out, "{}::new_0(", type_name)?;
+                    self.arg(field, out)?;
+                    write!(out, ")")?;
+                    return Ok(());
+                }
             }
         }
 
@@ -5644,6 +5702,13 @@ impl RustTrans {
                         "json_escape" | "json_to_string" | "format" => return Type::StrOwned,
                         _ => {}
                     }
+                    // Plan 310 Phase 0.2: Union construction infers its type
+                    // so that downstream field-access sites can detect union vars.
+                    if self.union_types.contains(fn_name) {
+                        // Reconstruct a minimal Type::User carrying the union name;
+                        // only the name field is consulted by field-access detection.
+                        return Type::User(crate::ast::TypeDecl::builtin(fn_name.as_str()));
+                    }
                 }
                 Type::Unknown
             }
@@ -7833,38 +7898,25 @@ impl RustTrans {
             let spec_name = delegation.spec_name.clone();
             let member_name = delegation.member_name.clone();
 
-            // Get the spec declaration - clone to avoid borrow issues
-            let spec_decl_clone = if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
+            // Plan 310 Phase 0.3: Resolve spec methods without depending on the
+            // Database (which is empty in the single-file transpile_rust path).
+            // Prefer the spec_decls cache populated during the pre-scan (handles
+            // forward declarations); fall back to lookup_meta for multi-file/db.
+            let spec_methods: Vec<SpecMethod> = if let Some(methods) = self.spec_decls.get(spec_name.as_str()) {
+                methods.clone()
+            } else if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
                 if let crate::scope::Meta::Spec(spec_decl) = meta.as_ref() {
-                    Some(spec_decl.clone())
+                    spec_decl.methods.clone()
                 } else {
-                    None
+                    Vec::new()
                 }
             } else {
-                None
+                Vec::new()
             };
 
-            // Now use the cloned spec_decl
-            if let Some(spec_decl) = spec_decl_clone {
-                // Build impl signature with generic parameters
-                write!(sink.body, "\nimpl {}", spec_decl.name)?;
-
-                // Add generic parameters from spec_decl (trait)
-                if !spec_decl.generic_params.is_empty() {
-                    write!(sink.body, "<")?;
-                    for (i, param) in spec_decl.generic_params.iter().enumerate() {
-                        if i > 0 {
-                            write!(sink.body, ", ")?;
-                        }
-                        match param {
-                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                            GenericParam::Const(cp) => {
-                                write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
-                            }
-                        }
-                    }
-                    write!(sink.body, ">")?;
-                }
+            // Now generate the delegation impl if we found any spec methods
+            if !spec_methods.is_empty() {
+                write!(sink.body, "\nimpl {}", spec_name)?;
 
                 write!(sink.body, " for {}", type_decl.name)?;
 
@@ -7889,7 +7941,7 @@ impl RustTrans {
                 self.indent();
 
                 // Generate methods that delegate to the member
-                for spec_method in &spec_decl.methods {
+                for spec_method in &spec_methods {
                     self.print_indent(&mut sink.body)?;
                     write!(sink.body, "fn {}(&self", spec_method.name)?;
 
@@ -8470,8 +8522,12 @@ impl RustTrans {
 
     // **Phase 1.2: Union Types (test: 013_union)**
     fn union_decl(&mut self, union: &Union, sink: &mut Sink) -> AutoResult<()> {
+        // Cache union type name so construction and field-access sites can be
+        // rewritten to safe accessor methods (Plan 310 Phase 0.2).
+        // In Rust, union field access/construct is unsafe; we wrap it.
+        self.union_types.insert(union.name.clone());
+
         // Generate union definition
-        // In Rust, unions are unsafe but supported
         writeln!(sink.body, "union {} {{", union.name)?;
         self.indent();
 
@@ -8485,6 +8541,39 @@ impl RustTrans {
             )?;
         }
 
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+
+        // Plan 310 Phase 0.2: Generate safe accessor methods for each field.
+        // Union field construction (`Union { f: v }`) and read (`u.f`) require
+        // `unsafe` in Rust. We expose `new_<f>(v)` constructors and `<f>()`
+        // readers so generated code stays in safe Rust.
+        write!(sink.body, "impl {} {{", union.name)?;
+        sink.body.write(b"\n")?;
+        self.indent();
+        for field in &union.fields {
+            let fname = field.name.as_str();
+            let fty = self.rust_type_name(&field.ty);
+            // Constructor: fn new_<f>(v: T) -> Self { unsafe { Self { f: v } } }
+            self.print_indent(&mut sink.body)?;
+            writeln!(
+                sink.body,
+                "pub fn new_{}(value: {}) -> Self {{ unsafe {{ Self {{ {}: value }} }} }}",
+                fname, fty, fname
+            )?;
+            // Reader: fn <f>(&self) -> T { unsafe { self.f } }
+            // For non-Copy field types (e.g. String) reading is unsafe-by-copy;
+            // we only emit readers for Copy-like field types to avoid footguns.
+            if Self::is_copy_type(&field.ty) {
+                self.print_indent(&mut sink.body)?;
+                writeln!(
+                    sink.body,
+                    "pub fn {}(&self) -> {} {{ unsafe {{ self.{} }} }}",
+                    fname, fty, fname
+                )?;
+            }
+        }
         self.dedent();
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "}}")?;
@@ -10583,6 +10672,14 @@ impl Trans for RustTrans {
 
                     let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
                     self.fn_param_types.insert(fn_decl.name.clone(), param_types);
+                }
+                Stmt::SpecDecl(spec_decl) => {
+                    // Plan 310 Phase 0.3: Pre-scan spec methods so that delegation
+                    // `impl Spec for Type` generation (type_decl) can look them up
+                    // regardless of declaration order. Without this, delegations to a
+                    // spec declared *after* the type would miss the trait impl.
+                    self.spec_decls
+                        .insert(spec_decl.name.clone(), spec_decl.methods.clone());
                 }
                 Stmt::TypeDecl(type_decl) => {
                     // Also scan methods inside type declarations

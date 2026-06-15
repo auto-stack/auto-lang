@@ -1103,6 +1103,23 @@ pub enum Warning {
         #[label(".go applied here")]
         span: SourceSpan,
     },
+
+    /// Plan 310: Ownership escape analysis fell back to a smart pointer.
+    /// The compiler could not prove a value stays local, so it was wrapped
+    /// in `Rc<RefCell<T>>` (Tier 3) or cloned (Tier 2) instead of borrowing.
+    #[error("ownership fallback to smart pointer")]
+    #[diagnostic(
+        code(auto_warning_W0007),
+        severity(warning),
+        help("'{name}' could not be borrowed safely: {reason}. Fallback: {tier_desc}. To avoid this, restructure so the value does not escape its scope, or use an explicit clone.")
+    )]
+    EscapeFallback {
+        name: String,
+        reason: String,
+        tier_desc: String,
+        #[label("'{name}' fell back to {tier_desc}")]
+        span: SourceSpan,
+    },
 }
 
 // ============================================================================

@@ -34,6 +34,18 @@ struct Starship {
     weapon: LaserCannon,
 }
 
+impl Engine for Starship {
+    fn start(&self) {
+        self.core.start()
+    }
+}
+
+impl Weapon for Starship {
+    fn fire(&self) {
+        self.weapon.fire()
+    }
+}
+
 fn main() {
     let ship = Starship {};
     ship.start();

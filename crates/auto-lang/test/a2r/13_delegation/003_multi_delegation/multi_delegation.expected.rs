@@ -23,6 +23,15 @@ struct Computer {
     engine: MathEngine,
 }
 
+impl Calculator for Computer {
+    fn add(&self, a: i32, b: i32) -> i32 {
+        self.engine.add(a, b)
+    }
+    fn multiply(&self, a: i32, b: i32) -> i32 {
+        self.engine.multiply(a, b)
+    }
+}
+
 fn main() {
     let comp = Computer {};
 

@@ -19,6 +19,12 @@ struct Starship {
     core: WarpDrive,
 }
 
+impl Engine for Starship {
+    fn start(&self) {
+        self.core.start()
+    }
+}
+
 fn main() {
     let ship = Starship {};
     ship.start();
