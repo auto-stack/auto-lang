@@ -30,6 +30,7 @@ history.txt
 *.wrong.ets
 *.wrong.gd
 *.wrong.tscn
+*.wrong.js
 
 # IAR IDE
 .arts/
