@@ -869,6 +869,15 @@ impl Shell {
                     in_braced_var = true;
                     in_var = false;
                     var_name.clear();
+                } else if matches!(chars.peek(), Some('?' | '@' | '#' | '!')) {
+                    // POSIX special parameters that are single non-alphanumeric
+                    // chars (routed to get_variable, which already maps them).
+                    // NOTE: `_` is intentionally excluded — it's a valid name char,
+                    // so special-casing it would break names like `$_foo`.
+                    let sc = chars.next().unwrap();
+                    if let Some(value) = self.get_variable(&sc.to_string()) {
+                        result.push_str(&value);
+                    }
                 } else {
                     // Start of $name syntax
                     in_var = true;
