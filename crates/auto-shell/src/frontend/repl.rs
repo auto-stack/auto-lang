@@ -75,6 +75,14 @@ impl Repl {
             ..Default::default()
         }));
 
+        // History candidate menu — a separate list sourced from history
+        // (NOT the command-based Tab completions). Bound to Ctrl+R. This is
+        // the fzf-history style "popup of all matching history entries".
+        let history_menu = Box::new(AshMenu::new(AshMenuConfig {
+            name: "history_menu".to_string(),
+            ..Default::default()
+        }));
+
         // Plan 302 Step 3.2: Determine edit mode (Vi or Emacs)
         // Priority: $ASH_EDIT_MODE env var > ash.toml edit_mode > ~/.ashrc
         let use_vi = std::env::var("ASH_EDIT_MODE").map(|v| v == "vi").unwrap_or_else(|_| {
@@ -108,11 +116,13 @@ impl Repl {
                     ReedlineEvent::Repaint,
                 ]),
             );
-            // Plan 302: Ctrl+F accepts autosuggestion hint (Fish-style)
+            // Plan 302: Ctrl+F accepts the full autosuggestion hint (Fish-style).
+            // NOTE: must be `HistoryHintComplete`, NOT `EditCommand::Complete` —
+            // the latter triggers the completion *menu* and never accepts a hint.
             keybindings.add_binding(
                 KeyModifiers::CONTROL,
                 KeyCode::Char('f'),
-                ReedlineEvent::Edit(vec![EditCommand::Complete]),
+                ReedlineEvent::HistoryHintComplete,
             );
             // Plan 302 Step 3.4: Ctrl+→ accepts next word of autosuggestion
             keybindings.add_binding(
@@ -120,14 +130,16 @@ impl Repl {
                 KeyCode::Right,
                 ReedlineEvent::HistoryHintWordComplete,
             );
-            // Plan 304: Ctrl+R — reverse history search (explicit for Vi mode;
-            // emacs mode already has this via default_emacs_keybindings)
+            // Ctrl+R — pop up the history candidate menu (fzf-history style).
+            // Separate from Tab (command-based) completions: this lists matching
+            // entries from shell history. Supersedes the old inline SearchHistory.
             keybindings.add_binding(
                 KeyModifiers::CONTROL,
                 KeyCode::Char('r'),
-                ReedlineEvent::SearchHistory,
+                ReedlineEvent::Menu("history_menu".to_string()),
             );
-            // Plan 304: Ctrl+S — forward history search
+            // Ctrl+S — forward history search (legacy inline search retained as a
+            // non-popup fallback alongside the Ctrl+R menu).
             keybindings.add_binding(
                 KeyModifiers::CONTROL,
                 KeyCode::Char('s'),
@@ -158,8 +170,16 @@ impl Repl {
         // Plan 302: Fish-style autosuggestion hinter (configurable)
         // CwdAwareHinter prefers history items from the current working directory
         let hinter: Option<Box<CwdAwareHinter>> = if shell_config.autosuggestion {
+            // Plan 302: Fish-style autosuggestion hinter.
+            // Explicit dim style so the hint is clearly distinguishable from typed
+            // text — reedline's default `LightGray` is too close to the terminal's
+            // default foreground on Windows and reads as normal text.
+            let hint_style = nu_ansi_term::Style::new()
+                .fg(nu_ansi_term::Color::DarkGray)
+                .italic();
             Some(Box::new(
                 CwdAwareHinter::default()
+                    .with_style(hint_style)
                     .with_min_chars(shell_config.autosuggestion_min_chars),
             ))
         } else {
@@ -177,6 +197,7 @@ impl Repl {
             .with_history(history)
             .with_completer(completer)
             .with_menu(ReedlineMenu::EngineCompleter(completion_menu))
+            .with_menu(ReedlineMenu::HistoryMenu(history_menu))
             .with_quick_completions(true)
             .with_partial_completions(true)
             .with_edit_mode(edit_mode);

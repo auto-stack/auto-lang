@@ -17,7 +17,10 @@ impl GitBranchModule {
                 bold: true,
                 ..Default::default()
             },
-            symbol: config.module_string("git_branch", "symbol", " ").to_string(),
+            // Default branch glyph: ⎇ (U+2387 "Alternative Key Symbol") — single-width,
+            // renders in most fonts (no Nerd Font required), the same glyph Fish uses.
+            // Overridable via ~/.config/ash.toml: [git_branch] symbol = "..."
+            symbol: config.module_string("git_branch", "symbol", "⎇ ").to_string(),
         }
     }
 }
