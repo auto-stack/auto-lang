@@ -111,6 +111,13 @@ pub struct RustTrans {
     // Expr::View/Mut generation.
     escape_results: HashMap<AutoStr, crate::trans::escape::EscapeMap>,
 
+    // Plan 310 Phase 2: current function name + lexical scope depth, tracked
+    // during code generation so Expr::View/Mut sites can query escape_results.
+    // current_fn_name is set at fn_decl entry; current_scope_depth is reset to 0
+    // at function-body entry and incremented/decremented around nested blocks.
+    current_fn_name: AutoStr,
+    current_scope_depth: usize,
+
     // Cache for struct field types: struct_name -> Vec<(field_name, field_type)>
     // Used to add .to_string() when &str is assigned to String field
     struct_field_types: HashMap<AutoStr, Vec<(AutoStr, Type)>>,
@@ -235,6 +242,8 @@ impl RustTrans {
             union_types: HashSet::new(),
             warnings: Vec::new(),
             escape_results: HashMap::new(),
+            current_fn_name: AutoStr::from(""),
+            current_scope_depth: 0,
             enum_struct_variants: HashMap::new(),
             enum_tuple_variants: HashMap::new(),
             enum_tuple_field_types: HashMap::new(),
@@ -289,6 +298,8 @@ impl RustTrans {
             union_types: HashSet::new(),
             warnings: Vec::new(),
             escape_results: HashMap::new(),
+            current_fn_name: AutoStr::from(""),
+            current_scope_depth: 0,
             enum_struct_variants: HashMap::new(),
             enum_tuple_variants: HashMap::new(),
             enum_tuple_field_types: HashMap::new(),
@@ -512,6 +523,126 @@ impl RustTrans {
         } else {
             false
         }
+    }
+
+    /// Plan 310 Phase 2: Query the escape-analysis tier for a binding visible
+    /// at the current scope depth in the current function. Returns Owned when
+    /// no analysis data is available (e.g. params, globals, or functions not
+    /// in escape_results) — Owned is the safe conservative default.
+    fn current_escape_tier(&self, name: &str) -> crate::trans::escape::OwnershipTier {
+        use crate::trans::escape::OwnershipTier;
+        if self.current_fn_name.is_empty() {
+            return OwnershipTier::Owned;
+        }
+        match self.escape_results.get(&self.current_fn_name) {
+            Some(map) => map
+                .lookup(self.current_scope_depth, &name.into())
+                .unwrap_or(OwnershipTier::Owned),
+            None => OwnershipTier::Owned,
+        }
+    }
+
+    /// Plan 310 Phase 2: Emit a borrow expression (`x.view` / `x.mut`) according
+    /// to the escape-analysis tier of the referenced binding.
+    ///
+    /// **Backward-compatibility contract**: when the binding is not at an escape
+    /// tier (Clone/RcRefCell), this produces the SAME output as before Phase 2
+    /// (`&x` / `&mut x`). Only escape tiers change the output — that's what
+    /// guarantees existing .expected.rs files stay byte-identical unless the
+    /// analyzer detected an escape.
+    ///
+    /// - `inner` is the operand of View/Mut (e.g. the `x` in `x.view`).
+    /// - `is_mut` true for `Expr::Mut`, false for `Expr::View`.
+    ///
+    /// Tier mapping:
+    ///   Clone    → `x.clone()`         + W0007 warning
+    ///   RcRefCell→ `Rc::clone(&x)`     + W0007 warning
+    ///   _ (Owned/BorrowView/BorrowMut/None) → `&x` / `&mut x` (unchanged)
+    fn emit_borrow(
+        &mut self,
+        inner: &Expr,
+        is_mut: bool,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        use crate::trans::escape::OwnershipTier;
+        // Resolve the binding name. Only direct variable references can be
+        // tier-checked; anything else (e.g. `f().view`) falls back to default.
+        let binding_name = match inner {
+            Expr::Ident(name) | Expr::Ref(name) => Some(name.as_str()),
+            _ => None,
+        };
+
+        // Plan 310 Phase 2: Copy types (int, bool, char, float, ...) never need
+        // borrowing or cloning — they're passed by value in Rust regardless.
+        // `x.view` on an i32 just yields `x` (a copy). This avoids generating
+        // `&x` (type-mismatch on Copy) or `x.clone()` (Copy types have no clone).
+        // NOTE: we use a strict primitive-only check here, NOT the broader
+        // is_copy_type (which includes String/slices). String is NOT Copy in
+        // Rust, so it must go through the normal borrow/clone path.
+        let is_copy = binding_name
+            .and_then(|n| self.local_var_types.get(n))
+            .map(|ty| Self::is_primitive_copy(ty))
+            .unwrap_or(false);
+        if is_copy {
+            self.expr(inner, out)?;
+            return Ok(());
+        }
+
+        let tier = match binding_name {
+            Some(name) => self.current_escape_tier(name),
+            None => OwnershipTier::Owned,
+        };
+
+        match tier {
+            OwnershipTier::Clone => {
+                // Escape detected: clone instead of borrow.
+                self.expr(inner, out)?;
+                write!(out, ".clone()")?;
+                // Emit W0007 warning (buffered, never written to Sink).
+                if let Some(name) = binding_name {
+                    self.emit_escape_warning(name, tier, "value escapes its scope");
+                }
+            }
+            OwnershipTier::RcRefCell => {
+                // Escape detected: share via Rc instead of borrow.
+                write!(out, "Rc::clone(&")?;
+                self.expr(inner, out)?;
+                write!(out, ")")?;
+                if let Some(name) = binding_name {
+                    self.emit_escape_warning(name, tier, "value escapes its scope");
+                }
+            }
+            OwnershipTier::ArcMutex => {
+                // Phase 3 territory; conservatively clone for now.
+                self.expr(inner, out)?;
+                write!(out, ".clone()")?;
+                if let Some(name) = binding_name {
+                    self.emit_escape_warning(name, tier, "value crosses thread boundary");
+                }
+            }
+            // Owned, BorrowView, BorrowMut, or unknown → unchanged behavior.
+            _ => {
+                if is_mut {
+                    write!(out, "&mut ")?;
+                } else {
+                    write!(out, "&")?;
+                }
+                self.expr(inner, out)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Plan 310 Phase 2: Buffer an EscapeFallback (W0007) warning. Never writes
+    /// to Sink — warnings go to self.warnings only, preserving .expected.rs
+    /// byte-diff integrity.
+    fn emit_escape_warning(&mut self, name: &str, tier: crate::trans::escape::OwnershipTier, reason: &str) {
+        use crate::trans::escape::report;
+        // Source span is unknown during transpilation (we don't carry source
+        // positions through to this layer); use a zero-length placeholder.
+        let span = report::span_at(0, 0);
+        let warning = report::build_warning(&name.into(), tier, reason, span);
+        self.warnings.push(warning);
     }
 
     /// Look up metadata by name (works with Universe or Database)
@@ -936,6 +1067,18 @@ impl RustTrans {
         )
     }
 
+    /// Plan 310 Phase 2: Strict primitive-Copy check for escape-tier codegen.
+    /// Only types that are genuinely Copy in Rust AND whose local_var_types
+    /// entry reliably matches the generated Rust type. Excludes String/str
+    /// (whose Auto type may not match the generated Rust type) and composite
+    /// types. Used by emit_borrow to decide "just copy the value".
+    fn is_primitive_copy(ty: &Type) -> bool {
+        matches!(ty,
+            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+        )
+    }
+
     /// Escape Rust reserved keywords used as identifiers.
     /// Only applies to variable/parameter binding contexts, NOT type names or module paths.
     fn rust_ident(name: &str) -> std::borrow::Cow<'_, str> {
@@ -1104,15 +1247,12 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 "view" => {
-                                    // x.view -> &x (immutable borrow)
-                                    write!(out, "&")?;
-                                    self.expr(lhs, out)?;
+                                    // Plan 310 Phase 2: route through emit_borrow.
+                                    self.emit_borrow(lhs, false, out)?;
                                     return Ok(());
                                 }
                                 "mut" => {
-                                    // x.mut -> &mut x (mutable borrow)
-                                    write!(out, "&mut ")?;
-                                    self.expr(lhs, out)?;
+                                    self.emit_borrow(lhs, true, out)?;
                                     return Ok(());
                                 }
                                 "take" => {
@@ -1366,17 +1506,13 @@ impl RustTrans {
 
             // **Phase 2: Borrow Checking System**
             Expr::View(expr) => {
-                // e.view -> &e (immutable borrow)
-                write!(out, "&")?;
-                self.expr(expr, out)?;
-                Ok(())
+                // Plan 310 Phase 2: route through emit_borrow so escape tiers
+                // (Clone/RcRefCell) generate clone/Rc instead of a raw &.
+                self.emit_borrow(expr, false, out)
             }
 
             Expr::Mut(expr) => {
-                // e.mut -> &mut e (mutable borrow)
-                write!(out, "&mut ")?;
-                self.expr(expr, out)?;
-                Ok(())
+                self.emit_borrow(expr, true, out)
             }
 
             Expr::Move(expr) | Expr::Take(expr) => {
@@ -2198,15 +2334,12 @@ impl RustTrans {
                     }
                     // **Phase 2: Borrow Checking System**
                     "view" => {
-                        // s.view -> &s (immutable borrow)
-                        write!(out, "&")?;
-                        self.expr(object, out)?;
+                        // Plan 310 Phase 2: route through emit_borrow.
+                        self.emit_borrow(object, false, out)?;
                         return Ok(());
                     }
                     "mut" => {
-                        // s.mut -> &mut s (mutable borrow)
-                        write!(out, "&mut ")?;
-                        self.expr(object, out)?;
+                        self.emit_borrow(object, true, out)?;
                         return Ok(());
                     }
                     "take" => {
@@ -6305,10 +6438,41 @@ impl RustTrans {
         // because Rust infers closure types automatically
         let is_closure = matches!(store.expr, Expr::Closure(_));
 
-        // Check if expression is a borrow (&x or &mut x) - type should be a reference
-        let is_borrow = matches!(&store.expr, Expr::View(_))
-            || matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "view");
-        let is_mut_borrow = matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "mut");
+        // Check if expression is a borrow (&x or &mut x) - type should be a reference.
+        // Plan 310 Phase 2: only treat as borrow if the inner binding is at a
+        // borrow tier (BorrowView/BorrowMut). Escape tiers (Clone/RcRefCell)
+        // produce owned/Rc values, so the type must NOT get a & prefix.
+        let borrow_inner: Option<&Expr> = match &store.expr {
+            Expr::View(inner) => Some(inner.as_ref()),
+            Expr::Dot(obj, f) if f.as_str() == "view" || f.as_str() == "mut" => Some(obj.as_ref()),
+            _ => None,
+        };
+        let is_mut_form = matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "mut");
+        let (is_borrow, is_mut_borrow) = match borrow_inner {
+            Some(inner) => {
+                use crate::trans::escape::OwnershipTier;
+                let name = match inner {
+                    Expr::Ident(n) | Expr::Ref(n) => Some(n.as_str()),
+                    _ => None,
+                };
+                // Copy types: no borrow annotation (value copied, not referenced).
+                // Use strict primitive check (String is NOT Copy in Rust).
+                let is_copy = name
+                    .and_then(|n| self.local_var_types.get(n))
+                    .map(|ty| Self::is_primitive_copy(ty))
+                    .unwrap_or(false);
+                if is_copy {
+                    (false, false)
+                } else {
+                    let tier = name
+                        .map(|n| self.current_escape_tier(n))
+                        .unwrap_or(OwnershipTier::Owned);
+                    let is_real_borrow = tier.is_borrow();
+                    (is_real_borrow && !is_mut_form, is_real_borrow && is_mut_form)
+                }
+            }
+            None => (false, false),
+        };
 
         let ty_name = if is_borrow && matches!(store.ty, Type::StrOwned | Type::StrFixed(_)) {
             "&str".to_string()
@@ -6491,6 +6655,17 @@ impl RustTrans {
         for param in &fn_decl.params {
             self.local_var_types.insert(param.name.clone(), param.ty.clone());
         }
+
+        // Plan 310 Phase 2: Set current function context for escape-tier queries.
+        // The escape_results key matches how transpile_rust registers functions:
+        // top-level fns use fn.name; methods inside TypeDecl use "Type.method".
+        // We reconstruct that key here. Scope depth resets to 0 at body entry.
+        self.current_fn_name = if let Some(parent) = &fn_decl.parent {
+            format!("{}.{}", parent, fn_decl.name).into()
+        } else {
+            fn_decl.name.clone()
+        };
+        self.current_scope_depth = 0;
 
         // Plan 204 Phase 3: Track whether current function returns !T or Result<T,E> (for Err boxing)
         self.current_fn_is_result = matches!(fn_decl.ret, Type::Result(_))

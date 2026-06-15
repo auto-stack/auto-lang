@@ -1,0 +1,7 @@
+// Plan 310 Phase 2: move hint is unconditional ownership transfer.
+// x.move generates plain `x` (no borrow, no clone).
+fn main() {
+    let a int = 5
+    let b = a.move
+    print(b)
+}

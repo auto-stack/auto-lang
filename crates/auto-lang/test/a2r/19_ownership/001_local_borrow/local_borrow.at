@@ -1,0 +1,7 @@
+// Plan 310 Phase 2: local non-escaping borrow should stay as &x.
+// `s` is local, only borrowed via .view, never returned or captured.
+fn main() {
+    let s String = String.from("hello")
+    let slice = s.view
+    print(slice.len)
+}

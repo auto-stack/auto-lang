@@ -1,0 +1,10 @@
+// Plan 310 Phase 2: closure capture escapes — x.view inside a closure
+// should escalate because x is captured by the closure environment.
+fn main() {
+    let x int = 10
+    let f = () => {
+        let y = x.view
+        y
+    }
+    print("closure")
+}

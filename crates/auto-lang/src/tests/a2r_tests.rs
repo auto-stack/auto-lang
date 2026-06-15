@@ -547,6 +547,12 @@ fn test_escape_analysis_detects_multiple_bindings() {
         summary["f"]
     );
 }
+
+// === Plan 310 Phase 2: 19_ownership — escape-analysis codegen tests ===
+#[test] fn test_19_ownership_001_local_borrow() { test_a2r("19_ownership/001_local_borrow").unwrap(); }
+#[test] fn test_19_ownership_002_closure_capture() { test_a2r("19_ownership/002_closure_capture").unwrap(); }
+#[test] fn test_19_ownership_003_return_escape() { test_a2r("19_ownership/003_return_escape").unwrap(); }
+#[test] fn test_19_ownership_004_move_hint() { test_a2r("19_ownership/004_move_hint").unwrap(); }
 #[test] fn test_cookbook_devtools_001_log_debug() { test_cookbook("devtools/001_log_debug").unwrap(); }
 #[test] fn test_cookbook_devtools_002_log_error() { test_cookbook("devtools/002_log_error").unwrap(); }
 #[test] fn test_cookbook_devtools_003_log_stdout() { test_cookbook("devtools/003_log_stdout").unwrap(); }
