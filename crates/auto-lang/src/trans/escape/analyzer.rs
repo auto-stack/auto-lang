@@ -32,6 +32,13 @@ pub struct EscapeAnalyzer {
     /// Each entry is the set of binding names introduced at that depth, so we
     /// can record a fresh `BindingId` for shadowing.
     scope_stack: Vec<Vec<Name>>,
+    /// Plan 310 Phase 2: buffered borrow-use sites collected during the single
+    /// traversal. After `visit_body` finishes, [`apply_lowering`] walks this
+    /// list and lowers any `Owned` binding to `BorrowView`/`BorrowMut` (the
+    /// borrow opportunity detected at a View/Mut use site). Each entry is
+    /// (binding id, intended tier) — the id is resolved at collection time so
+    /// the depth is captured correctly.
+    borrow_uses: Vec<(BindingId, OwnershipTier)>,
 }
 
 impl EscapeAnalyzer {
@@ -40,6 +47,7 @@ impl EscapeAnalyzer {
             map: EscapeMap::new(),
             // depth 0 = function body; pushed by analyze_fn / analyze_body.
             scope_stack: vec![Vec::new()],
+            borrow_uses: Vec::new(),
         }
     }
 
@@ -47,6 +55,7 @@ impl EscapeAnalyzer {
     pub fn analyze_fn(func: &Fn) -> EscapeMap {
         let mut analyzer = Self::new();
         analyzer.visit_body(&func.body, 0);
+        analyzer.apply_lowering();
         analyzer.map
     }
 
@@ -54,7 +63,36 @@ impl EscapeAnalyzer {
     pub fn analyze_body(body: &Body) -> EscapeMap {
         let mut analyzer = Self::new();
         analyzer.visit_body(body, 0);
+        analyzer.apply_lowering();
         analyzer.map
+    }
+
+    /// Plan 310 Phase 2: post-pass that lowers `Owned` bindings to borrows
+    /// where a View/Mut use site was recorded. This runs AFTER the single
+    /// traversal completes, so the escape set is final: a binding still at
+    /// `Owned` (ordinal 0) is provably non-escaping, and borrowing it is
+    /// rustc-safe. Bindings already escalated to `Clone`/`RcRefCell` are left
+    /// untouched — `record` rejects the ordinal-lowering (escape wins).
+    fn apply_lowering(&mut self) {
+        // Drain so we don't hold a borrow of self.borrow_uses while mutating map.
+        let uses = std::mem::take(&mut self.borrow_uses);
+        for (id, intended_tier) in uses {
+            // Only BorrowView/BorrowMut are valid lowering targets.
+            if !intended_tier.is_borrow() {
+                continue;
+            }
+            // Check current tier. Lowering is sound only if the binding is at
+            // Owned (never escaped). Escalated bindings keep their tier.
+            let current = self.map.lookup(id.scope_depth, &id.name);
+            match current {
+                Some(OwnershipTier::Owned) => {
+                    self.map.record(id, intended_tier, "lowered: borrow use, non-escaping");
+                }
+                _ => {
+                    // Already escalated (Clone/RcRefCell) or untracked — leave as is.
+                }
+            }
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -105,6 +143,10 @@ impl EscapeAnalyzer {
                 for (name, reason) in escapes {
                     self.escalate_visible(&name, reason);
                 }
+                // Phase 2: also collect View/Mut borrow uses in the initializer.
+                self.collect_borrow_uses(&store.expr);
+                // Phase 3: detect Send boundaries (Go/tokio::spawn captures).
+                self.collect_send_escapes(&store.expr);
 
                 let id = self.introduce(store.name.clone());
                 let tier = self.initial_tier(&store.expr, &store.name);
@@ -121,6 +163,10 @@ impl EscapeAnalyzer {
                 for (name, reason) in escapes {
                     self.escalate_visible(&name, reason);
                 }
+                // Phase 2: collect borrow uses in expression statements too.
+                self.collect_borrow_uses(expr);
+                // Phase 3: detect Send boundaries.
+                self.collect_send_escapes(expr);
             }
 
             Stmt::Return(expr) => {
@@ -132,6 +178,13 @@ impl EscapeAnalyzer {
                 for name in names {
                     self.escalate_visible(&name, "returned from function");
                 }
+                // Phase 2: a View/Mut in a return expression still records a
+                // borrow use, but the same binding is also escalated above, so
+                // the lowering pass will skip it (escape wins). Collect anyway
+                // for completeness.
+                self.collect_borrow_uses(expr);
+                // Phase 3: detect Send boundaries in return expressions.
+                self.collect_send_escapes(expr);
             }
 
             Stmt::If(if_stmt) => self.visit_if(if_stmt),
@@ -229,6 +282,142 @@ impl EscapeAnalyzer {
         out
     }
 
+    /// Plan 310 Phase 2: scan `expr` for `Expr::View`/`Expr::Mut` use sites
+    /// and buffer each resolved borrow use into [`Self::borrow_uses`] for the
+    /// post-traversal lowering pass. The resolution captures the current scope
+    /// depth (via [`scope_depth_of`]) so the later lowering can target the
+    /// right binding even in nested scopes.
+    fn collect_borrow_uses(&mut self, expr: &Expr) {
+        self.find_borrow_uses(expr);
+    }
+
+    /// Plan 310 Phase 3: scan `expr` for Send-boundary sites (`Expr::Go`) and
+    /// directly escalate captured bindings to `ArcMutex` tier. Unlike
+    /// `collect_escapes` (which buffers to a Vec for later default-Clone
+    /// escalation), this escalates immediately to the specific tier because Go
+    /// captures need ArcMutex (not Clone). Called alongside collect_escapes in
+    /// visit_stmt.
+    fn collect_send_escapes(&mut self, expr: &Expr) {
+        self.find_send_boundaries(expr);
+    }
+
+    /// Recursive helper for [`collect_send_escapes`]. Detects `Expr::Go` (= the
+    /// tokio::spawn Send boundary) and escalates captured visible bindings to
+    /// ArcMutex. Recurses into compound expressions to find nested Go calls.
+    fn find_send_boundaries(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Go { expr: inner } => {
+                // tokio::spawn requires the future (and its captures) to be Send.
+                // Any visible local captured here must be Arc<Mutex<T>>, not
+                // Rc<RefCell<T>> (which is !Send). Escalate to ArcMutex tier.
+                let mut captured = Vec::new();
+                self.gather_var_refs(inner, &mut captured);
+                for name in captured {
+                    self.escalate_to(&name, OwnershipTier::ArcMutex, "captured across Send boundary (.go/tokio::spawn)");
+                }
+                // Also recurse into inner for nested Go or escape patterns.
+                self.find_send_boundaries(inner);
+            }
+            // Recurse into compound expressions.
+            Expr::Call(call) => {
+                self.find_send_boundaries(&call.name);
+                for arg in &call.args.args {
+                    if let Arg::Pos(e) = arg {
+                        self.find_send_boundaries(e);
+                    }
+                }
+            }
+            Expr::Unary(_, e) => self.find_send_boundaries(e),
+            Expr::Bina(l, _, r) => {
+                self.find_send_boundaries(l);
+                self.find_send_boundaries(r);
+            }
+            Expr::Dot(obj, _) => self.find_send_boundaries(obj),
+            Expr::Index(base, idx) => {
+                self.find_send_boundaries(base);
+                self.find_send_boundaries(idx);
+            }
+            Expr::Array(elems) => {
+                for e in elems {
+                    self.find_send_boundaries(e);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Recursive helper for [`collect_borrow_uses`]. Records a borrow use only
+    /// when the View/Mut operand is a visible binding (`Expr::Ident`/`Expr::Ref`).
+    /// Other forms (e.g. `f().view`) have no binding to lower and are skipped.
+    fn find_borrow_uses(&mut self, expr: &Expr) {
+        match expr {
+            Expr::View(inner) => {
+                if let Some(id) = self.resolve_binding(inner) {
+                    self.borrow_uses.push((id, OwnershipTier::BorrowView));
+                }
+                // Still recurse into inner for nested View/Mut (rare but possible).
+                self.find_borrow_uses(inner);
+            }
+            Expr::Mut(inner) => {
+                if let Some(id) = self.resolve_binding(inner) {
+                    self.borrow_uses.push((id, OwnershipTier::BorrowMut));
+                }
+                self.find_borrow_uses(inner);
+            }
+            // Do NOT descend into closures: their captures are accounted for by
+            // the escape pass (escalate), and their internal View/Mut uses refer
+            // to the closure's own params, not this function's bindings.
+            Expr::Closure(_) | Expr::Lambda(_) => {}
+
+            // Recurse into compound expressions to find nested borrow uses.
+            Expr::Call(call) => {
+                self.find_borrow_uses(&call.name);
+                for arg in &call.args.args {
+                    if let Arg::Pos(e) = arg {
+                        self.find_borrow_uses(e);
+                    }
+                }
+            }
+            Expr::Unary(_, e) => self.find_borrow_uses(e),
+            Expr::Bina(l, _, r) => {
+                self.find_borrow_uses(l);
+                self.find_borrow_uses(r);
+            }
+            Expr::Dot(obj, _) => self.find_borrow_uses(obj),
+            Expr::Index(base, idx) => {
+                self.find_borrow_uses(base);
+                self.find_borrow_uses(idx);
+            }
+            Expr::Array(elems) => {
+                for e in elems {
+                    self.find_borrow_uses(e);
+                }
+            }
+            Expr::Object(pairs) => {
+                for p in pairs {
+                    self.find_borrow_uses(&p.value);
+                }
+            }
+            Expr::Range(r) => {
+                self.find_borrow_uses(&r.start);
+                self.find_borrow_uses(&r.end);
+            }
+            _ => {}
+        }
+    }
+
+    /// Resolve `expr` to a `BindingId` if it's a direct variable reference to a
+    /// visible binding. Returns None for non-ident expressions or bindings not
+    /// in any open scope (e.g. function params, which aren't tracked here).
+    fn resolve_binding(&self, expr: &Expr) -> Option<BindingId> {
+        let name = match expr {
+            Expr::Ident(name) | Expr::Ref(name) => name,
+            _ => return None,
+        };
+        let depth = self.scope_depth_of(name)?;
+        Some(BindingId { scope_depth: depth, name: name.clone() })
+    }
+
     /// Recursively scan an expression for escape patterns and push (name,
     /// reason) for each visible binding that escapes.
     ///
@@ -273,28 +462,23 @@ impl EscapeAnalyzer {
             }
 
             Expr::Call(call) => {
-                // Arguments may escape into the callee. We can't see the
-                // callee body (it might store the reference), so any local
-                // passed as an argument to a non-trivial call is conservatively
-                // treated as escaping — UNLESS the argument is already wrapped
-                // in Expr::View/Expr::Mut, which is the user's explicit borrow
-                // hint (handled at use sites, not here).
+                // Plan 310 Phase 2 (revised): do NOT treat bare variable call
+                // arguments as escapes. The original conservative rule ("any
+                // local passed to a call escapes") killed nearly every borrow
+                // opportunity because variables are routinely passed to
+                // functions like print(), len(), etc. that do not store the
+                // reference.
                 //
-                // To avoid over-escalation (which would kill borrowing
-                // everywhere), we only flag escapes for *direct* variable
-                // references passed positionally, not for View/Mut-wrapped
-                // ones (those are explicit borrows the transpiler handles).
+                // Per design doc §4.2, only *external* (`use.rust`) calls and
+                // the specific escape patterns (closure capture, return, await,
+                // struct-field storage) trigger escalation. Ordinary Auto
+                // function calls are pass-by-value (owned) and do not escape.
+                //
+                // We still recurse into compound argument expressions so that,
+                // e.g., a closure passed as an argument is detected.
                 for arg in &call.args.args {
                     if let Arg::Pos(inner) = arg {
-                        if let Expr::Ident(name) = inner {
-                            // A bare variable passed to a call may escape.
-                            // But trivial Copy types (int/bool/...) never need
-                            // borrowing anyway; skip them to reduce noise.
-                            out.push((name.clone(), "passed to function call".to_string()));
-                        } else {
-                            // Recurse into compound argument expressions.
-                            self.find_escapes(inner, out);
-                        }
+                        self.find_escapes(inner, out);
                     }
                 }
                 // Also analyze the callee itself (e.g. method receiver).
@@ -418,6 +602,19 @@ impl EscapeAnalyzer {
             // (Copy types stay Clone; others become RcRefCell). For Phase 1 we
             // record Clone as the conservative escape tier.
             self.decide(id, OwnershipTier::Clone, reason);
+        }
+    }
+
+    /// Plan 310 Phase 3: Escalate a visible binding to a SPECIFIC tier (not
+    /// just the default Clone). Used for Send-boundary detection: variables
+    /// captured across `Expr::Go` (= tokio::spawn) must be ArcMutex (thread-safe),
+    /// not Clone or RcRefCell. If the binding is already at a HIGHER tier
+    /// (ordinal), record keeps the higher one (conservative).
+    fn escalate_to(&mut self, name: &Name, tier: OwnershipTier, reason: impl Into<String>) {
+        let depth = self.scope_depth_of(name);
+        if let Some(depth) = depth {
+            let id = BindingId { scope_depth: depth, name: name.clone() };
+            self.decide(id, tier, reason);
         }
     }
 
@@ -584,5 +781,161 @@ mod tests {
         // and not returned, so Owned. It may or may not be tracked depending
         // on whether the for-body reassignment introduces it; the key check
         // is that analysis ran without panic.
+    }
+
+    /// Plan 310 Phase 2: a non-escaping binding that has a View use site
+    /// should be lowered from Owned → BorrowView.
+    #[test]
+    fn test_lowering_owned_to_borrow_view() {
+        // let x = 1
+        // let y = x.view    ← View use of x; x is local, non-escaping
+        let body = Body {
+            stmts: vec![
+                make_store("x", Expr::Int(1)),
+                make_store("y", Expr::View(Box::new(Expr::Ident(Name::from("x"))))),
+            ],
+            has_new_line: false,
+            source_lines: vec![],
+        };
+        let map = EscapeAnalyzer::analyze_body(&body);
+        // x should be lowered to BorrowView (was Owned, View use detected,
+        // no escape).
+        let x_tier = map.lookup(0, &"x".into()).expect("x should be tracked");
+        assert_eq!(
+            x_tier,
+            OwnershipTier::BorrowView,
+            "non-escaping binding with View use should lower to BorrowView, got {:?}",
+            x_tier
+        );
+    }
+
+    /// Plan 310 Phase 2: a binding that escapes (returned) should NOT be
+    /// lowered even if it has a View use site — escape wins.
+    #[test]
+    fn test_lowering_skipped_when_escaping() {
+        // let x = 1
+        // let y = x.view    ← View use of x
+        // return x          ← but x is also returned → escapes
+        let body = Body {
+            stmts: vec![
+                make_store("x", Expr::Int(1)),
+                make_store("y", Expr::View(Box::new(Expr::Ident(Name::from("x"))))),
+                Stmt::Return(Box::new(Expr::Ident(Name::from("x")))),
+            ],
+            has_new_line: false,
+            source_lines: vec![],
+        };
+        let map = EscapeAnalyzer::analyze_body(&body);
+        // x is returned → escalated past Owned. The View use should NOT lower it.
+        let x_tier = map.lookup(0, &"x".into()).expect("x should be tracked");
+        assert!(
+            !x_tier.is_borrow(),
+            "returned binding should stay escalated (not lowered to borrow), got {:?}",
+            x_tier
+        );
+    }
+
+    /// Plan 310 Phase 2: Expr::Mut use site lowers Owned → BorrowMut.
+    #[test]
+    fn test_lowering_owned_to_borrow_mut() {
+        // let x = 1
+        // let y = x.mut     ← Mut use of x
+        let body = Body {
+            stmts: vec![
+                make_store("x", Expr::Int(1)),
+                make_store("y", Expr::Mut(Box::new(Expr::Ident(Name::from("x"))))),
+            ],
+            has_new_line: false,
+            source_lines: vec![],
+        };
+        let map = EscapeAnalyzer::analyze_body(&body);
+        let x_tier = map.lookup(0, &"x".into()).expect("x should be tracked");
+        assert_eq!(
+            x_tier,
+            OwnershipTier::BorrowMut,
+            "non-escaping binding with Mut use should lower to BorrowMut, got {:?}",
+            x_tier
+        );
+    }
+
+    /// Plan 310 Phase 2: binding with NO View/Mut use stays Owned.
+    #[test]
+    fn test_no_lowering_without_borrow_use() {
+        // let x = 1
+        // let y = x         ← plain use, not a View/Mut → no lowering
+        let body = Body {
+            stmts: vec![
+                make_store("x", Expr::Int(1)),
+                make_store("y", Expr::Ident(Name::from("x"))),
+            ],
+            has_new_line: false,
+            source_lines: vec![],
+        };
+        let map = EscapeAnalyzer::analyze_body(&body);
+        let x_tier = map.lookup(0, &"x".into()).expect("x should be tracked");
+        assert_eq!(
+            x_tier,
+            OwnershipTier::Owned,
+            "binding without View/Mut use should stay Owned, got {:?}",
+            x_tier
+        );
+    }
+
+    /// Plan 310 Phase 3: a binding captured across `Expr::Go` (tokio::spawn
+    /// Send boundary) should be escalated to ArcMutex tier.
+    #[test]
+    fn test_go_capture_escalates_to_arc_mutex() {
+        // let x = 1
+        // x.go         ← Go captures x across Send boundary → ArcMutex
+        let body = Body {
+            stmts: vec![
+                make_store("x", Expr::Int(1)),
+                Stmt::Expr(Expr::Go { expr: Box::new(Expr::Ident(Name::from("x"))) }),
+            ],
+            has_new_line: false,
+            source_lines: vec![],
+        };
+        let map = EscapeAnalyzer::analyze_body(&body);
+        let x_tier = map.lookup(0, &"x".into()).expect("x should be tracked");
+        assert_eq!(
+            x_tier,
+            OwnershipTier::ArcMutex,
+            "binding captured across .go should be ArcMutex, got {:?}",
+            x_tier
+        );
+    }
+
+    /// Plan 310 Phase 3: a binding captured by an async block (NOT across Go)
+    /// should be escalated to Clone (not ArcMutex) — async blocks are same-task.
+    #[test]
+    fn test_async_block_capture_is_clone_not_arc() {
+        // let x = 1
+        // ~{ x }       ← async block captures x, but no Go → Clone tier
+        let body = Body {
+            stmts: vec![
+                make_store("x", Expr::Int(1)),
+                Stmt::Expr(Expr::AsyncBlock {
+                    body: Body {
+                        stmts: vec![Stmt::Expr(Expr::Ident(Name::from("x")))],
+                        has_new_line: false,
+                        source_lines: vec![],
+                    },
+                    return_type: None,
+                }),
+            ],
+            has_new_line: false,
+            source_lines: vec![],
+        };
+        let map = EscapeAnalyzer::analyze_body(&body);
+        let x_tier = map.lookup(0, &"x".into()).expect("x should be tracked");
+        // AsyncBlock capture → Clone (escalated, but not ArcMutex since no
+        // Send boundary). ArcMutex is higher ordinal than Clone, so if both
+        // were applied ArcMutex would win — but only Go triggers ArcMutex.
+        assert_ne!(
+            x_tier,
+            OwnershipTier::ArcMutex,
+            "async block (no Go) should NOT escalate to ArcMutex, got {:?}",
+            x_tier
+        );
     }
 }

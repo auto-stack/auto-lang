@@ -1,0 +1,12 @@
+// Plan 310 Phase 2: returning a value escapes — the binding must not
+// be lowered to a borrow even if it has a View use site.
+fn helper() int {
+    let n int = 42
+    let m = n.view
+    return n
+}
+
+fn main() {
+    let r = helper()
+    print(r)
+}

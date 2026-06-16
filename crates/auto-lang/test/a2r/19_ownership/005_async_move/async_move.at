@@ -1,0 +1,8 @@
+// Plan 310 Phase 3: async block (~{}) should generate `async move { }`.
+// The move keyword forces ownership transfer of captured variables.
+fn main() {
+    let x int = 10
+    let f = ~{
+        print(x)
+    }
+}

@@ -1,0 +1,8 @@
+// Plan 310 Phase 3: ~{}.go (tokio::spawn) crosses a Send boundary.
+// Captured variables must be Arc<Mutex<T>> for thread-safe sharing.
+fn main() {
+    let counter int = 0
+    ~{
+        print(counter)
+    }.go
+}
