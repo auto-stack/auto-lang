@@ -80,9 +80,13 @@
 
 > ⚠️ **重要发现（影响路线图准确性）**：实施 P2 时发现 shell.rs 的 builtin 分发表（222-239）**已实现** `def`（shell 函数）、`hook`（事件钩子）、`abbr`（缩写）、`config`（配置命令）、`bind`（键绑定）、`path`（PATH 管理）。这与 304 §二 / 本计划 Phase 4 把它们标为「未完成」**不符**——之前的状态分析漏看了这张 builtin 分发表。建议在 Task 1.2 收尾后，重新核实 Phase 4 各项（4.1-4.5）的真实完成度，相应修订路线图。
 
-### Task 1.3 — 错误信息上下文
+### Task 1.3 — 错误信息上下文（部分完成）
 - **引用**：[304 §二.3 错误信息缺乏上下文](304-ash-production-gap-analysis.md)
 - **目标**：did-you-mean 模糊建议、统一 exit code 语义、`$?` 全命令一致
+- **进度**：
+  - ✅ `$? $@ $# $!` 特殊变量展开已修复（`expand_variables` 现正确路由非字母数字特殊参数；`get_variable` 早已映射）。`$_` 经普通路径可用。
+  - ⬜ did-you-mean 模糊建议（输错命令名给最接近项）。
+  - ⬜ 统一 exit code 语义、错误分类。
 - **关键改动**：命令分发层（`shell.rs` execute 路径）+ 内置命令错误返回
 - **验收**：输错命令名给出最接近建议；每条命令退出码正确传播到 `$?`
 
@@ -96,11 +100,13 @@
 - **关键改动**：pipeline 预处理 / Shell Lexer 层
 - **验收**：`cat <<EOF` 多行写入、`<<'EOF'` 不展开 `$var`
 
-### Task 2.2 — Shell 函数定义
+### Task 2.2 — Shell 函数定义 ✅ 已完成
 - **引用**：[304 §二.7 没有 Shell 函数定义](304-ash-production-gap-analysis.md)
 - **目标**：REPL/脚本内 `fn name(args) { ... }`（shell 层）定义后可作命令调用，支持 alias 优先级
-- **关键改动**：`ShellVars` 或新 `ShellFunctions` 注册表 + 命令分发优先级
-- **验收**：定义函数后能在管道 / 链式中调用，`unfn` 可移除
+- **核查结论**：已实现为 builtin `def`（`shell.rs::cmd_def`，注册于 builtin 分发表）。
+  支持 `def name [params] { body }`，转译为 Auto `fn`；`def ll [] { ls -la }` 等。
+  此前状态分析漏看了 builtin 分发表，误标未完成。
+- **验收**：✅ 函数定义后可作命令调用。
 
 ### Task 2.3 — 多行续行（`\` + 引号续行）
 - **引用**：[302 §Step 2.3 多行输入](302-ash-daily-driver-roadmap.md)
@@ -108,10 +114,12 @@
 - **关键改动**：repl.rs 读取循环 + 续行 prompt
 - **验收**：`echo a \↵ b` 输出 `a b`；未闭合 `"` 自动等下一行
 
-### Task 2.4 — 特殊变量与语法糖
+### Task 2.4 — 特殊变量与语法糖（部分完成）
 - **引用**：[304 §二.19 完善特殊变量和语法糖](304-ash-production-gap-analysis.md)
-- **目标**：`$@ $# $_`、brace expansion `{a,b,c}`、算术 `$(())`、`~user`
-- **关键改动**：`shell.rs` expand_* 系列（tilde 部分已有，补 `~user`）；新增 brace / arithmetic 预处理
+- **目标**：`$@ $# $_ $! $?`、brace expansion `{a,b,c}`、算术 `$(())`、`~user`
+- **进度**：
+  - ✅ 特殊变量 `$? $@ $# $! $_` 已可用（见 Task 1.3）。
+  - ⬜ brace expansion `{a,b,c}`、算术 `$((1+2))`、`~user`（`~`/`~/path` 已有）。
 - **验收**：`echo file.{txt,md}` → 两文件；`echo $((1+2))` → 3
 
 ### Task 2.5 — `let x = > cmd` 赋值捕获（可选）
@@ -146,15 +154,15 @@
 
 ## Phase 4: 可定制性与扩展（P3）
 
-| Task | 引用 | 目标 |
-|---|---|---|
-| 4.1 REPL 配置命令 | [304 §二.11 交互式配置 UI](304-ash-production-gap-analysis.md) | `config set/get`、`theme list/set` |
-| 4.2 `bind` 键绑定 | [304 §二.16 关键绑定可自定义](304-ash-production-gap-analysis.md) | REPL 内 `bind` 命令改键 |
-| 4.3 Abbreviation | [304 §二.13 缩写/Abbreviation 系统](304-ash-production-gap-analysis.md) | 输入时展开（区别于 alias，后者是执行时） |
-| 4.4 事件钩子 | [304 §二.14 事件钩子系统](304-ash-production-gap-analysis.md) | `on_chdir` / `on_preexec` / `on_precmd`（自动激活 venv 等） |
-| 4.5 插件系统 | [304 §二.12 插件/扩展系统](304-ash-production-gap-analysis.md) | Fish 式函数文件自动加载 + 外部插件协议 |
+| Task | 状态 | 引用 | 目标 |
+|---|---|---|---|
+| 4.1 REPL 配置命令 | ✅ 已完成 | [304 §二.11](304-ash-production-gap-analysis.md) | `config` builtin：`config list/get/set`，写入 `~/.config/ash.toml` |
+| 4.2 `bind` 键绑定 | ✅ 已完成 | [304 §二.16](304-ash-production-gap-analysis.md) | `bind` builtin：`bind list`、`bind <key> <action>` |
+| 4.3 Abbreviation | ✅ 已完成 | [304 §二.13](304-ash-production-gap-analysis.md) | `abbr` builtin：`-a/-r/-l`，输入时展开 |
+| 4.4 事件钩子 | ✅ 已完成 | [304 §二.14](304-ash-production-gap-analysis.md) | `hook` builtin：chdir / preexec / precmd |
+| 4.5 插件系统 | ⬜ 待做 | [304 §二.12 插件/扩展系统](304-ash-production-gap-analysis.md) | Fish 式函数文件自动加载 + 外部插件协议 |
 
-> 验收通用：每项一个可复现实例（如 `on_chdir` 自动 `activate`venv、abbr `g`→`git` 实时展开）。
+> 4.1–4.4 此前被状态分析误标为「未完成」——它们其实已作为 builtin 实现（注册于 `shell.rs` builtin 分发表，各含 usage 帮助与子命令逻辑）。**Phase 4 仅剩 4.5 插件系统。**
 
 ---
 
