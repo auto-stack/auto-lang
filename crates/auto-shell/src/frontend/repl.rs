@@ -28,6 +28,8 @@ impl Repl {
     /// Create a new REPL instance
     pub fn new() -> Result<Self> {
         let mut shell = Shell::new();
+        // Plan 309 Task 1.2 P4: apply persisted env from ~/.config/ash/env.at.
+        shell.load_env_persistence();
 
         // Plan 302 Step 4.2: Load ~/.config/ash.toml
         let shell_config = crate::config::AshShellConfig::load();

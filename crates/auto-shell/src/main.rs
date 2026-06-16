@@ -37,6 +37,7 @@ fn main() -> Result<()> {
                 }
                 let command = &args[i + 1];
                 let mut shell = auto_shell::Shell::new();
+                shell.load_env_persistence(); // Plan 309 Task 1.2 P4: apply ~/.config/ash/env.at
                 match shell.execute(command) {
                     Ok(output) => {
                         if let Some(s) = output {
@@ -58,6 +59,7 @@ fn main() -> Result<()> {
                     std::process::exit(1);
                 }
                 let mut shell = auto_shell::Shell::new();
+                shell.load_env_persistence();
                 shell.execute_script_content(&input)?;
                 return Ok(());
             }
@@ -103,6 +105,7 @@ fn main() -> Result<()> {
         }
 
         let mut shell = auto_shell::Shell::new();
+        shell.load_env_persistence();
         shell.execute_script_file(path)?;
         return Ok(());
     }

@@ -2210,7 +2210,27 @@ impl Shell {
             if name.eq_ignore_ascii_case("PATH") {
                 miette::bail!("不能删除 PATH，请使用 env.path 命令操作");
             }
+            Self::env_persist_remove(name); // Plan 309 Task 1.2 P4: also drop persisted line
             self.vars.unset_env(name);
+            return Ok(None);
+        }
+        if first == "-save" {
+            // Plan 301 §二 / Plan 309 Task 1.2 P4 — persist to ~/.config/ash/env.at
+            let name = args
+                .get(1)
+                .ok_or_else(|| miette::miette!("env -save: missing NAME"))?;
+            let val = args
+                .get(2)
+                .ok_or_else(|| miette::miette!("env -save: missing VALUE"))?;
+            if name.eq_ignore_ascii_case("PATH") {
+                miette::bail!("PATH 请使用 env.path 命令操作");
+            }
+            self.vars.set_env(name.to_string(), val.to_string());
+            Self::env_persist_upsert(name, val)?;
+            return Ok(None);
+        }
+        if first == "-load" {
+            self.load_env_persistence();
             return Ok(None);
         }
         if first.starts_with('-') {
@@ -2225,6 +2245,120 @@ impl Shell {
         }
         // Query single var: empty string if absent (no error), per Plan 301 §1.6.
         Ok(Some(self.vars.get_env(first).unwrap_or_default()))
+    }
+
+    // ── Plan 301 §二 / Plan 309 Task 1.2 P4 — env persistence ────────────
+    //
+    // ~/.config/ash/env.at is a plain list of shell command lines (one per line,
+    // `//` comments allowed), e.g.:
+    //   env EDITOR=vim
+    //   env LANG=zh_CN.UTF-8
+    //   env.path pre /usr/local/bin
+    // `env -save` upserts an `env NAME=val` line; `env -load` (and startup)
+    // execute each line. PATH lines etc. are executed too, so the file format is
+    // forward-compatible with any persisted shell command.
+
+    /// Best-effort: read `env.at` and execute each non-comment line.
+    pub fn load_env_persistence(&mut self) {
+        if let Some(path) = Self::env_file_path_for_read() {
+            self.load_env_persistence_from(&path);
+        }
+    }
+
+    /// Execute each non-comment line of an env-persistence file at `path`.
+    fn load_env_persistence_from(&mut self, path: &std::path::Path) {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            for line in content.lines() {
+                let l = line.trim();
+                if l.is_empty() || l.starts_with("//") {
+                    continue;
+                }
+                let _ = self.execute(l);
+            }
+        }
+    }
+
+    /// Candidate `env.at` paths in priority order: `~/.config/ash/env.at`,
+    /// then `<config_dir>/ash/env.at` (`%APPDATA%` on Windows).
+    fn env_file_candidates() -> Vec<PathBuf> {
+        let mut v = Vec::new();
+        if let Some(home) = dirs::home_dir() {
+            v.push(home.join(".config").join("ash").join("env.at"));
+        }
+        if let Some(cfg) = dirs::config_dir() {
+            v.push(cfg.join("ash").join("env.at"));
+        }
+        v
+    }
+
+    fn env_file_path_for_read() -> Option<PathBuf> {
+        Self::env_file_candidates().into_iter().find(|p| p.exists())
+    }
+
+    fn env_file_path_for_write() -> Option<PathBuf> {
+        for cand in Self::env_file_candidates() {
+            if let Some(parent) = cand.parent() {
+                if std::fs::create_dir_all(parent).is_ok() {
+                    return Some(cand);
+                }
+            }
+        }
+        None
+    }
+
+    /// Upsert a persisted `env NAME=val` line (replaces an existing line for NAME).
+    fn env_persist_upsert(name: &str, val: &str) -> Result<()> {
+        let path = Self::env_file_path_for_write()
+            .ok_or_else(|| miette::miette!("env -save: no writable config dir"))?;
+        Self::env_persist_upsert_at(&path, name, val)
+    }
+
+    /// Core upsert logic operating on a specific file path (testable).
+    fn env_persist_upsert_at(path: &std::path::Path, name: &str, val: &str) -> Result<()> {
+        let line = format!("env {}={}", name, val);
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        let prefix = format!("env {}=", name);
+        if let Some(slot) = lines.iter_mut().find(|l| l.trim_start().starts_with(&prefix)) {
+            *slot = line;
+        } else {
+            lines.push(line);
+        }
+        let mut out = lines.join("\n");
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        std::fs::write(path, out).map_err(|e| miette::miette!("env -save: {}", e))?;
+        Ok(())
+    }
+
+    /// Remove any persisted `env NAME=...` line from candidate files.
+    fn env_persist_remove(name: &str) {
+        for path in Self::env_file_candidates() {
+            Self::env_persist_remove_at(&path, name);
+        }
+    }
+
+    /// Core remove logic for a specific file path (testable).
+    fn env_persist_remove_at(path: &std::path::Path, name: &str) {
+        if !path.exists() {
+            return;
+        }
+        let Ok(content) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let prefix = format!("env {}=", name);
+        let kept: Vec<&str> = content
+            .lines()
+            .filter(|l| !l.trim_start().starts_with(&prefix))
+            .collect();
+        let new_content = kept.join("\n");
+        let to_write = if new_content.is_empty() {
+            new_content
+        } else {
+            format!("{}\n", new_content)
+        };
+        let _ = std::fs::write(path, to_write);
     }
 
     /// `env.path` subcommand dispatcher.
@@ -3178,5 +3312,63 @@ mod tests {
         let mut shell = Shell::new();
         let result = shell.expand_command_substitution("echo $(pwd) and $(whoami)").unwrap();
         assert!(!result.contains("$("));
+    }
+
+    // ── Plan 309 Task 1.2 P4 — env persistence ──────────────────────────
+
+    /// Unique temp path for a persistence test (per-test suffix avoids parallel races).
+    fn env_persist_test_path(suffix: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("ash_env_persist_{suffix}.at"))
+    }
+
+    #[test]
+    fn test_env_persist_upsert_replaces_and_appends() {
+        let path = env_persist_test_path("upsert");
+        let _ = std::fs::remove_file(&path);
+
+        Shell::env_persist_upsert_at(&path, "EDITOR", "vim").unwrap();
+        Shell::env_persist_upsert_at(&path, "LANG", "en_US").unwrap();
+        // Upserting EDITOR again replaces, not duplicates.
+        Shell::env_persist_upsert_at(&path, "EDITOR", "nano").unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("env EDITOR=nano"));
+        assert!(content.contains("env LANG=en_US"));
+        assert!(!content.contains("vim"), "stale value not replaced:\n{content}");
+        // Exactly one EDITOR line.
+        assert_eq!(content.matches("env EDITOR=").count(), 1);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_env_persist_remove_drops_only_named() {
+        let path = env_persist_test_path("remove");
+        let _ = std::fs::remove_file(&path);
+        Shell::env_persist_upsert_at(&path, "KEEP_ME", "1").unwrap();
+        Shell::env_persist_upsert_at(&path, "DROP_ME", "2").unwrap();
+
+        Shell::env_persist_remove_at(&path, "DROP_ME");
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("env KEEP_ME=1"));
+        assert!(!content.contains("DROP_ME"), "named var not removed:\n{content}");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_env_load_persistence_executes_lines() {
+        let path = env_persist_test_path("load");
+        std::fs::write(&path, "// comment\nenv ASH_TEST_PERSIST=hello\n\nenv ASH_TEST_PERSIST2=world\n")
+            .unwrap();
+
+        let mut shell = Shell::new();
+        shell.load_env_persistence_from(&path);
+
+        assert_eq!(shell.vars.get_env("ASH_TEST_PERSIST"), Some("hello".to_string()));
+        assert_eq!(shell.vars.get_env("ASH_TEST_PERSIST2"), Some("world".to_string()));
+
+        let _ = std::fs::remove_file(&path);
     }
 }
