@@ -150,6 +150,40 @@ Exposes AutoVM as a Model Context Protocol (MCP) server, allowing AI agents to e
 **Self-Description:**
 The MCP server provides a `self_describe` tool that returns the Auto language specification, syntax reference, and available stdlib modules — enabling AI agents to learn Auto on-the-fly.
 
+### AutoUI MCP Server
+
+A second MCP server, embedded **inside the iced desktop process** (Plan 278/299), lets AI agents perceive and drive a running AutoUI app over HTTP (`localhost:9247`). Unlike the AutoVM server (which operates on source code), this one operates on the **live, rendered UI**.
+
+**Two complementary channels:**
+
+| Channel | Tool | Form | What it shows |
+|---------|------|------|---------------|
+| **Structure / layout / style (primary)** | `autoui_vtree` | Atom text, 1:1 with the rendered VTree | The actually-rendered tree (for-loops expanded), per-node box model, computed style, events, source — all measured per-frame |
+| **Pixels (secondary)** | `autoui_screenshot` | PNG file path | Pixel-level visual verification |
+
+`autoui_vtree` (Plan 314) is the **primary perceptual channel**. Each Atom node maps 1:1 to a rendered `VNode`: its name is the source widget keyword (`col`/`row`/`button`/`center`/`text`…), its id is the instance-level `vnode_<n>`, and its props carry the full **box model** (`bbox` border-box + `content`/`padding`/`border`/`margin` insets), `style` (computed k/v), `class`, `events`, `source`, and `for_iter`. This is close to the *post-render* result rather than source, so an agent can reason about layout precisely without a screenshot.
+
+```
+col vnode_0 {
+  bbox: { x: 0; y: 0; w: 1600; h: 900 }
+  style: { direction: "column" }
+  class: "w-full h-screen bg-white flex-col"
+  button vnode_3 {
+    label: "+ New"
+    bbox: { x: 1480; y: 16; w: 104; h: 36 }
+    style: { bg: "#3b82f6"; radius: 8 }
+    events: { press: ".NewNote" }
+    source: "app.at:18"
+  }
+}
+```
+
+`autoui_vtree` accepts `scope` (subtree by `vnode_<n>`), `depth` (fold deeper children), and `include_box`/`include_style`/`include_events`/`include_source`/`include_props` toggles for token control. Any field not yet measured (e.g. bounds before the first layout pass) is **omitted**, never an error.
+
+The legacy `autoui_snapshot` tool (build-time AURA template + simple `@rect`) is retained for backward compatibility; `autoui_vtree` supersedes it as the runtime/computed channel. Rounding out the toolset: `autoui_inspect`, `autoui_action`, `autoui_check`, `autoui_state`, `autoui_wait`, `autoui_type`, `autoui_keyboard`.
+
+**Data path:** the renderer populates `live_vtree` + `live_cache` every frame whenever DevTools (F12) is open **or** the MCP server is active — so an agent gets the full VTree + box model without anyone opening F12. Measured bounds flow via a per-frame `LayoutCollector` → `backfill_bounds` → `SharedState` snapshot copy.
+
 ## Open Questions
 
 - Should the web playground support multi-file projects or remain single-file?
@@ -163,4 +197,6 @@ The MCP server provides a `self_describe` tool that returns the Auto language sp
 - Plan 202: Web playground design
 - Plan 246: AutoLab AI notebook
 - Plan 265: AutoVM MCP server
+- Plan 278: AutoUI MCP desktop (in-process server + SharedState)
 - Plan 299: AutoUI MCP V2 protocol
+- Plan 314: AutoUI MCP `autoui_vtree` — live styled VTree as Atom

@@ -2280,7 +2280,30 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         crate::ui::debug::backfill_bounds(cache, &bounds_map);
                     }
                     if let Some(ref mcp) = state.mcp_shared {
-                        mcp.lock().unwrap().set_layout_bounds(bounds_map);
+                        let mut handle = mcp.lock().unwrap();
+                        handle.set_layout_bounds(bounds_map);
+                        // Plan 314 Task 5: push a serializable snapshot of the
+                        // live VTree + computed cache (bounds just backfilled
+                        // above) into SharedState, so the `autoui_vtree` MCP tool
+                        // can return the runtime VTree as Atom WITHOUT opening
+                        // F12. Done here — not in view() — so the freshly-measured
+                        // `bounds` are included. `live_vtree`/`live_cache` are
+                        // populated by view() under the same `capture_debug` gate
+                        // (Task 4); if the panel/MCP just started they may still be
+                        // None on the very first round-trip, in which case we skip
+                        // (the tool degrades to "UI not yet rendered").
+                        let vtree_borrow = state.live_vtree.borrow();
+                        let cache_borrow = state.live_cache.borrow();
+                        if let (Some(vtree), Some(cache)) =
+                            (vtree_borrow.as_ref(), cache_borrow.as_ref())
+                        {
+                            let snap = crate::ui::mcp_server::StyledNodeSnapshot::from_live(
+                                state.component.widget_name(),
+                                vtree,
+                                cache,
+                            );
+                            handle.set_styled_vtree(snap);
+                        }
                     }
                 }
             }
@@ -3193,15 +3216,37 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         }
     }
 
+    // Plan 314 Task 4: decouple *data* capture from the F12 visual overlay.
+    // `capture_debug` gates the live VTree/probe/inspector-cache population so an
+    // MCP client gets the full runtime VTree + box model + computed style WITHOUT
+    // opening F12. Visual overlays (hover/selected highlight, inspect mouse_area)
+    // remain gated on `debug_mode` alone (see `wrap_debug`'s `if !self.debug_mode`
+    // early-return), so MCP-only capture never perturbs the rendered layout.
+    let mcp_active = state.mcp_shared.is_some();
+    let capture_debug = state.debug_mode || mcp_active;
+
+    // Plan 314 Task 4: request a layout-bounds collection this frame whenever we
+    // are capturing DevTools/MCP data. `update()` checks `needs_bounds` at its
+    // end and, when true, runs the LayoutCollector → `__bounds_collected` →
+    // `backfill_bounds` + `set_layout_bounds` chain — the ONLY writer of the
+    // measured `ComputedNode.bounds` (the `bbox`) and `layout_bounds`. This
+    // view() body is reached only on a rebuild (steady state returns the cached
+    // Element at the fast path above), so it bounds the round-trips to ~one per
+    // changed frame, not every frame. Gated on `capture_debug` so ordinary
+    // non-debug/non-MCP runs pay zero bounds-collection overhead.
+    if capture_debug {
+        *state.needs_bounds.borrow_mut() = true;
+    }
+
     let (converted, debug_id_map) = if dirty {
         // Full rebuild: construct AbstractView from template, cache the result.
         // Plan 307 Task 18: gate the probe by debug_mode. When F12 is off the
         // probe is disabled (all record_* no-ops → zero overhead), and
         // live_probe is set to None so the inspector UI degrades to placeholders.
         let (mut view, debug_id_map, probe) =
-            state.component.view_with_debug_gated(state.debug_mode);
+            state.component.view_with_debug_gated(capture_debug);
         let debug_id_map = Some(debug_id_map);
-        if state.debug_mode {
+        if capture_debug {
             *state.live_probe.borrow_mut() = Some(probe);
         } else {
             *state.live_probe.borrow_mut() = None;
@@ -3228,9 +3273,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             // Plan 307 Task 18: gate the probe by debug_mode (same as the dirty
             // branch above). When F12 off, probe is disabled + live_probe None.
             let (mut view, debug_id_map, probe) =
-                state.component.view_with_debug_gated(state.debug_mode);
+                state.component.view_with_debug_gated(capture_debug);
             let debug_id_map = Some(debug_id_map);
-            if state.debug_mode {
+            if capture_debug {
                 *state.live_probe.borrow_mut() = Some(probe);
             } else {
                 *state.live_probe.borrow_mut() = None;
@@ -3290,6 +3335,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             tree_stack: std::cell::RefCell::new(Vec::new()),
             component_tree: std::cell::RefCell::new(None),
             debug_mode: state.debug_mode,
+            capture_data: capture_debug,
             inspect_mode: *state.inspect_mode.borrow(),
             inspector_cache: std::cell::RefCell::new(crate::ui::debug::InspectorCache::new()),
         })
@@ -3345,11 +3391,12 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             }
         }
 
-        // Plan 307 Task 18: retain the per-frame cache only when F12/debug is
-        // on. When off, drop it to None so no inspector data lingers and the
-        // inspector panels degrade to placeholders. (The cache object is always
-        // constructed above — this just gates whether it is retained.)
-        if state.debug_mode {
+        // Plan 307 Task 18 / Plan 314 Task 4: retain the per-frame cache when
+        // F12/debug is on OR an MCP client may read it (`capture_debug`). When
+        // neither, drop it to None so no inspector data lingers and the panels
+        // degrade to placeholders. (The cache object is always constructed above
+        // — this just gates whether it is retained.)
+        if capture_debug {
             *state.live_cache.borrow_mut() = Some(cache);
         } else {
             *state.live_cache.borrow_mut() = None;
@@ -5229,6 +5276,10 @@ struct DebugRenderCtx {
     /// When false, bounds probe containers are still created for MCP snapshot,
     /// but mouse_area / hover highlights are skipped.
     debug_mode: bool,
+    /// Plan 314 Task 4: whether to populate the `inspector_cache` (VNodeId↔iced
+    /// id map, computed_style, box_model) for this frame. `debug_mode || mcp_active`
+    /// — MCP capture runs without F12. Visual overlays stay on `debug_mode`.
+    capture_data: bool,
     /// Inspect-element cursor mode (Plan 309 Phase 5): gates the always-on
     /// hover overlay so highlighting only shows when the picker is engaged.
     /// `debug_mode` alone is NOT sufficient — the overlay requires both.
@@ -5321,7 +5372,7 @@ impl DebugRenderCtx {
             // so `VNodeId::new(id_from_path(&view_path_as_u16))` matches the
             // corresponding VTree node's VNodeId. Only recorded when debug mode
             // is active (the ctx only exists then, but gate defensively).
-            if self.debug_mode {
+            if self.capture_data {
                 let path_u16: Vec<u16> = view_path.iter().map(|&x| x as u16).collect();
                 let vnode_id = crate::ui::vnode::VNodeId::new(
                     crate::ui::vnode::id_from_path(&path_u16),
@@ -5345,7 +5396,7 @@ impl DebugRenderCtx {
             // (mirroring the aura branch). Without it, clicking loop-body
             // widgets yields `selected_vnode = None` and an empty inspector.
             let id_str = format!("wrap_{}", counter_val);
-            if self.debug_mode {
+            if self.capture_data {
                 let path_u16: Vec<u16> = view_path.iter().map(|&x| x as u16).collect();
                 let vnode_id = crate::ui::vnode::VNodeId::new(
                     crate::ui::vnode::id_from_path(&path_u16),
@@ -5365,7 +5416,7 @@ impl DebugRenderCtx {
         // because it is moved into `element_styles` below. The VNodeId transform
         // mirrors the set_iced_map calls above, landing on the same entry the
         // inspector selects by.
-        if self.debug_mode {
+        if self.capture_data {
             let path_u16: Vec<u16> = view_path.iter().map(|&x| x as u16).collect();
             let vnode_id = crate::ui::vnode::VNodeId::new(
                 crate::ui::vnode::id_from_path(&path_u16),

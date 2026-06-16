@@ -29,6 +29,9 @@ pub mod action_mapper;
 pub mod mcp_server;
 
 #[cfg(feature = "ui-interpreter")]
+pub mod vtree_atom;
+
+#[cfg(feature = "ui-interpreter")]
 pub mod aura_snapshot_builder;
 
 #[cfg(feature = "ui-interpreter")]

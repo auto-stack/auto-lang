@@ -144,6 +144,39 @@ impl fmt::Display for VNodeKind {
     }
 }
 
+/// 源码 widget 关键字（用户在 `.at` 里写的名字）。
+///
+/// 用于 MCP "实时样式 VTree"（Plan 314）：每个 Atom node 的 `name` 必须对上
+/// 原始 AutoUI widget 关键字，而不是枚举名（`Column`→`col`）。
+///
+/// 关键字来源已核对：
+/// - 布局/基础组件：`node_converter.rs` 的 Node(text)→View 分发表（`col`/`row`/...）。
+/// - 高级组件：`renderer.rs::view_kind`（`slider`/`progress`/`tabs`/...）。
+pub fn kind_keyword(k: VNodeKind) -> &'static str {
+    match k {
+        VNodeKind::Column => "col",
+        VNodeKind::Row => "row",
+        VNodeKind::Container => "container",
+        VNodeKind::Scrollable => "scrollable",
+        VNodeKind::Center => "center",
+        VNodeKind::Text => "text",
+        VNodeKind::Button => "button",
+        VNodeKind::Input => "input",
+        VNodeKind::Textarea => "textarea",
+        VNodeKind::Checkbox => "checkbox",
+        VNodeKind::Radio => "radio",
+        VNodeKind::Select => "select",
+        VNodeKind::List => "list",
+        VNodeKind::Table => "table",
+        VNodeKind::Slider => "slider",
+        VNodeKind::ProgressBar => "progress",
+        VNodeKind::Accordion => "accordion",
+        VNodeKind::Sidebar => "sidebar",
+        VNodeKind::Tabs => "tabs",
+        VNodeKind::NavigationRail => "navrail",
+    }
+}
+
 /// VNode 属性
 ///
 /// 每种 VNodeKind 对应不同的属性集合
@@ -641,6 +674,32 @@ mod tests {
         let id = VNodeId::new(1);
         assert_eq!(id.as_u64(), 1);
         assert_eq!(id.to_string(), "VNode(1)");
+    }
+
+    #[test]
+    fn test_kind_keyword_source_names() {
+        // Plan 314: node names must match the source widget keyword the user
+        // wrote in .at — verified against node_converter.rs / renderer.rs::view_kind.
+        assert_eq!(kind_keyword(VNodeKind::Column), "col");
+        assert_eq!(kind_keyword(VNodeKind::Row), "row");
+        assert_eq!(kind_keyword(VNodeKind::Container), "container");
+        assert_eq!(kind_keyword(VNodeKind::Scrollable), "scrollable");
+        assert_eq!(kind_keyword(VNodeKind::Center), "center");
+        assert_eq!(kind_keyword(VNodeKind::Text), "text");
+        assert_eq!(kind_keyword(VNodeKind::Button), "button");
+        assert_eq!(kind_keyword(VNodeKind::Input), "input");
+        assert_eq!(kind_keyword(VNodeKind::Textarea), "textarea");
+        assert_eq!(kind_keyword(VNodeKind::Checkbox), "checkbox");
+        assert_eq!(kind_keyword(VNodeKind::Radio), "radio");
+        assert_eq!(kind_keyword(VNodeKind::Select), "select");
+        assert_eq!(kind_keyword(VNodeKind::List), "list");
+        assert_eq!(kind_keyword(VNodeKind::Table), "table");
+        assert_eq!(kind_keyword(VNodeKind::Slider), "slider");
+        assert_eq!(kind_keyword(VNodeKind::ProgressBar), "progress");
+        assert_eq!(kind_keyword(VNodeKind::Accordion), "accordion");
+        assert_eq!(kind_keyword(VNodeKind::Sidebar), "sidebar");
+        assert_eq!(kind_keyword(VNodeKind::Tabs), "tabs");
+        assert_eq!(kind_keyword(VNodeKind::NavigationRail), "navrail");
     }
 
     #[test]
