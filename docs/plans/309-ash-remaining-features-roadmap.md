@@ -42,6 +42,8 @@
   扩到「任意命令」：三层 spec 目录（user/generated/cache）+ 优先级链 + Help/Man 自动解析 + 运行时
   probe（零配置）+ `completions generate` 离线生成。直接延续 [Plan 297（补全系统）](297-ash-completion-system.md)。
   spec 格式为 Auto/Atom（.at）。
+- **[Plan 317：Ash 24-bit Truecolor 支持](317-ash-24bit-truecolor.md)** —— 渲染管线已能发 24-bit 序列，
+  但无色彩源使用、无终端能力检测、无降级。补齐「检测（镜像 Fish `update_fish_color_support`）+ 使用（24-bit 主题）+ 优雅降级（256/16 降采样）」三件套，达到 Fish「monospaced rainbow」水平。
 
 ---
 
