@@ -235,13 +235,18 @@ completions path                         # 显示三层目录路径
 4. 启动时扫三层目录加载（惰性或全量，性能权衡）。
 5. 测试 + 文档（.at spec 编写指南）。
 
-### Phase 3：增强（可选）
+### Phase 3：增强（部分完成，其余按需推迟）
 
-- man page（roff）解析（Unix，更结构化）。
-- probe 后台线程化（消除首次延迟）。
-- 配置热加载（文件变化重新加载 spec）。
-- subcommand 递归 probe 加深（`git checkout --help` → checkout 的 flag）。
-- arg `source` 的智能推断（如 `git checkout` 的分支来自 `git branch`）——难，长期。
+- ✅ **probe 鲁棒性**：运行时 probe 改为「捕获 stdout 不看退出码」——很多工具的 `--help`
+  退出码非 0 但仍把用法打到 stdout（Phase 1 的 `execute_command` 会因此误判失败）。已修。
+- ⬜ **man page（roff）解析**（Unix，更结构化）——推迟：Windows 无 man，跨平台以 `--help` 为主；
+  Unix man 解析可作为未来 Unix 专项增强。
+- ⬜ **probe 后台线程化**（消除首次延迟）——推迟：cache 让后续零延迟，首次延迟可接受；
+  线程化会引入并发复杂度，按需再做。
+- ⬜ **配置热加载**（文件变化重新加载 spec）——推迟：启动加载已满足；热加载是体验优化。
+- ⬜ **subcommand 递归 probe**（`<cmd> <sub> --help` → 子命令 flag）——推迟：有价值但需
+  惰性 per-subcommand probe + 深度限制，实现面较大；当前命令级 flag/子命令补全已可用。
+- ⬜ **arg `source` 智能推断**（如 `git checkout` 的分支来自 `git branch`）——长期，难。
 
 ---
 

@@ -81,17 +81,39 @@ impl ShellCompleter {
             self.provider.register(spec);
             return;
         }
-        // 2. Probe: run `cmd --help`.
+        // 2. Probe: run `cmd --help` and capture stdout regardless of exit code
+        //    (many tools' --help exits non-zero while still printing usage).
         let cwd = self
             .state
             .lock()
             .map(|s| s.current_dir.clone())
             .unwrap_or_else(|_| PathBuf::from("."));
-        if let Ok(help) = Self::execute_command(&format!("{} --help", cmd), &cwd) {
+        let help = Self::capture_help(&format!("{} --help", cmd), &cwd);
+        if !help.trim().is_empty() {
             let spec = help_parser::parse_help(cmd, &help);
             // Persist to cache (even if empty — acts as a "don't re-probe" marker).
             let _ = crate::completions::spec_tiers::write_cache(cmd, &spec);
             self.provider.register(spec);
+        }
+    }
+
+    /// Run `cmd` via the platform shell, returning stdout regardless of exit code
+    /// (for probing `--help`, which often prints usage to stdout then exits 1).
+    fn capture_help(cmd: &str, cwd: &Path) -> String {
+        let result = if cfg!(windows) {
+            std::process::Command::new("cmd")
+                .args(["/C", cmd])
+                .current_dir(cwd)
+                .output()
+        } else {
+            std::process::Command::new("sh")
+                .args(["-c", cmd])
+                .current_dir(cwd)
+                .output()
+        };
+        match result {
+            Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+            Err(_) => String::new(),
         }
     }
 
