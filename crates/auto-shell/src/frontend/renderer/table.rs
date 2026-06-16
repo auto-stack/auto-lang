@@ -211,7 +211,8 @@ fn collect_columns(arr: &auto_val::Array) -> Vec<String> {
             a == "permissions" || a == "owner" || b == "permissions" || b == "owner";
 
         if has_long_format {
-            let priority = ["permissions", "owner", "size", "modified", "name"];
+            // Name first (the visual focus), then the metadata columns.
+            let priority = ["name", "permissions", "owner", "size", "modified"];
             let a_pos = priority.iter().position(|&p| p == a).unwrap_or(usize::MAX);
             let b_pos = priority.iter().position(|&p| p == b).unwrap_or(usize::MAX);
             a_pos.cmp(&b_pos).then_with(|| a.cmp(b))
@@ -537,5 +538,35 @@ mod tests {
         let output = render_table(&val, 60).unwrap();
         assert!(!output.contains('📁'));
         assert!(!output.contains('📄'));
+    }
+
+    #[test]
+    fn test_long_format_name_column_precedes_permissions() {
+        // Name should be the first data column (after the icon), with permissions
+        // after it — Name is the visual focus of the listing.
+        use auto_val::Obj;
+
+        let mut obj = Obj::new();
+        obj.set("name", Value::str("main.rs"));
+        obj.set("type", Value::str("file"));
+        obj.set("permissions", Value::str("-rw-rw-rw-"));
+        obj.set("size", Value::Int(100));
+        obj.set("modified", Value::str("2026-06-16"));
+
+        let arr = auto_val::Array::from_vec(vec![Value::Obj(obj)]);
+        let out = render_table(&Value::Array(arr), 120).unwrap();
+        let plain = strip_ansi(&out);
+
+        // Header line contains both "Name" and "Permissions"; Name must come first.
+        let header = plain
+            .lines()
+            .find(|l| l.contains("Name") && l.contains("Permissions"))
+            .expect("header with Name+Permissions not found");
+        let name_pos = header.find("Name").unwrap();
+        let perm_pos = header.find("Permissions").unwrap();
+        assert!(
+            name_pos < perm_pos,
+            "Name should precede Permissions in header:\n{header}"
+        );
     }
 }
