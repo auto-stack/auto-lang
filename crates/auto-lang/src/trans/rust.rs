@@ -1086,6 +1086,42 @@ impl RustTrans {
         )
     }
 
+    /// Plan 310 Phase 4.2: Check if a type contains an *indirect* self-reference
+    /// (e.g. `List<Self>`, `Option<Self>`, `Map<_, Self>`). Direct self-reference
+    /// (`Type::User(self_name)` without a wrapper) is handled separately as a
+    /// hard error. This detects the wrapper cases that compile but may form
+    /// reference cycles, triggering a W0008 warning.
+    ///
+    /// Recurses into List/Option/Result/Map/GenericInstance wrappers. Does NOT
+    /// recurse into bare `Type::User(other_type)` — that would require global
+    /// type-graph analysis (deferred). Only same-name indirect refs are flagged.
+    fn type_contains_self_indirect(ty: &Type, self_name: &str) -> bool {
+        match ty {
+            // Direct self-reference is NOT "indirect" — handled as hard error.
+            Type::User(td) if td.name.as_str() == self_name => false,
+            // Other user types: don't recurse (no global analysis).
+            Type::User(_) => false,
+            // Wrapper types: recurse into inner type(s).
+            Type::List(inner) | Type::Result(inner) | Type::Option(inner)
+            | Type::Reference(inner) | Type::Linear(inner) => {
+                // inner is Box<Type>
+                Self::type_contains_self_indirect(inner, self_name)
+            }
+            Type::Map(k, v) => {
+                Self::type_contains_self_indirect(k, self_name)
+                    || Self::type_contains_self_indirect(v, self_name)
+            }
+            Type::GenericInstance(inst) => {
+                // Check base name (e.g. Vec<Node> where inst.base_name == "Vec")
+                // and recurse into type args.
+                inst.args.iter().any(|arg| Self::type_contains_self_indirect(arg, self_name))
+            }
+            Type::Array(arr) => Self::type_contains_self_indirect(&arr.elem, self_name),
+            Type::Tuple(types) => types.iter().any(|t| Self::type_contains_self_indirect(t, self_name)),
+            _ => false,
+        }
+    }
+
     /// Escape Rust reserved keywords used as identifiers.
     /// Only applies to variable/parameter binding contexts, NOT type names or module paths.
     fn rust_ident(name: &str) -> std::borrow::Cow<'_, str> {
@@ -7952,6 +7988,38 @@ impl RustTrans {
             .collect();
         self.struct_field_types
             .insert(type_decl.name.clone(), field_types);
+
+        // Plan 310 Phase 4.1: Reject direct self-referential struct fields.
+        // Rust cannot represent `struct Node { next: Node }` (infinite size).
+        // Direct Type::User(self_name) is rejected; indirect (List<Self>,
+        // Option<Self>) is legal and gets a W0008 warning (Phase 4.2 below).
+        let self_name = type_decl.name.clone();
+        let has_direct_self = all_members.iter().any(|m| {
+            matches!(&m.ty, Type::User(td) if td.name == self_name)
+        });
+        if has_direct_self {
+            return Err(AutoError::Msg(format!(
+                "type '{}' contains a direct self-reference in a field; \
+                 Rust cannot represent this without indirection. \
+                 Consider using List<{}>, or restructuring to break the cycle.",
+                type_decl.name, type_decl.name
+            )));
+        }
+
+        // Plan 310 Phase 4.2: Warn about indirect self-reference (potential
+        // reference cycle). E.g. `type Tree { children List<Tree> }` compiles
+        // but may form an Rc/Arc cycle if shared — suggest Weak<T>.
+        let has_indirect_self = all_members.iter().any(|m| {
+            Self::type_contains_self_indirect(&m.ty, &self_name)
+        });
+        if has_indirect_self {
+            self.warnings.push(crate::error::Warning::RcCycle {
+                name: self_name.to_string(),
+                reason: "field contains indirect self-reference (e.g. List<Self>); \
+                         shared references may form a cycle".to_string(),
+                span: crate::error::span_from(0, 0),
+            });
+        }
 
         // Add delegation members to seen_fields and generate them separately
         for delegation in &type_decl.delegations {

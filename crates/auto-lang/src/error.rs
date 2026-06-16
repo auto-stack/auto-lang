@@ -1120,6 +1120,23 @@ pub enum Warning {
         #[label("'{name}' fell back to {tier_desc}")]
         span: SourceSpan,
     },
+
+    /// Plan 310 Phase 4: Potential reference cycle in a struct definition.
+    /// A field contains an indirect self-reference (e.g. `List<Self>`), which
+    /// compiles but may form an Rc/Arc cycle if shared, causing a memory leak.
+    /// Suggests Weak<T> for back-references.
+    #[error("potential reference cycle")]
+    #[diagnostic(
+        code(auto_warning_W0008),
+        severity(warning),
+        help("'{name}' may form a reference cycle: {reason}. Consider Weak<T> for back-references to avoid leaks.")
+    )]
+    RcCycle {
+        name: String,
+        reason: String,
+        #[label("potential cycle in '{name}'")]
+        span: SourceSpan,
+    },
 }
 
 // ============================================================================

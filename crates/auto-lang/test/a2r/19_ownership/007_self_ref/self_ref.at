@@ -1,0 +1,10 @@
+// Plan 310 Phase 4: direct self-reference must be rejected.
+// type Node { next Node } is an infinite-size struct in Rust.
+type Node {
+    value int
+    next Node
+}
+
+fn main() {
+    let n = Node(1, Node(2, Node(3)))
+}

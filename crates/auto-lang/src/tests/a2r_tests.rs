@@ -45,6 +45,34 @@ fn test_cookbook(case: &str) -> AutoResult<()> {
     test_a2r_with_base("cookbook", case)
 }
 
+/// Plan 310 Phase 4: Test that transpilation FAILS with an error (for cases
+/// like direct self-reference that must be rejected). Asserts the error
+/// message contains the given substring.
+fn test_a2r_expect_error(case: &str, error_substring: &str) {
+    let dir_name = case.rsplit('/').next().unwrap_or(case);
+    let parts: Vec<&str> = dir_name.split("_").collect();
+    let name = parts[1..].join("_");
+
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let src_path = d.join(format!("test/a2r/{case}/{name}.at"));
+    let src = read_to_string(src_path.as_path()).unwrap();
+
+    let result = transpile_rust(&name, &src);
+    let err_msg = match result {
+        Ok(_) => panic!(
+            "expected transpilation of '{}' to FAIL, but it succeeded",
+            case
+        ),
+        Err(e) => e.to_string(),
+    };
+    assert!(
+        err_msg.contains(error_substring),
+        "expected error containing '{}', got: {}",
+        error_substring,
+        err_msg
+    );
+}
+
 // === 01_basics ===
 #[test] fn test_01_basics_001_hello() { test_a2r("01_basics/001_hello").unwrap(); }
 #[test] fn test_01_basics_002_sqrt() { test_a2r("01_basics/002_sqrt").unwrap(); }
@@ -555,6 +583,10 @@ fn test_escape_analysis_detects_multiple_bindings() {
 #[test] fn test_19_ownership_004_move_hint() { test_a2r("19_ownership/004_move_hint").unwrap(); }
 #[test] fn test_19_ownership_005_async_move() { test_a2r("19_ownership/005_async_move").unwrap(); }
 #[test] fn test_19_ownership_006_go_capture() { test_a2r("19_ownership/006_go_capture").unwrap(); }
+// 007: direct self-reference must be rejected (expect error)
+#[test] fn test_19_ownership_007_self_ref() { test_a2r_expect_error("19_ownership/007_self_ref", "self-reference"); }
+// 008: indirect self-reference (List<Self>) is legal + W0008 warning
+#[test] fn test_19_ownership_008_indirect_self() { test_a2r("19_ownership/008_indirect_self").unwrap(); }
 #[test] fn test_cookbook_devtools_001_log_debug() { test_cookbook("devtools/001_log_debug").unwrap(); }
 #[test] fn test_cookbook_devtools_002_log_error() { test_cookbook("devtools/002_log_error").unwrap(); }
 #[test] fn test_cookbook_devtools_003_log_stdout() { test_cookbook("devtools/003_log_stdout").unwrap(); }

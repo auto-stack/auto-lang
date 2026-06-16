@@ -1,0 +1,11 @@
+// Plan 310 Phase 4: indirect self-reference via List is legal.
+// type Tree { children List<Tree> } compiles fine (Vec<Tree> is finite size),
+// but gets a W0008 warning about potential reference cycles.
+type Tree {
+    value int
+    children List<Tree>
+}
+
+fn main() {
+    let t = Tree(1, [])
+}
