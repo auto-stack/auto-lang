@@ -144,19 +144,41 @@ fn read_value(chars: &[char], i: &mut usize, n: usize) -> String {
     }
 }
 
-/// Path to the Auto-format config file (`~/.config/ash.at`), if a config dir exists.
-pub fn config_path() -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|d| d.join("ash.at"))
+/// Candidate config paths, in priority order:
+/// 1. `~/.config/ash.at` — home-based, cross-platform, the documented default.
+/// 2. `<config_dir>/ash.at` — platform config dir (`%APPDATA%` on Windows,
+///    `~/.config` on Linux; on Linux this is the same as #1, deduplicated).
+///
+/// Checking both lets Windows users keep the file at the documented `~/.config/`
+/// path rather than the less-obvious `%APPDATA%`.
+pub fn config_paths() -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        paths.push(home.join(".config").join("ash.at"));
+    }
+    if let Some(cfg) = dirs::config_dir() {
+        let p = cfg.join("ash.at");
+        if !paths.contains(&p) {
+            paths.push(p);
+        }
+    }
+    paths
 }
 
-/// Load and parse `~/.config/ash.at`. Returns an empty map if missing/unreadable.
+/// The first existing config path, if any.
+pub fn config_path() -> Option<std::path::PathBuf> {
+    config_paths().into_iter().find(|p| p.exists())
+}
+
+/// Load and parse the Auto config file (first existing candidate).
+/// Returns an empty map if missing/unreadable.
 pub fn load() -> HashMap<String, HashMap<String, String>> {
     match config_path() {
-        Some(p) if p.exists() => {
+        Some(p) => {
             let content = std::fs::read_to_string(&p).unwrap_or_default();
             parse_auto_config(&content)
         }
-        _ => HashMap::new(),
+        None => HashMap::new(),
     }
 }
 

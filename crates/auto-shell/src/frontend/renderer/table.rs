@@ -304,6 +304,8 @@ fn format_cell_value(val: &Value) -> String {
 ///   - File Name → by extension: `.at`/`.rs` green, `.exe`/`.dll` light cyan,
 ///     `.toml`/`.json`/`.yaml` yellow.
 ///   - The literal "dir" value in the Type column → LightBlue.
+///   - The Permissions column → DarkGray, so the noisy `rwx` string recedes
+///     and **Name** becomes the visual center of the listing.
 fn cell_style(text: &str, col: &str, row_type: Option<&str>) -> Style {
     if col == "name" {
         // Directory name → blue (matches Type column) for clear dir/file contrast.
@@ -321,6 +323,11 @@ fn cell_style(text: &str, col: &str, row_type: Option<&str>) -> Style {
             return Style::default().fg(Color::Yellow);
         }
         return Style::default();
+    }
+
+    // Permissions column → dim gray so it recedes; Name is the visual center.
+    if col == "permissions" {
+        return Style::default().fg(Color::DarkGray);
     }
 
     // Type column: the "dir" value → blue.

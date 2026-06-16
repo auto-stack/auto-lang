@@ -100,3 +100,18 @@ fn icon_style_emoji_uses_standard_emoji() {
     assert!(out.contains('📁'), "missing emoji dir glyph:\n{out}");
     assert!(out.contains('📄'), "missing emoji file glyph:\n{out}");
 }
+
+#[test]
+fn permissions_column_is_dimmed() {
+    // The permissions string should render DarkGray (ANSI bright-black = `90m`)
+    // so it recedes and Name stays the visual center.
+    let mut o = Obj::new();
+    o.set("name", Value::str("main.rs"));
+    o.set("type", Value::str("file"));
+    o.set("permissions", Value::str("-rw-rw-rw-"));
+    let arr = Array::from_vec(vec![Value::Obj(o)]);
+    let out = render_table(&Value::Array(arr), 80).expect("should render");
+    assert!(out.contains("90m"), "permissions not dimmed (DarkGray=90m):\n{out}");
+    // The permission text is still present (strip ANSI: per-cell styled).
+    assert!(strip_ansi(&out).contains("-rw-rw-rw-"));
+}
