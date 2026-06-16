@@ -3,9 +3,22 @@
 //! Implements reedline's `Highlighter` trait to colorize shell commands
 //! as the user types, similar to Fish Shell's real-time syntax coloring.
 
-use nu_ansi_term::{Color, Style};
+use nu_ansi_term::Style;
 use reedline::{Highlighter, StyledText};
 use std::collections::HashSet;
+
+use super::color::resolve_fg;
+
+/// One Dark-inspired 24-bit theme for syntax highlighting (Plan 317).
+/// These RGB values render in truecolor terminals; resolve_fg downsamples
+/// to 256/16-color on terminals that don't support 24-bit.
+const THEME_CMD_BUILTIN: (u8, u8, u8) = (86, 182, 194); // cyan
+const THEME_CMD_EXTERNAL: (u8, u8, u8) = (152, 195, 121); // green
+const THEME_STRING: (u8, u8, u8) = (229, 192, 123); // warm yellow
+const THEME_FLAG: (u8, u8, u8) = (97, 175, 239); // blue
+const THEME_OP: (u8, u8, u8) = (198, 120, 221); // purple
+const THEME_VAR: (u8, u8, u8) = (224, 108, 117); // red
+const THEME_REDIRECT: (u8, u8, u8) = (92, 99, 112); // gray
 
 /// Shell syntax highlighter for reedline.
 ///
@@ -72,14 +85,14 @@ impl Highlighter for AshHighlighter {
         let mut after_pipe_or_op = true; // after |, &&, ||, ; — next word is a command
         let mut i = 0;
 
-        // Styles
-        let cmd_builtin_style = Style::new().fg(Color::Cyan).bold();
-        let cmd_external_style = Style::new().fg(Color::Green);
-        let string_style = Style::new().fg(Color::Yellow);
-        let flag_style = Style::new().fg(Color::Blue);
-        let op_style = Style::new().fg(Color::Magenta).bold();
-        let var_style = Style::new().fg(Color::Red);
-        let redirect_style = Style::new().fg(Color::DarkGray);
+        // Styles — 24-bit theme (Plan 317), resolved to the terminal's color depth.
+        let cmd_builtin_style = Style::new().fg(resolve_fg(THEME_CMD_BUILTIN.0, THEME_CMD_BUILTIN.1, THEME_CMD_BUILTIN.2)).bold();
+        let cmd_external_style = Style::new().fg(resolve_fg(THEME_CMD_EXTERNAL.0, THEME_CMD_EXTERNAL.1, THEME_CMD_EXTERNAL.2));
+        let string_style = Style::new().fg(resolve_fg(THEME_STRING.0, THEME_STRING.1, THEME_STRING.2));
+        let flag_style = Style::new().fg(resolve_fg(THEME_FLAG.0, THEME_FLAG.1, THEME_FLAG.2));
+        let op_style = Style::new().fg(resolve_fg(THEME_OP.0, THEME_OP.1, THEME_OP.2)).bold();
+        let var_style = Style::new().fg(resolve_fg(THEME_VAR.0, THEME_VAR.1, THEME_VAR.2));
+        let redirect_style = Style::new().fg(resolve_fg(THEME_REDIRECT.0, THEME_REDIRECT.1, THEME_REDIRECT.2));
         let default_style = Style::new();
 
         while i < len {
