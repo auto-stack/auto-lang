@@ -2069,6 +2069,149 @@ pub fn shim_http_server_static(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
+/// Plan 316 fix: Run the HTTP server in a blocking loop WITHOUT requiring an
+/// AutoTask parameter. This is the entry point for auto-starting the server
+/// from execute_autovm via a dedicated OS thread (std::thread::spawn).
+///
+/// The listen loop is identical to shim_http_server_listen but creates its own
+/// handler tasks internally, avoiding the need for a caller-provided task.
+/// Must be called from a non-tokio thread (std::thread::spawn), because it
+/// uses blocking_lock() on handler tasks.
+pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
+    use std::io::{Read, Write, BufRead};
+    use std::net::TcpListener;
+
+    let listener = match TcpListener::bind(addr) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[HTTP] Server bind failed on {}: {}", addr, e);
+            return;
+        }
+    };
+    eprintln!("[HTTP] Server listening on {}", addr);
+
+    let routes = get_http_routes();
+
+    for stream in listener.incoming() {
+        let mut stream = match stream {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[HTTP] Accept error: {}", e);
+                continue;
+            }
+        };
+
+        // Parse HTTP request
+        let mut reader = std::io::BufReader::new(&mut stream);
+        let mut request_line = String::new();
+        if reader.read_line(&mut request_line).is_err() {
+            continue;
+        }
+        let parts: Vec<&str> = request_line.split_whitespace().collect();
+        if parts.len() < 2 {
+            let _ = stream.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
+            continue;
+        }
+        let req_method = parts[0].to_uppercase();
+        let req_path = parts[1].to_string();
+
+        // Read headers
+        let mut content_length = 0usize;
+        loop {
+            let mut header = String::new();
+            if reader.read_line(&mut header).is_err() { break; }
+            let header = header.trim();
+            if header.is_empty() { break; }
+            if header.to_lowercase().starts_with("content-length:") {
+                content_length = header[15..].trim().parse().unwrap_or(0);
+            }
+        }
+
+        // Read body
+        let body = if content_length > 0 {
+            let mut buf = vec![0u8; content_length];
+            let _ = (&mut reader).read_exact(&mut buf);
+            String::from_utf8_lossy(&buf).to_string()
+        } else {
+            String::new()
+        };
+
+        // Route matching
+        let (fn_name, path_params) = match find_route(&routes, &req_method, &req_path) {
+            Some(m) => m,
+            None => {
+                let resp = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot Found";
+                let _ = stream.write_all(resp.as_bytes());
+                continue;
+            }
+        };
+
+        // Call VM handler on a fresh task
+        let handler_task_id = vm.spawn_task(0, 8192);
+        let result_json: Option<String> = if let Some(handler_task_arc) = vm.tasks.get(&handler_task_id) {
+            // blocking_lock is safe: we're on a std::thread, NOT in tokio context
+            let mut ht = handler_task_arc.blocking_lock();
+
+            let mut n_args = 0;
+            for (_param_name, param_val) in &path_params {
+                let idx = {
+                    let mut strings = vm.strings.write().unwrap();
+                    let i = strings.len();
+                    strings.push(param_val.as_bytes().to_vec());
+                    i
+                };
+                ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                n_args += 1;
+            }
+            if !body.is_empty() {
+                let idx = {
+                    let mut strings = vm.strings.write().unwrap();
+                    let i = strings.len();
+                    strings.push(body.as_bytes().to_vec());
+                    i
+                };
+                ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                n_args += 1;
+            }
+
+            match vm.call_fn_by_name(&mut ht, &fn_name, n_args) {
+                Ok(()) => {
+                    let nv = ht.ram.pop_nv();
+                    if auto_val::is_string(nv) {
+                        let idx = auto_val::decode_string(nv);
+                        vm.strings.read().unwrap().get(idx as usize)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                    } else if auto_val::is_i32(nv) {
+                        Some(auto_val::decode_i32(nv).to_string())
+                    } else if auto_val::is_null(nv) {
+                        Some("null".to_string())
+                    } else {
+                        Some("null".to_string())
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[HTTP] Handler '{}' error: {:?}", fn_name, e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        vm.tasks.remove(&handler_task_id);
+
+        let (status, body_json) = match result_json {
+            Some(s) => ("200 OK", s),
+            None => ("500 Internal Server Error", "{}".to_string()),
+        };
+        let response = format!(
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            status, body_json.len(), body_json
+        );
+        let _ = stream.write_all(response.as_bytes());
+    }
+}
+
 /// Start server listening (blocking, using tokio)
 pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let addr: String = super::convert::VMConvertible::pop_from_stack(task, vm)

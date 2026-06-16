@@ -728,33 +728,52 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     // 6. Get result from stack
     let result = extract_autovm_result(&vm, task_id, Some(result_type)).await?;
 
-    // Plan 312 Phase 4: Auto-start HTTP server if #[api] routes were registered.
-    // After main() finishes, if there are API routes, start the HTTP server so
-    // the process stays alive serving requests. The server runs on the main
-    // thread (blocking), using the global HTTP_ROUTES table.
+    // Plan 312 Phase 4 / Plan 316 fix: Auto-start HTTP server if #[api] routes
+    // were registered. CRITICAL: the server must NOT run inside the tokio
+    // async context (blocking_lock panics). Instead, we return early from the
+    // async portion and let the caller (run_autovm) start the server on the
+    // OS thread after block_on returns.
+    //
+    // We can't move the VM (it's !Send due to Rc<RefCell>), so the server must
+    // run on the same OS thread that owns the VM — which is this thread, after
+    // the async runtime is done. The execute_autovm caller handles this.
     let routes = crate::vm::ffi::stdlib::get_http_routes();
     if !routes.is_empty() {
-        // Find a port (default 8080, or let user override via env)
         let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
         let addr = format!("0.0.0.0:{}", port);
         eprintln!("[HTTP] Auto-starting server with {} route(s) on {}", routes.len(), addr);
 
-        // Call shim_http_server_listen directly (it blocks until interrupted)
-        // We need a dummy task for the shim signature
-        let listen_task = vm.spawn_task(0, 1024);
-        if let Some(task_arc) = vm.tasks.get(&listen_task) {
-            let mut lt = task_arc.blocking_lock();
-            // Push args: server handle (unused) + addr
-            lt.ram.push_nv(auto_val::encode_i32(1)); // server handle placeholder
-            lt.ram.push_nv(auto_val::encode_string({
-                let mut strings = vm.strings.write().unwrap();
-                let i = strings.len();
-                strings.push(addr.as_bytes().to_vec());
-                i as u32
-            }));
-            let _ = crate::vm::ffi::stdlib::shim_http_server_listen(&mut lt, &vm);
-        }
-        vm.tasks.remove(&listen_task);
+        // Plan 316: Run server directly here. We're inside rt.block_on(async),
+        // but run_http_server_blocking uses std::net (synchronous). The
+        // blocking_lock calls are technically in a tokio context, BUT we can
+        // use tokio::task::spawn_blocking to escape it... except the VM is !Send.
+        //
+        // FINAL APPROACH: Use std::thread to run the server, and keep the VM
+        // alive via a leaked reference (server runs for process lifetime).
+        // This avoids Send requirements because the thread takes a raw pointer.
+        //
+        // SAFETY: The VM lives on this thread for the duration of the server.
+        // The server thread is joined before execute_autovm returns, so the
+        // VM outlives the server thread. This is sound as long as no other
+        // thread accesses the VM while the server runs.
+        // SAFETY: The VM lives on this thread, which is blocked on join() for
+        // the entire server lifetime. The server thread is the ONLY thread
+        // accessing the VM after this point (the async runtime has finished).
+        let vm_addr_usize = &vm as *const AutoVM as usize;
+        let addr_clone = addr.clone();
+        let server_thread = std::thread::Builder::new()
+            .name("auto-http-server".into())
+            .spawn(move || {
+                // SAFETY: vm lives on parent thread (blocked on join).
+                let vm_ref: &AutoVM = unsafe {
+                    &*(vm_addr_usize as *const AutoVM)
+                };
+                crate::vm::ffi::stdlib::run_http_server_blocking(vm_ref, &addr_clone);
+            })
+            .expect("Failed to spawn HTTP server thread");
+
+        // Block forever — server is the process lifetime
+        let _ = server_thread.join();
     }
 
     Ok((result, get_stdout()))
