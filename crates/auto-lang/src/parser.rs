@@ -170,6 +170,9 @@ struct FnAnnotations {
     /// `#[export_range(0,100)]`, …) captured as full text to emit verbatim after `@`.
     store_attrs: Vec<AutoStr>,
     with_params: Vec<crate::ast::TypeParam>,
+    /// Plan 312: #[api(method = "GET", path = "/api/notes")] — HTTP endpoint.
+    /// Parsed into ApiAttrs; propagated to Fn.api_attrs by the caller.
+    api_endpoint: Option<crate::ast::ApiAttrs>,
 }
 
 pub struct Parser<'a> {
@@ -187,6 +190,9 @@ pub struct Parser<'a> {
     pub errors: Vec<AutoError>,
     /// Plan 122: Collected warnings during parsing
     pub warnings: Vec<Warning>,
+    /// Plan 312: Pending #[api] attributes from the most recent parse_fn_annotations
+    /// call, consumed by fn_decl_stmt_with_annotations when building the Fn AST.
+    pending_api_attrs: Option<crate::ast::ApiAttrs>,
     /// Maximum number of errors to collect before aborting
     pub error_limit: usize,
     /// Current type parameters being parsed (for generic type definitions)
@@ -249,6 +255,7 @@ impl<'a> Parser<'a> {
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
+            pending_api_attrs: None, // Plan 312
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
@@ -315,6 +322,7 @@ impl<'a> Parser<'a> {
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
+            pending_api_attrs: None, // Plan 312
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
@@ -360,6 +368,7 @@ impl<'a> Parser<'a> {
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
+            pending_api_attrs: None, // Plan 312
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
@@ -3394,6 +3403,39 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// Plan 312: Parse `#[api(method = "GET", path = "/api/notes/:id")]` argument string.
+/// Input is the raw args collected by collect_annotation_args, e.g.:
+///   `(method = "GET", path = "/api/notes")`
+/// Returns (method, path) with sensible defaults if fields are missing.
+fn parse_api_args(args: &str) -> (String, String) {
+    let mut method = String::from("GET");
+    let mut path = String::from("/");
+    // collect_annotation_args returns "(method = \"POST\", path = \"/x\")"
+    // with surrounding parens; strip them so split(',') yields clean key=value parts.
+    let args = args.trim_start_matches('(').trim_end_matches(')');
+    for part in args.split(',') {
+        let part = part.trim();
+        if let Some(val) = extract_quoted_value(part, "method") {
+            method = val;
+        } else if let Some(val) = extract_quoted_value(part, "path") {
+            path = val;
+        }
+    }
+    (method, path)
+}
+
+/// Helper: extract the quoted string value from `key = "value"` form.
+fn extract_quoted_value(s: &str, key: &str) -> Option<String> {
+    let s = s.trim();
+    let prefix = format!("{} = \"", key);
+    if let Some(rest) = s.strip_prefix(&prefix) {
+        if let Some(end) = rest.find('"') {
+            return Some(rest[..end].to_string());
+        }
+    }
+    None
+}
+
 // Statements
 impl<'a> Parser<'a> {
     // End of statement
@@ -3533,7 +3575,7 @@ impl<'a> Parser<'a> {
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
                 // Use centralized parse_fn_annotations() function
-                let ann = self.parse_fn_annotations()?;
+                let mut ann = self.parse_fn_annotations()?;
 
                 // Skip empty lines after annotation
                 self.skip_empty_lines();
@@ -3579,12 +3621,19 @@ impl<'a> Parser<'a> {
                 }
 
                 // Check what comes next
+                // Plan 312: handle optional `pub` keyword between annotation and fn/type
+                let had_pub_prefix = self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident;
+                if had_pub_prefix {
+                    ann.has_pub = true;
+                    self.next(); // consume "pub"
+                }
                 if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
                     // Function declaration
                     let is_static = self.is_kind(TokenKind::Static);
                     if is_static {
                         self.next(); // skip static keyword
                     }
+                    self.pending_api_attrs = ann.api_endpoint.take(); // Plan 312
                     self.fn_decl_stmt_with_annotations(
                         "",
                         ann.has_c,
@@ -3858,7 +3907,7 @@ impl<'a> Parser<'a> {
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[rs], #[c,vm] before function declarations
             // Note: pub is a keyword prefix, not an annotation (pub fn, pub static fn)
-            let ann = self.parse_fn_annotations()?;
+            let mut ann = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
@@ -6445,6 +6494,7 @@ impl<'a> Parser<'a> {
     /// annotation name. If the current token is `(`, consumes through the matching
     /// `)` and returns the rendered text e.g. `"(0, 100, 1)"` or `("Combat")`;
     /// otherwise returns `None` and consumes nothing.
+
     fn collect_annotation_args(&mut self) -> Option<String> {
         if !self.is_kind(TokenKind::LParen) {
             return None;
@@ -6585,6 +6635,25 @@ impl<'a> Parser<'a> {
                             }
                             continue;
                         }
+                        // Plan 312: #[api(method = "GET", path = "/api/notes/:id")]
+                        // Makes the function an HTTP endpoint when run via AutoVM.
+                        "api" => {
+                            self.next(); // skip 'api'
+                            let args = self.collect_annotation_args().unwrap_or_default();
+                            // Parse "method = \"GET\", path = \"/api/notes\"" from args
+                            let (method, path) = parse_api_args(&args);
+                            ann.api_endpoint = Some(crate::ast::ApiAttrs { method, path });
+                            // Check for ] or ,
+                            if self.is_kind(TokenKind::RSquare) {
+                                self.next(); // skip ]
+                                break;
+                            }
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next(); // skip ,
+                                continue;
+                            }
+                            continue;
+                        }
                         _ => {
                             return Err(SyntaxError::Generic {
                                 message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[rs], #[single], #[async], #[with(...)], #[c,vm,rs], #[derive(...)], #[serde(...)]. Use 'pub' keyword prefix for visibility.", annot),
@@ -6701,7 +6770,7 @@ impl<'a> Parser<'a> {
     // Function Declaration
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
         // Check for annotations: #[c], #[vm], #[rs], #[c,vm] BEFORE fn keyword
-        let ann = if self.is_kind(TokenKind::Hash) {
+        let mut ann = if self.is_kind(TokenKind::Hash) {
             self.parse_fn_annotations()?
         } else {
             FnAnnotations::default()
@@ -6898,6 +6967,8 @@ impl<'a> Parser<'a> {
         fn_expr.is_pub = ann.has_pub;
         // Plan 260: Set is_test flag
         fn_expr.is_test = ann.has_test;
+        // Plan 312: Set api_attrs from #[api(method, path)] annotation
+        fn_expr.api_attrs = ann.api_endpoint.take();
 
         // Attach doc comments
         fn_expr.doc = self.take_docs();
@@ -7119,6 +7190,9 @@ impl<'a> Parser<'a> {
 
         // Plan 260: Set is_test flag
         fn_expr.is_test = has_test;
+
+        // Plan 312: Set api_attrs from pending #[api] annotation
+        fn_expr.api_attrs = self.pending_api_attrs.take();
 
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
@@ -7718,7 +7792,7 @@ impl<'a> Parser<'a> {
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[rs], #[c,vm] before function declarations
             // Note: pub is a keyword prefix, not an annotation (pub fn, pub static fn)
-            let ann = self.parse_fn_annotations()?;
+            let mut ann = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 

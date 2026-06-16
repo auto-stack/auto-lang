@@ -1,0 +1,14 @@
+// Plan 312 Phase 1 test: #[api] annotation should parse and store method/path
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []int {
+    return [1, 2, 3]
+}
+
+#[api(method = "POST", path = "/api/notes")]
+pub fn create_note(title str, body str) int {
+    return 42
+}
+
+pub fn main() {
+    print("api test")
+}

@@ -155,6 +155,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -198,6 +199,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -240,6 +242,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -270,6 +273,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -321,6 +325,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -357,6 +362,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -398,6 +404,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -435,6 +442,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -464,6 +472,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -499,6 +508,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -539,6 +549,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -589,6 +600,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -630,6 +642,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -659,6 +672,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -695,6 +709,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -730,6 +745,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             is_pub: false,
+            api_attrs: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
