@@ -44,8 +44,8 @@ fn file_listing_renders_dir_and_file_icons() {
     let arr = Array::from_vec(vec![file_obj("src", "dir"), file_obj("main.rs", "file")]);
     let out = render_table(&Value::Array(arr), 60).expect("should render");
     let plain = strip_ansi(&out);
-    assert!(out.contains('📁'), "dir icon missing:\n{out}");
-    assert!(out.contains('📄'), "file icon missing:\n{out}");
+    assert!(out.contains('■'), "dir icon missing:\n{out}");
+    assert!(out.contains('□'), "file icon missing:\n{out}");
     assert!(plain.contains("src"), "dir name missing:\n{plain}");
     assert!(plain.contains("main.rs"), "file name missing:\n{plain}");
 }
@@ -58,8 +58,8 @@ fn non_file_listing_has_no_icon_column() {
     o.set("value", Value::Int(7));
     let arr = Array::from_vec(vec![Value::Obj(o)]);
     let out = render_table(&Value::Array(arr), 60).expect("should render");
-    assert!(!out.contains('📁'));
-    assert!(!out.contains('📄'));
+    assert!(!out.contains('■'));
+    assert!(!out.contains('□'));
 }
 
 #[test]

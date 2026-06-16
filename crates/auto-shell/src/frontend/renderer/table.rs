@@ -323,18 +323,17 @@ fn cell_style(text: &str, col: &str, row_type: Option<&str>) -> Style {
 /// Pick a leading icon glyph for a file-listing row.
 ///
 /// Currently distinguishes **directory vs file** only (per request). The
-/// `file_icon_by_name` extension point is where per-extension icons
-/// (images, video, source files, …) can be added later as one-line match arms.
+/// `file_icon_by_name` extension point is where per-extension icons can be
+/// added later as one-line match arms.
 ///
-/// Each glyph is followed by U+FE0E (variation selector-15, text presentation).
-/// Full emoji render at extra height in many terminal/font combos, inflating
-/// every table row. VS15 requests monochrome text presentation, which renders
-/// at normal cell height in supporting terminals (incl. newer Windows
-/// Terminal) while keeping the folder/file shape. Unsupported terminals fall
-/// back to color emoji (no worse than before).
+/// Uses **single-width, non-emoji** glyphs (Geometric Shapes block). Full emoji
+/// (📁/📄) — even with U+FE0E text-presentation — render taller than the cell in
+/// many terminal/font combos, inflating every ls row. These glyphs render at
+/// exactly one cell, normal height, in every terminal. Color (dir → blue, files
+/// → by extension) carries the rest of the distinction.
 fn file_icon(row_type: Option<&str>, name: &str) -> &'static str {
     match row_type {
-        Some("dir") => "📁\u{FE0E}",
+        Some("dir") => "■", // filled square — directory (container)
         _ => file_icon_by_name(name),
     }
 }
@@ -342,9 +341,9 @@ fn file_icon(row_type: Option<&str>, name: &str) -> &'static str {
 /// Per-file-name icon (extension point for future file-type icons).
 fn file_icon_by_name(_name: &str) -> &'static str {
     // TODO(future): match on extension, e.g.
-    //   png/jpg/gif/webp → "🖼️", mp4/mov/mkv → "🎬", mp3/wav → "🎵",
-    //   rs/at/py/js/ts → "📜", zip/tar/gz → "🗜️", …  (append \u{FE0E})
-    "📄\u{FE0E}"
+    //   png/jpg/gif → "▤", mp4/mkv → "▶", rs/at/py → "▦", zip/tar → "▣", …
+    //   (keep them single-width, non-emoji to avoid row-height inflation)
+    "□" // outline square — regular file
 }
 
 #[cfg(test)]
@@ -440,10 +439,10 @@ mod tests {
 
     #[test]
     fn test_file_icon_dir_vs_file() {
-        // Glyphs carry U+FE0E (text presentation) to avoid emoji line-height.
-        assert_eq!(file_icon(Some("dir"), "anything"), "📁\u{FE0E}");
-        assert_eq!(file_icon(Some("file"), "readme.md"), "📄\u{FE0E}");
-        assert_eq!(file_icon(None, "readme.md"), "📄\u{FE0E}");
+        // Single-width, non-emoji glyphs (avoid emoji row-height inflation).
+        assert_eq!(file_icon(Some("dir"), "anything"), "■");
+        assert_eq!(file_icon(Some("file"), "readme.md"), "□");
+        assert_eq!(file_icon(None, "readme.md"), "□");
     }
 
     #[test]
@@ -463,9 +462,9 @@ mod tests {
 
         let output = render_table(&val, 60).unwrap();
         let plain = strip_ansi(&output);
-        // Icon column present: dir → 📁, file → 📄
-        assert!(output.contains('📁'), "missing dir icon: {output}");
-        assert!(output.contains('📄'), "missing file icon: {output}");
+        // Icon column present: dir → ■, file → □ (single-width, non-emoji)
+        assert!(output.contains('■'), "missing dir icon: {output}");
+        assert!(output.contains('□'), "missing file icon: {output}");
         // Names still render (strip ANSI: per-cell styled).
         assert!(plain.contains("src"));
         assert!(plain.contains("main.rs"));
