@@ -2280,7 +2280,30 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         crate::ui::debug::backfill_bounds(cache, &bounds_map);
                     }
                     if let Some(ref mcp) = state.mcp_shared {
-                        mcp.lock().unwrap().set_layout_bounds(bounds_map);
+                        let mut handle = mcp.lock().unwrap();
+                        handle.set_layout_bounds(bounds_map);
+                        // Plan 314 Task 5: push a serializable snapshot of the
+                        // live VTree + computed cache (bounds just backfilled
+                        // above) into SharedState, so the `autoui_vtree` MCP tool
+                        // can return the runtime VTree as Atom WITHOUT opening
+                        // F12. Done here — not in view() — so the freshly-measured
+                        // `bounds` are included. `live_vtree`/`live_cache` are
+                        // populated by view() under the same `capture_debug` gate
+                        // (Task 4); if the panel/MCP just started they may still be
+                        // None on the very first round-trip, in which case we skip
+                        // (the tool degrades to "UI not yet rendered").
+                        let vtree_borrow = state.live_vtree.borrow();
+                        let cache_borrow = state.live_cache.borrow();
+                        if let (Some(vtree), Some(cache)) =
+                            (vtree_borrow.as_ref(), cache_borrow.as_ref())
+                        {
+                            let snap = crate::ui::mcp_server::StyledNodeSnapshot::from_live(
+                                state.component.widget_name(),
+                                vtree,
+                                cache,
+                            );
+                            handle.set_styled_vtree(snap);
+                        }
                     }
                 }
             }
