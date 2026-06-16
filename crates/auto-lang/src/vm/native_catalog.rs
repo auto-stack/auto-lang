@@ -986,6 +986,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.net.tcp_stream_peer_addr", 2111, Void),
             ("auto.net.tcp_stream_set_read_timeout", 2112, Void),
             ("auto.net.tcp_stream_set_write_timeout", 2113, Void),
+            // Plan 313: TCP flush + nodelay for SSE
+            ("auto.net.tcp_stream_flush", 2114, Void),
+            ("auto.net.tcp_stream_set_nodelay", 2115, Void),
 
             // === HTTP server (2200-2215) ===
             ("auto.http.server", 2200, Void),
@@ -1599,6 +1602,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.net.tcp_stream_peer_addr", 2111),
     ("auto.net.tcp_stream_set_read_timeout", 2112),
     ("auto.net.tcp_stream_set_write_timeout", 2113),
+    ("auto.net.tcp_stream_flush", 2114),
+    ("auto.net.tcp_stream_set_nodelay", 2115),
     ("auto.http.server", 2200),
     ("auto.http.server_get", 2201),
     ("auto.http.server_post", 2202),

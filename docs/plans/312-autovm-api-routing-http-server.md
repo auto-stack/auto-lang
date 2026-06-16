@@ -1,9 +1,10 @@
 # Plan 312: AutoVM 一等 #[api] 路由 + 可用 HTTP Server
 
-> **Status**: Draft
+> **Status**: ✅ Phase 1-4 Delivered(2026-06-16)
 > **依赖**: 无前置依赖
 > **关联**: Plan 313(TCP flush + SSE server)依赖本计划的 HTTP server 请求处理流程
 > **验收样本**: `examples/ui/015-notes/src/back/api.at`(5 个标准 CRUD #[api] 端点)+ `db.at` + `pac.at`
+> **注**: MVP 实现使用同步 TCP(串行请求处理)。并发请求处理(SSE 长连接、多客户端)留待 Plan 313 + 后续迭代。
 
 ---
 

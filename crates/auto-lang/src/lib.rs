@@ -631,6 +631,8 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     let result_type = codegen.last_expr_type.clone();
     // Plan 197 Task 9: Extract generic registry before finish() consumes the codegen
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 312: Extract API routes before finish() consumes codegen
+    let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     vm_debug!("DEBUG: Main module exports: {:?}", main_module.exports.keys().collect::<Vec<_>>());
     linker.add_module(main_module);
@@ -688,6 +690,8 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     };
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     // Register standard native shims (fs, str, process, etc.)
     {
@@ -723,6 +727,35 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
 
     // 6. Get result from stack
     let result = extract_autovm_result(&vm, task_id, Some(result_type)).await?;
+
+    // Plan 312 Phase 4: Auto-start HTTP server if #[api] routes were registered.
+    // After main() finishes, if there are API routes, start the HTTP server so
+    // the process stays alive serving requests. The server runs on the main
+    // thread (blocking), using the global HTTP_ROUTES table.
+    let routes = crate::vm::ffi::stdlib::get_http_routes();
+    if !routes.is_empty() {
+        // Find a port (default 8080, or let user override via env)
+        let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
+        let addr = format!("0.0.0.0:{}", port);
+        eprintln!("[HTTP] Auto-starting server with {} route(s) on {}", routes.len(), addr);
+
+        // Call shim_http_server_listen directly (it blocks until interrupted)
+        // We need a dummy task for the shim signature
+        let listen_task = vm.spawn_task(0, 1024);
+        if let Some(task_arc) = vm.tasks.get(&listen_task) {
+            let mut lt = task_arc.blocking_lock();
+            // Push args: server handle (unused) + addr
+            lt.ram.push_nv(auto_val::encode_i32(1)); // server handle placeholder
+            lt.ram.push_nv(auto_val::encode_string({
+                let mut strings = vm.strings.write().unwrap();
+                let i = strings.len();
+                strings.push(addr.as_bytes().to_vec());
+                i as u32
+            }));
+            let _ = crate::vm::ffi::stdlib::shim_http_server_listen(&mut lt, &vm);
+        }
+        vm.tasks.remove(&listen_task);
+    }
 
     Ok((result, get_stdout()))
 }
@@ -791,6 +824,8 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     let object_keys = codegen.object_keys.clone();
     let object_types = codegen.object_types.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 312: Extract API routes before finish() consumes codegen
+    let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     linker.add_module(main_module);
 
@@ -808,6 +843,8 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     let (mut vm, _output_buffer) = AutoVM::new_with_capture(flash, 8192);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     if let Some(rust_ni) = rust_ffi_native_interface {
         vm.merge_native_interface(&rust_ni);
@@ -1795,6 +1832,8 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     let object_types = codegen.object_types.clone();
     let _result_type = codegen.last_expr_type.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 312: Extract API routes before finish() consumes codegen
+    let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     linker.add_module(main_module);
 
@@ -1835,6 +1874,8 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     let mut vm = AutoVM::new(flash, 1024);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     if let Some(rust_ni) = rust_ffi_native_interface {
         vm.merge_native_interface(&rust_ni);
@@ -2006,6 +2047,8 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     let object_types = codegen.object_types.clone();
     let result_type = codegen.last_expr_type.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 312: Extract API routes before finish() consumes codegen
+    let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     linker.add_module(main_module);
 
@@ -2047,6 +2090,8 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     let (mut vm, output_buffer) = AutoVM::new_with_capture(flash, 8192);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     if let Some(rust_ni) = rust_ffi_native_interface {
         vm.merge_native_interface(&rust_ni);

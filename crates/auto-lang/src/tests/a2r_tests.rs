@@ -3,6 +3,8 @@ use crate::{
     trans::rust::transpile_rust,
 };
 use std::fs::read_to_string;
+use crate::parser::{Parser, CompileDest};
+use crate::ast::{Stmt, ApiAttrs};
 use std::path::PathBuf;
 
 fn test_a2r_with_base(base: &str, case: &str) -> AutoResult<()> {
@@ -597,6 +599,72 @@ fn test_escape_analysis_detects_multiple_bindings() {
 #[test] fn test_cookbook_devtools_008_log_timestamp() { test_cookbook("devtools/008_log_timestamp").unwrap(); }
 #[test] fn test_cookbook_devtools_009_log_custom_location() { test_cookbook("devtools/009_log_custom_location").unwrap(); }
 #[test] fn test_cookbook_devtools_010_tracing_console() { test_cookbook("devtools/010_tracing_console").unwrap(); }
+
+// === Plan 312 Phase 1: #[api] annotation parsing ===
+#[test]
+fn test_312_api_annotation_parsed() {
+    let src = "#[api(method = \"GET\", path = \"/api/notes\")]\npub fn list_notes() []int {\n    return [1]\n}\n";
+    let mut parser = Parser::from(src);
+    parser.set_dest(CompileDest::TransRust);
+    let ast = parser.parse().expect("parse should succeed");
+    let fns: Vec<_> = ast.stmts.iter().filter_map(|s| {
+        if let Stmt::Fn(f) = s { Some(f) } else { None }
+    }).collect();
+    assert_eq!(fns.len(), 1, "expected 1 fn");
+    let api = fns[0].api_attrs.as_ref().expect("api_attrs should be set");
+    assert_eq!(api.method, "GET");
+    assert_eq!(api.path, "/api/notes");
+}
+
+#[test]
+fn test_312_api_post_annotation_parsed() {
+    let src = "#[api(method = \"POST\", path = \"/api/notes\")]\npub fn create_note() int {\n    return 42\n}\n";
+    let mut parser = Parser::from(src);
+    parser.set_dest(CompileDest::TransRust);
+    let ast = parser.parse().expect("parse should succeed");
+    let fns: Vec<_> = ast.stmts.iter().filter_map(|s| {
+        if let Stmt::Fn(f) = s { Some(f) } else { None }
+    }).collect();
+    assert_eq!(fns.len(), 1, "expected 1 fn, got {}", fns.len());
+    let api = fns[0].api_attrs.as_ref().expect("api_attrs should be set");
+    assert_eq!(api.method, "POST");
+    assert_eq!(api.path, "/api/notes");
+}
+
+#[test]
+fn test_312_no_api_annotation_is_none() {
+    let src = "pub fn plain_fn() int {\n    return 1\n}\n";
+    let mut parser = Parser::from(src);
+    parser.set_dest(CompileDest::TransRust);
+    let ast = parser.parse().expect("parse should succeed");
+    let fns: Vec<_> = ast.stmts.iter().filter_map(|s| {
+        if let Stmt::Fn(f) = s { Some(f) } else { None }
+    }).collect();
+    assert!(fns[0].api_attrs.is_none(), "non-#[api] fn should have None api_attrs");
+}
+
+/// Plan 312 Phase 4: verify that codegen collects #[api] routes correctly.
+#[test]
+fn test_312_codegen_collects_api_routes() {
+    use crate::vm::codegen::Codegen;
+    let src = "#[api(method = \"GET\", path = \"/api/hello\")]\npub fn hello() str {\n    return \"hi\"\n}\n\n#[api(method = \"POST\", path = \"/api/echo\")]\npub fn echo(msg str) str {\n    return msg\n}\n";
+    let mut parser = Parser::from(src);
+    let ast = parser.parse().expect("parse");
+    let mut codegen = Codegen::new();
+    for stmt in &ast.stmts {
+        codegen.compile_stmt(stmt);
+    }
+    let routes = &codegen.api_routes;
+    assert_eq!(routes.len(), 2, "expected 2 api routes, got {}", routes.len());
+    // Check first route
+    assert_eq!(routes[0].0, "GET");
+    assert_eq!(routes[0].1, "/api/hello");
+    assert_eq!(routes[0].2, "hello");
+    // Check second route
+    assert_eq!(routes[1].0, "POST");
+    assert_eq!(routes[1].1, "/api/echo");
+    assert_eq!(routes[1].2, "echo");
+}
 
 // -- cookbook/encoding --
 #[test] fn test_cookbook_encoding_006_endian_byte() { test_cookbook("encoding/006_endian_byte").unwrap(); }

@@ -1,0 +1,15 @@
+// Plan 312 Phase 4: minimal HTTP API server test
+// Two #[api] endpoints that should auto-register routes.
+#[api(method = "GET", path = "/api/hello")]
+pub fn hello() str {
+    return "Hello, World!"
+}
+
+#[api(method = "GET", path = "/api/echo/:msg")]
+pub fn echo(msg str) str {
+    return msg
+}
+
+pub fn main() {
+    print("API server test")
+}

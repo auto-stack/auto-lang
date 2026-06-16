@@ -838,7 +838,69 @@ impl AutoVM {
         Ok(())
     }
 
-    /// Plan 127: Match a message value against a serialized pattern
+    /// Plan 312: Call a named VM function from native code (HTTP handler dispatch).
+    ///
+    /// Looks up `fn_name` in `exports_by_name`, pushes a stack frame (mirroring
+    /// CALL opcode), executes until RET, and leaves the result on top of stack.
+    /// Arguments must be pushed onto `task.ram` BEFORE calling this method,
+    /// in left-to-right order (arg0 at lower address, argN-1 on top).
+    ///
+    /// After return: result is on top of stack (`task.ram.pop_nv()`).
+    pub fn call_fn_by_name(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+    ) -> Result<(), VMError> {
+        // 1. Look up function address
+        let addr = *self.flash.exports_by_name.get(fn_name)
+            .ok_or_else(|| VMError::RuntimeError(
+                format!("call_fn_by_name: function '{}' not found in exports", fn_name)
+            ))?;
+
+        // 2. Save current state
+        let saved_ip = task.ip;
+        let saved_bp = task.bp;
+        let saved_fn_n_args = task.current_fn_n_args;
+
+        // 3. Setup stack frame (mirrors CALL opcode: push return addr + old BP)
+        task.ram.push_i32(saved_ip as i32);  // Return address
+        task.ram.push_i32(saved_bp as i32);  // Old BP
+        task.bp = task.ram.sp - 1;
+        task.current_fn_n_args = n_args;
+
+        // 4. Jump to function body
+        task.ip = addr as usize;
+
+        // 5. Execute until function returns (BP restored to saved_bp)
+        let budget = 10_000_000;
+        for _ in 0..budget {
+            match self.run_one_instruction(task)? {
+                StepResult::Continue => {
+                    if task.bp == saved_bp {
+                        break;
+                    }
+                    continue;
+                }
+                StepResult::Terminated => {
+                    task.current_fn_n_args = saved_fn_n_args;
+                    return Err(VMError::RuntimeError(
+                        format!("Function '{}' execution terminated unexpectedly", fn_name)
+                    ));
+                }
+                StepResult::Yield => continue,
+                StepResult::AwaitFuture { future_id, body_offset } => {
+                    self.handle_await_future(task, future_id, body_offset)?;
+                }
+            }
+        }
+
+        // 6. Restore non-stack state (return value already on stack top)
+        task.current_fn_n_args = saved_fn_n_args;
+        Ok(())
+    }
+
+
     /// Returns true if the message matches the pattern
     fn match_message_pattern_vm(
         &self,

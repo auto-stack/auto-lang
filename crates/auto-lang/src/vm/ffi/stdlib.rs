@@ -1614,6 +1614,24 @@ fn extract_path(s: String) -> String {
 /// Global handle counter for net resources
 static NET_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+/// Plan 312: Global HTTP route table — (method, path_pattern) → fn_name.
+/// Populated at VM startup from CompiledPackage.api_routes, consulted by
+/// shim_http_server_listen to dispatch requests to VM handler functions.
+/// Format: Vec<(method: String, path: String, fn_name: String)>.
+static HTTP_ROUTES: std::sync::Mutex<Vec<(String, String, String)>> = std::sync::Mutex::new(Vec::new());
+
+/// Plan 312: Register API routes into the global table. Called at VM startup.
+pub fn register_http_routes(routes: Vec<(String, String, String)>) {
+    if let Ok(mut table) = HTTP_ROUTES.lock() {
+        *table = routes;
+    }
+}
+
+/// Plan 312: Get the current HTTP routes (for testing / introspection).
+pub fn get_http_routes() -> Vec<(String, String, String)> {
+    HTTP_ROUTES.lock().map(|t| t.clone()).unwrap_or_default()
+}
+
 // Thread-local storage for TCP listeners
 thread_local! {
     static TCP_LISTENERS: std::cell::RefCell<std::collections::HashMap<u64, StdTcpListener>> =
@@ -1659,7 +1677,9 @@ pub fn shim_net_tcp_listener_accept(task: &mut AutoTask, _vm: &AutoVM) -> Result
     });
 
     match stream {
-        Some(stream) => {
+        Some(mut stream) => {
+            // Plan 313: Enable TCP_NODELAY by default for low-latency (SSE)
+            stream.set_nodelay(true).ok();
             let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
             TCP_STREAMS.with(|streams| {
                 streams.borrow_mut().insert(handle, stream);
@@ -1886,6 +1906,40 @@ pub fn shim_net_tcp_stream_set_write_timeout(task: &mut AutoTask, _vm: &AutoVM) 
     Ok(())
 }
 
+/// Plan 313: Flush TCP stream (explicit flush for SSE/low-latency writes).
+/// Note: TcpStream::flush() is a no-op for raw sockets (no user-space buffer),
+/// but this provides API completeness and will be effective if BufWriter is
+/// added later. For real SSE latency improvement, use set_nodelay(true).
+pub fn shim_net_tcp_stream_flush(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let stream_handle: i32 = task.ram.pop_i32();
+    TCP_STREAMS.with(|streams| {
+        let mut streams = streams.borrow_mut();
+        if let Some(stream) = streams.get_mut(&(stream_handle as u64)) {
+            use std::io::Write;
+            stream.flush().ok();
+        }
+    });
+    task.ram.push_i32(0); // success
+    Ok(())
+}
+
+/// Plan 313: Set TCP_NODELAY on a stream (disables Nagle's algorithm).
+/// Critical for SSE: without this, small data packets (like `data: ...\n\n`)
+/// are buffered up to ~40ms before sending. Returns 0 on success, -1 on error.
+pub fn shim_net_tcp_stream_set_nodelay(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let enabled: i32 = task.ram.pop_i32();
+    let stream_handle: i32 = task.ram.pop_i32();
+    let result = TCP_STREAMS.with(|streams| {
+        let mut streams = streams.borrow_mut();
+        match streams.get_mut(&(stream_handle as u64)) {
+            Some(stream) => stream.set_nodelay(enabled != 0).map(|_| 0).unwrap_or(-1),
+            None => -1,
+        }
+    });
+    task.ram.push_i32(result);
+    Ok(())
+}
+
 // ============================================================================
 // HTTP Functions (ID 2200-2299)
 // ============================================================================
@@ -2016,52 +2070,185 @@ pub fn shim_http_server_static(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
 }
 
 /// Start server listening (blocking, using tokio)
-pub fn shim_http_server_listen(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let addr: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let addr: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let _server: i64 = task.ram.pop_i64();
 
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| VMError::RuntimeError(format!("Failed to create tokio runtime: {}", e)))?;
+    // Plan 312 Phase 3: Real HTTP server with route dispatch.
+    // Uses synchronous std::net (not tokio) for simplicity. Each request is
+    // handled serially on the listen thread. Handler functions are called via
+    // vm.call_fn_by_name on a fresh AutoTask (isolation per request).
+    use std::io::{Read, Write, BufRead};
+    use std::net::TcpListener;
 
-    rt.block_on(async {
-        let listener = match tokio::net::TcpListener::bind(&addr).await {
-            Ok(l) => l,
+    let listener = TcpListener::bind(&addr)
+        .map_err(|e| VMError::RuntimeError(format!("HTTP server bind failed: {}", e)))?;
+    eprintln!("[HTTP] Server listening on {}", addr);
+
+    // Clone routes for the listen loop (avoid holding lock during requests)
+    let routes = get_http_routes();
+
+    for stream in listener.incoming() {
+        let mut stream = match stream {
+            Ok(s) => s,
             Err(e) => {
-                eprintln!("[HTTP] Server bind failed: {}", e);
-                return;
+                eprintln!("[HTTP] Accept error: {}", e);
+                continue;
             }
         };
-        eprintln!("[HTTP] Server listening on {}", addr);
 
+        // Parse HTTP request: method, path, body
+        let mut reader = std::io::BufReader::new(&mut stream);
+        let mut request_line = String::new();
+        if reader.read_line(&mut request_line).is_err() {
+            continue;
+        }
+        let parts: Vec<&str> = request_line.split_whitespace().collect();
+        if parts.len() < 2 {
+            let _ = stream.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
+            continue;
+        }
+        let req_method = parts[0].to_uppercase();
+        let req_path = parts[1].to_string();
+
+        // Read remaining headers (until empty line)
+        let mut content_length = 0usize;
         loop {
-            match listener.accept().await {
-                Ok((mut stream, _peer)) => {
-                    tokio::spawn(async move {
-                        use tokio::io::AsyncReadExt;
-                        use tokio::io::AsyncWriteExt;
-
-                        let mut buf = vec![0u8; 4096];
-                        match stream.read(&mut buf).await {
-                            Ok(n) if n > 0 => {
-                                let response = "HTTP/1.1 200 OK\r\n\
-                                    Content-Type: text/plain\r\n\
-                                    Content-Length: 27\r\n\
-                                    Connection: close\r\n\
-                                    \r\n\
-                                    Hello from Auto HTTP Server";
-                                let _ = stream.write_all(response.as_bytes()).await;
-                            }
-                            _ => {}
-                        }
-                    });
-                }
-                Err(e) => eprintln!("[HTTP] Accept error: {}", e),
+            let mut header = String::new();
+            if reader.read_line(&mut header).is_err() { break; }
+            let header = header.trim();
+            if header.is_empty() { break; }
+            if header.to_lowercase().starts_with("content-length:") {
+                content_length = header[15..].trim().parse().unwrap_or(0);
             }
         }
-    });
+
+        // Read body if present
+        let body = if content_length > 0 {
+            let mut buf = vec![0u8; content_length];
+            let _ = (&mut reader).read_exact(&mut buf);
+            String::from_utf8_lossy(&buf).to_string()
+        } else {
+            String::new()
+        };
+
+        // Route matching: find (method, path) match with :param support
+        let (fn_name, path_params) = match find_route(&routes, &req_method, &req_path) {
+            Some(match_result) => match_result,
+            None => {
+                let resp = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot Found";
+                let _ = stream.write_all(resp.as_bytes());
+                continue;
+            }
+        };
+
+        // Call VM handler function on a fresh task
+        let handler_task_id = vm.spawn_task(0, 8192);
+        let result_json: Option<String> = if let Some(handler_task_arc) = vm.tasks.get(&handler_task_id) {
+            // tokio::sync::Mutex — use blocking_lock() for sync context
+            let mut ht = handler_task_arc.blocking_lock();
+
+            // Push path params as string args (path params first, then body)
+            let mut n_args = 0;
+            for (_param_name, param_val) in &path_params {
+                // Allocate string in VM string pool and push
+                let idx = {
+                    let mut strings = vm.strings.write().unwrap();
+                    let i = strings.len();
+                    strings.push(param_val.as_bytes().to_vec());
+                    i
+                };
+                ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                n_args += 1;
+            }
+            // Push body if present (for POST/PUT)
+            if !body.is_empty() {
+                let idx = {
+                    let mut strings = vm.strings.write().unwrap();
+                    let i = strings.len();
+                    strings.push(body.as_bytes().to_vec());
+                    i
+                };
+                ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                n_args += 1;
+            }
+
+            match vm.call_fn_by_name(&mut ht, &fn_name, n_args) {
+                Ok(()) => {
+                    // Result is on top of stack — try to decode as string
+                    let nv = ht.ram.pop_nv();
+                    if auto_val::is_string(nv) {
+                        let idx = auto_val::decode_string(nv);
+                        vm.strings.read().unwrap().get(idx as usize)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                    } else if auto_val::is_i32(nv) {
+                        Some(auto_val::decode_i32(nv).to_string())
+                    } else if auto_val::is_null(nv) {
+                        Some("null".to_string())
+                    } else {
+                        Some("null".to_string())
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[HTTP] Handler '{}' error: {:?}", fn_name, e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Clean up handler task
+        vm.tasks.remove(&handler_task_id);
+
+        // Serialize result to JSON response
+        let (status, body_json) = match result_json {
+            Some(s) => ("200 OK", s),
+            None => ("500 Internal Server Error", "{}".to_string()),
+        };
+        let response = format!(
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            status, body_json.len(), body_json
+        );
+        let _ = stream.write_all(response.as_bytes());
+    }
 
     Ok(())
+}
+
+/// Plan 312: Find a matching route for (method, path). Supports :param extraction.
+/// Returns (fn_name, Vec<(param_name, param_value)>).
+fn find_route(
+    routes: &[(String, String, String)],
+    method: &str,
+    path: &str,
+) -> Option<(String, Vec<(String, String)>)> {
+    for (route_method, route_pattern, fn_name) in routes {
+        if route_method.to_uppercase() != method.to_uppercase() {
+            continue;
+        }
+        // Match path with :param support
+        let route_segments: Vec<&str> = route_pattern.split('/').collect();
+        let path_segments: Vec<&str> = path.split('/').collect();
+        if route_segments.len() != path_segments.len() {
+            continue;
+        }
+        let mut params = Vec::new();
+        let mut matched = true;
+        for (rs, ps) in route_segments.iter().zip(path_segments.iter()) {
+            if rs.starts_with(':') {
+                params.push((rs[1..].to_string(), ps.to_string()));
+            } else if rs != ps {
+                matched = false;
+                break;
+            }
+        }
+        if matched {
+            return Some((fn_name.clone(), params));
+        }
+    }
+    None
 }
 
 /// Create a new HTTP response
@@ -3588,6 +3775,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.net.tcp_stream_close", shim_net_tcp_stream_close);
     natives.register_shim_by_name("auto.net.tcp_stream_set_read_timeout", shim_net_tcp_stream_set_read_timeout);
     natives.register_shim_by_name("auto.net.tcp_stream_set_write_timeout", shim_net_tcp_stream_set_write_timeout);
+    // Plan 313: TCP flush + nodelay for SSE/low-latency writes
+    natives.register_shim_by_name("auto.net.tcp_stream_flush", shim_net_tcp_stream_flush);
+    natives.register_shim_by_name("auto.net.tcp_stream_set_nodelay", shim_net_tcp_stream_set_nodelay);
 
     // HTTP server functions (manual shims — heap objects for server state)
     natives.register_shim_by_name("auto.http.server", shim_http_server);

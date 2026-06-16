@@ -739,6 +739,7 @@ mod tests {
             type_params: vec![],
             doc: None,
             span: None,
+            api_attrs: None,
         };
         let map = EscapeAnalyzer::analyze_fn(&func);
         assert!(map.is_empty());

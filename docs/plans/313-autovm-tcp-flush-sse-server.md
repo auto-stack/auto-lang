@@ -1,7 +1,8 @@
 # Plan 313: AutoVM TCP Flush + 服务端 SSE 推送
 
-> **Status**: Draft
-> **依赖**: Plan 312(`#[api]` + VM HTTP server)—— SSE 分帧挂在 Plan 312 的 HTTP server 请求处理流程上。**建议 Plan 312 完成后再做。**
+> **Status**: ✅ Phase 1-2 Delivered(2026-06-16); Phase 3 集成留待后续迭代
+> **依赖**: Plan 312(`#[api]` + VM HTTP server)—— SSE 分帧挂在 Plan 312 的 HTTP server 请求处理流程上。
+> **Phase 3 说明**: SSE + #[api] 集成需要 listen 循环注入原始 TCP stream 句柄给 handler(当前只注入路径参数和 body)。这需要改变 handler 调用约定,可能影响普通 CRUD handler。**当前 SSE 可通过独立 TCP server 实现**(用 Net.tcp_bind + accept + sse_server.at helpers),绕过 #[api] 自动路由。后续迭代再做 listen 循环的 stream 注入。
 > **方向澄清**: 本任务只补**服务端方向**(生产 SSE)。客户端方向(消费外部 LLM 的 text/event-stream)已实现(`http_stream.*` + `parse_sse`,stdlib.rs:2506-2814)。
 
 ---

@@ -300,6 +300,7 @@ mod tests {
             is_test: false,
             doc: None,
             is_pub: false,
+            api_attrs: None,
         }
     }
 

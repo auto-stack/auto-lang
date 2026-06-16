@@ -30,6 +30,41 @@ pub struct Fn {
     pub type_params: Vec<TypeParam>, // Plan 061: Generic type parameters with constraints
     pub doc: Option<AutoStr>,        /// Doc comment lines (///)
     pub span: Option<(usize, usize)>, // Source location for error reporting
+    /// Plan 312: #[api(method, path)] annotation — makes the function an HTTP
+    /// endpoint when run via AutoVM. None for non-api functions.
+    pub api_attrs: Option<ApiAttrs>,
+}
+
+/// Plan 312: HTTP API endpoint attributes parsed from `#[api(method = "GET", path = "/api/notes/:id")]`.
+/// Stored on `Fn` so the VM can build a route table at module load time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ApiAttrs {
+    /// HTTP method: "GET", "POST", "PUT", "DELETE", "PATCH".
+    pub method: String,
+    /// URL path pattern with `:param` placeholders, e.g. "/api/notes/:id".
+    pub path: String,
+}
+
+impl Default for Fn {
+    fn default() -> Self {
+        Fn {
+            kind: FnKind::Function,
+            name: Name::from(""),
+            parent: None,
+            params: vec![],
+            body: Body::new(),
+            ret: Type::Void,
+            ret_name: None,
+            is_static: false,
+            is_pub: false,
+            is_mut: false,
+            is_test: false,
+            type_params: vec![],
+            doc: None,
+            span: None,
+            api_attrs: None,
+        }
+    }
 }
 
 impl Serialize for Fn {
@@ -93,6 +128,7 @@ impl Fn {
             type_params: Vec::new(), // Default to no generic parameters
             doc: None,
             span: None,
+            api_attrs: None,
         }
     }
 
@@ -120,6 +156,7 @@ impl Fn {
             type_params: Vec::new(), // Default to no generic parameters
             doc: None,
             span: None,
+            api_attrs: None,
         }
     }
 }
