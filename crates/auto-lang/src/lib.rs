@@ -728,6 +728,35 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     // 6. Get result from stack
     let result = extract_autovm_result(&vm, task_id, Some(result_type)).await?;
 
+    // Plan 312 Phase 4: Auto-start HTTP server if #[api] routes were registered.
+    // After main() finishes, if there are API routes, start the HTTP server so
+    // the process stays alive serving requests. The server runs on the main
+    // thread (blocking), using the global HTTP_ROUTES table.
+    let routes = crate::vm::ffi::stdlib::get_http_routes();
+    if !routes.is_empty() {
+        // Find a port (default 8080, or let user override via env)
+        let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
+        let addr = format!("0.0.0.0:{}", port);
+        eprintln!("[HTTP] Auto-starting server with {} route(s) on {}", routes.len(), addr);
+
+        // Call shim_http_server_listen directly (it blocks until interrupted)
+        // We need a dummy task for the shim signature
+        let listen_task = vm.spawn_task(0, 1024);
+        if let Some(task_arc) = vm.tasks.get(&listen_task) {
+            let mut lt = task_arc.blocking_lock();
+            // Push args: server handle (unused) + addr
+            lt.ram.push_nv(auto_val::encode_i32(1)); // server handle placeholder
+            lt.ram.push_nv(auto_val::encode_string({
+                let mut strings = vm.strings.write().unwrap();
+                let i = strings.len();
+                strings.push(addr.as_bytes().to_vec());
+                i as u32
+            }));
+            let _ = crate::vm::ffi::stdlib::shim_http_server_listen(&mut lt, &vm);
+        }
+        vm.tasks.remove(&listen_task);
+    }
+
     Ok((result, get_stdout()))
 }
 

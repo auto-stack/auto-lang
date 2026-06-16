@@ -643,6 +643,29 @@ fn test_312_no_api_annotation_is_none() {
     assert!(fns[0].api_attrs.is_none(), "non-#[api] fn should have None api_attrs");
 }
 
+/// Plan 312 Phase 4: verify that codegen collects #[api] routes correctly.
+#[test]
+fn test_312_codegen_collects_api_routes() {
+    use crate::vm::codegen::Codegen;
+    let src = "#[api(method = \"GET\", path = \"/api/hello\")]\npub fn hello() str {\n    return \"hi\"\n}\n\n#[api(method = \"POST\", path = \"/api/echo\")]\npub fn echo(msg str) str {\n    return msg\n}\n";
+    let mut parser = Parser::from(src);
+    let ast = parser.parse().expect("parse");
+    let mut codegen = Codegen::new();
+    for stmt in &ast.stmts {
+        codegen.compile_stmt(stmt);
+    }
+    let routes = &codegen.api_routes;
+    assert_eq!(routes.len(), 2, "expected 2 api routes, got {}", routes.len());
+    // Check first route
+    assert_eq!(routes[0].0, "GET");
+    assert_eq!(routes[0].1, "/api/hello");
+    assert_eq!(routes[0].2, "hello");
+    // Check second route
+    assert_eq!(routes[1].0, "POST");
+    assert_eq!(routes[1].1, "/api/echo");
+    assert_eq!(routes[1].2, "echo");
+}
+
 // -- cookbook/encoding --
 #[test] fn test_cookbook_encoding_006_endian_byte() { test_cookbook("encoding/006_endian_byte").unwrap(); }
 #[test] fn test_cookbook_encoding_007_csv_delimiter() { test_cookbook("encoding/007_csv_delimiter").unwrap(); }
