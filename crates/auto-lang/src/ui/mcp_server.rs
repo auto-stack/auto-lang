@@ -34,6 +34,7 @@ use crate::ui::mcp_types::{ActionResult, UiActionType};
 use crate::ui::snapshot_builder::SnapshotBuilder;
 use crate::ui::vnode::{VTree, VNodeId};
 use crate::ui::view::View;
+use crate::ui::vtree_atom::{VTreeAtomBuilder, VTreeAtomOptions};
 
 // ============================================================================
 // Real-time styled VTree snapshot (Plan 314)
@@ -632,6 +633,36 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "openWorldHint": false
             }
         }),
+        json!({
+            "name": "autoui_vtree",
+            "title": "Live Styled VTree (Atom)",
+            "description": "Return the live, post-render VTree serialized as Atom text. Each Atom node maps 1:1 to a rendered VNode: its name is the source widget keyword (col/row/button/center/text...), its id is the instance-level vnode_<n>, and its props carry the full box model (bbox + content/padding/border/margin insets), computed style, raw class, events, and source location.\n\n## When to use\nThis is the PRIMARY structural/perceptual channel for AutoUI — it shows the actually-rendered tree (for-loops expanded, geometry measured per-frame), NOT source code. Use it instead of a screenshot to perceive layout, structure, and style precisely. Pair with autoui_screenshot only for pixel-level verification.\n\n## Output\nAtom text: `col vnode_0 { bbox: {...}; style: {...}; class: \"...\"; button vnode_3 { label: \"OK\"; bbox: {...}; events: {...} } }`. Any field not measured yet (e.g. bounds before first layout) is omitted, never an error.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "scope": {
+                        "type": "string",
+                        "description": "Return only the subtree rooted at this node id (e.g. 'vnode_3'). Default: the whole tree."
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Maximum render depth relative to scope root. Deeper children collapse to a count. Default: unlimited."
+                    },
+                    "include_box": { "type": "boolean", "default": true, "description": "Include bbox + box model props" },
+                    "include_style": { "type": "boolean", "default": true, "description": "Include computed style + class props" },
+                    "include_events": { "type": "boolean", "default": true, "description": "Include events prop" },
+                    "include_source": { "type": "boolean", "default": true, "description": "Include source + for_iter props" },
+                    "include_props": { "type": "boolean", "default": true, "description": "Include widget props (content/label/value...)" }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            }
+        }),
     ]
 }
 
@@ -650,6 +681,7 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_wait" => tool_wait(shared, args),
         "autoui_type" => tool_type(shared, args),
         "autoui_keyboard" => tool_keyboard(shared, args),
+        "autoui_vtree" => tool_vtree(shared, args),
         _ => error_result(format!("Unknown tool: {}", name)),
     }
 }
@@ -1346,6 +1378,61 @@ fn json_value_to_auto_val(v: &serde_json::Value) -> Option<auto_val::Value> {
 }
 
 /// Create a MCP tool result with text content.
+// ── Tool: autoui_vtree (Plan 314) ──
+
+/// Parse a `scope` argument into a `VNodeId`.
+///
+/// Accepts either `"vnode_<n>"` (the Atom id form) or a bare integer string.
+/// Returns `None` if it cannot be parsed (the whole tree is returned instead).
+fn parse_scope(raw: &str) -> Option<VNodeId> {
+    let digits = raw.strip_prefix("vnode_").unwrap_or(raw);
+    digits.parse::<u64>().ok().map(VNodeId::new)
+}
+
+fn tool_vtree(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let opts = VTreeAtomOptions {
+        scope: args
+            .get("scope")
+            .and_then(|v| v.as_str())
+            .and_then(parse_scope),
+        depth: args
+            .get("depth")
+            .and_then(|v| v.as_i64())
+            .map(|n| n.max(0) as usize),
+        include_box: args.get("include_box").and_then(|v| v.as_bool()).unwrap_or(true),
+        include_style: args
+            .get("include_style")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+        include_events: args
+            .get("include_events")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+        include_source: args
+            .get("include_source")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+        include_props: args
+            .get("include_props")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+    };
+
+    // Peek (clone) the latest frame so repeated calls and concurrent readers
+    // both work; never consume the snapshot.
+    let snap = shared.lock().unwrap().clone_styled_vtree();
+    match snap {
+        Some(snap) => {
+            let atom = VTreeAtomBuilder::build(&snap, &opts).to_string();
+            text_result(atom)
+        }
+        None => error_result(
+            "No live VTree snapshot yet — the UI has not rendered a frame with \
+             DevTools/MCP capture active. Retry after the window has painted.",
+        ),
+    }
+}
+
 fn text_result(text: String) -> serde_json::Value {
     json!({
         "content": [{ "type": "text", "text": text }],
@@ -1517,5 +1604,60 @@ mod tests_314 {
         let lite = ComputedNodeLite::from_computed(&empty);
         assert!(lite.bounds.is_none() && lite.box_model.is_none());
         assert!(lite.computed_style.is_empty() && lite.events.is_empty());
+    }
+
+    /// Build a SharedStateHandle carrying a sample styled snapshot.
+    fn shared_with_snapshot() -> SharedStateHandle {
+        let (tree, ids) = build_sample_tree();
+        let cache = fill_cache(ids);
+        let snap = StyledNodeSnapshot::from_live("Demo", &tree, &cache);
+        let mut state = SharedState::new("Demo".into());
+        state.set_styled_vtree(snap);
+        Arc::new(Mutex::new(state))
+    }
+
+    #[test]
+    fn tool_vtree_returns_atom_text_for_full_tree() {
+        let shared = shared_with_snapshot();
+        let res = dispatch_tool_static(&shared, "autoui_vtree", json!({}));
+        let text = res["content"][0]["text"].as_str().expect("text content");
+        // widget keyword names + vnode ids
+        assert!(text.contains("col vnode_0"), "root: {text}");
+        assert!(text.contains("text vnode_1"), "text child: {text}");
+        assert!(text.contains("button vnode_2"), "button child: {text}");
+        // widget props + computed props present by default
+        assert!(text.contains("content:") && text.contains("label:"), "props: {text}");
+        assert!(text.contains("bbox:") && text.contains("style:"), "computed: {text}");
+        assert!(!res["isError"].as_bool().unwrap_or(true), "not an error: {text}");
+    }
+
+    #[test]
+    fn tool_vtree_scope_returns_subtree_only() {
+        let shared = shared_with_snapshot();
+        let res = dispatch_tool_static(&shared, "autoui_vtree", json!({ "scope": "vnode_2" }));
+        let text = res["content"][0]["text"].as_str().expect("text content");
+        assert!(text.contains("button vnode_2"), "rooted at button: {text}");
+        assert!(!text.contains("col vnode_0"), "root excluded: {text}");
+    }
+
+    #[test]
+    fn tool_vtree_respects_include_flags() {
+        let shared = shared_with_snapshot();
+        let res = dispatch_tool_static(
+            &shared,
+            "autoui_vtree",
+            json!({ "include_props": false, "include_box": false, "include_style": false }),
+        );
+        let text = res["content"][0]["text"].as_str().expect("text content");
+        assert!(!text.contains("label:"), "no widget props: {text}");
+        assert!(!text.contains("bbox:"), "no bbox: {text}");
+        assert!(!text.contains("style:"), "no style: {text}");
+    }
+
+    #[test]
+    fn tool_vtree_errors_when_no_snapshot() {
+        let shared: SharedStateHandle = Arc::new(Mutex::new(SharedState::new("Demo".into())));
+        let res = dispatch_tool_static(&shared, "autoui_vtree", json!({}));
+        assert!(res["isError"].as_bool().unwrap_or(false), "should error: {res}");
     }
 }
