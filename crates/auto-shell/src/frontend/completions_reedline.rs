@@ -7,7 +7,7 @@
 //! - Shared state (current_dir) updated by the REPL after each command
 
 use crate::completions::{Completion, CompletionSignature};
-use ash_core::completions::{CompletionContext, CompletionProvider};
+use ash_core::completions::{help_parser, CompletionContext, CompletionProvider};
 use reedline::{Completer, Suggestion};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -34,13 +34,86 @@ pub struct ShellCompleter {
 impl ShellCompleter {
     pub fn new(
         signatures: Vec<CompletionSignature>,
-        provider: CompletionProvider,
+        mut provider: CompletionProvider,
         state: Arc<Mutex<CompletionState>>,
     ) -> Self {
+        // Plan 315: overlay generated → user tier specs on top of built-ins
+        // (user wins). Loaded once at startup; runtime probe handles the rest.
+        Self::load_tier_specs(&mut provider);
         Self {
             signatures,
             provider,
             state,
+        }
+    }
+
+    /// Load `generated/` then `user/` tier specs into the provider (override order:
+    /// user > generated > built-in).
+    fn load_tier_specs(provider: &mut CompletionProvider) {
+        if let Some(dir) = crate::completions::spec_tiers::generated_dir() {
+            for spec in crate::completions::spec_tiers::load_dir(&dir) {
+                provider.register(spec);
+            }
+        }
+        if let Some(dir) = crate::completions::spec_tiers::user_dir() {
+            for spec in crate::completions::spec_tiers::load_dir(&dir) {
+                provider.register(spec);
+            }
+        }
+    }
+
+    /// Ensure a spec exists for `cmd` (Plan 315 runtime path):
+    /// cache hit → register; else probe `cmd --help` → parse → write cache → register.
+    /// Skips builtins/registered commands (don't probe `echo` etc.). Best-effort:
+    /// any failure just leaves no spec (falls back to file completion).
+    fn ensure_spec(&mut self, cmd: &str) {
+        if self.provider.has_spec(cmd) {
+            return;
+        }
+        // Don't probe shell builtins / registered commands.
+        if crate::cmd::builtin::is_legacy_builtin(cmd)
+            || self.signatures.iter().any(|s| s.name == cmd)
+        {
+            return;
+        }
+        // 1. Cache tier.
+        if let Some(spec) = crate::completions::spec_tiers::load_cache(cmd) {
+            self.provider.register(spec);
+            return;
+        }
+        // 2. Probe: run `cmd --help` and capture stdout regardless of exit code
+        //    (many tools' --help exits non-zero while still printing usage).
+        let cwd = self
+            .state
+            .lock()
+            .map(|s| s.current_dir.clone())
+            .unwrap_or_else(|_| PathBuf::from("."));
+        let help = Self::capture_help(&format!("{} --help", cmd), &cwd);
+        if !help.trim().is_empty() {
+            let spec = help_parser::parse_help(cmd, &help);
+            // Persist to cache (even if empty — acts as a "don't re-probe" marker).
+            let _ = crate::completions::spec_tiers::write_cache(cmd, &spec);
+            self.provider.register(spec);
+        }
+    }
+
+    /// Run `cmd` via the platform shell, returning stdout regardless of exit code
+    /// (for probing `--help`, which often prints usage to stdout then exits 1).
+    fn capture_help(cmd: &str, cwd: &Path) -> String {
+        let result = if cfg!(windows) {
+            std::process::Command::new("cmd")
+                .args(["/C", cmd])
+                .current_dir(cwd)
+                .output()
+        } else {
+            std::process::Command::new("sh")
+                .args(["-c", cmd])
+                .current_dir(cwd)
+                .output()
+        };
+        match result {
+            Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+            Err(_) => String::new(),
         }
     }
 
@@ -132,6 +205,8 @@ impl Completer for ShellCompleter {
         // If we have a first word and it's an external command with a spec,
         // route to the CompletionProvider
         if let Some(&cmd) = parts.first() {
+            // Plan 315: ensure a spec is loaded for this command (cache/probe).
+            self.ensure_spec(cmd);
             if self.provider.has_spec(cmd) {
                 // Determine cursor part and prefix
                 let ends_with_space = line[..pos].ends_with(|c: char| c.is_whitespace());

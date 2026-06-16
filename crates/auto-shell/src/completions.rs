@@ -16,5 +16,8 @@ pub use ash_core::completions::{
 // Frontend-only: reedline integration
 pub mod reedline;
 
+// Plan 315: three-tier spec loading + runtime probe helpers.
+pub mod spec_tiers;
+
 // External command completion definitions
 pub mod definitions;

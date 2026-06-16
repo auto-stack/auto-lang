@@ -7,8 +7,10 @@ pub mod auto;
 pub mod command;
 pub mod file;
 pub mod flag;
+pub mod help_parser;
 pub mod provider;
 pub mod spec;
+pub mod spec_format;
 pub mod types;
 
 pub use provider::{CompletionContext, CompletionProvider};

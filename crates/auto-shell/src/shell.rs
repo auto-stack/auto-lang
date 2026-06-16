@@ -19,6 +19,25 @@ use crate::cmd::{commands, CommandRegistry};
 use crate::job::JobManager;
 use vars::ShellVars;
 
+/// Help text for the `completions` builtin (Plan 315).
+const COMPLETIONS_HELP: &str = "\
+completions — manage three-tier completion specs (Plan 315)
+
+USAGE:
+  completions generate <cmd> [--refresh]   Probe `<cmd> --help` → write generated/<cmd>.at
+  completions list                         List specs in user/generated/cache tiers
+  completions clear <cmd>                  Delete the cache entry for <cmd>
+  completions clear --cache                Delete the entire cache tier
+  completions path                         Print the three tier directory paths
+
+TIERS (highest priority first):
+  user       ~/.config/ash/completions/<cmd>.at        (hand-written)
+  generated  ~/.config/ash/completions/generated/...   (this command)
+  cache      ~/.config/ash/completions/cache/...       (auto-probe on first Tab)
+
+Format: Auto/Atom (.at). `generate` parses the command's --help output.
+";
+
 /// Shell state and context
 pub struct Shell {
     current_dir: PathBuf,
@@ -273,6 +292,7 @@ impl Shell {
                 "dirs" => return self.cmd_dirs(&parts),
                 "path" => return self.cmd_path(&parts),
                 "env" | "env.path" => return self.cmd_env(&parts),
+                "completions" => return self.cmd_completions(&parts),
                 "def" => return self.cmd_def(trimmed),
                 "hook" => return self.cmd_hook(&parts),
                 "abbr" => return self.cmd_abbr(&parts),
@@ -2460,6 +2480,176 @@ impl Shell {
             ));
         }
         out
+    }
+
+    // ── Plan 315 Phase 2 — `completions` management builtin ──────────────
+
+    /// `completions` — manage three-tier completion specs.
+    ///
+    ///   completions generate <cmd> [--refresh]   probe `<cmd> --help` → write generated/<cmd>.at
+    ///   completions list                        list specs in user/generated/cache
+    ///   completions clear <cmd>                 delete cache entry for <cmd>
+    ///   completions clear --cache               delete the whole cache tier
+    ///   completions path                        print the three tier dir paths
+    fn cmd_completions(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        let sub = parts.get(1).copied().unwrap_or("");
+        match sub {
+            "" | "-h" | "--help" => Ok(Some(COMPLETIONS_HELP.to_string())),
+            "generate" | "gen" => self.completions_generate(&parts[2..]),
+            "list" | "ls" => Ok(Some(self.completions_list())),
+            "clear" | "rm" => self.completions_clear(&parts[2..]),
+            "path" | "paths" => Ok(Some(self.completions_path())),
+            other => miette::bail!("completions: unknown subcommand '{}'", other),
+        }
+    }
+
+    fn completions_generate(&self, args: &[&str]) -> Result<Option<String>> {
+        let mut cmd: Option<&str> = None;
+        let mut refresh = false;
+        for &a in args {
+            match a {
+                "--refresh" | "-r" => refresh = true,
+                "--man" => {
+                    miette::bail!("--man (man-page parsing) is Phase 3, not yet supported")
+                }
+                other if !other.starts_with('-') => {
+                    if cmd.is_some() {
+                        miette::bail!("completions generate: only one command at a time");
+                    }
+                    cmd = Some(other);
+                }
+                other => miette::bail!("completions generate: unknown flag '{}'", other),
+            }
+        }
+        let cmd = cmd.ok_or_else(|| miette::miette!("completions generate: missing command name"))?;
+
+        let help = Self::capture_cmd_output(&format!("{} --help", cmd), &self.current_dir);
+        if help.trim().is_empty() {
+            miette::bail!(
+                "completions generate: `{} --help` produced no output (is it on PATH?)",
+                cmd
+            );
+        }
+        let spec = crate::core::completions::help_parser::parse_help(cmd, &help);
+        let dir = crate::completions::spec_tiers::generated_dir()
+            .ok_or_else(|| miette::miette!("completions: no writable config dir"))?;
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| miette::miette!("completions generate: {}", e))?;
+        let path = dir.join(format!("{}.at", cmd));
+        std::fs::write(&path, crate::core::completions::spec_format::serialize(&spec))
+            .map_err(|e| miette::miette!("completions generate: {}", e))?;
+
+        if refresh {
+            // Drop any stale cache entry so the new generated spec is unambiguous.
+            if let Some(cache) = crate::completions::spec_tiers::cache_dir() {
+                let _ = std::fs::remove_file(cache.join(format!("{}.at", cmd)));
+            }
+        }
+        Ok(Some(format!(
+            "generated completion spec for '{}' → {} ({} flag{}, {} subcommand{})",
+            cmd,
+            path.display(),
+            spec.flags.len(),
+            if spec.flags.len() == 1 { "" } else { "s" },
+            spec.subcommands.len(),
+            if spec.subcommands.len() == 1 { "" } else { "s" },
+        )))
+    }
+
+    fn completions_list(&self) -> String {
+        let mut out = String::new();
+        for (name, dir) in [
+            ("user", crate::completions::spec_tiers::user_dir()),
+            ("generated", crate::completions::spec_tiers::generated_dir()),
+            ("cache", crate::completions::spec_tiers::cache_dir()),
+        ] {
+            match &dir {
+                Some(d) => {
+                    let specs: Vec<String> = std::fs::read_dir(d)
+                        .into_iter()
+                        .flatten()
+                        .flatten()
+                        .filter_map(|e| {
+                            let p = e.path();
+                            if p.extension().and_then(|x| x.to_str()) != Some("at") {
+                                return None;
+                            }
+                            p.file_stem().map(|s| s.to_string_lossy().into_owned())
+                        })
+                        .collect();
+                    out.push_str(&format!(
+                        "{} ({}): {}\n",
+                        name,
+                        d.display(),
+                        if specs.is_empty() { "(none)".to_string() } else { specs.join(", ") }
+                    ));
+                }
+                None => out.push_str(&format!("{}: (no config dir)\n", name)),
+            }
+        }
+        out
+    }
+
+    fn completions_clear(&self, args: &[&str]) -> Result<Option<String>> {
+        let cache_dir = crate::completions::spec_tiers::cache_dir()
+            .ok_or_else(|| miette::miette!("completions: no config dir"))?;
+        let mut removed = 0u32;
+        for &a in args {
+            if a == "--cache" || a == "-a" {
+                if cache_dir.exists() {
+                    for entry in std::fs::read_dir(&cache_dir).into_iter().flatten().flatten() {
+                        if entry.path().extension().and_then(|x| x.to_str()) == Some("at") {
+                            if std::fs::remove_file(entry.path()).is_ok() {
+                                removed += 1;
+                            }
+                        }
+                    }
+                }
+            } else if !a.starts_with('-') {
+                let p = cache_dir.join(format!("{}.at", a));
+                if p.exists() && std::fs::remove_file(&p).is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+        Ok(Some(format!("removed {} cache entr{}", removed, if removed == 1 { "y" } else { "ies" })))
+    }
+
+    fn completions_path(&self) -> String {
+        let mut out = String::new();
+        for (name, dir) in [
+            ("user", crate::completions::spec_tiers::user_dir()),
+            ("generated", crate::completions::spec_tiers::generated_dir()),
+            ("cache", crate::completions::spec_tiers::cache_dir()),
+        ] {
+            out.push_str(&format!(
+                "{}: {}\n",
+                name,
+                dir.map(|d| d.display().to_string())
+                    .unwrap_or_else(|| "(none)".to_string())
+            ));
+        }
+        out
+    }
+
+    /// Run `cmd` via the platform shell, returning stdout regardless of exit code
+    /// (some tools' `--help` exits non-zero while still printing usage to stdout).
+    fn capture_cmd_output(cmd: &str, cwd: &std::path::Path) -> String {
+        let result = if cfg!(windows) {
+            std::process::Command::new("cmd")
+                .args(["/C", cmd])
+                .current_dir(cwd)
+                .output()
+        } else {
+            std::process::Command::new("sh")
+                .args(["-c", cmd])
+                .current_dir(cwd)
+                .output()
+        };
+        match result {
+            Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+            Err(_) => String::new(),
+        }
     }
 
 
