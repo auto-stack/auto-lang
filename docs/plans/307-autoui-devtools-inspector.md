@@ -1257,3 +1257,25 @@ Run: `cargo test -p auto-lang -- f12_off_zero_overhead` + `cargo build -p auto`
   3. 在文本元素 / 容器上重复 → 普通点击仍选中（续篇基线无回归）。
   4. 关掉 🔍 → button 恢复原生行为。
   5. 确认树点击 → 橙色 overlay 路径仍工作（无回归）。
+
+---
+
+# 续篇 III：可拖拽 Tree|Inspector 分隔栏 + 树节点直接选中（双向检视）
+
+> 提交 `4354294e`。F12 续篇细化在续篇 II 之前先落地了两项可用性修复，此处补记。
+
+## 背景
+
+续篇 I 上线后，F12 DevTools 面板的左右两栏（元素树 | 检视器）宽度固定不可调；且**元素树的节点点击根本无法选中**对应的画布元素，导致检视只能单向（点画布 → 进检视器），无法反向（点树 → 画布高亮 + 进检视器）。
+
+## 实施（全部在 `crates/auto-lang/src/ui/iced/renderer.rs`）
+
+- **可拖拽分隔栏：** 用手写的 `row![tree_pane, inner_divider, inspector_pane]`（`Length::FillPortion` 按 `inspector_split_ratio` 分配，默认 0.38）替代了最初的 `pane_grid` 方案——`pane_grid::PaneGrid` 需借用 `&State`，与本渲染器的 `Element<'static>` 返回契约不兼容。拖拽复用既有的窗口级 `CursorMoved` 订阅做绝对坐标跟踪，与外层 DevTools 面板的分隔栏机制一致；比例存于 `inspector_split_ratio`。
+
+- **树节点直接选中：** 修复一个前缀重叠分派 bug——`DEBUG_SELECT_VNODE_PREFIX`（`"__select_vnode_"`）被 `DEBUG_SELECT_PREFIX`（`"__select_"`）前缀包含，于是 `"__select_vnode_42".strip_prefix("__select_")` 得到 `Some("vnode_42")`，被 widget-select 处理器抢先劫持，VNode 选中分支永远不执行。将常量改名为 `"__vnode_select_"` 打破重叠（单点改动修复全部 4 处引用）。
+
+- **橙色选中高亮与检视 picker 解耦：** `wrap_debug` 中，橙色选中高亮现在只要 F12 debug 模式开且有选中就绘制（含树点击的节点），让用户在实时画布上看见自己正在检视的对象；hover overlay 与交互 mouse_area 仍仅检视 picker（`inspect_mode`）开启时激活，以降噪。
+
+## 结果
+
+双向检视打通：点树 → 画布高亮 + 检视器填充；点实时元素 → 高亮 + 树中选中。`ui::debug` 测试全绿，构建通过。

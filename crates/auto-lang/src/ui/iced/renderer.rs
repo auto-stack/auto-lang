@@ -1937,6 +1937,9 @@ const DEBUG_SELECT_VNODE_PREFIX: &str = "__vnode_select_";
 /// Switch the inspector right-panel inner sub-tab (Plan 307 Task 15):
 /// `__inspector_subtab_<Variant>`.
 const DEBUG_INSPECTOR_SUBTAB_PREFIX: &str = "__inspector_subtab_";
+/// Toggle a collapsible section inside the 检视 sub-tab (Plan 307 续篇 IV):
+/// `__inspector_section_<box|computed|props>`.
+const DEBUG_INSPECTOR_SECTION_PREFIX: &str = "__inspector_section_";
 
 /// DevTools panel top-level mode (Plan 309 续篇: 元素树与检视已统一为同屏
 /// 分屏，不再是互斥 tab；控制台仍为独立整宽模式).
@@ -1948,32 +1951,32 @@ enum DevToolsTab {
     Console,
 }
 
-/// Inspector right-panel inner sub-tab (Plan 307 Task 15). `Layout` is fully
-/// implemented here (box model); the others are placeholders filled by Task 16.
+/// Inspector right-panel inner sub-tab (Plan 307 Task 15; 续篇 IV collapsed
+/// Box/Computed/Properties into the single 检视 tab). AutoUI and Source remain
+/// standalone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum InspectorSubTab {
-    Layout,
-    Computed,
-    Props,
+    /// Combined: a single scrollable column of collapsible Box / Computed /
+    /// Properties sections (Chrome-DevTools style).
+    Inspect,
     AutoUI,
     Source,
 }
 
 impl Default for InspectorSubTab {
     fn default() -> Self {
-        InspectorSubTab::Layout
+        InspectorSubTab::Inspect
     }
 }
 
 impl InspectorSubTab {
-    /// Display label for the sub-tab chip.
+    /// Display label for the sub-tab chip. Also used verbatim as the
+    /// `__inspector_subtab_<label>` message-tail key (parsed below).
     fn label(self) -> &'static str {
         match self {
-            InspectorSubTab::Layout => "Layout",
-            InspectorSubTab::Computed => "Computed",
-            InspectorSubTab::Props => "Props",
+            InspectorSubTab::Inspect => "检视",
             InspectorSubTab::AutoUI => "AutoUI",
-            InspectorSubTab::Source => "Source",
+            InspectorSubTab::Source => "源码",
         }
     }
 
@@ -1981,14 +1984,21 @@ impl InspectorSubTab {
     /// Returns `None` for unknown names so `update()` can ignore garbage.
     fn from_message_tail(tail: &str) -> Option<Self> {
         Some(match tail {
-            "Layout" => InspectorSubTab::Layout,
-            "Computed" => InspectorSubTab::Computed,
-            "Props" => InspectorSubTab::Props,
+            "检视" => InspectorSubTab::Inspect,
             "AutoUI" => InspectorSubTab::AutoUI,
-            "Source" => InspectorSubTab::Source,
+            "源码" => InspectorSubTab::Source,
             _ => return None,
         })
     }
+}
+
+/// Collapsed state of the three sections inside the 检视 sub-tab (Plan 307
+/// 续篇 IV). All default expanded (`false`).
+#[derive(Default, Clone, Copy)]
+struct InspectorSections {
+    box_collapsed: bool,
+    computed_collapsed: bool,
+    props_collapsed: bool,
 }
 
 /// Wrapper holding `DynamicComponent` as iced's application state.
@@ -2025,9 +2035,12 @@ struct DynamicState {
     /// `LAST_MODIFIERS` thread-local at each view build; Alt gates the inspect
     /// picker between plain (inspect) and Alt (native) interaction.
     current_modifiers: std::cell::RefCell<iced::keyboard::Modifiers>,
-    /// Inspector right-panel inner sub-tab (Plan 307 Task 15): Layout /
-    /// Computed / Props / AutoUI / Source.
+    /// Inspector right-panel inner sub-tab (Plan 307 续篇 IV): 检视 (combined
+    /// Box/Computed/Properties) / AutoUI / 源码.
     inspector_subtab: std::cell::RefCell<InspectorSubTab>,
+    /// Collapsed state of the three sections inside the 检视 sub-tab
+    /// (Plan 307 续篇 IV). All expanded by default.
+    inspector_sections: std::cell::RefCell<InspectorSections>,
     /// Whether the DevTools panel is open on the right side.
     devtools_open: std::cell::RefCell<bool>,
     /// Currently active DevTools tab.
@@ -2202,6 +2215,7 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             inspect_mode: std::cell::RefCell::new(false),
             current_modifiers: std::cell::RefCell::new(iced::keyboard::Modifiers::empty()),
             inspector_subtab: std::cell::RefCell::new(InspectorSubTab::default()),
+            inspector_sections: std::cell::RefCell::new(InspectorSections::default()),
             devtools_open: std::cell::RefCell::new(false),
             devtools_tab: std::cell::RefCell::new(DevToolsTab::Inspect),
             console_output: std::cell::RefCell::new(Vec::new()),
@@ -2428,6 +2442,20 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
         if let Some(tail) = msg.event.strip_prefix(DEBUG_INSPECTOR_SUBTAB_PREFIX) {
             if let Some(sub) = InspectorSubTab::from_message_tail(tail) {
                 *state.inspector_subtab.borrow_mut() = sub;
+            }
+            ui_changed = true;
+            return iced::Task::none();
+        }
+        // Toggle a collapsible section inside the 检视 sub-tab (Plan 307 续篇 IV).
+        if let Some(tail) = msg.event.strip_prefix(DEBUG_INSPECTOR_SECTION_PREFIX) {
+            {
+                let mut s = state.inspector_sections.borrow_mut();
+                match tail {
+                    "box" => s.box_collapsed = !s.box_collapsed,
+                    "computed" => s.computed_collapsed = !s.computed_collapsed,
+                    "props" => s.props_collapsed = !s.props_collapsed,
+                    _ => {}
+                }
             }
             ui_changed = true;
             return iced::Task::none();
@@ -3853,15 +3881,13 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
     // --- Breadcrumb: root › … › selected (clickable ancestors) ---
     col = col.push(render_inspector_breadcrumb(state));
 
-    // --- Inner sub-tab row: Layout | Computed | Props | AutoUI | Source ---
+    // --- Inner sub-tab row: 检视 | AutoUI | 源码 ---
     col = col.push(render_inspector_subtab_row(state));
 
     // --- Active sub-tab body ---
     let subtab = *state.inspector_subtab.borrow();
     let body = match subtab {
-        InspectorSubTab::Layout => render_inspector_layout_tab(state),
-        InspectorSubTab::Computed => render_inspector_computed_tab(state),
-        InspectorSubTab::Props => render_inspector_props_tab(state),
+        InspectorSubTab::Inspect => render_inspector_inspect_tab(state),
         InspectorSubTab::AutoUI => render_inspector_autoui_tab(state),
         InspectorSubTab::Source => render_inspector_source_tab(state),
     };
@@ -3969,14 +3995,75 @@ fn render_inspector_breadcrumb(state: &DynamicState) -> iced::Element<'static, I
     row.into()
 }
 
+/// The 检视 sub-tab body (Plan 307 续篇 IV): a single scrollable column (the
+/// parent `scrollable` at the panel level handles overflow) of three
+/// collapsible sections — Box Model, Computed, Properties — each reusing the
+/// existing per-section render fn as its body.
+fn render_inspector_inspect_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+    let secs = *state.inspector_sections.borrow();
+    let mut col = column![].spacing(6);
+
+    col = col.push(render_collapsible_section(
+        "盒模型 Box Model",
+        secs.box_collapsed,
+        "box",
+        render_inspector_layout_tab(state),
+    ));
+    col = col.push(render_collapsible_section(
+        "Computed",
+        secs.computed_collapsed,
+        "computed",
+        render_inspector_computed_tab(state),
+    ));
+    col = col.push(render_collapsible_section(
+        "Properties",
+        secs.props_collapsed,
+        "props",
+        render_inspector_props_tab(state),
+    ));
+
+    col.into()
+}
+
+/// One collapsible section: a clickable header (▸/▾ + title) followed by the
+/// body when expanded. The header click sends `__inspector_section_<tail>`,
+/// parsed in `update()` to toggle the matching `*_collapsed` bool.
+fn render_collapsible_section(
+    title: &'static str,
+    collapsed: bool,
+    tail: &str,
+    body: iced::Element<'static, IcedMessage>,
+) -> iced::Element<'static, IcedMessage> {
+    let marker = if collapsed { "▸" } else { "▾" };
+    let header = mouse_area(
+        row![
+            text(marker).size(10),
+            text(title)
+                .size(11)
+                .color(iced::Color::from_rgb(0.2, 0.4, 0.8)),
+        ]
+        .spacing(4)
+        .align_y(iced::Alignment::Center),
+    )
+    .on_press(IcedMessage {
+        widget: String::new(),
+        event: format!("{}{}", DEBUG_INSPECTOR_SECTION_PREFIX, tail),
+        input_value: None,
+    });
+
+    let mut col = column![].spacing(3).push(container(header).padding([2.0, 4.0]));
+    if !collapsed {
+        col = col.push(body);
+    }
+    col.into()
+}
+
 /// Build the inner sub-tab chip row (Plan 307 Task 15). Clicking a chip sends
 /// `__inspector_subtab_<Variant>`, parsed in `update()`.
 fn render_inspector_subtab_row(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
     let active = *state.inspector_subtab.borrow();
     let variants = [
-        InspectorSubTab::Layout,
-        InspectorSubTab::Computed,
-        InspectorSubTab::Props,
+        InspectorSubTab::Inspect,
         InspectorSubTab::AutoUI,
         InspectorSubTab::Source,
     ];
@@ -4028,12 +4115,6 @@ fn render_inspector_layout_tab(state: &DynamicState) -> iced::Element<'static, I
     };
 
     let mut col = column![].spacing(4);
-
-    col = col.push(
-        text("盒模型 (Box Model)")
-            .size(11)
-            .color(iced::Color::from_rgb(0.2, 0.4, 0.8)),
-    );
 
     // Chrome-style nested box-model diagram (Plan 309 Phase 3.4). Each layer's
     // drawn inset is capped so oversized margins stay within the panel; numeric
