@@ -1808,6 +1808,25 @@ fn mcp_action_subscription() -> iced::Subscription<IcedMessage> {
     })
 }
 
+/// Plan 314: MCP heartbeat. iced only calls `update()` in response to a
+/// message, so a freshly-launched, untouched app would otherwise never cycle
+/// `update()` → bounds collection and the styled VTree snapshot pushed by
+/// `__bounds_collected` (Task 5) would stay `None` — the `autoui_vtree` tool
+/// would degrade to "UI not yet rendered" until the user interacted. This emits
+/// a `__mcp_heartbeat` message on a fixed cadence so the snapshot stays fresh
+/// on its own. The message matches no `update()` arm; it simply reaches the
+/// `needs_bounds` block at the end of `update()` (which `view()` set true under
+/// the same `capture_debug` gate) and launches the next bounds round-trip.
+/// Gated on MCP being active — see the subscription closure — so a non-MCP run
+/// stays fully idle.
+fn mcp_heartbeat_subscription() -> iced::Subscription<IcedMessage> {
+    iced::time::every(std::time::Duration::from_millis(200)).map(|_| IcedMessage {
+        widget: String::new(),
+        event: "__mcp_heartbeat".to_string(),
+        input_value: None,
+    })
+}
+
 /// Keyboard subscription: F12 devtools toggle + widget key bindings (Plan 275).
 ///
 /// Uses `listen_with` (fn pointer) with a global `Arc<Mutex<HashMap>>` for bindings.
@@ -3088,6 +3107,11 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             subs.push(keyboard_subscription(_state.component.key_bindings()));
             // MCP action channel — polls for injected actions from AI agent (Plan 278)
             subs.push(mcp_action_subscription());
+            // Plan 314: keep a styled VTree snapshot fresh on an otherwise-idle
+            // app while an agent is connected. Only ticks when MCP is active.
+            if _state.mcp_shared.is_some() {
+                subs.push(mcp_heartbeat_subscription());
+            }
             // Window resize + mouse move/release events for DevTools panel drag
             subs.push(iced::event::listen_with(|e, _status, _window_id| match e {
                 iced::Event::Window(iced::window::Event::Resized(size)) => Some(IcedMessage {
