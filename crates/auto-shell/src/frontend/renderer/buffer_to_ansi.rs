@@ -116,7 +116,7 @@ fn apply_fg(style: nu_ansi_term::Style, color: Color) -> nu_ansi_term::Style {
         Color::LightMagenta => style.fg(AnsiColor::LightMagenta),
         Color::LightCyan => style.fg(AnsiColor::LightCyan),
         Color::White => style.fg(AnsiColor::White),
-        Color::Rgb(r, g, b) => style.fg(AnsiColor::Rgb(r, g, b)),
+        Color::Rgb(r, g, b) => style.fg(crate::frontend::term::color::resolve_fg(r, g, b)),
         Color::Indexed(n) => style.fg(AnsiColor::Fixed(n)),
     }
 }
@@ -140,7 +140,7 @@ fn apply_bg(style: nu_ansi_term::Style, color: Color) -> nu_ansi_term::Style {
         Color::LightMagenta => style.on(AnsiColor::LightMagenta),
         Color::LightCyan => style.on(AnsiColor::LightCyan),
         Color::White => style.on(AnsiColor::White),
-        Color::Rgb(r, g, b) => style.on(AnsiColor::Rgb(r, g, b)),
+        Color::Rgb(r, g, b) => style.on(crate::frontend::term::color::resolve_bg(r, g, b)),
         Color::Indexed(n) => style.on(AnsiColor::Fixed(n)),
     }
 }
