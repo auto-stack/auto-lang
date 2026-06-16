@@ -38,6 +38,27 @@ TIERS (highest priority first):
 Format: Auto/Atom (.at). `generate` parses the command's --help output.
 ";
 
+/// HSV to RGB conversion (h: 0-360°, s/v: 0.0-1.0) for the rainbow demo.
+fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (u8, u8, u8) {
+    let c = v * s;
+    let h6 = (h / 60.0) % 6.0;
+    let x = c * (1.0 - (h6 % 2.0 - 1.0).abs());
+    let m = v - c;
+    let (r1, g1, b1) = match h6 as i32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    (
+        ((r1 + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((g1 + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((b1 + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+    )
+}
+
 /// Shell state and context
 pub struct Shell {
     current_dir: PathBuf,
@@ -293,6 +314,7 @@ impl Shell {
                 "path" => return self.cmd_path(&parts),
                 "env" | "env.path" => return self.cmd_env(&parts),
                 "completions" => return self.cmd_completions(&parts),
+                "color" => return self.cmd_color(&parts),
                 "def" => return self.cmd_def(trimmed),
                 "hook" => return self.cmd_hook(&parts),
                 "abbr" => return self.cmd_abbr(&parts),
@@ -2649,6 +2671,46 @@ impl Shell {
         match result {
             Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
             Err(_) => String::new(),
+        }
+    }
+
+    // ── Plan 317 Phase 3 — `color` builtin (24-bit demo) ─────────────────
+
+    /// `color` — print a 24-bit rainbow gradient / report terminal color depth.
+    ///
+    ///   color rainbow   → monospaced rainbow (each char a different hue)
+    ///   color depth     → report the detected color depth + relevant env vars
+    fn cmd_color(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        let sub = parts.get(1).copied().unwrap_or("depth");
+        match sub {
+            "rainbow" | "rb" => {
+                let text = "Ash 24-bit Truecolor Rainbow!";
+                let chars: Vec<char> = text.chars().collect();
+                let n = chars.len();
+                let mut out = String::new();
+                for (i, ch) in chars.iter().enumerate() {
+                    let hue = 360.0 * (i as f64) / (n as f64);
+                    let (r, g, b) = hsv_to_rgb(hue, 1.0, 1.0);
+                    let color = crate::frontend::term::color::resolve_fg(r, g, b);
+                    out.push_str(&color.paint(&ch.to_string()).to_string());
+                }
+                Ok(Some(out))
+            }
+            "depth" | "info" => {
+                let depth = crate::frontend::term::color::detect_color_depth();
+                let label = match depth {
+                    crate::frontend::term::color::ColorDepth::True24 => "24-bit truecolor",
+                    crate::frontend::term::color::ColorDepth::Index256 => "256-color",
+                    crate::frontend::term::color::ColorDepth::Index16 => "16-color",
+                };
+                let ct = std::env::var("COLORTERM").unwrap_or_else(|_| "(unset)".into());
+                let term = std::env::var("TERM").unwrap_or_else(|_| "(unset)".into());
+                Ok(Some(format!(
+                    "Color depth: {} (COLORTERM={}, TERM={})",
+                    label, ct, term
+                )))
+            }
+            other => miette::bail!("color: unknown subcommand '{}'. Use: rainbow, depth", other),
         }
     }
 
