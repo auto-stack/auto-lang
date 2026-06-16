@@ -97,14 +97,11 @@ pub fn get_support(tag: &str) -> TagSupport {
         ),
 
         // ── Fallback: known AURA tags not supported by iced ──
-        "grid" => TagSupport::fallback(
-            &["cols", "gap", "columns", "rows", "style"],
-            "iced has no grid layout — renders as vertical Column; cols/gap ignored",
+        "grid" => TagSupport::partial(
+            &["rows", "rowspan", "colspan"],
+            "decomposed into a Column of Rows of `cols` cells (iced has no native grid); rows/rowspan/colspan ignored",
         ),
-        "grid-item" => TagSupport::fallback(
-            &["col", "row", "colspan", "rowspan", "style"],
-            "grid-item is meaningless without grid — renders as plain child",
-        ),
+        "grid-item" => TagSupport::full(),
         "scroll" => TagSupport::fallback(
             &["direction", "style"],
             "scroll container not implemented — renders as Column",

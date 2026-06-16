@@ -574,6 +574,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Core layout widgets — recurse children with path tracking.
             "col" | "column" => self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings),
             "row" => self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "grid" => self.convert_grid_tracked_ctx(props, children, path, id_map, probe, bindings),
             "center" => self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings),
             "container" | "div" => self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings),
 
@@ -665,6 +666,64 @@ impl<'a> AuraViewBuilder<'a> {
         }
         for child in child_views {
             builder = builder.child(child);
+        }
+        builder.build()
+    }
+
+    /// Tracked convert_grid — mirrors `convert_grid` but recurses via
+    /// `convert_node_tracked_ctx` so each grid-item cell captures its own
+    /// path + probe data (text bindings, raw class). Probe paths follow the
+    /// SOURCE structure (flat grid-item indices under the grid); the row
+    /// grouping is a rendering detail and does not perturb probe indexing.
+    fn convert_grid_tracked_ctx(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let cols = self
+            .extract_u16(props, "cols")
+            .or_else(|| self.extract_u16(props, "columns"))
+            .map(|c| (c as usize).max(1))
+            .unwrap_or(1);
+        let gap = self.extract_u16(props, "gap").unwrap_or(0);
+        let style = self.extract_style(props);
+
+        let cells: Vec<View<DynamicMessage>> = children
+            .iter()
+            .enumerate()
+            .filter_map(|(i, n)| {
+                path.push(i);
+                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
+                path.pop();
+                if matches!(v, View::Empty) { None } else { Some(v) }
+            })
+            .collect();
+
+        if cells.is_empty() {
+            return View::Empty;
+        }
+
+        let rows: Vec<View<DynamicMessage>> = cells
+            .chunks(cols)
+            .map(|row_cells| {
+                let mut builder = View::<DynamicMessage>::row().spacing(gap);
+                for cell in row_cells {
+                    builder = builder.child(cell.clone());
+                }
+                builder.build()
+            })
+            .collect();
+
+        let mut builder = View::<DynamicMessage>::col().spacing(gap);
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        }
+        for row in rows {
+            builder = builder.child(row);
         }
         builder.build()
     }
@@ -945,6 +1004,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Core layout widgets
             "col" | "column" => self.convert_column(props, children, bindings),
             "row" => self.convert_row(props, children, bindings),
+            "grid" => self.convert_grid(props, children, bindings),
 
             // Core element widgets
             "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
@@ -1145,6 +1205,61 @@ impl<'a> AuraViewBuilder<'a> {
             builder = builder.child(child);
         }
 
+        builder.build()
+    }
+
+    /// Convert a grid element. iced has no native grid layout, so decompose
+    /// into a **Column of Rows**: chunk the (grid-item) children into rows of
+    /// `cols`, each row a horizontal Row. Cells that carry `text-center`
+    /// auto-expand to Fill width in the iced text renderer (see `into_iced`'s
+    /// `Text` arm), so the columns come out equally sized — a faithful calendar
+    /// grid without a real grid primitive. `grid-item` itself is transparent:
+    /// it falls through to the generic fallback, which returns its single inner
+    /// child, so converting each grid-item yields the cell content directly.
+    /// Tracked twin: `convert_grid_tracked_ctx` — keep in sync.
+    fn convert_grid(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let cols = self
+            .extract_u16(props, "cols")
+            .or_else(|| self.extract_u16(props, "columns"))
+            .map(|c| (c as usize).max(1))
+            .unwrap_or(1);
+        let gap = self.extract_u16(props, "gap").unwrap_or(0);
+        let style = self.extract_style(props);
+
+        let cells: Vec<View<DynamicMessage>> = children
+            .iter()
+            .map(|n| self.convert_node_with(n, bindings))
+            .filter(|v| !matches!(v, View::Empty))
+            .collect();
+
+        if cells.is_empty() {
+            return View::Empty;
+        }
+
+        // Chunk into rows of `cols`. Each cell is cloned into its row.
+        let rows: Vec<View<DynamicMessage>> = cells
+            .chunks(cols)
+            .map(|row_cells| {
+                let mut builder = View::<DynamicMessage>::row().spacing(gap);
+                for cell in row_cells {
+                    builder = builder.child(cell.clone());
+                }
+                builder.build()
+            })
+            .collect();
+
+        let mut builder = View::<DynamicMessage>::col().spacing(gap);
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        }
+        for row in rows {
+            builder = builder.child(row);
+        }
         builder.build()
     }
 
