@@ -528,6 +528,37 @@ export function cn(...inputs: ClassValue[]) {
 "#.to_string()
 }
 
+/// Ensure `pnpm-workspace.yaml` approves the postinstall builds for esbuild +
+/// vue-demi.
+///
+/// **Why:** pnpm 10+ no longer reads the `pnpm` field in `package.json` nor the
+/// `onlyBuiltDependencies[]` entry in `.npmrc` — it reads build approvals from
+/// `pnpm-workspace.yaml` instead. Crucially, **pnpm 11.6.0 honors `allowBuilds`
+/// (a `package -> bool` map), not `onlyBuiltDependencies`** — when it detects
+/// un-approved builds it scaffolds a *broken* `pnpm-workspace.yaml` (placeholder
+/// `allowBuilds:` entries with the literal string `"set this to true or false"`)
+/// and exits with code 1 (`ERR_PNPM_IGNORED_BUILDS`). The lockfile-removal retry
+/// cannot fix that — only approving the builds can. We write BOTH keys so it
+/// works across pnpm versions: `allowBuilds: true` for pnpm 11.6.0, and
+/// `onlyBuiltDependencies` for older pnpm 10. pnpm 9 ignores this file and keeps
+/// using `.npmrc`. Idempotent: skips rewriting when esbuild is already approved.
+fn ensure_pnpm_build_approvals(dir: &Path) -> bool {
+    let ws_path = dir.join("pnpm-workspace.yaml");
+    // Rewrite unless esbuild is already approved (covers absent file, pnpm's
+    // placeholder scaffold, and any stale content).
+    let need_write = match fs::read_to_string(&ws_path) {
+        Ok(existing) => !existing.contains("esbuild: true"),
+        Err(_) => true,
+    };
+    if need_write {
+        let yaml = "onlyBuiltDependencies:\n  - esbuild\n  - vue-demi\nallowBuilds:\n  esbuild: true\n  vue-demi: true\n";
+        if fs::write(&ws_path, yaml).is_ok() {
+            return true;
+        }
+    }
+    false
+}
+
 /// Write all project files
 fn write_project_files(
     output_path: &Path,
@@ -1241,6 +1272,13 @@ export default router
             return Err(format!("{} not found", pm).into());
         }
 
+        // pnpm 10/11 reads build approvals from pnpm-workspace.yaml, not
+        // package.json/.npmrc. Write the correct list before install so it
+        // doesn't scaffold a broken file and exit 1.
+        if pm == "pnpm" && ensure_pnpm_build_approvals(&self.output_dir) {
+            println!("{}", "  ✓ Wrote pnpm-workspace.yaml (build approvals for esbuild/vue-demi)".bright_green());
+        }
+
         println!();
         println!("{} {}", "▶".bright_cyan(), "Installing dependencies...".bright_white());
         println!("{}", format!("  Running: {} install", pm).bright_black());
@@ -1251,14 +1289,27 @@ export default router
                 Ok(())
             }
             Err(e) => {
-                // pnpm v11 may fail with ERR_PNPM_IGNORED_BUILDS even when onlyBuiltDependencies
-                // is set in package.json if a stale lockfile exists. Auto-recover by deleting
-                // the lockfile and retrying.
+                // pnpm v11 fails with ERR_PNPM_IGNORED_BUILDS when postinstall
+                // builds (esbuild/vue-demi) are un-approved, OR when node_modules
+                // already contains the unbuilt packages (pnpm then reports
+                // "Already up to date", skips the build step, and re-emits the
+                // error). Auto-recover by re-asserting the build approvals and
+                // wiping node_modules + lockfile so the next install runs the
+                // (now-approved) builds from scratch.
                 if pm == "pnpm" {
-                    println!("{}", "  ⚠ Retrying: removing stale lockfile...".bright_yellow());
+                    println!("{}", "  ⚠ Retrying: rebuilding from clean node_modules...".bright_yellow());
                     let lockfile = self.output_dir.join("pnpm-lock.yaml");
                     if lockfile.exists() {
                         let _ = fs::remove_file(&lockfile);
+                    }
+                    let node_modules = self.output_dir.join("node_modules");
+                    if node_modules.exists() {
+                        let _ = fs::remove_dir_all(&node_modules);
+                    }
+                    // Re-assert build approvals in case pnpm clobbered the file
+                    // with a broken scaffold during the failed attempt.
+                    if ensure_pnpm_build_approvals(&self.output_dir) {
+                        println!("{}", "  ✓ Re-wrote pnpm-workspace.yaml".bright_green());
                     }
                     match crate::pkg::install(&self.output_dir) {
                         Ok(_) => {
