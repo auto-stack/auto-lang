@@ -15,11 +15,22 @@ use ratatui_widgets::borders::BorderType;
 use ratatui_widgets::table::{Cell, Row, Table};
 
 use super::buffer_to_ansi;
+use crate::config::IconStyle;
 
 /// Render a `Value::Array` (of objects) as a bordered ANSI table string.
 ///
-/// Returns `None` if the value is not a table-compatible array.
+/// Uses the default icon style (`Plain`). Returns `None` if the value is not a
+/// table-compatible array.
 pub fn render_table(value: &Value, term_width: u16) -> Option<String> {
+    render_table_with(value, term_width, IconStyle::default())
+}
+
+/// Render a table with a specific [`IconStyle`] for file-listing rows.
+pub fn render_table_with(
+    value: &Value,
+    term_width: u16,
+    icons: IconStyle,
+) -> Option<String> {
     let arr = match value {
         Value::Array(a) => a,
         _ => return None,
@@ -44,10 +55,10 @@ pub fn render_table(value: &Value, term_width: u16) -> Option<String> {
     // File listings (have both `name` and `type`): prepend an icon column so
     // directories and files are visually distinct at a glance. The icon is
     // purely presentational — it does not pollute the underlying data, so
-    // `ls | select name` etc. stay clean. (Plan: extensible to per-type icons.)
+    // `ls | select name` etc. stay clean. Skipped when icon style is `Off`.
     let is_file_listing = columns.iter().any(|c| c == "name")
         && columns.iter().any(|c| c == "type");
-    if is_file_listing {
+    if is_file_listing && icons != IconStyle::Off {
         columns.insert(0, "icon".to_string());
     }
 
@@ -92,7 +103,7 @@ pub fn render_table(value: &Value, term_width: u16) -> Option<String> {
                 .map(|(_col_idx, col)| {
                     // Synthetic icon column — not in the data.
                     if col == "icon" {
-                        let icon = file_icon(row_type.as_deref(), &row_name);
+                        let icon = file_icon(row_type.as_deref(), &row_name, icons);
                         let style = cell_style(&row_name, "name", row_type.as_deref());
                         return Cell::from(Text::styled(icon, style));
                     }
@@ -320,30 +331,55 @@ fn cell_style(text: &str, col: &str, row_type: Option<&str>) -> Style {
     Style::default()
 }
 
-/// Pick a leading icon glyph for a file-listing row.
+/// Pick a leading icon glyph for a file-listing row, honoring the configured
+/// [`IconStyle`].
 ///
-/// Currently distinguishes **directory vs file** only (per request). The
-/// `file_icon_by_name` extension point is where per-extension icons can be
-/// added later as one-line match arms.
+/// Currently distinguishes **directory vs file** only. The `file_icon_by_name`
+/// helpers are extension points for per-extension icons later.
 ///
-/// Uses **single-width, non-emoji** glyphs (Geometric Shapes block). Full emoji
-/// (📁/📄) — even with U+FE0E text-presentation — render taller than the cell in
-/// many terminal/font combos, inflating every ls row. These glyphs render at
-/// exactly one cell, normal height, in every terminal. Color (dir → blue, files
-/// → by extension) carries the rest of the distinction.
-fn file_icon(row_type: Option<&str>, name: &str) -> &'static str {
-    match row_type {
-        Some("dir") => "■", // filled square — directory (container)
-        _ => file_icon_by_name(name),
+/// - `Plain`: single-width geometric glyphs (■/□) — render at normal cell
+///   height in every terminal. Color (dir → blue, files → by extension) carries
+///   the rest of the distinction.
+/// - `NerdFont`: Nerd Font PUA glyphs (single-cell, normal height) — requires a
+///   Nerd Font installed in the terminal.
+/// - `Emoji`: standard Unicode emoji (📁/📄) — only use if the terminal renders
+///   emoji at cell height (many don't, inflating row height).
+/// - `Off`: no icon (the caller skips the icon column entirely before reaching
+///   here, but this returns a safe fallback regardless).
+fn file_icon(row_type: Option<&str>, name: &str, icons: IconStyle) -> &'static str {
+    match icons {
+        IconStyle::Emoji => match row_type {
+            Some("dir") => "📁",
+            _ => file_icon_by_name_emoji(name),
+        },
+        IconStyle::NerdFont => match row_type {
+            Some("dir") => "\u{F07C}", // nf-fa-folder
+            _ => file_icon_by_name_nerd(name),
+        },
+        IconStyle::Off => "",
+        IconStyle::Plain => match row_type {
+            Some("dir") => "■", // filled square — directory (container)
+            _ => file_icon_by_name_plain(name),
+        },
     }
 }
 
-/// Per-file-name icon (extension point for future file-type icons).
-fn file_icon_by_name(_name: &str) -> &'static str {
-    // TODO(future): match on extension, e.g.
-    //   png/jpg/gif → "▤", mp4/mkv → "▶", rs/at/py → "▦", zip/tar → "▣", …
-    //   (keep them single-width, non-emoji to avoid row-height inflation)
+/// Per-file-name icon — Plain (extension point).
+fn file_icon_by_name_plain(_name: &str) -> &'static str {
+    // TODO(future): match on extension, e.g. png/jpg → "▦", zip/tar → "▣", …
+    //   (keep single-width, non-emoji to avoid row-height inflation)
     "□" // outline square — regular file
+}
+
+/// Per-file-name icon — Emoji (extension point).
+fn file_icon_by_name_emoji(_name: &str) -> &'static str {
+    "📄"
+}
+
+/// Per-file-name icon — Nerd Font (extension point).
+fn file_icon_by_name_nerd(_name: &str) -> &'static str {
+    // TODO(future): rs → nf-dev-rust, py → nf-dev-python, png → nf-fa-image, …
+    "\u{F15B}" // nf-fa-file
 }
 
 #[cfg(test)]
@@ -439,10 +475,19 @@ mod tests {
 
     #[test]
     fn test_file_icon_dir_vs_file() {
-        // Single-width, non-emoji glyphs (avoid emoji row-height inflation).
-        assert_eq!(file_icon(Some("dir"), "anything"), "■");
-        assert_eq!(file_icon(Some("file"), "readme.md"), "□");
-        assert_eq!(file_icon(None, "readme.md"), "□");
+        use crate::config::IconStyle;
+        // Plain (default): single-width geometric glyphs.
+        assert_eq!(file_icon(Some("dir"), "anything", IconStyle::Plain), "■");
+        assert_eq!(file_icon(Some("file"), "readme.md", IconStyle::Plain), "□");
+        assert_eq!(file_icon(None, "readme.md", IconStyle::Plain), "□");
+        // Emoji.
+        assert_eq!(file_icon(Some("dir"), "x", IconStyle::Emoji), "📁");
+        assert_eq!(file_icon(Some("file"), "x", IconStyle::Emoji), "📄");
+        // Nerd Font (PUA codepoints).
+        assert_eq!(file_icon(Some("dir"), "x", IconStyle::NerdFont), "\u{F07C}");
+        assert_eq!(file_icon(Some("file"), "x", IconStyle::NerdFont), "\u{F15B}");
+        // Off.
+        assert_eq!(file_icon(Some("dir"), "x", IconStyle::Off), "");
     }
 
     #[test]

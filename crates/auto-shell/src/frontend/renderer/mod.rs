@@ -8,4 +8,4 @@ pub mod buffer_to_ansi;
 pub mod table;
 
 pub use buffer_to_ansi::{buffer_to_ansi, buffer_to_plain};
-pub use table::render_table;
+pub use table::{render_table, render_table_with};

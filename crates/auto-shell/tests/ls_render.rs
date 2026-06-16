@@ -9,7 +9,8 @@
 //! sequence). Strip ANSI before asserting on text content; assert on raw output
 //! only for single-glyph icons and presence of specific style codes.
 
-use auto_shell::frontend::renderer::render_table;
+use auto_shell::frontend::renderer::{render_table, render_table_with};
+use auto_shell::config::IconStyle;
 use auto_val::{Array, Obj, Value};
 
 /// Strip CSI ANSI escape sequences (`ESC[ ... letter`) so text-content
@@ -68,4 +69,34 @@ fn directory_name_and_icon_share_blue_style() {
     let arr = Array::from_vec(vec![file_obj("docs", "dir")]);
     let out = render_table(&Value::Array(arr), 60).expect("should render");
     assert!(out.contains("94m"), "expected light-blue styling for dir row:\n{out}");
+}
+
+#[test]
+fn icon_style_off_omits_icon_column() {
+    let arr = Array::from_vec(vec![file_obj("src", "dir"), file_obj("main.rs", "file")]);
+    let out = render_table_with(&Value::Array(arr), 60, IconStyle::Off).expect("should render");
+    // No icon glyphs at all.
+    assert!(!out.contains('■'));
+    assert!(!out.contains('□'));
+    assert!(!out.contains('📁'));
+    // Names still present.
+    let plain = strip_ansi(&out);
+    assert!(plain.contains("src"));
+}
+
+#[test]
+fn icon_style_nerdfont_uses_pua_glyphs() {
+    let arr = Array::from_vec(vec![file_obj("src", "dir"), file_obj("main.rs", "file")]);
+    let out = render_table_with(&Value::Array(arr), 60, IconStyle::NerdFont).expect("should render");
+    // Nerd Font folder (U+F07C) and file (U+F15B) PUA codepoints.
+    assert!(out.contains('\u{F07C}'), "missing nerdfont dir glyph:\n{out}");
+    assert!(out.contains('\u{F15B}'), "missing nerdfont file glyph:\n{out}");
+}
+
+#[test]
+fn icon_style_emoji_uses_standard_emoji() {
+    let arr = Array::from_vec(vec![file_obj("src", "dir"), file_obj("main.rs", "file")]);
+    let out = render_table_with(&Value::Array(arr), 60, IconStyle::Emoji).expect("should render");
+    assert!(out.contains('📁'), "missing emoji dir glyph:\n{out}");
+    assert!(out.contains('📄'), "missing emoji file glyph:\n{out}");
 }

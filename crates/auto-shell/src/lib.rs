@@ -16,6 +16,7 @@ pub use ash_core as core;
 pub mod frontend;
 
 // Legacy modules (will migrate into ash-core or frontend over time)
+pub mod auto_config;
 pub mod cmd;
 pub mod completions;
 pub mod config;

@@ -25,6 +25,41 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// `ls` icon style (Plan 309 / ls UX). Sourced from `~/.config/ash.at`:
+///
+/// ```auto
+/// ls {
+///     icons : "plain"      // ■/□ — single-width, works in every terminal
+///     // icons : "nerdfont" // Nerd Font PUA glyphs — needs a Nerd Font installed
+///     // icons : "emoji"    // 📁/📄 — only if your terminal renders emoji at cell height
+///     // icons : "off"      // no icon column
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum IconStyle {
+    /// Single-width geometric glyphs (■/□). Renders correctly everywhere.
+    #[default]
+    Plain,
+    /// Nerd Font PUA glyphs (single-cell, normal height — requires a Nerd Font).
+    NerdFont,
+    /// Standard Unicode emoji — only if the terminal renders them at cell height.
+    Emoji,
+    /// No icon column.
+    Off,
+}
+
+impl IconStyle {
+    /// Parse a config string into an `IconStyle`. Unknown values fall back to `Plain`.
+    pub fn from_str(s: &str) -> Self {
+        match s.trim().to_lowercase().as_str() {
+            "nerdfont" | "nerd" | "nf" => Self::NerdFont,
+            "emoji" => Self::Emoji,
+            "off" | "none" | "disabled" => Self::Off,
+            _ => Self::Plain,
+        }
+    }
+}
+
 /// Shell behavior configuration loaded from `~/.config/ash.toml`
 #[derive(Debug, Clone)]
 pub struct AshShellConfig {
@@ -42,6 +77,8 @@ pub struct AshShellConfig {
     pub aliases: HashMap<String, String>,
     /// Case-sensitive tab completion
     pub completion_case_sensitive: bool,
+    /// `ls` icon column style (from `~/.config/ash.at`)
+    pub ls_icons: IconStyle,
 }
 
 impl Default for AshShellConfig {
@@ -54,6 +91,7 @@ impl Default for AshShellConfig {
             syntax_highlighting: true,
             aliases: HashMap::new(),
             completion_case_sensitive: false,
+            ls_icons: IconStyle::default(),
         }
     }
 }
@@ -65,12 +103,21 @@ impl AshShellConfig {
             .unwrap_or_else(|| PathBuf::from("."))
             .join("ash.toml");
 
-        if config_path.exists() {
+        let mut config = if config_path.exists() {
             let content = std::fs::read_to_string(&config_path).unwrap_or_default();
             Self::parse(&content)
         } else {
             Self::default()
+        };
+
+        // Overlay Auto-format config (`~/.config/ash.at`) — currently drives `ls.icons`.
+        let auto_cfg = crate::auto_config::load();
+        if let Some(ls) = auto_cfg.get("ls") {
+            if let Some(icons) = ls.get("icons") {
+                config.ls_icons = IconStyle::from_str(icons);
+            }
         }
+        config
     }
 
     /// Parse TOML content into shell config.

@@ -44,6 +44,8 @@ pub struct Shell {
     last_command_args: Vec<String>,      // $@ — args of last command
     last_command_last_arg: Option<String>, // !$ — last arg of last command
     temp_files_for_cleanup: Vec<std::path::PathBuf>, // process substitution temp files
+    /// `ls` icon column style (from `~/.config/ash.at`). Plan 309 / ls UX.
+    ls_icons: crate::config::IconStyle,
 }
 
 impl Shell {
@@ -155,6 +157,7 @@ impl Shell {
             last_command_args: Vec::new(),
             last_command_last_arg: None,
             temp_files_for_cleanup: Vec::new(),
+            ls_icons: crate::config::AshShellConfig::load().ls_icons,
         }
     }
 
@@ -562,9 +565,11 @@ impl Shell {
                 let term_width = crossterm::terminal::size()
                     .map(|(w, _)| w)
                     .unwrap_or(80);
-                if let Some(rendered) =
-                    crate::frontend::renderer::render_table(&atom.value, term_width)
-                {
+                if let Some(rendered) = crate::frontend::renderer::render_table_with(
+                    &atom.value,
+                    term_width,
+                    self.ls_icons,
+                ) {
                     return rendered;
                 }
             }
