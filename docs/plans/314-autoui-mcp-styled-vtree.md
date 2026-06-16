@@ -1,5 +1,7 @@
 # AutoUI MCP "实时样式 VTree" (real-time styled VTree) — Plan 314
 
+> **Status: ✅ COMPLETED** (2026-06-16) — All 7 tasks done + heartbeat follow-up, merged to master. `autoui_vtree` returns the live VTree as Atom (1:1 with rendered VNodes, full box model + computed style + events + source). 92 plan tests pass (`ui::debug` 80, `ui::vtree_atom` 6, `mcp_server::tests_314` 6). Runtime verified on an idle VM app (`012-stopwatch`): no F12 / no interaction needed. rust-mode `bbox`/`box` deferred to Plan 311 P2-B-3 (gracefully omitted).
+
 > **For Claude:** 主战场是 `crates/auto-lang/src/ui/mcp_server.rs`（新工具 + 数据通道）+ 一个新的 `vtree_atom.rs`（VTree→Atom 序列化器）+ `crates/auto-lang/src/ui/iced/renderer.rs`（把 live VTree+cache 拷进 MCP SharedState，解耦 F12 门控）。构建 `cargo build -p auto`；回归 `cargo test -p auto-lang --lib 'ui::'`。手动验证用 `examples/ui/012-stopwatch`（VM 模式，bounds 已可用）。
 
 ## 目标（一句话）
