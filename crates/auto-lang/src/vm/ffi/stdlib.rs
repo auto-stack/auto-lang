@@ -1614,6 +1614,24 @@ fn extract_path(s: String) -> String {
 /// Global handle counter for net resources
 static NET_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+/// Plan 312: Global HTTP route table — (method, path_pattern) → fn_name.
+/// Populated at VM startup from CompiledPackage.api_routes, consulted by
+/// shim_http_server_listen to dispatch requests to VM handler functions.
+/// Format: Vec<(method: String, path: String, fn_name: String)>.
+static HTTP_ROUTES: std::sync::Mutex<Vec<(String, String, String)>> = std::sync::Mutex::new(Vec::new());
+
+/// Plan 312: Register API routes into the global table. Called at VM startup.
+pub fn register_http_routes(routes: Vec<(String, String, String)>) {
+    if let Ok(mut table) = HTTP_ROUTES.lock() {
+        *table = routes;
+    }
+}
+
+/// Plan 312: Get the current HTTP routes (for testing / introspection).
+pub fn get_http_routes() -> Vec<(String, String, String)> {
+    HTTP_ROUTES.lock().map(|t| t.clone()).unwrap_or_default()
+}
+
 // Thread-local storage for TCP listeners
 thread_local! {
     static TCP_LISTENERS: std::cell::RefCell<std::collections::HashMap<u64, StdTcpListener>> =

@@ -631,6 +631,8 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     let result_type = codegen.last_expr_type.clone();
     // Plan 197 Task 9: Extract generic registry before finish() consumes the codegen
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 312: Extract API routes before finish() consumes codegen
+    let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     vm_debug!("DEBUG: Main module exports: {:?}", main_module.exports.keys().collect::<Vec<_>>());
     linker.add_module(main_module);
@@ -688,6 +690,8 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     };
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     // Register standard native shims (fs, str, process, etc.)
     {
@@ -791,6 +795,8 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     let object_keys = codegen.object_keys.clone();
     let object_types = codegen.object_types.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 312: Extract API routes before finish() consumes codegen
+    let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     linker.add_module(main_module);
 
@@ -808,6 +814,8 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     let (mut vm, _output_buffer) = AutoVM::new_with_capture(flash, 8192);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     if let Some(rust_ni) = rust_ffi_native_interface {
         vm.merge_native_interface(&rust_ni);
@@ -1795,6 +1803,8 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     let object_types = codegen.object_types.clone();
     let _result_type = codegen.last_expr_type.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 312: Extract API routes before finish() consumes codegen
+    let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     linker.add_module(main_module);
 
@@ -1835,6 +1845,8 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     let mut vm = AutoVM::new(flash, 1024);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     if let Some(rust_ni) = rust_ffi_native_interface {
         vm.merge_native_interface(&rust_ni);
@@ -2006,6 +2018,8 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     let object_types = codegen.object_types.clone();
     let result_type = codegen.last_expr_type.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 312: Extract API routes before finish() consumes codegen
+    let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     linker.add_module(main_module);
 
@@ -2047,6 +2061,8 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     let (mut vm, output_buffer) = AutoVM::new_with_capture(flash, 8192);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     if let Some(rust_ni) = rust_ffi_native_interface {
         vm.merge_native_interface(&rust_ni);

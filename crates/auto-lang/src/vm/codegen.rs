@@ -116,6 +116,9 @@ pub struct Codegen {
     pub intrinsics: HashMap<String, u16>,
     /// String constant pool
     pub strings: Vec<Vec<u8>>,
+    /// Plan 312: Collected #[api] routes (method, path, fn_name).
+    /// Propagated through CompiledPackage → VirtualFlash → AutoVM for HTTP routing.
+    pub api_routes: Vec<(String, String, String)>,
     /// Object key pool (stores keys for object literals)
     /// Each entry is a Vec of keys for one object literal
     pub object_keys: Vec<Vec<auto_val::ValueKey>>,
@@ -313,6 +316,7 @@ impl Codegen {
         let mut codegen = Self {
             code: Vec::new(),
             exports: HashMap::new(),
+            api_routes: Vec::new(),
             relocs: Vec::new(),
             intrinsics,
             strings: Vec::new(),
@@ -470,6 +474,7 @@ impl Codegen {
         let mut codegen = Self {
             code: Vec::new(),
             exports: HashMap::new(),
+            api_routes: Vec::new(),
             relocs: Vec::new(),
             intrinsics,
             strings: Vec::new(),
@@ -778,6 +783,17 @@ impl Codegen {
                     fn_decl.name, entry_point
                 );
                 self.exports.insert(fn_decl.name.to_string(), entry_point);
+
+                // Plan 312 Phase 2: Collect #[api] routes for HTTP server.
+                // If this function has api_attrs, record (method, path, fn_name)
+                // so the VM can build a route table at startup.
+                if let Some(api) = &fn_decl.api_attrs {
+                    self.api_routes.push((
+                        api.method.clone(),
+                        api.path.clone(),
+                        fn_decl.name.to_string(),
+                    ));
+                }
 
                 // 3. Push new scope for function locals
                 self.push_scope();
@@ -9734,6 +9750,7 @@ impl Codegen {
             object_types: self.object_types,
             exports: self.exports,
             tasks,
+            api_routes: self.api_routes,
         }
     }
 }

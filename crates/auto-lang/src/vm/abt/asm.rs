@@ -88,6 +88,7 @@ pub fn assemble(program: &AbtProgram) -> Result<CompiledPackage, String> {
         object_types: program.object_types.clone(),
         exports,
         tasks: HashMap::new(),
+        api_routes: Vec::new(),
     })
 }
 

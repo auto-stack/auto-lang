@@ -41,6 +41,10 @@ pub struct CompiledPackage {
 
     /// All task definitions with their handler tables
     pub tasks: HashMap<String, TaskDefinition>,
+
+    /// Plan 312: Collected #[api] routes (method, path, fn_name).
+    /// Propagated to AutoVM for HTTP server routing.
+    pub api_routes: Vec<(String, String, String)>,
 }
 
 /// Definition of a compiled task type
