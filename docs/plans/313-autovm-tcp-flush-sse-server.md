@@ -1,7 +1,7 @@
 # Plan 313: AutoVM TCP Flush + 服务端 SSE 推送
 
-> **Status**: Draft
-> **依赖**: Plan 312(`#[api]` + VM HTTP server)—— SSE 分帧挂在 Plan 312 的 HTTP server 请求处理流程上。**建议 Plan 312 完成后再做。**
+> **Status**: ✅ Phase 1-2 Delivered(2026-06-16)
+> **依赖**: Plan 312(`#[api]` + VM HTTP server)—— SSE 分帧挂在 Plan 312 的 HTTP server 请求处理流程上。
 > **方向澄清**: 本任务只补**服务端方向**(生产 SSE)。客户端方向(消费外部 LLM 的 text/event-stream)已实现(`http_stream.*` + `parse_sse`,stdlib.rs:2506-2814)。
 
 ---

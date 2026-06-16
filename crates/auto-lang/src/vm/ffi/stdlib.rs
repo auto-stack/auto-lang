@@ -1677,7 +1677,9 @@ pub fn shim_net_tcp_listener_accept(task: &mut AutoTask, _vm: &AutoVM) -> Result
     });
 
     match stream {
-        Some(stream) => {
+        Some(mut stream) => {
+            // Plan 313: Enable TCP_NODELAY by default for low-latency (SSE)
+            stream.set_nodelay(true).ok();
             let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
             TCP_STREAMS.with(|streams| {
                 streams.borrow_mut().insert(handle, stream);
@@ -1901,6 +1903,40 @@ pub fn shim_net_tcp_stream_set_write_timeout(task: &mut AutoTask, _vm: &AutoVM) 
             stream.set_write_timeout(timeout).ok();
         }
     });
+    Ok(())
+}
+
+/// Plan 313: Flush TCP stream (explicit flush for SSE/low-latency writes).
+/// Note: TcpStream::flush() is a no-op for raw sockets (no user-space buffer),
+/// but this provides API completeness and will be effective if BufWriter is
+/// added later. For real SSE latency improvement, use set_nodelay(true).
+pub fn shim_net_tcp_stream_flush(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let stream_handle: i32 = task.ram.pop_i32();
+    TCP_STREAMS.with(|streams| {
+        let mut streams = streams.borrow_mut();
+        if let Some(stream) = streams.get_mut(&(stream_handle as u64)) {
+            use std::io::Write;
+            stream.flush().ok();
+        }
+    });
+    task.ram.push_i32(0); // success
+    Ok(())
+}
+
+/// Plan 313: Set TCP_NODELAY on a stream (disables Nagle's algorithm).
+/// Critical for SSE: without this, small data packets (like `data: ...\n\n`)
+/// are buffered up to ~40ms before sending. Returns 0 on success, -1 on error.
+pub fn shim_net_tcp_stream_set_nodelay(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let enabled: i32 = task.ram.pop_i32();
+    let stream_handle: i32 = task.ram.pop_i32();
+    let result = TCP_STREAMS.with(|streams| {
+        let mut streams = streams.borrow_mut();
+        match streams.get_mut(&(stream_handle as u64)) {
+            Some(stream) => stream.set_nodelay(enabled != 0).map(|_| 0).unwrap_or(-1),
+            None => -1,
+        }
+    });
+    task.ram.push_i32(result);
     Ok(())
 }
 
@@ -3739,6 +3775,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.net.tcp_stream_close", shim_net_tcp_stream_close);
     natives.register_shim_by_name("auto.net.tcp_stream_set_read_timeout", shim_net_tcp_stream_set_read_timeout);
     natives.register_shim_by_name("auto.net.tcp_stream_set_write_timeout", shim_net_tcp_stream_set_write_timeout);
+    // Plan 313: TCP flush + nodelay for SSE/low-latency writes
+    natives.register_shim_by_name("auto.net.tcp_stream_flush", shim_net_tcp_stream_flush);
+    natives.register_shim_by_name("auto.net.tcp_stream_set_nodelay", shim_net_tcp_stream_set_nodelay);
 
     // HTTP server functions (manual shims — heap objects for server state)
     natives.register_shim_by_name("auto.http.server", shim_http_server);

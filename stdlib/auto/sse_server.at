@@ -1,0 +1,43 @@
+// Plan 313 Phase 2: Server-side SSE (Server-Sent Events) helpers for AutoVM.
+// These are Auto-level wrappers around the raw TCP primitives that format
+// data according to the SSE protocol (text/event-stream).
+//
+// Usage in an HTTP server handler that returns a streaming response:
+//   let stream = Net.tcp_listener_accept(listener)
+//   // ... parse HTTP request ...
+//   sse_write_headers(stream)
+//   for token in tokens {
+//       sse_send_data(stream, token)
+//   }
+//   sse_send_done(stream)
+//   Net.tcp_stream_close(stream)
+
+/// Write SSE response headers to a TCP stream.
+/// Sends: HTTP/1.1 200 OK + Content-Type: text/event-stream + no-cache + keep-alive
+#[vm]
+pub fn sse_write_headers(stream int) {
+    Net.tcp_stream_write_str(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n")
+    Net.tcp_stream_flush(stream)
+}
+
+/// Send a single SSE data event: `data: <payload>\n\n`
+/// Flushes immediately so the client receives it in real-time.
+#[vm]
+pub fn sse_send_data(stream int, data str) {
+    Net.tcp_stream_write_str(stream, "data: " + data + "\n\n")
+    Net.tcp_stream_flush(stream)
+}
+
+/// Send a named SSE event: `event: <event>\ndata: <payload>\n\n`
+#[vm]
+pub fn sse_send_event(stream int, event str, data str) {
+    Net.tcp_stream_write_str(stream, "event: " + event + "\ndata: " + data + "\n\n")
+    Net.tcp_stream_flush(stream)
+}
+
+/// Send SSE termination marker: `data: [DONE]\n\n`
+#[vm]
+pub fn sse_send_done(stream int) {
+    Net.tcp_stream_write_str(stream, "data: [DONE]\n\n")
+    Net.tcp_stream_flush(stream)
+}
