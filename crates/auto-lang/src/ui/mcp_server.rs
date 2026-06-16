@@ -27,11 +27,94 @@ use std::sync::mpsc;
 use serde_json::json;
 
 use crate::aura::{AuraNode, AuraNodeId};
+use crate::ui::debug::{BoxModel, ComputedNode, InspectorCache};
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::mcp_types::{ActionResult, UiActionType};
 use crate::ui::snapshot_builder::SnapshotBuilder;
+use crate::ui::vnode::{VTree, VNodeId};
 use crate::ui::view::View;
+
+// ============================================================================
+// Real-time styled VTree snapshot (Plan 314)
+// ============================================================================
+
+/// 序列化友好的单节点 computed 子集。
+///
+/// 由 F12 的 [`ComputedNode`] 提炼。全字段 `Option`/`Vec`——缺失即省略对应
+/// Atom prop，node 仍输出（不变量：永不因缺数据 panic）。
+#[derive(Debug, Clone, Default)]
+pub struct ComputedNodeLite {
+    /// 测量 border-box `(x, y, w, h)`——旧 `rect` 的超集/等价。
+    pub bounds: Option<(f32, f32, f32, f32)>,
+    /// 完整盒模型（content + padding + border + margin）。
+    pub box_model: Option<BoxModel>,
+    /// computed 样式 k/v（class 解析后）。
+    pub computed_style: Vec<(String, String)>,
+    /// 原始 `class` 字符串（便于 AI 对照源码）。
+    pub raw_class: Option<String>,
+    /// 事件绑定 `(event, handler)`。
+    pub events: Vec<(String, String)>,
+    /// 源码位置 `"app.at:42"`。
+    pub source: Option<String>,
+    /// for 循环上下文 `(var, index, value_repr)`。
+    pub for_context: Option<(String, Option<usize>, String)>,
+}
+
+impl ComputedNodeLite {
+    /// 从 F12 的 [`ComputedNode`] 提炼。
+    pub fn from_computed(c: &ComputedNode) -> Self {
+        Self {
+            bounds: c.bounds.map(|r| (r.x, r.y, r.width, r.height)),
+            box_model: c.box_model.clone(),
+            computed_style: c.computed_style.clone(),
+            raw_class: c.raw_class.clone(),
+            events: c
+                .events
+                .iter()
+                .map(|e| (e.event.clone(), e.handler.clone()))
+                .collect(),
+            source: c.source.clone(),
+            for_context: c
+                .for_context
+                .as_ref()
+                .map(|f| (f.var.clone(), f.index, f.value_repr.clone())),
+        }
+    }
+}
+
+/// 一帧的实时 VTree 快照（Plan 314）。
+///
+/// 由 iced 渲染器每帧（F12 开 或 MCP 激活 时）拷进 [`SharedState`]，供
+/// `autoui_vtree` 工具序列化成 Atom。`VTree` + `InspectorCache` 是 VM 与 rust
+/// 模式共有的数据形状（renderer.rs 的 `live_vtree`/`live_cache`），因此用
+/// 一个自由组装函数即可复用，无需 trait 抽象。
+#[derive(Debug, Clone)]
+pub struct StyledNodeSnapshot {
+    /// 顶层 widget 名（如 "NotesApp"）。
+    pub widget_name: String,
+    /// 实例级 VTree（path-based `VNodeId`，for 循环每次展开唯一）。
+    pub vtree: VTree,
+    /// 按 `VNodeId` 索引的 computed 子集。
+    pub computed: HashMap<VNodeId, ComputedNodeLite>,
+}
+
+impl StyledNodeSnapshot {
+    /// 从 live `VTree` + `InspectorCache` 组装快照。
+    pub fn from_live(widget_name: &str, vtree: &VTree, cache: &InspectorCache) -> Self {
+        let mut computed = HashMap::new();
+        for id in cache.ids() {
+            if let Some(c) = cache.get(id) {
+                computed.insert(id, ComputedNodeLite::from_computed(c));
+            }
+        }
+        Self {
+            widget_name: widget_name.to_string(),
+            vtree: vtree.clone(),
+            computed,
+        }
+    }
+}
 
 // ============================================================================
 // Shared State — Bridge between iced and MCP threads
@@ -63,6 +146,9 @@ pub struct SharedState {
     /// Actual layout bounds from iced renderer (Plan 282).
     /// Key: widget ID like "aura_0", Value: (x, y, width, height)
     layout_bounds: HashMap<String, (f32, f32, f32, f32)>,
+    /// Real-time styled VTree snapshot (Plan 314). Copied each frame by the
+    /// iced renderer when F12 is open or MCP is active.
+    styled_vtree: Option<StyledNodeSnapshot>,
     /// Pending screenshot request from MCP thread (Plan 285).
     screenshot_request: Option<ScreenshotRequest>,
 }
@@ -95,6 +181,7 @@ impl SharedState {
             view_template: None,
             window_size: None,
             layout_bounds: HashMap::new(),
+            styled_vtree: None,
             screenshot_request: None,
         }
     }
@@ -130,6 +217,23 @@ impl SharedState {
     /// Get layout bounds (Plan 282).
     pub fn get_layout_bounds(&self) -> &HashMap<String, (f32, f32, f32, f32)> {
         &self.layout_bounds
+    }
+
+    /// Set the real-time styled VTree snapshot (Plan 314). Called each frame by
+    /// the iced renderer when F12 is open or MCP is active.
+    pub fn set_styled_vtree(&mut self, snap: StyledNodeSnapshot) {
+        self.styled_vtree = Some(snap);
+    }
+
+    /// Take (move out) the latest styled VTree snapshot, if any (Plan 314).
+    /// Leaves `None` behind so a stale frame is never served twice.
+    pub fn take_styled_vtree(&mut self) -> Option<StyledNodeSnapshot> {
+        self.styled_vtree.take()
+    }
+
+    /// Peek (clone) the latest styled VTree snapshot, if any (Plan 314).
+    pub fn clone_styled_vtree(&self) -> Option<StyledNodeSnapshot> {
+        self.styled_vtree.clone()
     }
 
     /// Request a screenshot capture. Returns a Receiver that will receive the
@@ -1343,5 +1447,75 @@ fn find_aura_node<'a>(
             None
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests_314 {
+    use super::*;
+    use crate::ui::debug::{ComputedNode, InspectorCache, Rect};
+    use crate::ui::vnode::{VNode, VNodeKind, VNodeProps};
+
+    fn build_sample_tree() -> (VTree, [VNodeId; 3]) {
+        let mut tree = VTree::new();
+        // root: Column (id 0)
+        let root = VNode::new(VNodeId::new(0), VNodeKind::Column, VNodeProps::Layout { spacing: 8, padding: 4 });
+        tree.set_root(root);
+        // child: Text (id 1)
+        let text = VNode::new(VNodeId::new(1), VNodeKind::Text, VNodeProps::Text { content: "Hello".into() });
+        tree.add_node(text);
+        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
+        // child: Button (id 2)
+        let btn = VNode::new(VNodeId::new(2), VNodeKind::Button, VNodeProps::Button { label: "OK".into() });
+        tree.add_node(btn);
+        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(2));
+        (tree, [VNodeId::new(0), VNodeId::new(1), VNodeId::new(2)])
+    }
+
+    fn fill_cache(ids: [VNodeId; 3]) -> InspectorCache {
+        let mut cache = InspectorCache::new();
+        // root: bounds only
+        let r = cache.get_mut_or_default(ids[0]);
+        r.bounds = Some(Rect { x: 0.0, y: 0.0, width: 100.0, height: 50.0 });
+        // button: bounds + style + event
+        let b = cache.get_mut_or_default(ids[2]);
+        b.bounds = Some(Rect { x: 40.0, y: 10.0, width: 60.0, height: 30.0 });
+        b.computed_style.push(("color".into(), "#ffffff".into()));
+        b.events.push(crate::ui::debug::EventHandlerInfo { event: "press".into(), handler: ".Ok".into() });
+        b.raw_class = Some("btn".into());
+        cache
+    }
+
+    #[test]
+    fn styled_snapshot_from_live_copies_computed_subset() {
+        let (tree, ids) = build_sample_tree();
+        let cache = fill_cache(ids);
+        let snap = StyledNodeSnapshot::from_live("Demo", &tree, &cache);
+
+        assert_eq!(snap.widget_name, "Demo");
+        assert_eq!(snap.vtree.node_count(), 3);
+
+        // root: bounds copied, no style/event
+        let r = snap.computed.get(&ids[0]).expect("root computed present");
+        assert_eq!(r.bounds, Some((0.0, 0.0, 100.0, 50.0)));
+        assert!(r.computed_style.is_empty() && r.events.is_empty());
+
+        // text (id 1): no entry in cache → absent from map (degrades gracefully)
+        assert!(!snap.computed.contains_key(&ids[1]));
+
+        // button: full subset
+        let b = snap.computed.get(&ids[2]).expect("button computed present");
+        assert_eq!(b.bounds, Some((40.0, 10.0, 60.0, 30.0)));
+        assert_eq!(b.computed_style, vec![("color".to_string(), "#ffffff".to_string())]);
+        assert_eq!(b.events, vec![("press".to_string(), ".Ok".to_string())]);
+        assert_eq!(b.raw_class.as_deref(), Some("btn"));
+    }
+
+    #[test]
+    fn computed_lite_from_empty_computed_is_all_none() {
+        let empty = ComputedNode::default();
+        let lite = ComputedNodeLite::from_computed(&empty);
+        assert!(lite.bounds.is_none() && lite.box_model.is_none());
+        assert!(lite.computed_style.is_empty() && lite.events.is_empty());
     }
 }
