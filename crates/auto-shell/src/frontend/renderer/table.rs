@@ -63,7 +63,7 @@ pub fn render_table_with(
     }
 
     // Calculate column widths based on content
-    let col_widths = calculate_column_widths(arr, &columns, term_width);
+    let col_widths = calculate_column_widths(arr, &columns, term_width, icons);
 
     // Build header row
     let header = Row::new(columns.iter().enumerate().map(|(_i, col)| {
@@ -161,7 +161,7 @@ pub fn render_table_with(
                 .padding(Padding::horizontal(1)),
         )
         .header(header)
-        .column_spacing(2);
+        .column_spacing(1);
 
     let mut buf = Buffer::empty(area);
     table.render(area, &mut buf);
@@ -233,18 +233,20 @@ fn calculate_column_widths(
     arr: &auto_val::Array,
     columns: &[String],
     term_width: u16,
+    icons: IconStyle,
 ) -> Vec<u16> {
     let border_overhead = 2 + 2; // left + right border chars
-    let spacing_overhead = (columns.len().saturating_sub(1)) as u16 * 2; // column_spacing=2
+    let spacing_overhead = (columns.len().saturating_sub(1)) as u16 * 1; // column_spacing=1
     let available = term_width.saturating_sub(border_overhead + spacing_overhead);
 
     let mut widths: Vec<u16> = columns
         .iter()
         .map(|col| {
-            // The synthetic icon column holds a double-width glyph; fix its
-            // width and never let the shrink pass below it.
+            // The synthetic icon column: width = glyph width (emoji are 2-wide,
+            // plain/nerdfont glyphs are 1-wide), no trailing padding — kept tight
+            // so Name sits ~1 cell after the icon.
             if col == "icon" {
-                return 2u16;
+                return if icons == IconStyle::Emoji { 2u16 } else { 1u16 };
             }
             let header_width = column_display_name(col).len() as u16;
             let max_data_width = arr.iter().fold(0u16, |max, item| {
