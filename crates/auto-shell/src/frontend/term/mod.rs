@@ -2,6 +2,7 @@
 //!
 //! Handles terminal interaction, prompt rendering, and syntax highlighting.
 
+pub mod color;
 pub mod highlight;
 pub mod prompt;
 
