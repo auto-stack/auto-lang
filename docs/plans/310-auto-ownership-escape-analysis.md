@@ -1,8 +1,8 @@
 # Plan 310: Auto 所有权逃逸分析与智能指针回退
 
-> **Status**: Draft
+> **Status**: ✅ Completed(Phase 0–4 全部交付,2026-06-16)
 > **关系**: 本方案是 [`docs/design/04-memory-ownership.md`](../design/04-memory-ownership.md) "Planned" 区与 "Open Questions" 的落地设计。它**不修改** 04 文档的 view/mut/move trinity 与 Lifetime Levels(L0–L7)定义,而是回答"如何让用户**永远不需要写生命周期标注**,同时生成合法的 Rust 代码"。
-> **范围**: 本文档定稿同步代码逃逸分析引擎(Phase 0–2)。async 捕获、Send 升级、自引用拒绝(Phase 3–4)仅在 §6 留接口,算法另行设计。
+> **范围**: 本文档覆盖同步逃逸分析引擎(Phase 0–2)、async/Send 边界检测(Phase 3)、自引用拒绝(Phase 4)。**任务 4.3(完整 Arc 声明改写)推迟到独立 plan** —— 它需要在所有 Arc 变量使用点插入 `.lock().unwrap()`,是类型系统级改动,超出所有权逃逸分析范围。
 
 ---
 
@@ -272,7 +272,7 @@ transpile_rust (rust.rs:10768)
 
 ## §6 分阶段实施计划
 
-### Phase 0 — 审计 + 地基(P0)
+### Phase 0 — 审计 + 地基(P0)✅ 已完成(commit `935249c9`)
 
 **目标**:确认现状 + 修低悬果 + 接通 warning 通道(不破坏测试)。
 
@@ -285,7 +285,7 @@ transpile_rust (rust.rs:10768)
 
 **验收**:`cargo test -p auto-lang` 全绿;现有 `.expected.rs` 无任何变化。
 
-### Phase 1 — 逃逸分析引擎(P0)
+### Phase 1 — 逃逸分析引擎(P0)✅ 已完成(commit `9893d5da`)
 
 **目标**:实现分析器,对每个函数体跑分析,产 `EscapeMap`。**先只记录,不改变转译输出。**
 
@@ -299,7 +299,7 @@ transpile_rust (rust.rs:10768)
 
 **验收**:分析跑通,EscapeMap 对已知用例(§7 测试组)给出预期 Tier;**转译产物字节不变**(证明未误改)。
 
-### Phase 2 — Tier 1 + 2 接入(P0)
+### Phase 2 — Tier 1 + 2 接入(P0)✅ 已完成(commit `ad701a28`)
 
 **目标**:查表生成 `&T` 或 clone;接通 W0007 warning;新增测试。
 
@@ -316,20 +316,24 @@ transpile_rust (rust.rs:10768)
 - 全部产物 `cargo check` 通过(无 false negative);
 - W0007 warning 在预期位置出现。
 
-### Phase 3 — async + Send(后续设计,本文档只留接口)
+### Phase 3 — async + Send ✅ 已完成(commit `2b5a5889`)
 
-| 任务 | 接口预留 |
-|---|---|
-| 3.1 async 块强制 move 捕获 | 改 [`rust.rs:2365`](../../crates/auto-lang/src/trans/rust.rs) `Expr::AsyncBlock`,生成 `async move {}`;当前实现是"单语句白名单 + 静默跳过其余"([rust.rs:2390-2394](../../crates/auto-lang/src/trans/rust.rs)),需改成显式 move |
-| 3.2 Send 边界检测 | 分析器新增"跨线程使用"标记:`tokio::spawn` / `.go`([rust.rs:2439](../../crates/auto-lang/src/trans/rust.rs)) / channel send 点;标记到的 binding 升 Tier 4 |
-| 3.3 Tier 4 生成 | `Arc::new(Mutex::new(...))` + `Arc::clone` + `.lock().unwrap()` |
+> 原标记"后续设计,本文档只留接口",实际已交付。任务 3.3(完整 Arc 声明)退化为"检测 + warning + clone fallback",完整 Arc 声明改写推迟到独立 plan(见 §8 风险表与文档头部范围说明)。
 
-### Phase 4 — 硬场景(后续设计)
+| 任务 | 接口预留 | 实现状态 |
+|---|---|---|
+| 3.1 async 块强制 move 捕获 | 改 [`rust.rs:2365`](../../crates/auto-lang/src/trans/rust.rs) `Expr::AsyncBlock`,生成 `async move {}`;当前实现是"单语句白名单 + 静默跳过其余"([rust.rs:2390-2394](../../crates/auto-lang/src/trans/rust.rs)),需改成显式 move | ✅ `async move { }` |
+| 3.2 Send 边界检测 | 分析器新增"跨线程使用"标记:`tokio::spawn` / `.go`([rust.rs:2439](../../crates/auto-lang/src/trans/rust.rs)) / channel send 点;标记到的 binding 升 Tier 4 | ✅ `find_send_boundaries` + `escalate_to(ArcMutex)` |
+| 3.3 Tier 4 生成 | `Arc::new(Mutex::new(...))` + `Arc::clone` + `.lock().unwrap()` | ⚠️ 检测 + W0007 + clone fallback(完整声明改写推迟) |
 
-| 任务 | 接口预留 |
-|---|---|
-| 4.1 自引用拒绝 | 检测 struct 字段类型包含自身引用 → 编译错误 + 建议(拆分 / 用 Rc 打破环) |
-| 4.2 Rc 环 Weak 提示 | 已知模式(双向链表、父→子→父)→ W0008 提示用 `Weak<T>` |
+### Phase 4 — 硬场景 ✅ 已完成(commit `cbded30c`)
+
+> 原标记"后续设计",实际已交付(任务 4.1 + 4.2)。任务 4.3 完整 Arc 声明改写推迟到独立 plan。
+
+| 任务 | 接口预留 | 实现状态 |
+|---|---|---|
+| 4.1 自引用拒绝 | 检测 struct 字段类型包含自身引用 → 编译错误 + 建议(拆分 / 用 Rc 打破环) | ✅ `type_contains_self` 直接自引用 → `Err` |
+| 4.2 Rc 环 Weak 提示 | 已知模式(双向链表、父→子→父)→ W0008 提示用 `Weak<T>` | ✅ `type_contains_self_indirect` 间接自引用 → W0008 |
 
 ---
 
@@ -413,3 +417,4 @@ transpile_rust (rust.rs:10768)
 | 日期 | 变更 |
 |---|---|
 | 2026-06-15 | 初稿(Plan 310 立项) |
+| 2026-06-16 | Phase 0–4 全部交付,Status → Completed。各 Phase 标注提交哈希。任务 4.3(完整 Arc 声明)推迟到独立 plan。 |
