@@ -36,6 +36,15 @@
 
 ---
 
+## 延续计划（独立成篇，本路线图指向其详细设计）
+
+- **[Plan 315：Ash 任意命令补全](315-ash-arbitrary-command-completion.md)** —— 把补全从「手写 5 个命令」
+  扩到「任意命令」：三层 spec 目录（user/generated/cache）+ 优先级链 + Help/Man 自动解析 + 运行时
+  probe（零配置）+ `completions generate` 离线生成。直接延续 [Plan 297（补全系统）](297-ash-completion-system.md)。
+  spec 格式为 Auto/Atom（.at）。
+
+---
+
 ## Phase 1: 核心阻塞项（P0 — Daily Driver 硬阻塞）
 
 ### Task 1.1 — 真正的 OS Pipe ✅ 已完成（2026-06-15）
