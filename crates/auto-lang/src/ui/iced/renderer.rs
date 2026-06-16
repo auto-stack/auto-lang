@@ -4210,7 +4210,9 @@ fn layout_inset_row(
 /// content, each layer a colored `container` wrapping the next. Drawn insets
 /// are capped (`cap`) so large declared margins fit the narrow inspector panel;
 /// the numeric rows in the Layout tab hold the exact values.
-fn render_box_model_diagram(bm: &crate::ui::debug::BoxModel) -> iced::Element<'static, IcedMessage> {
+fn render_box_model_diagram<M: Clone + 'static>(
+    bm: &crate::ui::debug::BoxModel,
+) -> iced::Element<'static, M> {
     use iced::widget::container;
     // Cap each side's drawn inset at 28px for display only.
     let cap = |v: f32| v.min(28.0);
@@ -4281,7 +4283,10 @@ fn render_box_model_diagram(bm: &crate::ui::debug::BoxModel) -> iced::Element<'s
 }
 
 /// "布局中…" placeholder for nodes not yet laid out (design §6.1).
-fn layout_pending_panel() -> iced::Element<'static, IcedMessage> {
+///
+/// Generic over the message type (Plan 311): pure text, shared by VM and
+/// rust-mode panels.
+fn layout_pending_panel<M: Clone + 'static>() -> iced::Element<'static, M> {
     text("(布局中…)")
         .size(11)
         .color(iced::Color::from_rgb(0.55, 0.55, 0.55))
@@ -4347,7 +4352,12 @@ where
 }
 
 /// One `key: value` row, used by the Props / Computed tabs.
-fn kv_row(key: &str, value: String) -> iced::Element<'static, IcedMessage> {
+///
+/// Generic over the message type (Plan 311): non-interactive text/row only, so
+/// the VM inspector (M = `IcedMessage`) and the rust-mode DevTools panel
+/// (M = `WrapperMsg<C>`) share the same helper. M resolves by inference at each
+/// call site.
+fn kv_row<M: Clone + 'static>(key: &str, value: String) -> iced::Element<'static, M> {
     row![
         text(format!("{}:", key))
             .size(10)
@@ -4792,7 +4802,10 @@ fn render_inspector_computed_tab(state: &DynamicState) -> iced::Element<'static,
 }
 
 /// Generic greyed placeholder body for not-yet-implemented sub-tabs.
-fn placeholder_panel(msg: &str) -> iced::Element<'static, IcedMessage> {
+///
+/// Generic over the message type (Plan 311): pure text, shared by VM and
+/// rust-mode panels.
+fn placeholder_panel<M: Clone + 'static>(msg: &str) -> iced::Element<'static, M> {
     text(msg.to_string())
         .size(11)
         .color(iced::Color::from_rgb(0.55, 0.55, 0.55))
@@ -6068,6 +6081,1012 @@ where
     component.view_iced()
 }
 
+// =====================================================================
+// Plan 311: F12 DevTools for rust mode (render=rust) — MVP
+// =====================================================================
+//
+// VM mode builds its DevTools directly inside `DynamicState` / `dynamic_view`
+// / `update` (AuraNode/debug_id_map/span_map coupled). Rust mode (`run_app`)
+// has none of that: `Component::subscription()` defaults to `none()`, so F12
+// never reaches a handler, and there is no inspector state, VTree capture, or
+// panel at all.
+//
+// This module adds a self-contained DevTools layer for rust mode by WRAPPING
+// the user's `Component` in a `DevToolsWrapper<C>`:
+//
+//   - It lifts the inner `View<C::Msg>` to `View<WrapperMsg<C>>` via
+//     `View::map_msg` (recursively remaps every handler), so the app keeps
+//     working while the wrapper also handles DevTools messages.
+//   - It builds the live VTree via the (pure, span-agnostic)
+//     `view_to_vtree_with_paths(.., |_| None)` and walks the View to fill an
+//     `InspectorCache` with computed style + declared box insets per node.
+//   - It renders a DevTools panel (element tree + collapsible
+//     盒模型/Computed/Properties sections) reusing the generic leaf helpers
+//     (`kv_row`, `render_box_model_diagram`, `placeholder_panel`,
+//     `layout_pending_panel`) and the pure style extractors
+//     (`debug_style_insets`, `debug_style_props`).
+//
+// MVP scope (see docs/plans/311-rust-mode-devtools-mvp.md):
+//   - Tree-selection only (click a tree node to inspect); NO canvas hover/click
+//     overlay (that needs the AuraNode-coupled `wrap_debug` machinery rust mode
+//     does not have).
+//   - No measured layout bounds yet (bounds collection needs per-widget iced
+//     ids assigned during conversion, deferred); the box model therefore shows
+//     declared padding/border/margin only. Measured bounds + canvas pick are
+//     documented follow-ups.
+
+use crate::ui::vnode_converter::view_to_vtree_with_paths;
+
+/// DevTools-only state for rust mode (Plan 311). A strict subset of
+/// `DynamicState`'s DevTools fields, duplicated (not extracted) so the working
+/// VM path is untouched. Interior-mutable where the iced `view` callback must
+/// mutate during render.
+struct DevToolsState {
+    debug_mode: bool,
+    devtools_open: std::cell::RefCell<bool>,
+    selected_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
+    hovered_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
+    inspector_subtab: std::cell::RefCell<InspectorSubTab>,
+    inspector_sections: std::cell::RefCell<InspectorSections>,
+    live_vtree: std::cell::RefCell<Option<crate::ui::vnode::VTree>>,
+    live_cache: std::cell::RefCell<Option<crate::ui::debug::InspectorCache>>,
+    window_size: std::cell::RefCell<iced::Size>,
+    devtools_panel_width: std::cell::RefCell<f32>,
+    inspector_split_ratio: std::cell::RefCell<f32>,
+    dragging_inner_divider: std::cell::RefCell<bool>,
+}
+
+impl Default for DevToolsState {
+    fn default() -> Self {
+        DevToolsState {
+            debug_mode: false,
+            devtools_open: std::cell::RefCell::new(false),
+            selected_vnode: std::cell::RefCell::new(None),
+            hovered_vnode: std::cell::RefCell::new(None),
+            inspector_subtab: std::cell::RefCell::new(InspectorSubTab::default()),
+            inspector_sections: std::cell::RefCell::new(InspectorSections::default()),
+            live_vtree: std::cell::RefCell::new(None),
+            live_cache: std::cell::RefCell::new(None),
+            window_size: std::cell::RefCell::new(iced::Size::new(800.0, 600.0)),
+            devtools_panel_width: std::cell::RefCell::new(420.0),
+            inspector_split_ratio: std::cell::RefCell::new(0.42),
+            dragging_inner_divider: std::cell::RefCell::new(false),
+        }
+    }
+}
+
+/// Shared `DEBUG_*` string dispatch for both VM and rust DevTools (Plan 311
+/// Task 2). Operates on the rust-side `DevToolsState`; VM keeps its inline copy
+/// (it additionally touches VM-only fields like source spans). Returns whether
+/// the UI must rebuild.
+///
+/// The event string may carry a `|`-delimited payload (e.g.
+/// `__mouse_moved|123,456`); prefix messages (`__vnode_select_42`,
+/// `__inspector_section_box`) append their argument directly with no pipe.
+fn apply_debug_event(dt: &mut DevToolsState, raw: &str) -> bool {
+    let (event, payload) = match raw.split_once('|') {
+        Some((e, p)) => (e, p),
+        None => (raw, ""),
+    };
+
+    if event == DEBUG_TOGGLE_EVENT {
+        dt.debug_mode = !dt.debug_mode;
+        let open = dt.debug_mode;
+        *dt.devtools_open.borrow_mut() = open;
+        if !open {
+            *dt.selected_vnode.borrow_mut() = None;
+        }
+        return true;
+    }
+
+    if let Some(id_str) = event.strip_prefix(DEBUG_SELECT_VNODE_PREFIX) {
+        if let Ok(value) = id_str.parse::<u64>() {
+            let vnode_id = crate::ui::vnode::VNodeId::new(value);
+            if *dt.selected_vnode.borrow() == Some(vnode_id) {
+                *dt.selected_vnode.borrow_mut() = None;
+            } else {
+                *dt.selected_vnode.borrow_mut() = Some(vnode_id);
+            }
+        }
+        return true;
+    }
+
+    if let Some(tail) = event.strip_prefix(DEBUG_INSPECTOR_SUBTAB_PREFIX) {
+        if let Some(sub) = InspectorSubTab::from_message_tail(tail) {
+            *dt.inspector_subtab.borrow_mut() = sub;
+        }
+        return true;
+    }
+
+    if let Some(tail) = event.strip_prefix(DEBUG_INSPECTOR_SECTION_PREFIX) {
+        let mut s = dt.inspector_sections.borrow_mut();
+        match tail {
+            "box" => s.box_collapsed = !s.box_collapsed,
+            "computed" => s.computed_collapsed = !s.computed_collapsed,
+            "props" => s.props_collapsed = !s.props_collapsed,
+            _ => {}
+        }
+        return true;
+    }
+
+    match event {
+        "__close_devtools" => {
+            *dt.devtools_open.borrow_mut() = false;
+            dt.debug_mode = false;
+            return true;
+        }
+        "__inner_divider_press" => {
+            *dt.dragging_inner_divider.borrow_mut() = true;
+            return true;
+        }
+        "__mouse_moved" => {
+            if *dt.dragging_inner_divider.borrow() {
+                let mut it = payload.split(',');
+                let mx: f32 = it.next().unwrap_or("0").parse().unwrap_or(0.0);
+                let win_w = dt.window_size.borrow().width;
+                let panel_w = (*dt.devtools_panel_width.borrow()).max(1.0);
+                let panel_left = win_w - panel_w;
+                let ratio = ((mx - panel_left) / panel_w).clamp(0.1, 0.9);
+                *dt.inspector_split_ratio.borrow_mut() = ratio;
+                return true;
+            }
+            return false;
+        }
+        "__mouse_released" => {
+            if *dt.dragging_inner_divider.borrow() {
+                *dt.dragging_inner_divider.borrow_mut() = false;
+                return true;
+            }
+            return false;
+        }
+        "__window_resized" => {
+            if let Some((w, h)) = payload.split_once('x') {
+                let w: f32 = w.parse().unwrap_or(800.0);
+                let h: f32 = h.parse().unwrap_or(600.0);
+                *dt.window_size.borrow_mut() = iced::Size::new(w, h);
+                let max_pw = w * 0.8;
+                if *dt.devtools_panel_width.borrow() > max_pw {
+                    *dt.devtools_panel_width.borrow_mut() = max_pw;
+                }
+                if dt.debug_mode {
+                    return true;
+                }
+            }
+            return false;
+        }
+        _ => false,
+    }
+}
+
+/// Borrow the `style` field from a `View` variant (Plan 311). All widget
+/// variants carry `style: Option<Style>`; this returns a reference (or `None`
+/// for `Empty` / unknown variants).
+fn view_style_ref<M: Clone + Debug>(view: &AbstractView<M>) -> Option<&Style> {
+    match view {
+        AbstractView::Text { style, .. }
+        | AbstractView::Button { style, .. }
+        | AbstractView::Row { style, .. }
+        | AbstractView::Column { style, .. }
+        | AbstractView::Input { style, .. }
+        | AbstractView::Textarea { style, .. }
+        | AbstractView::Checkbox { style, .. }
+        | AbstractView::Container { style, .. }
+        | AbstractView::Scrollable { style, .. }
+        | AbstractView::Radio { style, .. }
+        | AbstractView::Select { style, .. }
+        | AbstractView::List { style, .. }
+        | AbstractView::Table { style, .. }
+        | AbstractView::Slider { style, .. }
+        | AbstractView::ProgressBar { style, .. }
+        | AbstractView::Accordion { style, .. }
+        | AbstractView::Sidebar { style, .. }
+        | AbstractView::Tabs { style, .. }
+        | AbstractView::NavigationRail { style, .. }
+        | AbstractView::Image { style, .. } => style.as_ref(),
+        _ => None,
+    }
+}
+
+/// Collect child views of `view` by reference, in the SAME order
+/// `view_to_vtree_with_paths` descends (so the `path` → `VNodeId` derivation
+/// aligns with the live VTree). Mirrors `extract_children` in
+/// `vnode_converter.rs`.
+fn view_children<M: Clone + Debug>(view: &AbstractView<M>) -> Vec<&AbstractView<M>> {
+    match view {
+        AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => {
+            children.iter().collect()
+        }
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
+            vec![child.as_ref()]
+        }
+        AbstractView::List { items, .. } => items.iter().collect(),
+        AbstractView::Table { headers, rows, .. } => {
+            let mut v: Vec<&AbstractView<M>> = headers.iter().collect();
+            for row in rows {
+                for cell in row {
+                    v.push(cell);
+                }
+            }
+            v
+        }
+        AbstractView::Tabs { contents, .. } => contents.iter().collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Walk the live View and fill `InspectorCache` with computed style + declared
+/// box insets per node (Plan 311 Task 4, simplified: no measured bounds — those
+/// need per-widget iced ids, deferred). Keyed by `VNodeId = id_from_path(path)`,
+/// identical to the scheme `view_to_vtree_with_paths` uses, so cache entries
+/// line up with VTree nodes and the tree selection.
+fn fill_cache<M: Clone + Debug>(dt: &DevToolsState, view: &AbstractView<M>) {
+    let mut cache_guard = dt.live_cache.borrow_mut();
+    let cache = cache_guard.get_or_insert_with(crate::ui::debug::InspectorCache::new);
+    cache.clear();
+    let mut path: Vec<u16> = Vec::new();
+    fill_cache_rec(view, &mut path, cache);
+}
+
+fn fill_cache_rec<M: Clone + Debug>(
+    view: &AbstractView<M>,
+    path: &mut Vec<u16>,
+    cache: &mut crate::ui::debug::InspectorCache,
+) {
+    let id = crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(path));
+    let style = view_style_ref(view);
+    let node = cache.get_mut_or_default(id);
+    let (padding, border, margin) = debug_style_insets(style);
+    if !padding.is_zero() || !border.is_zero() || !margin.is_zero() {
+        node.box_model = Some(crate::ui::debug::BoxModel {
+            // Measured content rect deferred (needs iced widget ids); show the
+            // declared inset layers only.
+            content: crate::ui::debug::Rect::new(0.0, 0.0, 0.0, 0.0),
+            padding,
+            border,
+            margin,
+        });
+    }
+    node.computed_style = debug_style_props(style);
+
+    for (i, child) in view_children(view).into_iter().enumerate() {
+        path.push(i as u16);
+        fill_cache_rec(child, path, cache);
+        path.pop();
+    }
+}
+
+/// Mutable counterpart of [`view_children`]: child views by `&mut` reference, in
+/// the SAME canonical order (so `VNodeId = id_from_path(path)` matches the live
+/// VTree). Used by [`apply_highlight_mut`] to inject the canvas highlight without
+/// touching `into_iced`.
+fn view_children_mut<M: Clone + Debug>(
+    view: &mut AbstractView<M>,
+) -> Vec<&mut AbstractView<M>> {
+    match view {
+        AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => {
+            children.iter_mut().collect()
+        }
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
+            vec![child.as_mut()]
+        }
+        AbstractView::List { items, .. } => items.iter_mut().collect(),
+        AbstractView::Table { headers, rows, .. } => {
+            let mut v: Vec<&mut AbstractView<M>> = headers.iter_mut().collect();
+            for row in rows {
+                for cell in row {
+                    v.push(cell);
+                }
+            }
+            v
+        }
+        AbstractView::Tabs { contents, .. } => contents.iter_mut().collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The orange selection-outline style (Plan 311 P2-B-2). Mirrors the VM
+/// `wrap_debug` selected border (`renderer.rs:5503`, `rgb(1.0,0.6,0.2)`). Built
+/// via the same AURA class path the rest of the renderer uses for borders, so
+/// `apply_container_style` → `build_container_style` renders it.
+fn rust_highlight_style() -> Style {
+    // "border-2" → BorderWidth(2.0); "border-orange-500" → BorderColor. Both
+    // tokens are exercised by class-parser tests (class.rs:1302-1303).
+    Style::parse("border-2 border-orange-500").unwrap_or_default()
+}
+
+/// Wrap the selected VNode's view in an orange-bordered `Container` so
+/// `into_iced` draws the canvas selection outline (Plan 311 P2-B-2). Walks with
+/// the SAME path scheme as `fill_cache_rec` / `view_to_vtree_with_paths`, so the
+/// wrapped node is exactly the one the element-tree selection points at. The
+/// `Container` adds no padding / fill, so it shrink-wraps the widget like VM's
+/// raw `container(el)` border. Purely visual: the live VTree and inspector cache
+/// are built from separate (un-mutated) clones, so this never perturbs them.
+fn apply_highlight_mut<M: Clone + Debug>(
+    view: &mut AbstractView<M>,
+    selected: Option<crate::ui::vnode::VNodeId>,
+) {
+    let Some(target) = selected else {
+        return;
+    };
+    apply_highlight_mut_rec(view, &mut Vec::new(), target);
+}
+
+fn apply_highlight_mut_rec<M: Clone + Debug>(
+    view: &mut AbstractView<M>,
+    path: &mut Vec<u16>,
+    target: crate::ui::vnode::VNodeId,
+) -> bool {
+    let vid = crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(path));
+    if vid == target {
+        let wrapped = AbstractView::Container {
+            child: Box::new(std::mem::replace(view, AbstractView::Empty)),
+            padding: 0,
+            width: None,
+            height: None,
+            center_x: false,
+            center_y: false,
+            style: Some(rust_highlight_style()),
+        };
+        *view = wrapped;
+        return true;
+    }
+    for (i, child) in view_children_mut(view).into_iter().enumerate() {
+        path.push(i as u16);
+        let done = apply_highlight_mut_rec(child, path, target);
+        path.pop();
+        if done {
+            return true;
+        }
+    }
+    false
+}
+
+/// Message envelope for the rust-mode DevTools wrapper (Plan 311).
+/// `Inner` carries the user component's message; `Debug` carries a
+/// `DEBUG_*`-convention event string (optionally `|payload`), dispatched by
+/// [`apply_debug_event`]. The `Debug` variant mirrors `IcedMessage.event` so
+/// the same prefix-parsing logic is reused.
+enum WrapperMsg<C: Component + 'static> {
+    Inner(<C as Component>::Msg),
+    Debug(String),
+}
+
+impl<C: Component + 'static> Clone for WrapperMsg<C> {
+    fn clone(&self) -> Self {
+        match self {
+            WrapperMsg::Inner(m) => WrapperMsg::Inner(m.clone()),
+            WrapperMsg::Debug(s) => WrapperMsg::Debug(s.clone()),
+        }
+    }
+}
+
+impl<C: Component + 'static> Debug for WrapperMsg<C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WrapperMsg::Inner(m) => f.debug_tuple("Inner").field(m).finish(),
+            WrapperMsg::Debug(s) => f.debug_tuple("Debug").field(s).finish(),
+        }
+    }
+}
+
+/// Wraps a user `Component` with a rust-mode F12 DevTools layer (Plan 311).
+pub struct DevToolsWrapper<C: Component + 'static> {
+    inner: C,
+    dt: DevToolsState,
+}
+
+impl<C: Component + Default> Default for DevToolsWrapper<C> {
+    fn default() -> Self {
+        DevToolsWrapper {
+            inner: C::default(),
+            dt: DevToolsState::default(),
+        }
+    }
+}
+
+impl<C: Component + 'static> DevToolsWrapper<C> {
+    /// Construct from a pre-built inner component (Plan 311 P2-A: async-init
+    /// path, where `C` is created by a boot closure rather than `Default`).
+    fn from_inner(inner: C) -> Self {
+        DevToolsWrapper {
+            inner,
+            dt: DevToolsState::default(),
+        }
+    }
+
+    /// Build the full element: app (lifted to `WrapperMsg`) + DevTools panel
+    /// when open. Also refreshes the live VTree + inspector cache for this
+    /// frame.
+    fn view_element(&self) -> iced::Element<'static, WrapperMsg<C>> {
+        // Build the live VTree from the inner view (rust mode: no source spans).
+        let tree = view_to_vtree_with_paths(
+            self.inner.view().map_msg(WrapperMsg::<C>::Inner),
+            |_| None,
+        );
+        *self.dt.live_vtree.borrow_mut() = Some(tree);
+
+        // Walk the view again to fill the inspector cache (style + insets).
+        let mut app_view = self.inner.view().map_msg(WrapperMsg::<C>::Inner);
+        fill_cache(&self.dt, &app_view);
+
+        // P2-B-2: when the panel is open and a node is selected, wrap that node
+        // in an orange-bordered Container so into_iced draws the canvas selection
+        // outline. Done AFTER fill_cache (cache reflects the real tree, not the
+        // highlight wrapper) and on a fresh per-frame clone (no accumulation).
+        if *self.dt.devtools_open.borrow() {
+            apply_highlight_mut(&mut app_view, self.dt.selected_vnode.borrow().clone());
+        }
+
+        let app_el: iced::Element<'static, WrapperMsg<C>> = app_view.into_iced();
+
+        if *self.dt.devtools_open.borrow() {
+            let panel = rdt_devtools_panel::<C>(&self.dt);
+            row![app_el, panel]
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .into()
+        } else {
+            app_el
+        }
+    }
+}
+
+/// iced `view` callback for `run_app_devtools`.
+fn devtools_view<C: Component + 'static>(w: &DevToolsWrapper<C>) -> iced::Element<'_, WrapperMsg<C>> {
+    w.view_element()
+}
+
+/// iced `update` callback for `run_app_devtools`.
+fn devtools_update<C: Component + 'static>(
+    w: &mut DevToolsWrapper<C>,
+    msg: WrapperMsg<C>,
+) -> iced::Task<WrapperMsg<C>> {
+    match msg {
+        WrapperMsg::Inner(m) => w.inner.on(m),
+        WrapperMsg::Debug(s) => {
+            apply_debug_event(&mut w.dt, &s);
+        }
+    }
+    iced::Task::none()
+}
+
+/// iced `subscription` callback for `run_app_devtools`: forwards the inner
+/// component's subscription (lifted to `WrapperMsg`) plus F12 + window events.
+fn devtools_subscription<C: Component + 'static>(
+    w: &DevToolsWrapper<C>,
+) -> iced::Subscription<WrapperMsg<C>>
+where
+    C::Msg: Send + 'static,
+{
+    let inner = w.inner.subscription().map(WrapperMsg::Inner);
+    let f12 = iced::event::listen_with(|event, _status, _window_id| {
+        if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = event {
+            if matches!(
+                key,
+                iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)
+            ) {
+                return Some(WrapperMsg::<C>::Debug(DEBUG_TOGGLE_EVENT.to_string()));
+            }
+        }
+        None
+    });
+    let win = iced::event::listen_with(|event, _status, _window_id| match event {
+        iced::Event::Window(iced::window::Event::Resized(size)) => Some(
+            WrapperMsg::<C>::Debug(format!("__window_resized|{}x{}", size.width, size.height)),
+        ),
+        iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => Some(
+            WrapperMsg::<C>::Debug(format!("__mouse_moved|{},{}", position.x, position.y)),
+        ),
+        iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => {
+            Some(WrapperMsg::<C>::Debug("__mouse_released".to_string()))
+        }
+        _ => None,
+    });
+    iced::Subscription::batch(vec![inner, f12, win])
+}
+
+/// Run a rust-mode Component with the F12 DevTools layer (Plan 311).
+///
+/// Mirrors [`run_app`] but instantiates `DevToolsWrapper::<C>` so F12 opens the
+/// inspector. Generated `main.rs` (render=rust) calls this instead of
+/// [`run_app`].
+pub fn run_app_devtools<C>() -> AppResult<()>
+where
+    C: Component + Default + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    iced::application(
+        DevToolsWrapper::<C>::default,
+        devtools_update,
+        devtools_view,
+    )
+    .subscription(devtools_subscription)
+    .window_size(iced::Size::new(800.0, 600.0))
+    .run()
+    .map_err(|e| e.into())
+}
+
+/// Run a rust-mode Component — built by a boot closure — with the F12 DevTools
+/// layer (Plan 311 P2-A). The async-init counterpart of [`run_app_devtools`]:
+/// covers apps whose `main.rs` codegens to `run_app_with_task` (e.g. any app
+/// with an `__InitLoaded` init API, like `015-notes`).
+///
+/// Unlike [`run_app_devtools`], this does NOT require `C: Default` — the boot
+/// closure creates the state (enabling async initialization patterns). The
+/// boot `Task<C::Msg>` is lifted to `Task<WrapperMsg<C>>` so the initial
+/// background load still fires.
+pub fn run_app_with_task_devtools<C>(
+    boot: impl Fn() -> (C, iced::Task<C::Msg>) + 'static,
+) -> AppResult<()>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    iced::application(
+        move || {
+            let (inner, task) = boot();
+            (DevToolsWrapper::from_inner(inner), task.map(WrapperMsg::<C>::Inner))
+        },
+        devtools_update,
+        devtools_view,
+    )
+    .subscription(devtools_subscription)
+    .window_size(iced::Size::new(1600.0, 900.0))
+    .run()
+    .map_err(|e| e.into())
+}
+
+// ---------------------------------------------------------------------
+// rust-mode panel renderers (emit `WrapperMsg<C>`; MVP, tree-selection only)
+// ---------------------------------------------------------------------
+
+/// Recursive element-tree renderer for the live VTree (rust mode). Mirrors
+/// [`render_vtree_into`] but emits `WrapperMsg::Debug("__vnode_select_<id>")`.
+fn rdt_render_vtree<C: Component + 'static>(
+    tree: &crate::ui::vnode::VTree,
+    node: &crate::ui::vnode::VNode,
+    depth: usize,
+    selected: &Option<crate::ui::vnode::VNodeId>,
+    rows: &mut Vec<iced::Element<'static, WrapperMsg<C>>>,
+) {
+    let indent = "  ".repeat(depth);
+    let is_selected = *selected == Some(node.id);
+    let has_children = !node.children.is_empty();
+    let prefix = if has_children { "▼ " } else { "  " };
+    let summary = vnode_summary(node);
+    let label = if summary.is_empty() {
+        format!("{}{}{}", indent, prefix, node.kind)
+    } else {
+        format!("{}{}{} {}", indent, prefix, node.kind, summary)
+    };
+    let text_color = if is_selected {
+        iced::Color::from_rgb(0.85, 0.4, 0.1)
+    } else if has_children {
+        iced::Color::from_rgb(0.2, 0.4, 0.7)
+    } else {
+        iced::Color::from_rgb(0.4, 0.4, 0.4)
+    };
+
+    let click_area = mouse_area(
+        container(text(label).size(10).color(text_color))
+            .style(move |_: &iced::Theme| {
+                if is_selected {
+                    container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(
+                            0.95, 0.85, 0.7, 0.6,
+                        ))),
+                        ..Default::default()
+                    }
+                } else {
+                    container::Style::default()
+                }
+            })
+            .padding(iced::Padding::new(2.0)),
+    )
+    .on_press(WrapperMsg::<C>::Debug(format!(
+        "{}{}",
+        DEBUG_SELECT_VNODE_PREFIX,
+        node.id.as_u64()
+    )));
+    rows.push(click_area.into());
+
+    if let Some(children) = tree.children(node.id) {
+        for child in children {
+            rdt_render_vtree::<C>(tree, child, depth + 1, selected, rows);
+        }
+    }
+}
+
+/// Left pane: the live element tree.
+fn rdt_elements_tab<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+    let vtree = dt.live_vtree.borrow().clone();
+    let selected = dt.selected_vnode.borrow().clone();
+    match vtree {
+        Some(tree) => {
+            let mut rows: Vec<iced::Element<'static, WrapperMsg<C>>> = Vec::new();
+            if let Some(root) = tree.root() {
+                rdt_render_vtree::<C>(&tree, root, 0, &selected, &mut rows);
+            }
+            let mut col = column![].spacing(1);
+            for r in rows {
+                col = col.push(r);
+            }
+            col.into()
+        }
+        None => column![text("组件树不可用")
+            .size(11)
+            .color(iced::Color::from_rgb(0.5, 0.5, 0.5))]
+        .into(),
+    }
+}
+
+/// Helper: clone the selected `VNode` out of the live VTree, or run `on_missing`.
+fn rdt_with_selected<C: Component + 'static, F>(
+    dt: &DevToolsState,
+    on_missing: &str,
+    f: F,
+) -> iced::Element<'static, WrapperMsg<C>>
+where
+    F: FnOnce(&crate::ui::vnode::VNode) -> iced::Element<'static, WrapperMsg<C>>,
+{
+    let vtree = dt.live_vtree.borrow().clone();
+    let selected = dt.selected_vnode.borrow().clone();
+    match (vtree, selected) {
+        (Some(tree), Some(id)) => match tree.get(id) {
+            Some(node) => f(node),
+            None => placeholder_panel::<WrapperMsg<C>>(on_missing),
+        },
+        _ => placeholder_panel::<WrapperMsg<C>>(on_missing),
+    }
+}
+
+/// Title row for the right pane: the selected node's kind + a hint.
+fn rdt_selected_title<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+    let selected = dt.selected_vnode.borrow().clone();
+    let vtree = dt.live_vtree.borrow().clone();
+    let label = match (vtree.as_ref(), selected) {
+        (Some(tree), Some(id)) => match tree.get(id) {
+            Some(node) => {
+                if !node.label.is_empty() {
+                    node.label.clone()
+                } else {
+                    format!("{:?}", node.kind)
+                }
+            }
+            None => "无选中元素".to_string(),
+        },
+        _ => "无选中元素 — 点击左侧元素树".to_string(),
+    };
+    text(label)
+        .size(11)
+        .color(iced::Color::from_rgb(0.2, 0.2, 0.2))
+        .into()
+}
+
+/// 盒模型 section body (rust mode): declared inset diagram, or pending.
+fn rdt_layout_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+    rdt_with_selected::<C, _>(dt, "无选中元素", |node| {
+        let cache = dt.live_cache.borrow().clone();
+        let Some(cache) = cache else {
+            return layout_pending_panel::<WrapperMsg<C>>();
+        };
+        let Some(computed) = cache.get(node.id) else {
+            return layout_pending_panel::<WrapperMsg<C>>();
+        };
+        let bm = match &computed.box_model {
+            Some(bm) => bm.clone(),
+            None => {
+                // No declared insets: show a minimal note instead of an empty
+                // diagram.
+                return text("(本节点无声明内边距)")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.6, 0.6, 0.6))
+                    .into();
+            }
+        };
+        let mut col = column![].spacing(4);
+        col = col.push(render_box_model_diagram::<WrapperMsg<C>>(&bm));
+        // Declared insets summary (measured content rect deferred — MVP).
+        col = col.push(kv_row::<WrapperMsg<C>>(
+            "content",
+            "(尺寸待测量)".to_string(),
+        ));
+        col = col.push(kv_row::<WrapperMsg<C>>(
+            "padding",
+            format_insets(&bm.padding),
+        ));
+        col = col.push(kv_row::<WrapperMsg<C>>(
+            "border",
+            format_insets(&bm.border),
+        ));
+        col = col.push(kv_row::<WrapperMsg<C>>(
+            "margin",
+            format_insets(&bm.margin),
+        ));
+        col.into()
+    })
+}
+
+/// Computed section body (rust mode): layout props + computed style k/v.
+fn rdt_computed_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+    rdt_with_selected::<C, _>(dt, "无选中元素", |node| {
+        let mut col = column![].spacing(3);
+        use crate::ui::vnode::VNodeProps;
+        match &node.props {
+            VNodeProps::Layout { spacing, padding } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("spacing", spacing.to_string()));
+                col = col.push(kv_row::<WrapperMsg<C>>("padding", padding.to_string()));
+            }
+            VNodeProps::Container {
+                padding,
+                center_x,
+                center_y,
+            } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("padding", padding.to_string()));
+                col = col.push(kv_row::<WrapperMsg<C>>("center_x", center_x.to_string()));
+                col = col.push(kv_row::<WrapperMsg<C>>("center_y", center_y.to_string()));
+            }
+            VNodeProps::List { spacing } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("spacing", spacing.to_string()));
+            }
+            _ => {}
+        }
+        let cache = dt.live_cache.borrow().clone();
+        let mut have = false;
+        if let Some(cache) = cache {
+            if let Some(computed) = cache.get(node.id) {
+                for (k, v) in &computed.computed_style {
+                    col = col.push(kv_row::<WrapperMsg<C>>(k.as_str(), v.clone()));
+                    have = true;
+                }
+            }
+        }
+        if !have {
+            col = col.push(
+                text("(无 computed 样式)")
+                    .size(9)
+                    .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+            );
+        }
+        col.into()
+    })
+}
+
+/// Properties section body (rust mode): the selected VNode's props fields.
+fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+    rdt_with_selected::<C, _>(dt, "无选中元素", |node| {
+        let mut col = column![].spacing(3);
+        col = col.push(kv_row::<WrapperMsg<C>>("kind", format!("{:?}", node.kind)));
+        col = col.push(kv_row::<WrapperMsg<C>>(
+            "path",
+            format!(
+                "[{}]",
+                node.path
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        ));
+        use crate::ui::vnode::VNodeProps;
+        match &node.props {
+            VNodeProps::Empty => {}
+            VNodeProps::Text { content } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("content", content.clone()))
+            }
+            VNodeProps::Button { label } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("label", label.clone()))
+            }
+            VNodeProps::Input {
+                placeholder,
+                value,
+                password,
+            } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("placeholder", placeholder.clone()));
+                col = col.push(kv_row::<WrapperMsg<C>>("value", value.clone()));
+                col = col.push(kv_row::<WrapperMsg<C>>("password", password.to_string()));
+            }
+            VNodeProps::Textarea { placeholder, value } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("placeholder", placeholder.clone()));
+                col = col.push(kv_row::<WrapperMsg<C>>("value", value.clone()));
+            }
+            VNodeProps::Checkbox { label, is_checked } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("label", label.clone()));
+                col = col.push(kv_row::<WrapperMsg<C>>("is_checked", is_checked.to_string()));
+            }
+            VNodeProps::Radio { label, is_selected } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("label", label.clone()));
+                col = col.push(kv_row::<WrapperMsg<C>>("is_selected", is_selected.to_string()));
+            }
+            VNodeProps::Select {
+                options,
+                selected_index,
+            } => {
+                col = col.push(kv_row::<WrapperMsg<C>>(
+                    "options",
+                    format!("[{}]", options.join(", ")),
+                ));
+                col = col.push(kv_row::<WrapperMsg<C>>(
+                    "selected_index",
+                    format!("{:?}", selected_index),
+                ));
+            }
+            VNodeProps::Layout { spacing, padding } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("spacing", spacing.to_string()));
+                col = col.push(kv_row::<WrapperMsg<C>>("padding", padding.to_string()));
+            }
+            VNodeProps::Container {
+                padding,
+                center_x,
+                center_y,
+            } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("padding", padding.to_string()));
+                col = col.push(kv_row::<WrapperMsg<C>>("center_x", center_x.to_string()));
+                col = col.push(kv_row::<WrapperMsg<C>>("center_y", center_y.to_string()));
+            }
+            VNodeProps::Scrollable => {}
+            VNodeProps::Slider {
+                min,
+                max,
+                value,
+                step,
+            } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("min", format!("{}", min)));
+                col = col.push(kv_row::<WrapperMsg<C>>("max", format!("{}", max)));
+                col = col.push(kv_row::<WrapperMsg<C>>("value", format!("{}", value)));
+                col = col.push(kv_row::<WrapperMsg<C>>("step", format!("{:?}", step)));
+            }
+            VNodeProps::ProgressBar { progress } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("progress", format!("{}", progress)))
+            }
+            VNodeProps::List { spacing } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("spacing", spacing.to_string()))
+            }
+            VNodeProps::Table {
+                spacing,
+                col_spacing,
+            } => {
+                col = col.push(kv_row::<WrapperMsg<C>>("spacing", spacing.to_string()));
+                col = col.push(kv_row::<WrapperMsg<C>>("col_spacing", col_spacing.to_string()));
+            }
+        }
+        col.into()
+    })
+}
+
+/// One collapsible section (rust mode). Header click emits
+/// `__inspector_section_<tail>`.
+fn rdt_collapsible_section<C: Component + 'static>(
+    title: &'static str,
+    collapsed: bool,
+    tail: &str,
+    body: iced::Element<'static, WrapperMsg<C>>,
+) -> iced::Element<'static, WrapperMsg<C>> {
+    let marker = if collapsed { "▸" } else { "▾" };
+    let header = mouse_area(
+        row![
+            text(marker).size(10),
+            text(title)
+                .size(11)
+                .color(iced::Color::from_rgb(0.2, 0.4, 0.8)),
+        ]
+        .spacing(4)
+        .align_y(iced::Alignment::Center),
+    )
+    .on_press(WrapperMsg::<C>::Debug(format!(
+        "{}{}",
+        DEBUG_INSPECTOR_SECTION_PREFIX, tail
+    )));
+
+    let mut col = column![].spacing(3).push(container(header).padding([2.0, 4.0]));
+    if !collapsed {
+        col = col.push(body);
+    }
+    col.into()
+}
+
+/// Right pane: selected-node title + three collapsible sections.
+fn rdt_inspector<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+    let secs = *dt.inspector_sections.borrow();
+    let mut col = column![].spacing(6);
+    col = col.push(rdt_selected_title::<C>(dt));
+    col = col.push(rdt_collapsible_section::<C>(
+        "盒模型 Box Model",
+        secs.box_collapsed,
+        "box",
+        rdt_layout_section::<C>(dt),
+    ));
+    col = col.push(rdt_collapsible_section::<C>(
+        "Computed",
+        secs.computed_collapsed,
+        "computed",
+        rdt_computed_section::<C>(dt),
+    ));
+    col = col.push(rdt_collapsible_section::<C>(
+        "Properties",
+        secs.props_collapsed,
+        "props",
+        rdt_props_section::<C>(dt),
+    ));
+    col.into()
+}
+
+/// Full DevTools panel: header + [element tree | divider | inspector].
+fn rdt_devtools_panel<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+    let close_btn = container(
+        mouse_area(text("✕").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)))
+            .on_press(WrapperMsg::<C>::Debug("__close_devtools".to_string())),
+    )
+    .style(|_: &iced::Theme| container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgb(0.95, 0.95, 0.95))),
+        border: iced::Border {
+            radius: 3.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .padding(iced::Padding::new(4.0));
+    let header = row![
+        text("DevTools · rust").size(11),
+        text("(F12 关闭)").size(9).color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+        close_btn,
+    ]
+    .spacing(8)
+    .align_y(iced::Alignment::Center)
+    .width(iced::Length::Fill);
+
+    let ratio = (*dt.inspector_split_ratio.borrow()).clamp(0.1, 0.9);
+    let tree_pane = scrollable(rdt_elements_tab::<C>(dt))
+        .width(iced::Length::FillPortion((ratio * 1000.0) as u16))
+        .height(iced::Length::Fill);
+    let inspector_pane = scrollable(rdt_inspector::<C>(dt))
+        .width(iced::Length::FillPortion(((1.0 - ratio) * 1000.0) as u16))
+        .height(iced::Length::Fill);
+    let divider = mouse_area(
+        container(iced::widget::Space::new().width(6))
+            .style(|_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgb(0.82, 0.82, 0.82))),
+                ..Default::default()
+            })
+            .width(6)
+            .height(iced::Length::Fill),
+    )
+    .on_press(WrapperMsg::<C>::Debug("__inner_divider_press".to_string()));
+    let content = row![tree_pane, divider, inspector_pane]
+        .spacing(0)
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill);
+
+    let panel_width = *dt.devtools_panel_width.borrow();
+    let panel_col = column![header, content]
+        .spacing(4)
+        .width(panel_width)
+        .height(iced::Length::Fill);
+
+    container(panel_col)
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgb(0.98, 0.98, 0.98))),
+            border: iced::Border {
+                color: iced::Color::from_rgb(0.85, 0.85, 0.85),
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        })
+        .padding(iced::Padding::new(6.0))
+        .width(panel_width)
+        .height(iced::Length::Fill)
+        .into()
+}
+
+/// Format a debug `EdgeInsets` as `t / r / b / l`.
+fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
+    format!(
+        "{:.0} / {:.0} / {:.0} / {:.0}",
+        ei.top, ei.right, ei.bottom, ei.left
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -6100,6 +7119,49 @@ mod tests {
             .build();
 
         let _element = view.into_iced();
+    }
+
+    #[test]
+    fn test_apply_highlight_mut_wraps_selected_child() {
+        // Plan 311 P2-B-2: selecting a VNode wraps exactly that node in an
+        // orange-bordered Container (canvas outline), leaving siblings + the
+        // root structure intact. Path scheme matches view_to_vtree_with_paths.
+        use crate::ui::vnode::{id_from_path, VNodeId};
+        let mut view: AbstractView<TestMessage> = AbstractView::col()
+            .child(AbstractView::text("a".to_string()))
+            .child(AbstractView::text("b".to_string()))
+            .build();
+        // child[0] sits at path [0].
+        let target = VNodeId::new(id_from_path(&[0u16]));
+        apply_highlight_mut(&mut view, Some(target));
+
+        let AbstractView::Column { children, .. } = &view else {
+            panic!("root must remain a Column");
+        };
+        assert_eq!(children.len(), 2, "sibling count unchanged");
+        assert!(
+            matches!(&children[0], AbstractView::Container { .. }),
+            "selected child[0] must be wrapped in a Container"
+        );
+        if let AbstractView::Container { child, .. } = &children[0] {
+            assert!(
+                matches!(child.as_ref(), AbstractView::Text { content, .. } if content == "a"),
+                "wrapped payload is the original Text(\"a\")"
+            );
+        }
+        assert!(
+            matches!(&children[1], AbstractView::Text { content, .. } if content == "b"),
+            "unselected child[1] untouched"
+        );
+    }
+
+    #[test]
+    fn test_apply_highlight_mut_none_is_noop() {
+        let mut view: AbstractView<TestMessage> = AbstractView::col()
+            .child(AbstractView::text("a".to_string()))
+            .build();
+        apply_highlight_mut(&mut view, None);
+        assert!(matches!(view, AbstractView::Column { .. }));
     }
 
     #[test]

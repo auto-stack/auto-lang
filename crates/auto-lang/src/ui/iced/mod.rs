@@ -7,4 +7,4 @@ mod layout_collector;
 mod renderer;
 
 pub use layout_collector::{BoundsMap, LayoutCollector};
-pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_with_task, run_dynamic_iced, last_input_text};
+pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, last_input_text};

@@ -624,7 +624,9 @@ fn wrap_example(project_name: &str, components: &str) -> String {
     let async_init_func = extract_init_api_func(cleaned.trim());
 
     let iced_entry = if let Some(ref func_name) = async_init_func {
-        // Async init: use run_app_with_task with boot task that loads data in background.
+        // Async init: use run_app_with_task_devtools with boot task that loads
+        // data in background (Plan 311 P2-A: DevTools-wired counterpart of
+        // run_app_with_task, so F12 works for init-API apps like 015-notes).
         // The async {} wrapper ensures spawn_blocking is only called when Iced's Tokio
         // runtime polls the future — NOT eagerly in main() before the runtime starts.
         format!(
@@ -635,7 +637,7 @@ fn wrap_example(project_name: &str, components: &str) -> String {
                 |r| {main_msg}::__InitLoaded(r)
             )
         ));
-        return auto_lang::ui::iced::run_app_with_task(move || {{
+        return auto_lang::ui::iced::run_app_with_task_devtools(move || {{
             let task = __init.borrow_mut().take().unwrap_or_else(iced::Task::none);
             ({main_widget}::default(), task)
         }});"#,
@@ -644,10 +646,11 @@ fn wrap_example(project_name: &str, components: &str) -> String {
             main_widget = main_widget,
         )
     } else {
-        // No async init: use standard run_app
+        // No async init: use standard run_app. Wrapped in run_app_devtools so
+        // F12 opens the rust-mode DevTools inspector (Plan 311).
         format!(
             r#"println!("Running with Iced backend");
-        return auto_lang::ui::iced::run_app::<{main_widget}>();"#,
+        return auto_lang::ui::iced::run_app_devtools::<{main_widget}>();"#,
             main_widget = main_widget,
         )
     };
