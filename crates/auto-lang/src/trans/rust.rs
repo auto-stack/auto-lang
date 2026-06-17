@@ -2666,6 +2666,14 @@ impl RustTrans {
                 Ok(())
             }
 
+            // Plan 321: yield expression — in a2r mode, generators use
+            // async-stream crate's stream! macro. yield expr → yield expr;
+            Expr::Yield(expr) => {
+                write!(out, "yield ")?;
+                self.expr(expr, out)?;
+                Ok(())
+            }
+
             // Plan 223: is as expression → Rust match expression
             Expr::Is(is) => {
                 write!(out, "match ")?;

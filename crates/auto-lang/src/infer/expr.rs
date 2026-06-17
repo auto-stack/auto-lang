@@ -459,6 +459,11 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
                 }
             }
         }
+        // Plan 321: yield expression — returns Void (MVP; future: bidirectional yield)
+        Expr::Yield(expr) => {
+            let _ = infer_expr(ctx, expr); // type-check the yielded value
+            Type::Void
+        }
         // Plan 095: Compile-time expression #{ expr }
         // Infer the type of the inner expression (it will be evaluated at compile time)
         Expr::Comptime(hash_brace) => infer_expr(ctx, &hash_brace.expr),
