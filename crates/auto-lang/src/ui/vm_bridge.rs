@@ -1014,4 +1014,55 @@ mod tests {
             }
         }
     }
+
+    /// Plan 323 (Option B) regression smoke against the REAL 002-counter
+    /// source: parse → extract widget → VmBridge → dispatch Inc/Dec/Reset via
+    /// the real VM → read `.count`. Confirms the canonical handler-mutation
+    /// example works end-to-end through genuine Codegen/AutoVM dispatch.
+    #[test]
+    fn test_counter_002_handlers_mutate_state() {
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+
+        let app_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples/ui/002-counter/src/front/app.at");
+        let app_src = match std::fs::read_to_string(&app_path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("skipping 002-counter smoke (app.at unreadable): {}", e);
+                return;
+            }
+        };
+
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(app_src.as_str()).with_session(session);
+        let ast = parser.parse().expect("002-counter app.at should parse");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => {
+                    crate::aura::extract_widget_from_decl(d).ok()
+                }
+                _ => None,
+            })
+            .expect("002-counter must declare a widget");
+
+        let mut bridge = VmBridge::new(&widget).expect("bridge builds");
+        assert!(bridge.has_handler("Inc"));
+        assert!(bridge.has_handler("Dec"));
+        assert!(bridge.has_handler("Reset"));
+
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(0));
+
+        bridge.call_handler("Inc", &[]).unwrap();
+        bridge.call_handler("Inc", &[]).unwrap();
+        bridge.call_handler("Dec", &[]).unwrap();
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(1));
+
+        bridge.call_handler("Reset", &[]).unwrap();
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(0));
+    }
 }
