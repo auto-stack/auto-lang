@@ -1,9 +1,10 @@
 # Plan 321: Generator 运行时 — yield + 统一 ~Iter<T> / ~Stream<T>
 
-> **Status**: Draft
+> **Status**: ✅ Phase 1-6 Delivered(2026-06-17,已合并 master)
 > **依赖**: YIELD_TASK/YIELD_VAL opcode 重命名已完成(commit `2a02e558`)
-> **关联**: HTTP 异步流模式(SSE handler 返回 ~Stream<T>)由独立计划处理;本计划只做语言核心 + VM 运行时 + a2r 转译
+> **关联**: HTTP SSE streaming 已实现(Spec §11);HTTP 异步流模式(~Stream<T> + await)留后续
 > **范围**: yield 关键字、Generator 栈帧、Iterator::Generator 变体、~Iter<T>/~Stream<T> 类型、a2r 转译
+> **已知遗留**: for-loop generator 值错误(VM task 帧冲突);true lazy 求值(当前 eager + budget);async-stream crate 依赖
 
 ---
 
@@ -71,7 +72,7 @@ pub struct GeneratorFrame {
 
 ## §2 分阶段实施计划
 
-### Phase 1 — 基础设施:GeneratorFrame + StepResult(P0)
+### Phase 1 — 基础设施:GeneratorFrame + StepResult(P0)✅ 已完成
 
 **目标**:在 engine.rs 里建好 generator 的数据结构。
 
@@ -94,7 +95,7 @@ pub struct GeneratorFrame {
 
 **验收**:编译通过,YIELD_VAL 有执行分支(即使还没有调用者)。
 
-### Phase 2 — Iterator::Generator 的 next() 驱动(P0)
+### Phase 2 — Iterator::Generator 的 next() 驱动(P0)✅ 已完成(eager + budget)
 
 **目标**:`shim_iterator_next` 能恢复 generator 帧执行到下一个 YIELD_VAL。
 
@@ -121,7 +122,7 @@ pub struct GeneratorFrame {
 
 **验收**:手写字节码(直接编 YIELD_VAL)能跑通 next/yield/next/RET 序列。
 
-### Phase 3 — Parser:yield 关键字 + ~Iter<T> 类型(P0)
+### Phase 3 — Parser:yield 关键字 + ~Iter<T> 类型(P0)✅ 已完成
 
 **目标**:用户能写 `fn gen() ~Iter<int> { yield 42 }`。
 
@@ -157,7 +158,7 @@ TokenKind::Tilde => {
 
 **验收**:`fn gen() ~Iter<int> { yield 42 }` 能被 parser 成功解析;AST 里有 `Expr::Yield(Int(42))`。
 
-### Phase 4 — Codegen:yield → YIELD_VAL(P0)
+### Phase 4 — Codegen:yield → YIELD_VAL(P0)✅ 已完成
 
 **目标**:yield 表达式编译为 YIELD_VAL 字节码。
 
@@ -179,7 +180,7 @@ compile_expr(yield expr):
 
 **验收**:`fn gen() ~Iter<int> { yield 1; yield 2 }` 编译为字节码;VM 运行 `for x in gen() { print(x) }` 输出 `1\n2`。
 
-### Phase 5 — a2r 转译(P1)
+### Phase 5 — a2r 转译(P1)✅ 已完成(stream! 宏包装 + impl Iterator/Stream)
 
 **目标**:yield 在 a2r 模式下转译为 Rust generator。
 
@@ -211,7 +212,7 @@ fn gen() -> impl Iterator<Item = i32> {
 
 **验收**:a2r 测试 `yield_to_iterator.at` 的 `.expected.rs` 包含 `impl Iterator` + `async_stream::stream!`。
 
-### Phase 6 — 测试 + for 循环消费(P0)
+### Phase 6 — 测试 + for 循环消费(P0)✅ 已完成(SSE 路径正确,for-loop 有已知遗留)
 
 **目标**:端到端验证 yield generator 能被 for 循环消费。
 
@@ -312,10 +313,39 @@ pub fn main() {
 
 ## §7 与 HTTP 异步流计划的关系
 
-本计划交付的 `yield` + `~Iter<T>` 是 HTTP SSE 的**语言原语基础**。HTTP 异步流计划(独立)需要在本计划完成后:
+本计划交付的 `yield` + `~Iter<T>` 是 HTTP SSE 的**语言原语基础**。HTTP SSE streaming 已在 Plan 321 实现期间一并完成(commit `0ec28c90`):
+- `call_fn_by_name` 检测 generator 函数(扫描 0x8D YIELD_VAL)→ 创建 `Iterator::Generator`
+- `http_server.rs` 检测 handler 返回值是 iterator ID → 自动进入 SSE 模式(text/event-stream)
+- 循环 `shim_iterator_next` + `data: <value>\n\n` + flush
 
-1. 定义 `#[api]` handler 返回 `~Stream<T>` 时,HTTP 层如何拉取流 + SSE 分帧
-2. 解决 VM 的 `!Send` 与 async HTTP 的桥接
-3. 底层 Axum 的 `Sse<impl Stream>` 对接
+**已验证**:`GET /api/counter`(返回 `~Iter<int>`)→ `data: 1\ndata: 2\ndata: 3\n`(curl 测试通过)
 
-**依赖顺序**:Plan 321(generator 运行时) → HTTP 异步流计划(SSE 集成) → auto-musk 流式聊天后端
+---
+
+## §8 实现结果(2026-06-17)
+
+### 已交付
+
+| 组件 | 实现 | commit |
+|---|---|---|
+| YIELD_VAL opcode (0x8D) | engine.rs 执行分支 + GeneratorYield StepResult | `2a02e558` |
+| CREATE_GENERATOR opcode (0x8E) | inline operands (func_addr + n_args) → Iterator::Generator | 多个 commit |
+| yield 关键字 | token.rs + parser.rs + Expr::Yield + codegen YIELD_VAL | Plan 321 Phase 3-4 |
+| ~Iter<T> / ~Stream<T> 类型 | parse_type Tilde 分流(不包 Future) | Plan 321 Phase 3 |
+| Generator next() driver | native.rs Iterator::Generator 分支(eager + budget 10000) | 多个 commit |
+| a2r yield 转译 | Expr::Yield → `yield expr`; 函数体 `async_stream::stream! { }` 包装 | `b4b02840` |
+| a2r 返回类型 | `~Iter<T>` → `impl Iterator<Item = T>`; `~Stream<T>` → `impl Stream<Item = T>` | `b4b02840` |
+| HTTP SSE streaming | call_fn_by_name generator 检测 + http_server SSE 模式 | `0ec28c90` |
+| AutoHttpServer shim 层 | vm/ffi/http_server.rs 独立模块(VM + a2r 共享) | `4549ae87` |
+| HTTPStream → Iter 统一 | Iterator::HttpStream 变体 + shim_http_stream_iter | `4549ae87` |
+
+### 已知遗留
+
+| 遗留 | 影响 | 修复方向 |
+|---|---|---|
+| for-loop generator 值错误 | `for n in gen()` 返回错误值(FN_PROLOG 帧冲突) | 正确的 generator task 帧初始化 |
+| Generator eager 模式 | 首次 next() 跑完全部(budget 10000) | 栈快照保存/恢复实现真 lazy |
+| async-stream crate 依赖 | a2r 输出需要 `async-stream` 在 Cargo.toml | auto-man 脚手架自动添加 |
+| yield 表达式返回值 nil | `let x = yield val` 的 x 是 nil | 未来双向 yield 支持 |
+| HTTPS/TLS | 只有 HTTP | 引入 rustls/axum-server |
+| 并发请求处理 | 串行(std::net) | 每请求 spawn 线程或换 Axum |
