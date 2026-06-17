@@ -902,6 +902,31 @@ impl AutoVM {
                 format!("call_fn_by_name: function '{}' not found in exports", fn_name)
             ))?;
 
+        // Plan 321: Generator detection — if the function body contains
+        // YIELD_VAL (0x8D), it's a generator. Don't execute the body;
+        // instead, create an Iterator::Generator and push its ID.
+        // This allows #[api] handlers returning ~Iter<T>/~Stream<T> to
+        // work when called via call_fn_by_name (HTTP handler dispatch).
+        let is_generator = self.is_generator_fn(addr as usize);
+        if is_generator {
+            let gen_state = GeneratorState {
+                task_id: None,
+                func_addr: addr as u32,
+                n_args: n_args as u8,
+                started: false,
+                done: false,
+                collected: Vec::new(),
+                collected_idx: 0,
+            };
+            let iter_id = {
+                let next_id = self.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.iterators.insert(next_id, Iterator::Generator(gen_state));
+                next_id
+            };
+            task.ram.push_i32(iter_id as i32);
+            return Ok(());
+        }
+
         // 2. Save current state
         let saved_ip = task.ip;
         let saved_bp = task.bp;
@@ -952,6 +977,17 @@ impl AutoVM {
         // 6. Restore non-stack state (return value already on stack top)
         task.current_fn_n_args = saved_fn_n_args;
         Ok(())
+    }
+
+    /// Plan 321: Check if a function body contains YIELD_VAL (0x8D) opcode.
+    fn is_generator_fn(&self, addr: usize) -> bool {
+        let max_scan = std::cmp::min(addr + 4096, self.flash.memory.len());
+        for i in addr..max_scan {
+            if self.flash.memory[i] == 0x8D {
+                return true;
+            }
+        }
+        false
     }
 
 

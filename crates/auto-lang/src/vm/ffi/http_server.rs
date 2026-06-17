@@ -184,6 +184,73 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
             match vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args) {
                 Ok(()) => {
                     let nv = ht.ram.pop_nv();
+
+                    // Plan 321 SSE: Check if the return value is an iterator ID
+                    // (generator/~Stream<T>/~Iter<T> handler → SSE streaming mode).
+                    if auto_val::is_i32(nv) {
+                        let iter_id = auto_val::decode_i32(nv) as u32;
+                        if vm.iterators.contains_key(&(iter_id)) {
+                            // SSE streaming mode: write SSE headers, then pull
+                            // values from the iterator as SSE data frames.
+                            drop(ht);
+                            let sse_response = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
+                            );
+                            let _ = stream.write_all(sse_response.as_bytes());
+                            let _ = stream.flush();
+
+                            // Pull values from the iterator and write SSE frames
+                            loop {
+                                // Create a temp task for the next() call
+                                let next_task_id = vm.spawn_task(0, 1024);
+                                let next_result = if let Some(nt_arc) = vm.tasks.get(&next_task_id) {
+                                    let mut nt = nt_arc.blocking_lock();
+                                    // Push iterator_id for auto.iterator.next
+                                    nt.ram.push_i32(iter_id as i32);
+                                    // Call the native iterator.next
+                                    crate::vm::native::shim_iterator_next(&mut nt, vm).ok();
+                                    // Result is on stack (i32) or nothing (done)
+                                    if nt.ram.sp > 0 {
+                                        Some(nt.ram.pop_nv())
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                };
+                                vm.tasks.remove(&next_task_id);
+
+                                match next_result {
+                                    Some(val) if auto_val::is_i32(val) => {
+                                        let v = auto_val::decode_i32(val);
+                                        if v == -1 {
+                                            // Iterator exhausted
+                                            break;
+                                        }
+                                        // Write SSE data frame
+                                        let frame = format!("data: {}\n\n", v);
+                                        let _ = stream.write_all(frame.as_bytes());
+                                        let _ = stream.flush();
+                                    }
+                                    Some(val) if auto_val::is_string(val) => {
+                                        let idx = auto_val::decode_string(val);
+                                        let s = vm.strings.read().unwrap()
+                                            .get(idx as usize)
+                                            .map(|b| String::from_utf8_lossy(b).to_string())
+                                            .unwrap_or_default();
+                                        let frame = format!("data: {}\n\n", s);
+                                        let _ = stream.write_all(frame.as_bytes());
+                                        let _ = stream.flush();
+                                    }
+                                    _ => break,
+                                }
+                            }
+                            // Stream ended — close connection
+                            continue; // Skip the normal JSON response below
+                        }
+                    }
+
+                    // Normal JSON response mode
                     if auto_val::is_string(nv) {
                         let idx = auto_val::decode_string(nv);
                         vm.strings.read().unwrap().get(idx as usize)

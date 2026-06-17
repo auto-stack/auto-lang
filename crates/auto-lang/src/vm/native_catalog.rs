@@ -1035,6 +1035,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.http_stream.stream_next", 2242, Void),
             ("auto.http_stream.stream_is_done", 2243, Void),
             ("auto.http_stream.stream_close", 2244, Void),
+            ("auto.http_stream.stream_iter", 2245, Void), // Plan 321: Iter protocol
             ("auto.http.post_stream_with_headers", 2255, Void),
             ("auto.http.post_sync", 2256, Void),
             ("auto.http.last_status", 2257, Void),
@@ -1640,6 +1641,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http_stream.stream_next", 2242),
     ("auto.http_stream.stream_is_done", 2243),
     ("auto.http_stream.stream_close", 2244),
+    ("auto.http_stream.stream_iter", 2245),
     ("auto.http.post_stream_with_headers", 2255),
     ("auto.http.post_sync", 2256),
     ("auto.http.last_status", 2257),
