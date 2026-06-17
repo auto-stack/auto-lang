@@ -166,7 +166,7 @@ pub enum OpCode {
     // === Concurrency ===
     SPAWN = 0x80,    // func_id: u32, arg_count: u8 -> task_id: u32
     TASK_ID = 0x81,  // -> task_id: u32
-    YIELD = 0x82,    // -> void
+    YIELD_TASK = 0x82, // -> void (yield CPU back to task scheduler; NOT generator yield)
     SLEEP = 0x83,    // ms: u32 -> void
     JOIN = 0x84,     // task_id: u32 -> result
     CHAN_NEW = 0x85, // -> channel_id: u32
@@ -175,6 +175,9 @@ pub enum OpCode {
     TRY_RECV = 0x88, // channel_id: u32 -> data: i32 | 0 (non-blocking)
     // Plan 126: .go postfix operator - fire-and-forget spawn
     SPAWN_GO = 0x89, // future -> void (spawn Future in background, discard result)
+    // Generator yield: pushes a value to the caller and suspends the generator
+    // frame. Resumed by Iterator::Generator next(). Used by ~Iter<T> / ~Stream<T>.
+    YIELD_VAL = 0x8D, // value -> void (to caller; generator frame suspended)
 
     // === Plan 127: Task/Msg Execution Opcodes ===
     // Task message loop and handler dispatch
@@ -453,7 +456,7 @@ impl OpCode {
             Self::CALL_SPEC => "call.spec",
             Self::SPAWN => "spawn",
             Self::TASK_ID => "task.id",
-            Self::YIELD => "yield",
+            Self::YIELD_TASK => "yield.task",
             Self::SLEEP => "sleep",
             Self::JOIN => "join",
             Self::CHAN_NEW => "chan.new",
@@ -461,6 +464,7 @@ impl OpCode {
             Self::RECV => "recv",
             Self::TRY_RECV => "try.recv",
             Self::SPAWN_GO => "spawn.go",
+            Self::YIELD_VAL => "yield.val",
             Self::TASK_LOOP => "task.loop",
             Self::HANDLE_MSG => "handle.msg",
             Self::REPLY => "reply",
@@ -627,7 +631,7 @@ impl OpCode {
             "call.spec" => Some(Self::CALL_SPEC),
             "spawn" => Some(Self::SPAWN),
             "task.id" => Some(Self::TASK_ID),
-            "yield" => Some(Self::YIELD),
+            "yield.task" => Some(Self::YIELD_TASK),
             "sleep" => Some(Self::SLEEP),
             "join" => Some(Self::JOIN),
             "chan.new" => Some(Self::CHAN_NEW),
@@ -635,6 +639,7 @@ impl OpCode {
             "recv" => Some(Self::RECV),
             "try.recv" => Some(Self::TRY_RECV),
             "spawn.go" => Some(Self::SPAWN_GO),
+            "yield.val" => Some(Self::YIELD_VAL),
             "task.loop" => Some(Self::TASK_LOOP),
             "handle.msg" => Some(Self::HANDLE_MSG),
             "reply" => Some(Self::REPLY),
