@@ -23,6 +23,12 @@ pub fn parse_pipe_stage(text: &str) -> Option<PipelineOp> {
     if text == "count" {
         return Some(PipelineOp::Count);
     }
+    if text == "uniq" {
+        return Some(PipelineOp::Uniq);
+    }
+    if text == "reverse" {
+        return Some(PipelineOp::Reverse);
+    }
     if let Some(rest) = text.strip_prefix("sort ").or_else(|| text.strip_prefix("sort-by ")) {
         return parse_sort(rest);
     }
@@ -35,6 +41,21 @@ pub fn parse_pipe_stage(text: &str) -> Option<PipelineOp> {
     if let Some(rest) = text.strip_prefix("select ") {
         return parse_select(rest);
     }
+    if let Some(rest) = text.strip_prefix("group-by ") {
+        return parse_field_op(rest, |f| PipelineOp::GroupBy { field: f });
+    }
+    if let Some(rest) = text.strip_prefix("sum ") {
+        return parse_field_op(rest, |f| PipelineOp::Sum { field: f });
+    }
+    if let Some(rest) = text.strip_prefix("avg ") {
+        return parse_field_op(rest, |f| PipelineOp::Avg { field: f });
+    }
+    if let Some(rest) = text.strip_prefix("min ") {
+        return parse_field_op(rest, |f| PipelineOp::Min { field: f });
+    }
+    if let Some(rest) = text.strip_prefix("max ") {
+        return parse_field_op(rest, |f| PipelineOp::Max { field: f });
+    }
 
     // .field ...
     if text.starts_with('.') {
@@ -44,8 +65,49 @@ pub fn parse_pipe_stage(text: &str) -> Option<PipelineOp> {
     None // Not a DSL stage → regular command.
 }
 
-/// Parse `.field op value` or `.field` (bare projection).
+/// Parse `.field op value`, `.field` (bare projection), or compound
+/// `.f1 op1 v1 && .f2 op2 v2`.
 fn parse_dot_stage(text: &str) -> Option<PipelineOp> {
+    // Compound predicate with &&.
+    if text.contains(" && ") {
+        return parse_compound_filter(text);
+    }
+    parse_single_dot(text)
+}
+
+/// Parse a compound `&&` predicate.
+fn parse_compound_filter(text: &str) -> Option<PipelineOp> {
+    let parts: Vec<&str> = text.split(" && ").collect();
+    let mut conditions = Vec::new();
+    for part in parts {
+        let part = part.trim();
+        let after_dot = part.strip_prefix('.')?;
+        let field: String = after_dot
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+            .collect();
+        if field.is_empty() {
+            return None;
+        }
+        let rest = after_dot[field.len()..].trim_start();
+        if rest.is_empty() {
+            return None; // bare field in compound context makes no sense
+        }
+        let (op_str, value_str) = split_operator(rest)?;
+        let op = CmpOp::from_str(op_str)?;
+        let value = parse_value(value_str.trim())?;
+        conditions.push((field, op, value));
+    }
+    if conditions.len() == 1 {
+        let (f, o, v) = conditions.pop().unwrap();
+        Some(PipelineOp::Filter { field: f, op: o, value: v })
+    } else {
+        Some(PipelineOp::FilterAll { conditions })
+    }
+}
+
+/// Parse a single `.field op value` or `.field` (bare).
+fn parse_single_dot(text: &str) -> Option<PipelineOp> {
     // Extract the field name after the leading '.'.
     let after_dot = &text[1..];
     let field: String = after_dot
@@ -101,6 +163,26 @@ fn parse_select(rest: &str) -> Option<PipelineOp> {
         return None;
     }
     Some(PipelineOp::Select { fields })
+}
+
+/// Parse a single `.field` from `rest`, applying a constructor. Used for
+/// `group-by .field`, `sum .field`, `avg .field`, `min .field`, `max .field`.
+fn parse_field_op<F>(rest: &str, ctor: F) -> Option<PipelineOp>
+where
+    F: FnOnce(String) -> PipelineOp,
+{
+    let rest = rest.trim();
+    if !rest.starts_with('.') {
+        return None;
+    }
+    let field: String = rest[1..]
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+        .collect();
+    if field.is_empty() {
+        return None;
+    }
+    Some(ctor(field))
 }
 
 /// Parse `first N` / `last N` → Take / SkipBack.
@@ -313,5 +395,31 @@ mod tests {
         assert!(parse_pipe_stage("ls -la").is_none());
         assert!(parse_pipe_stage("echo hello").is_none());
         assert!(parse_pipe_stage("sort").is_none()); // bare sort without field
+    }
+
+    #[test]
+    fn parse_uniq_reverse() {
+        assert!(matches!(parse_pipe_stage("uniq"), Some(PipelineOp::Uniq)));
+        assert!(matches!(parse_pipe_stage("reverse"), Some(PipelineOp::Reverse)));
+    }
+
+    #[test]
+    fn parse_aggregate_ops() {
+        assert!(matches!(parse_pipe_stage("group-by .type"), Some(PipelineOp::GroupBy { .. })));
+        assert!(matches!(parse_pipe_stage("sum .size"), Some(PipelineOp::Sum { .. })));
+        assert!(matches!(parse_pipe_stage("avg .size"), Some(PipelineOp::Avg { .. })));
+        assert!(matches!(parse_pipe_stage("min .size"), Some(PipelineOp::Min { .. })));
+        assert!(matches!(parse_pipe_stage("max .size"), Some(PipelineOp::Max { .. })));
+    }
+
+    #[test]
+    fn parse_compound_and_predicate() {
+        let op = parse_pipe_stage(".size > 10 && .type == \"dir\"").unwrap();
+        match op {
+            PipelineOp::FilterAll { conditions } => {
+                assert_eq!(conditions.len(), 2);
+            }
+            _ => panic!("expected FilterAll, got {:?}", op),
+        }
     }
 }
