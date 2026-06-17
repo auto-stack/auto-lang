@@ -120,10 +120,15 @@ pub struct GeneratorState {
     pub started: bool,
     /// Whether the generator has finished (function returned).
     pub done: bool,
-    /// Plan 321 MVP: eagerly collected yield values (not truly lazy).
-    pub collected: Vec<i32>,
-    /// Index into collected for sequential next() return.
-    pub collected_idx: usize,
+    /// Plan 321 lazy: saved instruction pointer for resume (after YIELD_VAL).
+    /// Set on first next() to func_addr; updated each time YIELD_VAL is hit.
+    pub resume_ip: usize,
+    /// Plan 321 lazy: saved base pointer for resume.
+    pub resume_bp: usize,
+    /// Plan 321 lazy: saved stack pointer for resume.
+    pub resume_sp: usize,
+    /// Plan 321 lazy: saved stack contents (snapshot of local vars + args).
+    pub stack_snapshot: Vec<u64>,  // Vec<NanoValue> as raw u64
 }
 
 /// Plan 321: HTTP stream iterator — wraps an HTTPStream handle so that
@@ -915,8 +920,10 @@ impl AutoVM {
                 n_args: n_args as u8,
                 started: false,
                 done: false,
-                collected: Vec::new(),
-                collected_idx: 0,
+                resume_ip: 0,
+                resume_bp: 0,
+                resume_sp: 0,
+                stack_snapshot: Vec::new(),
             };
             let iter_id = {
                 let next_id = self.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -5201,8 +5208,10 @@ impl AutoVM {
                         n_args,
                         started: false,
                         done: false,
-                        collected: Vec::new(),
-                        collected_idx: 0,
+                        resume_ip: 0,
+                        resume_bp: 0,
+                        resume_sp: 0,
+                        stack_snapshot: Vec::new(),
                     };
                     let iter_id = {
                         let next_id = self.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

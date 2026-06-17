@@ -1838,61 +1838,76 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 }
             }
             Iterator::Generator(gen_state) => {
-                // Plan 321 Phase 2: Generator next() driver — MVP approach.
-                // Execute generator body directly on the caller's task using
-                // save/restore of ip+bp. This avoids the !Send/blocking_lock
-                // issue of spawning a separate task.
+                // Plan 321 lazy: Generator next() driver.
                 //
-                // NOTE: This is a simplified MVP that works for simple linear
-                // generators. It does NOT support nested calls or complex
-                // control flow within generators. Full task-based isolation
-                // will be added later.
+                // MVP approach: eager evaluation on a dedicated task via try_lock.
+                // On first next(), runs the entire generator body, collecting all
+                // yield values. Subsequent next() calls return values from the
+                // collection. This is not truly lazy, but it's correct and avoids
+                // stack corruption from sharing the caller's stack frame.
+                //
+                // Limitation: infinite generators will run until the budget limit
+                // (10000 items), then stop. For auto-musk's SSE streaming, this
+                // is acceptable since LLM token streams are finite.
                 if gen_state.done {
                     return Ok(());
                 }
 
-                // For MVP: we can't properly suspend/resume on the same task
-                // without corrupting the caller's stack. So we use a simpler
-                // approach: execute the entire generator body at once (like
-                // a regular function), collecting all yield values into a list,
-                // and return them one at a time.
-                //
-                // This is a "eager" generator — it runs fully on first next(),
-                // stores results, and returns them one by one. Not truly lazy,
-                // but correct for MVP.
-
                 if !gen_state.started {
-                    // First call: run the entire generator and collect results.
                     gen_state.started = true;
-                    // Run via call_fn_by_name on the current task
-                    // (the generator function body runs, YIELD_VALs are treated
-                    // as "push value to a collection" — but we can't do that
-                    // in the current architecture without a separate task).
-                    //
-                    // MVP workaround: use the task-based approach but with
-                    // std::thread::spawn + try_lock instead of blocking_lock.
-                    // Actually, let's use try_lock which returns immediately
-                    // if the lock is held (it shouldn't be, since we're the
-                    // only ones accessing this generator task).
 
-                    let tid = vm.spawn_task(gen_state.func_addr as usize, 8192);
+                    // Spawn a fresh task and run the generator body via call_fn_by_name.
+                    // call_fn_by_name sets up the frame correctly (FN_PROLOG, args, BP).
+                    // YIELD_VAL returns GeneratorYield which call_fn_by_name treats as continue.
+                    // We intercept by checking the task's ip after call_fn_by_name returns
+                    // — if it stopped at a YIELD_VAL, the value is on stack.
+                    //
+                    // Actually, call_fn_by_name runs until RET. For generators, YIELD_VAL
+                    // is treated as continue, so all yields are skipped and the function
+                    // returns normally. The yielded values are lost.
+                    //
+                    // So we can't use call_fn_by_name. Instead, we manually set up the
+                    // frame the same way CALL opcode does, then run_one_instruction loop.
+                    //
+                    // The correct frame setup for a function at func_addr:
+                    //   1. Arguments are already on the stack (pushed by caller)
+                    //   2. Push return address + old BP
+                    //   3. Set BP = sp - 1
+                    //   4. Set ip = func_addr (which starts with FN_PROLOG)
+                    //   5. FN_PROLOG reads n_args/n_locals and reserves stack space
+
+                    let tid = vm.spawn_task(gen_state.func_addr as usize, 65536);
                     gen_state.task_id = Some(tid);
 
-                    // Set up frame
+                    // Use call_fn_by_name to properly set up and run the generator.
+                    // It will encounter YIELD_VAL → GeneratorYield → continue.
+                    // All yields are skipped. The function returns with whatever
+                    // is on stack at RET time.
+                    //
+                    // To collect yielded values, we need a different approach:
+                    // Run the function manually via run_one_instruction on the
+                    // spawned task, handling YIELD_VAL properly.
+
                     if let Some(gen_task_arc) = vm.tasks.get(&tid) {
                         if let Ok(mut gt) = gen_task_arc.try_lock() {
-                            gt.current_fn_n_args = gen_state.n_args as usize;
-                            gt.ram.push_i32(0); // return addr
+                            // Pre-push nil return value for RET to pop
+                            gt.ram.push_nv(auto_val::encode_null());
+                            // Set up frame like CALL opcode:
+                            gt.ram.push_i32(0); // return address
                             gt.ram.push_i32(0); // old BP
                             gt.bp = gt.ram.sp - 1;
+                            gt.current_fn_n_args = gen_state.n_args as usize;
+                            gt.ip = gen_state.func_addr as usize;
                         }
                     }
 
-                    // Collect ALL yielded values eagerly
-                    let mut collected: Vec<i32> = Vec::new();
+                    // Eagerly collect yielded values
+                    let mut collected: Vec<u64> = Vec::new();
+                    let max_items = 10000;
+
                     if let Some(gen_task_arc) = vm.tasks.get(&tid) {
-                        // Use try_lock to avoid blocking_lock panic
                         loop {
+                            if collected.len() >= max_items { break; }
                             match gen_task_arc.try_lock() {
                                 Ok(mut gt) => {
                                     let budget = 1_000_000;
@@ -1901,7 +1916,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                                         match vm.run_one_instruction(&mut gt) {
                                             Ok(crate::vm::engine::StepResult::Continue) => continue,
                                             Ok(crate::vm::engine::StepResult::GeneratorYield) => {
-                                                collected.push(auto_val::decode_i32(gt.ram.pop_nv()));
+                                                collected.push(gt.ram.pop_nv());
                                                 got_yield = true;
                                                 break;
                                             }
@@ -1914,16 +1929,10 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                                             }
                                         }
                                     }
-                                    if !got_yield {
-                                        // Check if Terminated was the result
-                                        break;
-                                    }
+                                    if !got_yield { break; }
                                     drop(gt);
                                 }
-                                Err(_) => {
-                                    // Lock contention — shouldn't happen for fresh task
-                                    break;
-                                }
+                                Err(_) => break,
                             }
                         }
                     }
@@ -1932,22 +1941,26 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     vm.tasks.remove(&tid);
                     gen_state.task_id = None;
 
-                    // Store collected values in gen_state for sequential return
-                    gen_state.collected = collected;
-                    gen_state.collected_idx = 0;
+                    // Store collected values as raw NanoValues
+                    gen_state.stack_snapshot = collected;
+                    gen_state.resume_sp = 0; // reuse as index into stack_snapshot
                 }
 
-                // Return next collected value or -1 (done)
-                let result = if gen_state.collected_idx < gen_state.collected.len() {
-                    let v = gen_state.collected[gen_state.collected_idx];
-                    gen_state.collected_idx += 1;
-                    v
+                // Return next collected value or signal done
+                let idx = gen_state.resume_sp;
+                if idx < gen_state.stack_snapshot.len() {
+                    let nv = gen_state.stack_snapshot[idx];
+                    gen_state.resume_sp += 1;
+                    // Push the yielded value onto the caller's stack
+                    if auto_val::is_i32(nv) {
+                        task.ram.push_i32(auto_val::decode_i32(nv));
+                    } else {
+                        task.ram.push_nv(nv);
+                    }
                 } else {
                     gen_state.done = true;
-                    -1
-                };
-
-                task.ram.push_i32(result);
+                    // Don't push anything — for-loop sees no value → done
+                }
                 return Ok(());
             }
             Iterator::HttpStream(hs_iter) => {

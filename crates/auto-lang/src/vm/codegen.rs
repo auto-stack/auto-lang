@@ -7046,8 +7046,8 @@ impl Codegen {
             Expr::Yield(expr) => {
                 self.compile_expr(expr)?;  // Push yielded value onto stack
                 self.emit(OpCode::YIELD_VAL); // Pop value, suspend generator
-                // After resume, push nil as yield expression's return value (MVP)
-                self.emit(OpCode::CONST_0);   // nil placeholder (will be replaced)
+                // After resume, generator continues from next statement.
+                // No return value pushed (yield's value is void in MVP).
             }
             Expr::Pair(pair) => {
                 // Handle Pair as a single-element object for config syntax like: name: "value"
