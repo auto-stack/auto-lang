@@ -1,6 +1,6 @@
 # Plan 325: AI Daemon 基础设施（aaid + auto-ai-client）
 
-> **Status**: Phase 1-2 complete (2026-06-17). P1: `auto-ai-client` crate (18 tests). P2: `aaid` daemon binary — HTTP server + concurrency pool + usage tracker + config (7 tests). Smoke-tested: `/v1/status`, `/v1/models`, `/v1/usage` all return JSON. P3 (Ash F3 接入) / P4 (MCP+CLI) pending.
+> **Status**: ✅ All phases complete (2026-06-17). P1: `auto-ai-client` crate (18 tests). P2: `aaid` daemon (7 tests). P3: Ash F3 AI mode — real LLM via AiClient, [Enter]/[e]/cancel flow. P4: `aictl` CLI (status/models/usage/ping). Smoke-tested end-to-end: aaid + aictl + ash F3 all working.
 > **设计文档**: [15-ai-daemon-infrastructure.md](../design/15-ai-daemon-infrastructure.md)
 > **关系**: Plan 322(Ash AI 模式 F3 stub → 接入 client)、Plan 291 Phase 3(AI 集成)。
 > 落地 [docs/design/15](../design/15-ai-daemon-infrastructure.md) 的架构设计。
