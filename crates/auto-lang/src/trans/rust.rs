@@ -6778,6 +6778,25 @@ impl RustTrans {
         let is_async_fn = is_main_with_await
             || matches!(fn_decl.ret, Type::Handle { .. })
             || matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
+
+        // Plan 321: Detect generator functions (return ~Iter<T> or ~Stream<T>)
+        let is_generator_fn = matches!(&fn_decl.ret, Type::GenericInstance(inst)
+            if inst.base_name == "Iter" || inst.base_name == "Stream");
+        // Extract inner type for the impl Iterator/Stream return
+        let generator_inner_type: Option<String> = if is_generator_fn {
+            if let Type::GenericInstance(inst) = &fn_decl.ret {
+                if let Some(inner) = inst.args.first() {
+                    Some(self.rust_type_name(inner))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         if is_async_fn {
             write!(sink.body, "async ")?;
         }
@@ -6927,6 +6946,15 @@ impl RustTrans {
         // Plan 204 Phase 1B: Use rust_return_type_name for return positions (str -> String)
         if fn_body_has_try {
             write!(sink.body, " -> Result<(), Box<dyn std::error::Error>>")?;
+        } else if is_generator_fn {
+            // Plan 321: Generator functions return impl Iterator/Stream
+            let inner = generator_inner_type.as_deref().unwrap_or("String");
+            let stream_or_iter = if matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Stream") {
+                "impl futures::Stream<Item = "
+            } else {
+                "impl Iterator<Item = "
+            };
+            write!(sink.body, " -> {}{}>", stream_or_iter, inner)?;
         } else if !matches!(fn_decl.ret, Type::Void) {
             let ret_str = if is_async_fn {
                 match &fn_decl.ret {
@@ -6945,9 +6973,19 @@ impl RustTrans {
         // Function body
         write!(sink.body, " ")?;
 
+        // Plan 321: Generator functions wrap body in async_stream::stream! {}
+        if is_generator_fn {
+            write!(sink.body, "{{ async_stream::stream! {{")?;
+        }
+
         // Plan 091: scope removed
         self.body(&fn_decl.body, sink, &effective_ret_type, "")?;
         // Plan 091: scope removed
+
+        // Plan 321: Close async_stream::stream! wrapper
+        if is_generator_fn {
+            write!(sink.body, " }} }}")?;
+        }
 
         Ok(())
     }
