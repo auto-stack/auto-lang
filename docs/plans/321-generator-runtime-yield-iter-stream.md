@@ -341,11 +341,13 @@ pub fn main() {
 
 ### 已知遗留
 
-| 遗留 | 影响 | 修复方向 |
-|---|---|---|
-| for-loop generator 值错误 | `for n in gen()` 返回错误值(FN_PROLOG 帧冲突) | 正确的 generator task 帧初始化 |
-| Generator eager 模式 | 首次 next() 跑完全部(budget 10000) | 栈快照保存/恢复实现真 lazy |
-| async-stream crate 依赖 | a2r 输出需要 `async-stream` 在 Cargo.toml | auto-man 脚手架自动添加 |
-| yield 表达式返回值 nil | `let x = yield val` 的 x 是 nil | 未来双向 yield 支持 |
-| HTTPS/TLS | 只有 HTTP | 引入 rustls/axum-server |
-| 并发请求处理 | 串行(std::net) | 每请求 spawn 线程或换 Axum |
+| 遗留 | 影响 | 修复方向 | 归属 |
+|---|---|---|---|
+| for-loop generator 值错误 | `for n in gen()` 返回错误值(FN_PROLOG 帧冲突) | 正确的 generator task 帧初始化 | → Plan 322 |
+| Generator eager 模式 | 首次 next() 跑完全部(budget 10000) | 栈快照保存/恢复实现真 lazy | → Plan 322 |
+| VM struct 字段访问 | `note.title` 返回 0 而非实际值 | VM 运行时 struct member 读取修复 | → Plan 322 |
+| struct/[]T HTTP 序列化 | handler 返回结构体变 "null" | Value→JSON 全类型序列化 | → Plan 322 |
+| async-stream crate 依赖 | a2r 输出需要 `async-stream` 在 Cargo.toml | auto-man 脚手架自动添加 | 后续 |
+| yield 表达式返回值 nil | `let x = yield val` 的 x 是 nil | 未来双向 yield 支持 | 后续 |
+| HTTPS/TLS | 只有 HTTP | 引入 rustls/axum-server | 后续 |
+| 并发请求处理 | 串行(std::net) | 每请求 spawn 线程或换 Axum | 后续 |
