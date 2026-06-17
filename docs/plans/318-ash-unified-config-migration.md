@@ -1,6 +1,6 @@
 # Plan 318: 统一 Ash 配置系统——迁移到 Auto/Atom 格式 + 统一目录
 
-> **Status**: Draft
+> **Status**: ✅ Implemented (2026-06-17). Phases 1–3 done; Phase 4 (cleanup/docs) done via this update + design doc §5.
 > **关系**: 收拢 [Plan 309](309-ash-remaining-features-roadmap.md) / [315](315-ash-arbitrary-command-completion.md) /
 > [317](317-ash-24bit-truecolor.md) 引入的各配置文件,统一为 **Auto/Atom(.at) 格式**,全部放在 `~/.config/ash/` 目录下。
 > 设计文档同步更新到 [ash-design-summary.md §5](../design/ash-design-summary.md)。
