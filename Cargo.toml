@@ -17,6 +17,7 @@ members = [
     # Plan 325: AutoOS shared AI client + daemon
     "crates/auto-ai-client",
     "crates/auto-ai-daemon",
+    "crates/aictl",
     # "crates/auto-xml",  # Temporarily disabled due to Cargo.toml issues
     # Plan 082: AutoCache global build cache
     "crates/auto-cache",
