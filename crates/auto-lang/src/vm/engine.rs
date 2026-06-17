@@ -126,6 +126,14 @@ pub struct GeneratorState {
     pub collected_idx: usize,
 }
 
+/// Plan 321: HTTP stream iterator — wraps an HTTPStream handle so that
+/// `for chunk in http_stream { }` works via the standard Iter protocol.
+#[derive(Debug, Clone)]
+pub struct HttpStreamIterator {
+    pub stream_handle: u64,
+    pub done: bool,
+}
+
 /// Unified iterator type
 #[derive(Debug, Clone)]
 pub enum Iterator {
@@ -135,6 +143,8 @@ pub enum Iterator {
     Enumerate(EnumerateIterator),
     /// Plan 321: Generator-based iterator (yield/~Iter<T>)
     Generator(GeneratorState),
+    /// Plan 321: HTTP stream iterator (wraps HTTPStream for for-loop consumption)
+    HttpStream(HttpStreamIterator),
 }
 
 // ============================================================================

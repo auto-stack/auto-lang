@@ -1712,10 +1712,14 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                             // Filter source not supported yet
                             -1
                         }
-                        Iterator::Generator(_) => {
-                            // Generator as Map source not yet supported
-                            -1
-                        }
+            Iterator::Generator(_) => {
+                // Generator as Map source not yet supported
+                -1
+            }
+            Iterator::HttpStream(_) => {
+                // HttpStream as Map source not yet supported
+                -1
+            }
                         Iterator::Enumerate(enumerate_iter) => {
                             // Get next from source, then push index on top
                             if let Some(mut source_iter) = vm.iterators.get_mut(&enumerate_iter.source_iterator_id) {
@@ -1946,6 +1950,44 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 task.ram.push_i32(result);
                 return Ok(());
             }
+            Iterator::HttpStream(hs_iter) => {
+                // Plan 321: HTTP stream iterator — read next chunk from HTTPStream.
+                if hs_iter.done {
+                    return Ok(());
+                }
+
+                let chunk_result: Option<String> = crate::vm::ffi::stdlib::HTTP_STREAMS.with(|streams| {
+                    let mut streams = streams.borrow_mut();
+                    if let Some(stream_data) = streams.get_mut(&hs_iter.stream_handle) {
+                        if stream_data.done {
+                            hs_iter.done = true;
+                            None
+                        } else if let Some(ref mut response) = stream_data.response {
+                            use std::io::Read;
+                            let mut buf = vec![0u8; 8192];
+                            match response.read(&mut buf) {
+                                Ok(0) => { stream_data.done = true; hs_iter.done = true; None }
+                                Ok(n) => Some(String::from_utf8_lossy(&buf[..n]).to_string()),
+                                Err(_) => { stream_data.done = true; hs_iter.done = true; None }
+                            }
+                        } else { hs_iter.done = true; None }
+                    } else { hs_iter.done = true; None }
+                });
+
+                match chunk_result {
+                    Some(chunk) => {
+                        let idx = {
+                            let mut strings = vm.strings.write().unwrap();
+                            let i = strings.len();
+                            strings.push(chunk.into_bytes());
+                            i
+                        };
+                        task.ram.push_nv(auto_val::encode_string(idx as u32));
+                    }
+                    None => {}
+                }
+                return Ok(());
+            }
         }
     } else {
         // Fallback: if iterator_id is actually a heap list object, auto-create iterator
@@ -2130,7 +2172,7 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) | Iterator::HttpStream(_) => {
                 // For adapters, we'd need to recursively call next()
                 // For MVP, only support direct list iteration
                 return Err(VMError::RuntimeError("Collect from adapters not yet implemented".to_string()));
@@ -2187,7 +2229,7 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) | Iterator::HttpStream(_) => {
                 return Err(VMError::RuntimeError("Reduce from adapters not yet implemented".to_string()));
             }
         }
@@ -2233,7 +2275,7 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) | Iterator::HttpStream(_) => {
                 return Err(VMError::RuntimeError("Find from adapters not yet implemented".to_string()));
             }
         }
