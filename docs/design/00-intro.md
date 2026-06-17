@@ -26,6 +26,7 @@ Auto 语言设计文档按主题分为 **14 个核心章节** + **1 个附录（
 | 12 | [Concurrency](12-concurrency.md) | Task/Msg Actor 模型、async/await、.go 运算符 | 🆕 新建 |
 | 13 | [Networking](13-networking.md) | HTTP Server 标准库、async I/O、JSON/url 模块 | 🆕 新建 |
 | 14 | [Developer Tools](14-developer-tools.md) | LSP、Web Playground、AutoLab、MCP Server | 🆕 新建 |
+| 15 | [AI Daemon](15-ai-daemon-infrastructure.md) | AutoOS 共享 LLM Harness、aillmd、并发仲裁、Key Vault | 🆕 新建 |
 
 ### 附录：AutoForge 工具链设计
 
