@@ -1519,7 +1519,8 @@ impl Shell {
                 self.config_set(key, &value)?;
                 Ok(Some(format!("{} = {}\n", key, value)))
             }
-            _ => Err(miette::miette!("config: unknown subcommand '{}'. Use list, get, or set", parts[1])),
+            "migrate" => self.config_migrate(),
+            _ => Err(miette::miette!("config: unknown subcommand '{}'. Use list, get, set, or migrate", parts[1])),
         }
     }
 
@@ -1581,53 +1582,69 @@ impl Shell {
             .map_err(|e| miette::miette!("bind: failed to write: {}", e))
     }
 
-    /// Write a config value to ~/.config/ash.toml
+    /// Write a config value to `~/.config/ash/config.at` (Plan 318 Auto/Atom).
     fn config_set(&mut self, key: &str, value: &str) -> Result<()> {
-        let config_path = dirs::config_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("ash.toml");
+        // Load existing config.at (auto_config map).
+        let mut cfg = crate::auto_config::load();
 
-        // Read existing config or start fresh
-        let content = if config_path.exists() {
-            std::fs::read_to_string(&config_path).unwrap_or_default()
-        } else {
-            String::new()
-        };
-
-        let mut doc = match content.parse::<toml_edit::DocumentMut>() {
-            Ok(d) => d,
-            Err(_) => toml_edit::DocumentMut::new(),
-        };
-
-        // Parse key into section + field
-        let (section, field) = if let Some(dot) = key.find('.') {
+        // Parse key into block + field (e.g. "shell.edit_mode").
+        let (block, field) = if let Some(dot) = key.find('.') {
             (&key[..dot], &key[dot + 1..])
         } else {
-            ("shell", key) // default section
+            ("shell", key)
         };
+        cfg.entry(block.to_string())
+            .or_default()
+            .insert(field.to_string(), value.trim_matches('"').to_string());
 
-        // Convert value to toml_edit::Value
-        let toml_value: toml_edit::Value = if value == "true" {
-            toml_edit::Value::from(true)
-        } else if value == "false" {
-            toml_edit::Value::from(false)
-        } else if let Ok(n) = value.parse::<i64>() {
-            toml_edit::Value::from(n)
-        } else {
-            toml_edit::Value::from(value.trim_matches('"'))
-        };
+        // Write config.at.
+        let path = crate::auto_config::write_path("config.at")
+            .ok_or_else(|| miette::miette!("config: no config dir"))?;
+        let text = crate::auto_config::serialize(&cfg);
+        std::fs::write(&path, text)
+            .map_err(|e| miette::miette!("config: failed to write {}: {}", path.display(), e))?;
+        Ok(())
+    }
 
-        // Set the value
-        doc[section][field] = toml_edit::Item::Value(toml_value);
+    /// Migrate `~/.config/ash.toml` → `~/.config/ash/config.at` (Plan 318).
+    fn config_migrate(&mut self) -> Result<Option<String>> {
+        let toml_path = dirs::config_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("ash.toml");
+        if !toml_path.exists() {
+            miette::bail!("config migrate: ash.toml not found at {}", toml_path.display());
+        }
+        let content = std::fs::read_to_string(&toml_path)
+            .map_err(|e| miette::miette!("config migrate: {}", e))?;
+        let old = crate::config::AshShellConfig::parse_toml(&content);
 
-        // Ensure parent directory exists
-        if let Some(parent) = config_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+        // Build auto_config map from the parsed TOML config.
+        use std::collections::HashMap;
+        let mut cfg: HashMap<String, HashMap<String, String>> = HashMap::new();
+        let mut shell = HashMap::new();
+        shell.insert("history_size".into(), old.history_size.to_string());
+        shell.insert("autosuggestion".into(), old.autosuggestion.to_string());
+        shell.insert("autosuggestion_min_chars".into(), old.autosuggestion_min_chars.to_string());
+        shell.insert("edit_mode".into(), old.edit_mode.clone());
+        shell.insert("syntax_highlighting".into(), old.syntax_highlighting.to_string());
+        cfg.insert("shell".into(), shell);
+        if !old.aliases.is_empty() {
+            cfg.insert("aliases".into(), old.aliases.clone());
+        }
+        if old.completion_case_sensitive {
+            let mut comp = HashMap::new();
+            comp.insert("case_sensitive".into(), "true".into());
+            cfg.insert("completion".into(), comp);
         }
 
-        std::fs::write(&config_path, doc.to_string())
-            .into_diagnostic()
-            .map_err(|e| miette::miette!("config: failed to write {}: {}", config_path.display(), e))
+        let path = crate::auto_config::write_path("config.at")
+            .ok_or_else(|| miette::miette!("config migrate: no config dir"))?;
+        std::fs::write(&path, crate::auto_config::serialize(&cfg))
+            .map_err(|e| miette::miette!("config migrate: write {}: {}", path.display(), e))?;
+        Ok(Some(format!(
+            "migrated ash.toml → {} (you can now delete the old ash.toml)",
+            path.display()
+        )))
     }
 
     /// Expand abbreviations in the input line (first word of each pipe segment).

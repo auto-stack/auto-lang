@@ -97,31 +97,64 @@ impl Default for AshShellConfig {
 }
 
 impl AshShellConfig {
-    /// Load config from `~/.config/ash.toml`, falling back to default.
+    /// Load config: prefer `~/.config/ash/config.at` (Auto/Atom, Plan 318),
+    /// fall back to `~/.config/ash.toml` (TOML, backward compat).
     pub fn load() -> Self {
+        // 1. Try config.at (Auto/Atom).
+        let auto_cfg = crate::auto_config::load();
+        if !auto_cfg.is_empty() {
+            return Self::from_auto_config(&auto_cfg);
+        }
+
+        // 2. Fall back to ash.toml (TOML, backward compat).
         let config_path = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("ash.toml");
 
-        let mut config = if config_path.exists() {
+        if config_path.exists() {
             let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-            Self::parse(&content)
+            Self::parse_toml(&content)
         } else {
             Self::default()
-        };
+        }
+    }
 
-        // Overlay Auto-format config (`~/.config/ash.at`) — currently drives `ls.icons`.
-        let auto_cfg = crate::auto_config::load();
-        if let Some(ls) = auto_cfg.get("ls") {
-            if let Some(icons) = ls.get("icons") {
-                config.ls_icons = IconStyle::from_str(icons);
+    /// Build from an Auto/Atom parsed config map (Plan 318).
+    fn from_auto_config(cfg: &std::collections::HashMap<String, std::collections::HashMap<String, String>>) -> Self {
+        use crate::auto_config::{get_bool, get_int, get_str};
+        let mut config = Self::default();
+
+        if let Some(v) = get_int(cfg, "shell", "history_size") {
+            config.history_size = v as usize;
+        }
+        if let Some(v) = get_bool(cfg, "shell", "autosuggestion") {
+            config.autosuggestion = v;
+        }
+        if let Some(v) = get_int(cfg, "shell", "autosuggestion_min_chars") {
+            config.autosuggestion_min_chars = v as usize;
+        }
+        if let Some(v) = get_str(cfg, "shell", "edit_mode") {
+            config.edit_mode = v;
+        }
+        if let Some(v) = get_bool(cfg, "shell", "syntax_highlighting") {
+            config.syntax_highlighting = v;
+        }
+        if let Some(aliases) = cfg.get("aliases") {
+            for (k, v) in aliases {
+                config.aliases.insert(k.clone(), v.clone());
             }
+        }
+        if let Some(v) = get_bool(cfg, "completion", "case_sensitive") {
+            config.completion_case_sensitive = v;
+        }
+        if let Some(v) = get_str(cfg, "ls", "icons") {
+            config.ls_icons = IconStyle::from_str(&v);
         }
         config
     }
 
     /// Parse TOML content into shell config.
-    pub fn parse(content: &str) -> Self {
+    pub fn parse_toml(content: &str) -> Self {
         let value: toml::Value = match toml::from_str(content) {
             Ok(v) => v,
             Err(_) => return Self::default(),
@@ -190,7 +223,7 @@ mod tests {
 
     #[test]
     fn test_parse_empty() {
-        let config = AshShellConfig::parse("");
+        let config = AshShellConfig::parse_toml("");
         assert_eq!(config.history_size, AshShellConfig::default().history_size);
     }
 
@@ -211,7 +244,7 @@ gs = "git status"
 [completion]
 case_sensitive = true
 "#;
-        let config = AshShellConfig::parse(toml);
+        let config = AshShellConfig::parse_toml(toml);
         assert_eq!(config.history_size, 5000);
         assert!(!config.autosuggestion);
         assert_eq!(config.autosuggestion_min_chars, 2);
@@ -231,7 +264,7 @@ edit_mode = "vi"
 [aliases]
 ll = "ls -la"
 "#;
-        let config = AshShellConfig::parse(toml);
+        let config = AshShellConfig::parse_toml(toml);
         assert!(config.is_vi_mode());
         assert!(config.autosuggestion); // default preserved
         assert_eq!(config.aliases.len(), 1);
@@ -239,7 +272,7 @@ ll = "ls -la"
 
     #[test]
     fn test_invalid_toml_falls_back() {
-        let config = AshShellConfig::parse("not valid toml {{{");
+        let config = AshShellConfig::parse_toml("not valid toml {{{");
         assert_eq!(config.history_size, AshShellConfig::default().history_size);
     }
 }
