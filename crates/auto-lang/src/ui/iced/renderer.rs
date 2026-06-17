@@ -1768,6 +1768,13 @@ fn replace_marker(view: &mut AbstractView<DynamicMessage>, todo_views: Vec<Abstr
                 replace_marker(item, todo_views.clone());
             }
         }
+        // Plan 319: recurse into Grid cells so a `__TODO_LIST__` marker inside
+        // a grid is still expanded (else the `_ => {}` wildcard would skip it).
+        AbstractView::Grid { cells, .. } => {
+            for cell in cells.iter_mut() {
+                replace_marker(cell, todo_views.clone());
+            }
+        }
         _ => {}
     }
 }
@@ -1954,6 +1961,21 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         AbstractView::Image { src, style } => {
             AbstractView::Image { src, style }
         }
+
+        // Plan 319: recurse into Grid cells. MUST be explicit — the `_ => Empty`
+        // catch-all below would silently drop the entire grid (the calendar's
+        // dates vanished because Grid hit the wildcard).
+        AbstractView::Grid {
+            cols,
+            gap,
+            cells,
+            style,
+        } => AbstractView::Grid {
+            cols,
+            gap,
+            cells: cells.into_iter().map(convert_view_messages).collect(),
+            style,
+        },
 
         // Select, Slider, Accordion, Sidebar, Tabs, NavigationRail use
         // callback types (SelectCallback, fn pointers, Arc<...>) that
@@ -7534,6 +7556,42 @@ mod tests {
                 _ => panic!("expected Input cell"),
             },
             _ => panic!("expected Grid after patch"),
+        }
+    }
+
+    // Plan 319 regression: convert_view_messages MUST preserve Grid. Its match
+    // has a `_ => Empty` wildcard (non-exhaustive — invisible to the compiler),
+    // so without an explicit Grid arm the entire grid silently became Empty
+    // (the calendar's dates vanished in VM mode). This test is the only guard.
+    #[test]
+    fn test_convert_view_messages_preserves_grid() {
+        let grid: AbstractView<DynamicMessage> = AbstractView::Grid {
+            cols: 7,
+            gap: 0,
+            cells: vec![
+                AbstractView::Text {
+                    content: "Su".to_string(),
+                    style: None,
+                },
+                AbstractView::Button {
+                    label: "1".to_string(),
+                    onclick: DynamicMessage::String("pick".to_string()),
+                    style: None,
+                },
+            ],
+            style: None,
+        };
+
+        let converted = convert_view_messages(grid);
+
+        match converted {
+            AbstractView::Grid { cols, cells, .. } => {
+                assert_eq!(cols, 7);
+                assert_eq!(cells.len(), 2);
+                assert!(matches!(cells[0], AbstractView::Text { .. }));
+                assert!(matches!(cells[1], AbstractView::Button { .. }));
+            }
+            _ => panic!("convert_view_messages dropped the Grid (hit the _ => Empty wildcard)"),
         }
     }
 }
