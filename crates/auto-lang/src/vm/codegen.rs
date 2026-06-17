@@ -5932,21 +5932,30 @@ impl Codegen {
                     // Plan 300: Bare py module dot-call (e.g., math.sqrt from `use.py math`)
                     // When func_name is "module.method" and module is a known py module,
                     // dynamically register as "py.module.method" native.
-                    else if name.contains('.') {
-                        let parts: Vec<&str> = name.splitn(2, '.').collect();
-                        if parts.len() == 2 && self.py_modules.contains(parts[0]) {
-                            let qualified = format!("py.{}", name);
-                            let mut reg = BIGVM_NATIVES.lock().unwrap();
-                            if let Some(id) = reg.resolve_qualified(&qualified) {
-                                drop(reg);
-                                Some(id)
-                            } else {
-                                drop(reg);
-                                let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
-                                Some(id)
-                            }
+                    //
+                    // NOTE: the guard MUST require an actual py-module prefix. A bare
+                    // `name.contains('.')` would swallow every dotted method name
+                    // (e.g. "List.push", "Array.push", "SomeType.method") and return
+                    // None, short-circuiting the BIGVM_NATIVES fallback below — which
+                    // is where stdlib list natives like `auto.list.push` get lazily
+                    // registered (no list.vm.at exists). Letting non-py dotted names
+                    // fall through is what makes `var c = []; c.push(x)` link.
+                    else if name.contains('.')
+                        && name
+                            .splitn(2, '.')
+                            .next()
+                            .map(|p| self.py_modules.contains(p))
+                            .unwrap_or(false)
+                    {
+                        let qualified = format!("py.{}", name);
+                        let mut reg = BIGVM_NATIVES.lock().unwrap();
+                        if let Some(id) = reg.resolve_qualified(&qualified) {
+                            drop(reg);
+                            Some(id)
                         } else {
-                            None
+                            drop(reg);
+                            let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
+                            Some(id)
                         }
                     }
                     // Then check BIGVM_NATIVES (List methods, etc.)

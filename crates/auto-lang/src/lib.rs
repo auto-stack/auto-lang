@@ -1677,6 +1677,20 @@ pub fn has_ui_keywords(code: &str) -> bool {
     false
 }
 
+/// Return the declared name of an importable top-level statement
+/// (`fn`/`type`/`enum`/`ext`), used to filter `use module: items` imports.
+#[cfg(feature = "ui-iced")]
+fn stmt_symbol_name(stmt: &crate::ast::Stmt) -> Option<String> {
+    use crate::ast::Stmt;
+    match stmt {
+        Stmt::Fn(f) => Some(f.name.to_string()),
+        Stmt::TypeDecl(t) => Some(t.name.to_string()),
+        Stmt::EnumDecl(e) => Some(e.name.to_string()),
+        Stmt::Ext(e) => Some(e.target.to_string()),
+        _ => None,
+    }
+}
+
 /// Run a .at file as dynamic UI with iced backend.
 /// MUST be called from the OS main thread (iced requirement).
 #[cfg(feature = "ui-iced")]
@@ -1705,8 +1719,9 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
 
     let widget = widget.ok_or("No widget declaration found")?;
 
-    // 2b. Load child widgets from `use` imports
+    // 2b. Load child widgets + imported functions/types from `use` imports
     let mut registry = WidgetRegistry::new();
+    let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
     if let Some(file_path) = path {
         let use_stmts = crate::use_scanner::scan_use_statements(code);
         let base_dir = std::path::Path::new(file_path)
@@ -1726,15 +1741,34 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
                     let mut mod_parser = Parser::from(module_code.as_str()).with_session(mod_session);
                     if let Ok(mod_ast) = mod_parser.parse() {
                         for stmt in &mod_ast.stmts {
-                            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
-                                if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
-                                    if use_stmt.is_wildcard
-                                        || use_stmt.items.is_empty()
-                                        || use_stmt.items.iter().any(|s| s == &child_widget.name)
-                                    {
-                                        registry.register(child_widget);
+                            match stmt {
+                                // Register child widgets for the view builder.
+                                crate::ast::Stmt::WidgetDecl(decl) => {
+                                    if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
+                                        if use_stmt.is_wildcard
+                                            || use_stmt.items.is_empty()
+                                            || use_stmt.items.iter().any(|s| s == &child_widget.name)
+                                        {
+                                            registry.register(child_widget);
+                                        }
                                     }
                                 }
+                                // Collect imported functions/types/enums/ext so widget
+                                // handlers can call them (e.g. build_month_grid). Only
+                                // the explicitly-imported items are taken when the use
+                                // statement lists specific symbols.
+                                crate::ast::Stmt::Fn(_) | crate::ast::Stmt::TypeDecl(_)
+                                | crate::ast::Stmt::EnumDecl(_) | crate::ast::Stmt::Ext(_) => {
+                                    let name_matches = use_stmt.is_wildcard
+                                        || use_stmt.items.is_empty()
+                                        || stmt_symbol_name(stmt)
+                                            .map(|n| use_stmt.items.iter().any(|s| s == &n))
+                                            .unwrap_or(false);
+                                    if name_matches {
+                                        import_stmts.push(stmt.clone());
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -1744,8 +1778,8 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
     }
 
 
-    // 3. Create DynamicComponent with registry
-    let mut comp = DynamicComponent::with_registry(&widget, registry)
+    // 3. Create DynamicComponent with registry + imported symbols
+    let mut comp = DynamicComponent::with_registry_and_imports(&widget, registry, import_stmts)
         .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
 
     // 3b. Set source path for hot-reload tracking
@@ -1753,12 +1787,10 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
         comp.set_source_path(p);
     }
 
-    // 3c. Fire .Init lifecycle event before starting Iced loop
-    if let Some(init_lc) = widget.lifecycle.iter().find(|l| l.name == "Init") {
-        if let crate::aura::LogicPayload::AstStmts(stmts) = &init_lc.payload {
-            comp.fire_init(stmts);
-        }
-    }
+    // 3c. Fire .Init lifecycle event before starting Iced loop.
+    //     Init is now a regular VM handler (handler_Init), dispatched
+    //     unconditionally via call_handler.
+    comp.fire_init();
 
     // 4. Run iced (blocks until window closes)
     run_dynamic_iced(comp)

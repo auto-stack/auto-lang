@@ -1,16 +1,15 @@
+use calendar_util: build_month_grid, month_name, add_months_year, add_months_month
+
 widget App {
-    msg Msg { PrevMonth, NextMonth }
+    msg Msg { PrevMonth, NextMonth, Today, SelectDay(str) }
 
     model {
-        var month str = "April"
-        var year_display str = "2026"
-        var d1 str = "Su"
-        var d2 str = "Mo"
-        var d3 str = "Tu"
-        var d4 str = "We"
-        var d5 str = "Th"
-        var d6 str = "Fr"
-        var d7 str = "Sa"
+        var year int = 2026
+        var month int = 6
+        var month_label str = ""
+        var today str = ""
+        var selected_date str = ""
+        var days = []
     }
 
     view {
@@ -19,56 +18,38 @@ widget App {
                 row {
                     button "<" { onclick: .PrevMonth, style: "w-10 h-10 rounded-full hover:bg-gray-100 text-gray-600 font-bold" }
                     col {
-                        text .month { style: "text-2xl font-bold text-gray-800" }
-                        text .year_display { style: "text-sm text-gray-500" }
+                        text .month_label { style: "text-2xl font-bold text-gray-800" }
+                        text f"${.year}" { style: "text-sm text-gray-500" }
                         style: "items-center"
                     }
-                    button ">" { onclick: .NextMonth, style: "w-10 h-10 rounded-full hover:bg-gray-100 text-gray-600 font-bold" }
+                    row {
+                        button "Today" { onclick: .Today, style: "px-3 h-10 rounded-full hover:bg-gray-100 text-gray-600 text-sm font-semibold" }
+                        button ">" { onclick: .NextMonth, style: "w-10 h-10 rounded-full hover:bg-gray-100 text-gray-600 font-bold" }
+                        style: "gap-2 items-center"
+                    }
                     style: "w-full items-center justify-between"
                 }
                 grid {
-                    grid-item { text .d1 { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text .d2 { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text .d3 { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text .d4 { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text .d5 { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text .d6 { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text .d7 { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text "30" { style: "text-sm text-gray-300 text-center py-2" } }
-                    grid-item { text "31" { style: "text-sm text-gray-300 text-center py-2" } }
-                    grid-item { text "1" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "2" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "3" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "4" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "5" { style: "text-sm text-gray-700 text-center py-2 bg-blue-100 rounded-full" } }
-                    grid-item { text "6" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "7" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "8" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "9" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "10" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "11" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "12" { style: "text-sm text-gray-700 text-center py-2 bg-blue-100 rounded-full" } }
-                    grid-item { text "13" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "14" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "15" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "16" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "17" { style: "text-sm text-gray-700 text-center py-2 bg-blue-100 rounded-full" } }
-                    grid-item { text "18" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "19" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "20" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "21" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "22" { style: "text-sm text-gray-700 text-center py-2 bg-blue-100 rounded-full" } }
-                    grid-item { text "23" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "24" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "25" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "26" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "27" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "28" { style: "text-sm text-gray-700 text-center py-2 bg-blue-100 rounded-full" } }
-                    grid-item { text "29" { style: "text-sm text-gray-700 text-center py-2" } }
-                    grid-item { text "30" { style: "text-sm text-gray-700 text-center py-2" } }
+                    grid-item { text "Su" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
+                    grid-item { text "Mo" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
+                    grid-item { text "Tu" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
+                    grid-item { text "We" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
+                    grid-item { text "Th" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
+                    grid-item { text "Fr" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
+                    grid-item { text "Sa" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
                     cols: 7
                     gap: 0
-                    style: "w-full mt-4"
+                    style: "w-full"
+                }
+                grid {
+                    for cell in .days {
+                        grid-item {
+                            text cell.label { style: "text-sm text-center py-2 text-gray-700" }
+                        }
+                    }
+                    cols: 7
+                    gap: 0
+                    style: "w-full mt-1"
                 }
                 style: "w-full max-w-md p-6 bg-white rounded-2xl shadow-lg"
             }
@@ -76,7 +57,42 @@ widget App {
     }
 
     on {
-        .PrevMonth -> { .month = "March" }
-        .NextMonth -> { .month = "May" }
+        .Init -> {
+            .year = 2026
+            .month = 6
+            .month_label = month_name(.month)
+            .today = "2026-06-17"
+            .selected_date = "2026-06-17"
+            .days = build_month_grid(.year, .month, .today, .selected_date)
+        }
+
+        .PrevMonth -> {
+            .year = add_months_year(.year, .month, -1)
+            .month = add_months_month(.year, .month, -1)
+            .month_label = month_name(.month)
+            .days = build_month_grid(.year, .month, .today, .selected_date)
+        }
+
+        .NextMonth -> {
+            .year = add_months_year(.year, .month, 1)
+            .month = add_months_month(.year, .month, 1)
+            .month_label = month_name(.month)
+            .days = build_month_grid(.year, .month, .today, .selected_date)
+        }
+
+        .Today -> {
+            let n = DateTime.now()
+            .today = n.format("%Y-%m-%d")
+            .year = n.year()
+            .month = n.month()
+            .month_label = month_name(.month)
+            .selected_date = .today
+            .days = build_month_grid(.year, .month, .today, .selected_date)
+        }
+
+        .SelectDay -> {
+            .selected_date = date
+            .days = build_month_grid(.year, .month, .today, .selected_date)
+        }
     }
 }

@@ -181,9 +181,44 @@ impl DynamicComponent {
         widget: &AuraWidget,
         registry: crate::ui::widget_registry::WidgetRegistry,
     ) -> Result<Self, String> {
-        let mut comp = Self::new(widget)?;
-        comp.widget_registry = registry;
-        Ok(comp)
+        Self::with_registry_and_imports(widget, registry, Vec::new())
+    }
+
+    /// Create a DynamicComponent with a widget registry AND imported symbols.
+    ///
+    /// `import_stmts` are the `Stmt::Fn`/`Stmt::TypeDecl`/`Stmt::EnumDecl`/`Stmt::Ext`
+    /// collected from the widget's `use`-imported modules, so the widget's
+    /// handlers can call imported helpers (e.g. `build_month_grid`).
+    pub fn with_registry_and_imports(
+        widget: &AuraWidget,
+        registry: crate::ui::widget_registry::WidgetRegistry,
+        import_stmts: Vec<crate::ast::Stmt>,
+    ) -> Result<Self, String> {
+        // 1. Create VmBridge from widget + imports (synthesizes handlers into
+        //    a single VM module and initializes state on the VM heap).
+        let bridge = VmBridge::new_with_imports(widget, import_stmts)
+            .map_err(|e| format!("VmBridge init failed for '{}': {}", widget.name, e))?;
+
+        // 2. Extract view template
+        let view_template = widget.view_tree.clone();
+        let widget_name = widget.name.clone();
+
+        // 3. Extract input-to-state mapping for text input handling
+        let input_state_map = extract_input_state_map(&widget.view_tree);
+
+        Ok(Self {
+            bridge,
+            view_template,
+            widget_name,
+            dirty: true,
+            source_path: None,
+            last_modified: None,
+            input_state_map,
+            tick_interval: widget.tick_interval,
+            span_map: widget.span_map.clone(),
+            key_bindings: widget.key_bindings.clone(),
+            widget_registry: registry,
+        })
     }
 
     /// Create a new DynamicComponent with a pre-configured AutoVM instance.
@@ -576,13 +611,15 @@ impl Component for DynamicComponent {
 }
 
 impl DynamicComponent {
-    /// Fire the `.Init` lifecycle event using AST statements.
+    /// Fire the `.Init` lifecycle event.
     ///
-    /// This executes the Init handler body against the widget state via
-    /// `VmBridge::call_handler_ast`. Called before the Iced event loop starts
-    /// so that initial state (e.g., API data) is populated before the first render.
-    pub fn fire_init(&mut self, stmts: &[crate::ast::Stmt]) {
-        if let Ok(()) = self.bridge.call_handler_ast("Init", stmts) {
+    /// `Init` is a regular synthesized handler (`handler_Init`) compiled to VM
+    /// bytecode just like event handlers, so this simply dispatches it via
+    /// `VmBridge::call_handler`. Called before the Iced event loop starts so
+    /// initial state (e.g. `build_month_grid(...)`) is populated before the
+    /// first render.
+    pub fn fire_init(&mut self) {
+        if self.bridge.call_handler("Init", &[]).is_ok() {
             self.dirty = true;
         }
     }
@@ -1034,10 +1071,12 @@ mod tests {
         // Read-only bridge access
         assert_eq!(comp.bridge().widget_name(), "Test");
 
-        // Mutable bridge access
+        // With no handlers defined, has_handler is false and handler_names empty.
+        // (Plan 323: handlers are synthesized from the widget's on/lifecycle
+        // blocks, not registered manually.)
         let mut comp = comp;
-        comp.bridge_mut().register_handler_addr("Inc", 42);
-        assert!(comp.bridge().has_handler("Inc"));
+        assert!(!comp.bridge().has_handler("Inc"));
+        assert!(comp.bridge().handler_names().is_empty());
     }
 
     #[test]

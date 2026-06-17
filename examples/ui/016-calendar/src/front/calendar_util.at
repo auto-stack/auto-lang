@@ -1,0 +1,141 @@
+// calendar_util.at — pure-Auto date arithmetic + month-grid builder.
+//
+// All functions here are PURE AUTO (no #[vm]) so they transpile to every
+// backend (VM / a2r / a2vue) with zero transpiler changes — see Plan 323.
+// "Today" is obtained from the existing #[vm] DateTime primitives
+// (now / year / month / format), which are VM-only today; mapping them in
+// a2r + a2vue is the Phase 1 follow-up noted in the plan.
+
+use datetime
+
+// NOTE on cell representation: cells are plain Obj literals
+//   { label: <day-num str>, date: <YYYY-MM-DD>, is_other_month: <bool> }
+// NOT a `type` record. The VM view-builder's field-access resolvers
+// (resolve_binding_path / resolve_expr_to_value) only handle Value::Obj,
+// so `cell.label` / `cell.date` / `cell.is_other_month` resolve correctly
+// only when cells are Objs. (Plan 323 Phase 2 — see app.at.)
+
+
+/// Leap year test (Gregorian).
+pub fn is_leap(year int) bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+/// Number of days in a given month.
+pub fn days_in_month(year int, month int) int {
+    let dim [12]int = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    if month == 2 && is_leap(year) {
+        return 29
+    }
+    return dim[month - 1]
+}
+
+/// Weekday via Sakamoto's algorithm. Returns 0=Sunday .. 6=Saturday,
+/// which matches a Sunday-first calendar header (no conversion needed).
+pub fn weekday_of(year int, month int, day int) int {
+    let t [12]int = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+    var y = year
+    if month < 3 {
+        y = y - 1
+    }
+    let sum = y + y / 4 - y / 100 + y / 400 + t[month - 1] + day
+    return sum % 7
+}
+
+/// Month name lookup (1 -> "January" ... 12 -> "December").
+pub fn month_name(month int) str {
+    let names [12]str = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ]
+    return names[month - 1]
+}
+
+/// Format y/m/d as zero-padded "YYYY-MM-DD".
+pub fn format_date(year int, month int, day int) str {
+    var ms = month.to_string()
+    if month < 10 {
+        ms = "0" + ms
+    }
+    var ds = day.to_string()
+    if day < 10 {
+        ds = "0" + ds
+    }
+    return year.to_string() + "-" + ms + "-" + ds
+}
+
+/// Add `n` months to a (year, month) pair, returning the resulting year.
+pub fn add_months_year(year int, month int, n int) int {
+    let total = year * 12 + (month - 1) + n
+    return total / 12
+}
+
+/// Add `n` months to a (year, month) pair, returning the resulting month (1-12).
+pub fn add_months_month(year int, month int, n int) int {
+    let total = year * 12 + (month - 1) + n
+    return total % 12 + 1
+}
+
+/// Build the 42-cell (6-week) grid for a month as Obj literals.
+/// `today` / `selected` are "YYYY-MM-DD" strings (carried for a future
+/// today/selected highlight; the current view uses label + is_other_month).
+///
+/// Each cell Obj: { label: <day-num str>, date: <YYYY-MM-DD>, is_other_month: <bool> }
+pub fn build_month_grid(year int, month int, today str, selected str) {
+    // Plain `[]` + `.push()` (015-notes pattern, proven in VM widget handlers).
+    // Not `List.new` (needs `use list`) and not `.to_array()` (cells is already
+    // an array).
+    var cells = []
+
+    let offset = weekday_of(year, month, 1)
+    let dim = days_in_month(year, month)
+
+    // Previous-month tail so the 1st lands in the correct column.
+    let prev_year = add_months_year(year, month, -1)
+    let prev_month = add_months_month(year, month, -1)
+    let prev_dim = days_in_month(prev_year, prev_month)
+    var i = 0
+    for i < offset {
+        let d = prev_dim - offset + 1 + i
+        let ds = format_date(prev_year, prev_month, d)
+        cells.push({ label: d.to_string(), date: ds, is_other_month: true })
+        i = i + 1
+    }
+
+    // Current month.
+    var day = 1
+    for day <= dim {
+        let ds = format_date(year, month, day)
+        cells.push({ label: day.to_string(), date: ds, is_other_month: false })
+        day = day + 1
+    }
+
+    // Next-month filler up to 42 cells.
+    let next_year = add_months_year(year, month, 1)
+    let next_month = add_months_month(year, month, 1)
+    var nday = 1
+    for cells.len() < 42 {
+        let ds = format_date(next_year, next_month, nday)
+        cells.push({ label: nday.to_string(), date: ds, is_other_month: true })
+        nday = nday + 1
+    }
+
+    return cells
+}
+
+/// Tailwind class string for a day cell given its flags.
+/// (Reserved for the today/selected-highlight follow-up — currently the view
+/// uses static per-branch classes because extract_style does not yet thread
+/// loop bindings. Plan 323 Phase 2.)
+pub fn day_style(is_today bool, is_selected bool, is_other_month bool) str {
+    if is_selected {
+        return "text-sm text-center py-2 bg-blue-500 text-white rounded-full font-bold"
+    }
+    if is_today {
+        return "text-sm text-center py-2 bg-blue-100 text-blue-700 rounded-full font-semibold"
+    }
+    if is_other_month {
+        return "text-sm text-center py-2 text-gray-300"
+    }
+    return "text-sm text-center py-2 text-gray-700 hover:bg-gray-100 rounded"
+}

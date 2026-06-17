@@ -15,6 +15,7 @@ pub mod widget;
 pub mod style;
 pub mod debug;
 pub mod vm_bridge;
+pub mod handler_codegen;
 
 #[cfg(feature = "ui-interpreter")]
 pub mod mcp_types;
