@@ -153,6 +153,9 @@ impl Repl {
                 KeyCode::Char('e'),
                 ReedlineEvent::Edit(vec![EditCommand::InsertString("\x05".to_string())]),
             );
+            // Plan 322: Mode switching uses prefix characters (like Ctrl+E's \x05 trick).
+            // F1/F2 are handled via Ctrl+1/Ctrl+2 since reedline 0.44 lacks Function keys.
+            // The prompt mode is driven by ModeState, updated in the run loop.
         }
 
         let edit_mode: Box<dyn reedline::EditMode> = if use_vi {
@@ -345,32 +348,25 @@ impl Repl {
                         println!("{}", line); // show edited command
                     }
 
-                    // Plan 302 Step 2.3: Multi-line input handling
-                    // Detect trailing backslash or unclosed quotes, then read continuation lines
+                    // Plan 322: Multi-line input handling (syntax-based).
+                    // Detects unclosed { } ( ) [ ] " ' or trailing backslash,
+                    // then reads continuation lines with a `·` prompt.
                     loop {
-                        let trimmed = line.trim_end_matches(' ');
-                        if trimmed.ends_with('\\') && !trimmed.ends_with("\\\\") {
-                            // Trailing backslash continuation
-                            line = trimmed.to_string();
-                            line.truncate(line.len() - 1); // remove the \
-                            line.push(' ');
-                            let cont = self.line_editor.read_line(&self.prompt);
-                            match cont {
-                                Ok(Signal::Success(next)) => {
-                                    line.push_str(next.trim());
-                                }
-                                Ok(Signal::CtrlD) => break, // Ctrl-D accepts what we have
-                                _ => break,
+                        if crate::repl_mode::needs_continuation(&line) {
+                            // For trailing backslash: strip it and join with space.
+                            let trimmed = line.trim_end();
+                            if trimmed.ends_with('\\') && !trimmed.ends_with("\\\\") {
+                                line.truncate(line.trim_end().len() - 1);
+                                line.push(' ');
+                            } else {
+                                line.push('\n'); // For unclosed delimiters: join with newline.
                             }
-                        } else if has_unclosed_quote(&line) {
-                            // Unclosed quote — read continuation
-                            line.push('\n');
                             let cont = self.line_editor.read_line(&self.prompt);
                             match cont {
                                 Ok(Signal::Success(next)) => {
                                     line.push_str(&next);
                                 }
-                                Ok(Signal::CtrlD) => break,
+                                Ok(Signal::CtrlD) => break, // Ctrl-D accepts what we have
                                 _ => break,
                             }
                         } else {

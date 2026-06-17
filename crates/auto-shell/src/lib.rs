@@ -24,6 +24,7 @@ pub mod data;
 pub mod job;
 pub mod menu;
 pub mod prompt;
+pub mod repl_mode;
 pub mod shell;
 pub mod signal;
 
