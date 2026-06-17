@@ -1,6 +1,6 @@
 # Plan 320: Ash 结构化管道 DSL（Shell-Level Predicate / Sort / Select）
 
-> **Status**: ✅ Phase 1-3 implemented (2026-06-17). Tier 1 shell DSL (filter/sort/select/map/take/count) done; Phase 4 (Auto closures) deferred.
+> **Status**: ✅ Phase 1-4 implemented (2026-06-17). Tier 1 shell DSL 全部完成（filter/compound filter/sort/select/map/take/count/uniq/reverse/group-by/sum/avg/min/max + 单位展开 + && 复合谓词）。Tier 2 Auto 闭包 + `\|\|` OR 谓词 + 嵌套字段 deferred。
 > **关系**: 落地 [Plan 309 Task 3.1（结构化数据管道激活）](309-ash-remaining-features-roadmap.md)。
 > 参考 [Nushell](https://github.com/nushell/nushell) 的 `where` / `sort-by` / `select` 设计,
 > 但语法用 **shell-level DSL**（不经 Auto parser），而非 NuScript 闭包。
