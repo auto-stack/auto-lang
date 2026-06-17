@@ -4,6 +4,7 @@
 
 pub mod lexer;
 pub mod pipeline;
+pub mod pipe_stages;
 pub mod quote;
 pub mod redirect;
 pub mod history;

@@ -680,6 +680,22 @@ impl Shell {
                 continue;
             }
 
+            // Plan 320: structured-pipeline DSL stage (filter/sort/select/...)?
+            if let Some(op) = ash_core::parser::pipe_stages::parse_pipe_stage(cmd) {
+                let input_val = match input_pipeline.take() {
+                    Some(ash_core::pipeline::AtomPipeline::Atom(atom)) => atom.value,
+                    _ => auto_val::Value::Array(auto_val::Array::new()),
+                };
+                let result_val = ash_core::pipeline::operators::apply(&op, &input_val);
+                input_pipeline = Some(ash_core::pipeline::AtomPipeline::from_atom(
+                    ash_core::pipeline::Atom::new(result_val, ash_core::pipeline::AtomType::Table),
+                ));
+                if is_last {
+                    return Ok(input_pipeline.map(|p| self.format_output(p)));
+                }
+                continue;
+            }
+
             let cmd_name = &parts[0];
             let args = &parts[1..];
 

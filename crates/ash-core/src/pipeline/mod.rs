@@ -15,6 +15,7 @@ pub mod external_stream;
 pub mod atom_pipeline;
 pub mod convert;
 pub mod batom;
+pub mod operators;
 
 pub use atom::{Atom, AtomType};
 pub use atom_stream::AtomStream;
