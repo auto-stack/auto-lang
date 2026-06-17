@@ -120,6 +120,10 @@ pub struct GeneratorState {
     pub started: bool,
     /// Whether the generator has finished (function returned).
     pub done: bool,
+    /// Plan 321 MVP: eagerly collected yield values (not truly lazy).
+    pub collected: Vec<i32>,
+    /// Index into collected for sequential next() return.
+    pub collected_idx: usize,
 }
 
 /// Unified iterator type
@@ -5135,6 +5139,31 @@ impl AutoVM {
                     // The task's ip now points PAST the YIELD_VAL instruction,
                     // so on resume the generator continues from the next stmt.
                     return Ok(StepResult::GeneratorYield);
+                }
+                OpCode::CREATE_GENERATOR => {
+                    // Plan 321: Create a generator iterator from inline operands.
+                    // Bytecode: CREATE_GENERATOR, func_addr:u32, n_args:u8
+                    // Result: pushes iterator_id:i32
+                    let func_addr = self.flash.read_u32(task.ip);
+                    task.ip += 4;
+                    let n_args = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+
+                    let gen_state = GeneratorState {
+                        task_id: None,
+                        func_addr,
+                        n_args,
+                        started: false,
+                        done: false,
+                        collected: Vec::new(),
+                        collected_idx: 0,
+                    };
+                    let iter_id = {
+                        let next_id = self.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        self.iterators.insert(next_id, Iterator::Generator(gen_state));
+                        next_id
+                    };
+                    task.ram.push_i32(iter_id as i32);
                 }
                 OpCode::SLEEP => {
                     let ms = self.flash.read_u32(task.ip) as u64;

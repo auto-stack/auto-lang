@@ -164,6 +164,11 @@ fn collect_targets(flash: &VirtualFlash, start: usize, end: usize, targets: &mut
                 let addr = flash.read_u32(ip);
                 targets.insert(addr as usize);
             }
+            // Plan 321: CREATE_GENERATOR also has a func_addr target
+            OpCode::CREATE_GENERATOR => {
+                let addr = flash.read_u32(ip);
+                targets.insert(addr as usize);
+            }
             OpCode::CREATE_FUTURE => {
                 let addr = flash.read_u32(ip);
                 targets.insert(addr as usize);
@@ -232,6 +237,9 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
         | OpCode::SLEEP | OpCode::JOIN | OpCode::SEND | OpCode::CREATE_FUTURE
         | OpCode::LOAD_REF | OpCode::STORE_REF | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF
             => 4,
+
+        // Plan 321: CREATE_GENERATOR has 5 operand bytes
+        OpCode::CREATE_GENERATOR => 5,
 
         OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => 8,
 
@@ -421,6 +429,12 @@ fn decode_operands(
         OpCode::CALL => {
             let v = flash.read_u32(ip) as usize;
             (vec![label(v)], 4)
+        }
+
+        // Plan 321: CREATE_GENERATOR: u32 func_addr + u8 n_args
+        OpCode::CREATE_GENERATOR => {
+            let v = flash.read_u32(ip) as usize;
+            (vec![label(v)], 5) // 4 bytes addr + 1 byte n_args
         }
 
         OpCode::CALL_SPEC => {

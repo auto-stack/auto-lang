@@ -228,6 +228,13 @@ impl<'a> Disassembler<'a> {
                 (format!("0x{:04x}", v), 4)
             }
 
+            // Plan 321: CREATE_GENERATOR: func_addr:u32, n_args:u8
+            OpCode::CREATE_GENERATOR => {
+                let addr = self.flash.read_u32(ip);
+                let n_args = self.flash.read_u8(ip + 4);
+                (format!("addr=0x{:04x}, n_args={}", addr, n_args), 5)
+            }
+
             // CALL_SPEC: u16 spec_name, u16 method_name
             OpCode::CALL_SPEC => {
                 let spec = self.flash.read_u16(ip);

@@ -178,6 +178,10 @@ pub enum OpCode {
     // Generator yield: pushes a value to the caller and suspends the generator
     // frame. Resumed by Iterator::Generator next(). Used by ~Iter<T> / ~Stream<T>.
     YIELD_VAL = 0x8D, // value -> void (to caller; generator frame suspended)
+    // Plan 321: Create a generator iterator from a function address.
+    // Pops func_addr (u32) + n_args (u8) from stack, registers
+    // Iterator::Generator, pushes iterator_id (i32).
+    CREATE_GENERATOR = 0x8E,
 
     // === Plan 127: Task/Msg Execution Opcodes ===
     // Task message loop and handler dispatch
@@ -302,6 +306,7 @@ impl OpCode {
         0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89,
         0x8A, 0x8B,
         0x8D, // YIELD_VAL (Plan 321)
+        0x8E, // CREATE_GENERATOR (Plan 321)
         // Closures
         0x90, 0x91, 0x92, 0x93, 0x94, 0x95,
         // Arrays
@@ -466,6 +471,7 @@ impl OpCode {
             Self::TRY_RECV => "try.recv",
             Self::SPAWN_GO => "spawn.go",
             Self::YIELD_VAL => "yield.val",
+            Self::CREATE_GENERATOR => "create.gen",
             Self::TASK_LOOP => "task.loop",
             Self::HANDLE_MSG => "handle.msg",
             Self::REPLY => "reply",
@@ -641,6 +647,7 @@ impl OpCode {
             "try.recv" => Some(Self::TRY_RECV),
             "spawn.go" => Some(Self::SPAWN_GO),
             "yield.val" => Some(Self::YIELD_VAL),
+            "create.gen" => Some(Self::CREATE_GENERATOR),
             "task.loop" => Some(Self::TASK_LOOP),
             "handle.msg" => Some(Self::HANDLE_MSG),
             "reply" => Some(Self::REPLY),
