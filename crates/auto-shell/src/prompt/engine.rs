@@ -77,10 +77,11 @@ impl AshPrompt {
     }
 
     /// Plan 322: Override the character module's success symbol at runtime
-    /// (used for mode switching: > / # / ? / ·).
+    /// (used for mode switching: > / # / ? / ·). When locked, uses Blue color.
     pub fn set_character_symbol(&mut self, symbol: &str) {
-        // Replace the character module with one using the custom symbol.
-        self.character = Box::new(CharacterModule::with_symbol(symbol));
+        let locked = symbol.starts_with("▌");
+        let clean = symbol.trim_start_matches("▌");
+        self.character = Box::new(CharacterModule::with_symbol_locked(clean, locked));
     }
 
     /// Render left prompt (parallel module computation)
