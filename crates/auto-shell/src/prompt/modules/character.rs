@@ -34,13 +34,19 @@ impl CharacterModule {
     }
 
     /// Plan 322: Create with a custom symbol (for mode switching).
-    /// Uses the custom symbol for both success and error states.
+    /// When locked, uses Blue to distinguish from auto-detect (Green).
     pub fn with_symbol(symbol: &str) -> Self {
+        Self::with_symbol_locked(symbol, false)
+    }
+
+    /// Plan 322 #5: Create with custom symbol + locked color (Blue).
+    pub fn with_symbol_locked(symbol: &str, locked: bool) -> Self {
+        let color = if locked { Color::Blue } else { Color::Green };
         Self {
             success_char: symbol.to_string(),
             error_char: symbol.to_string(),
             success_style: SegmentStyle {
-                fg: Some(Color::Green),
+                fg: Some(color),
                 bold: true,
                 ..Default::default()
             },

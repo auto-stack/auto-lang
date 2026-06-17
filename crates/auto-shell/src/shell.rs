@@ -116,6 +116,8 @@ pub struct Shell {
     temp_files_for_cleanup: Vec<std::path::PathBuf>, // process substitution temp files
     /// `ls` icon column style (from `~/.config/ash.at`). Plan 309 / ls UX.
     ls_icons: crate::config::IconStyle,
+    /// Plan 322: Locked input mode (None = auto-detect, Some = force this mode).
+    locked_mode: Option<crate::repl_mode::InputMode>,
 }
 
 impl Shell {
@@ -228,6 +230,7 @@ impl Shell {
             last_command_last_arg: None,
             temp_files_for_cleanup: Vec::new(),
             ls_icons: crate::config::AshShellConfig::load().ls_icons,
+            locked_mode: None,
         }
     }
 
@@ -306,6 +309,22 @@ impl Shell {
         self.last_exit_code
     }
 
+    /// Plan 322: Set the locked input mode (None = auto-detect).
+    pub fn set_locked_mode(&mut self, mode: Option<crate::repl_mode::InputMode>) {
+        self.locked_mode = mode;
+    }
+
+    /// Plan 322: Get the locked input mode.
+    pub fn locked_mode(&self) -> Option<crate::repl_mode::InputMode> {
+        self.locked_mode
+    }
+
+    /// Plan 322 #3: Public wrapper for is_auto_expression (used by Repl to
+    /// update last_auto for mode restore after AI mode).
+    pub fn is_auto_expression_pub(&self, input: &str) -> bool {
+        self.is_auto_expression(input)
+    }
+
     /// Internal: actual command dispatch.
     fn execute_inner(&mut self, input: &str) -> Result<Option<String>> {
         // Fire preexec hook (before command execution)
@@ -354,21 +373,30 @@ impl Shell {
             }
         }
 
-        // Plan 322: Try Auto expression, with automatic Shell fallback.
-        if self.is_auto_expression(input) {
-            match self.execute_auto(input) {
-                Ok(result) => return Ok(result),
-                Err(auto_err) => {
-                    // Auto detection was wrong → try Shell as fallback.
-                    // But only if this isn't already a Shell-like command
-                    // (avoid masking real Auto errors for genuine Auto code).
-                    if !self.is_likely_genuine_auto(input) {
-                        match self.execute_shell_path(input) {
-                            Ok(result) => return Ok(result),
-                            Err(_shell_err) => return Err(auto_err),
+        // Plan 322: Locked mode overrides auto-detection.
+        match self.locked_mode {
+            Some(crate::repl_mode::InputMode::AutoScript) => {
+                // Locked Auto: force everything to the Auto VM.
+                return self.execute_auto(input);
+            }
+            Some(crate::repl_mode::InputMode::Shell) => {
+                // Locked Shell: skip Auto detection, fall through to Shell path.
+            }
+            _ => {
+                // Auto-detect mode: try Auto expression, with Shell fallback.
+                if self.is_auto_expression(input) {
+                    match self.execute_auto(input) {
+                        Ok(result) => return Ok(result),
+                        Err(auto_err) => {
+                            if !self.is_likely_genuine_auto(input) {
+                                match self.execute_shell_path(input) {
+                                    Ok(result) => return Ok(result),
+                                    Err(_shell_err) => return Err(auto_err),
+                                }
+                            }
+                            return Err(auto_err);
                         }
                     }
-                    return Err(auto_err);
                 }
             }
         }

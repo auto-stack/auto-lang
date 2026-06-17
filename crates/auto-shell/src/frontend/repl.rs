@@ -190,6 +190,17 @@ impl Repl {
                     ReedlineEvent::Submit,
                 ]),
             );
+            // Plan 322 #4: Alt+1/2/3 as laptop-friendly F1/F2/F3 aliases.
+            for (key, prefix) in [('1', "\x11"), ('2', "\x12"), ('3', "\x13")] {
+                keybindings.add_binding(
+                    KeyModifiers::ALT,
+                    KeyCode::Char(key),
+                    ReedlineEvent::Multiple(vec![
+                        ReedlineEvent::Edit(vec![EditCommand::InsertString(prefix.to_string())]),
+                        ReedlineEvent::Submit,
+                    ]),
+                );
+            }
         }
 
         let edit_mode: Box<dyn reedline::EditMode> = if use_vi {
@@ -444,7 +455,12 @@ impl Repl {
                             } else {
                                 line.push('\n'); // For unclosed delimiters: join with newline.
                             }
+                            // Plan 322 #1: switch prompt to · during continuation.
+                            self.mode_state.in_continuation = true;
+                            self.update_prompt();
                             let cont = self.line_editor.read_line(&self.prompt);
+                            self.mode_state.in_continuation = false;
+                            self.update_prompt();
                             match cont {
                                 Ok(Signal::Success(next)) => {
                                     line.push_str(&next);
@@ -508,6 +524,15 @@ impl Repl {
                         );
                         self.sync_completion_state();
                         continue;
+                    }
+
+                    // Plan 322 #3: Update last_auto before execution (for AI mode restore).
+                    if self.mode_state.locked.is_none() {
+                        self.mode_state.last_auto = if self.shell.is_auto_expression_pub(&line) {
+                            crate::repl_mode::InputMode::AutoScript
+                        } else {
+                            crate::repl_mode::InputMode::Shell
+                        };
                     }
 
                     // Evaluate the line
