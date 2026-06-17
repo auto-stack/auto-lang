@@ -325,6 +325,66 @@ impl Repl {
         self.prompt.set_character_symbol(&symbol);
     }
 
+    /// Plan 325 P3: Ask the AI to translate natural language → ash command.
+    /// Returns the suggested command string.
+    fn ask_ai(&self, question: &str) -> Result<String, String> {
+        use auto_ai_client::{AiClient, CompletionRequest};
+
+        let cwd = self.shell.pwd();
+        let system = format!(
+            "You are an AI assistant for Ash (AutoShell), a shell similar to bash/fish.\n\
+             The user's current directory is: {}\n\
+             The user will describe what they want to do in natural language.\n\
+             Translate it into a SINGLE ash shell command (or pipeline).\n\
+             Rules:\n\
+             - Respond with ONLY the command, no explanation, no markdown.\n\
+             - Use standard Unix commands (ls, grep, find, etc.).\n\
+             - For Ash-specific features, use: ls | .size > 10.mb | sort .name\n\
+             - If multiple steps are needed, use && to chain them.\n\
+             - If you're unsure, give your best single-command guess.",
+            cwd.display()
+        );
+
+        let client = AiClient::new().map_err(|e| format!("AI client init: {}", e))?;
+
+        // Get the default model from the client's first provider.
+        let model = client
+            .providers()
+            .first()
+            .and_then(|p| client.models(p).first().cloned())
+            .unwrap_or_else(|| "gpt-4o".to_string());
+
+        let req = CompletionRequest::single(&model, question)
+            .with_system(&system)
+            .with_max_tokens(256)
+            .with_temperature(0.3);
+
+        // Run the async completion in a blocking runtime (REPL is sync).
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| format!("runtime: {}", e))?;
+
+        let response = rt.block_on(async { client.complete(&req).await });
+
+        match response {
+            Ok(resp) if resp.is_ok() => {
+                let cmd = resp.content.trim().to_string();
+                // Strip markdown code fences if present.
+                let cmd = cmd
+                    .trim_start_matches("```bash\n")
+                    .trim_start_matches("```sh\n")
+                    .trim_start_matches("```\n")
+                    .trim_end_matches("\n```")
+                    .trim()
+                    .to_string();
+                Ok(cmd)
+            }
+            Ok(resp) => Err(format!("AI returned error: {:?}", resp.error)),
+            Err(e) => Err(format!("{}", e)),
+        }
+    }
+
     /// Open the current input line in $EDITOR (or vim/notepad) and return the result.
     /// Plan 304: Multi-line edit via Ctrl+E.
     fn edit_in_editor(&self, initial_content: &str) -> Result<String> {
@@ -401,24 +461,75 @@ impl Repl {
                         self.update_prompt();
                         continue;
                     }
-                    // F3 = AI mode: read a question with ? prompt, print stub.
+                    // F3 = AI mode: natural language → command suggestion.
                     if line.starts_with('\x13') {
                         self.mode_state.enter_ai();
                         self.update_prompt();
-                        let extra = line[1..].trim();
-                        if extra.is_empty() {
+                        let extra = line[1..].trim().to_string();
+
+                        let question = if extra.is_empty() {
                             // Read a full question line.
                             let q_sig = self.line_editor.read_line(&self.prompt);
-                            if let Ok(Signal::Success(q)) = &q_sig {
-                                if !q.trim().is_empty() {
-                                    println!("AI: 「{}」", q.trim());
+                            match q_sig {
+                                Ok(Signal::Success(q)) if !q.trim().is_empty() => q.trim().to_string(),
+                                _ => {
+                                    // Empty or cancelled — return to previous mode.
+                                    self.mode_state.locked = None;
+                                    self.update_prompt();
+                                    continue;
                                 }
                             }
                         } else {
-                            // User typed after F3 on the same input.
-                            println!("AI: 「{}」", extra);
+                            extra
+                        };
+
+                        // Call AI client to translate NL → ash command.
+                        match self.ask_ai(&question) {
+                            Ok(suggestion) => {
+                                println!("\n  AI: {}", suggestion);
+                                println!("  [Enter] 执行  [e] 编辑  [Esc/Enter空] 取消\n");
+
+                                // Read user's decision.
+                                let d_sig = self.line_editor.read_line(&self.prompt);
+                                if let Ok(Signal::Success(decision)) = &d_sig {
+                                    let cmd = decision.trim();
+                                    if cmd.is_empty() {
+                                        // Empty Enter → execute the suggestion as-is.
+                                        match self.shell.execute(&suggestion) {
+                                            Ok(output) => {
+                                                if let Some(s) = output {
+                                                    println!("{}", s);
+                                                }
+                                            }
+                                            Err(e) => eprintln!("Error: {}", e),
+                                        }
+                                    } else if cmd == "e" || cmd == "edit" {
+                                        // Edit mode: let user type the final command.
+                                        println!("  编辑命令 (当前: {})", suggestion);
+                                        let e_sig = self.line_editor.read_line(&self.prompt);
+                                        if let Ok(Signal::Success(edited)) = &e_sig {
+                                            let edited = edited.trim();
+                                            if !edited.is_empty() {
+                                                match self.shell.execute(edited) {
+                                                    Ok(output) => {
+                                                        if let Some(s) = output {
+                                                            println!("{}", s);
+                                                        }
+                                                    }
+                                                    Err(e) => eprintln!("Error: {}", e),
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // Anything else → cancel (do nothing).
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("  AI error: {}", e);
+                                eprintln!("  (set ZHIPU_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY or start aaid daemon)");
+                            }
                         }
-                        println!("AI功能还未实现，敬请期待...");
+
                         // AI is transient — return to previous mode.
                         self.mode_state.locked = None;
                         self.update_prompt();

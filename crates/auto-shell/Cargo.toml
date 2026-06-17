@@ -15,6 +15,10 @@ path = "src/main.rs"
 auto-lang = { path = "../auto-lang" }
 auto-val = { path = "../auto-val" }
 
+# Plan 325: AI client for F3 AI mode
+auto-ai-client = { path = "../auto-ai-client" }
+tokio = { version = "1", features = ["full"] }
+
 # Ash Core (pure logic, zero terminal deps)
 ash-core = { path = "../ash-core" }
 
