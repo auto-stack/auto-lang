@@ -1188,6 +1188,84 @@ impl RustGenerator {
                     return self.generate_child_component(tag, props);
                 }
 
+                // grid-item is transparent — emit its child(ren) directly. A
+                // wrapping col would be Shrink-width and break the enclosing
+                // grid's equal-column Fill distribution.
+                if tag == "grid-item" {
+                    if children.len() == 1 {
+                        return self.generate_view_tree(&children[0]);
+                    } else if !children.is_empty() {
+                        let mut col = "View::col()".to_string();
+                        for child in children {
+                            col = format!("{}.child({})", col, self.generate_view_tree(child));
+                        }
+                        return format!("{}.build()", col);
+                    }
+                    return "View::Empty".to_string();
+                }
+
+                // grid → Column of Rows of `cols` cells (iced has no native grid).
+                // Mirrors `convert_grid` in aura_view_builder, including padding the
+                // final incomplete row with empty Fill cells so every column lines
+                // up — the CSS-Grid "all tracks reserved" semantics.
+                if tag == "grid" {
+                    let cols = props.get("cols").or_else(|| props.get("columns"))
+                        .and_then(|v| match v {
+                            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n as usize),
+                            AuraPropValue::Expr(AuraExpr::Literal(s)) => s.trim().parse::<usize>().ok(),
+                            _ => None,
+                        })
+                        .map(|c| c.max(1))
+                        .unwrap_or(1);
+                    let gap = props.get("gap")
+                        .and_then(|v| match v {
+                            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n as u16),
+                            AuraPropValue::Expr(AuraExpr::Literal(s)) => s.trim().parse::<u16>().ok(),
+                            _ => None,
+                        })
+                        .unwrap_or(0);
+                    let style_str = props.get("style").or_else(|| props.get("class"))
+                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v {
+                            Some(s.clone())
+                        } else { None })
+                        .unwrap_or_default();
+
+                    let mut cells: Vec<String> = children.iter()
+                        .map(|c| self.generate_view_tree(c))
+                        .collect();
+
+                    // Pad the final row to `cols`.
+                    if !cells.is_empty() {
+                        let pad = cols - (cells.len() % cols);
+                        if pad != cols {
+                            for _ in 0..pad {
+                                cells.push("View::text_styled(\"\".to_string(), \"text-center\")".to_string());
+                            }
+                        }
+                    }
+
+                    let mut col = "View::col()".to_string();
+                    if gap > 0 { col = format!("{}.spacing({})", col, gap); }
+                    for row_cells in cells.chunks(cols) {
+                        // Each row is forced to full width so its `text-center`
+                        // (Fill) cells distribute into `cols` equal columns.
+                        // Without this the row stays Shrink, and a Shrink row
+                        // full of Fill children collapses vertically (a tower)
+                        // under the rust `into_iced` path. Matches convert_grid
+                        // in aura_view_builder.rs, which sets the same `w-full`.
+                        let mut row_b = "View::row().style(\"w-full\")".to_string();
+                        if gap > 0 { row_b = format!("{}.spacing({})", row_b, gap); }
+                        for cell in row_cells {
+                            row_b = format!("{}.child({})", row_b, cell);
+                        }
+                        col = format!("{}.child({}.build())", col, row_b);
+                    }
+                    if !style_str.is_empty() {
+                        col = format!("{}.style(\"{}\")", col, style_str);
+                    }
+                    return format!("{}.build()", col);
+                }
+
                 let view_fn = self.tag_to_view_fn(tag);
 
                 // For text elements with a "text" prop and no extra styling/events,

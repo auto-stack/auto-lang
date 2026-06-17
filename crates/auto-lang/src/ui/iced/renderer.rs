@@ -450,6 +450,24 @@ fn apply_column_style<M: Clone + Debug + 'static>(
     }
 }
 
+/// Emulate CSS `justify-content` on an iced Row, which has no native main-axis
+/// justification. Returns `(leading, between, trailing)` flags telling the row
+/// builder where to inject `Space`-with-Fill-width spacers. Layout is
+/// left-to-right, so Fill spacers compete for — and evenly split — the row's
+/// remaining width:
+///   start  → none
+///   end    → leading spacer pushes children to the right edge
+///   center → leading + trailing spacers flank the children
+///   between → a spacer between each adjacent pair spreads them out
+fn row_justify_spacers(j: Option<IcedJustify>) -> (bool, bool, bool) {
+    match j {
+        Some(IcedJustify::Center) => (true, false, true),
+        Some(IcedJustify::End) => (true, false, false),
+        Some(IcedJustify::Between) => (false, true, false),
+        _ => (false, false, false), // Start / None
+    }
+}
+
 /// Apply style properties to a Row widget and optionally wrap in a Container
 /// for visual styles (background, border).
 fn apply_row_style<M: Clone + Debug + 'static>(
@@ -468,6 +486,10 @@ fn apply_row_style<M: Clone + Debug + 'static>(
     if let Some(ref is) = iced_style {
         if let Some(ref w) = is.width {
             r = r.width(iced_length(w));
+        } else if is.justify_content.is_some() {
+            // justify-content only has effect with a defined main-axis size;
+            // the Fill-spacer emulation needs room to distribute.
+            r = r.width(iced::Length::Fill);
         }
         if let Some(ref h) = is.height {
             r = r.height(iced_length(h));
@@ -733,9 +755,25 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             AbstractView::Row { children, spacing, padding, style } => {
                 let eff_spacing = effective_spacing(spacing, style.as_ref());
+                let justify = style
+                    .as_ref()
+                    .map(|s| IcedStyle::from_style(s).justify_content)
+                    .and_then(|j| j);
+                let (lead, between, trail) = row_justify_spacers(justify);
                 let mut row_widget = row([]).spacing(eff_spacing);
+                if lead {
+                    row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+                }
+                let mut first = true;
                 for child in children {
+                    if between && !first {
+                        row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+                    }
+                    first = false;
                     row_widget = row_widget.push(child.into_iced());
+                }
+                if trail {
+                    row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
                 }
                 apply_row_style(row_widget, padding, style.as_ref(), None)
             }
@@ -5904,11 +5942,25 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
             let eff_spacing = effective_spacing(spacing, style.as_ref());
+            let justify = style
+                .as_ref()
+                .map(|s| IcedStyle::from_style(s).justify_content)
+                .and_then(|j| j);
+            let (lead, between, trail) = row_justify_spacers(justify);
             let mut row_w = row([]).spacing(eff_spacing);
+            if lead {
+                row_w = row_w.push(iced::widget::Space::new().width(iced::Length::Fill));
+            }
             for (i, child) in children.into_iter().enumerate() {
                 path.push(i);
+                if between && i > 0 {
+                    row_w = row_w.push(iced::widget::Space::new().width(iced::Length::Fill));
+                }
                 row_w = row_w.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
+            }
+            if trail {
+                row_w = row_w.push(iced::widget::Space::new().width(iced::Length::Fill));
             }
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
             let el = apply_row_style(row_w, padding, style.as_ref(), widget_id);
