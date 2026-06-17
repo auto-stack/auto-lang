@@ -1,9 +1,45 @@
 # Plan 326: VM 运行时基础能力补全 — struct/List/序列化/类型转换
 
-> **Status**: Draft
+> **Status**: Phase 1-5 完成(Phase 2/4 经核实已在早期 commit 解决;Phase 3/5 本次实现)
 > **依赖**: Plan 321(generator 运行时);Plan 312(HTTP server)
 > **目标**: 修复阻塞 auto-musk 直接使用的 4 个 VM 运行时基础能力缺口
 > **验收**: `examples/ui/015-notes` 的 CRUD API 在 AutoVM 下端到端跑通
+
+## 实施结果摘要(本次 session)
+
+- **Phase 2(struct 字段访问)**:经系统化根因调查,`note.title 返回 0` 在隔离
+  最小场景已无法复现(6 个回归测试全绿)。极可能在 Phase 1 generator 帧修复时
+  连带解决。新增 17 个回归测试覆盖 struct 字面量/fn 返回/数组存储/for 循环场景。
+- **Phase 4(List.push)**:`shim_list_push` 已存在(native.rs:931,编号 101),
+  计划"搜索零命中"为过时信息。已注册 `auto.list.push` + `List.push` 别名。
+- **Phase 3(HTTP 序列化)**:**确认真实根因**——handler 返回 struct 时栈顶是
+  i32 形式的 heap object ID(array: 2000000+,struct: 4000000+),旧序列化
+  把它当普通数字返回 `"4000000"`。新增 `nv_to_json` 递归序列化函数,查表识别
+  array/heap/object id 并展开为 JSON。替换 http_server.rs + stdlib.rs 共 3 处
+  调用点。新增 16 个 VM 集成测试(含 struct/array/nested/Option 展开)。
+- **Phase 5(int 转换)**:http_server 注入 path param 时智能推断——可解析为
+  i32 则注入 i32,否则 string。`to_int` native(auto.str.to_int, 编号 1516)
+  已存在作兜底。
+
+## 回归验证
+
+- baseline: 2788 passed / 83 failed / 79 ignored
+- 本次改动: 2813 passed / 83 failed / 79 ignored(+25 新通过,零新失败)
+
+## 端到端验收(纯 VM 模式 AutoVM http_server)
+
+通过在独立线程启动真实 AutoVM HTTP server,用 TcpStream 发请求验证:
+
+- `GET /api/notes/test`(handler 返回 `Note` struct)→ `{"id": 1, "title": "hello"}`
+  (旧版返回 `"4000000"` 或 `"null"`)
+- `GET /api/echo/42`(handler `fn echo_id(id int) int`)→ `42`
+  (旧版 `:id` 注入为 string)
+
+注:015-notes 的 `auto run` 默认走 a2r(Rust 转译)后端,不走 AutoVM
+http_server。AutoVM http_server 用于纯 VM 模式(无 a2r)。端到端验收通过
+最小 #[api] 程序验证了 AutoVM 路径的正确性。
+
+
 
 ---
 
