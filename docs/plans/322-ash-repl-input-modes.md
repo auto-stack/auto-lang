@@ -1,6 +1,6 @@
 # Plan 322: Ash REPL 输入模式系统
 
-> **Status**: ✅ Phase 1-3 implemented + AI stub (2026-06-17). P1: conservative auto-expression detection + Shell fallback. P2: syntax-based multiline. P3: F1/F2/F3/Esc keybindings + ModeState prompt symbols (>/ #/ ?/ ·/ ▌>). P4: AI mode framework with stub ("AI功能还未实现，敬请期待..."). LLM backend integration deferred (separate module — needs decision: port from AutoForge or wait for Auto-native auto-musk).
+> **Status**: ✅ All frontend phases complete (2026-06-17). P1: conservative auto-expression detection + Shell fallback. P2: syntax-based multiline continuation. P3: F1/F2/F3/Esc keybindings + ModeState prompt symbols (>/ #/ ?/ ·/ ▌> 蓝). P3 fixes: locked mode overrides execution routing (#2), continuation prompt `·` (#1), last_auto tracking (#3), locked=Blue color (#5), Alt+1/2/3 laptop aliases (#4). P4: AI mode framework with stub. **Only LLM backend integration remains** — deferred to a separate plan/module (needs decision: port from AutoForge or wait for Auto-native auto-musk).
 > **关系**: 重构 Shell 当前的 `looks_like_auto_expr` 启发式，建立 **自动检测 + 手动锁定 + 自动回退** 三层输入模式系统。支持 Shell / AutoScript / AI 三模式 + 语法自动多行。
 
 ---
