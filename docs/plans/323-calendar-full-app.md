@@ -143,6 +143,37 @@ pub fn month_name(month int) str { /* 查 12 名表 */ }
 
 ---
 
+### Phase 2 前置 — VM handler 走真 Codegen（解锁 handler 计算）
+
+> **状态**：Plan 323 Phase 2 实现中发现 `.days = build_month_grid(...)` 网格始终为空。深挖根因（MCP snapshot + 源码）确认是 **VM widget handler 不具备计算能力**，与 `.at` 代码无关。本前置计划已确认并批准，作为 Phase 2 的硬前置。**在 plan-323 worktree 里实现。**
+
+**根因三层：**
+1. imported-module 的函数（`build_month_grid` 等）**根本没进 VM** —— `lib.rs:1708-1744 run_file_dynamic_ui` 对每个 `use module` 只抽 `WidgetDecl`，函数定义被丢弃，`exports_by_name` 里没这些符号。
+2. handler 由 bespoke 迷你编译器编译（`vm_bridge.rs:893 compile_handler_stmts`），只发 Expr/Store/If；for/数组/对象/`CALL` 全是 `Err("unsupported")`（`:1004`），被 `new():157` 的 `if let Ok` **静默吞掉**。
+3. Init 走第二条路 —— `call_handler_ast`（`:468`）的 AST 解释器 `exec_stmt`/`eval_expr`，对数组/循环/调用同样无能为力（`_ => Ok(())` / `_ => Nil`）。015-notes 能用只因 `try_api_call`（`:670`）写死 5 个 HTTP shim。
+
+**关键发现**：真 Codegen（`compile.rs:1479 compile_module_to_bytecode`）**已完整实现** for-in / 数组字面量 / 对象字面量 / `.push()` / `CALL`。迷你编译器里重造这些是纯重复，且 `CALL` 要绝对 flash 地址（`engine.rs:3981`），迷你编译器无重定位表 = 要再手搓 Linker。
+
+**架构决策（Hybrid，用户已确认）**：handler 体 + imported 函数都走真 Codegen → 一个 linked `CompiledPackage` → 真 VM `call_fn_by_name`。保留 `VmBridge` 作为 state 容器 + dispatch 门面。唯一真正新代码：(a) 状态绑定 shim（`.field`/state 标识符 → 对 state 堆对象的 load/store）；(b) `Linker` 跨模块合并 `strings`/`object_keys`/`object_types`（`build_month_grid` 要造 `Value::Obj` cells）。HTTP shim 抽成 native，015-notes 不回归。
+
+**风险锚点（已读源码确认）：**
+- `Linker::link`（`loader.rs:246-328`）**只**合并 code + 重定位 + `global_symbols`；`strings`/`object_keys`/`object_types` 在 `Module` 上被丢弃 —— **HIGH**，对象字面量跨模块索引错乱，必须补合并。
+- 正确 flash 路径已存在：`VMLoader::bootstrap` → `VirtualFlash::from_vec_with_metadata`（`loader.rs:120-139`），携带 object_keys/object_types；`VmBridge::new` 现在用 `VirtualFlash::new(0)` 手搓、丢了 metadata。
+- state 是 `GenericInstanceData` 堆对象 id `4000000`，**按位置** `get_field(idx)`/`set_field(idx)`（`vm_bridge.rs:231,299-350`）—— shim 复用现有 `GET_GENERIC_FIELD`/`SET_GENERIC_FIELD`，不动堆布局。
+
+**子任务（按序）：**
+1. **`Linker` 跨模块合并表**（`loader.rs:246`，HIGH 风险，先发带单测）：新增 `link_full() -> CompiledPackage`，按拼接顺序对每模块 `strings`/`object_keys`/`object_types` 做索引重定位，回填该模块 code 里的 `LOAD_STR`/`CREATE_OBJ` 立即数。先读 `opcode.rs`+`engine.rs` 确认立即数宽度/位置。Gate：`cargo test -p auto-lang --lib`。
+2. **imported-module 函数加载**（`vm_bridge.rs:135` 扩 `new()` 签名 + `lib.rs:1708-1744`）：抽完 WidgetDecl 后用真编译器把 app+imports 编成多模块 program（复用 `CompileSession::resolve_uses`/`take_compiled_modules`），产出 `Vec<Module>` 传进 `VmBridge::new`。Gate 单测：`exports_by_name` 含 `build_month_grid`。
+3. **handler 用真 Codegen 编译 + 状态绑定 shim**（新文件 `crates/auto-lang/src/ui/handler_codegen.rs`）：`rewrite_state_refs`（用 `state_field_names` 分类 state 字段）+ 合成 `Stmt::Fn`（prologue `GET_GENERIC_FIELD` load、epilogue `SET_GENERIC_FIELD` 写回、`RET`）+ 调真 `Codegen`。`vm_bridge.rs:140-162` 换用它；删 `compile_handler_stmts`/`compile_stmt`/`compile_expr`/`CompileContext`（`:893-1175`）。Gate：counter 自增回归 + `build_month_grid` 产 42 cells。
+4. **unified flash + dispatch**（`vm_bridge.rs`）：`new()` 用 `link_full()` 合成 `CompiledPackage` 走 `VMLoader::bootstrap`（带 metadata）替换手搓 flash；`call_handler` 改 `vm.call_fn_by_name`；删 `handler_closures`/`handler_addrs`；`new()` 失败 `log::warn!`。
+5. **统一 Init 到 bytecode**（`dynamic.rs:584`、`lib.rs:1752-1756`、`vm_bridge.rs:468-808`）：`fire_init(&mut self)` → `bridge.call_handler("Init",&[])`；删 `call_handler_ast` + AST 解释器死代码。
+6. **HTTP shim 抽成 native**（新文件 `crates/auto-lang/src/ui/native_api.rs`，`#[cfg(feature="ui-interpreter")]`）：从 `try_api_call` 抽 5 个 ureq native + `register_ui_api_natives()`；handler 编译前注册使 Codegen 发 `CALL_NAT`。Gate：015-notes 端到端。
+7. **还原 016-calendar 动态设计**（`app.at`/`calendar_util.at`）：删诊断态，恢复 `DateTime.now()` Today、真实 `add_months_year/month`+`month_name` handler、Obj-cell view 分支。今天/选中高亮仍受 `extract_style` loop binding 限制，保持静态 per-branch class（Phase 2 follow-up）。
+
+**验证（headless）：** 杀僵尸 `taskkill //F //IM auto.exe`；`auto r -r vm`；MCP snapshot 断言 `.days` 42 cell、`month_label` 正确、PrevMonth/NextMonth 后变化；回归 001/002/013/015/016 vm 模式。
+
+---
+
 ### Phase 2 — 前端动态网格 + 真导航（单 Calendar widget）
 
 **Files:**
@@ -193,7 +224,11 @@ grid {
 }
 ```
 
-> **需验证**：`for` 能否直接作为 `grid` 的子节点产出多个 cell。Plan 319 后 `convert_grid` 把所有子节点当 cell，理论上 `for` 展开的多个节点都会成为 cell。**Phase 2 先验证这点**——不行则把 grid 临时换成 `col` of `row` 手工分块测试，定位是 grid 还是 for 的问题。
+> **已验证并修复（Plan 323 Phase 2）**：`for` 作为 `grid` 子节点**原本不**产出多 cell——`ForLoop` handler 返回单个 `View::Column` 包住所有迭代，`convert_grid` 把它当 1 个 cell，导致动态日历塌成一根竖条。
+> 已在 [aura_view_builder.rs](crates/auto-lang/src/ui/aura_view_builder.rs) 修复：
+> - 新增 `for_loop_iterations` helper（非 tracked 路径），`convert_grid` 用 `flat_map` 把每个 `for` 子节点展开成逐迭代的 cell；
+> - `convert_grid_tracked_ctx`（VM 每帧渲染走的 tracked 路径，F12 关也走它）同步展开：每个 cell 按顺序分配 `cell_idx` 路径，使 build-time 路径 `[..cell_idx]` 与 `render_dynamic_view` Grid arm 的访问顺序一致。
+> 回归测试：`convert_grid_flattens_for_loop_into_cells` + `convert_grid_tracked_flattens_for_loop_into_cells`（7 元素数组 → 7 cell，tracked 版断言 cell 路径为 `[0..7]`）。
 
 **验证：**
 - vm + rust 两模式：默认显示当前月（2026-06），日期数对、1 号对在正确的星期列、今天高亮。
@@ -346,7 +381,7 @@ row {
 
 | 风险 | 缓解 |
 |---|---|
-| `for` 作为 `grid` 子节点不产出多 cell | Phase 2 第一步就验证；不行则定位是 grid 还是 for，必要时给 grid/convert_grid 补 for 展开 |
+| `for` 作为 `grid` 子节点不产出多 cell | **已修复**：`convert_grid` + `convert_grid_tracked_ctx` 增加 `for` 展开（`for_loop_iterations` helper / 内联展开），cell 按 `cell_idx` 分配路径；2 个回归测试通过 |
 | 子 widget 无法向父发事件（点击） | 优先方案 (a)：纯展示子 widget + 父在 for 循环里直接绑 onclick；不依赖事件冒泡 |
 | 日期算术 transpile 缺口（DateTime 仅 VM） | 纯 Auto 写（闰年表/Zeller-Sakamoto），自动 transpile；仅 `today_str` 做 a2r(chrono)+a2vue(JS 垫片) 映射 |
 | a2vue `today_str()` 时区 | JS 用 `getFullYear/getMonth/getDate`（本地），勿用 `toISOString`（UTC）；a2r 用 chrono `Local` |

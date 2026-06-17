@@ -692,16 +692,81 @@ impl<'a> AuraViewBuilder<'a> {
         let gap = self.extract_u16(props, "gap").unwrap_or(0);
         let style = self.extract_style(props);
 
-        let cells: Vec<View<DynamicMessage>> = children
-            .iter()
-            .enumerate()
-            .filter_map(|(i, n)| {
-                path.push(i);
-                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                path.pop();
-                if matches!(v, View::Empty) { None } else { Some(v) }
-            })
-            .collect();
+        // Flatten `for`-loop children into individual cells, assigning each cell
+        // a sequential `cell_idx` path so build-time paths match the render-time
+        // paths `render_dynamic_view`'s Grid arm visits (Plan 323). A bare `for`
+        // inside a grid must yield one cell per iteration, not a wrapping Column.
+        let mut cells: Vec<View<DynamicMessage>> = Vec::new();
+        let mut cell_idx: usize = 0;
+        for n in children.iter() {
+            match n {
+                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                    let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+                    let array = match self.bridge.read_state(state_name) {
+                        Ok(Value::Array(arr)) => arr,
+                        _ => continue,
+                    };
+                    let body_len = body.len();
+                    for (i, item) in array.iter().enumerate() {
+                        if !self.matches_search(item) {
+                            continue;
+                        }
+                        let mut loop_bindings = bindings.clone();
+                        loop_bindings.insert(var.clone(), item.clone());
+                        if let Some(idx_var) = index {
+                            loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
+                        }
+                        let views: Vec<View<DynamicMessage>> = body
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(bi, bn)| {
+                                path.push(cell_idx);
+                                if body_len > 1 {
+                                    path.push(bi);
+                                }
+                                let for_path: Vec<u16> =
+                                    path.iter().map(|&x| x as u16).collect();
+                                probe.record_for(&for_path, ForIter {
+                                    var: var.clone(),
+                                    index: Some(i),
+                                    value_repr: value_to_display_string(item),
+                                    iterable_repr: iterable.clone(),
+                                });
+                                let v = self.convert_node_tracked_ctx(
+                                    bn, path, id_map, probe, &loop_bindings,
+                                );
+                                if body_len > 1 {
+                                    path.pop();
+                                }
+                                path.pop();
+                                Some(v)
+                            })
+                            .collect();
+                        let cell = if views.is_empty() {
+                            continue;
+                        } else if views.len() == 1 {
+                            views.into_iter().next().unwrap()
+                        } else {
+                            View::Column { children: views, spacing: 0, padding: 0, style: None }
+                        };
+                        if matches!(cell, View::Empty) {
+                            continue;
+                        }
+                        cells.push(cell);
+                        cell_idx += 1;
+                    }
+                }
+                other => {
+                    path.push(cell_idx);
+                    let v = self.convert_node_tracked_ctx(other, path, id_map, probe, bindings);
+                    path.pop();
+                    if !matches!(v, View::Empty) {
+                        cells.push(v);
+                        cell_idx += 1;
+                    }
+                }
+            }
+        }
 
         if cells.is_empty() {
             return View::Empty;
@@ -1196,6 +1261,55 @@ impl<'a> AuraViewBuilder<'a> {
         builder.build()
     }
 
+    /// Iterate a `for` loop's iterable, converting its body once per item, and
+    /// return the resulting views **flat** (one per iteration; multi-node bodies
+    /// are wrapped in a Column). Used by `convert_grid` to flatten `for`
+    /// children into individual grid cells — a bare `for` inside a grid must
+    /// yield one cell per iteration, not a single wrapping Column. (Plan 323.)
+    fn for_loop_iterations(
+        &self,
+        var: &str,
+        index: &Option<String>,
+        iterable: &str,
+        body: &[AuraNode],
+        bindings: &Bindings,
+    ) -> Vec<View<DynamicMessage>> {
+        let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+        let array = match self.bridge.read_state(state_name) {
+            Ok(Value::Array(arr)) => arr,
+            Ok(_) => match self.bridge.read_state_as_vec(state_name) {
+                Ok(vec) => auto_val::Array::from(vec),
+                Err(_) => return Vec::new(),
+            },
+            Err(_) => return Vec::new(),
+        };
+        array
+            .iter()
+            .enumerate()
+            .filter_map(|(i, item)| {
+                if !self.matches_search(item) {
+                    return None;
+                }
+                let mut loop_bindings = bindings.clone();
+                loop_bindings.insert(var.to_string(), item.clone());
+                if let Some(idx_var) = index {
+                    loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
+                }
+                let views: Vec<View<DynamicMessage>> = body
+                    .iter()
+                    .map(|n| self.convert_node_with(n, &loop_bindings))
+                    .collect();
+                if views.is_empty() {
+                    None
+                } else if views.len() == 1 {
+                    Some(views.into_iter().next().unwrap())
+                } else {
+                    Some(View::Column { children: views, spacing: 0, padding: 0, style: None })
+                }
+            })
+            .collect()
+    }
+
     /// Convert a grid element. iced has no native grid layout, so decompose
     /// into a **Column of Rows**: chunk the (grid-item) children into rows of
     /// `cols`, each row a horizontal Row. Cells that carry `text-center`
@@ -1219,10 +1333,20 @@ impl<'a> AuraViewBuilder<'a> {
         let gap = self.extract_u16(props, "gap").unwrap_or(0);
         let style = self.extract_style(props);
 
+        // Flatten `for`-loop children into individual cells: a bare `for`
+        // inside a grid must yield one cell per iteration, not a single
+        // wrapping Column (Plan 323). Other children convert to one cell each.
         let cells: Vec<View<DynamicMessage>> = children
             .iter()
-            .map(|n| self.convert_node_with(n, bindings))
-            .filter(|v| !matches!(v, View::Empty))
+            .flat_map(|n| match n {
+                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                    self.for_loop_iterations(var, index, iterable, body, bindings)
+                }
+                other => {
+                    let v = self.convert_node_with(other, bindings);
+                    if matches!(v, View::Empty) { Vec::new() } else { vec![v] }
+                }
+            })
             .collect();
 
         if cells.is_empty() {
@@ -2530,6 +2654,181 @@ mod tests {
             "multi-body loop keeps body-index level: key [0,0] expected");
         assert!(!snap.contains_key(&vec![0u16]),
             "multi-body loop must NOT collapse to single-segment [0]");
+    }
+
+    // ========================================================================
+    // Plan 323 — `for` inside `grid` must flatten to one cell per iteration
+    // (both the non-tracked `build` path and the tracked DevTools path).
+    // ========================================================================
+
+    /// Shared grid-with-for-loop node: a `grid` whose only child is a `for`
+    /// over a 7-element `items` array, body = single text per iteration.
+    fn grid_with_for_loop_node() -> AuraNode {
+        let for_loop = AuraNode::ForLoop {
+            var: "item".to_string(),
+            index: None,
+            iterable: ".items".to_string(),
+            body: vec![AuraNode::Text(AuraTextContent::Interpolated {
+                template: "${.item}".to_string(),
+                bindings: vec!["item".to_string()],
+            })],
+            span: None,
+            debug_id: None,
+        };
+        AuraNode::element("grid")
+            .with_prop("cols", AuraExpr::Int(7))
+            .with_child(for_loop)
+    }
+
+    fn widget_with_items() -> (AuraWidget, VmBridge) {
+        let widget = make_test_widget("Grid", vec![
+            AuraStateDef {
+                name: "items".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: AuraExpr::Literal(String::new()),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge.write_state(
+            "items",
+            Value::Array(auto_val::Array::from(vec![
+                Value::str("a"), Value::str("b"), Value::str("c"),
+                Value::str("d"), Value::str("e"), Value::str("f"),
+                Value::str("g"),
+            ])),
+        ).unwrap();
+        (widget, bridge)
+    }
+
+    #[test]
+    fn convert_grid_flattens_for_loop_into_cells() {
+        // Non-tracked `build` path (used by into_iced / codegen). Before the
+        // Plan 323 fix the `for` returned a single wrapping Column, so the grid
+        // saw ONE cell instead of 7 → a "calendar" rendered as a single tall
+        // column. This test pins the flattened behaviour.
+        let (widget, bridge) = widget_with_items();
+        let _ = widget;
+        let builder = AuraViewBuilder::new(&bridge, "Grid");
+
+        let view = builder.build(&grid_with_for_loop_node());
+        match view {
+            View::Grid { cols, cells, .. } => {
+                assert_eq!(cols, 7);
+                assert_eq!(cells.len(), 7,
+                    "for inside grid must flatten to one cell per iteration");
+            }
+            other => panic!("Expected View::Grid with 7 cells, got {:?} (kind)",
+                std::mem::discriminant(&other)),
+        }
+    }
+
+    #[test]
+    fn convert_grid_tracked_flattens_for_loop_into_cells() {
+        // Tracked `build_with_debug` path (used by VM `render_dynamic_view` for
+        // EVERY frame, even with F12 off). Same flattening requirement, plus the
+        // per-cell probe paths must be the sequential cell indices [0..7] so
+        // they match the render-time Grid-arm visit order.
+        let (widget, bridge) = widget_with_items();
+        let _ = widget;
+        let builder = AuraViewBuilder::new(&bridge, "Grid");
+
+        let (view, _id_map, probe) = builder.build_with_debug(&grid_with_for_loop_node());
+        match view {
+            View::Grid { cells, .. } => {
+                assert_eq!(cells.len(), 7,
+                    "tracked for-in-grid must also flatten to 7 cells");
+            }
+            other => panic!("Expected tracked View::Grid with 7 cells, got {:?} (kind)",
+                std::mem::discriminant(&other)),
+        }
+        let snap = probe.snapshot();
+        let mut keys: Vec<Vec<u16>> = snap.keys().cloned().collect();
+        keys.sort();
+        // Each iteration's for-context recorded at the flat cell path [0..7].
+        assert_eq!(keys, vec![vec![0u16], vec![1], vec![2], vec![3], vec![4], vec![5], vec![6]],
+            "tracked grid cell paths must be flat sequential [0..7]");
+        for k in &keys {
+            assert!(snap.get(k).unwrap().for_context.is_some(),
+                "for_context present at flat cell path {:?}", k);
+        }
+    }
+
+    #[test]
+    fn convert_grid_for_loop_obj_cells_resolve_field_access() {
+        // Plan 323 Phase 2: the calendar's real pattern — a `for` over an array
+        // of Obj cells, each cell rendered as a `button cell.label`. This tests
+        // that (a) the loop flattens to N cells AND (b) the FieldAccess label
+        // `cell.label` actually resolves to each Obj's "label" string. If this
+        // fails, an empty day grid is explained by the view path (hypothesis B),
+        // not just the grid-flattening.
+        let widget = make_test_widget("Cal", vec![
+            AuraStateDef {
+                name: "days".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: AuraExpr::Literal(String::new()),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+
+        fn cell(label: &str, date: &str, other: bool) -> Value {
+            let mut o = auto_val::Obj::new();
+            o.set("label", Value::str(label));
+            o.set("date", Value::str(date));
+            o.set("is_other_month", Value::Bool(other));
+            Value::Obj(o)
+        }
+        bridge.write_state(
+            "days",
+            Value::Array(auto_val::Array::from(vec![
+                cell("31", "2026-05-31", true),
+                cell("1", "2026-06-01", false),
+                cell("2", "2026-06-02", false),
+            ])),
+        ).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Cal");
+
+        // grid { for cell in .days { button cell.label { ... } } }
+        let for_loop = AuraNode::ForLoop {
+            var: "cell".to_string(),
+            index: None,
+            iterable: ".days".to_string(),
+            body: vec![AuraNode::Element {
+                tag: "button".to_string(),
+                props: HashMap::from([(
+                    "label".to_string(),
+                    AuraPropValue::Expr(AuraExpr::FieldAccess {
+                        object: Box::new(AuraExpr::StateRef("cell".to_string())),
+                        field: "label".to_string(),
+                    }),
+                )]),
+                events: HashMap::new(),
+                children: vec![],
+                span: None,
+                debug_id: None,
+            }],
+            span: None,
+            debug_id: None,
+        };
+        let grid = AuraNode::element("grid")
+            .with_prop("cols", AuraExpr::Int(7))
+            .with_child(for_loop);
+
+        let view = builder.build(&grid);
+        match view {
+            View::Grid { cells, .. } => {
+                assert_eq!(cells.len(), 3, "for over 3 Obj cells → 3 grid cells");
+                let labels: Vec<String> = cells.iter().map(|c| match c {
+                    View::Button { label, .. } => label.clone(),
+                    _ => "(not button)".to_string(),
+                }).collect();
+                assert_eq!(labels, vec!["31", "1", "2"],
+                    "button cell.label must resolve each Obj's label field");
+            }
+            other => panic!("Expected View::Grid, got discriminant {:?}",
+                std::mem::discriminant(&other)),
+        }
     }
 
     // ========================================================================
