@@ -1,9 +1,10 @@
 # Auto HTTP/HTTPS Server 标准库 Spec
 
-> **Status**: Draft v1
+> **Status**: Draft v2(2026-06-17 更新)
 > **范围**: 定义 Auto 标准库中 HTTP/HTTPS Server 的统一 API,覆盖同步/异步 × 普通/流 四种 handler 模式
 > **目标**: VM 模式和 A2R 模式共享同一套 API,底层封装 Axum/Tokio
 > **关联**: Plan 321(generator 运行时)提供 yield/~Iter/~Stream 原语;本 Spec 定义 HTTP 层如何消费它们
+> **v2 更新**: 确认 AutoHttpServer shim 层架构;SSE handler 用 yield 写法 A;HTTPStream 统一到 Iter 协议
 
 ---
 
@@ -406,17 +407,13 @@ pub fn chat_stream(sid str, message str) ~Stream<str> {
     let session = db.get_session(sid)
     let prompt = session.build_prompt(message)
 
-    // 调 LLM 流式 API(http.post_stream 是 SSE 客户端)
+    // 消费 LLM 流式 API(for 循环消费 SSE 客户端流)
     let llm_stream = http.post_stream("https://api.openai.com/v1/chat/completions", prompt)
 
-    // 逐 token 转发
-    for {
-        let chunk = llm_stream.next()
-        if llm_stream.is_done() {
-            yield "[DONE]"
-            return
-        }
+    // 逐 token 转发(for 消费 + yield 生产)
+    for chunk in llm_stream {
         let token = json_parse_token(chunk)
+        if token == "[DONE]" { return }
         yield token
     }
 }
@@ -427,3 +424,113 @@ HTTP 层检测到 `~Stream<str>` 返回类型:
 2. 持续调 generator 的 next()
 3. 每个 yield 的 str → `data: <str>\n\n` + flush
 4. generator return → 流结束,关闭连接
+
+**关键**:`for chunk in llm_stream` 消费 SSE 客户端流,`yield token` 生产 SSE 服务端流。
+两者在同一个 handler 内自然组合——`for` 是消费者,`yield` 是生产者。
+
+---
+
+## §11 架构决策(v2 确认)
+
+### 11.1 底层封装:AutoHttpServer shim 层(选项 C)
+
+**决策**:新建独立的 Rust 模块 `AutoHttpServer`,封装 Axum Router + 路由表 + VM/a2r 桥接。VM 的 native shim 和 a2r 生成的代码**都调这个模块**,确保两个模式底层共享同一套 Rust 实现。
+
+```rust
+// crates/auto-lang/src/vm/ffi/http_server.rs (或 a2r-std)
+pub struct AutoHttpServer {
+    routes: Vec<AutoRoute>,
+}
+pub struct AutoRoute {
+    method: String,
+    path: String,
+    handler: AutoHandler,
+}
+pub enum AutoHandler {
+    /// VM 模式:函数名 + VM 引用(通过 usize 指针,!Send 绕过)
+    VmFn { fn_name: String, vm_ptr: usize },
+    /// a2r 模式:直接是 Rust async fn
+    RustFn { /* Box<dyn Fn...> */ },
+}
+impl AutoHttpServer {
+    pub fn serve_blocking(&self, addr: &str) { ... }  // VM 模式
+    pub fn serve_async(&self, addr: &str) { ... }       // a2r 模式
+}
+```
+
+**价值**:
+1. a2r 复用:生成的代码 `use auto_lang::ffi::AutoHttpServer`,与 VM 共享路由/SSE/序列化逻辑
+2. SSE 流式桥接集中一处(`!Send` VM + async Axum 的桥接)
+3. TLS/CORS/中间件是 AutoHttpServer 的配置项
+
+### 11.2 SSE handler 写法:yield(写法 A,不引入 SseStream 类型)
+
+**决策**:SSE handler 用 `yield` + `~Stream<T>` 返回类型,不引入额外的 `SseStream` 对象类型。
+
+```auto
+#[api(method = "GET", path = "/api/events")]
+pub fn events() ~Stream<str> {
+    for {
+        let token = get_next_token()
+        if token == "[DONE]" { return }
+        yield token
+    }
+}
+```
+
+- 状态码控制:handler 可以提前 `return http.response().status(401)`(返回普通 Response)
+- event/id 字段:用 `~Stream<SSEEvent>`(T = SSEEvent 结构体),HTTP 层检测到 SSEEvent 类型时按完整 SSE 协议分帧
+
+### 11.3 消费者/生产者角色 + Iter 协议统一
+
+**关键原则**:`yield` 和 `for` 是对称的——生产者 yield,消费者 for。
+
+```
+前端 ← SSE ← [auto-musk handler] ← SSE ← LLM API
+         生产者(yield)      消费者(for)
+```
+
+**消费端(SSE 客户端)**:
+```auto
+// HTTPStream 统一到 Iter 协议,for 直接消费
+let llm_stream = http.post_stream(url, body)
+for chunk in llm_stream {
+    let token = json_parse_token(chunk)
+    yield token    // 生产端:推给前端
+}
+```
+
+**生产端(SSE 服务端)**:
+```auto
+pub fn chat_stream(sid str) ~Stream<str> {
+    let llm_stream = http.post_stream(url, prompt)
+    for chunk in llm_stream {       // 消费
+        yield json_parse(chunk)     // 生产
+    }
+    yield "[DONE]"
+}
+```
+
+### 11.4 HTTPStream 统一到 Iter 协议
+
+**决策**:当前 `HTTPStream` 的 `.next()` + `.is_done()` 手动循环是临时方案。未来统一到 Iter 协议,让 `for chunk in http_stream { }` 直接工作。
+
+需要:
+1. `HTTPStream` 实现 `Iter<T>` spec(`fn next() May<T>` + `fn iter() Iter<T>`)
+2. VM codegen 的 for-in-iter 路径支持 HTTPStream(已有 pull 骨架,只需注册为 Iter)
+3. a2r 转译:HTTPStream → `impl Stream<Item = T>`(Rust 侧)
+
+这与 Plan 321 的 `~Iter<T>` 统一方向完全一致——所有"序列/流"都用 `for` 消费,用 `yield` 生产。
+
+### 11.5 auto-musk SSE 流式聊天:不需要额外原语
+
+auto-musk 后端 handler **同时是消费者和生产者**:
+- 消费:`for chunk in http.post_stream(url, body)` — 从 LLM 拉取
+- 生产:`yield token` — 推给前端
+
+现有的 `http.post_stream`(客户端 SSE 消费)+ `yield`(服务端 SSE 生产)+ `~Stream<T>`(返回类型)已覆盖此场景。**不需要额外的语言原语。**
+
+唯一前提:
+- VM generator next() 驱动正确工作(Plan 321 遗留 #1)
+- AutoHttpServer 检测 `~Stream<T>` 返回类型,自动进入 SSE 流模式
+- HTTPStream 统一到 Iter 协议(for 循环消费)
