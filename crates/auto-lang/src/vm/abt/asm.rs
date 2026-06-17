@@ -98,7 +98,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         // No operands
         OpCode::NOP | OpCode::POP | OpCode::DUP | OpCode::SWAP | OpCode::DROP
         | OpCode::CONST_0 | OpCode::CONST_1 | OpCode::HALT | OpCode::PRINT
-        | OpCode::RET_D | OpCode::YIELD | OpCode::CREATE_NONE
+        | OpCode::RET_D | OpCode::YIELD_TASK | OpCode::YIELD_VAL | OpCode::CREATE_NONE
         | OpCode::IS_SOME | OpCode::IS_OK | OpCode::UNWRAP_SOME | OpCode::UNWRAP_OK
         | OpCode::UNWRAP_ERR | OpCode::IS_NIL | OpCode::NEG | OpCode::NEG_F
         | OpCode::NEG_D | OpCode::NOT | OpCode::TO_STR | OpCode::STR_CAT
@@ -209,7 +209,7 @@ fn emit_operands(
         // No operands
         OpCode::NOP | OpCode::POP | OpCode::DUP | OpCode::SWAP | OpCode::DROP
         | OpCode::CONST_0 | OpCode::CONST_1 | OpCode::HALT | OpCode::PRINT
-        | OpCode::RET_D | OpCode::YIELD | OpCode::CREATE_NONE
+        | OpCode::RET_D | OpCode::YIELD_TASK | OpCode::YIELD_VAL | OpCode::CREATE_NONE
         | OpCode::IS_SOME | OpCode::IS_OK | OpCode::UNWRAP_SOME | OpCode::UNWRAP_OK
         | OpCode::UNWRAP_ERR | OpCode::IS_NIL | OpCode::NEG | OpCode::NEG_F
         | OpCode::NEG_D | OpCode::NOT | OpCode::TO_STR | OpCode::STR_CAT

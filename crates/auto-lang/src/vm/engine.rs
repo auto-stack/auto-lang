@@ -5085,7 +5085,7 @@ impl AutoVM {
                 OpCode::TASK_ID => {
                     task.ram.push_i32(task.id as i32);
                 }
-                OpCode::YIELD => {
+                OpCode::YIELD_TASK => {
                     return Ok(StepResult::Yield);
                 }
                 OpCode::SLEEP => {
