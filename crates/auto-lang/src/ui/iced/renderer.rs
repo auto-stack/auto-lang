@@ -801,6 +801,64 @@ fn build_input_shape<M: Clone + Debug + 'static>(
     input_widget
 }
 
+/// Build a CSS-Grid-like layout from pre-built cell elements: wrap `cells`
+/// into rows of `cols`, pad the final incomplete row with empty Fill cells
+/// (so every track is reserved), force each row to full width (so its
+/// Fill-width cells distribute into `cols` equal columns — without this a
+/// Shrink row full of Fill children collapses vertically, the rust-mode
+/// "tower" bug), and stack the rows in a column. The grid's `style` is
+/// applied to that outer column via the shared `apply_column_style`.
+///
+/// This is the SINGLE source of truth for grid decomposition (Plan 319),
+/// replacing the three ad-hoc col-of-rows sites that previously diverged.
+fn build_grid<M: Clone + Debug + 'static>(
+    cols: usize,
+    gap: u16,
+    cells: Vec<iced::Element<'static, M>>,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let cols = cols.max(1);
+
+    // Pad the final row to `cols` with empty Fill cells (CSS-Grid
+    // "all tracks reserved" semantics).
+    let mut cells = cells;
+    if !cells.is_empty() {
+        let pad = cols - (cells.len() % cols);
+        if pad != cols {
+            for _ in 0..pad {
+                cells.push(text("").width(iced::Length::Fill).into());
+            }
+        }
+    }
+
+    // Each row is forced to full width so its Fill cells distribute into
+    // `cols` equal columns. Consume `cells` by value (push needs owned
+    // elements, and the padding cells above are already owned).
+    let mut iter = cells.into_iter();
+    let mut rows: Vec<iced::Element<'static, M>> = Vec::new();
+    loop {
+        let mut row_b = row([]).spacing(gap as f32).width(iced::Length::Fill);
+        let mut count = 0;
+        for _ in 0..cols {
+            match iter.next() {
+                Some(cell) => {
+                    row_b = row_b.push(cell);
+                    count += 1;
+                }
+                None => break,
+            }
+        }
+        if count == 0 {
+            break;
+        }
+        rows.push(row_b.into());
+    }
+
+    let col_widget = column(rows).spacing(gap as f32);
+    apply_column_style(col_widget, 0, style, widget_id)
+}
+
 // NOTE: Textarea shape is NOT extracted into a shared builder. iced's
 // `TextEditor` carries a generic `Highlighter` type parameter, so a clean
 // shared return type would leak iced internals into the signature. The
@@ -809,6 +867,29 @@ fn build_input_shape<M: Clone + Debug + 'static>(
 // inline construction — see the `Textarea` arms in `into_iced` and
 // `render_dynamic_view`.
 
+/// # Unification rule for new widgets (Plan 319 — read before extending)
+///
+/// VM mode and Rust mode convert the *same* `AbstractView<M>` tree to iced via
+/// **two** entry points: this generic `into_iced<M>` (Rust mode) and the
+/// `IcedMessage`-specific `render_dynamic_view` (VM mode, adds DevTools
+/// instrumentation). To keep them from drifting, follow this rule:
+///
+/// 1. **A new widget gets exactly ONE arm here, in `into_iced`.** If it has
+///    styled/iterated children, factor the shape into a shared generic
+///    `build_<widget><M>` helper (see `build_row` / `build_column` /
+///    `build_container` / `build_scrollable` / `build_grid` / `build_input_shape`)
+///    and call it with `widget_id = None`.
+/// 2. **`render_dynamic_view` NEVER reimplements widget shape.** Its same-named
+///    arm only: (a) recurse into each child to attach per-node instrumentation,
+///    (b) call the *same* `build_*` helper (passing the instrumented children +
+///    the `widget_id` from the debug id map), (c) `wrap_debug` the result.
+/// 3. **No third copy.** A widget's spacing/padding/width/children-loop lives in
+///    exactly one place — its `build_*` helper. Both converters delegate to it.
+///
+/// The grid "tower" bug (VM rendered fine, Rust collapsed to a vertical stack)
+/// was caused by exactly the drift this rule forbids: the layout lived in two
+/// `build_*`-less copies that diverged. `View::Grid` + `build_grid` exists so
+/// that cannot recur — grid decomposition is now a single source of truth.
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -1044,6 +1125,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             AbstractView::Scrollable { child, width, height, style } => {
                 build_scrollable(child.into_iced(), width, height, style.as_ref(), None)
+            }
+
+            AbstractView::Grid { cols, gap, cells, style } => {
+                let els: Vec<iced::Element<'static, M>> =
+                    cells.into_iter().map(|c| c.into_iced()).collect();
+                build_grid(cols, gap, els, style.as_ref(), None)
             }
 
             AbstractView::Radio {
@@ -5874,6 +5961,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Scrollable { style, .. } => style.as_ref(),
         AbstractView::Input { style, .. } => style.as_ref(),
         AbstractView::Textarea { style, .. } => style.as_ref(),
+        AbstractView::Grid { style, .. } => style.as_ref(),
     }
 }
 
@@ -5899,6 +5987,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::NavigationRail { .. } => "navrail",
         AbstractView::Column { .. } | AbstractView::Row { .. }
         | AbstractView::Container { .. } | AbstractView::Scrollable { .. } => "el",
+        AbstractView::Grid { .. } => "grid",
     }
 }
 
@@ -6049,6 +6138,27 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props, style.as_ref()) } else { el }
         }
 
+        // Grid: render each cell through render_dynamic_view (so nested
+        // inputs get VM text capture + each cell gets wrap_debug), then hand
+        // the built cells to the shared build_grid. MUST be explicit — the
+        // `_ =>` catch-all below would bypass cell instrumentation.
+        AbstractView::Grid { cols, gap, cells, style } => {
+            let mut dbg_props = debug_style_props(style.as_ref());
+            if gap > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
+                dbg_props.insert(0, ("gap".into(), gap.to_string()));
+            }
+            dbg_props.insert(0, ("cols".into(), cols.to_string()));
+            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(cells.len());
+            for (i, cell) in cells.into_iter().enumerate() {
+                path.push(i);
+                els.push(render_dynamic_view(cell, debug_ctx, path));
+                path.pop();
+            }
+            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let el = build_grid(cols, gap, els, style.as_ref(), widget_id);
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "grid", el, dbg_props, style.as_ref()) } else { el }
+        }
+
         // Everything else delegates to the unified IntoIcedElement renderer
         _ => {
             let kind = view_kind(&view);
@@ -6088,6 +6198,11 @@ fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &st
         AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
             patch_input_values(child, input_values);
         }
+        AbstractView::Grid { cells, .. } => {
+            for cell in cells.iter_mut() {
+                patch_input_values(cell, input_values);
+            }
+        }
         AbstractView::List { items, .. } => {
             for item in items.iter_mut() {
                 patch_input_values(item, input_values);
@@ -6125,6 +6240,11 @@ fn patch_input_values_iced(view: &mut AbstractView<IcedMessage>, input_values: &
         }
         AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
             patch_input_values_iced(child, input_values);
+        }
+        AbstractView::Grid { cells, .. } => {
+            for cell in cells.iter_mut() {
+                patch_input_values_iced(cell, input_values);
+            }
         }
         AbstractView::List { items, .. } => {
             for item in items.iter_mut() {
@@ -7381,5 +7501,39 @@ mod tests {
             .style("w-full h-64")
             .build();
         let _element = view.into_iced();
+    }
+
+    // Plan 319: patch_input_values must descend into Grid cells — without the
+    // explicit Grid arm the `_ => {}` catch-all would silently leave nested
+    // Input values stale.
+    #[test]
+    fn test_grid_patch_input_values_updates_cell() {
+        use std::collections::HashMap;
+        let mut view: AbstractView<DynamicMessage> = AbstractView::Grid {
+            cols: 2,
+            gap: 4,
+            cells: vec![AbstractView::Input {
+                placeholder: "type".to_string(),
+                value: String::new(),
+                on_change: Some(DynamicMessage::String("name".to_string())),
+                on_submit: None,
+                width: None,
+                password: false,
+                style: None,
+            }],
+            style: None,
+        };
+
+        let mut map = HashMap::new();
+        map.insert("name".to_string(), "patched".to_string());
+        patch_input_values(&mut view, &map);
+
+        match view {
+            AbstractView::Grid { cells, .. } => match &cells[0] {
+                AbstractView::Input { value, .. } => assert_eq!(value, "patched"),
+                _ => panic!("expected Input cell"),
+            },
+            _ => panic!("expected Grid after patch"),
+        }
     }
 }

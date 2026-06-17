@@ -371,6 +371,17 @@ where
             },
         ),
 
+        // Grid (Plan 319): MVP — surface as a Column in the DevTools VTree
+        // (its `gap` maps to layout spacing). A dedicated VNodeKind::Grid is
+        // a follow-up. Children come from `extract_children` (cells).
+        View::Grid { gap, .. } => (
+            VNodeKind::Column,
+            VNodeProps::Layout {
+                spacing: *gap,
+                padding: 0,
+            },
+        ),
+
         View::Image { .. } => (
             VNodeKind::Text,
             VNodeProps::Text {
@@ -396,6 +407,9 @@ where
     match view {
         View::Column { children, .. } => children.clone(),
         View::Row { children, .. } => children.clone(),
+        // Grid cells are the VTree children (Plan 319). MUST be explicit —
+        // the `_` arm below would silently drop them.
+        View::Grid { cells, .. } => cells.clone(),
         View::Container { child, .. } => vec![*child.clone()],
         View::Scrollable { child, .. } => vec![*child.clone()],
         View::List { items, .. } => items.clone(),
@@ -502,6 +516,39 @@ mod tests {
 
         let child2 = tree.get(root.children[1]).unwrap();
         assert_eq!(child2.kind, VNodeKind::Text);
+    }
+
+    // Plan 319: Grid cells must surface as VTree children, not be silently
+    // dropped by the `_` catch-all in extract_children.
+    #[test]
+    fn test_grid_cells_become_children() {
+        let cells: Vec<View<TestMsg>> = (0..7)
+            .map(|i| View::Text {
+                content: format!("cell{}", i),
+                style: None,
+            })
+            .collect();
+        let view: View<TestMsg> = View::Grid {
+            cols: 3,
+            gap: 4,
+            cells,
+            style: None,
+        };
+
+        let tree = view_to_vtree(view);
+
+        // 1 Grid + 7 Text cells = 8 nodes.
+        assert_eq!(tree.node_count(), 8);
+        let root = tree.root().unwrap();
+        // MVP: grid reuses Column as its VNodeKind.
+        assert_eq!(root.kind, VNodeKind::Column);
+        assert_eq!(root.children.len(), 7);
+        if let VNodeProps::Layout { spacing, padding } = &root.props {
+            assert_eq!(*spacing, 4); // gap surfaces as spacing
+            assert_eq!(*padding, 0);
+        } else {
+            panic!("Expected Layout props for grid");
+        }
     }
 
     #[test]

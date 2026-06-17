@@ -692,7 +692,7 @@ impl<'a> AuraViewBuilder<'a> {
         let gap = self.extract_u16(props, "gap").unwrap_or(0);
         let style = self.extract_style(props);
 
-        let mut cells: Vec<View<DynamicMessage>> = children
+        let cells: Vec<View<DynamicMessage>> = children
             .iter()
             .enumerate()
             .filter_map(|(i, n)| {
@@ -707,44 +707,13 @@ impl<'a> AuraViewBuilder<'a> {
             return View::Empty;
         }
 
-        // Pad the final row with empty Fill-width cells so every row has
-        // exactly `cols` columns — mirrors CSS Grid reserving all column
-        // tracks even when the last row is incomplete (see convert_grid).
-        // These synthetic pads carry no source path / probe entry.
-        let pad = cols - (cells.len() % cols);
-        if pad != cols {
-            for _ in 0..pad {
-                cells.push(View::text_styled("", "text-center"));
-            }
-        }
-
-        let rows: Vec<View<DynamicMessage>> = cells
-            .chunks(cols)
-            .map(|row_cells| {
-                // Force the row to full width so its `text-center` (Fill) cells
-                // distribute into `cols` equal columns. A Shrink row of Fill
-                // children otherwise collapses into a vertical tower. Kept
-                // identical to ui_gen/rust.rs's grid codegen so both render
-                // paths (render_dynamic_view here, into_iced for rust mode)
-                // share the exact same decomposition.
-                let mut builder = View::<DynamicMessage>::row()
-                    .spacing(gap)
-                    .style("w-full");
-                for cell in row_cells {
-                    builder = builder.child(cell.clone());
-                }
-                builder.build()
-            })
-            .collect();
-
-        let mut builder = View::<DynamicMessage>::col().spacing(gap);
-        if let Some(s) = style {
-            builder = builder.with_style(s);
-        }
-        for row in rows {
-            builder = builder.child(row);
-        }
-        builder.build()
+        // Decomposition (final-row padding + w-full rows + col-of-rows) moved
+        // to the shared generic `build_grid` (Plan 319). Per-cell tracked
+        // recursion is preserved, so cell i is still recorded at path [..i].
+        // Bonus: build-time path [..i] now matches the render-time path that
+        // `render_dynamic_view`'s Grid arm visits — previously the col-of-rows
+        // split caused a build/render path mismatch for grid descendants.
+        View::Grid { cols, gap, cells, style }
     }
 
     /// Tracked convert_row — mirrors `convert_row`'s Conditional-flattening but
@@ -1250,7 +1219,7 @@ impl<'a> AuraViewBuilder<'a> {
         let gap = self.extract_u16(props, "gap").unwrap_or(0);
         let style = self.extract_style(props);
 
-        let mut cells: Vec<View<DynamicMessage>> = children
+        let cells: Vec<View<DynamicMessage>> = children
             .iter()
             .map(|n| self.convert_node_with(n, bindings))
             .filter(|v| !matches!(v, View::Empty))
@@ -1260,46 +1229,12 @@ impl<'a> AuraViewBuilder<'a> {
             return View::Empty;
         }
 
-        // Pad the final row with empty Fill-width cells so every row has
-        // exactly `cols` columns — mirrors CSS Grid reserving all column
-        // tracks even when the last row is incomplete. Without this, the
-        // partial last row's cells would re-distribute the full width and
-        // misalign with the rows above (e.g. a calendar's trailing week).
-        let pad = cols - (cells.len() % cols);
-        if pad != cols {
-            for _ in 0..pad {
-                cells.push(View::text_styled("", "text-center"));
-            }
-        }
-
-        // Chunk into rows of `cols`. Each cell is cloned into its row.
-        let rows: Vec<View<DynamicMessage>> = cells
-            .chunks(cols)
-            .map(|row_cells| {
-                // Force the row to full width so its `text-center` (Fill) cells
-                // distribute into `cols` equal columns. A Shrink row of Fill
-                // children otherwise collapses into a vertical tower. Kept
-                // identical to ui_gen/rust.rs's grid codegen so both render
-                // paths (render_dynamic_view here, into_iced for rust mode)
-                // share the exact same decomposition.
-                let mut builder = View::<DynamicMessage>::row()
-                    .spacing(gap)
-                    .style("w-full");
-                for cell in row_cells {
-                    builder = builder.child(cell.clone());
-                }
-                builder.build()
-            })
-            .collect();
-
-        let mut builder = View::<DynamicMessage>::col().spacing(gap);
-        if let Some(s) = style {
-            builder = builder.with_style(s);
-        }
-        for row in rows {
-            builder = builder.child(row);
-        }
-        builder.build()
+        // Grid decomposition (final-row padding + w-full rows + col-of-rows)
+        // now lives in ONE place: the shared generic `build_grid` in the iced
+        // renderer (plus the GPUI inline twin). Construct `View::Grid` here;
+        // both render paths (render_dynamic_view VM, into_iced rust) consume
+        // it identically, so they can never drift again. (Plan 319.)
+        View::Grid { cols, gap, cells, style }
     }
 
     /// Convert a container element.

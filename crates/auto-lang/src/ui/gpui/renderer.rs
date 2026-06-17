@@ -139,6 +139,39 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 col_div.into_any()
             }
 
+            AbstractView::Grid { cols, gap, cells, style } => {
+                // GPUI (third backend, Plan 319): inline col-of-rows
+                // decomposition. GPUI's div/flex cannot share iced's generic
+                // `build_grid`, so this is the ONE place grid splitting is
+                // reimplemented — a documented exception. Cells wrap into rows
+                // of `cols`, stacked in a v_flex; each row is an h_flex.
+                let cols = (*cols).max(1);
+                let mut col_div = div().v_flex();
+                if let Some(style) = style {
+                    col_div = apply_gpui_style_to_div(col_div, &style);
+                } else {
+                    col_div = col_div.gap(px(*gap as f32));
+                }
+                let mut iter = cells.into_iter();
+                loop {
+                    let mut count = 0;
+                    let mut row_div = div().h_flex().gap(px(*gap as f32));
+                    for _ in 0..cols {
+                        match iter.next() {
+                            Some(cell) => {
+                                let h = handle_msg.clone();
+                                row_div = row_div.child(cell.into_gpui(h));
+                                count += 1;
+                            }
+                            None => break,
+                        }
+                    }
+                    if count == 0 { break; }
+                    col_div = col_div.child(row_div);
+                }
+                col_div.into_any()
+            }
+
             AbstractView::Input {
                 placeholder,
                 value,
