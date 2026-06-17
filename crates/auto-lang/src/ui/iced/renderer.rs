@@ -643,6 +643,123 @@ fn apply_container_style<M: Clone + Debug + 'static>(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Shared generic widget builders (Plan 319 — unify VM/Rust rendering).
+//
+// These sit one layer above the `apply_*_style` helpers: they take
+// **already-built** child `Element`s and own the widget *shape* — spacing,
+// padding, justify-spacers, width/height, children loop. Both converters
+// (`into_iced`, generic `M`, rust mode; `render_dynamic_view`, IcedMessage,
+// VM mode) call the *same* builder, so the shape can never drift between
+// modes again. The converters differ only in HOW they produce the child
+// elements: `into_iced` recurses via `child.into_iced()`, while
+// `render_dynamic_view` recurses via itself (to give each child its own
+// `wrap_debug` instrumentation + VM text capture). The builder is agnostic
+// to that — it just arranges whatever children it's handed.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Build a Row from pre-built child elements, applying justify-spacers and
+/// the shared `apply_row_style` (width/height/margin/visual wrap + id).
+fn build_row<M: Clone + Debug + 'static>(
+    children: Vec<iced::Element<'static, M>>,
+    spacing: u16,
+    padding: u16,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let eff_spacing = effective_spacing(spacing, style);
+    let justify = style
+        .map(|s| IcedStyle::from_style(s).justify_content)
+        .and_then(|j| j);
+    let (lead, between, trail) = row_justify_spacers(justify);
+    let mut row_widget = row([]).spacing(eff_spacing);
+    if lead {
+        row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+    }
+    let mut first = true;
+    for child in children {
+        if between && !first {
+            row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+        }
+        first = false;
+        row_widget = row_widget.push(child);
+    }
+    if trail {
+        row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+    }
+    apply_row_style(row_widget, padding, style, widget_id)
+}
+
+/// Build a Column from pre-built child elements + shared `apply_column_style`.
+fn build_column<M: Clone + Debug + 'static>(
+    children: Vec<iced::Element<'static, M>>,
+    spacing: u16,
+    padding: u16,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let eff_spacing = effective_spacing(spacing, style);
+    let mut col_widget = column([]).spacing(eff_spacing);
+    for child in children {
+        col_widget = col_widget.push(child);
+    }
+    apply_column_style(col_widget, padding, style, widget_id)
+}
+
+/// Build a Container around a single pre-built child + shared
+/// `apply_container_style`.
+fn build_container<M: Clone + Debug + 'static>(
+    child: iced::Element<'static, M>,
+    padding: u16,
+    width: Option<u16>,
+    height: Option<u16>,
+    center_x: bool,
+    center_y: bool,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let cont = container(child);
+    apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id)
+}
+
+/// Build a Scrollable around a single pre-built child. Width/height come
+/// from style (preferred) or the legacy numeric fields; id is set when the
+/// caller supplies one (VM path injects the aura id for bounds collection).
+fn build_scrollable<M: Clone + Debug + 'static>(
+    child: iced::Element<'static, M>,
+    width: Option<u16>,
+    height: Option<u16>,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let mut s = scrollable(child);
+    if let Some(ref st) = style {
+        let is = IcedStyle::from_style(st);
+        if let Some(ref ws) = is.width {
+            match ws {
+                IcedSize::Fixed(f) => s = s.width(iced::Length::Fixed(*f as f32)),
+                IcedSize::Full => s = s.width(iced::Length::Fill),
+                IcedSize::FillPortion(n) => s = s.width(iced::Length::FillPortion(*n)),
+            }
+        } else if let Some(w) = width {
+            if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); }
+        }
+        match is.height {
+            Some(IcedSize::Fixed(f)) => { s = s.height(iced::Length::Fixed(f as f32)); }
+            Some(IcedSize::Full) => { s = s.height(iced::Length::Fill); }
+            Some(IcedSize::FillPortion(n)) => { s = s.height(iced::Length::FillPortion(n)); }
+            None => { if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } } }
+        }
+    } else {
+        if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
+        if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } }
+    }
+    if let Some(id) = widget_id {
+        s = s.id(id);
+    }
+    s.into()
+}
+
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -754,37 +871,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Row { children, spacing, padding, style } => {
-                let eff_spacing = effective_spacing(spacing, style.as_ref());
-                let justify = style
-                    .as_ref()
-                    .map(|s| IcedStyle::from_style(s).justify_content)
-                    .and_then(|j| j);
-                let (lead, between, trail) = row_justify_spacers(justify);
-                let mut row_widget = row([]).spacing(eff_spacing);
-                if lead {
-                    row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
-                }
-                let mut first = true;
-                for child in children {
-                    if between && !first {
-                        row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
-                    }
-                    first = false;
-                    row_widget = row_widget.push(child.into_iced());
-                }
-                if trail {
-                    row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
-                }
-                apply_row_style(row_widget, padding, style.as_ref(), None)
+                let els: Vec<iced::Element<'static, M>> =
+                    children.into_iter().map(|c| c.into_iced()).collect();
+                build_row(els, spacing, padding, style.as_ref(), None)
             }
 
             AbstractView::Column { children, spacing, padding, style } => {
-                let eff_spacing = effective_spacing(spacing, style.as_ref());
-                let mut col_widget = column([]).spacing(eff_spacing);
-                for child in children {
-                    col_widget = col_widget.push(child.into_iced());
-                }
-                apply_column_style(col_widget, padding, style.as_ref(), None)
+                let els: Vec<iced::Element<'static, M>> =
+                    children.into_iter().map(|c| c.into_iced()).collect();
+                build_column(els, spacing, padding, style.as_ref(), None)
             }
 
             AbstractView::Input {
@@ -917,47 +1012,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 center_y,
                 style,
             } => {
-                use iced::widget::container;
-                let cont = container(child.into_iced());
-                apply_container_style(cont, padding, width, height, center_x, center_y, style.as_ref(), None)
+                build_container(
+                    child.into_iced(),
+                    padding,
+                    width,
+                    height,
+                    center_x,
+                    center_y,
+                    style.as_ref(),
+                    None,
+                )
             }
 
             AbstractView::Scrollable { child, width, height, style } => {
-                use iced::widget::scrollable;
-
-                let mut scrollable_widget = scrollable(child.into_iced());
-
-                // Apply width from style or legacy
-                let eff_width = if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    iced_style.width.map(|w| match w {
-                        crate::ui::style::iced_adapter::IcedSize::Fixed(f) => iced::Length::Fixed(f),
-                        crate::ui::style::iced_adapter::IcedSize::Full => iced::Length::Fill,
-                        crate::ui::style::iced_adapter::IcedSize::FillPortion(n) => iced::Length::FillPortion(n),
-                    }).or(width.map(|w| iced::Length::Fixed(w as f32)))
-                } else {
-                    width.map(|w| iced::Length::Fixed(w as f32))
-                };
-                if let Some(w) = eff_width {
-                    scrollable_widget = scrollable_widget.width(w);
-                }
-
-                // Apply height from style or legacy
-                let eff_height = if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    iced_style.height.map(|h| match h {
-                        crate::ui::style::iced_adapter::IcedSize::Fixed(f) => iced::Length::Fixed(f),
-                        crate::ui::style::iced_adapter::IcedSize::Full => iced::Length::Fill,
-                        crate::ui::style::iced_adapter::IcedSize::FillPortion(n) => iced::Length::FillPortion(n),
-                    }).or(height.map(|h| iced::Length::Fixed(h as f32)))
-                } else {
-                    height.map(|h| iced::Length::Fixed(h as f32))
-                };
-                if let Some(h) = eff_height {
-                    scrollable_widget = scrollable_widget.height(h);
-                }
-
-                scrollable_widget.into()
+                build_scrollable(child.into_iced(), width, height, style.as_ref(), None)
             }
 
             AbstractView::Radio {
@@ -5921,15 +5989,16 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
-            let eff_spacing = effective_spacing(spacing, style.as_ref());
-            let mut col_w = column([]).spacing(eff_spacing);
+            // Recurse per child (each gets its own wrap_debug instrumentation)
+            // then hand the built elements to the shared builder.
+            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
             for (i, child) in children.into_iter().enumerate() {
                 path.push(i);
-                col_w = col_w.push(render_dynamic_view(child, debug_ctx, path));
+                els.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
-            let el = apply_column_style(col_w, padding, style.as_ref(), widget_id);
+            let el = build_column(els, spacing, padding, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el }
         }
 
@@ -5941,29 +6010,16 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
-            let eff_spacing = effective_spacing(spacing, style.as_ref());
-            let justify = style
-                .as_ref()
-                .map(|s| IcedStyle::from_style(s).justify_content)
-                .and_then(|j| j);
-            let (lead, between, trail) = row_justify_spacers(justify);
-            let mut row_w = row([]).spacing(eff_spacing);
-            if lead {
-                row_w = row_w.push(iced::widget::Space::new().width(iced::Length::Fill));
-            }
+            // Recurse per child (each gets its own wrap_debug instrumentation).
+            // Justify-spacers are interleaved inside the shared build_row.
+            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
             for (i, child) in children.into_iter().enumerate() {
                 path.push(i);
-                if between && i > 0 {
-                    row_w = row_w.push(iced::widget::Space::new().width(iced::Length::Fill));
-                }
-                row_w = row_w.push(render_dynamic_view(child, debug_ctx, path));
+                els.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
-            if trail {
-                row_w = row_w.push(iced::widget::Space::new().width(iced::Length::Fill));
-            }
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
-            let el = apply_row_style(row_w, padding, style.as_ref(), widget_id);
+            let el = build_row(els, spacing, padding, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref()) } else { el }
         }
 
@@ -5979,9 +6035,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.push(0);
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
-            let cont = container(child_el);
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
-            let el = apply_container_style(cont, padding, width, height, center_x, center_y, style.as_ref(), widget_id);
+            let el = build_container(child_el, padding, width, height, center_x, center_y, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el }
         }
 
@@ -5992,29 +6047,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.push(0);
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
-            let mut s = scrollable(child_el);
-            if let Some(ref st) = style {
-                let is = IcedStyle::from_style(st);
-                if let Some(ref ws) = is.width {
-                    match ws { IcedSize::Fixed(f) => s = s.width(iced::Length::Fixed(*f as f32)), IcedSize::Full => s = s.width(iced::Length::Fill), IcedSize::FillPortion(n) => s = s.width(iced::Length::FillPortion(*n)) }
-                } else if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
-                match is.height {
-                    Some(IcedSize::Fixed(f)) => { s = s.height(iced::Length::Fixed(f as f32)); }
-                    Some(IcedSize::Full) => { s = s.height(iced::Length::Fill); }
-                    Some(IcedSize::FillPortion(n)) => { s = s.height(iced::Length::FillPortion(n)); }
-                    None => { if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } } }
-                }
-            } else {
-                if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
-                if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } }
-            }
-            // Set iced widget ID for layout bounds collection (Plan 282)
-            if let Some(ctx) = debug_ctx {
-                if let Some(aura_id) = ctx.debug_id_map.get(path) {
-                    s = s.id(format!("aura_{}", aura_id.0));
-                }
-            }
-            let el: iced::Element<'static, IcedMessage> = s.into();
+            // iced widget ID for layout bounds collection (Plan 282)
+            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let el = build_scrollable(child_el, width, height, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props, style.as_ref()) } else { el }
         }
 
