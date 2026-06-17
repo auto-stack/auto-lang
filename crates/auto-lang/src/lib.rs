@@ -768,7 +768,7 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
                 let vm_ref: &AutoVM = unsafe {
                     &*(vm_addr_usize as *const AutoVM)
                 };
-                crate::vm::ffi::stdlib::run_http_server_blocking(vm_ref, &addr_clone);
+                crate::vm::ffi::http_server::serve_blocking_stdnet(vm_ref, &addr_clone);
             })
             .expect("Failed to spawn HTTP server thread");
 

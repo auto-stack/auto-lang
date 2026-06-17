@@ -119,6 +119,9 @@ pub struct Codegen {
     /// Plan 312: Collected #[api] routes (method, path, fn_name).
     /// Propagated through CompiledPackage → VirtualFlash → AutoVM for HTTP routing.
     pub api_routes: Vec<(String, String, String)>,
+    /// Plan 321: Set of generator function names (return ~Iter<T> or ~Stream<T>).
+    /// Call sites check this to emit CREATE_GENERATOR instead of CALL.
+    pub generator_fns: std::collections::HashSet<String>,
     /// Object key pool (stores keys for object literals)
     /// Each entry is a Vec of keys for one object literal
     pub object_keys: Vec<Vec<auto_val::ValueKey>>,
@@ -317,6 +320,7 @@ impl Codegen {
             code: Vec::new(),
             exports: HashMap::new(),
             api_routes: Vec::new(),
+            generator_fns: std::collections::HashSet::new(),
             relocs: Vec::new(),
             intrinsics,
             strings: Vec::new(),
@@ -475,6 +479,7 @@ impl Codegen {
             code: Vec::new(),
             exports: HashMap::new(),
             api_routes: Vec::new(),
+            generator_fns: std::collections::HashSet::new(),
             relocs: Vec::new(),
             intrinsics,
             strings: Vec::new(),
@@ -793,6 +798,14 @@ impl Codegen {
                         api.path.clone(),
                         fn_decl.name.to_string(),
                     ));
+                }
+
+                // Plan 321: Detect generator functions (return type ~Iter<T> or ~Stream<T>)
+                // and mark them so call sites emit CREATE_GENERATOR instead of CALL.
+                if matches!(&fn_decl.ret, Type::GenericInstance(inst)
+                    if inst.base_name.as_str() == "Iter" || inst.base_name.as_str() == "Stream")
+                {
+                    self.generator_fns.insert(fn_decl.name.to_string());
                 }
 
                 // 3. Push new scope for function locals
@@ -6644,6 +6657,34 @@ impl Codegen {
                     self.last_expr_type = self.infer_call_spec_return_type(&method_str);
                     } // close opaque_unwrap else
                 } else {
+                    // Plan 321: Check if this is a generator function call.
+                    // If so, emit CREATE_GENERATOR instead of CALL.
+                    let is_generator = func_name.as_ref()
+                        .map(|n| self.generator_fns.contains(n))
+                        .unwrap_or(false);
+
+                    if is_generator {
+                        // Emit CREATE_GENERATOR with inline operands:
+                        // CREATE_GENERATOR, func_addr:u32 (relocated), n_args:u8
+                        self.emit(OpCode::CREATE_GENERATOR);
+                        let placeholder_idx = self.code.len();
+                        self.code.extend_from_slice(&0u32.to_le_bytes()); // func_addr placeholder
+                        self.code.push(call.args.args.len() as u8);       // n_args
+
+                        // Create relocation for the func_addr placeholder
+                        let reloc_name = func_name.clone().unwrap_or_else(|| match call.name.as_ref() {
+                            Expr::Ident(name) => name.to_string(),
+                            _ => "unknown".to_string(),
+                        });
+                        self.relocs.push(RelocEntry {
+                            offset: placeholder_idx as u32,
+                            symbol_name: reloc_name,
+                            reloc_type: RelocType::FuncCall,
+                            source_pos: call.pos,
+                        });
+
+                        self.last_expr_type = ObjectType::Int; // iterator_id
+                    } else {
                     self.emit(OpCode::CALL);
 
                     // Emit Placeholder for Address (u32)
@@ -6684,6 +6725,7 @@ impl Codegen {
                             _ => ObjectType::NestedObject,
                         };
                     }
+                    } // close else (non-generator CALL)
                 }
             }
             Expr::If(if_expr) => {

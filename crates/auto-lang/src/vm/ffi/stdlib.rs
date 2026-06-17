@@ -1952,7 +1952,7 @@ thread_local! {
 
 // Plan 152: HTTP 流数据存储
 thread_local! {
-    static HTTP_STREAMS: std::cell::RefCell<std::collections::HashMap<u64, HttpStreamData>> =
+    pub(crate) static HTTP_STREAMS: std::cell::RefCell<std::collections::HashMap<u64, HttpStreamData>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -1976,11 +1976,11 @@ struct HttpResponseData {
 
 /// Plan 154: HTTP 流数据（真正的流式实现）
 /// 使用 reqwest::blocking::Response 逐 chunk 读取
-struct HttpStreamData {
-    url: String,
-    response: Option<reqwest::blocking::Response>,
-    done: bool,
-    status_code: u16,
+pub(crate) struct HttpStreamData {
+    pub url: String,
+    pub response: Option<reqwest::blocking::Response>,
+    pub done: bool,
+    pub status_code: u16,
 }
 
 impl std::fmt::Debug for HttpStreamData {
@@ -2959,6 +2959,24 @@ pub fn shim_http_stream_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), V
         streams.borrow_mut().remove(&(handle as u64));
     });
 
+    Ok(())
+}
+
+/// Plan 321: Create an iterator from an HTTPStream for for-loop consumption.
+/// `for chunk in http_stream { }` calls this via the Iter protocol.
+pub fn shim_http_stream_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i64 = task.ram.pop_i64();
+
+    let hs_iter = crate::vm::engine::HttpStreamIterator {
+        stream_handle: handle as u64,
+        done: false,
+    };
+    let iter_id = {
+        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        vm.iterators.insert(next_id, crate::vm::engine::Iterator::HttpStream(hs_iter));
+        next_id
+    };
+    task.ram.push_i32(iter_id as i32);
     Ok(())
 }
 
@@ -3967,6 +3985,8 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http_stream.stream_next", shim_http_stream_next);
     natives.register_shim_by_name("auto.http_stream.stream_is_done", shim_http_stream_is_done);
     natives.register_shim_by_name("auto.http_stream.stream_close", shim_http_stream_close);
+    // Plan 321: HTTPStream → Iter protocol for for-loop consumption
+    natives.register_shim_by_name("auto.http_stream.stream_iter", shim_http_stream_iter);
     natives.register_shim_by_name("auto.http.post_stream_with_headers", shim_http_post_stream_with_headers);
 
     // HTTP client sync with auth (for Anthropic API from AutoVM)

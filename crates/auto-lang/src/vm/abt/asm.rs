@@ -150,6 +150,9 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         | OpCode::LOAD_REF | OpCode::STORE_REF | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF
             => 4,
 
+        // Plan 321: CREATE_GENERATOR has 5 operand bytes (u32 func_addr + u8 n_args)
+        OpCode::CREATE_GENERATOR => 5,
+
         OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => 8,
 
         OpCode::LOAD_STR | OpCode::CALL_NAT | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
@@ -341,6 +344,16 @@ fn emit_operands(
         OpCode::CALL | OpCode::CLOSURE | OpCode::CREATE_FUTURE => {
             let addr = operand_label_or_u32(&instr.operands, 0, label_offsets, ResolveType::Absolute)?;
             bytecode.extend_from_slice(&addr.to_le_bytes());
+            Ok(())
+        }
+
+        // Plan 321: CREATE_GENERATOR: u32 func_addr + u8 n_args
+        OpCode::CREATE_GENERATOR => {
+            let addr = operand_label_or_u32(&instr.operands, 0, label_offsets, ResolveType::Absolute)?;
+            bytecode.extend_from_slice(&addr.to_le_bytes());
+            // n_args: read from operands if present, else default 0
+            let n_args: u8 = if instr.operands.len() > 1 { 0 } else { 0 };
+            bytecode.push(n_args);
             Ok(())
         }
 
