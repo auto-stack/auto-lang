@@ -17,6 +17,10 @@ pub enum PipelineOp {
         op: CmpOp,
         value: Value,
     },
+    /// `.f1 op1 v1 && .f2 op2 v2 && ...` → all conditions must hold.
+    FilterAll {
+        conditions: Vec<(String, CmpOp, Value)>,
+    },
     /// `sort .field [desc]`
     SortBy {
         field: String,
@@ -36,6 +40,20 @@ pub enum PipelineOp {
     SkipBack(usize),
     /// `count`
     Count,
+    /// `uniq` (deduplicate by string repr).
+    Uniq,
+    /// `reverse`
+    Reverse,
+    /// `group-by .field` → Obj keyed by field value, each → Array of items.
+    GroupBy { field: String },
+    /// `sum .field` → single numeric Value.
+    Sum { field: String },
+    /// `avg .field` → single Float Value.
+    Avg { field: String },
+    /// `min .field` → element with the smallest field value.
+    Min { field: String },
+    /// `max .field` → element with the largest field value.
+    Max { field: String },
 }
 
 /// Comparison operators for predicates.
@@ -83,6 +101,19 @@ pub fn apply(op: &PipelineOp, data: &Value) -> Value {
                 .filter(|item| {
                     let field_val = get_field(item, field);
                     compare(&field_val, *op, value)
+                })
+                .cloned()
+                .collect();
+            Value::Array(Array::from_vec(filtered))
+        }
+        PipelineOp::FilterAll { conditions } => {
+            let filtered: Vec<Value> = arr
+                .iter()
+                .filter(|item| {
+                    conditions.iter().all(|(field, op, value)| {
+                        let fv = get_field(item, field);
+                        compare(&fv, *op, value)
+                    })
                 })
                 .cloned()
                 .collect();
@@ -139,6 +170,68 @@ pub fn apply(op: &PipelineOp, data: &Value) -> Value {
             Value::Array(Array::from_vec(taken))
         }
         PipelineOp::Count => Value::USize(arr.len()),
+
+        PipelineOp::Uniq => {
+            let mut seen = std::collections::HashSet::new();
+            let deduped: Vec<Value> = arr
+                .iter()
+                .filter(|v| seen.insert(v.to_string()))
+                .cloned()
+                .collect();
+            Value::Array(Array::from_vec(deduped))
+        }
+
+        PipelineOp::Reverse => {
+            let mut items: Vec<Value> = arr.iter().cloned().collect();
+            items.reverse();
+            Value::Array(Array::from_vec(items))
+        }
+
+        PipelineOp::GroupBy { field } => {
+            let mut groups: std::collections::HashMap<String, Vec<Value>> =
+                std::collections::HashMap::new();
+            let mut order: Vec<String> = Vec::new();
+            for item in arr.iter() {
+                let key = get_field(item, field).to_string();
+                if !groups.contains_key(&key) {
+                    order.push(key.clone());
+                }
+                groups.entry(key).or_default().push(item.clone());
+            }
+            let mut out = Obj::new();
+            for key in &order {
+                out.set(key.as_str(), Value::Array(Array::from_vec(groups[key].clone())));
+            }
+            Value::Obj(out)
+        }
+
+        PipelineOp::Sum { field } => {
+            let total: f64 = arr.iter().filter_map(|v| as_f64(&get_field(v, field))).sum();
+            Value::Float(total)
+        }
+
+        PipelineOp::Avg { field } => {
+            let nums: Vec<f64> = arr.iter().filter_map(|v| as_f64(&get_field(v, field))).collect();
+            if nums.is_empty() {
+                Value::Float(0.0)
+            } else {
+                Value::Float(nums.iter().sum::<f64>() / nums.len() as f64)
+            }
+        }
+
+        PipelineOp::Min { field } => {
+            arr.iter()
+                .min_by(|a, b| compare_order(&get_field(a, field), &get_field(b, field)))
+                .cloned()
+                .unwrap_or(Value::Nil)
+        }
+
+        PipelineOp::Max { field } => {
+            arr.iter()
+                .max_by(|a, b| compare_order(&get_field(a, field), &get_field(b, field)))
+                .cloned()
+                .unwrap_or(Value::Nil)
+        }
     }
 }
 
@@ -371,5 +464,58 @@ mod tests {
         assert_eq!(CmpOp::from_str("=="), Some(CmpOp::Eq));
         assert_eq!(CmpOp::from_str("contains"), Some(CmpOp::Contains));
         assert_eq!(CmpOp::from_str("??"), None);
+    }
+
+    #[test]
+    fn uniq_deduplicates() {
+        let data = Value::Array(Array::from_vec(vec![
+            Value::str("a"), Value::str("b"), Value::str("a"), Value::str("c"), Value::str("b"),
+        ]));
+        let result = apply(&PipelineOp::Uniq, &data);
+        if let Value::Array(a) = result {
+            assert_eq!(a.len(), 3); // a, b, c
+        }
+    }
+
+    #[test]
+    fn reverse_flips_order() {
+        let data = Value::Array(Array::from_vec(vec![
+            Value::I64(1), Value::I64(2), Value::I64(3),
+        ]));
+        let result = apply(&PipelineOp::Reverse, &data);
+        if let Value::Array(a) = result {
+            assert_eq!(a.len(), 3);
+        }
+    }
+
+    #[test]
+    fn sum_numeric_field() {
+        let data = sample_list();
+        let result = apply(&PipelineOp::Sum { field: "size".into() }, &data);
+        // 0 + 20000000 + 500 + 0 = 20000500
+        if let Value::Float(f) = result {
+            assert!((f - 20_000_500.0).abs() < 0.1);
+        } else {
+            panic!("expected Float, got {:?}", result);
+        }
+    }
+
+    #[test]
+    fn avg_numeric_field() {
+        let data = sample_list();
+        let result = apply(&PipelineOp::Avg { field: "size".into() }, &data);
+        if let Value::Float(f) = result {
+            // 20000500 / 4 = 5000125
+            assert!((f - 5_000_125.0).abs() < 0.1, "avg = {f}");
+        }
+    }
+
+    #[test]
+    fn min_max_by_field() {
+        let data = sample_list();
+        let min_result = apply(&PipelineOp::Min { field: "size".into() }, &data);
+        assert!(min_result.to_string().contains("app")); // size 0
+        let max_result = apply(&PipelineOp::Max { field: "size".into() }, &data);
+        assert!(max_result.to_string().contains("big.tar")); // size 20000000
     }
 }
