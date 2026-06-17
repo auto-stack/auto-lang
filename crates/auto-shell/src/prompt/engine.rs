@@ -76,6 +76,13 @@ impl AshPrompt {
         }
     }
 
+    /// Plan 322: Override the character module's success symbol at runtime
+    /// (used for mode switching: > / # / ? / ·).
+    pub fn set_character_symbol(&mut self, symbol: &str) {
+        // Replace the character module with one using the custom symbol.
+        self.character = Box::new(CharacterModule::with_symbol(symbol));
+    }
+
     /// Render left prompt (parallel module computation)
     fn render_left(&self, ctx: &AshContext) -> String {
         let newline = if self.config.add_newline { "\n" } else { "" };

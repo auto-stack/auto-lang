@@ -32,6 +32,25 @@ impl CharacterModule {
             },
         }
     }
+
+    /// Plan 322: Create with a custom symbol (for mode switching).
+    /// Uses the custom symbol for both success and error states.
+    pub fn with_symbol(symbol: &str) -> Self {
+        Self {
+            success_char: symbol.to_string(),
+            error_char: symbol.to_string(),
+            success_style: SegmentStyle {
+                fg: Some(Color::Green),
+                bold: true,
+                ..Default::default()
+            },
+            error_style: SegmentStyle {
+                fg: Some(Color::Red),
+                bold: true,
+                ..Default::default()
+            },
+        }
+    }
 }
 
 impl PromptModule for CharacterModule {

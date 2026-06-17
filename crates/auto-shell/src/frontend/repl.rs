@@ -22,6 +22,8 @@ pub struct Repl {
     prompt: AshPrompt,
     /// Shared completion state — updated after each cd/pushd/etc.
     completion_state: Arc<Mutex<CompletionState>>,
+    /// Plan 322: Input mode state (Shell/AutoScript/AI + lock + continuation).
+    mode_state: crate::repl_mode::ModeState,
 }
 
 impl Repl {
@@ -153,9 +155,41 @@ impl Repl {
                 KeyCode::Char('e'),
                 ReedlineEvent::Edit(vec![EditCommand::InsertString("\x05".to_string())]),
             );
-            // Plan 322: Mode switching uses prefix characters (like Ctrl+E's \x05 trick).
-            // F1/F2 are handled via Ctrl+1/Ctrl+2 since reedline 0.44 lacks Function keys.
-            // The prompt mode is driven by ModeState, updated in the run loop.
+            // Plan 322: F1/F2/F3 mode switching. Insert a prefix char + submit
+            // immediately (no Enter needed). The run loop detects the prefix.
+            keybindings.add_binding(
+                KeyModifiers::NONE,
+                KeyCode::F(1),
+                ReedlineEvent::Multiple(vec![
+                    ReedlineEvent::Edit(vec![EditCommand::InsertString("\x11".to_string())]),
+                    ReedlineEvent::Submit,
+                ]),
+            );
+            keybindings.add_binding(
+                KeyModifiers::NONE,
+                KeyCode::F(2),
+                ReedlineEvent::Multiple(vec![
+                    ReedlineEvent::Edit(vec![EditCommand::InsertString("\x12".to_string())]),
+                    ReedlineEvent::Submit,
+                ]),
+            );
+            keybindings.add_binding(
+                KeyModifiers::NONE,
+                KeyCode::F(3),
+                ReedlineEvent::Multiple(vec![
+                    ReedlineEvent::Edit(vec![EditCommand::InsertString("\x13".to_string())]),
+                    ReedlineEvent::Submit,
+                ]),
+            );
+            // Esc — unlock mode (insert \x14 + submit).
+            keybindings.add_binding(
+                KeyModifiers::NONE,
+                KeyCode::Esc,
+                ReedlineEvent::Multiple(vec![
+                    ReedlineEvent::Edit(vec![EditCommand::InsertString("\x14".to_string())]),
+                    ReedlineEvent::Submit,
+                ]),
+            );
         }
 
         let edit_mode: Box<dyn reedline::EditMode> = if use_vi {
@@ -214,7 +248,7 @@ impl Repl {
             line_editor = line_editor.with_hinter(h);
         }
 
-        Ok(Self { shell, line_editor, prompt, completion_state })
+        Ok(Self { shell, line_editor, prompt, completion_state, mode_state: Default::default() })
     }
 
     /// Get the path to the history file
@@ -271,6 +305,13 @@ impl Repl {
         if let Ok(mut state) = self.completion_state.lock() {
             state.current_dir = self.shell.pwd().to_path_buf();
         }
+    }
+
+    /// Plan 322: Update the AshPrompt character symbol based on ModeState.
+    /// Also handles continuation prompt for multiline.
+    fn update_prompt(&mut self) {
+        let symbol = self.mode_state.prompt();
+        self.prompt.set_character_symbol(&symbol);
     }
 
     /// Open the current input line in $EDITOR (or vim/notepad) and return the result.
@@ -330,6 +371,48 @@ impl Repl {
             match sig {
                 Ok(Signal::Success(line)) => {
                     let mut line = line.trim().to_string();
+
+                    // Plan 322: Mode-switching prefix chars (from F1/F2/F3/Esc keybindings).
+                    // \x11=F1 (toggle Shell lock), \x12=F2 (toggle Auto lock),
+                    // \x13=F3 (AI mode), \x14=Esc (unlock).
+                    if line.starts_with('\x11') {
+                        self.mode_state.toggle_lock(crate::repl_mode::InputMode::Shell);
+                        self.update_prompt();
+                        continue;
+                    }
+                    if line.starts_with('\x12') {
+                        self.mode_state.toggle_lock(crate::repl_mode::InputMode::AutoScript);
+                        self.update_prompt();
+                        continue;
+                    }
+                    if line.starts_with('\x14') {
+                        self.mode_state.unlock();
+                        self.update_prompt();
+                        continue;
+                    }
+                    // F3 = AI mode: read a question with ? prompt, print stub.
+                    if line.starts_with('\x13') {
+                        self.mode_state.enter_ai();
+                        self.update_prompt();
+                        let extra = line[1..].trim();
+                        if extra.is_empty() {
+                            // Read a full question line.
+                            let q_sig = self.line_editor.read_line(&self.prompt);
+                            if let Ok(Signal::Success(q)) = &q_sig {
+                                if !q.trim().is_empty() {
+                                    println!("AI: 「{}」", q.trim());
+                                }
+                            }
+                        } else {
+                            // User typed after F3 on the same input.
+                            println!("AI: 「{}」", extra);
+                        }
+                        println!("AI功能还未实现，敬请期待...");
+                        // AI is transient — return to previous mode.
+                        self.mode_state.locked = None;
+                        self.update_prompt();
+                        continue;
+                    }
 
                     // Plan 304: Ctrl+E — open line in editor
                     // If line starts with "\x05" (Ctrl+E character), edit in $EDITOR
