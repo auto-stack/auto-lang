@@ -38,6 +38,36 @@ TIERS (highest priority first):
 Format: Auto/Atom (.at). `generate` parses the command's --help output.
 ";
 
+/// Plan 322: Check if text is an arithmetic expression (not just a bare number).
+/// True for: "1 + 2", "3 * x", "(a + b)", "3.14 / 2", "41 + 1"
+/// False for: "42" (bare number — could be a PID), "1234" (kill arg)
+fn is_arithmetic_expression(text: &str) -> bool {
+    let trimmed = text.trim();
+    // Must contain a binary operator surrounded by operands.
+    // We strip whitespace and check if the pattern matches.
+    let no_ws: String = trimmed.chars().filter(|c| !c.is_whitespace()).collect();
+
+    // Look for operator between digit/var/close-paren and digit/var/open-paren.
+    let chars: Vec<char> = no_ws.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if matches!(c, '+' | '-' | '*' | '/' | '%') && i > 0 && i + 1 < chars.len() {
+            let prev = chars[i - 1];
+            let next = chars[i + 1];
+            let prev_ok = prev.is_ascii_digit() || prev == ')' || prev == '_' || prev.is_ascii_alphabetic();
+            let next_ok = next.is_ascii_digit() || next == '(' || next == '_' || next.is_ascii_alphabetic();
+            if prev_ok && next_ok {
+                return true;
+            }
+        }
+    }
+
+    // Fully parenthesized expression.
+    if trimmed.starts_with('(') && trimmed.ends_with(')') {
+        return true;
+    }
+    false
+}
+
 /// HSV to RGB conversion (h: 0-360°, s/v: 0.0-1.0) for the rainbow demo.
 fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (u8, u8, u8) {
     let c = v * s;
@@ -324,9 +354,23 @@ impl Shell {
             }
         }
 
-        // Try to parse as AutoLang expression first
-        if self.looks_like_auto_expr(input) {
-            return self.execute_auto(input);
+        // Plan 322: Try Auto expression, with automatic Shell fallback.
+        if self.is_auto_expression(input) {
+            match self.execute_auto(input) {
+                Ok(result) => return Ok(result),
+                Err(auto_err) => {
+                    // Auto detection was wrong → try Shell as fallback.
+                    // But only if this isn't already a Shell-like command
+                    // (avoid masking real Auto errors for genuine Auto code).
+                    if !self.is_likely_genuine_auto(input) {
+                        match self.execute_shell_path(input) {
+                            Ok(result) => return Ok(result),
+                            Err(_shell_err) => return Err(auto_err),
+                        }
+                    }
+                    return Err(auto_err);
+                }
+            }
         }
 
         // Plan 302 Step 2.4: Expand command substitution ($() and backticks)
@@ -855,31 +899,85 @@ impl Shell {
     }
 
     /// Check if input looks like an AutoLang expression
-    fn looks_like_auto_expr(&self, input: &str) -> bool {
-        // Simple heuristic: if it starts with common Auto keywords/operators
+    /// Plan 322: Conservative Auto expression detection.
+    /// Only classify as Auto when there's a STRONG signal — default is Shell.
+    fn is_auto_expression(&self, input: &str) -> bool {
         let trimmed = input.trim();
-
         if trimmed.is_empty() {
             return false;
         }
 
-        let first_char = trimmed.chars().next().unwrap();
+        // 1. Auto keywords (strongest signal).
+        for kw in ["fn ", "let ", "mut ", "const ", "use ", "type ", "enum "] {
+            if trimmed.starts_with(kw) {
+                return true;
+            }
+        }
 
-        // Auto expressions: numbers, strings with quotes, fn, let, mut, const, use
-        trimmed.starts_with("fn ")
-            || trimmed.starts_with("let ")
-            || trimmed.starts_with("mut ")
-            || trimmed.starts_with("const ")
-            || trimmed.starts_with("use ")
-            || first_char == '"'
-            || first_char == 'f'
-            || first_char == '['
-            || first_char == '{'
-            || first_char.is_ascii_digit()
-            || first_char == '-'
-            || first_char == '+'
-            || first_char == '('
-            || self.is_function_call(trimmed)
+        // 2. Known Auto function call: name(...)
+        if self.is_function_call(trimmed) {
+            return true;
+        }
+
+        // 3. String literal expression: "..." or '...'
+        let first = trimmed.chars().next().unwrap();
+        if first == '"' {
+            return true;
+        }
+
+        // 4. Arithmetic expression: digit followed by operator, or parenthesized.
+        //    e.g. "1 + 2", "3 * x", "(a + b)"
+        //    But NOT bare numbers (could be a shell arg like `kill 1234`).
+        if first.is_ascii_digit() || first == '(' {
+            if is_arithmetic_expression(trimmed) {
+                return true;
+            }
+        }
+
+        // 5. Auto array literal: `[1, 2, 3]` (no space after [)
+        //    Shell test has space: `[ -f file ]`
+        if first == '[' {
+            let second = trimmed.chars().nth(1);
+            if second.is_some_and(|c| c != ' ' && c != '-') {
+                return true;
+            }
+        }
+
+        // 6. Auto object literal: `{key: value}` (key followed by `:`)
+        //    Shell brace group has space: `{ echo hi; }`
+        if first == '{' {
+            let second = trimmed.chars().nth(1);
+            if second.is_some_and(|c| c.is_alphabetic() || c == '"' || c == '_') {
+                return true;
+            }
+        }
+
+        // Removed (too aggressive, caused false positives):
+        // - first_char == 'f'    (find, fmt, file, fd, figlet...)
+        // - first_char == '{'    (brace expansion)
+        // - first_char == '['    (test command)
+        // - first_char == '-'    (flags like -la)
+        // - first_char == '+'    (rare)
+        // - first_char == '['   (arrays in shell)
+
+        false // Default: Shell.
+    }
+
+    /// Check if input is GENUINELY Auto code (not a fallback candidate).
+    /// Used to decide whether to mask Auto errors or attempt Shell fallback.
+    fn is_likely_genuine_auto(&self, input: &str) -> bool {
+        let trimmed = input.trim();
+        // Keyword-prefixed code is definitely Auto — don't fallback.
+        for kw in ["fn ", "let ", "mut ", "const ", "use ", "type ", "enum "] {
+            if trimmed.starts_with(kw) {
+                return true;
+            }
+        }
+        // Known Auto function call is definitely Auto.
+        if self.is_function_call(trimmed) {
+            return true;
+        }
+        false
     }
 
     /// Check if input looks like a function call to an Auto function
@@ -887,12 +985,18 @@ impl Shell {
         // Check if it matches pattern: name(...)
         if let Some(paren_pos) = input.find('(') {
             if input.ends_with(')') {
-                let func_name = &input[..paren_pos];
+                let func_name = &input[..paren_pos].trim();
                 // Check if this is a registered Auto function
                 return self.has_auto_function(func_name);
             }
         }
         false
+    }
+
+    /// Plan 322: Execute input as a Shell command (fallback from Auto).
+    /// This is the "Shell path" — after variable expansion, chain parsing, etc.
+    fn execute_shell_path(&mut self, input: &str) -> Result<Option<String>> {
+        self.execute_inner(input)
     }
 
     /// Execute an AutoLang expression using persistent interpreter
@@ -3312,21 +3416,28 @@ mod tests {
     }
 
     #[test]
-    fn test_looks_like_auto_expr() {
+    fn test_is_auto_expression() {
         let shell = Shell::new();
 
         // Should be recognized as Auto expressions
-        assert!(shell.looks_like_auto_expr("1 + 2"));
-        assert!(shell.looks_like_auto_expr("let x = 1"));
-        assert!(shell.looks_like_auto_expr("fn add() {}"));
-        assert!(shell.looks_like_auto_expr("\"hello\""));
-        assert!(shell.looks_like_auto_expr("[1, 2, 3]"));
-        assert!(shell.looks_like_auto_expr("{key: value}"));
+        assert!(shell.is_auto_expression("1 + 2"), "arithmetic");
+        assert!(shell.is_auto_expression("let x = 1"), "let keyword");
+        assert!(shell.is_auto_expression("fn add() {}"), "fn keyword");
+        assert!(shell.is_auto_expression("\"hello\""), "string literal");
+        assert!(shell.is_auto_expression("3.14 / 2"), "float arithmetic");
 
-        // Should NOT be recognized as Auto expressions
-        assert!(!shell.looks_like_auto_expr("ls"));
-        assert!(!shell.looks_like_auto_expr("cargo build"));
-        assert!(!shell.looks_like_auto_expr("echo hello"));
+        // Should NOT be recognized (Shell commands)
+        assert!(!shell.is_auto_expression("ls"), "ls");
+        assert!(!shell.is_auto_expression("cargo build"), "cargo build");
+        assert!(!shell.is_auto_expression("echo hello"), "echo hello");
+        assert!(!shell.is_auto_expression("find . -name *.rs"), "find");
+        assert!(!shell.is_auto_expression("fmt src"), "fmt");
+        assert!(!shell.is_auto_expression("file.txt"), "bare filename");
+        assert!(shell.is_auto_expression("[1, 2, 3]"), "array literal");
+        assert!(shell.is_auto_expression("{key: value}"), "object literal");
+        assert!(!shell.is_auto_expression("[ -f file.txt ]"), "shell test");
+        assert!(!shell.is_auto_expression("-la"), "flag");
+        assert!(!shell.is_auto_expression("42"), "bare number (could be PID)");
     }
 
     #[test]
