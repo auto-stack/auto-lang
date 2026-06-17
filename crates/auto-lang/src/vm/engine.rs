@@ -104,6 +104,24 @@ pub struct EnumerateIterator {
     pub current_index: u32,
 }
 
+/// Plan 321: Generator frame — saved execution state for yield/resume.
+/// A generator runs on an independent AutoTask; this struct tracks the
+/// association and lifecycle. The actual ip/bp/sp live on the task itself.
+#[derive(Debug, Clone)]
+pub struct GeneratorState {
+    /// The AutoTask that owns the generator's execution frame.
+    /// Created lazily on first next() call via vm.spawn_task(func_addr).
+    pub task_id: Option<u64>,
+    /// Function address of the generator body (used for first next()).
+    pub func_addr: u32,
+    /// Number of arguments the generator function takes.
+    pub n_args: u8,
+    /// Whether the generator has been started (first next() called).
+    pub started: bool,
+    /// Whether the generator has finished (function returned).
+    pub done: bool,
+}
+
 /// Unified iterator type
 #[derive(Debug, Clone)]
 pub enum Iterator {
@@ -111,6 +129,8 @@ pub enum Iterator {
     Map(MapIterator),
     Filter(FilterIterator),
     Enumerate(EnumerateIterator),
+    /// Plan 321: Generator-based iterator (yield/~Iter<T>)
+    Generator(GeneratorState),
 }
 
 // ============================================================================
@@ -142,15 +162,19 @@ pub enum VMError {
 
 /// Result of executing a single VM instruction (used by `run_one_instruction`)
 #[derive(Debug, Clone, PartialEq)]
-enum StepResult {
+pub enum StepResult {
     /// Continue executing more instructions
     Continue,
     /// Task has terminated (HALT, RET at bp==0, IP past end)
     Terminated,
-    /// Task should pause the current batch (YIELD, SLEEP, blocked JOIN/SEND/RECV)
+    /// Task should pause the current batch (YIELD_TASK, SLEEP, blocked JOIN/SEND/RECV)
     Yield,
     /// Plan 224: AWAIT_FUTURE hit a Pending future — caller should handle body execution
     AwaitFuture { future_id: u32, body_offset: u32 },
+    /// Plan 321: YIELD_VAL hit — generator yielded a value. The value is on
+    /// top of stack. The generator driver (shim_iterator_next Generator branch)
+    /// should pop the value and save the task state for next resume.
+    GeneratorYield,
 }
 
 /// Plan 224: Result of executing a single frame (budget-limited instruction batch)
@@ -823,6 +847,12 @@ impl AutoVM {
                     // In call_closure context, Yield just means "continue after pause"
                     continue;
                 }
+                StepResult::GeneratorYield => {
+                    // Plan 321: YIELD_VAL in closure context — treat like Yield
+                    // (continue past the yield). Proper suspension only via
+                    // Iterator::Generator driver.
+                    continue;
+                }
                 StepResult::AwaitFuture { future_id, body_offset } => {
                     // Handle await within closure execution
                     self.handle_await_future(task, future_id, body_offset)?;
@@ -889,6 +919,16 @@ impl AutoVM {
                     ));
                 }
                 StepResult::Yield => continue,
+                StepResult::GeneratorYield => {
+                    // Plan 321: YIELD_VAL in a regular call_fn_by_name context
+                    // means the function is a generator. In non-generator mode
+                    // (called via call_fn_by_name), we can't suspend — just
+                    // continue past the yield (the yielded value is on stack,
+                    // we leave it there as a side effect).
+                    // NOTE: Proper generator suspension only happens via the
+                    // Iterator::Generator driver (Phase 2), not call_fn_by_name.
+                    continue;
+                }
                 StepResult::AwaitFuture { future_id, body_offset } => {
                     self.handle_await_future(task, future_id, body_offset)?;
                 }
@@ -1169,7 +1209,7 @@ impl AutoVM {
     /// Returns `Ok(StepResult::Continue)` if the task should keep running,
     /// `Ok(StepResult::Terminated)` if the task has finished, or
     /// `Ok(StepResult::Yield)` if the task should pause the current batch.
-    fn run_one_instruction(&self, task: &mut AutoTask) -> Result<StepResult, VMError> {
+    pub fn run_one_instruction(&self, task: &mut AutoTask) -> Result<StepResult, VMError> {
         // 1. Fetch
         if task.ip >= self.flash.memory.len() {
             return Ok(StepResult::Terminated);
@@ -5088,6 +5128,14 @@ impl AutoVM {
                 OpCode::YIELD_TASK => {
                     return Ok(StepResult::Yield);
                 }
+                OpCode::YIELD_VAL => {
+                    // Plan 321: Generator yield. The yielded value is already
+                    // on top of stack (compiled by codegen before YIELD_VAL).
+                    // Signal the generator driver that a value was yielded.
+                    // The task's ip now points PAST the YIELD_VAL instruction,
+                    // so on resume the generator continues from the next stmt.
+                    return Ok(StepResult::GeneratorYield);
+                }
                 OpCode::SLEEP => {
                     let ms = self.flash.read_u32(task.ip) as u64;
                     task.ip += 4;
@@ -6027,6 +6075,11 @@ impl AutoVM {
                 }
                 Ok(StepResult::Terminated) => return FrameResult::Return,
                 Ok(StepResult::Yield) => return FrameResult::Yielded,
+                Ok(StepResult::GeneratorYield) => {
+                    // Plan 321: Generator yield in frame context — yield the frame
+                    // so the generator driver can handle it.
+                    return FrameResult::Yielded;
+                }
                 Ok(StepResult::AwaitFuture { future_id, body_offset }) => {
                     return FrameResult::AwaitFuture { future_id, body_offset };
                 }

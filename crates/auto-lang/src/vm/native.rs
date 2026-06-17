@@ -1712,6 +1712,10 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                             // Filter source not supported yet
                             -1
                         }
+                        Iterator::Generator(_) => {
+                            // Generator as Map source not yet supported
+                            -1
+                        }
                         Iterator::Enumerate(enumerate_iter) => {
                             // Get next from source, then push index on top
                             if let Some(mut source_iter) = vm.iterators.get_mut(&enumerate_iter.source_iterator_id) {
@@ -1828,6 +1832,76 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 } else {
                     -1
                 }
+            }
+            Iterator::Generator(gen_state) => {
+                // Plan 321 Phase 2: Generator next() driver
+                if gen_state.done {
+                    return Ok(());
+                }
+
+                // Get or create the generator's task
+                let task_id = if let Some(tid) = gen_state.task_id {
+                    tid
+                } else {
+                    // First next() — create the task and set up the frame
+                    let tid = vm.spawn_task(gen_state.func_addr as usize, 8192);
+                    // Set up the function frame (FN_PROLOG equivalent)
+                    if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+                        let mut gt = gen_task_arc.blocking_lock();
+                        gt.current_fn_n_args = gen_state.n_args as usize;
+                        // Push return address placeholder + old BP
+                        gt.ram.push_i32(0); // return address (will never return normally)
+                        gt.ram.push_i32(0); // old BP
+                        gt.bp = gt.ram.sp - 1;
+                    }
+                    gen_state.task_id = Some(tid);
+                    gen_state.started = true;
+                    tid
+                };
+
+                // Resume the generator task: run until YIELD_VAL or RET
+                let gen_result = if let Some(gen_task_arc) = vm.tasks.get(&task_id) {
+                    let mut gt = gen_task_arc.blocking_lock();
+                    // Run instructions until GeneratorYield or Terminated
+                    let budget = 10_000_000;
+                    let mut final_result: i32 = -1; // default: done
+                    let mut yielded = false;
+                    for _ in 0..budget {
+                        match vm.run_one_instruction(&mut gt) {
+                            Ok(crate::vm::engine::StepResult::Continue) => continue,
+                            Ok(crate::vm::engine::StepResult::GeneratorYield) => {
+                                // Value is on top of generator task's stack
+                                final_result = auto_val::decode_i32(gt.ram.pop_nv());
+                                yielded = true;
+                                break;
+                            }
+                            Ok(crate::vm::engine::StepResult::Terminated) => {
+                                // Generator finished (function returned)
+                                final_result = -1;
+                                break;
+                            }
+                            Ok(crate::vm::engine::StepResult::Yield) => continue,
+                            Ok(crate::vm::engine::StepResult::AwaitFuture { future_id, body_offset }) => {
+                                vm.handle_await_future(&mut gt, future_id, body_offset).ok();
+                            }
+                            Err(e) => {
+                                eprintln!("[Generator] Error: {:?}", e);
+                                final_result = -1;
+                                break;
+                            }
+                        }
+                    }
+                    if !yielded {
+                        // Generator finished without yielding — mark done
+                        gen_state.done = true;
+                    }
+                    final_result
+                } else {
+                    -1
+                };
+
+                task.ram.push_i32(gen_result);
+                return Ok(());
             }
         }
     } else {
@@ -2013,7 +2087,7 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) => {
                 // For adapters, we'd need to recursively call next()
                 // For MVP, only support direct list iteration
                 return Err(VMError::RuntimeError("Collect from adapters not yet implemented".to_string()));
@@ -2070,7 +2144,7 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) => {
                 return Err(VMError::RuntimeError("Reduce from adapters not yet implemented".to_string()));
             }
         }
@@ -2116,7 +2190,7 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) => {
                 return Err(VMError::RuntimeError("Find from adapters not yet implemented".to_string()));
             }
         }

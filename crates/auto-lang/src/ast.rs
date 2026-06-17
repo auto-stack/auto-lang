@@ -400,6 +400,10 @@ pub enum Expr {
     Go {
         expr: Box<Expr>,  // Must be ~T (Future)
     },
+    /// Plan 321: Yield expression for generators.
+    /// `yield expr` suspends the generator and sends expr's value to the caller.
+    /// Returns nil when resumed (MVP; bidirectional yield is future work).
+    Yield(Box<Expr>),
     /// Plan 095: Compile-time expression #{ expr }
     /// Evaluates expr at compile time and substitutes the result
     Comptime(Box<HashBrace>),
@@ -520,6 +524,8 @@ impl fmt::Display for Expr {
             Expr::Await { expr } => write!(f, "({}.await)", expr),
             // Plan 126: .go postfix operator for spawning background tasks
             Expr::Go { expr } => write!(f, "({}.go)", expr),
+            // Plan 321: yield expression
+            Expr::Yield(expr) => write!(f, "(yield {})", expr),
             Expr::Comptime(hash_brace) => write!(f, "{}", hash_brace),
             Expr::Tuple(elems) => fmt_tuple(f, elems),
             Expr::Is(is) => write!(f, "(is-expr {})", is.target),
@@ -1074,6 +1080,12 @@ impl ToNode for Expr {
             // Plan 126: .go postfix operator for spawning background tasks
             Expr::Go { expr } => {
                 let mut node = AutoNode::new("go");
+                node.add_kid(expr.to_node());
+                node
+            }
+            // Plan 321: yield expression
+            Expr::Yield(expr) => {
+                let mut node = AutoNode::new("yield");
                 node.add_kid(expr.to_node());
                 node
             }

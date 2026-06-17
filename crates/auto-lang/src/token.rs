@@ -95,6 +95,7 @@ pub enum TokenKind {
     Break,
     Continue,
     Return, // ADDED: return keyword for early returns
+    Yield,  // Plan 321: yield keyword for generators
     Is,
     Var,
     In,
@@ -259,6 +260,7 @@ impl fmt::Display for Token {
             TokenKind::Char => write!(f, "<'{}'>", self.text),
             TokenKind::Is => write!(f, "<is>"),
             TokenKind::Return => write!(f, "<return>"),
+    TokenKind::Yield => write!(f, "<yield>"),
             TokenKind::On => write!(f, "<on>"),
             TokenKind::Question => write!(f, "<?>"),
             TokenKind::QuestionQuestion => write!(f, "??"),
@@ -381,6 +383,7 @@ impl Token {
             "break" => Some(TokenKind::Break),
             "continue" => Some(TokenKind::Continue),
             "return" => Some(TokenKind::Return),
+            "yield" => Some(TokenKind::Yield),
             "ext" => Some(TokenKind::Ext),
             "static" => Some(TokenKind::Static),
             "shared" => Some(TokenKind::Shared),

@@ -973,6 +973,25 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Return(Box::new(expr)))
     }
 
+    /// Plan 321: Parse yield expression as a statement.
+    /// `yield expr` suspends the generator and sends expr's value to the caller.
+    /// Can also be used bare as `yield` (yields nil).
+    fn yield_expr_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip 'yield' keyword
+        // Skip newlines
+        while self.is_kind(TokenKind::Newline) {
+            self.next();
+        }
+        if self.is_kind(TokenKind::Semi)
+            || self.is_kind(TokenKind::RBrace) || self.is_kind(TokenKind::EOF)
+        {
+            // bare `yield` → yield nil
+            return Ok(Stmt::Expr(Expr::Yield(Box::new(Expr::Nil))));
+        }
+        let expr = self.parse_expr()?;
+        Ok(Stmt::Expr(Expr::Yield(Box::new(expr))))
+    }
+
     /// Plan 124 Phase 2.3: Parse reply statement for ask/reply RPC
     ///
     /// reply expr
@@ -3553,6 +3572,7 @@ impl<'a> Parser<'a> {
             TokenKind::Break => self.break_stmt()?,
             TokenKind::Continue => self.continue_stmt()?,
             TokenKind::Return => self.return_stmt()?,
+            TokenKind::Yield => self.yield_expr_stmt()?, // Plan 321: yield
             TokenKind::Reply => self.reply_stmt()?,  // Plan 124 Phase 2.3: reply statement
             TokenKind::Use => self.use_stmt()?,
             TokenKind::Dep => self.dep_stmt()?, // Plan 092: Dependency declaration
@@ -8987,16 +9007,27 @@ impl<'a> Parser<'a> {
                 }
             }
             TokenKind::Tilde => {
-                // Plan 124: Parse ~T as Future<T>
-                // ~ is syntactic sugar for the Future generic type
+                // Plan 124/321: ~ is syntactic sugar for delayed/async types.
+                // ~T → Future<T> (existing async semantics)
+                // ~Iter<T> → Iter<T> (generator sequence, NOT wrapped in Future)
+                // ~Stream<T> → Stream<T> (async stream, NOT wrapped in Future)
                 self.next(); // Consume '~'
                 let inner_type = self.parse_type()?;
-                // Create Future<T> as a GenericInstance
-                Ok(Type::GenericInstance(GenericInstance {
-                    base_name: "Future".into(),
-                    args: vec![inner_type],
-                    source: None,
-                }))
+                // Check if inner is Iter<T> or Stream<T> — these are direct types, not Future
+                match &inner_type {
+                    Type::GenericInstance(inst) if inst.base_name.as_str() == "Iter" || inst.base_name.as_str() == "Stream" => {
+                        // ~Iter<T> / ~Stream<T> → return directly (no Future wrapping)
+                        Ok(inner_type)
+                    }
+                    _ => {
+                        // ~T → Future<T> (default: async value)
+                        Ok(Type::GenericInstance(GenericInstance {
+                            base_name: "Future".into(),
+                            args: vec![inner_type],
+                            source: None,
+                        }))
+                    }
+                }
             }
             TokenKind::Ident => self.parse_ident_or_generic_type(),
             TokenKind::Star => self.parse_ptr_type(),
