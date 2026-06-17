@@ -760,6 +760,55 @@ fn build_scrollable<M: Clone + Debug + 'static>(
     s.into()
 }
 
+/// Build a `TextInput` shape: placeholder, value, and width. The width logic
+/// follows the (formerly VM-mode) `render_dynamic_view` semantics as the
+/// canonical single source — style width wins (Full→Fill, Fixed→Fixed), else
+/// the legacy numeric `width`, else Shrink. The caller still wires
+/// `on_input`/`on_submit`, since text-capture wiring is inherently mode-
+/// specific (generic `M` vs `IcedMessage`).
+fn build_input_shape<M: Clone + Debug + 'static>(
+    placeholder: &str,
+    value: &str,
+    width: Option<u16>,
+    _password: bool,
+    style: Option<&Style>,
+) -> iced::widget::TextInput<'static, M> {
+    let mut input_widget = text_input(placeholder, value);
+    if let Some(ref s) = style {
+        let iced_style = IcedStyle::from_style(s);
+        let effective_width = iced_style.width
+            .map(|w| match w {
+                IcedSize::Fixed(f) => Some(f as u16),
+                IcedSize::Full => None,
+                IcedSize::FillPortion(_) => None,
+            })
+            .unwrap_or(width);
+        if let Some(w) = effective_width {
+            if w > 0 {
+                input_widget = input_widget.width(iced::Length::Fixed(w as f32));
+            }
+        }
+        if let Some(ref w) = iced_style.width {
+            if matches!(w, IcedSize::Full) && width.is_none() {
+                input_widget = input_widget.width(iced::Length::Fill);
+            }
+        }
+    } else if let Some(w) = width {
+        if w > 0 {
+            input_widget = input_widget.width(iced::Length::Fixed(w as f32));
+        }
+    }
+    input_widget
+}
+
+// NOTE: Textarea shape is NOT extracted into a shared builder. iced's
+// `TextEditor` carries a generic `Highlighter` type parameter, so a clean
+// shared return type would leak iced internals into the signature. The
+// textarea "shape" is also trivial (a height ternary) and its `on_action`
+// handler is inherently mode-specific, so each converter keeps its own
+// inline construction — see the `Textarea` arms in `into_iced` and
+// `render_dynamic_view`.
+
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -891,35 +940,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 password: _,
                 style,
             } => {
-                let mut input_widget = text_input(&placeholder, &value);
-
-                // Apply width from style or legacy field
-                let effective_width = if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    iced_style.width.map(|w| match w {
-                        crate::ui::style::iced_adapter::IcedSize::Fixed(f) => f as u16,
-                        crate::ui::style::iced_adapter::IcedSize::Full => 0, // Fill handled separately
-                        crate::ui::style::iced_adapter::IcedSize::FillPortion(_) => 0,
-                    }).or(width)
-                } else {
-                    width
-                };
-
-                if let Some(w) = effective_width {
-                    if w > 0 {
-                        input_widget = input_widget.width(iced::Length::Fixed(w as f32));
-                    }
-                }
-
-                // Apply style width as Fill if needed
-                if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    if let Some(ref w) = iced_style.width {
-                        if matches!(w, crate::ui::style::iced_adapter::IcedSize::Full) && effective_width.is_none() {
-                            input_widget = input_widget.width(iced::Length::Fill);
-                        }
-                    }
-                }
+                let mut input_widget = build_input_shape(&placeholder, &value, width, false, style.as_ref());
 
                 // Wire on_input for text change tracking
                 if let Some(msg) = on_change {
@@ -942,14 +963,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
                 let content = get_textarea_content(&key, &value);
                 let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
-                let mut editor = text_editor(content)
-                    .placeholder(ph);
-
-                if let Some(h) = height {
-                    editor = editor.height(iced::Length::Fixed(h as f32));
-                } else {
-                    editor = editor.height(iced::Length::Fixed(100.0));
-                }
+                let mut editor = text_editor(content).placeholder(ph);
+                editor = editor.height(match height {
+                    Some(h) => iced::Length::Fixed(h as f32),
+                    None => iced::Length::Fixed(100.0),
+                });
 
                 if let Some(msg) = on_change {
                     let action_key = key.clone();
@@ -5891,26 +5909,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // trait cannot do since it's generic over M.
         AbstractView::Input { placeholder, value, on_change, on_submit, width, password: _, style } => {
             let dbg_props = debug_style_props(style.as_ref());
-            let mut input_widget = text_input(&placeholder, &value);
-
-            if let Some(ref s) = style {
-                let iced_style = IcedStyle::from_style(s);
-                let effective_width = iced_style.width.map(|w| match w {
-                    crate::ui::style::iced_adapter::IcedSize::Fixed(f) => Some(f as u16),
-                    crate::ui::style::iced_adapter::IcedSize::Full => None,
-                    crate::ui::style::iced_adapter::IcedSize::FillPortion(_) => None,
-                }).unwrap_or(width);
-                if let Some(w) = effective_width {
-                    if w > 0 { input_widget = input_widget.width(iced::Length::Fixed(w as f32)); }
-                }
-                if let Some(ref w) = iced_style.width {
-                    if matches!(w, crate::ui::style::iced_adapter::IcedSize::Full) && width.is_none() {
-                        input_widget = input_widget.width(iced::Length::Fill);
-                    }
-                }
-            } else if let Some(w) = width {
-                if w > 0 { input_widget = input_widget.width(iced::Length::Fixed(w as f32)); }
-            }
+            let mut input_widget = build_input_shape::<IcedMessage>(&placeholder, &value, width, false, style.as_ref());
 
             // Wire on_change → on_input (captures typed text).
             // In inspect-capture mode, omit the handler so the widget is
@@ -5948,14 +5947,11 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // text_editor::placeholder borrows with the element's lifetime;
             // since content is &'static, we need a &'static str for placeholder too.
             let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
-            let mut editor = text_editor(content)
-                .placeholder(ph);
-
-            if let Some(h) = height {
-                editor = editor.height(iced::Length::Fixed(h as f32));
-            } else {
-                editor = editor.height(iced::Length::Fixed(100.0));
-            }
+            let mut editor = text_editor(content).placeholder(ph);
+            editor = editor.height(match height {
+                Some(h) => iced::Length::Fixed(h as f32),
+                None => iced::Length::Fixed(100.0),
+            });
 
             let el: iced::Element<'static, IcedMessage> = {
                 // In inspect-capture mode, render read-only (no on_action) so
