@@ -394,6 +394,20 @@ pub enum View<M: Clone + Debug> {
         src: String,
         style: Option<Style>,
     },
+
+    /// CSS-Grid-like layout: `cols` equal-width columns. Decomposed into a
+    /// column-of-rows at render time by the shared generic `build_grid`
+    /// (Plan 319). This is the SINGLE source of truth for grid
+    /// decomposition — it replaces the three ad-hoc col-of-rows sites
+    /// (`ui_gen/rust.rs` codegen, `convert_grid`, `convert_grid_tracked_ctx`)
+    /// that previously each reimplemented the split and drifted, causing
+    /// the rust-mode "tower" bug. `gap` is the pixel spacing between cells.
+    Grid {
+        cols: usize,
+        gap: u16,
+        cells: Vec<View<M>>,
+        style: Option<Style>,
+    },
 }
 
 /// View builder for fluent layout construction
@@ -418,6 +432,7 @@ pub struct ViewBuilder<M: Clone + Debug> {
     children: Vec<View<M>>,
     spacing: u16,
     padding: u16,
+    cols: usize,
     style: Option<Style>,
     text_content: String,
     button_label: String,
@@ -430,6 +445,7 @@ enum ViewBuilderKind {
     Column,
     Text,
     Button,
+    Grid,
 }
 
 impl<M: Clone + Debug> ViewBuilder<M> {
@@ -440,6 +456,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             children: Vec::new(),
             spacing: 0,
             padding: 0,
+            cols: 0,
             style: None,
             text_content: String::new(),
             button_label: String::new(),
@@ -454,6 +471,24 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             children: Vec::new(),
             spacing: 0,
             padding: 0,
+            cols: 0,
+            style: None,
+            text_content: String::new(),
+            button_label: String::new(),
+            button_onclick: None,
+        }
+    }
+
+    /// Create a new grid builder (Plan 319). `cols` defaults to 1; set it
+    /// via `.cols(n)`. `gap` reuses `.spacing(n)`. Children are the grid
+    /// cells, laid out row-major and wrapped to `cols` per row at build time.
+    pub fn grid() -> Self {
+        ViewBuilder {
+            kind: ViewBuilderKind::Grid,
+            children: Vec::new(),
+            spacing: 0,
+            padding: 0,
+            cols: 1,
             style: None,
             text_content: String::new(),
             button_label: String::new(),
@@ -468,6 +503,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             children: Vec::new(),
             spacing: 0,
             padding: 0,
+            cols: 0,
             style: None,
             text_content: String::new(),
             button_label: String::new(),
@@ -482,6 +518,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             children: Vec::new(),
             spacing: 0,
             padding: 0,
+            cols: 0,
             style: None,
             text_content: String::new(),
             button_label: String::new(),
@@ -510,6 +547,12 @@ impl<M: Clone + Debug> ViewBuilder<M> {
     /// Set padding for the layout (legacy API)
     pub fn padding(mut self, padding: u16) -> Self {
         self.padding = padding;
+        self
+    }
+
+    /// Set the column count for a grid builder (Plan 319). Clamped to ≥1.
+    pub fn cols(mut self, cols: usize) -> Self {
+        self.cols = cols.max(1);
         self
     }
 
@@ -719,6 +762,12 @@ impl<M: Clone + Debug> ViewBuilder<M> {
                 onclick: self.button_onclick.unwrap_or_else(|| panic!("button requires onclick")),
                 style: self.style,
             },
+            ViewBuilderKind::Grid => View::Grid {
+                cols: self.cols.max(1),
+                gap: self.spacing,
+                cells: self.children,
+                style: self.style,
+            },
         }
     }
 
@@ -809,6 +858,12 @@ impl<M: Clone + Debug> View<M> {
     /// Create a column builder
     pub fn col() -> ViewBuilder<M> {
         ViewBuilder::col()
+    }
+
+    /// Create a grid builder (Plan 319). Chain `.cols(n)` + `.spacing(gap)`
+    /// + `.child(...)` and `.build()`.
+    pub fn grid() -> ViewBuilder<M> {
+        ViewBuilder::grid()
     }
 
     /// Create input field with placeholder
@@ -1134,6 +1189,12 @@ impl<M: Clone + Debug> View<M> {
                 children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 spacing,
                 padding,
+                style,
+            },
+            View::Grid { cols, gap, cells, style } => View::Grid {
+                cols,
+                gap,
+                cells: cells.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 style,
             },
             View::Input { placeholder, value, on_change, on_submit, width, password, style } => View::Input {
@@ -2696,6 +2757,49 @@ mod tests {
                 assert_eq!(classes.len(), 2);
             }
             _ => panic!("Expected View::Column"),
+        }
+    }
+
+    // Plan 319: map_msg must recurse into Grid cells — the rust-mode DevTools
+    // hot path walks the remapped tree every frame.
+    #[test]
+    fn test_grid_map_msg_remaps_cells() {
+        let grid: View<TestMsg> = View::Grid {
+            cols: 2,
+            gap: 4,
+            cells: vec![
+                View::Button {
+                    label: "A".to_string(),
+                    onclick: TestMsg::Click,
+                    style: None,
+                },
+                View::Button {
+                    label: "B".to_string(),
+                    onclick: TestMsg::Change,
+                    style: None,
+                },
+            ],
+            style: None,
+        };
+
+        #[derive(Clone, Debug)]
+        enum Out {
+            Did(String),
+        }
+
+        let mapped = grid.map_msg(|m| match m {
+            TestMsg::Click => Out::Did("click".to_string()),
+            TestMsg::Change => Out::Did("change".to_string()),
+        });
+
+        match mapped {
+            View::Grid { cells, .. } => {
+                assert_eq!(cells.len(), 2);
+                for cell in &cells {
+                    assert!(matches!(cell, View::Button { .. }));
+                }
+            }
+            _ => panic!("Expected View::Grid after map_msg"),
         }
     }
 }

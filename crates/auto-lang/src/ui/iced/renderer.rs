@@ -643,6 +643,253 @@ fn apply_container_style<M: Clone + Debug + 'static>(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Shared generic widget builders (Plan 319 — unify VM/Rust rendering).
+//
+// These sit one layer above the `apply_*_style` helpers: they take
+// **already-built** child `Element`s and own the widget *shape* — spacing,
+// padding, justify-spacers, width/height, children loop. Both converters
+// (`into_iced`, generic `M`, rust mode; `render_dynamic_view`, IcedMessage,
+// VM mode) call the *same* builder, so the shape can never drift between
+// modes again. The converters differ only in HOW they produce the child
+// elements: `into_iced` recurses via `child.into_iced()`, while
+// `render_dynamic_view` recurses via itself (to give each child its own
+// `wrap_debug` instrumentation + VM text capture). The builder is agnostic
+// to that — it just arranges whatever children it's handed.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Build a Row from pre-built child elements, applying justify-spacers and
+/// the shared `apply_row_style` (width/height/margin/visual wrap + id).
+fn build_row<M: Clone + Debug + 'static>(
+    children: Vec<iced::Element<'static, M>>,
+    spacing: u16,
+    padding: u16,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let eff_spacing = effective_spacing(spacing, style);
+    let justify = style
+        .map(|s| IcedStyle::from_style(s).justify_content)
+        .and_then(|j| j);
+    let (lead, between, trail) = row_justify_spacers(justify);
+    let mut row_widget = row([]).spacing(eff_spacing);
+    if lead {
+        row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+    }
+    let mut first = true;
+    for child in children {
+        if between && !first {
+            row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+        }
+        first = false;
+        row_widget = row_widget.push(child);
+    }
+    if trail {
+        row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+    }
+    apply_row_style(row_widget, padding, style, widget_id)
+}
+
+/// Build a Column from pre-built child elements + shared `apply_column_style`.
+fn build_column<M: Clone + Debug + 'static>(
+    children: Vec<iced::Element<'static, M>>,
+    spacing: u16,
+    padding: u16,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let eff_spacing = effective_spacing(spacing, style);
+    let mut col_widget = column([]).spacing(eff_spacing);
+    for child in children {
+        col_widget = col_widget.push(child);
+    }
+    apply_column_style(col_widget, padding, style, widget_id)
+}
+
+/// Build a Container around a single pre-built child + shared
+/// `apply_container_style`.
+fn build_container<M: Clone + Debug + 'static>(
+    child: iced::Element<'static, M>,
+    padding: u16,
+    width: Option<u16>,
+    height: Option<u16>,
+    center_x: bool,
+    center_y: bool,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let cont = container(child);
+    apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id)
+}
+
+/// Build a Scrollable around a single pre-built child. Width/height come
+/// from style (preferred) or the legacy numeric fields; id is set when the
+/// caller supplies one (VM path injects the aura id for bounds collection).
+fn build_scrollable<M: Clone + Debug + 'static>(
+    child: iced::Element<'static, M>,
+    width: Option<u16>,
+    height: Option<u16>,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let mut s = scrollable(child);
+    if let Some(ref st) = style {
+        let is = IcedStyle::from_style(st);
+        if let Some(ref ws) = is.width {
+            match ws {
+                IcedSize::Fixed(f) => s = s.width(iced::Length::Fixed(*f as f32)),
+                IcedSize::Full => s = s.width(iced::Length::Fill),
+                IcedSize::FillPortion(n) => s = s.width(iced::Length::FillPortion(*n)),
+            }
+        } else if let Some(w) = width {
+            if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); }
+        }
+        match is.height {
+            Some(IcedSize::Fixed(f)) => { s = s.height(iced::Length::Fixed(f as f32)); }
+            Some(IcedSize::Full) => { s = s.height(iced::Length::Fill); }
+            Some(IcedSize::FillPortion(n)) => { s = s.height(iced::Length::FillPortion(n)); }
+            None => { if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } } }
+        }
+    } else {
+        if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
+        if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } }
+    }
+    if let Some(id) = widget_id {
+        s = s.id(id);
+    }
+    s.into()
+}
+
+/// Build a `TextInput` shape: placeholder, value, and width. The width logic
+/// follows the (formerly VM-mode) `render_dynamic_view` semantics as the
+/// canonical single source — style width wins (Full→Fill, Fixed→Fixed), else
+/// the legacy numeric `width`, else Shrink. The caller still wires
+/// `on_input`/`on_submit`, since text-capture wiring is inherently mode-
+/// specific (generic `M` vs `IcedMessage`).
+fn build_input_shape<M: Clone + Debug + 'static>(
+    placeholder: &str,
+    value: &str,
+    width: Option<u16>,
+    _password: bool,
+    style: Option<&Style>,
+) -> iced::widget::TextInput<'static, M> {
+    let mut input_widget = text_input(placeholder, value);
+    if let Some(ref s) = style {
+        let iced_style = IcedStyle::from_style(s);
+        let effective_width = iced_style.width
+            .map(|w| match w {
+                IcedSize::Fixed(f) => Some(f as u16),
+                IcedSize::Full => None,
+                IcedSize::FillPortion(_) => None,
+            })
+            .unwrap_or(width);
+        if let Some(w) = effective_width {
+            if w > 0 {
+                input_widget = input_widget.width(iced::Length::Fixed(w as f32));
+            }
+        }
+        if let Some(ref w) = iced_style.width {
+            if matches!(w, IcedSize::Full) && width.is_none() {
+                input_widget = input_widget.width(iced::Length::Fill);
+            }
+        }
+    } else if let Some(w) = width {
+        if w > 0 {
+            input_widget = input_widget.width(iced::Length::Fixed(w as f32));
+        }
+    }
+    input_widget
+}
+
+/// Build a CSS-Grid-like layout from pre-built cell elements: wrap `cells`
+/// into rows of `cols`, pad the final incomplete row with empty Fill cells
+/// (so every track is reserved), force each row to full width (so its
+/// Fill-width cells distribute into `cols` equal columns — without this a
+/// Shrink row full of Fill children collapses vertically, the rust-mode
+/// "tower" bug), and stack the rows in a column. The grid's `style` is
+/// applied to that outer column via the shared `apply_column_style`.
+///
+/// This is the SINGLE source of truth for grid decomposition (Plan 319),
+/// replacing the three ad-hoc col-of-rows sites that previously diverged.
+fn build_grid<M: Clone + Debug + 'static>(
+    cols: usize,
+    gap: u16,
+    cells: Vec<iced::Element<'static, M>>,
+    style: Option<&Style>,
+    widget_id: Option<String>,
+) -> iced::Element<'static, M> {
+    let cols = cols.max(1);
+
+    // Pad the final row to `cols` with empty Fill cells (CSS-Grid
+    // "all tracks reserved" semantics).
+    let mut cells = cells;
+    if !cells.is_empty() {
+        let pad = cols - (cells.len() % cols);
+        if pad != cols {
+            for _ in 0..pad {
+                cells.push(text("").width(iced::Length::Fill).into());
+            }
+        }
+    }
+
+    // Each row is forced to full width so its Fill cells distribute into
+    // `cols` equal columns. Consume `cells` by value (push needs owned
+    // elements, and the padding cells above are already owned).
+    let mut iter = cells.into_iter();
+    let mut rows: Vec<iced::Element<'static, M>> = Vec::new();
+    loop {
+        let mut row_b = row([]).spacing(gap as f32).width(iced::Length::Fill);
+        let mut count = 0;
+        for _ in 0..cols {
+            match iter.next() {
+                Some(cell) => {
+                    row_b = row_b.push(cell);
+                    count += 1;
+                }
+                None => break,
+            }
+        }
+        if count == 0 {
+            break;
+        }
+        rows.push(row_b.into());
+    }
+
+    let col_widget = column(rows).spacing(gap as f32);
+    apply_column_style(col_widget, 0, style, widget_id)
+}
+
+// NOTE: Textarea shape is NOT extracted into a shared builder. iced's
+// `TextEditor` carries a generic `Highlighter` type parameter, so a clean
+// shared return type would leak iced internals into the signature. The
+// textarea "shape" is also trivial (a height ternary) and its `on_action`
+// handler is inherently mode-specific, so each converter keeps its own
+// inline construction — see the `Textarea` arms in `into_iced` and
+// `render_dynamic_view`.
+
+/// # Unification rule for new widgets (Plan 319 — read before extending)
+///
+/// VM mode and Rust mode convert the *same* `AbstractView<M>` tree to iced via
+/// **two** entry points: this generic `into_iced<M>` (Rust mode) and the
+/// `IcedMessage`-specific `render_dynamic_view` (VM mode, adds DevTools
+/// instrumentation). To keep them from drifting, follow this rule:
+///
+/// 1. **A new widget gets exactly ONE arm here, in `into_iced`.** If it has
+///    styled/iterated children, factor the shape into a shared generic
+///    `build_<widget><M>` helper (see `build_row` / `build_column` /
+///    `build_container` / `build_scrollable` / `build_grid` / `build_input_shape`)
+///    and call it with `widget_id = None`.
+/// 2. **`render_dynamic_view` NEVER reimplements widget shape.** Its same-named
+///    arm only: (a) recurse into each child to attach per-node instrumentation,
+///    (b) call the *same* `build_*` helper (passing the instrumented children +
+///    the `widget_id` from the debug id map), (c) `wrap_debug` the result.
+/// 3. **No third copy.** A widget's spacing/padding/width/children-loop lives in
+///    exactly one place — its `build_*` helper. Both converters delegate to it.
+///
+/// The grid "tower" bug (VM rendered fine, Rust collapsed to a vertical stack)
+/// was caused by exactly the drift this rule forbids: the layout lived in two
+/// `build_*`-less copies that diverged. `View::Grid` + `build_grid` exists so
+/// that cannot recur — grid decomposition is now a single source of truth.
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -754,37 +1001,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Row { children, spacing, padding, style } => {
-                let eff_spacing = effective_spacing(spacing, style.as_ref());
-                let justify = style
-                    .as_ref()
-                    .map(|s| IcedStyle::from_style(s).justify_content)
-                    .and_then(|j| j);
-                let (lead, between, trail) = row_justify_spacers(justify);
-                let mut row_widget = row([]).spacing(eff_spacing);
-                if lead {
-                    row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
-                }
-                let mut first = true;
-                for child in children {
-                    if between && !first {
-                        row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
-                    }
-                    first = false;
-                    row_widget = row_widget.push(child.into_iced());
-                }
-                if trail {
-                    row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
-                }
-                apply_row_style(row_widget, padding, style.as_ref(), None)
+                let els: Vec<iced::Element<'static, M>> =
+                    children.into_iter().map(|c| c.into_iced()).collect();
+                build_row(els, spacing, padding, style.as_ref(), None)
             }
 
             AbstractView::Column { children, spacing, padding, style } => {
-                let eff_spacing = effective_spacing(spacing, style.as_ref());
-                let mut col_widget = column([]).spacing(eff_spacing);
-                for child in children {
-                    col_widget = col_widget.push(child.into_iced());
-                }
-                apply_column_style(col_widget, padding, style.as_ref(), None)
+                let els: Vec<iced::Element<'static, M>> =
+                    children.into_iter().map(|c| c.into_iced()).collect();
+                build_column(els, spacing, padding, style.as_ref(), None)
             }
 
             AbstractView::Input {
@@ -796,35 +1021,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 password: _,
                 style,
             } => {
-                let mut input_widget = text_input(&placeholder, &value);
-
-                // Apply width from style or legacy field
-                let effective_width = if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    iced_style.width.map(|w| match w {
-                        crate::ui::style::iced_adapter::IcedSize::Fixed(f) => f as u16,
-                        crate::ui::style::iced_adapter::IcedSize::Full => 0, // Fill handled separately
-                        crate::ui::style::iced_adapter::IcedSize::FillPortion(_) => 0,
-                    }).or(width)
-                } else {
-                    width
-                };
-
-                if let Some(w) = effective_width {
-                    if w > 0 {
-                        input_widget = input_widget.width(iced::Length::Fixed(w as f32));
-                    }
-                }
-
-                // Apply style width as Fill if needed
-                if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    if let Some(ref w) = iced_style.width {
-                        if matches!(w, crate::ui::style::iced_adapter::IcedSize::Full) && effective_width.is_none() {
-                            input_widget = input_widget.width(iced::Length::Fill);
-                        }
-                    }
-                }
+                let mut input_widget = build_input_shape(&placeholder, &value, width, false, style.as_ref());
 
                 // Wire on_input for text change tracking
                 if let Some(msg) = on_change {
@@ -847,14 +1044,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
                 let content = get_textarea_content(&key, &value);
                 let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
-                let mut editor = text_editor(content)
-                    .placeholder(ph);
-
-                if let Some(h) = height {
-                    editor = editor.height(iced::Length::Fixed(h as f32));
-                } else {
-                    editor = editor.height(iced::Length::Fixed(100.0));
-                }
+                let mut editor = text_editor(content).placeholder(ph);
+                editor = editor.height(match height {
+                    Some(h) => iced::Length::Fixed(h as f32),
+                    None => iced::Length::Fixed(100.0),
+                });
 
                 if let Some(msg) = on_change {
                     let action_key = key.clone();
@@ -917,47 +1111,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 center_y,
                 style,
             } => {
-                use iced::widget::container;
-                let cont = container(child.into_iced());
-                apply_container_style(cont, padding, width, height, center_x, center_y, style.as_ref(), None)
+                build_container(
+                    child.into_iced(),
+                    padding,
+                    width,
+                    height,
+                    center_x,
+                    center_y,
+                    style.as_ref(),
+                    None,
+                )
             }
 
             AbstractView::Scrollable { child, width, height, style } => {
-                use iced::widget::scrollable;
+                build_scrollable(child.into_iced(), width, height, style.as_ref(), None)
+            }
 
-                let mut scrollable_widget = scrollable(child.into_iced());
-
-                // Apply width from style or legacy
-                let eff_width = if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    iced_style.width.map(|w| match w {
-                        crate::ui::style::iced_adapter::IcedSize::Fixed(f) => iced::Length::Fixed(f),
-                        crate::ui::style::iced_adapter::IcedSize::Full => iced::Length::Fill,
-                        crate::ui::style::iced_adapter::IcedSize::FillPortion(n) => iced::Length::FillPortion(n),
-                    }).or(width.map(|w| iced::Length::Fixed(w as f32)))
-                } else {
-                    width.map(|w| iced::Length::Fixed(w as f32))
-                };
-                if let Some(w) = eff_width {
-                    scrollable_widget = scrollable_widget.width(w);
-                }
-
-                // Apply height from style or legacy
-                let eff_height = if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    iced_style.height.map(|h| match h {
-                        crate::ui::style::iced_adapter::IcedSize::Fixed(f) => iced::Length::Fixed(f),
-                        crate::ui::style::iced_adapter::IcedSize::Full => iced::Length::Fill,
-                        crate::ui::style::iced_adapter::IcedSize::FillPortion(n) => iced::Length::FillPortion(n),
-                    }).or(height.map(|h| iced::Length::Fixed(h as f32)))
-                } else {
-                    height.map(|h| iced::Length::Fixed(h as f32))
-                };
-                if let Some(h) = eff_height {
-                    scrollable_widget = scrollable_widget.height(h);
-                }
-
-                scrollable_widget.into()
+            AbstractView::Grid { cols, gap, cells, style } => {
+                let els: Vec<iced::Element<'static, M>> =
+                    cells.into_iter().map(|c| c.into_iced()).collect();
+                build_grid(cols, gap, els, style.as_ref(), None)
             }
 
             AbstractView::Radio {
@@ -5788,6 +5961,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Scrollable { style, .. } => style.as_ref(),
         AbstractView::Input { style, .. } => style.as_ref(),
         AbstractView::Textarea { style, .. } => style.as_ref(),
+        AbstractView::Grid { style, .. } => style.as_ref(),
     }
 }
 
@@ -5813,6 +5987,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::NavigationRail { .. } => "navrail",
         AbstractView::Column { .. } | AbstractView::Row { .. }
         | AbstractView::Container { .. } | AbstractView::Scrollable { .. } => "el",
+        AbstractView::Grid { .. } => "grid",
     }
 }
 
@@ -5823,26 +5998,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // trait cannot do since it's generic over M.
         AbstractView::Input { placeholder, value, on_change, on_submit, width, password: _, style } => {
             let dbg_props = debug_style_props(style.as_ref());
-            let mut input_widget = text_input(&placeholder, &value);
-
-            if let Some(ref s) = style {
-                let iced_style = IcedStyle::from_style(s);
-                let effective_width = iced_style.width.map(|w| match w {
-                    crate::ui::style::iced_adapter::IcedSize::Fixed(f) => Some(f as u16),
-                    crate::ui::style::iced_adapter::IcedSize::Full => None,
-                    crate::ui::style::iced_adapter::IcedSize::FillPortion(_) => None,
-                }).unwrap_or(width);
-                if let Some(w) = effective_width {
-                    if w > 0 { input_widget = input_widget.width(iced::Length::Fixed(w as f32)); }
-                }
-                if let Some(ref w) = iced_style.width {
-                    if matches!(w, crate::ui::style::iced_adapter::IcedSize::Full) && width.is_none() {
-                        input_widget = input_widget.width(iced::Length::Fill);
-                    }
-                }
-            } else if let Some(w) = width {
-                if w > 0 { input_widget = input_widget.width(iced::Length::Fixed(w as f32)); }
-            }
+            let mut input_widget = build_input_shape::<IcedMessage>(&placeholder, &value, width, false, style.as_ref());
 
             // Wire on_change → on_input (captures typed text).
             // In inspect-capture mode, omit the handler so the widget is
@@ -5880,14 +6036,11 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // text_editor::placeholder borrows with the element's lifetime;
             // since content is &'static, we need a &'static str for placeholder too.
             let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
-            let mut editor = text_editor(content)
-                .placeholder(ph);
-
-            if let Some(h) = height {
-                editor = editor.height(iced::Length::Fixed(h as f32));
-            } else {
-                editor = editor.height(iced::Length::Fixed(100.0));
-            }
+            let mut editor = text_editor(content).placeholder(ph);
+            editor = editor.height(match height {
+                Some(h) => iced::Length::Fixed(h as f32),
+                None => iced::Length::Fixed(100.0),
+            });
 
             let el: iced::Element<'static, IcedMessage> = {
                 // In inspect-capture mode, render read-only (no on_action) so
@@ -5921,15 +6074,16 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
-            let eff_spacing = effective_spacing(spacing, style.as_ref());
-            let mut col_w = column([]).spacing(eff_spacing);
+            // Recurse per child (each gets its own wrap_debug instrumentation)
+            // then hand the built elements to the shared builder.
+            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
             for (i, child) in children.into_iter().enumerate() {
                 path.push(i);
-                col_w = col_w.push(render_dynamic_view(child, debug_ctx, path));
+                els.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
-            let el = apply_column_style(col_w, padding, style.as_ref(), widget_id);
+            let el = build_column(els, spacing, padding, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el }
         }
 
@@ -5941,29 +6095,16 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
-            let eff_spacing = effective_spacing(spacing, style.as_ref());
-            let justify = style
-                .as_ref()
-                .map(|s| IcedStyle::from_style(s).justify_content)
-                .and_then(|j| j);
-            let (lead, between, trail) = row_justify_spacers(justify);
-            let mut row_w = row([]).spacing(eff_spacing);
-            if lead {
-                row_w = row_w.push(iced::widget::Space::new().width(iced::Length::Fill));
-            }
+            // Recurse per child (each gets its own wrap_debug instrumentation).
+            // Justify-spacers are interleaved inside the shared build_row.
+            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
             for (i, child) in children.into_iter().enumerate() {
                 path.push(i);
-                if between && i > 0 {
-                    row_w = row_w.push(iced::widget::Space::new().width(iced::Length::Fill));
-                }
-                row_w = row_w.push(render_dynamic_view(child, debug_ctx, path));
+                els.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
-            if trail {
-                row_w = row_w.push(iced::widget::Space::new().width(iced::Length::Fill));
-            }
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
-            let el = apply_row_style(row_w, padding, style.as_ref(), widget_id);
+            let el = build_row(els, spacing, padding, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref()) } else { el }
         }
 
@@ -5979,9 +6120,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.push(0);
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
-            let cont = container(child_el);
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
-            let el = apply_container_style(cont, padding, width, height, center_x, center_y, style.as_ref(), widget_id);
+            let el = build_container(child_el, padding, width, height, center_x, center_y, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el }
         }
 
@@ -5992,30 +6132,31 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.push(0);
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
-            let mut s = scrollable(child_el);
-            if let Some(ref st) = style {
-                let is = IcedStyle::from_style(st);
-                if let Some(ref ws) = is.width {
-                    match ws { IcedSize::Fixed(f) => s = s.width(iced::Length::Fixed(*f as f32)), IcedSize::Full => s = s.width(iced::Length::Fill), IcedSize::FillPortion(n) => s = s.width(iced::Length::FillPortion(*n)) }
-                } else if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
-                match is.height {
-                    Some(IcedSize::Fixed(f)) => { s = s.height(iced::Length::Fixed(f as f32)); }
-                    Some(IcedSize::Full) => { s = s.height(iced::Length::Fill); }
-                    Some(IcedSize::FillPortion(n)) => { s = s.height(iced::Length::FillPortion(n)); }
-                    None => { if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } } }
-                }
-            } else {
-                if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
-                if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } }
-            }
-            // Set iced widget ID for layout bounds collection (Plan 282)
-            if let Some(ctx) = debug_ctx {
-                if let Some(aura_id) = ctx.debug_id_map.get(path) {
-                    s = s.id(format!("aura_{}", aura_id.0));
-                }
-            }
-            let el: iced::Element<'static, IcedMessage> = s.into();
+            // iced widget ID for layout bounds collection (Plan 282)
+            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let el = build_scrollable(child_el, width, height, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props, style.as_ref()) } else { el }
+        }
+
+        // Grid: render each cell through render_dynamic_view (so nested
+        // inputs get VM text capture + each cell gets wrap_debug), then hand
+        // the built cells to the shared build_grid. MUST be explicit — the
+        // `_ =>` catch-all below would bypass cell instrumentation.
+        AbstractView::Grid { cols, gap, cells, style } => {
+            let mut dbg_props = debug_style_props(style.as_ref());
+            if gap > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
+                dbg_props.insert(0, ("gap".into(), gap.to_string()));
+            }
+            dbg_props.insert(0, ("cols".into(), cols.to_string()));
+            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(cells.len());
+            for (i, cell) in cells.into_iter().enumerate() {
+                path.push(i);
+                els.push(render_dynamic_view(cell, debug_ctx, path));
+                path.pop();
+            }
+            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let el = build_grid(cols, gap, els, style.as_ref(), widget_id);
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "grid", el, dbg_props, style.as_ref()) } else { el }
         }
 
         // Everything else delegates to the unified IntoIcedElement renderer
@@ -6057,6 +6198,11 @@ fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &st
         AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
             patch_input_values(child, input_values);
         }
+        AbstractView::Grid { cells, .. } => {
+            for cell in cells.iter_mut() {
+                patch_input_values(cell, input_values);
+            }
+        }
         AbstractView::List { items, .. } => {
             for item in items.iter_mut() {
                 patch_input_values(item, input_values);
@@ -6094,6 +6240,11 @@ fn patch_input_values_iced(view: &mut AbstractView<IcedMessage>, input_values: &
         }
         AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
             patch_input_values_iced(child, input_values);
+        }
+        AbstractView::Grid { cells, .. } => {
+            for cell in cells.iter_mut() {
+                patch_input_values_iced(cell, input_values);
+            }
         }
         AbstractView::List { items, .. } => {
             for item in items.iter_mut() {
@@ -7350,5 +7501,39 @@ mod tests {
             .style("w-full h-64")
             .build();
         let _element = view.into_iced();
+    }
+
+    // Plan 319: patch_input_values must descend into Grid cells — without the
+    // explicit Grid arm the `_ => {}` catch-all would silently leave nested
+    // Input values stale.
+    #[test]
+    fn test_grid_patch_input_values_updates_cell() {
+        use std::collections::HashMap;
+        let mut view: AbstractView<DynamicMessage> = AbstractView::Grid {
+            cols: 2,
+            gap: 4,
+            cells: vec![AbstractView::Input {
+                placeholder: "type".to_string(),
+                value: String::new(),
+                on_change: Some(DynamicMessage::String("name".to_string())),
+                on_submit: None,
+                width: None,
+                password: false,
+                style: None,
+            }],
+            style: None,
+        };
+
+        let mut map = HashMap::new();
+        map.insert("name".to_string(), "patched".to_string());
+        patch_input_values(&mut view, &map);
+
+        match view {
+            AbstractView::Grid { cells, .. } => match &cells[0] {
+                AbstractView::Input { value, .. } => assert_eq!(value, "patched"),
+                _ => panic!("expected Input cell"),
+            },
+            _ => panic!("expected Grid after patch"),
+        }
     }
 }

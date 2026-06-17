@@ -1204,10 +1204,11 @@ impl RustGenerator {
                     return "View::Empty".to_string();
                 }
 
-                // grid → Column of Rows of `cols` cells (iced has no native grid).
-                // Mirrors `convert_grid` in aura_view_builder, including padding the
-                // final incomplete row with empty Fill cells so every column lines
-                // up — the CSS-Grid "all tracks reserved" semantics.
+                // grid → View::grid() builder. iced has no native grid; the
+                // col-of-rows decomposition (final-row padding + w-full rows)
+                // now lives in ONE place — the shared generic `build_grid`
+                // (Plan 319) — so the rust `into_iced` path and the VM
+                // `render_dynamic_view` path share it and can never drift.
                 if tag == "grid" {
                     let cols = props.get("cols").or_else(|| props.get("columns"))
                         .and_then(|v| match v {
@@ -1230,40 +1231,16 @@ impl RustGenerator {
                         } else { None })
                         .unwrap_or_default();
 
-                    let mut cells: Vec<String> = children.iter()
-                        .map(|c| self.generate_view_tree(c))
-                        .collect();
-
-                    // Pad the final row to `cols`.
-                    if !cells.is_empty() {
-                        let pad = cols - (cells.len() % cols);
-                        if pad != cols {
-                            for _ in 0..pad {
-                                cells.push("View::text_styled(\"\".to_string(), \"text-center\")".to_string());
-                            }
-                        }
-                    }
-
-                    let mut col = "View::col()".to_string();
-                    if gap > 0 { col = format!("{}.spacing({})", col, gap); }
-                    for row_cells in cells.chunks(cols) {
-                        // Each row is forced to full width so its `text-center`
-                        // (Fill) cells distribute into `cols` equal columns.
-                        // Without this the row stays Shrink, and a Shrink row
-                        // full of Fill children collapses vertically (a tower)
-                        // under the rust `into_iced` path. Matches convert_grid
-                        // in aura_view_builder.rs, which sets the same `w-full`.
-                        let mut row_b = "View::row().style(\"w-full\")".to_string();
-                        if gap > 0 { row_b = format!("{}.spacing({})", row_b, gap); }
-                        for cell in row_cells {
-                            row_b = format!("{}.child({})", row_b, cell);
-                        }
-                        col = format!("{}.child({}.build())", col, row_b);
+                    let mut g = "View::grid()".to_string();
+                    g = format!("{}.cols({})", g, cols);
+                    if gap > 0 { g = format!("{}.spacing({})", g, gap); }
+                    for c in children {
+                        g = format!("{}.child({})", g, self.generate_view_tree(c));
                     }
                     if !style_str.is_empty() {
-                        col = format!("{}.style(\"{}\")", col, style_str);
+                        g = format!("{}.style(\"{}\")", g, style_str);
                     }
-                    return format!("{}.build()", col);
+                    return format!("{}.build()", g);
                 }
 
                 let view_fn = self.tag_to_view_fn(tag);

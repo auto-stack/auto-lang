@@ -210,6 +210,21 @@ impl SnapshotBuilder {
                 }
             },
 
+            // Grid (Plan 319): cells are the snapshot children.
+            View::Grid { cols, gap, cells, .. } => {
+                let child_nodes = Self::traverse_children(cells, id_map, path);
+                UiNode {
+                    id,
+                    kind: "Grid".to_string(),
+                    props: vec![
+                        ("cols".to_string(), cols.to_string()),
+                        ("gap".to_string(), gap.to_string()),
+                    ],
+                    actions: vec![],
+                    children: child_nodes,
+                }
+            },
+
             View::Container { padding, width, height, center_x, center_y, child, .. } => {
                 let mut props = vec![("padding".to_string(), padding.to_string())];
                 if let Some(w) = width {
