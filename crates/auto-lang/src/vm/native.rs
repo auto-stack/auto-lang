@@ -1879,24 +1879,27 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     let tid = vm.spawn_task(gen_state.func_addr as usize, 65536);
                     gen_state.task_id = Some(tid);
 
-                    // Use call_fn_by_name to properly set up and run the generator.
-                    // It will encounter YIELD_VAL → GeneratorYield → continue.
-                    // All yields are skipped. The function returns with whatever
-                    // is on stack at RET time.
-                    //
-                    // To collect yielded values, we need a different approach:
-                    // Run the function manually via run_one_instruction on the
-                    // spawned task, handling YIELD_VAL properly.
-
+                    // Set up frame EXACTLY like CALL opcode does (engine.rs:3986-4021)
                     if let Some(gen_task_arc) = vm.tasks.get(&tid) {
                         if let Ok(mut gt) = gen_task_arc.try_lock() {
-                            // Pre-push nil return value for RET to pop
-                            gt.ram.push_nv(auto_val::encode_null());
-                            // Set up frame like CALL opcode:
-                            gt.ram.push_i32(0); // return address
-                            gt.ram.push_i32(0); // old BP
-                            gt.bp = gt.ram.sp - 1;
+                            // Push return address (never used — generator ends via RET → Terminated)
+                            gt.ram.push_i32(0);
+                            // Push old BP
+                            gt.ram.push_i32(0);
+                            // New BP points to saved BP location
+                            let new_bp = gt.ram.sp - 1;
+                            gt.bp = new_bp;
                             gt.current_fn_n_args = gen_state.n_args as usize;
+                            // Push CallFrame (needed for RET to work correctly)
+                            gt.call_stack.push(crate::vm::task::CallFrame {
+                                return_ip: 0,
+                                old_bp: new_bp,
+                                fn_name: None,
+                                line: 0,
+                                old_fn_n_args: 0,
+                                old_fn_n_locals: 0,
+                            });
+                            // Jump to function body (FN_PROLOG is at func_addr)
                             gt.ip = gen_state.func_addr as usize;
                         }
                     }

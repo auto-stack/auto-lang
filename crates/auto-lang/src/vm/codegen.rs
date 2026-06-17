@@ -890,6 +890,18 @@ impl Codegen {
                 // 5. Compile body FIRST to count locals
                 self.compile_stmt(&Stmt::Block(fn_decl.body.clone()))?;
 
+                // Plan 321/326: Generator functions need an explicit nil return
+                // because yield's last statement pops its value, leaving nothing
+                // for RET. Push nil + RET so the generator terminates cleanly.
+                let is_gen = matches!(&fn_decl.ret, Type::GenericInstance(inst)
+                    if inst.base_name == "Iter" || inst.base_name == "Stream");
+                if is_gen {
+                    self.emit(OpCode::CREATE_NONE); // push nil as return value
+                    let n_args = fn_decl.params.len() as i16;
+                    self.emit(OpCode::RET);
+                    self.code.extend_from_slice(&n_args.to_le_bytes());
+                }
+
                 // Plan 118 Phase 7: Update function return type based on body inference
                 // If parser defaulted to Void but body has implicit return, update the type
                 // This allows proper void detection for calls like: fn hi(s str) { print(s); }; hi("hello")
