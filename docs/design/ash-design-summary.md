@@ -141,3 +141,88 @@ Phase A（有状态 ShellCompleter + CompletionSignature）+ Phase B（Completio
 3. **Here Document + Shell 函数**（304 P1）—— 脚本完整性阻塞项。
 
 其余按 P1→P6 渐进。AI（P5-21）与 Block UX（P5-22）属战略级大块，建议在 P0–P2 稳定后再启动。
+
+---
+
+## 5. 配置系统（统一 Auto/Atom 格式）
+
+> **设计原则**: 所有声明式配置统一用 **Auto/Atom（.at）格式**, 统一放在 `~/.config/ash/` 目录下, 按关注点分文件。
+> 迁移计划见 [Plan 318](../plans/318-ash-unified-config-migration.md)。
+
+### 5.1 目录结构
+
+```
+~/.config/ash/
+├── config.at           统一主配置(shell 行为 / aliases / completion / ls 图标)
+├── prompt.at           Prompt 配置(format / modules / styles)
+├── env.at              env 持久化(env -save / env -load)
+└── completions/
+    ├── *.at            用户手写补全 spec
+    ├── generated/
+    │   └── *.at        completions generate 生成的 spec
+    └── cache/
+        └── *.at        运行时 help-probe 缓存的 spec
+```
+
+- `~/.ashrc` 保留在 home 目录 —— 它是**可执行脚本**(alias/env/abbr/条件逻辑), 不是声明式配置, 不合并。
+- 以后新增任何配置, 统一放 `~/.config/ash/`, 用 `.at` 格式。
+
+### 5.2 config.at — 主配置
+
+```auto
+shell {
+    history_size             : 10000
+    autosuggestion           : true
+    autosuggestion_min_chars : 1
+    edit_mode                : emacs     // emacs | vi
+    syntax_highlighting      : true
+}
+aliases {
+    ll : "ls -la"
+}
+completion {
+    case_sensitive : false
+}
+ls {
+    icons : nerdfont          // plain | nerdfont | emoji | off
+}
+```
+
+### 5.3 prompt.at — Prompt 配置
+
+```auto
+prompt {
+    format              : "$directory$git_branch$git_status$character"
+    add_newline         : true
+    cmd_duration_threshold : 5000
+
+    git_branch {                 // 二级嵌套: 模块级配置
+        disabled : false
+        symbol : "⎇ "
+        style : "green bold"
+    }
+}
+```
+
+### 5.4 解析器: `auto_config.rs`
+
+- 轻量自包含解析器(不依赖 auto-lang VM), 支持 `block { key : "value" }` + `//` 注释。
+- 值默认为 string; caller 按 key 转换为 bool/int。
+- 支持二级嵌套(prompt.at 的模块级配置)。
+- 路径解析: 优先 `~/.config/ash/`, 回退平台配置目录(`%APPDATA%` on Windows)。
+
+### 5.5 向后兼容
+
+- 旧 `ash.toml` / `ash-prompt.toml` 存在时仍读取(TOML 降级路径) + 一次性迁移提示。
+- `config migrate` 一键迁移到 `.at`。
+- 旧的 `~/.config/ash.at`(独立文件)已合入 `config.at` 的 `ls { }` 块。
+
+### 5.6 配置文件一览(迁移后)
+
+| 文件 | 格式 | 用途 | 迁移状态 |
+|---|---|---|---|
+| `~/.config/ash/config.at` | Auto/Atom | Shell 行为 + aliases + completion + ls | ✅(Plan 318) |
+| `~/.config/ash/prompt.at` | Auto/Atom | Prompt 模块/format/styles | ✅(Plan 318) |
+| `~/.config/ash/env.at` | Auto/Atom(shell 行) | env 持久化 | ✅(Plan 309 P4) |
+| `~/.config/ash/completions/*.at` | Auto/Atom(嵌套) | 补全 spec 三层 | ✅(Plan 315) |
+| `~/.ashrc` | Shell 脚本 | 启动脚本(可执行) | N/A(保留) |
