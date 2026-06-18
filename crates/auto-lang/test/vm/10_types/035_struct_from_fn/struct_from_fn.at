@@ -1,0 +1,15 @@
+type Note { id int; title str }
+
+fn make_note(i int, t str) Note {
+    Note { id: i, title: t }
+}
+
+fn main() {
+    let n = make_note(42, "world")
+    if n.title == "world" {
+        print("title from fn ok")
+    }
+    if n.id == 42 {
+        print("id from fn ok")
+    }
+}

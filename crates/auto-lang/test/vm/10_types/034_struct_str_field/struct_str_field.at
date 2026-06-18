@@ -1,0 +1,11 @@
+type Note { id int; title str }
+
+fn main() {
+    let n = Note { id: 1, title: "hello" }
+    if n.title == "hello" {
+        print("title ok")
+    }
+    if n.id == 1 {
+        print("id ok")
+    }
+}

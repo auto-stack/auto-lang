@@ -1,0 +1,16 @@
+type Note { id int; title str }
+
+fn main() {
+    let notes = [
+        Note { id: 0, title: "Welcome" },
+        Note { id: 1, title: "Shopping" },
+    ]
+    let n = notes[0]
+    if n.title == "Welcome" {
+        print("array field ok")
+    }
+    let second = notes[1]
+    if second.id == 1 {
+        print("second id ok")
+    }
+}

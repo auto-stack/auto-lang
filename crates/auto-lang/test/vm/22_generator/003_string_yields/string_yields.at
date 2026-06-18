@@ -1,0 +1,12 @@
+fn words() ~Iter<str> {
+    yield "a"
+    yield "b"
+    yield "c"
+}
+fn main() {
+    var acc = ""
+    for w in words() {
+        acc = acc + w
+    }
+    print(acc)
+}

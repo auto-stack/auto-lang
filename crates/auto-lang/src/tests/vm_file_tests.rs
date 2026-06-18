@@ -881,3 +881,21 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_aavm_99_bootstrap_110_a2r_phase3() { test_aavm("99_bootstrap/110_a2r_phase3").unwrap(); }
 #[test] #[ignore] fn test_aavm_99_bootstrap_111_a2r_real_source() { test_aavm("99_bootstrap/111_a2r_real_source").unwrap(); }
 #[test] #[ignore] fn test_aavm_99_bootstrap_112_a2r_generic_registry() { test_aavm("99_bootstrap/112_a2r_generic_registry").unwrap(); }
+
+// === 10_types (Plan 326: struct field access) ===
+#[test] #[ignore] fn test_10_types_034_struct_str_field() { test_vm("10_types/034_struct_str_field").unwrap(); }
+#[test] #[ignore] fn test_10_types_035_struct_from_fn() { test_vm("10_types/035_struct_from_fn").unwrap(); }
+#[test] #[ignore] fn test_10_types_036_struct_in_array() { test_vm("10_types/036_struct_in_array").unwrap(); }
+
+// === 22_generator (Plan 321/326/327: yield + lazy) ===
+#[test] #[ignore] fn test_22_generator_001_sum() { test_vm("22_generator/001_sum").unwrap(); }
+#[test] #[ignore] fn test_22_generator_002_no_dup() { test_vm("22_generator/002_no_dup").unwrap(); }
+#[test] #[ignore] fn test_22_generator_003_string_yields() { test_vm("22_generator/003_string_yields").unwrap(); }
+
+// === 23_actor (Plan 327: Task/Msg actor handler execution + state) ===
+#[test] #[ignore] fn test_23_actor_001_start_hook() { test_vm("23_actor/001_start_hook").unwrap(); }
+#[test] #[ignore] fn test_23_actor_002_message_handler() { test_vm("23_actor/002_message_handler").unwrap(); }
+#[test] #[ignore] fn test_23_actor_003_multi_message() { test_vm("23_actor/003_multi_message").unwrap(); }
+#[test] #[ignore] fn test_23_actor_004_else_handler() { test_vm("23_actor/004_else_handler").unwrap(); }
+#[test] #[ignore] fn test_23_actor_005_state_write() { test_vm("23_actor/005_state_write").unwrap(); }
+#[test] #[ignore] fn test_23_actor_006_state_increment() { test_vm("23_actor/006_state_increment").unwrap(); }

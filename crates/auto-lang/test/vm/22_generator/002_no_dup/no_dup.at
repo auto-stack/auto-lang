@@ -1,0 +1,12 @@
+fn three() ~Iter<int> {
+    yield 10
+    yield 20
+    yield 30
+}
+fn main() {
+    var seen = ""
+    for n in three() {
+        seen = seen + n.to_str() + ","
+    }
+    print(seen)
+}
