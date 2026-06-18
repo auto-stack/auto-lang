@@ -1065,4 +1065,83 @@ mod tests {
         bridge.call_handler("Reset", &[]).unwrap();
         assert_eq!(bridge.read_state("count").unwrap(), Value::Int(0));
     }
+
+    /// Plan 327 (recursive import loading): drive import collection from the
+    /// REAL 016-calendar `use` clause — `use calendar_util: build_month_grid,
+    /// month_name, add_months_year, add_months_month` — which does NOT name
+    /// `weekday_of`/`days_in_month`/`format_date`/`is_leap`, yet `build_month_grid`
+    /// calls them. The recursive collector must pull the whole module (intra-
+    /// module callees) so Init links. This is the exact bug that made 016-calendar
+    /// fail to start in VM render mode ("Undefined symbol: weekday_of").
+    #[test]
+    fn test_calendar_imports_resolve_intra_module_callees() {
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        use crate::use_scanner::scan_use_statements;
+
+        let front = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples/ui/016-calendar/src/front");
+        let app_src = match std::fs::read_to_string(front.join("app.at")) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("skipping (app.at unreadable): {}", e);
+                return;
+            }
+        };
+
+        // Resolve the calendar_util module exactly as run_file_dynamic_ui does.
+        let calendar_util_path = crate::resolve_module_path(&front, "calendar_util")
+            .expect("calendar_util.at must resolve");
+
+        // Recursive collection from calendar_util.at (mirrors production).
+        let mut visited = std::collections::HashSet::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
+        crate::collect_module_imports(
+            &calendar_util_path,
+            &mut visited,
+            &mut import_stmts,
+            &mut seen,
+        );
+
+        // The non-imported callees MUST be present (the bug was their absence).
+        let names: std::collections::HashSet<String> = import_stmts
+            .iter()
+            .filter_map(|s| crate::stmt_symbol_name(s))
+            .collect();
+        for required in ["build_month_grid", "weekday_of", "days_in_month", "format_date", "is_leap"] {
+            assert!(
+                names.contains(required),
+                "recursive import collection must include `{}` (callee of build_month_grid not named in the use clause)",
+                required
+            );
+        }
+
+        // And driving Init from app.at's widget with these imports yields 42 cells.
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(app_src.as_str()).with_session(session);
+        let app_ast = parser.parse().expect("app.at should parse");
+        let widget = app_ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => {
+                    crate::aura::extract_widget_from_decl(d).ok()
+                }
+                _ => None,
+            })
+            .expect("app.at must declare a widget");
+
+        let mut bridge = VmBridge::new_with_imports(&widget, import_stmts).expect("bridge builds");
+        bridge.call_handler("Init", &[]).expect("Init runs");
+        let days = bridge
+            .read_state_as_vec("days")
+            .expect(".days is an array after Init");
+        assert_eq!(days.len(), 42);
+
+        // Silence unused warning for scan_use_statements when the body returns early.
+        let _ = scan_use_statements;
+    }
 }

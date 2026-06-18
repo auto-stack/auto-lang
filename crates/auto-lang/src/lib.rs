@@ -1697,7 +1697,6 @@ fn stmt_symbol_name(stmt: &crate::ast::Stmt) -> Option<String> {
 /// `back.api` → `back/api`, `calendar_util` → `calendar_util`. Per the module
 /// rules a module lives at either `{path}.at` or `{path}/mod.at`; the first
 /// existing candidate wins. Returns `None` if neither exists.
-#[cfg(feature = "ui-iced")]
 fn resolve_module_path(
     base_dir: &std::path::Path,
     module: &str,
@@ -1712,6 +1711,69 @@ fn resolve_module_path(
         return Some(as_mod);
     }
     None
+}
+
+/// Recursively collect ALL declarations (Fn/TypeDecl/EnumDecl/Ext) from a
+/// module and its transitive `use` dependencies, for VM-render compilation.
+///
+/// Why "all declarations" rather than just the `use`-named items: an imported
+/// function's body may call sibling helpers in the same module that are NOT
+/// listed in the `use` clause (e.g. `use calendar_util: build_month_grid` does
+/// not name `weekday_of`/`days_in_month`/`format_date`, yet `build_month_grid`
+/// calls them). A module is a compilation unit, so the whole module — plus the
+/// modules it itself imports — must be fed to the single Codegen pass for
+/// callees to resolve. Dedups by canonical path (cycle guard) and by symbol
+/// name (first definition wins).
+fn collect_module_imports(
+    module_path: &std::path::Path,
+    visited: &mut std::collections::HashSet<std::path::PathBuf>,
+    out: &mut Vec<crate::ast::Stmt>,
+    seen: &mut std::collections::HashSet<String>,
+) {
+    let canon = module_path
+        .canonicalize()
+        .unwrap_or_else(|_| module_path.to_path_buf());
+    if !visited.insert(canon) {
+        return;
+    }
+    let code = match std::fs::read_to_string(module_path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let session = crate::session::CompilerSession::ui();
+    let mut parser = Parser::from(code.as_str()).with_session(session);
+    let ast = match parser.parse() {
+        Ok(a) => a,
+        Err(_) => return,
+    };
+    // 1. Take every declaration in this module (dedup by symbol name).
+    for stmt in &ast.stmts {
+        if matches!(
+            stmt,
+            crate::ast::Stmt::Fn(_) | crate::ast::Stmt::TypeDecl(_)
+            | crate::ast::Stmt::EnumDecl(_) | crate::ast::Stmt::Ext(_)
+        ) {
+            if let Some(name) = stmt_symbol_name(stmt) {
+                if seen.insert(name) {
+                    out.push(stmt.clone());
+                }
+            }
+        }
+    }
+    // 2. Recurse into this module's own `use` dependencies, each resolved
+    //    relative to THIS module's directory (so back/api.at's `use db` finds
+    //    back/db.at).
+    let module_dir = module_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    for dep in crate::use_scanner::scan_use_statements(&code) {
+        if dep.is_c_import || dep.is_rust_import {
+            continue;
+        }
+        if let Some(dep_path) = resolve_module_path(module_dir, &dep.module) {
+            collect_module_imports(&dep_path, visited, out, seen);
+        }
+    }
 }
 
 /// Run a .at file as dynamic UI with iced backend.
@@ -1745,6 +1807,10 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
     // 2b. Load child widgets + imported functions/types from `use` imports
     let mut registry = WidgetRegistry::new();
     let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
+    // Visited-module / seen-symbol sets span ALL top-level use stmts so shared
+    // transitive deps load once.
+    let mut visited = std::collections::HashSet::new();
+    let mut seen_symbols = std::collections::HashSet::new();
     if let Some(file_path) = path {
         let use_stmts = crate::use_scanner::scan_use_statements(code);
         let base_dir = std::path::Path::new(file_path)
@@ -1761,45 +1827,42 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
             // `calendar_util.at`. Per the module rules (CLAUDE.md) a module is
             // either `{path}.at` or `{path}/mod.at`; try both.
             let module_path = resolve_module_path(base_dir, &use_stmt.module);
-            if let Some(module_path) = module_path {
-                if let Ok(module_code) = std::fs::read_to_string(&module_path) {
-                    let mod_session = CompilerSession::ui();
-                    let mut mod_parser = Parser::from(module_code.as_str()).with_session(mod_session);
-                    if let Ok(mod_ast) = mod_parser.parse() {
-                        for stmt in &mod_ast.stmts {
-                            match stmt {
-                                // Register child widgets for the view builder.
-                                crate::ast::Stmt::WidgetDecl(decl) => {
-                                    if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
-                                        if use_stmt.is_wildcard
-                                            || use_stmt.items.is_empty()
-                                            || use_stmt.items.iter().any(|s| s == &child_widget.name)
-                                        {
-                                            registry.register(child_widget);
-                                        }
-                                    }
+            let Some(module_path) = module_path else {
+                continue;
+            };
+
+            // Register child widgets declared directly in this top-level module
+            // (filtered by the use clause's item list). Transitive modules do
+            // not register widgets here.
+            if let Ok(module_code) = std::fs::read_to_string(&module_path) {
+                let mod_session = CompilerSession::ui();
+                let mut mod_parser = Parser::from(module_code.as_str()).with_session(mod_session);
+                if let Ok(mod_ast) = mod_parser.parse() {
+                    for stmt in &mod_ast.stmts {
+                        if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                            if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
+                                if use_stmt.is_wildcard
+                                    || use_stmt.items.is_empty()
+                                    || use_stmt.items.iter().any(|s| s == &child_widget.name)
+                                {
+                                    registry.register(child_widget);
                                 }
-                                // Collect imported functions/types/enums/ext so widget
-                                // handlers can call them (e.g. build_month_grid). Only
-                                // the explicitly-imported items are taken when the use
-                                // statement lists specific symbols.
-                                crate::ast::Stmt::Fn(_) | crate::ast::Stmt::TypeDecl(_)
-                                | crate::ast::Stmt::EnumDecl(_) | crate::ast::Stmt::Ext(_) => {
-                                    let name_matches = use_stmt.is_wildcard
-                                        || use_stmt.items.is_empty()
-                                        || stmt_symbol_name(stmt)
-                                            .map(|n| use_stmt.items.iter().any(|s| s == &n))
-                                            .unwrap_or(false);
-                                    if name_matches {
-                                        import_stmts.push(stmt.clone());
-                                    }
-                                }
-                                _ => {}
                             }
                         }
                     }
                 }
             }
+
+            // Recursively collect ALL declarations from this module + its
+            // transitive `use` deps (full module load so an imported fn's
+            // intra-module callees — e.g. build_month_grid → weekday_of — and
+            // cross-module deps — e.g. back.api → back.db — both resolve).
+            collect_module_imports(
+                &module_path,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen_symbols,
+            );
         }
     }
 

@@ -37,6 +37,8 @@ Undefined symbol: delete_note in module App
 
 **文件**：`crates/auto-lang/src/lib.rs`（`run_file_dynamic_ui`）、`crates/auto-lang/src/ui/handler_codegen.rs`（`synthesize_widget_module`）
 
+> **状态（2026-06-18）：1.1 已实现并合并**。`collect_module_imports` 递归取每个模块的**全部**声明（修 016-calendar 的 intra-module 被调函数 `weekday_of` 等未在 `use` 列表导致的 `Undefined symbol`），并递归跟随模块自身 `use`（修 015-notes 的 `back.api → back.db`）。回归单测 `test_calendar_imports_resolve_intra_module_callees` 从真实 `use` 子句驱动断言被调函数齐全 + Init 产 42 cells。**1.2 限定调用解析**（`db.all_notes()`）待 015-notes 实测按需推进。
+
 ### 1.1 递归 import 收集
 把当前单层 `use` 收集改成 **BFS/DFS 递归**（带 `visited: HashSet<PathBuf>` 防环）：
 - 入口：front widget 的 `use` 语句。
