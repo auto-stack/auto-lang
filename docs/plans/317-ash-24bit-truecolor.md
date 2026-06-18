@@ -1,6 +1,6 @@
 # Plan 317: Ash 24-bit Truecolor 支持
 
-> **Status**: Draft
+> **Status**: ✅ Implemented (2026-06-16)
 > **关系**: 增强 ash 的色彩能力。当前渲染管线已能发 24-bit 序列，但**没有任何色彩源真正使用 24-bit，也没有终端能力检测**。本计划补齐「检测 + 使用 + 优雅降级」三件套，达到 Fish 的「monospaced rainbow」水平。
 > **参考**: Fish 的 `update_fish_color_support()`（[D:\github\fish-shell\src\env_dispatch.rs:372-446](file:///d:/github/fish-shell/src/env_dispatch.rs)）—— 终端色彩能力检测算法。
 
