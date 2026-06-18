@@ -1072,7 +1072,50 @@ mod tests {
         }
     }
 
-    /// Plan 327 SelectDay: a handler with a DECLARED param (`.SetX(n) ->`)
+    /// Repro for the SelectDay panic (bp - actual_offset overflow on param
+    /// access). Mirrors the real click dispatch: Init, then SelectDay with a
+    /// date-string payload.
+    #[test]
+    fn repro_selectday_panic() {
+        use crate::ast::Stmt;
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+
+        let front = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples/ui/016-calendar/src/front");
+        let app_src = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let cal_path = crate::resolve_module_path(&front, "calendar_util").unwrap();
+        let mut visited = std::collections::HashSet::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut imports: Vec<crate::ast::Stmt> = Vec::new();
+        crate::collect_module_imports(&cal_path, &mut visited, &mut imports, &mut seen);
+
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(app_src.as_str()).with_session(session);
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => {
+                    crate::aura::extract_widget_from_decl(d).ok()
+                }
+                _ => None,
+            })
+            .unwrap();
+
+        let mut bridge = VmBridge::new_with_imports(&widget, imports).unwrap();
+        bridge.call_handler("Init", &[]).unwrap();
+        // This is what a day-cell click dispatches:
+        bridge
+            .call_handler("SelectDay", &[Value::str("2026-06-17")])
+            .expect("SelectDay should run without panicking");
+        let days = bridge.read_state_as_vec("days").unwrap();
+        assert_eq!(days.len(), 42);
+    }
+
     /// receives the value dispatched via call_handler's args — both int and
     /// string payloads. This is the contract `onclick: .SelectDay(cell.date)`
     /// depends on (view resolves cell.date → args; on() forwards args).
