@@ -207,7 +207,7 @@ impl<'a> AuraViewBuilder<'a> {
                                         // Apply search filter if 'search' state exists and is non-empty
                                         if !self.matches_search(item) { return None; }
                                         let mut loop_bindings = bindings.clone();
-                                        loop_bindings.insert(var.clone(), item.clone());
+                                        loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
                                         if let Some(idx_var) = index {
                                             loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
                                         }
@@ -235,7 +235,7 @@ impl<'a> AuraViewBuilder<'a> {
                         if !self.matches_search(item) { return None; }
                         let mut loop_bindings = bindings.clone();
                         // Bind loop variable (e.g., "note" → Value::Obj{title, body, time})
-                        loop_bindings.insert(var.clone(), item.clone());
+                        loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
                         // Bind index variable if present (e.g., "i" → Value::Int(0))
                         if let Some(idx_var) = index {
                             loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
@@ -371,8 +371,13 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
                 let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
-                let array = match self.bridge.read_state(state_name) {
-                    Ok(Value::Array(arr)) => arr,
+                // Read the iterable. `read_state_as_vec` handles BOTH an inline
+                // `Value::Array` and a `Value::Int(array_id)` heap-array reference
+                // (the latter is how `var x = []; x.push(...)` arrays are stored —
+                // e.g. 016-calendar's `.days`). A bare `read_state` + `Value::Array`
+                // match misses the heap-id form and silently renders an empty loop.
+                let array: Vec<Value> = match self.bridge.read_state_as_vec(state_name) {
+                    Ok(v) => v,
                     _ => return View::Empty,
                 };
                 let child_views: Vec<View<DynamicMessage>> = array.iter().enumerate()
@@ -380,7 +385,7 @@ impl<'a> AuraViewBuilder<'a> {
                         // Apply search filter if 'search' state exists and is non-empty
                         if !self.matches_search(item) { return None; }
                         let mut loop_bindings = bindings.clone();
-                        loop_bindings.insert(var.clone(), item.clone());
+                        loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
                         if let Some(idx_var) = index {
                             loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
                         }
@@ -702,8 +707,12 @@ impl<'a> AuraViewBuilder<'a> {
             match n {
                 AuraNode::ForLoop { var, index, iterable, body, .. } => {
                     let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
-                    let array = match self.bridge.read_state(state_name) {
-                        Ok(Value::Array(arr)) => arr,
+                    // Use read_state_as_vec so heap-array refs (Value::Int(array_id),
+                    // the form `var x = []; x.push(...)` produces — e.g. .days) are
+                    // iterated, not just inline Value::Array. Otherwise the grid's
+                    // `for cell in .days` renders empty even though state is populated.
+                    let array: Vec<Value> = match self.bridge.read_state_as_vec(state_name) {
+                        Ok(v) => v,
                         _ => continue,
                     };
                     let body_len = body.len();
@@ -712,7 +721,7 @@ impl<'a> AuraViewBuilder<'a> {
                             continue;
                         }
                         let mut loop_bindings = bindings.clone();
-                        loop_bindings.insert(var.clone(), item.clone());
+                        loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
                         if let Some(idx_var) = index {
                             loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
                         }

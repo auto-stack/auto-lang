@@ -317,6 +317,34 @@ impl VmBridge {
         }
     }
 
+    /// Materialize a heap object reference into an inline `Value::Obj` so the
+    /// view builder's `Value::Obj`-based field resolvers can read its fields.
+    ///
+    /// An Auto Obj literal (`{ label: ..., ... }`) is compiled to `CREATE_OBJ`,
+    /// which stores an `ObjectData` in the VM `objects` registry and leaves its
+    /// id on the stack as a plain `Value::Int`. When such a value is iterated as
+    /// a loop item (e.g. `for cell in .days`), the binding is a bare
+    /// `Value::Int(obj_id)` and `cell.label` cannot resolve — the view builder's
+    /// resolvers only handle `Value::Obj`. This derefs the id (via `vm.objects`,
+    /// keyed by `object_id_gen` starting at 1_000_000) into a `Value::Obj` whose
+    /// string-keyed fields mirror the `ObjectData`. Non-object values (real ints,
+    /// already-inline `Value::Obj`, etc.) pass through unchanged.
+    pub fn materialize_obj_ref(&self, v: &Value) -> Value {
+        if let Value::Int(id) = v {
+            if let Some(arc) = self.vm.objects.get(&(*id as u64)) {
+                let obj = arc.read().unwrap();
+                let mut out = auto_val::Obj::new();
+                for (key, val) in obj.fields.iter() {
+                    if let auto_val::ValueKey::Str(s) = key {
+                        out.set(s.clone(), val.clone());
+                    }
+                }
+                return Value::Obj(out);
+            }
+        }
+        v.clone()
+    }
+
     /// Read all state fields as a name -> value map.
     ///
     /// Useful for bulk state reads during rendering.
@@ -1012,6 +1040,22 @@ mod tests {
                 Value::Obj(_) | Value::Int(_) => {}
                 other => panic!("cell {} is not an object: {:?}", i, other),
             }
+        }
+
+        // Cells are heap ObjectData refs (Value::Int(obj_id)); the view builder
+        // materializes them via materialize_obj_ref. Verify that deref yields a
+        // Value::Obj whose "label" field is a non-empty string, so `cell.label`
+        // renders the day number instead of an empty cell.
+        let first = bridge.materialize_obj_ref(&days[0]);
+        match first {
+            Value::Obj(obj) => {
+                let label = obj.get_str("label").expect("cell.label must resolve");
+                assert!(!label.is_empty(), "cell.label should be a day number");
+            }
+            other => panic!(
+                "materialize_obj_ref(cell) should yield Value::Obj, got {:?}",
+                other
+            ),
         }
     }
 
