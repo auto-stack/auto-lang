@@ -528,34 +528,19 @@ export function cn(...inputs: ClassValue[]) {
 "#.to_string()
 }
 
-/// Ensure `pnpm-workspace.yaml` approves the postinstall builds for esbuild +
-/// vue-demi.
+/// Build approvals for esbuild + vue-demi are declared in the `pnpm` field of
+/// `package.json` (see [`generate_package_json`]), which pnpm 10/11 reads
+/// directly.
 ///
-/// **Why:** pnpm 10+ no longer reads the `pnpm` field in `package.json` nor the
-/// `onlyBuiltDependencies[]` entry in `.npmrc` — it reads build approvals from
-/// `pnpm-workspace.yaml` instead. Crucially, **pnpm 11.6.0 honors `allowBuilds`
-/// (a `package -> bool` map), not `onlyBuiltDependencies`** — when it detects
-/// un-approved builds it scaffolds a *broken* `pnpm-workspace.yaml` (placeholder
-/// `allowBuilds:` entries with the literal string `"set this to true or false"`)
-/// and exits with code 1 (`ERR_PNPM_IGNORED_BUILDS`). The lockfile-removal retry
-/// cannot fix that — only approving the builds can. We write BOTH keys so it
-/// works across pnpm versions: `allowBuilds: true` for pnpm 11.6.0, and
-/// `onlyBuiltDependencies` for older pnpm 10. pnpm 9 ignores this file and keeps
-/// using `.npmrc`. Idempotent: skips rewriting when esbuild is already approved.
-fn ensure_pnpm_build_approvals(dir: &Path) -> bool {
-    let ws_path = dir.join("pnpm-workspace.yaml");
-    // Rewrite unless esbuild is already approved (covers absent file, pnpm's
-    // placeholder scaffold, and any stale content).
-    let need_write = match fs::read_to_string(&ws_path) {
-        Ok(existing) => !existing.contains("esbuild: true"),
-        Err(_) => true,
-    };
-    if need_write {
-        let yaml = "onlyBuiltDependencies:\n  - esbuild\n  - vue-demi\nallowBuilds:\n  esbuild: true\n  vue-demi: true\n";
-        if fs::write(&ws_path, yaml).is_ok() {
-            return true;
-        }
-    }
+/// **Do NOT write a `pnpm-workspace.yaml` here.** This generator targets
+/// single-package apps (one `package.json` under `output_dir`), not monorepos.
+/// Writing `pnpm-workspace.yaml` at the package root makes pnpm treat it as a
+/// workspace root and demand a `packages:` field — which we don't have —
+/// failing the install with "packages field missing or empty".
+///
+/// Returns `false` (nothing written) so the caller skips its "Wrote
+/// pnpm-workspace.yaml" message.
+fn ensure_pnpm_build_approvals(_dir: &Path) -> bool {
     false
 }
 
