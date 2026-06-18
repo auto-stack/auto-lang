@@ -3079,6 +3079,7 @@ impl Codegen {
 
                 // Compile lifecycle hooks if present
                 // Start hook
+                let has_handlers = !task_def.on_block.handlers.is_empty();
                 if let Some(ref start_hook) = task_def.start_hook {
                     let start_offset = self.code.len() as u32;
                     // Compile the hook body
@@ -3087,6 +3088,20 @@ impl Codegen {
                         self.compile_stmt(stmt)?;
                     }
                     self.pop_scope();
+                    // Plan 327 Phase 1: if the task has message handlers, the
+                    // start hook does NOT simply RET — instead it parks the task
+                    // in the message loop (TASK_LOOP sets in_message_loop + Waiting)
+                    // so it can receive subsequent TaskHandle.send messages.
+                    // Without this, the actor task terminates after start and
+                    // never processes messages.
+                    if has_handlers {
+                        let task_name_bytes = task_name.as_bytes().to_vec();
+                        let task_name_idx = self.strings.len() as u16;
+                        self.strings.push(task_name_bytes);
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(task_name_idx as i32);
+                        self.emit(OpCode::TASK_LOOP);
+                    }
                     self.emit(OpCode::RET);
                     // Store start hook offset (will be registered with TaskRegistry)
                     self.exports.insert(format!("{}#start", task_name), start_offset);

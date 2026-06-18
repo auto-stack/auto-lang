@@ -266,6 +266,12 @@ pub struct AutoVM {
     pub futures: DashMap<u32, Arc<RwLock<FutureValue>>>,
     pub future_id_gen: AtomicU32,
 
+    // Plan 327 Phase 1: Per-task message queues for message-loop tasks.
+    // Keyed by AutoVM task id (== the handle id returned by Task.spawn).
+    // DashMap avoids the tokio Mutex blocking_lock panic that would occur if
+    // pending_messages lived on AutoTask (which is behind tokio::sync::Mutex).
+    pub task_mailboxes: DashMap<u64, std::sync::Mutex<Vec<auto_val::Value>>>,
+
     // Plan 197 Task 9: Generic registry for field name lookup at runtime
     pub generic_registry: crate::vm::generic_registry::GenericRegistry,
 
@@ -371,6 +377,7 @@ impl AutoVM {
             // Plan 124: Future registry for async/await
             futures: DashMap::new(),
             future_id_gen: AtomicU32::new(1),
+            task_mailboxes: DashMap::new(), // Plan 327 Phase 1
             // Plan 197 Task 9: Generic registry for runtime field name lookup
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(),
             // Plan 177: stdout capture (None = normal println)
@@ -466,6 +473,42 @@ impl AutoVM {
     /// Plan 197 Task 9: Load generic registry from codegen
     pub fn load_generic_registry(&mut self, registry: crate::vm::generic_registry::GenericRegistry) {
         self.generic_registry = registry;
+    }
+
+    /// Plan 327 Phase 1: Load task handler registry from codegen.
+    ///
+    /// Without this, `AutoVM.task_handler_registry` stays empty (initialized at
+    /// engine.rs:370) and the HANDLE_MSG opcode (engine.rs:5449) can never find
+    /// a handler table — so `task` definitions' `on { ... }` handlers never run.
+    /// Mirrors `load_generic_registry` above (take from codegen before finish()).
+    pub fn load_task_handler_registry(&mut self, registry: crate::vm::task_handler::TaskHandlerRegistry) {
+        self.task_handler_registry = registry;
+    }
+
+    /// Plan 327 Phase 1: Find the bytecode offset of the handler for a message.
+    ///
+    /// Used by both HANDLE_MSG (opcode path) and run_task_loop (message wake
+    /// path). Looks up the task type's handler table, matches the message
+    /// against patterns in order, and returns the matching handler's
+    /// (body_offset, has_context). If no pattern matches, falls back to the
+    /// task's `else` handler (exported as `"{task_type}#else"` by codegen).
+    /// Returns None if no handler at all (no table, no else).
+    pub fn find_handler_offset(&self, task_type: &str, msg: &auto_val::Value) -> Option<(u32, bool)> {
+        if let Some(table) = self.task_handler_registry.get_table(task_type) {
+            for handler in table.get_handlers() {
+                if let Some(pattern) = table.get_pattern(handler.pattern_idx) {
+                    if self.match_message_pattern_vm(msg, pattern, &table.string_pool) {
+                        return Some((handler.body_offset, handler.has_context));
+                    }
+                }
+            }
+        }
+        // Fallback: else handler (codegen stores it in exports as "{task_type}#else").
+        let else_key = format!("{}#else", task_type);
+        if let Some(&offset) = self.flash.exports_by_name.get(&else_key) {
+            return Some((offset, false));
+        }
+        None
     }
 
     /// Plan 118 Phase 4: Add a new string to the string pool
@@ -1183,6 +1226,56 @@ impl AutoVM {
                     }
                 }
 
+                // Plan 327 Phase 1: wake a message-loop task that has pending
+                // messages. TASK_LOOP left it Waiting; TaskHandle.send pushed
+                // to its mailbox in vm.task_mailboxes. Drain one message, find
+                // its handler, set ip to the handler body_offset, and mark Ready
+                // so execute_task runs it. The handler RETs; the next iteration
+                // re-parks it if more messages wait, else it stays Waiting.
+                if task.in_message_loop {
+                    // Check the mailbox (DashMap, std Mutex — safe to lock here
+                    // since we're in async run_task_loop, not a sync native).
+                    let drained = if let Some(mb) = self.task_mailboxes.get(&task.id) {
+                        if let Ok(mut q) = mb.lock() {
+                            if !q.is_empty() { Some(q.remove(0)) } else { None }
+                        } else { None }
+                    } else { None };
+                    if crate::is_vm_debug() {
+                        eprintln!("[run_task_loop] task {} in_message_loop, drained={:?}", task.id, drained.as_ref().map(|_| ()));
+                    }
+                    if let Some(msg) = drained {
+                        let task_type = task.task_type_name.clone().unwrap_or_default();
+                        if let Some((body_offset, has_context)) = self.find_handler_offset(&task_type, &msg) {
+                            let msg_i32 = match &msg {
+                                auto_val::Value::Int(i) => *i,
+                                auto_val::Value::Uint(u) => *u as i32,
+                                auto_val::Value::Bool(b) => if *b { 1 } else { 0 },
+                                _ => 0,
+                            };
+                            task.ram.push_i32(msg_i32);
+                            task.ip = body_offset as usize;
+                            task.current_handler_has_context = has_context;
+                            task.status = TaskStatus::Ready;
+                        } else if crate::is_vm_debug() {
+                            eprintln!("[run_task_loop] No handler for message {:?} in task {}", msg, task_type);
+                        }
+                    }
+                }
+
+                // Plan 327 Phase 1: a Waiting message-loop task with an empty
+                // mailbox is idle — it won't self-wake. Don't count it as alive,
+                // so run_task_loop can exit when only such idle actors remain
+                // (otherwise it busy-loops on sleep forever). If a message
+                // arrives later (TaskHandle.send), the task isn't idle anymore.
+                let is_idle_actor = task.in_message_loop
+                    && matches!(task.status, TaskStatus::Waiting(_))
+                    && !self.task_mailboxes.get(&task.id)
+                        .map(|m| m.lock().map(|q| !q.is_empty()).unwrap_or(false))
+                        .unwrap_or(false);
+                if is_idle_actor {
+                    continue;
+                }
+
                 alive_count += 1;
 
                 // Check if task is runnable
@@ -1196,7 +1289,16 @@ impl AutoVM {
                 // Run a chunk of instructions
                 match self.execute_task(&mut task) {
                     Ok(new_status) => {
-                        task.status = new_status;
+                        // Plan 327 Phase 1: a message-loop task that hits RET
+                        // (handler finished, or start hook finished) must NOT
+                        // terminate — it parks back in Waiting to receive the
+                        // next message. Without this, the actor dies after its
+                        // first handler returns.
+                        if new_status == TaskStatus::Terminated && task.in_message_loop {
+                            task.status = TaskStatus::Waiting("message_loop".to_string());
+                        } else {
+                            task.status = new_status;
+                        }
                     }
                     Err(e) => {
                         // Plan 118: Store error for proper error propagation
@@ -4877,6 +4979,12 @@ impl AutoVM {
                     // DEBUG: Bypass native_interface for iterator.next
                     if native_id == 112 {
                         crate::vm::native::shim_iterator_next(task, self)?;
+                    } else if native_id == 2300 {
+                        // Plan 327 Phase 1: Task.spawn -> vm-aware (register AutoVM task)
+                        crate::vm::ffi::stdlib::shim_task_spawn_vm(task, self)?;
+                    } else if native_id == 2301 {
+                        // Plan 327 Phase 1: TaskHandle.send -> vm-aware (push to pending_messages)
+                        crate::vm::ffi::stdlib::shim_task_send_vm(task, self)?;
                     } else if let Some(shim) = self.native_interface.get(native_id).cloned() {
                         shim(task, self)?;
                     } else {
@@ -5440,6 +5548,13 @@ impl AutoVM {
                         eprintln!("[TASK_LOOP] Task {} entering message loop for type {}",
                             task.id, task_type);
                     }
+
+                    // Plan 327 Phase 1: yield immediately so the trailing RET
+                    // (bp==0 for a spawned task) doesn't terminate the task.
+                    // run_task_loop will re-run this task when a message arrives
+                    // (its ip still points at the RET after TASK_LOOP, but the
+                    // message wake path resets ip to the handler body_offset).
+                    return Ok(StepResult::Yield);
                 }
 
                 // Plan 127: HANDLE_MSG - dispatch message to matched handler
@@ -5452,43 +5567,18 @@ impl AutoVM {
 
                     // Get task type for handler lookup
                     let task_type = task.task_type_name.clone().unwrap_or_default();
+                    let msg = auto_val::Value::Int(msg_value);
 
-                    // Try to find a matching handler using PatternMatcher
-                    if let Some(table) = self.task_handler_registry.get_table(&task_type) {
-                        // Convert message i32 to Value for pattern matching
-                        let msg = auto_val::Value::Int(msg_value);
-
-                        // Try each pattern in order
-                        let mut found = false;
-                        for handler in table.get_handlers() {
-                            if let Some(pattern) = table.get_pattern(handler.pattern_idx) {
-                                // Use PatternMatcher for matching
-                                if self.match_message_pattern_vm(&msg, pattern, &table.string_pool) {
-                                    // Found matching handler
-                                    task.ram.push_i32(1); // true - handler found
-                                    task.ram.push_i32(handler.body_offset as i32);
-
-                                    // Store if handler has context
-                                    task.current_handler_has_context = handler.has_context;
-
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if !found {
-                            // No matching handler
-                            task.ram.push_i32(0); // false - no handler
-                            if crate::is_vm_debug() {
-                                eprintln!("[HANDLE_MSG] No handler found for message {} in task {}", msg_value, task_type);
-                            }
-                        }
+                    // Plan 327 Phase 1: delegate to shared matcher (now also
+                    // covers the `else` fallback via exports).
+                    if let Some((body_offset, has_context)) = self.find_handler_offset(&task_type, &msg) {
+                        task.ram.push_i32(1); // true - handler found
+                        task.ram.push_i32(body_offset as i32);
+                        task.current_handler_has_context = has_context;
                     } else {
-                        // No handlers registered for this task type
-                        task.ram.push_i32(0); // false
+                        task.ram.push_i32(0); // false - no handler
                         if crate::is_vm_debug() {
-                            eprintln!("[HANDLE_MSG] No handler table for task type {}", task_type);
+                            eprintln!("[HANDLE_MSG] No handler found for message {} in task {}", msg_value, task_type);
                         }
                     }
                 }
