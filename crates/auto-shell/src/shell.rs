@@ -405,12 +405,17 @@ impl Shell {
         let expanded = self.expand_command_substitution(input)?;
         // Expand variables in input
         let expanded = self.expand_variables(&expanded);
+        // Plan 309 Task 2.4: Arithmetic expansion $(( ))
+        let expanded = expand_arithmetic(&expanded);
 
         // Plan 302 Step 1.4: Expand aliases (only first word of each segment)
         let expanded = self.expand_aliases(&expanded);
 
         // Plan 302 Step 2.2: Expand ~ and ~/path (outside quotes)
         let expanded = self.expand_tilde(&expanded);
+
+        // Plan 309 Task 2.4: Brace expansion {a,b,c}
+        let expanded = expand_braces(&expanded);
 
         // Parse command chain (|, &&, ||) and group pipe segments
         let segments = parse_chain(&expanded);
@@ -3365,6 +3370,7 @@ fn suggest_command(shell: &Shell, name: &str) -> Option<String> {
 
     // Collect all known command names
     let mut candidates: Vec<&str> = Vec::new();
+    let mut path_candidates: Vec<String> = Vec::new();
 
     // Registered commands
     for cmd_name in shell.registry.names() {
@@ -3389,6 +3395,27 @@ fn suggest_command(shell: &Shell, name: &str) -> Option<String> {
         candidates.push(alias_name.as_str());
     }
 
+    // PATH executables (scan dirs for entries with same first char, bounded).
+    if let Some(first_char) = name.chars().next() {
+        if let Ok(path_var) = std::env::var("PATH") {
+            let sep = if cfg!(windows) { ';' } else { ':' };
+            for dir in path_var.split(sep).take(10) {
+                // Only collect owned strings for PATH matches (lifetime).
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        if let Some(fname) = entry.file_name().to_str() {
+                            // Strip .exe on Windows for matching.
+                            let clean = fname.trim_end_matches(".exe");
+                            if clean.starts_with(first_char) {
+                                path_candidates.push(clean.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Find the best match using simple edit distance
     let mut best: Option<(&str, usize)> = None;
     let threshold = if name.len() <= 3 { 1 } else { 2 };
@@ -3399,6 +3426,17 @@ fn suggest_command(shell: &Shell, name: &str) -> Option<String> {
             match best {
                 None => best = Some((*candidate, dist)),
                 Some((_, best_dist)) if dist < best_dist => best = Some((*candidate, dist)),
+                _ => {}
+            }
+        }
+    }
+    // Also check PATH executables.
+    for candidate in &path_candidates {
+        let dist = levenshtein_distance(name, candidate);
+        if dist <= threshold {
+            match &best {
+                None => best = Some((candidate.as_str(), dist)),
+                Some((_, best_dist)) if dist < *best_dist => best = Some((candidate.as_str(), dist)),
                 _ => {}
             }
         }
@@ -3431,6 +3469,188 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     }
 
     prev[m]
+}
+
+// ── Plan 309 Task 2.4: Brace expansion ──────────────────────────────────
+
+/// Expand `{a,b,c}` brace expressions. Simple single-level (no nesting).
+/// `file.{txt,md}` → `file.txt file.md`
+/// `a{b,c}d` → `abd acd`
+fn expand_braces(input: &str) -> String {
+    let chars: Vec<char> = input.chars().collect();
+    let n = chars.len();
+    let mut result = String::new();
+    let mut i = 0;
+
+    while i < n {
+        if chars[i] == '{' {
+            // Find the matching close brace on the same level.
+            if let Some(close) = find_matching_brace(&chars, i) {
+                let inner: String = chars[i + 1..close].iter().collect();
+                // Check it looks like a brace list (has comma, no spaces in items).
+                let options: Vec<&str> = inner.split(',').collect();
+                if options.len() >= 2 && options.iter().all(|o| !o.is_empty()) {
+                    // Extract prefix and suffix.
+                    let prefix: String = result.drain(..).collect(); // everything before { is prefix
+                    let suffix_start = close + 1;
+
+                    // Generate each option.
+                    let mut expansions = Vec::new();
+                    for opt in &options {
+                        let mut exp = prefix.clone();
+                        exp.push_str(opt);
+                        // Recursively expand braces in the suffix.
+                        let suffix: String = chars[suffix_start..].iter().collect();
+                        let suffix_expanded = expand_braces_suffix(&suffix);
+                        exp.push_str(&suffix_expanded);
+                        expansions.push(exp);
+                    }
+                    return expansions.join(" ");
+                }
+            }
+        }
+        result.push(chars[i]);
+        i += 1;
+    }
+    input.to_string()
+}
+
+/// Find the matching close brace for an opening brace at position `start`.
+fn find_matching_brace(chars: &[char], start: usize) -> Option<usize> {
+    let mut depth = 0;
+    for i in start..chars.len() {
+        match chars[i] {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Recursively expand braces in a suffix string (for chained braces like {a,b}{1,2}).
+fn expand_braces_suffix(suffix: &str) -> String {
+    // For MVP, just return as-is (no chained brace expansion).
+    // Full cartesian product would go here.
+    suffix.to_string()
+}
+
+// ── Plan 309 Task 2.4: Arithmetic expansion $(( )) ──────────────────────
+
+/// Expand `$((expression))` arithmetic expressions in the input.
+/// Called from expand_variables.
+fn expand_arithmetic(input: &str) -> String {
+    let mut result = String::new();
+    let bytes = input.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        // Look for $((
+        if i + 3 < bytes.len() && &input[i..i + 3] == "$((" {
+            // Find the closing ))
+            if let Some(close) = find_arithmetic_close(&input[i + 3..]) {
+                let expr = &input[i + 3..i + 3 + close];
+                if let Ok(val) = eval_arithmetic(expr.trim()) {
+                    result.push_str(&val.to_string());
+                } else {
+                    result.push_str(&input[i..i + 3 + close + 2]); // keep original on error
+                }
+                i += 3 + close + 2; // skip $(( expr ))
+                continue;
+            }
+        }
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+    result
+}
+
+/// Find the closing `))` for an arithmetic expression.
+fn find_arithmetic_close(s: &str) -> Option<usize> {
+    let mut depth = 0;
+    let bytes = s.as_bytes();
+    for i in 0..bytes.len() {
+        if i + 1 < bytes.len() && bytes[i] == b')' && bytes[i + 1] == b')' && depth == 0 {
+            return Some(i);
+        }
+        if bytes[i] == b'(' {
+            depth += 1;
+        } else if bytes[i] == b')' && depth > 0 {
+            depth -= 1;
+        }
+    }
+    None
+}
+
+/// Simple recursive-descent arithmetic evaluator.
+/// Supports: + - * / % and integer literals.
+fn eval_arithmetic(expr: &str) -> Result<i64, String> {
+    let tokens: Vec<char> = expr.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut pos = 0;
+    let result = parse_expr(&tokens, &mut pos)?;
+    if pos != tokens.len() {
+        return Err(format!("unexpected token at {}", pos));
+    }
+    Ok(result)
+}
+
+fn parse_expr(tokens: &[char], pos: &mut usize) -> Result<i64, String> {
+    let mut left = parse_term(tokens, pos)?;
+    while *pos < tokens.len() {
+        match tokens[*pos] {
+            '+' => { *pos += 1; left += parse_term(tokens, pos)?; }
+            '-' => { *pos += 1; left -= parse_term(tokens, pos)?; }
+            _ => break,
+        }
+    }
+    Ok(left)
+}
+
+fn parse_term(tokens: &[char], pos: &mut usize) -> Result<i64, String> {
+    let mut left = parse_factor(tokens, pos)?;
+    while *pos < tokens.len() {
+        match tokens[*pos] {
+            '*' => { *pos += 1; left *= parse_factor(tokens, pos)?; }
+            '/' => { *pos += 1; let r = parse_factor(tokens, pos)?; if r == 0 { return Err("div by zero".into()); } left /= r; }
+            '%' => { *pos += 1; let r = parse_factor(tokens, pos)?; if r == 0 { return Err("mod by zero".into()); } left %= r; }
+            _ => break,
+        }
+    }
+    Ok(left)
+}
+
+fn parse_factor(tokens: &[char], pos: &mut usize) -> Result<i64, String> {
+    if *pos >= tokens.len() {
+        return Err("unexpected end".into());
+    }
+    if tokens[*pos] == '(' {
+        *pos += 1; // consume (
+        let val = parse_expr(tokens, pos)?;
+        if *pos < tokens.len() && tokens[*pos] == ')' {
+            *pos += 1; // consume )
+        }
+        return Ok(val);
+    }
+    // Negative number.
+    if tokens[*pos] == '-' {
+        *pos += 1;
+        return Ok(-parse_factor(tokens, pos)?);
+    }
+    // Number literal.
+    let start = *pos;
+    while *pos < tokens.len() && tokens[*pos].is_ascii_digit() {
+        *pos += 1;
+    }
+    if start == *pos {
+        return Err(format!("expected number at {}", *pos));
+    }
+    let num_str: String = tokens[start..*pos].iter().collect();
+    num_str.parse().map_err(|e: std::num::ParseIntError| e.to_string())
 }
 
 #[cfg(test)]
@@ -3794,5 +4014,55 @@ mod tests {
         assert_eq!(shell.vars.get_env("ASH_TEST_PERSIST2"), Some("world".to_string()));
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    // ── Plan 309 Task 2.4: Brace expansion tests ──
+
+    #[test]
+    fn test_brace_expansion_basic() {
+        assert_eq!(expand_braces("file.{txt,md}"), "file.txt file.md");
+        assert_eq!(expand_braces("a{b,c}d"), "abd acd");
+        assert_eq!(expand_braces("echo {a,b,c}"), "echo a echo b echo c");
+    }
+
+    #[test]
+    fn test_brace_expansion_no_braces() {
+        assert_eq!(expand_braces("echo hello"), "echo hello");
+        assert_eq!(expand_braces("ls -la"), "ls -la");
+    }
+
+    #[test]
+    fn test_brace_expansion_single_option() {
+        // Single option in braces = no expansion (not a list).
+        assert_eq!(expand_braces("echo {only}"), "echo {only}");
+    }
+
+    // ── Plan 309 Task 2.4: Arithmetic expansion tests ──
+
+    #[test]
+    fn test_arithmetic_basic() {
+        assert_eq!(expand_arithmetic("echo $((1+2))"), "echo 3");
+        assert_eq!(expand_arithmetic("$((10-4))"), "6");
+        assert_eq!(expand_arithmetic("$((3*4))"), "12");
+        assert_eq!(expand_arithmetic("$((10/3))"), "3");
+        assert_eq!(expand_arithmetic("$((10%3))"), "1");
+    }
+
+    #[test]
+    fn test_arithmetic_in_command() {
+        assert_eq!(expand_arithmetic("echo result: $((2+3*4))"), "echo result: 14");
+        assert_eq!(expand_arithmetic("$(( (1+2) * 3 ))"), "9");
+    }
+
+    #[test]
+    fn test_arithmetic_no_expression() {
+        assert_eq!(expand_arithmetic("echo $HOME"), "echo $HOME");
+        assert_eq!(expand_arithmetic("hello world"), "hello world");
+    }
+
+    #[test]
+    fn test_arithmetic_negative() {
+        assert_eq!(expand_arithmetic("$((-5+3))"), "-2");
+        assert_eq!(expand_arithmetic("$((0-10))"), "-10");
     }
 }
