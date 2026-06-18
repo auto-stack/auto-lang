@@ -44,7 +44,7 @@ widget App {
                 grid {
                     for cell in .days {
                         grid-item {
-                            text cell.label { style: "text-sm text-center py-2 text-gray-700" }
+                            button cell.label { onclick: .SelectDay(cell.date), style: "text-sm text-center py-2 text-gray-700 w-full" }
                         }
                     }
                     cols: 7
@@ -90,7 +90,7 @@ widget App {
             .days = build_month_grid(.year, .month, .today, .selected_date)
         }
 
-        .SelectDay -> {
+        .SelectDay(date) -> {
             .selected_date = date
             .days = build_month_grid(.year, .month, .today, .selected_date)
         }

@@ -2149,26 +2149,25 @@ impl<'a> AuraViewBuilder<'a> {
     /// format (e.g., `"SelectNote:2"`), leveraging the existing indexed event
     /// dispatch in the iced renderer.
     fn event_to_message_with(&self, event: &AuraEvent, bindings: &Bindings) -> DynamicMessage {
-        let handler_name = extract_handler_name(&event.handler);
-        // Resolve first parameter from bindings (typically a loop index or field access like "note.id")
-        let final_name = if let Some(param_name) = event.params.first() {
-            // Try direct binding lookup first (e.g., "i" → Value::Int(0))
+        let event_name = extract_handler_name(&event.handler).to_string();
+        // Resolve each declared parameter from the loop bindings (e.g.
+        // `onclick: .SelectDay(cell.date)` → resolve `cell.date` against the
+        // current iteration's bindings) and carry the values in `args`. The
+        // dispatcher (DynamicComponent::on) forwards `args` to
+        // `call_handler`, so a handler declared `.SelectDay(date) ->` receives
+        // the value as its `date` parameter. (Previously the value was
+        // string-encoded into `event_name` as `name:value`, which the dispatch
+        // path never parsed — so payload onclicks silently no-op'd.)
+        let mut args: Vec<Value> = Vec::with_capacity(event.params.len());
+        for param_name in &event.params {
             if let Some(val) = self.resolve_binding_path(param_name, bindings) {
-                format!("{}:{}", handler_name, match val {
-                    Value::Int(i) => i.to_string(),
-                    Value::Str(s) => s.as_str().to_string(),
-                    _ => "".to_string(),
-                })
-            } else {
-                handler_name.to_string()
+                args.push(val);
             }
-        } else {
-            handler_name.to_string()
-        };
+        }
         DynamicMessage::Typed {
             widget_name: self.widget_name.clone(),
-            event_name: final_name,
-            args: vec![],
+            event_name,
+            args,
         }
     }
 

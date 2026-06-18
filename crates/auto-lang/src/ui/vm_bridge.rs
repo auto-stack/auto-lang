@@ -403,7 +403,20 @@ impl VmBridge {
         // frame; params are accessed as bp-(n_args+1) .. bp-2 (see LOAD_LOCAL).
         task.ram.push_i32(self.state_obj_id as i32);
         for a in args {
-            push_value(&mut task.ram, a);
+            // Strings must be interned into the VM strings pool and pushed as
+            // their tagged index (the same encoding LOAD_STR / GET_FIELD use),
+            // otherwise a payload like `.SelectDay(cell.date)` arrives as 0.
+            if let Value::Str(s) = a {
+                let idx = {
+                    let mut strings = self.vm.strings.write().unwrap();
+                    let idx = strings.len();
+                    strings.push(s.as_bytes().to_vec());
+                    idx
+                };
+                task.ram.push_str_idx(idx as u32);
+            } else {
+                push_value(&mut task.ram, a);
+            }
         }
 
         self.vm
@@ -1056,6 +1069,80 @@ mod tests {
                 "materialize_obj_ref(cell) should yield Value::Obj, got {:?}",
                 other
             ),
+        }
+    }
+
+    /// Plan 327 SelectDay: a handler with a DECLARED param (`.SetX(n) ->`)
+    /// receives the value dispatched via call_handler's args — both int and
+    /// string payloads. This is the contract `onclick: .SelectDay(cell.date)`
+    /// depends on (view resolves cell.date → args; on() forwards args).
+    #[test]
+    fn test_handler_receives_declared_param() {
+        use crate::ast::{Expr, Name, Stmt};
+        use crate::aura::LogicPayload;
+        use auto_val::Op;
+
+        // widget with an int field and a str field
+        let mut widget = make_test_widget("App", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+                decorators: vec![],
+            },
+            AuraStateDef {
+                name: "label".to_string(),
+                type_info: Type::StrOwned,
+                initial: AuraExpr::Literal("".to_string()),
+                decorators: vec![],
+            },
+        ]);
+
+        // `.SetCount(n) -> { .count = n }` — `n` is a handler param (not a state
+        // field), so the rewriter must leave it alone and Codegen resolves it as
+        // the declared param.
+        widget.handlers.insert(
+            ".SetCount".to_string(),
+            LogicPayload::AstStmts(vec![Stmt::Expr(Expr::Bina(
+                Box::new(Expr::Ident(Name::from("count"))),
+                Op::Asn,
+                Box::new(Expr::Ident(Name::from("n"))),
+            ))]),
+        );
+        widget
+            .handler_params
+            .insert(".SetCount".to_string(), vec!["n".to_string()]);
+
+        // `.SetLabel(s) -> { .label = s }`
+        widget.handlers.insert(
+            ".SetLabel".to_string(),
+            LogicPayload::AstStmts(vec![Stmt::Expr(Expr::Bina(
+                Box::new(Expr::Ident(Name::from("label"))),
+                Op::Asn,
+                Box::new(Expr::Ident(Name::from("s"))),
+            ))]),
+        );
+        widget
+            .handler_params
+            .insert(".SetLabel".to_string(), vec!["s".to_string()]);
+
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        assert!(bridge.has_handler("SetCount"));
+        assert!(bridge.has_handler("SetLabel"));
+
+        // Int payload: n = 42 → count = 42
+        bridge
+            .call_handler("SetCount", &[Value::Int(42)])
+            .expect("SetCount runs");
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(42));
+
+        // String payload: s = "2026-06-17" → label = "2026-06-17"
+        bridge
+            .call_handler("SetLabel", &[Value::str("2026-06-17")])
+            .expect("SetLabel runs");
+        match bridge.read_state("label").unwrap() {
+            Value::Str(s) => assert_eq!(s.as_str(), "2026-06-17"),
+            other => panic!("label should be the dispatched string, got {:?}", other),
         }
     }
 

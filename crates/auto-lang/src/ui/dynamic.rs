@@ -581,14 +581,17 @@ impl Component for DynamicComponent {
     /// After processing, the component is marked as dirty so the next `view()`
     /// call will reflect any state changes.
     fn on(&mut self, msg: Self::Msg) {
-        let event_name = match &msg {
-            DynamicMessage::Typed { event_name, .. } => event_name.clone(),
-            DynamicMessage::String(name) => name.clone(),
+        // Extract event name + any payload args the view builder resolved from
+        // loop bindings (e.g. the `cell.date` in `onclick: .SelectDay(cell.date)`).
+        let (event_name, args) = match &msg {
+            DynamicMessage::Typed { event_name, args, .. } => (event_name.clone(), args.clone()),
+            DynamicMessage::String(name) => (name.clone(), Vec::new()),
         };
 
-        // Execute handler via VM bytecode closure
-        // Only mark dirty if handler was found and executed successfully
-        if self.bridge.call_handler(&event_name, &[]).is_ok() {
+        // Execute handler via VM bytecode closure, forwarding payload args so a
+        // handler declared `.SelectDay(date) ->` receives them as parameters.
+        // Only mark dirty if handler was found and executed successfully.
+        if self.bridge.call_handler(&event_name, &args).is_ok() {
             self.dirty = true;
         }
     }
