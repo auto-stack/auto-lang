@@ -16,8 +16,7 @@ auto-lang = { path = "../auto-lang" }
 auto-val = { path = "../auto-val" }
 
 # Plan 325: AI client for F3 AI mode (from auto-ai repo at ../auto-ai)
-# Temporarily disabled in worktree (nested worktree path issue)
-# auto-ai-client = { path = "../../../auto-ai/crates/auto-ai-client" }
+auto-ai-client = { path = "../../../auto-ai/crates/auto-ai-client" }
 tokio = { version = "1", features = ["full"] }
 
 # Ash Core (pure logic, zero terminal deps)
