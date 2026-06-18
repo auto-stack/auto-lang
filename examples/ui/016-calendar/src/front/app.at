@@ -44,7 +44,7 @@ widget App {
                 grid {
                     for cell in .days {
                         grid-item {
-                            button cell.label { onclick: .SelectDay(cell.date), style: "text-sm text-center py-2 text-gray-700 w-full" }
+                            button cell.label { variant: "text", onclick: .SelectDay(cell.date), style: "text-sm text-center py-2 text-gray-700 w-full" }
                         }
                     }
                     cols: 7
