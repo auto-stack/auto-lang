@@ -1,0 +1,9 @@
+task T {
+    fn start() {
+        print("hi")
+    }
+}
+
+fn main() {
+    print("ok")
+}

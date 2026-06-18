@@ -327,13 +327,7 @@ impl Repl {
 
     /// Plan 325 P3: Ask the AI to translate natural language → ash command.
     /// Returns the suggested command string.
-    fn ask_ai(&self, _question: &str) -> Result<String, String> {
-        // Temporarily disabled in worktree (auto-ai-client path doesn't resolve from nested worktree).
-        Err("AI mode disabled in worktree. Build from main repo for F3 AI.".into())
-    }
-
-    #[cfg(any())] // disabled in worktree — auto-ai-client path doesn't resolve
-    fn ask_ai_real(&self, question: &str) -> Result<String, String> {
+    fn ask_ai(&self, question: &str) -> Result<String, String> {
         use auto_ai_client::{AiClient, CompletionRequest};
 
         let cwd = self.shell.pwd();
