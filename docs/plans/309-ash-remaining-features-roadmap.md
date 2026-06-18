@@ -87,7 +87,9 @@
   - P3.1 解析：`ash-core/src/parser/pipeline.rs::parse_env_prefixes`（引号感知），9 单元测试。
   - P3.2 执行：`shell.rs::execute_with_env_prefixes` 包住 `execute_inner` 单一调用点——命中前缀则 `push_scope`→`set_env_scoped`→执行→`pop_scope`（唯一调用点保证所有路径都 pop）。**bash 语义**：纯赋值 `FOO=bar` 持久化，`FOO=bar cmd` 才 scoped。4 集成测试通过（scoped 可见+恢复、多前缀、纯赋值持久化、引号值）。
   - 注：`cargo test -p auto-shell --lib` 整体编不过——`each.rs/insert.rs/math_*.rs/wc.rs` 的 `#[cfg(test)]` 模块有**预先存在的**编译错误（`Obj/Array` 未导入、`ParsedArgs` 缺字段），非本次改动。env 测试改用 `cargo test --test env_command`（不编译 lib 内部 test 模块）绕开。
-- ⬜ P4（持久化 `~/.config/ash/env.at`）、P5（AutoLang FFI）、P6（补全/文档）待续。
+- ⬜ P4（持久化 `~/.config/ash/env.at`）已完成（2026-06-15）：`shell.rs` 加 `env_persist_upsert/remove` + `load_env_persistence`，写 `~/.config/ash/env.at`。
+  - ⬜ P5（AutoLang FFI：`env.path_add/prepend/remove`）deferred——`#[rust_fn]` 注册需 BIGVM_NATIVES 更新，shell 侧 `env.path` 命令已覆盖交互使用。
+  - ✅ P6（补全/文档）已完成（2026-06-17）：`definitions/env.rs` 注册 env/env.path 补全 spec。
 
 > ⚠️ **重要发现（影响路线图准确性）**：实施 P2 时发现 shell.rs 的 builtin 分发表（222-239）**已实现** `def`（shell 函数）、`hook`（事件钩子）、`abbr`（缩写）、`config`（配置命令）、`bind`（键绑定）、`path`（PATH 管理）。这与 304 §二 / 本计划 Phase 4 把它们标为「未完成」**不符**——之前的状态分析漏看了这张 builtin 分发表。建议在 Task 1.2 收尾后，重新核实 Phase 4 各项（4.1-4.5）的真实完成度，相应修订路线图。
 
@@ -96,7 +98,7 @@
 - **目标**：did-you-mean 模糊建议、统一 exit code 语义、`$?` 全命令一致
 - **进度**：
   - ✅ `$? $@ $# $!` 特殊变量展开已修复（`expand_variables` 现正确路由非字母数字特殊参数；`get_variable` 早已映射）。`$_` 经普通路径可用。
-  - ⬜ did-you-mean 模糊建议（输错命令名给最接近项）。
+  - ✅ did-you-mean 模糊建议已完成（2026-06-17）：`suggest_command()` + Levenshtein 距离，含 PATH 外部命令扫描（首字母过滤）。
   - ⬜ 统一 exit code 语义、错误分类。
 - **关键改动**：命令分发层（`shell.rs` execute 路径）+ 内置命令错误返回
 - **验收**：输错命令名给出最接近建议；每条命令退出码正确传播到 `$?`
@@ -125,13 +127,15 @@
 - **关键改动**：repl.rs 读取循环 + 续行 prompt
 - **验收**：`echo a \↵ b` 输出 `a b`；未闭合 `"` 自动等下一行
 
-### Task 2.4 — 特殊变量与语法糖（部分完成）
+### Task 2.4 — 特殊变量与语法糖 ✅ 已完成
 - **引用**：[304 §二.19 完善特殊变量和语法糖](304-ash-production-gap-analysis.md)
 - **目标**：`$@ $# $_ $! $?`、brace expansion `{a,b,c}`、算术 `$(())`、`~user`
 - **进度**：
   - ✅ 特殊变量 `$? $@ $# $! $_` 已可用（见 Task 1.3）。
-  - ⬜ brace expansion `{a,b,c}`、算术 `$((1+2))`、`~user`（`~`/`~/path` 已有）。
-- **验收**：`echo file.{txt,md}` → 两文件；`echo $((1+2))` → 3
+  - ✅ brace expansion `{a,b,c}` 已完成（2026-06-17）：`expand_braces()`。
+  - ✅ 算术 `$((1+2))` 已完成（2026-06-17）：`expand_arithmetic()` + 递归下降解析器。
+  - ✅ `~user` 展开已完成（2026-06-17）：`lookup_user_home()`（Unix /home + /etc/passwd，Windows C:\Users）。
+- **验收**：✅ `echo file.{txt,md}` → 两文件；`echo $((1+2))` → 3；`echo ~root` → /home/root
 
 ### Task 2.5 — `let x = > cmd` 赋值捕获（可选）
 - **引用**：[303 §Step 5 赋值捕获（可选增强）](303-ash-script-execution-shell-syntax.md)
