@@ -1691,6 +1691,29 @@ fn stmt_symbol_name(stmt: &crate::ast::Stmt) -> Option<String> {
     }
 }
 
+/// Resolve a (possibly dotted) module path to its source file under `base_dir`.
+///
+/// A dotted module path maps to a filesystem path segment by segment:
+/// `back.api` → `back/api`, `calendar_util` → `calendar_util`. Per the module
+/// rules a module lives at either `{path}.at` or `{path}/mod.at`; the first
+/// existing candidate wins. Returns `None` if neither exists.
+#[cfg(feature = "ui-iced")]
+fn resolve_module_path(
+    base_dir: &std::path::Path,
+    module: &str,
+) -> Option<std::path::PathBuf> {
+    let rel = module.replace('.', std::path::MAIN_SEPARATOR_STR);
+    let as_file = base_dir.join(format!("{}.at", rel));
+    if as_file.exists() {
+        return Some(as_file);
+    }
+    let as_mod = base_dir.join(rel).join("mod.at");
+    if as_mod.exists() {
+        return Some(as_mod);
+    }
+    None
+}
+
 /// Run a .at file as dynamic UI with iced backend.
 /// MUST be called from the OS main thread (iced requirement).
 #[cfg(feature = "ui-iced")]
@@ -1733,9 +1756,12 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
             if use_stmt.is_c_import || use_stmt.is_rust_import {
                 continue;
             }
-            // Locate {module}.at in same directory
-            let module_path = base_dir.join(format!("{}.at", use_stmt.module));
-            if module_path.exists() {
+            // Locate the module source file. A dotted module path maps to a
+            // filesystem path: `back.api` → `back/api.at`, `calendar_util` →
+            // `calendar_util.at`. Per the module rules (CLAUDE.md) a module is
+            // either `{path}.at` or `{path}/mod.at`; try both.
+            let module_path = resolve_module_path(base_dir, &use_stmt.module);
+            if let Some(module_path) = module_path {
                 if let Ok(module_code) = std::fs::read_to_string(&module_path) {
                     let mod_session = CompilerSession::ui();
                     let mut mod_parser = Parser::from(module_code.as_str()).with_session(mod_session);
