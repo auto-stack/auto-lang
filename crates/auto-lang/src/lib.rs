@@ -631,6 +631,9 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     let result_type = codegen.last_expr_type.clone();
     // Plan 197 Task 9: Extract generic registry before finish() consumes the codegen
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 327 Phase 1: take task handler registry before finish() consumes codegen,
+    // so HANDLE_MSG opcode can find `task` `on { }` handlers at runtime.
+    let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
@@ -690,6 +693,7 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     };
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
     // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
@@ -843,6 +847,9 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     let object_keys = codegen.object_keys.clone();
     let object_types = codegen.object_types.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 327 Phase 1: take task handler registry before finish() consumes codegen,
+    // so HANDLE_MSG opcode can find `task` `on { }` handlers at runtime.
+    let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
@@ -862,6 +869,7 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     let (mut vm, _output_buffer) = AutoVM::new_with_capture(flash, 8192);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
     // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
@@ -1972,6 +1980,9 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     let object_types = codegen.object_types.clone();
     let _result_type = codegen.last_expr_type.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 327 Phase 1: take task handler registry before finish() consumes codegen,
+    // so HANDLE_MSG opcode can find `task` `on { }` handlers at runtime.
+    let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
@@ -2014,6 +2025,7 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     let mut vm = AutoVM::new(flash, 1024);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
     // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
@@ -2187,6 +2199,9 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     let object_types = codegen.object_types.clone();
     let result_type = codegen.last_expr_type.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 327 Phase 1: take task handler registry before finish() consumes codegen,
+    // so HANDLE_MSG opcode can find `task` `on { }` handlers at runtime.
+    let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
@@ -2230,6 +2245,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     let (mut vm, output_buffer) = AutoVM::new_with_capture(flash, 8192);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+    vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
     // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
@@ -2484,6 +2500,8 @@ pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
     let object_types = configgen.base().object_types.clone();
     // Plan 197 Task 9: Extract generic registry for VM
     let generic_registry = std::mem::take(&mut configgen.base().generic_registry);
+    // Plan 327 Phase 1: take task handler registry for VM
+    let task_handler_registry = std::mem::take(&mut configgen.base().task_handler_registry);
 
     let rt = get_global_runtime();
     rt.block_on(async {
@@ -2491,6 +2509,7 @@ pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
         let mut vm = AutoVM::new(flash, 4096); // 4KB RAM for config
         vm.load_strings(strings);
         vm.load_generic_registry(generic_registry);
+        vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
 
         // 5. Execute from entry point (default to 0 for config)
         let entry_point = exports.get("main").copied().unwrap_or(0) as usize;

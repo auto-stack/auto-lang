@@ -1,6 +1,6 @@
 # Plan 327: VM 真异步调度统一 — 调研报告 + 实施提案
 
-> **Status**: 调研完成(2026-06-18),待评审后转实施
+> **Status**: 调研完成(2026-06-18);**Phase 1 已完成并合并**(actor handler 执行引擎,路径 B VM 内置调度);Phase 2-4 待实施
 > **背景**: 用户期望 `yield`/`~Iter`、`~{}`/`~T`/await、Task/Msg actor 三套异步机制能在 AutoVM 里统一工作,以支撑 HTTP 异步服务(SSE、并发)。本报告用最小 reproducer 敲定了每个机制的真实状态。
 > **关联**: Plan 312(HTTP server MVP,同步 std::net)、Plan 313(SSE Phase 3 未做)、Plan 321(yield/Iter,§5 明确不做异步)、Plan 121(Task/Msg 数据结构)、Plan 224(`~{}`/await codegen)
 
@@ -166,3 +166,53 @@
   - `on` 块 handler 用 **`->`**(`Arrow`),不是 `=>`(`DoubleArrow`),parser.rs:4699
   - `on` 块 pattern **不支持 `_`** 通配符;用具体 literal 或 Name 或 `else ->`
   - `on` 块 pattern 接受:string/int/uint/bool literal、Name、`Name(bindings)`、`name type`(type binding)
+
+---
+
+## §9 Phase 1 实施结果(2026-06-18,已完成)
+
+**路径 B(VM 内置调度)** 选定并实施完成。actor 的 `fn start()!{}` hook 和
+`on { Pat -> {} }` message handler 现在在 AutoVM 下真正执行字节码。
+
+### 改动点(对应 §5 Phase 1 的 4 个断点)
+
+| 断点 | 改动 | 文件 |
+|---|---|---|
+| 1. registry 空 | 新增 `AutoVM::load_task_handler_registry`(engine.rs:475);lib.rs 5 处编译入口 `std::mem::take(&mut codegen.task_handler_registry)` + load(仿 generic_registry) | engine.rs, lib.rs |
+| 2. 无消息队列 | AutoVM 新增 `task_mailboxes: DashMap<TaskId, std::sync::Mutex<Vec<Value>>>`(engine.rs:269);**未放 AutoTask**(tokio Mutex 的 blocking_lock 在 sync native 里 panic) | engine.rs |
+| 3. spawn/send 不碰 VM | 新增 vm-aware `shim_task_spawn_vm`/`shim_task_send_vm`(stdlib.rs:3460/3520);CALL_NAT 对 id 2300/2301 特判调用(engine.rs:4943) | stdlib.rs, engine.rs |
+| 4. 不唤醒 message-loop task | run_task_loop 加 message-loop 唤醒检查(engine.rs:1243):drain 一条 mailbox 消息 → find_handler_offset → 设 ip + Ready | engine.rs |
+
+### 附带修复(实施中发现)
+
+- **TASK_LOOP 位置错误**:原 codegen 把 TASK_LOOP emit 在 TaskDef 末尾(主程序流),不在 start hook 内 → actor 跑完 start hook 直接 RET 终止。改为在 start hook body 末尾、RET 之前 emit TASK_LOOP(codegen.rs:3094,仅当有 on handlers)。
+- **TASK_LOOP 不 return**:TASK_LOOP 设 Waiting 后继续执行下一条(RET),bp==0 触发 Terminated。改为 `return Ok(StepResult::Yield)`(engine.rs:5536)。
+- **handler RET 后终止**:message-loop task 的 handler RET(bp==0)→ Terminated。run_task_loop 检测到 message-loop task 的 Terminated 时改回 Waiting(engine.rs:1286),让它等下一条消息。
+- **idle actor 死循环**:Waiting 且 mailbox 空的 actor 让 run_task_loop 无限 sleep。加 `is_idle_actor` 检查(engine.rs:1267),idle actor 不计 alive_count,VM 可退出。
+- **抽取 find_handler_offset**(engine.rs:482):HANDLE_MSG 和 run_task_loop 唤醒共用;含 else fallback(查 `"{type}#else"` export)。
+
+### 验收
+
+5 个回归测试(`actor_tests.rs`)全绿:
+- `actor_start_hook_runs`:fn start hook 执行
+- `actor_message_handler_runs`:on handler 匹配执行
+- `actor_multiple_messages_dispatched`:多消息按序分派(1,2,1 → got one/got two/got one)
+- `actor_else_handler_runs`:else fallback
+- `actor_vm_exits_after_messages`:VM 正常退出(不死循环)
+
+全量回归:**2907 passed / 8 failed / 81 ignored**。8 failed 全是 pre-existing(ui_gen + test_field_access_bool),**零新回归**。
+
+### 已知遗留(Phase 1 未覆盖)
+
+1. **task state 字段不工作**:`task T { count = 0 }` 的 `count` 被 parser 接受(add_state),但 codegen 的 Stmt::TaskDef **不编译 state field** —— handler 里访问 `count` 是未定义变量。这是风险 1 的确认结论。修复需 codegen 把 state field 编译成 task 私有存储(handler 间保持),是 Phase 1 之后的增强。
+2. **producer/consumer 跨 actor**:单 actor 的 start + 消息处理工作了,但两个 actor 互相 send(h.send 给另一个 actor 的 handle)未验证 —— 需要 actor 能持有并传递 TaskHandle。这是 Phase 1 的自然延伸,待后续。
+3. **scheduler.rs 路径未清理**:旧的 task_system mailbox + execute_handler_fully 占位路径仍在(dead code),本计划不动(避免扩大范围)。
+4. **并发性**:run_task_loop 单线程协作式,actor 交错执行非真并发。对 MVP 足够。
+
+### 下一步(Phase 2-4)
+
+Phase 1 解锁了 actor 执行。后续:
+- **Phase 2**(小修复):`~{}` async block 的 await 取值(断点 1b)
+- **Phase 3**:`~Stream<T>` 异步流 + yield/await 互通
+- **Phase 4**:HTTP 异步 server 接入(actor 处理请求 / handler 返回 ~Stream 做 SSE)
+

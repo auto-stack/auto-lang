@@ -3453,6 +3453,91 @@ pub fn shim_task_spawn(task_type: String, capacity: i32) -> i32 {
     handle_id as i32
 }
 
+/// Plan 327 Phase 1: VM-aware Task.spawn.
+///
+/// Stack: [..., task_type_str_tag, capacity_i32] -> [..., handle_id_i32]
+///
+/// Spawns a real AutoVM task (registered in `vm.tasks`) whose ip points at the
+/// task's `fn start()!{}` hook (exported as `"{task_type}#start"`). The handle
+/// id returned is the AutoVM task id, so TaskHandle.send can look it up
+/// directly. After start hook runs, its trailing TASK_LOOP opcode parks the
+/// task in Waiting/message_loop; subsequent messages wake it via run_task_loop.
+pub fn shim_task_spawn_vm(
+    task: &mut crate::vm::task::AutoTask,
+    vm: &crate::vm::engine::AutoVM,
+) -> Result<(), crate::vm::engine::VMError> {
+    // Stack layout (pushed left-to-right by codegen): task_type_str, capacity
+    let capacity = task.ram.pop_i32();
+    let ram_size = if capacity <= 0 { 8192 } else { (capacity as usize) * 64 };
+
+    // Pop task_type string (tagged string index)
+    let task_type = {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as u16;
+            vm.get_string(idx)
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        }
+    };
+
+    // Look up the start hook offset from exports ("{task_type}#start").
+    let start_key = format!("{}#start", task_type);
+    let start_offset = vm.flash.exports_by_name.get(&start_key).copied().unwrap_or(0) as usize;
+
+    // Spawn an AutoVM task starting at the start hook.
+    // We do NOT lock the task here — tokio Mutex blocking_lock panics inside
+    // the async runtime (CALL_NAT runs during run_one_instruction). The task
+    // is created Ready by spawn_task; its task_type_name is set later by the
+    // TASK_LOOP opcode (engine.rs:5434) which runs at the end of the start hook.
+    // Messages sent before TASK_LOOP park accumulate in pending_messages and
+    // are drained once the task enters Waiting/message_loop.
+    let task_id = vm.spawn_task(start_offset, ram_size);
+
+    // Create the mailbox for this task (DashMap<task_id, Mutex<Vec<Value>>>).
+    // Sent messages accumulate here until the task parks in message_loop.
+    vm.task_mailboxes.insert(task_id, std::sync::Mutex::new(Vec::new()));
+
+    vm_debug!("DEBUG shim_task_spawn_vm: spawned task_id={} for type {} at offset {}", task_id, task_type, start_offset);
+
+    // Return the AutoVM task id as the handle (send uses it directly).
+    task.ram.push_i32(task_id as i32);
+    Ok(())
+}
+
+/// Plan 327 Phase 1: VM-aware TaskHandle.send.
+///
+/// Stack: [..., handle_id_i32, msg_i32] -> [..., ok_i32]
+///
+/// handle_id IS the AutoVM task id (returned by shim_task_spawn_vm). Pushes the
+/// message onto the target task's pending_messages. The target is either
+/// running (will see the message on its next TASK_LOOP park) or Waiting (woken
+/// by run_task_loop's message-loop check).
+pub fn shim_task_send_vm(
+    task: &mut crate::vm::task::AutoTask,
+    vm: &crate::vm::engine::AutoVM,
+) -> Result<(), crate::vm::engine::VMError> {
+    // Stack: handle_id, msg (msg on top)
+    let msg = task.ram.pop_i32();
+    let handle_id = task.ram.pop_i32() as u64;
+
+    // Plan 327 Phase 1: use the DashMap mailbox (std Mutex, safe in sync native).
+    // Lazily create the mailbox entry if missing.
+    if let Some(mailbox) = vm.task_mailboxes.get(&handle_id) {
+        if let Ok(mut q) = mailbox.lock() {
+            q.push(auto_val::Value::Int(msg));
+            vm_debug!("DEBUG shim_task_send_vm: delivered msg {} to task {}", msg, handle_id);
+            task.ram.push_i32(1); // success
+            return Ok(());
+        }
+    }
+    eprintln!("TaskHandle.send failed: no mailbox for task {}", handle_id);
+    task.ram.push_i32(0);
+    Ok(())
+}
+
 /// Send a message to a task
 ///
 /// # Arguments
