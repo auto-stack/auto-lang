@@ -585,6 +585,37 @@ fn echo_id(id int) int {{
         // Phase 5: :id injected as int 42, returned as-is.
         assert_eq!(body, "42", "int path param: full resp = {:?}", resp);
     }
+
+    /// Plan 327 Phase 3: SSE handler returning a generator (~Iter<int>).
+    /// Each yield becomes an SSE data frame. Lazy evaluation means each
+    /// next() runs only to the next yield (not the whole body upfront).
+    #[test]
+    #[ignore]
+    fn e2e_sse_generator_handler() {
+        let port = 18733;
+        std::env::set_var("AUTO_HTTP_PORT", port.to_string());
+        let code = format!(r#"
+#[api(method = "GET", path = "/api/counter")]
+fn counter_handler() ~Iter<int> {{
+    yield 1
+    yield 2
+    yield 3
+}}
+"#);
+        let _server = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let _ = crate::run(&code);
+            })
+            .expect("spawn server thread");
+
+        let resp = http_get(port, "/api/counter");
+        // SSE response: the body should contain three "data: N\n\n" frames.
+        let body = body_of(&resp);
+        assert!(body.contains("data: 1"), "SSE frame 1: body={:?}", body);
+        assert!(body.contains("data: 2"), "SSE frame 2: body={:?}", body);
+        assert!(body.contains("data: 3"), "SSE frame 3: body={:?}", body);
+    }
 }
 
 /// Run the HTTP server in blocking mode using std::net (MVP).

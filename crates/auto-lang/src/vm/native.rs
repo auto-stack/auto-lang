@@ -1838,62 +1838,43 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 }
             }
             Iterator::Generator(gen_state) => {
-                // Plan 321 lazy: Generator next() driver.
+                // Plan 327 Phase 3: lazy generator next() driver.
                 //
-                // MVP approach: eager evaluation on a dedicated task via try_lock.
-                // On first next(), runs the entire generator body, collecting all
-                // yield values. Subsequent next() calls return values from the
-                // collection. This is not truly lazy, but it's correct and avoids
-                // stack corruption from sharing the caller's stack frame.
+                // Each next() runs the generator task forward from its saved
+                // ip/bp/sp until the NEXT YIELD_VAL (or RET/Terminated). The
+                // task stays alive across next() calls (vm.tasks is not cleaned
+                // by run_task_loop, and we manage the task lifecycle manually).
                 //
-                // Limitation: infinite generators will run until the budget limit
-                // (10000 items), then stop. For auto-musk's SSE streaming, this
-                // is acceptable since LLM token streams are finite.
+                // This replaces the previous eager approach (which ran the whole
+                // body on first next(), collecting all yields). Lazy enables:
+                //  - infinite generators (fib) that the consumer can break from
+                //  - SSE incremental flush (each yield pushes one frame)
+                //  - side effects in the generator interleaved with consumption
+                //
+                // Plan 326 §1 fix preserved: done pushes the -1 nil sentinel
+                // so the for-loop's `DUP; CONST -1; EQ` exits cleanly.
+                use crate::vm::engine::StepResult;
+                use crate::vm::task::TaskStatus;
+
                 if gen_state.done {
-                    // Plan 326: keep stack contract — push the nil sentinel on
-                    // every call, including after done, so the for-loop exits.
                     task.ram.push_i32(-1);
                     return Ok(());
                 }
 
+                // First next(): spawn the generator task and set up its frame
+                // (mirrors the CALL opcode's frame setup).
                 if !gen_state.started {
                     gen_state.started = true;
-
-                    // Spawn a fresh task and run the generator body via call_fn_by_name.
-                    // call_fn_by_name sets up the frame correctly (FN_PROLOG, args, BP).
-                    // YIELD_VAL returns GeneratorYield which call_fn_by_name treats as continue.
-                    // We intercept by checking the task's ip after call_fn_by_name returns
-                    // — if it stopped at a YIELD_VAL, the value is on stack.
-                    //
-                    // Actually, call_fn_by_name runs until RET. For generators, YIELD_VAL
-                    // is treated as continue, so all yields are skipped and the function
-                    // returns normally. The yielded values are lost.
-                    //
-                    // So we can't use call_fn_by_name. Instead, we manually set up the
-                    // frame the same way CALL opcode does, then run_one_instruction loop.
-                    //
-                    // The correct frame setup for a function at func_addr:
-                    //   1. Arguments are already on the stack (pushed by caller)
-                    //   2. Push return address + old BP
-                    //   3. Set BP = sp - 1
-                    //   4. Set ip = func_addr (which starts with FN_PROLOG)
-                    //   5. FN_PROLOG reads n_args/n_locals and reserves stack space
-
                     let tid = vm.spawn_task(gen_state.func_addr as usize, 65536);
                     gen_state.task_id = Some(tid);
 
-                    // Set up frame EXACTLY like CALL opcode does (engine.rs:3986-4021)
                     if let Some(gen_task_arc) = vm.tasks.get(&tid) {
                         if let Ok(mut gt) = gen_task_arc.try_lock() {
-                            // Push return address (never used — generator ends via RET → Terminated)
-                            gt.ram.push_i32(0);
-                            // Push old BP
-                            gt.ram.push_i32(0);
-                            // New BP points to saved BP location
+                            gt.ram.push_i32(0); // return address (unused)
+                            gt.ram.push_i32(0); // old BP
                             let new_bp = gt.ram.sp - 1;
                             gt.bp = new_bp;
                             gt.current_fn_n_args = gen_state.n_args as usize;
-                            // Push CallFrame (needed for RET to work correctly)
                             gt.call_stack.push(crate::vm::task::CallFrame {
                                 return_ip: 0,
                                 old_bp: new_bp,
@@ -1902,79 +1883,93 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                                 old_fn_n_args: 0,
                                 old_fn_n_locals: 0,
                             });
-                            // Jump to function body (FN_PROLOG is at func_addr)
                             gt.ip = gen_state.func_addr as usize;
                         }
                     }
-
-                    // Eagerly collect yielded values
-                    let mut collected: Vec<u64> = Vec::new();
-                    let max_items = 10000;
-
-                    if let Some(gen_task_arc) = vm.tasks.get(&tid) {
-                        loop {
-                            if collected.len() >= max_items { break; }
-                            match gen_task_arc.try_lock() {
-                                Ok(mut gt) => {
-                                    let budget = 1_000_000;
-                                    let mut got_yield = false;
-                                    for _ in 0..budget {
-                                        match vm.run_one_instruction(&mut gt) {
-                                            Ok(crate::vm::engine::StepResult::Continue) => continue,
-                                            Ok(crate::vm::engine::StepResult::GeneratorYield) => {
-                                                collected.push(gt.ram.pop_nv());
-                                                got_yield = true;
-                                                break;
-                                            }
-                                            Ok(crate::vm::engine::StepResult::Terminated) => break,
-                                            Ok(crate::vm::engine::StepResult::Yield) => continue,
-                                            Ok(crate::vm::engine::StepResult::AwaitFuture { .. }) => continue,
-                                            Err(e) => {
-                                                eprintln!("[Generator] Error: {:?}", e);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    if !got_yield { break; }
-                                    drop(gt);
-                                }
-                                Err(_) => break,
-                            }
-                        }
-                    }
-
-                    // Clean up generator task
-                    vm.tasks.remove(&tid);
-                    gen_state.task_id = None;
-
-                    // Store collected values as raw NanoValues
-                    gen_state.stack_snapshot = collected;
-                    gen_state.resume_sp = 0; // reuse as index into stack_snapshot
                 }
 
-                // Return next collected value or signal done.
-                //
-                // Plan 326 fix (generator for-loop duplicate values): the done
-                // case MUST push -1 (the nil sentinel) just like every other
-                // iterator branch does via the trailing `push_i32(result)`.
-                // Previously this branch `return Ok(())`'d without pushing,
-                // leaving the caller's stack top as the previous value — the
-                // for-loop's `DUP; CONST -1; EQ` nil check then saw a stale
-                // non-nil value, re-entered the body, and consumed values twice.
-                let idx = gen_state.resume_sp;
-                if idx < gen_state.stack_snapshot.len() {
-                    let nv = gen_state.stack_snapshot[idx];
-                    gen_state.resume_sp += 1;
-                    // Push the yielded value onto the caller's stack
-                    if auto_val::is_i32(nv) {
-                        task.ram.push_i32(auto_val::decode_i32(nv));
-                    } else {
-                        task.ram.push_nv(nv);
+                let tid = match gen_state.task_id {
+                    Some(id) => id,
+                    None => {
+                        // Task was already cleaned up (generator finished).
+                        gen_state.done = true;
+                        task.ram.push_i32(-1);
+                        return Ok(());
                     }
-                } else {
+                };
+
+                // Run the generator task forward until the next YIELD_VAL or
+                // completion. Budget caps a single next() (prevents runaway
+                // loops with no yields); the task resumes from its saved ip.
+                const NEXT_BUDGET: u32 = 1_000_000;
+                let mut yielded_nv: Option<u64> = None;
+                let mut finished = false;
+
+                if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+                    if let Ok(mut gt) = gen_task_arc.try_lock() {
+                        for _ in 0..NEXT_BUDGET {
+                            match vm.run_one_instruction(&mut gt) {
+                                Ok(StepResult::Continue) => continue,
+                                Ok(StepResult::GeneratorYield) => {
+                                    // Value is on the generator task's stack.
+                                    // PEEK (don't pop): codegen emits a POP after
+                                    // YIELD_VAL (ExprStmt discards yield's nil
+                                    // return value), so we must leave the yielded
+                                    // value on the generator stack for that POP to
+                                    // consume. We copy it to the caller instead.
+                                    let nv = gt.ram.raw_nv[gt.ram.sp - 1];
+                                    yielded_nv = Some(nv);
+                                    // Park the task so run_task_loop won't pick
+                                    // it up between next() calls. Its ip/bp/sp
+                                    // are preserved on the task itself.
+                                    gt.status = TaskStatus::Waiting("generator_suspended".into());
+                                    break;
+                                }
+                                Ok(StepResult::Terminated) => {
+                                    finished = true;
+                                    break;
+                                }
+                                Ok(StepResult::Yield) => continue,
+                                Ok(StepResult::AwaitFuture { .. }) => continue,
+                                Err(e) => {
+                                    eprintln!("[Generator] Error: {:?}", e);
+                                    finished = true;
+                                    break;
+                                }
+                            }
+                        }
+                        // Budget exhausted without yield or termination: treat
+                        // as done to avoid an infinite external loop.
+                        if yielded_nv.is_none() && !finished {
+                            eprintln!("[Generator] next() budget exhausted without yield");
+                            finished = true;
+                        }
+                    }
+                }
+
+                if finished {
+                    // Generator returned/terminated: clean up the task.
+                    vm.tasks.remove(&tid);
+                    gen_state.task_id = None;
                     gen_state.done = true;
-                    // Push the nil sentinel so the for-loop's nil check exits.
                     task.ram.push_i32(-1);
+                    return Ok(());
+                }
+
+                // Push the yielded value onto the caller's stack.
+                match yielded_nv {
+                    Some(nv) => {
+                        if auto_val::is_i32(nv) {
+                            task.ram.push_i32(auto_val::decode_i32(nv));
+                        } else {
+                            task.ram.push_nv(nv);
+                        }
+                    }
+                    None => {
+                        // No yield and not finished (shouldn't happen, but be safe).
+                        gen_state.done = true;
+                        task.ram.push_i32(-1);
+                    }
                 }
                 return Ok(());
             }

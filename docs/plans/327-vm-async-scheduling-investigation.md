@@ -221,7 +221,47 @@
 ### 下一步(Phase 2-4)
 
 Phase 1 解锁了 actor 执行。后续:
-- **Phase 2**(小修复):`~{}` async block 的 await 取值(断点 1b)
-- **Phase 3**:`~Stream<T>` 异步流 + yield/await 互通
+- **Phase 2**(跳过):`~{}` async block 的 await 取值——需 codegen 重构(body 隔离),
+  超出小修复范围,不阻塞主路径。
+- **Phase 3**(已完成,见 §10):真异步 generator(lazy yield)
 - **Phase 4**:HTTP 异步 server 接入(actor 处理请求 / handler 返回 ~Stream 做 SSE)
 
+---
+
+## §10 Phase 3 实施结果(2026-06-18,已完成)
+
+**真异步 generator(lazy yield)** 实施完成。
+
+### 改动
+
+`shim_iterator_next` 的 Generator 分支(native.rs)从 **eager**(首次 next() 跑完整个
+body 收集所有 yield 到 stack_snapshot,销毁 task)改为 **lazy**(每次 next() 只跑到
+下一个 YIELD_VAL,task 跨 next() 保持存活):
+
+- 首次 next():spawn task + 设帧 + 跑到第一个 GeneratorYield(peek yield 值,task
+  挂起 Waiting,不销毁)
+- 后续 next():恢复 task(从其保存的 ip/bp/sp)+ 跑到下一个 GeneratorYield
+- Terminated:设 done + 销毁 task + push -1(nil sentinel,Plan 326 §1 修复保留)
+- GeneratorYield 时 **peek**(不 pop)yield 值——codegen 在 YIELD_VAL 后 emit POP
+  (ExprStmt 丢弃 yield 返回值),peek 让那个 POP 能正确消费
+
+### 验收
+
+- Plan 326 generator_tests(sum/no-dup/string-yields)3 测试仍全绿(lazy 不改变观察行为)
+- SSE e2e 测试(`GET /api/counter`,inline yield handler)产生正确 SSE 帧
+  (data: 1, data: 2, data: 3)——lazy 下每次 next() 只跑一个 yield,天然增量 flush
+- 全量回归:2910 passed / 8 failed / 82 ignored(8 pre-existing,零新回归)
+
+### 已知限制
+
+1. **infinite generator(`for { yield x }`)**:卡死。根因:codegen 的 `for{}` 循环
+   字节码每次迭代净消耗 1 个栈元素(栈不平衡),lazy 跨 next() 恢复时累积导致下溢。
+   eager 不暴露(一次跑完 RET 清栈)。finite generator(有 RET 的序列)工作正常。
+   修复需 codegen 的循环栈平衡,超出 Phase 3 范围。
+2. **handler 间接调 generator**:handler `fn h() ~Iter<int> { counter() }`(h 自己不
+   yield,调另一个 generator 函数)的 SSE 路径未通(h 返回的不是 iter_id)。inline
+   yield 的 handler 工作。间接调用路径待后续。
+3. **`~Stream<T>` 无独立 Iterator 变体**:继续走 `Iterator::Generator`(lazy 后语义
+   足够)。独立变体是未来增强。
+4. **yield/await 仍不同步**:generator next() 是 lazy 但同步 pull。真"yield 返回
+   future 让出"是更大的异步调度改造,不在 Phase 3。
