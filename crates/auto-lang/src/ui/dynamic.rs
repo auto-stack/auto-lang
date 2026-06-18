@@ -633,21 +633,55 @@ impl DynamicComponent {
     /// from `input_state_map` and writes the text as the field's value before
     /// running the handler. This enables two-way binding for text inputs.
     pub fn on_with_input(&mut self, event_name: &str, input_value: Option<String>) {
+        // Split off any payload embedded in the event string by the renderer's
+        // encode_payload (carries onclick args like cell.date across iced's Send
+        // boundary). `clean_name` is the bare handler name; `payload` is the
+        // decoded arg to forward to call_handler.
+        let (clean_name, payload) = decode_payload(event_name);
+
         // If this event comes from an input, update the bound state field first
         if let Some(text) = &input_value {
-            if let Some(state_field) = self.input_state_map.get(event_name) {
+            if let Some(state_field) = self.input_state_map.get(&clean_name) {
                 let value = parse_input_value_for_field(text, state_field, &self.bridge);
                 let _ = self.bridge.write_state(state_field, value);
                 self.dirty = true; // input value changed state
             }
         }
 
-        // Run the handler via VM bytecode closure
-        match self.bridge.call_handler(event_name, &[]) {
+        // Run the handler via VM bytecode closure, forwarding the decoded
+        // payload so a handler declared `.SelectDay(date) ->` receives it.
+        let args: Vec<auto_val::Value> = payload.into_iter().collect();
+        match self.bridge.call_handler(&clean_name, &args) {
             Ok(()) => { self.dirty = true; }
             Err(_) => {}
         }
     }
+}
+
+/// Decode a payload embedded by `encode_payload` (renderer.rs). Returns the
+/// bare handler name and, if a payload was present, the decoded arg Value.
+/// Format: `{event}\u{1F}{typechar}\u{1F}{value}`.
+fn decode_payload(event_name: &str) -> (String, Option<auto_val::Value>) {
+    const SEP: char = '\u{1F}';
+    let Some(idx) = event_name.find(SEP) else {
+        return (event_name.to_string(), None);
+    };
+    let name = &event_name[..idx];
+    let rest = &event_name[idx + SEP.len_utf8()..]; // "{tc}\x1F{value}"
+    let (tc, val) = match rest.find(SEP) {
+        Some(s) => (&rest[..s], &rest[s + SEP.len_utf8()..]),
+        None => return (event_name.to_string(), None),
+    };
+    let value = match tc {
+        "i" => val.parse::<i32>().ok().map(auto_val::Value::Int),
+        "u" => val.parse::<u32>().ok().map(auto_val::Value::Uint),
+        "b" => Some(auto_val::Value::Bool(val == "1")),
+        "f" => val.parse::<f64>().ok().map(auto_val::Value::Float),
+        "d" => val.parse::<f64>().ok().map(auto_val::Value::Double),
+        "s" => Some(auto_val::Value::str(val)),
+        _ => None,
+    };
+    (name.to_string(), value)
 }
 
 /// Parse a string input value into the best-matching Value type.
@@ -834,6 +868,38 @@ mod tests {
     use crate::aura::{AuraNode, AuraStateDef, AuraExpr, AuraEvent, AuraPropValue, AuraTextContent};
     use crate::ast::Type;
     use std::collections::HashMap;
+
+    /// Round-trip the onclick payload encoding the renderer uses to carry args
+    /// across iced's Send boundary. Mirrors `encode_payload` (renderer.rs) by
+    /// building the encoded string with the same format/separator.
+    #[test]
+    fn payload_encode_decode_roundtrip() {
+        fn encode(name: &str, v: &auto_val::Value) -> String {
+            let (tc, val) = match v {
+                auto_val::Value::Int(i) => ("i", i.to_string()),
+                auto_val::Value::Str(s) => ("s", s.as_str().to_string()),
+                auto_val::Value::Bool(b) => ("b", (if *b { "1" } else { "0" }).to_string()),
+                _ => return name.to_string(),
+            };
+            format!("{}\u{1F}{}\u{1F}{}", name, tc, val)
+        }
+
+        // String payload (SelectDay date).
+        let enc = encode("SelectDay", &auto_val::Value::str("2026-06-17"));
+        let (name, arg) = decode_payload(&enc);
+        assert_eq!(name, "SelectDay");
+        assert_eq!(arg, Some(auto_val::Value::str("2026-06-17")));
+
+        // Int payload (e.g. todo id).
+        let (name, arg) = decode_payload(&encode("ToggleTodo", &auto_val::Value::Int(7)));
+        assert_eq!(name, "ToggleTodo");
+        assert_eq!(arg, Some(auto_val::Value::Int(7)));
+
+        // No payload → passthrough.
+        let (name, arg) = decode_payload("Init");
+        assert_eq!(name, "Init");
+        assert_eq!(arg, None);
+    }
 
     /// Helper: create a minimal AuraWidget for testing.
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {

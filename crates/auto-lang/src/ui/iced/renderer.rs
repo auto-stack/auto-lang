@@ -1630,18 +1630,49 @@ pub struct IcedMessage {
     pub input_value: Option<String>,
 }
 
+/// Delimiter used to embed a typed onclick payload in the `event` String so it
+/// survives iced's `Send` boundary. Pair with `decode_payload` in
+/// `dynamic.rs`. `\u{1F}` (ASCII unit separator) cannot appear in a handler
+/// name. Format: `{event}\u{1F}{typechar}\u{1F}{value}`.
+pub(crate) const PAYLOAD_SEP: char = '\u{1F}';
+
+/// Embed the first onclick payload arg (type-tagged) into the event string so
+/// it can be carried by the `Send` `IcedMessage`. Only the first arg is encoded
+/// (the common `.Foo(id)` / `.SelectDay(cell.date)` case). See `decode_payload`.
+pub(crate) fn encode_payload(event_name: &str, args: &[auto_val::Value]) -> String {
+    let Some(v) = args.first() else {
+        return event_name.to_string();
+    };
+    let (tc, val) = match v {
+        auto_val::Value::Int(i) => ("i", i.to_string()),
+        auto_val::Value::Uint(u) => ("u", u.to_string()),
+        auto_val::Value::Bool(b) => ("b", (if *b { "1" } else { "0" }).to_string()),
+        auto_val::Value::Float(f) => ("f", f.to_string()),
+        auto_val::Value::Double(d) => ("d", d.to_string()),
+        auto_val::Value::Str(s) => ("s", s.as_str().to_string()),
+        _ => return event_name.to_string(),
+    };
+    format!("{}{}{}{}{}", event_name, PAYLOAD_SEP, tc, PAYLOAD_SEP, val)
+}
+
 impl IcedMessage {
-    /// Convert a `DynamicMessage` reference into an `IcedMessage`,
-    /// discarding the non-Send `args`.
+    /// Convert a `DynamicMessage` reference into an `IcedMessage`.
+    ///
+    /// `Value` is not `Send`, so the typed payload `args` cannot ride in the
+    /// `Send` `IcedMessage` directly. Instead `encode_payload` embeds the first
+    /// onclick payload arg (type-tagged) into the `event` String; the renderer's
+    /// dispatcher (`DynamicComponent::on_with_input`) decodes it back and
+    /// forwards it to `call_handler`. Without this, `onclick: .SelectDay(cell.date)`
+    /// arrives with no payload and the handler runs with the wrong arg count.
     fn from_dynamic(msg: &DynamicMessage) -> Self {
         match msg {
             DynamicMessage::Typed {
                 widget_name,
                 event_name,
-                ..
+                args,
             } => IcedMessage {
                 widget: widget_name.clone(),
-                event: event_name.clone(),
+                event: encode_payload(event_name, args),
                 input_value: None,
             },
             DynamicMessage::String(name) => IcedMessage {
