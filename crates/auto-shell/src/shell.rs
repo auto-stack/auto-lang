@@ -1421,8 +1421,22 @@ impl Shell {
                             result.push_str(&home);
                         }
                         _ => {
-                            // ~something (like ~user) — on Windows, just expand to home
-                            result.push_str(&home);
+                            // ~user or ~user/path — look up user's home dir.
+                            let mut username = String::new();
+                            while let Some(&c2) = chars.peek() {
+                                if c2 == '/' || c2 == ' ' || c2 == '\t' || c2 == '|' || c2 == '&' || c2 == ';' {
+                                    break;
+                                }
+                                username.push(c2);
+                                chars.next();
+                            }
+                            if let Some(user_home) = lookup_user_home(&username) {
+                                result.push_str(&user_home);
+                            } else {
+                                // User not found — keep ~username literal.
+                                result.push('~');
+                                result.push_str(&username);
+                            }
                         }
                     }
                     word_start = false;
@@ -3469,6 +3483,47 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     }
 
     prev[m]
+}
+
+/// Look up a user's home directory by username (Plan 309 Task 2.4: ~user).
+fn lookup_user_home(username: &str) -> Option<String> {
+    if username.is_empty() {
+        return dirs::home_dir().map(|h| h.to_string_lossy().to_string());
+    }
+    // Platform-specific lookup.
+    #[cfg(unix)]
+    {
+        // Try common locations first (fast), then fall back to /etc/passwd scan.
+        let candidates = [
+            format!("/home/{}", username),
+            format!("/Users/{}", username),
+        ];
+        for c in &candidates {
+            if std::path::Path::new(c).is_dir() {
+                return Some(c.clone());
+            }
+        }
+        // Fallback: scan /etc/passwd.
+        if let Ok(passwd) = std::fs::read_to_string("/etc/passwd") {
+            for line in passwd.lines() {
+                let fields: Vec<&str> = line.split(':').collect();
+                if fields.len() >= 6 && fields[0] == username {
+                    return Some(fields[5].to_string());
+                }
+            }
+        }
+        None
+    }
+    #[cfg(not(unix))]
+    {
+        // Windows: C:\Users\username
+        let path = format!("C:\\Users\\{}", username);
+        if std::path::Path::new(&path).is_dir() {
+            Some(path)
+        } else {
+            None
+        }
+    }
 }
 
 // ── Plan 309 Task 2.4: Brace expansion ──────────────────────────────────

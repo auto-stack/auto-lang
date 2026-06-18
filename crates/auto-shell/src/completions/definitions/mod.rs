@@ -5,6 +5,7 @@
 
 pub mod cargo;
 pub mod docker;
+pub mod env;
 pub mod git;
 pub mod npm;
 pub mod ssh;
@@ -19,4 +20,7 @@ pub fn register_all(provider: &mut CompletionProvider) {
     provider.register(npm::spec());
     provider.register(ssh::ssh_spec());
     provider.register(ssh::scp_spec());
+    // Plan 309 P6: env/env.path completions.
+    provider.register(env::spec());
+    provider.register(env::path_spec());
 }
