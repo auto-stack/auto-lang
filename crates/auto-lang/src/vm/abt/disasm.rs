@@ -229,6 +229,7 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
         | OpCode::SET_GENERIC_FIELD | OpCode::GET_TUPLE_FIELD
         | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE
         | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
+        | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
             => 1,
 
         OpCode::FN_PROLOG => 2,
@@ -384,7 +385,8 @@ fn decode_operands(
             (vec![AbtOperand::ImmF64(v)], 8)
         }
 
-        OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL => {
+        OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
+        | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD => {
             let v = flash.read_u8(ip);
             // Plan 087/088: parameters encoded as 0x80 + param_index
             let operand = if v >= 0x80 {

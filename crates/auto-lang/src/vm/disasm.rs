@@ -176,7 +176,8 @@ impl<'a> Disassembler<'a> {
             }
 
             // 1-byte local index
-            OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL => {
+            OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
+            | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD => {
                 let v = self.flash.read_u8(ip);
                 (format!("{}", v), 1)
             }

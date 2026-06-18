@@ -5660,6 +5660,24 @@ impl AutoVM {
                 OpCode::LOAD_LOC_0 => {
                     task.ram.push_nv(task.ram.read_nv(task.bp + 1));
                 }
+                // Plan 327: Actor state field access (absolute, bp-independent).
+                // state_vars is a Vec on AutoTask; field_idx is assigned by codegen.
+                OpCode::LOAD_STATE_FIELD => {
+                    let field_idx = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+                    let nv = task.state_vars.get(field_idx).copied().unwrap_or(0);
+                    task.ram.push_nv(nv);
+                }
+                OpCode::STORE_STATE_FIELD => {
+                    let field_idx = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+                    let val_nv = task.ram.pop_nv();
+                    // Grow state_vars if needed (safety; normally pre-sized at spawn).
+                    if field_idx >= task.state_vars.len() {
+                        task.state_vars.resize(field_idx + 1, 0);
+                    }
+                    task.state_vars[field_idx] = val_nv;
+                }
                 OpCode::LOAD_LOC_1 => {
                     task.ram.push_nv(task.ram.read_nv(task.bp + 2));
                 }

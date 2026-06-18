@@ -136,6 +136,14 @@ pub struct Codegen {
     /// Each scope has its own variable namespace
     pub scope_stack: Vec<HashMap<String, usize>>,
 
+    /// Plan 327: State fields of the task currently being compiled.
+    /// Maps field name -> field_idx (for LOAD_STATE_FIELD/STORE_STATE_FIELD).
+    /// Set while compiling a TaskDef's start hook + on handlers; cleared after.
+    /// When set, bare identifier references to these names inside handlers
+    /// resolve to actor state fields (persistent across handler invocations)
+    /// instead of ordinary local variables.
+    pub current_task_state_fields: HashMap<String, u8>,
+
     /// Variable type tracking (Plan 080: support for instance methods on List, etc.)
     /// Maps variable name -> its type (e.g., "x" -> Type::List(Type::Int))
     /// Used to generate correct native method calls (e.g., x.push -> List.push)
@@ -328,6 +336,7 @@ impl Codegen {
             object_types: Vec::new(),
             locals: HashMap::new(),
             scope_stack,
+            current_task_state_fields: HashMap::new(), // Plan 327: actor state fields
             var_types: HashMap::new(), // Plan 080: variable type tracking
             var_mutability: HashMap::new(), // Plan 080+: variable mutability tracking
             captured_vars_stack: Vec::new(),
@@ -487,6 +496,7 @@ impl Codegen {
             object_types: Vec::new(),
             locals: HashMap::new(),
             scope_stack,
+            current_task_state_fields: HashMap::new(), // Plan 327
             var_types: HashMap::new(),
             var_mutability: HashMap::new(),
             captured_vars_stack: Vec::new(),
@@ -3077,11 +3087,30 @@ impl Codegen {
                 // Plan 127: Create handler table for this task type
                 let mut handler_table = crate::vm::task_handler::TaskHandlerTable::new(task_name.clone());
 
+                // Plan 327: Register state fields so bare identifier references
+                // inside hooks/handlers resolve to LOAD/STORE_STATE_FIELD. Each
+                // field gets a stable idx (0, 1, 2, ...).
+                self.current_task_state_fields.clear();
+                for (i, (field_name, _mutable, _init)) in task_def.state.iter().enumerate() {
+                    self.current_task_state_fields.insert(field_name.to_string(), i as u8);
+                }
+
                 // Compile lifecycle hooks if present
                 // Start hook
                 let has_handlers = !task_def.on_block.handlers.is_empty();
                 if let Some(ref start_hook) = task_def.start_hook {
                     let start_offset = self.code.len() as u32;
+                    // Plan 327: emit state field initializers at the very start
+                    // of the start hook. spawn_task points the actor's ip here,
+                    // so these run first and initialize state_vars before any
+                    // handler can read them.
+                    for (field_name, _mutable, init_expr) in &task_def.state {
+                        self.compile_expr(init_expr)?;
+                        if let Some(&idx) = self.current_task_state_fields.get(field_name.as_str()) {
+                            self.emit(OpCode::STORE_STATE_FIELD);
+                            self.code.push(idx);
+                        }
+                    }
                     // Compile the hook body
                     self.push_scope();
                     for stmt in &start_hook.body.stmts {
@@ -3179,6 +3208,9 @@ impl Codegen {
                 // Note: Lifecycle hooks and message handlers are now compiled to bytecode.
                 // The FFI shim_task_spawn function creates a TaskInstance and
                 // registers it in the TaskRegistry.
+
+                // Plan 327: clear state fields now that this TaskDef is compiled.
+                self.current_task_state_fields.clear();
             }
             Stmt::Node(node) => {
                 // Stmt::Node wraps an Expr::Node — compile the expression
@@ -3958,8 +3990,14 @@ impl Codegen {
                     self.last_expr_type = ObjectType::Int;
                 }
 
+                // Plan 327: actor state field read (inside task hooks/handlers).
+                // Takes precedence over ordinary locals — state fields are the
+                // persistent per-actor storage accessed via LOAD_STATE_FIELD.
+                if let Some(&field_idx) = self.current_task_state_fields.get(&name_str) {
+                    self.emit(OpCode::LOAD_STATE_FIELD);
+                    self.code.push(field_idx);
                 // Check if this is a captured variable (Plan 071)
-                if let Some(_capture_index) = self.current_captured_vars().get(&name_str) {
+                } else if let Some(_capture_index) = self.current_captured_vars().get(&name_str) {
                     // Variable is captured - emit LOAD_CAPTURED
                     vm_debug!("DEBUG: Variable {} is captured", name_str);
                     self.emit_load_captured(&name_str);
@@ -4425,11 +4463,29 @@ impl Codegen {
                     if let Expr::Ident(name) = lhs.as_ref() {
                         let name_str = name.to_string();
 
+                        // Plan 327: compound assignment to actor state field
+                        // (e.g., count += 1 inside a handler). LOAD_STATE_FIELD,
+                        // compile RHS, op, DUP, STORE_STATE_FIELD.
+                        if let Some(&field_idx) = self.current_task_state_fields.get(&name_str) {
+                            self.emit(OpCode::LOAD_STATE_FIELD);
+                            self.code.push(field_idx);
+                            self.compile_expr(rhs)?;
+                            self.emit(match op {
+                                Op::AddEq => OpCode::ADD,
+                                Op::SubEq => OpCode::SUB,
+                                Op::MulEq => OpCode::MUL,
+                                Op::DivEq => OpCode::DIV,
+                                Op::ModEq => OpCode::MOD,
+                                _ => OpCode::NOP,
+                            });
+                            self.emit(OpCode::DUP);
+                            self.emit(OpCode::STORE_STATE_FIELD);
+                            self.code.push(field_idx);
                         // Check if this is a captured variable (Plan 071)
-                        if self.current_captured_vars().contains_key(&name_str) {
+                        } else if self.current_captured_vars().contains_key(&name_str) {
                             // Variable is captured - we need different handling
                             return Err(crate::error::AutoError::Msg(
-                                "Compound assignment to captured variables not yet supported in AutoVM".to_string()
+                                "Compound assignment to captured variables not yet supported in AutoVM".to_string(),
                             ));
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
                             // Variable found in local scope - check mutability
@@ -4496,8 +4552,15 @@ impl Codegen {
                             }
                         }
 
+                        // Plan 327: actor state field assignment (inside task
+                        // hooks/handlers). DUP keeps the value as the assignment
+                        // expression's result, then STORE_STATE_FIELD persists it.
+                        if let Some(&field_idx) = self.current_task_state_fields.get(&name_str) {
+                            self.emit(OpCode::DUP);
+                            self.emit(OpCode::STORE_STATE_FIELD);
+                            self.code.push(field_idx);
                         // Check if this is a captured variable (Plan 071)
-                        if self.current_captured_vars().contains_key(&name_str) {
+                        } else if self.current_captured_vars().contains_key(&name_str) {
                             // Variable is captured - emit STORE_CAPTURED
                             self.emit(OpCode::DUP); // Keep value for expression result
                             self.emit_store_captured(&name_str);

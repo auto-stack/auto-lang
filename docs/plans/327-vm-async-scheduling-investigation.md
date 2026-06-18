@@ -204,7 +204,16 @@
 
 ### 已知遗留(Phase 1 未覆盖)
 
-1. **task state 字段不工作**:`task T { count = 0 }` 的 `count` 被 parser 接受(add_state),但 codegen 的 Stmt::TaskDef **不编译 state field** —— handler 里访问 `count` 是未定义变量。这是风险 1 的确认结论。修复需 codegen 把 state field 编译成 task 私有存储(handler 间保持),是 Phase 1 之后的增强。
+1. **task state 字段**(部分实现,2026-06-18):`task T { count = 0 }` 的 state
+   field 通过新增 `LOAD_STATE_FIELD`/`STORE_STATE_FIELD` opcode(0xC3/0xC4) +
+   `AutoTask.state_vars: Vec<NanoValue>` 实现。codegen 在 TaskDef 编译时为
+   state field 分配 idx 并填充 `current_task_state_fields`,在 start hook 开头
+   emit 初始化,在 handler 里把 state field 名的读取/赋值/复合赋值编译成对应
+   opcode。**已验证**:声明、初始化、`count = count + 1` 递增、条件分支
+   `if count == N`、跨 handler 持久保持(actor_state_tests.rs 2 测试全绿)。
+   **已知限制**:state field 名作为 `print(count)` 参数或 `let c = count` RHS
+   时,某些 intrinsic/let 的 codegen 路径绕过了 state field 检查,报 undefined
+   variable。这是 codegen 变量解析分散导致的边缘问题,核心机制可用。
 2. **producer/consumer 跨 actor**:单 actor 的 start + 消息处理工作了,但两个 actor 互相 send(h.send 给另一个 actor 的 handle)未验证 —— 需要 actor 能持有并传递 TaskHandle。这是 Phase 1 的自然延伸,待后续。
 3. **scheduler.rs 路径未清理**:旧的 task_system mailbox + execute_handler_fully 占位路径仍在(dead code),本计划不动(避免扩大范围)。
 4. **并发性**:run_task_loop 单线程协作式,actor 交错执行非真并发。对 MVP 足够。

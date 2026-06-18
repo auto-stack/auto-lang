@@ -47,6 +47,7 @@ mod infer_tests;
 mod autodown_tests;
 mod generator_tests; // Plan 326: generator for-loop regression tests
 mod actor_tests; // Plan 327 Phase 1: Task/Msg actor handler execution
+mod actor_state_tests; // Plan 327: actor state field persistence
 // `mod async_probe_tests;` was removed: it referenced a non-existent file (a
 // research placeholder from the "VM 真异步调度统一调研报告" commit, self-marked
 // "调研后删除") and broke `cargo test --lib` on master. The research report

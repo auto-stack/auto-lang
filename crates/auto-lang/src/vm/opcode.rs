@@ -260,6 +260,15 @@ pub enum OpCode {
                              // Non-blocking poll: check if future is ready
                              // Returns (true, value) if ready, (false, nil) if pending
 
+    // === Plan 327: Task actor state fields ===
+    // Actor state fields persist across handler invocations on the actor's
+    // AutoVM task. They are stored in a per-task region of task.ram at fixed
+    // absolute offsets (allocated at spawn time, above the bp region). These
+    // opcodes use absolute addressing (not bp-relative) so any handler frame
+    // can access them regardless of the current bp.
+    LOAD_STATE_FIELD = 0xC3,  // field_idx: u8 -> value (load actor state field)
+    STORE_STATE_FIELD = 0xC4, // field_idx: u8, value -> void (store actor state field)
+
     // === Debug ===
     SOURCE_LINE = 0xFE, // line: u16 -> void (Plan 199: record current source line)
     PRINT = 0xF0,
@@ -317,6 +326,8 @@ impl OpCode {
         0xB8, 0xB9,
         // Async
         0xC0, 0xC1, 0xC2,
+        // Plan 327: Actor state fields
+        0xC3, 0xC4,
         // Error/Option
         0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5,
         // Type casts
@@ -503,6 +514,8 @@ impl OpCode {
             Self::CREATE_FUTURE => "create.future",
             Self::AWAIT_FUTURE => "await.future",
             Self::POLL_FUTURE => "poll.future",
+            Self::LOAD_STATE_FIELD => "load.state_field",
+            Self::STORE_STATE_FIELD => "store.state_field",
             Self::SOURCE_LINE => ".line",
             Self::PRINT => "print",
             Self::PUSH_NIL => "push.nil",
@@ -679,6 +692,8 @@ impl OpCode {
             "create.future" => Some(Self::CREATE_FUTURE),
             "await.future" => Some(Self::AWAIT_FUTURE),
             "poll.future" => Some(Self::POLL_FUTURE),
+            "load.state_field" => Some(Self::LOAD_STATE_FIELD),
+            "store.state_field" => Some(Self::STORE_STATE_FIELD),
             ".line" => Some(Self::SOURCE_LINE),
             "print" => Some(Self::PRINT),
             "push.nil" => Some(Self::PUSH_NIL),
