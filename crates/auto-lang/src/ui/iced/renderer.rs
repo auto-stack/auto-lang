@@ -970,16 +970,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     btn = btn.on_press(onclick);
                 }
 
-                // Apply visual styling to button
+                // Apply visual styling to button. Always apply a class-driven
+                // style: build_button_style yields a chromeless (transparent)
+                // button when no background/border class is present, so a
+                // text-only button (e.g. `button(variant: "text")` or any button
+                // with only text classes) renders as text instead of iced's
+                // default Primary (blue).
                 if let Some(ref is) = iced_style {
-                    let has_visual = is.background_color.is_some()
-                        || is.border || is.rounded || is.border_radius.is_some()
-                        || is.shadow
-                        || is.border_width.map_or(false, |w| w == 0.0);
-                    if has_visual {
-                        let bs = build_button_style(is);
-                        btn = btn.style(move |_, _| bs);
-                    }
+                    let bs = build_button_style(is);
+                    btn = btn.style(move |_, _| bs);
                     if let Some(px) = is.padding {
                         btn = btn.padding(px);
                     } else if is.padding_x.is_some() || is.padding_y.is_some() {
@@ -989,6 +988,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     if let Some(ref w) = is.width { btn = btn.width(iced_length(w)); }
                     if let Some(ref h) = is.height { btn = btn.height(iced_length(h)); }
+                } else {
+                    // No style prop at all: chromeless instead of iced Primary.
+                    btn = btn.style(move |_, _| iced::widget::button::Style {
+                        background: None,
+                        ..Default::default()
+                    });
                 }
 
                 // Wrap in container if margin_top (from mt-*) needs to be applied

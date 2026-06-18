@@ -1616,7 +1616,27 @@ impl<'a> AuraViewBuilder<'a> {
             .or_else(|| self.extract_string_with(props, "label", bindings))
             .unwrap_or_else(|| "Button".to_string());
 
-        let style = self.extract_style(props);
+        // `variant` selects a base style preset (Tailwind classes); the user's
+        // class/style augments it. "text"/absent = chromeless (renders as text
+        // via the renderer's class-driven style); "primary" = filled blue.
+        let variant = self.extract_string_with(props, "variant", bindings)
+            .unwrap_or_default();
+        let preset: &str = match variant.as_str() {
+            "primary" => "bg-blue-500 hover:bg-blue-600 text-white font-medium rounded",
+            // "text" and any other/absent value: no preset — chromeless by default.
+            _ => "",
+        };
+        let style = {
+            let user = self.extract_string(props, "class")
+                .or_else(|| self.extract_string(props, "style"));
+            let merged = match (preset, user.as_deref()) {
+                ("", None) => String::new(),
+                ("", Some(c)) => c.to_string(),
+                (p, None) => p.to_string(),
+                (p, Some(c)) => format!("{} {}", p, c),
+            };
+            if merged.is_empty() { None } else { Style::parse(&merged).ok() }
+        };
 
         // Resolve the onclick event handler to a DynamicMessage
         let onclick = events.get("onclick")
