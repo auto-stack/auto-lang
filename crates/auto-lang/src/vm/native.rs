@@ -1850,6 +1850,9 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 // (10000 items), then stop. For auto-musk's SSE streaming, this
                 // is acceptable since LLM token streams are finite.
                 if gen_state.done {
+                    // Plan 326: keep stack contract — push the nil sentinel on
+                    // every call, including after done, so the for-loop exits.
+                    task.ram.push_i32(-1);
                     return Ok(());
                 }
 
@@ -1949,7 +1952,15 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     gen_state.resume_sp = 0; // reuse as index into stack_snapshot
                 }
 
-                // Return next collected value or signal done
+                // Return next collected value or signal done.
+                //
+                // Plan 326 fix (generator for-loop duplicate values): the done
+                // case MUST push -1 (the nil sentinel) just like every other
+                // iterator branch does via the trailing `push_i32(result)`.
+                // Previously this branch `return Ok(())`'d without pushing,
+                // leaving the caller's stack top as the previous value — the
+                // for-loop's `DUP; CONST -1; EQ` nil check then saw a stale
+                // non-nil value, re-entered the body, and consumed values twice.
                 let idx = gen_state.resume_sp;
                 if idx < gen_state.stack_snapshot.len() {
                     let nv = gen_state.stack_snapshot[idx];
@@ -1962,7 +1973,8 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     }
                 } else {
                     gen_state.done = true;
-                    // Don't push anything — for-loop sees no value → done
+                    // Push the nil sentinel so the for-loop's nil check exits.
+                    task.ram.push_i32(-1);
                 }
                 return Ok(());
             }

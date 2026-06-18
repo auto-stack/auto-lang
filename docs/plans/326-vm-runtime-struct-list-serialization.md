@@ -1,12 +1,18 @@
 # Plan 326: VM 运行时基础能力补全 — struct/List/序列化/类型转换
 
-> **Status**: Phase 1-5 完成(Phase 2/4 经核实已在早期 commit 解决;Phase 3/5 本次实现)
+> **Status**: Phase 1-5 全部完成 + §1 item 1(generator for-loop 重复值)已修复
 > **依赖**: Plan 321(generator 运行时);Plan 312(HTTP server)
 > **目标**: 修复阻塞 auto-musk 直接使用的 4 个 VM 运行时基础能力缺口
 > **验收**: `examples/ui/015-notes` 的 CRUD API 在 AutoVM 下端到端跑通
 
 ## 实施结果摘要(本次 session)
 
+- **Phase 1 遗留 — generator for-loop 值重复(§1 item 1)**:**已修复**。
+  根因:`shim_iterator_next` 的 Generator 分支在 done 时 `return Ok(())` 不 push
+  任何值,破坏了其他迭代器分支"末尾统一 push_i32(result)"的栈契约。for 循环的
+  `DUP; CONST -1; EQ` nil 检测读到栈上残留的旧值(非 -1),导致 body 重复执行、
+  每个 yield 值被消费两次。修复:两处 done 分支都 push -1(nil sentinel)。
+  3 个回归测试(generator_tests.rs)验证 sum/no-dup/string-yields。
 - **Phase 2(struct 字段访问)**:经系统化根因调查,`note.title 返回 0` 在隔离
   最小场景已无法复现(6 个回归测试全绿)。极可能在 Phase 1 generator 帧修复时
   连带解决。新增 17 个回归测试覆盖 struct 字面量/fn 返回/数组存储/for 循环场景。
@@ -24,7 +30,8 @@
 ## 回归验证
 
 - baseline: 2788 passed / 83 failed / 79 ignored
-- 本次改动: 2813 passed / 83 failed / 79 ignored(+25 新通过,零新失败)
+- Phase 3/5 提交: 2813 passed / 83 failed / 81 ignored(+25 新通过,零新失败)
+- §1 item 1 generator 修复: 2816 passed / 83 failed / 81 ignored(+3 新通过,零新失败)
 
 ## 端到端验收(纯 VM 模式 AutoVM http_server)
 

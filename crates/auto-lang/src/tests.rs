@@ -45,6 +45,7 @@ mod vm_functions_tests;
 mod vm_tests;
 mod infer_tests;
 mod autodown_tests;
+mod generator_tests; // Plan 326: generator for-loop regression tests
 // Plan 289: Book listing tests gated behind test-book feature (slow: ~5-7s each)
 #[cfg(feature = "test-book")]
 mod book_listing_tests;
