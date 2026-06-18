@@ -465,6 +465,12 @@ pub fn shim_env_get_or(key: String, default: String) -> String {
     std::env::var(&key).unwrap_or(default)
 }
 
+// ── Plan 309 Task 1.2 P5: PATH FFI ──────────────────────────────────────
+// TODO: Env.path_add/prepend/remove FFI deferred — #[rust_fn] registration
+// requires BIGVM_NATIVES updates in native.rs. The shell-side env.path
+// commands (cmd_env_path) already provide this functionality for interactive
+// use. FFI is only needed for .at scripts calling Env.path_add() directly.
+
 /// Get the local data directory (e.g. ~/.local/share on Unix, %APPDATA% on Windows)
 #[auto_macros::rust_fn("Env.local_data_dir")]
 pub fn shim_env_local_data_dir() -> String {
