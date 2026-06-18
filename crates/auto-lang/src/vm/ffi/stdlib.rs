@@ -2154,13 +2154,19 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
 
             let mut n_args = 0;
             for (_param_name, param_val) in &path_params {
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(param_val.as_bytes().to_vec());
-                    i
-                };
-                ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                // Plan 326 Phase 5: inject numeric path params as i32 so handlers
+                // declaring `id int` receive the right type. Non-numeric → string.
+                if let Ok(i) = param_val.parse::<i32>() {
+                    ht.ram.push_i32(i);
+                } else {
+                    let idx = {
+                        let mut strings = vm.strings.write().unwrap();
+                        let i = strings.len();
+                        strings.push(param_val.as_bytes().to_vec());
+                        i
+                    };
+                    ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                }
                 n_args += 1;
             }
             if !body.is_empty() {
@@ -2177,17 +2183,9 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
             match vm.call_fn_by_name(&mut ht, &fn_name, n_args) {
                 Ok(()) => {
                     let nv = ht.ram.pop_nv();
-                    if auto_val::is_string(nv) {
-                        let idx = auto_val::decode_string(nv);
-                        vm.strings.read().unwrap().get(idx as usize)
-                            .map(|b| String::from_utf8_lossy(b).to_string())
-                    } else if auto_val::is_i32(nv) {
-                        Some(auto_val::decode_i32(nv).to_string())
-                    } else if auto_val::is_null(nv) {
-                        Some("null".to_string())
-                    } else {
-                        Some("null".to_string())
-                    }
+                    // Plan 326 Phase 3: delegate to shared serializer (handles
+                    // struct/array/Option return values, not just string/i32/null).
+                    super::http_server::nv_to_json(vm, nv, 0)
                 }
                 Err(e) => {
                     eprintln!("[HTTP] Handler '{}' error: {:?}", fn_name, e);
@@ -2292,17 +2290,22 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             // tokio::sync::Mutex — use blocking_lock() for sync context
             let mut ht = handler_task_arc.blocking_lock();
 
-            // Push path params as string args (path params first, then body)
+            // Push path params as args (path params first, then body)
             let mut n_args = 0;
             for (_param_name, param_val) in &path_params {
-                // Allocate string in VM string pool and push
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(param_val.as_bytes().to_vec());
-                    i
-                };
-                ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                // Plan 326 Phase 5: numeric params → i32, otherwise string.
+                if let Ok(i) = param_val.parse::<i32>() {
+                    ht.ram.push_i32(i);
+                } else {
+                    // Allocate string in VM string pool and push
+                    let idx = {
+                        let mut strings = vm.strings.write().unwrap();
+                        let i = strings.len();
+                        strings.push(param_val.as_bytes().to_vec());
+                        i
+                    };
+                    ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                }
                 n_args += 1;
             }
             // Push body if present (for POST/PUT)
@@ -2319,19 +2322,10 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 
             match vm.call_fn_by_name(&mut ht, &fn_name, n_args) {
                 Ok(()) => {
-                    // Result is on top of stack — try to decode as string
+                    // Result is on top of stack — decode via shared serializer
+                    // (Plan 326 Phase 3: handles struct/array/Option returns).
                     let nv = ht.ram.pop_nv();
-                    if auto_val::is_string(nv) {
-                        let idx = auto_val::decode_string(nv);
-                        vm.strings.read().unwrap().get(idx as usize)
-                            .map(|b| String::from_utf8_lossy(b).to_string())
-                    } else if auto_val::is_i32(nv) {
-                        Some(auto_val::decode_i32(nv).to_string())
-                    } else if auto_val::is_null(nv) {
-                        Some("null".to_string())
-                    } else {
-                        Some("null".to_string())
-                    }
+                    super::http_server::nv_to_json(vm, nv, 0)
                 }
                 Err(e) => {
                     eprintln!("[HTTP] Handler '{}' error: {:?}", fn_name, e);

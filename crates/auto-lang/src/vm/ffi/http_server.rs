@@ -82,6 +82,511 @@ pub fn get_routes() -> Vec<HttpRoute> {
         .collect()
 }
 
+/// Plan 326 Phase 3: Serialize a handler return value (NanoValue) to a JSON string.
+///
+/// Root cause of the "handler returns struct → null" bug: struct/array return
+/// values leave a heap object ID (>= HEAP_OBJECT_BASE = 4_000_000) on the stack
+/// as an i32. The old serialization only checked `is_string`/`is_i32`/`is_null`,
+/// so a struct became the bare number `"4000000"` and a `?T` None became `"null"`.
+///
+/// This function recognizes heap object IDs and recursively expands them:
+/// - `GenericInstanceData` (user structs) → `{"field": value, ...}`
+/// - `Vec<Value>` (array literals `[...]`) → `[v1, v2, ...]`
+/// - Option `Some(x)` → the inner value's JSON; `None` → HTTP caller maps to 404
+///
+/// `depth` guards against cyclic references (objects referencing each other).
+pub fn nv_to_json(vm: &crate::vm::engine::AutoVM, nv: auto_val::NanoValue, depth: u32) -> Option<String> {
+    const MAX_DEPTH: u32 = 32;
+
+    // Tagged string (the canonical handler-returns-string path)
+    if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv);
+        let s = vm.strings.read().unwrap()
+            .get(idx as usize)
+            .map(|b| String::from_utf8_lossy(b).to_string())?;
+        return Some(json_escape_string(&s));
+    }
+    // f64 (not nanboxed as i32)
+    if auto_val::is_f64(nv) {
+        return Some(format_f64_json(auto_val::decode_f64(nv)));
+    }
+    if auto_val::is_f32(nv) {
+        return Some(format_f64_json(auto_val::decode_f32(nv) as f64));
+    }
+    if auto_val::is_bool(nv) {
+        return Some(if auto_val::decode_bool(nv) { "true".to_string() } else { "false".to_string() });
+    }
+    if auto_val::is_null(nv) {
+        return Some("null".to_string());
+    }
+    // Tagged object/list (formal TAG_OBJECT / TAG_LIST)
+    if auto_val::is_object(nv) {
+        let id = auto_val::decode_object(nv) as u64;
+        return heap_object_to_json(vm, id, depth);
+    }
+    if auto_val::is_list(nv) {
+        let id = auto_val::decode_list(nv) as u64;
+        return heap_object_to_json(vm, id, depth);
+    }
+    // i32: either a plain integer OR a heap/array object ID stored as i32.
+    // Array ids start at 2_000_000 (engine.rs array_id_gen), heap object ids
+    // at 4_000_000 (heap_object_id_gen). Rather than assume a range (which
+    // could misclassify large user integers), we probe the VM tables: if the
+    // value is a known array/heap id, expand it; otherwise treat as a plain int.
+    if auto_val::is_i32(nv) {
+        let v = auto_val::decode_i32(nv);
+        if depth < MAX_DEPTH {
+            let id = v as u64;
+            if vm.arrays.contains_key(&id) || vm.heap_objects.contains_key(&id) || vm.objects.contains_key(&id) {
+                if let Some(json) = heap_object_to_json(vm, id, depth) {
+                    return Some(json);
+                }
+            }
+        }
+        return Some(v.to_string());
+    }
+    Some("null".to_string())
+}
+
+/// Expand a heap object ID into JSON. Handles three storage backends used by
+/// the VM: `heap_objects` (GenericInstanceData, type instances), `arrays`
+/// (`Vec<Value>` from `[...]` literals), and `objects` (ObjectData maps).
+///
+/// Option handling: a `GenericInstanceData` whose mono_name starts with
+/// "Option.Some" is unwrapped to its single inner field; "Option.None"
+/// yields `None` (the HTTP layer maps this to 404).
+fn heap_object_to_json(
+    vm: &crate::vm::engine::AutoVM,
+    id: u64,
+    depth: u32,
+) -> Option<String> {
+    use crate::vm::generic_registry::GenericInstanceData;
+
+    // 1. heap_objects: GenericInstanceData (user-defined struct instances)
+    if let Some(obj) = vm.get_heap_object(id) {
+        let guard = obj.read().unwrap();
+        if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+            // Option unwrapping: Some(x) → inner value JSON; None → JSON null.
+            // (Plan 326: we serialize Option.None as `null` rather than 404 to
+            //  keep the JSON response well-formed. A 404 mapping can be layered
+            //  on later by the HTTP status branch if desired.)
+            if inst.mono_name.starts_with("Option.Some") {
+                if let Some(inner) = inst.get_field(0) {
+                    return value_to_json(vm, &inner, depth + 1);
+                }
+                return Some("null".to_string());
+            }
+            if inst.mono_name.starts_with("Option.None") || inst.mono_name == "Option.None" {
+                return Some("null".to_string());
+            }
+            // Regular struct: {"field": value, ...}
+            let mut parts: Vec<String> = Vec::new();
+            for (i, field_name) in inst.field_names.iter().enumerate() {
+                if let Some(field_val) = inst.get_field(i) {
+                    let val_json = value_to_json(vm, &field_val, depth + 1)
+                        .unwrap_or_else(|| "null".to_string());
+                    parts.push(format!("{}: {}", json_escape_string(field_name), val_json));
+                }
+            }
+            return Some(format!("{{{}}}", parts.join(", ")));
+        }
+        // Other heap objects (opaque types) — can't serialize generically.
+        return None;
+    }
+
+    // 2. arrays: Vec<Value> (array literals like [a, b, c])
+    if let Some(arr_ref) = vm.arrays.get(&id) {
+        let arr = arr_ref.read().unwrap();
+        let mut parts: Vec<String> = Vec::new();
+        for elem in arr.iter() {
+            let json = value_to_json(vm, elem, depth + 1)
+                .unwrap_or_else(|| "null".to_string());
+            parts.push(json);
+        }
+        return Some(format!("[{}]", parts.join(", ")));
+    }
+
+    // 3. objects: ObjectData maps ({ key: value, ... })
+    if let Some(obj_ref) = vm.objects.get(&id) {
+        let obj = obj_ref.read().unwrap();
+        let mut parts: Vec<String> = Vec::new();
+        for (key, val) in obj.fields.iter() {
+            let key_json = json_escape_string(&key.to_string());
+            let val_json = value_to_json(vm, val, depth + 1)
+                .unwrap_or_else(|| "null".to_string());
+            parts.push(format!("{}: {}", key_json, val_json));
+        }
+        return Some(format!("{{{}}}", parts.join(", ")));
+    }
+
+    None
+}
+
+/// Serialize a `Value` (the enum used inside arrays / struct fields) to JSON.
+/// Struct/array `Value`s carry heap object IDs in `Value::Int` (>= 4_000_000),
+/// which we re-dispatch through `heap_object_to_json`.
+fn value_to_json(vm: &crate::vm::engine::AutoVM, value: &auto_val::Value, depth: u32) -> Option<String> {
+    use auto_val::Value;
+    const MAX_DEPTH: u32 = 32;
+    if depth >= MAX_DEPTH {
+        return Some("null".to_string());
+    }
+    match value {
+        Value::Int(i) => {
+            // Probe the VM tables to decide: array/heap id → expand, else plain int.
+            let id = *i as u64;
+            if vm.arrays.contains_key(&id) || vm.heap_objects.contains_key(&id) || vm.objects.contains_key(&id) {
+                if let Some(json) = heap_object_to_json(vm, id, depth) {
+                    return Some(json);
+                }
+            }
+            Some(i.to_string())
+        }
+        Value::Uint(u) => Some(u.to_string()),
+        Value::I8(i) => Some(i.to_string()),
+        Value::U8(u) => Some(u.to_string()),
+        Value::I64(i) => Some(i.to_string()),
+        Value::Byte(b) => Some(b.to_string()),
+        Value::USize(u) => Some(u.to_string()),
+        Value::Bool(b) => Some(if *b { "true".to_string() } else { "false".to_string() }),
+        Value::Float(f) | Value::Double(f) => Some(format_f64_json(*f)),
+        Value::Char(c) => Some(json_escape_string(&c.to_string())),
+        Value::Str(s) => Some(json_escape_string(&s.to_string())),
+        Value::String(s) => Some(json_escape_string(&s.to_string())),
+        Value::StrSlice(s) => Some(json_escape_string(&s.to_string())),
+        Value::CStr(s) => Some(json_escape_string(s.as_str())),
+        Value::Nil | Value::Null => Some("null".to_string()),
+        Value::VmRef(r) => heap_object_to_json(vm, r.id as u64, depth),
+        // Fallback: render as null rather than crashing the HTTP response.
+        _ => Some("null".to_string()),
+    }
+}
+
+/// Escape a string as a JSON string literal (with surrounding quotes).
+fn json_escape_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\x08' => out.push_str("\\b"),
+            '\x0c' => out.push_str("\\f"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Format an f64 as JSON (integers without trailing .0, per JSON convention the
+/// number is still valid; we keep the natural Rust representation).
+fn format_f64_json(f: f64) -> String {
+    if f.is_nan() || f.is_infinite() {
+        "null".to_string()
+    } else if f.fract() == 0.0 && f.abs() < 1e16 {
+        format!("{}", f as i64)
+    } else {
+        format!("{}", f)
+    }
+}
+
+// =============================================================================
+// Plan 326 Phase 3: serialization unit tests
+// =============================================================================
+#[cfg(test)]
+mod plan326_tests {
+    use super::{format_f64_json, json_escape_string};
+
+    #[test]
+    fn json_escape_basic() {
+        assert_eq!(json_escape_string("hello"), r#""hello""#);
+    }
+
+    #[test]
+    fn json_escape_quotes_and_backslash() {
+        assert_eq!(json_escape_string(r#"a"b\c"#), r#""a\"b\\c""#);
+    }
+
+    #[test]
+    fn json_escape_control_chars() {
+        assert_eq!(json_escape_string("a\nb\tc"), r#""a\nb\tc""#);
+    }
+
+    #[test]
+    fn json_escape_unicode_control() {
+        // 0x01 is a control char → \u0001
+        assert_eq!(json_escape_string("\u{0001}"), r#""\u0001""#);
+    }
+
+    #[test]
+    fn f64_integer_no_trailing_dot() {
+        assert_eq!(format_f64_json(42.0), "42");
+        assert_eq!(format_f64_json(-7.0), "-7");
+    }
+
+    #[test]
+    fn f64_fractional_preserved() {
+        assert_eq!(format_f64_json(3.14), "3.14");
+    }
+
+    #[test]
+    fn f64_nan_and_inf_become_null() {
+        assert_eq!(format_f64_json(f64::NAN), "null");
+        assert_eq!(format_f64_json(f64::INFINITY), "null");
+        assert_eq!(format_f64_json(f64::NEG_INFINITY), "null");
+    }
+
+    /// Verify the probe-based id detection: a small plain int (not in any VM
+    /// table) must serialize as a plain number, never as an object/array.
+    #[test]
+    fn plain_int_not_treated_as_id() {
+        let vm = fresh_vm();
+        // 999999 is below all VM id bases and not inserted anywhere.
+        let nv = auto_val::encode_i32(999999);
+        assert_eq!(super::nv_to_json(&vm, nv, 0), Some("999999".to_string()));
+    }
+
+    // ---------------------------------------------------------------------
+    // VM-backed integration tests: construct a real AutoVM, insert objects,
+    // and verify nv_to_json expands them correctly.
+    // ---------------------------------------------------------------------
+
+    use crate::vm::engine::AutoVM;
+    use crate::vm::generic_registry::GenericInstanceData;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn fresh_vm() -> AutoVM {
+        // Empty flash is fine — nv_to_json only touches heap_objects/arrays/
+        // objects/string pool, none of which need compiled code.
+        let flash = VirtualFlash::new_with_code(vec![]);
+        AutoVM::new(flash, 1024)
+    }
+
+    #[test]
+    fn nv_to_json_plain_int() {
+        let vm = fresh_vm();
+        let nv = auto_val::encode_i32(42);
+        assert_eq!(super::nv_to_json(&vm, nv, 0), Some("42".to_string()));
+    }
+
+    #[test]
+    fn nv_to_json_string() {
+        let vm = fresh_vm();
+        let idx = {
+            let mut strings = vm.strings.write().unwrap();
+            strings.push(b"hello".to_vec());
+            strings.len() - 1
+        };
+        let nv = auto_val::encode_string(idx as u32);
+        assert_eq!(super::nv_to_json(&vm, nv, 0), Some(r#""hello""#.to_string()));
+    }
+
+    #[test]
+    fn nv_to_json_null() {
+        let vm = fresh_vm();
+        let nv = auto_val::encode_null();
+        assert_eq!(super::nv_to_json(&vm, nv, 0), Some("null".to_string()));
+    }
+
+    /// Struct return: the handler leaves a heap object ID (>= 4_000_000) on the
+    /// stack as i32. nv_to_json must expand it into {"field": value, ...}.
+    #[test]
+    fn nv_to_json_struct_expansion() {
+        let vm = fresh_vm();
+        let inst = GenericInstanceData::new_with_names(
+            "Note".to_string(),
+            vec![
+                auto_val::Value::Int(1),
+                auto_val::Value::Str(auto_val::AutoStr::from("hello")),
+            ],
+            vec!["id".to_string(), "title".to_string()],
+        );
+        let id = vm.insert_heap_object(inst);
+        // The handler return path pushes this id as i32 (see CONSTRUCT_INSTANCE).
+        let nv = auto_val::encode_i32(id as i32);
+        let json = super::nv_to_json(&vm, nv, 0).unwrap();
+        assert_eq!(json, r#"{"id": 1, "title": "hello"}"#);
+    }
+
+    /// Array of structs: the handler returns Vec<Value> where each element is
+    /// a struct stored as Value::Int(heap_id). Array id is allocated via the
+    /// VM's array_id_gen (starts at 2_000_000). nv_to_json must recurse.
+    #[test]
+    fn nv_to_json_array_of_structs() {
+        let vm = fresh_vm();
+        let a = GenericInstanceData::new_with_names(
+            "Note".to_string(),
+            vec![auto_val::Value::Int(0), auto_val::Value::Str(auto_val::AutoStr::from("a"))],
+            vec!["id".to_string(), "title".to_string()],
+        );
+        let b = GenericInstanceData::new_with_names(
+            "Note".to_string(),
+            vec![auto_val::Value::Int(1), auto_val::Value::Str(auto_val::AutoStr::from("b"))],
+            vec!["id".to_string(), "title".to_string()],
+        );
+        let id_a = vm.insert_heap_object(a) as i32;
+        let id_b = vm.insert_heap_object(b) as i32;
+        // Allocate an array id the same way the engine does (engine.rs:1585).
+        let arr_id = vm.array_id_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        vm.arrays.insert(arr_id, std::sync::Arc::new(std::sync::RwLock::new(vec![
+            auto_val::Value::Int(id_a),
+            auto_val::Value::Int(id_b),
+        ])));
+        // The handler returns the array id as i32.
+        let nv = auto_val::encode_i32(arr_id as i32);
+        let json = super::nv_to_json(&vm, nv, 0).unwrap();
+        assert_eq!(json, r#"[{"id": 0, "title": "a"}, {"id": 1, "title": "b"}]"#);
+    }
+
+    /// Option.Some(x) → unwrap to inner value's JSON.
+    #[test]
+    fn nv_to_json_option_some() {
+        let vm = fresh_vm();
+        let inst = GenericInstanceData::new_with_names(
+            "Option.Some".to_string(),
+            vec![auto_val::Value::Str(auto_val::AutoStr::from("found"))],
+            vec!["_0".to_string()],
+        );
+        let id = vm.insert_heap_object(inst);
+        let nv = auto_val::encode_i32(id as i32);
+        assert_eq!(super::nv_to_json(&vm, nv, 0), Some(r#""found""#.to_string()));
+    }
+
+    /// Option.None → JSON null (Plan 326: we serialize None as `null` to keep
+    /// the JSON response well-formed; a 404 mapping can be layered on later).
+    #[test]
+    fn nv_to_json_option_none() {
+        let vm = fresh_vm();
+        let inst = GenericInstanceData::new_with_names(
+            "Option.None".to_string(),
+            vec![],
+            vec![],
+        );
+        let id = vm.insert_heap_object(inst);
+        let nv = auto_val::encode_i32(id as i32);
+        assert_eq!(super::nv_to_json(&vm, nv, 0), Some("null".to_string()));
+    }
+
+    /// Nested struct: a field whose value is itself a struct (VmRef / Int heap-id).
+    #[test]
+    fn nv_to_json_nested_struct() {
+        let vm = fresh_vm();
+        let inner = GenericInstanceData::new_with_names(
+            "Point".to_string(),
+            vec![auto_val::Value::Int(3), auto_val::Value::Int(4)],
+            vec!["x".to_string(), "y".to_string()],
+        );
+        let inner_id = vm.insert_heap_object(inner) as i32;
+        let outer = GenericInstanceData::new_with_names(
+            "Box".to_string(),
+            vec![auto_val::Value::Int(inner_id)],
+            vec!["p".to_string()],
+        );
+        let outer_id = vm.insert_heap_object(outer);
+        let nv = auto_val::encode_i32(outer_id as i32);
+        let json = super::nv_to_json(&vm, nv, 0).unwrap();
+        assert_eq!(json, r#"{"p": {"x": 3, "y": 4}}"#);
+    }
+
+    // ---------------------------------------------------------------------
+    // Plan 326 Phase 3 end-to-end: spawn the real AutoVM HTTP server with a
+    // minimal #[api] program that returns a struct, then assert the HTTP
+    // response body is well-formed JSON (not the bare heap-id "4000000").
+    // ---------------------------------------------------------------------
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    /// Send a raw HTTP request to localhost:port and return the full response.
+    fn http_get(port: u16, path: &str) -> String {
+        // Retry-connect for up to ~5s while the server comes up.
+        let mut stream = None;
+        for _ in 0..50 {
+            if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                stream = Some(s);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let mut stream = stream.expect("could not connect to test HTTP server");
+        stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+        write!(stream, "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n", path).unwrap();
+        let mut resp = String::new();
+        stream.read_to_string(&mut resp).ok();
+        resp
+    }
+
+    /// Extract the body (after the blank line) from a raw HTTP response.
+    fn body_of(resp: &str) -> &str {
+        resp.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or(resp)
+    }
+
+    /// NOTE: these e2e tests start a real HTTP server. They set the
+    /// process-global AUTO_HTTP_PORT env var, so they MUST run serially.
+    /// Default-ignored to keep the parallel test suite green; run with:
+    ///   cargo test -p auto-lang --lib e2e_ -- --ignored --test-threads=1
+    #[test]
+    #[ignore]
+    fn e2e_struct_handler_returns_json() {
+        let port = 18731; // unique port per test to avoid clashes
+        std::env::set_var("AUTO_HTTP_PORT", port.to_string());
+        let code = format!(r#"
+type Note {{ id int; title str }}
+
+#[api(method = "GET", path = "/api/notes/test")]
+fn get_note() Note {{
+    Note {{ id: 1, title: "hello" }}
+}}
+"#);
+        // Run the program on a detached thread. run() detects #[api] routes
+        // and starts the AutoVM HTTP server, blocking this thread forever —
+        // which is fine, the test process exits after assertion.
+        let _server = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let _ = crate::run(&code);
+            })
+            .expect("spawn server thread");
+
+        let resp = http_get(port, "/api/notes/test");
+        let body = body_of(&resp);
+        // The fix: body must be JSON object, not the bare heap-id "4000000".
+        assert_eq!(
+            body, r#"{"id": 1, "title": "hello"}"#,
+            "struct handler JSON: full resp = {:?}", resp
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_int_path_param_handler() {
+        let port = 18732;
+        std::env::set_var("AUTO_HTTP_PORT", port.to_string());
+        let code = format!(r#"
+#[api(method = "GET", path = "/api/echo/:id")]
+fn echo_id(id int) int {{
+    id
+}}
+"#);
+        let _server = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let _ = crate::run(&code);
+            })
+            .expect("spawn server thread");
+
+        let resp = http_get(port, "/api/echo/42");
+        let body = body_of(&resp);
+        // Phase 5: :id injected as int 42, returned as-is.
+        assert_eq!(body, "42", "int path param: full resp = {:?}", resp);
+    }
+}
+
 /// Run the HTTP server in blocking mode using std::net (MVP).
 ///
 /// This is the current implementation — synchronous, serial request handling.
@@ -161,13 +666,23 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
 
             let mut n_args = 0;
             for (_param_name, param_val) in &route_match.path_params {
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(param_val.as_bytes().to_vec());
-                    i
-                };
-                ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                // Plan 326 Phase 5: path params arrive as strings, but handlers
+                // often declare them as `id int`. Try to parse as i32 first; if
+                // it's a pure integer literal, inject as i32 so the handler
+                // receives the right type. Non-numeric params stay strings.
+                // (Long-term: codegen should record per-param types in api_routes
+                //  so we can convert exactly. See plan §2 Phase 5.)
+                if let Ok(i) = param_val.parse::<i32>() {
+                    ht.ram.push_i32(i);
+                } else {
+                    let idx = {
+                        let mut strings = vm.strings.write().unwrap();
+                        let i = strings.len();
+                        strings.push(param_val.as_bytes().to_vec());
+                        i
+                    };
+                    ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                }
                 n_args += 1;
             }
             if !body.is_empty() {
@@ -250,18 +765,11 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                         }
                     }
 
-                    // Normal JSON response mode
-                    if auto_val::is_string(nv) {
-                        let idx = auto_val::decode_string(nv);
-                        vm.strings.read().unwrap().get(idx as usize)
-                            .map(|b| String::from_utf8_lossy(b).to_string())
-                    } else if auto_val::is_i32(nv) {
-                        Some(auto_val::decode_i32(nv).to_string())
-                    } else if auto_val::is_null(nv) {
-                        Some("null".to_string())
-                    } else {
-                        Some("null".to_string())
-                    }
+                    // Normal JSON response mode (Plan 326 Phase 3)
+                    // nv_to_json handles string/i32/f64/bool/null, and recognizes
+                    // heap object IDs (>= 4_000_000) to expand struct/array/Option
+                    // return values into proper JSON instead of bare "null".
+                    nv_to_json(vm, nv, 0)
                 }
                 Err(e) => {
                     eprintln!("[HTTP] Handler '{}' error: {:?}", route_match.fn_name, e);
