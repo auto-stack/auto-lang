@@ -142,6 +142,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE
         | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
         | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
+        | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
             => 1,
 
         OpCode::FN_PROLOG => 2,
@@ -256,6 +257,7 @@ fn emit_operands(
         | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE
         | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
         | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
+        | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
             => {
                 let v = operand_u8(&instr.operands, 0)?;
                 bytecode.push(v);

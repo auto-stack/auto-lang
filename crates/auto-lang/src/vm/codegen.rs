@@ -156,6 +156,14 @@ pub struct Codegen {
     /// instead of ordinary local variables.
     pub current_task_state_fields: HashMap<String, u8>,
 
+    /// Plan 327: Module-level global variables (top-level `var x = ...`).
+    /// Names accessible from ANY function via LOAD_GLOBAL/STORE_GLOBAL.
+    /// global_inits stores (name, init_expr) so main() can run initializers
+    /// at startup (the script wrapper's top-level code isn't executed because
+    /// execute_autovm spawns main_entry directly).
+    pub global_vars: std::collections::HashSet<String>,
+    pub global_inits: Vec<(String, crate::ast::Expr)>,
+
     /// Variable type tracking (Plan 080: support for instance methods on List, etc.)
     /// Maps variable name -> its type (e.g., "x" -> Type::List(Type::Int))
     /// Used to generate correct native method calls (e.g., x.push -> List.push)
@@ -349,6 +357,8 @@ impl Codegen {
             locals: HashMap::new(),
             scope_stack,
             current_task_state_fields: HashMap::new(), // Plan 327: actor state fields
+            global_vars: std::collections::HashSet::new(), // Plan 327: module-level vars
+            global_inits: Vec::new(), // Plan 327: global var initializers
             var_types: HashMap::new(), // Plan 080: variable type tracking
             var_mutability: HashMap::new(), // Plan 080+: variable mutability tracking
             captured_vars_stack: Vec::new(),
@@ -509,6 +519,8 @@ impl Codegen {
             locals: HashMap::new(),
             scope_stack,
             current_task_state_fields: HashMap::new(), // Plan 327
+            global_vars: std::collections::HashSet::new(), // Plan 327
+            global_inits: Vec::new(), // Plan 327
             var_types: HashMap::new(),
             var_mutability: HashMap::new(),
             captured_vars_stack: Vec::new(),
@@ -839,6 +851,17 @@ impl Codegen {
                 // 3. Push new scope for function locals
                 self.push_scope();
 
+                // Plan 327: For `fn main`, emit module-level global var
+                // initializers at the very top of the body. execute_autovm
+                // spawns main directly (skipping the script wrapper's top-level
+                // code), so without this globals would never be initialized.
+                if fn_decl.name == "main" {
+                    for (name, expr) in &self.global_inits.clone() {
+                        self.compile_expr(expr)?;
+                        self.emit_global_store(name);
+                    }
+                }
+
                 // 4. Compile function parameters
                 // Plan 088 Phase 4: Store parameter types and modes for smart parameter passing
                 let param_infos: Vec<ParamInfo> = fn_decl
@@ -1112,6 +1135,22 @@ impl Codegen {
                 // - x = 7: reassignment (error if x was declared with let)
 
                 let name_str = store.name.to_string();
+                // Plan 327: module-level global variable (top-level `var`).
+                // Compile the init expr and STORE_GLOBAL; skip local slot
+                // registration so the value lives in vm.globals (cross-fn).
+                if self.global_vars.contains(&name_str) && self.scope_stack.len() <= 1 {
+                    // Only treat as global at top level (scope_stack.len() <= 1
+                    // = script wrapper scope). Inside fns, a `var x` with the
+                    // same name as a global is a local shadow, not a global store.
+                    self.compile_expr(&store.expr)?;
+                    self.emit_global_store(&name_str);
+                    // Also pop the stored value if this is a statement context
+                    // (Store as stmt discards the value; STORE_GLOBAL already
+                    // consumed it, but compile_expr left it — actually
+                    // emit_global_store emits DUP-free STORE_GLOBAL that pops).
+                    // STORE_GLOBAL pops 1 (the value), so nothing left. Good.
+                    return Ok(());
+                }
                 let scope = self
                     .scope_stack
                     .last_mut()
@@ -4025,6 +4064,9 @@ impl Codegen {
                     if matches!(self.var_types.get(&name_str), Some(Type::U64 | Type::I64 | Type::Double)) {
                         self.emit_load_loc(var_index + 1);
                     }
+                } else if self.global_vars.contains(&name_str) {
+                    // Plan 327: module-level global variable.
+                    self.emit_global_load(&name_str);
                 } else {
                     // Plan 127: Check if this is an enum variant (e.g., Red from enum Color)
                     let enum_variant_value = self.type_store.read().unwrap()
@@ -4577,6 +4619,12 @@ impl Codegen {
                             self.emit(OpCode::DUP);
                             self.emit(OpCode::STORE_STATE_FIELD);
                             self.code.push(field_idx);
+                        // Plan 327: module-level global variable (check BEFORE
+                        // local lookup — otherwise top-level var would store to
+                        // a script-wrapper local that fns can't see).
+                        } else if self.global_vars.contains(&name_str) {
+                            self.emit(OpCode::DUP);
+                            self.emit_global_store(&name_str);
                         // Check if this is a captured variable (Plan 071)
                         } else if self.current_captured_vars().contains_key(&name_str) {
                             // Variable is captured - emit STORE_CAPTURED
@@ -4606,6 +4654,10 @@ impl Codegen {
                                 self.emit(OpCode::DUP); // Keep value for expression result
                                 self.emit_store_loc(var_index);
                             }
+                        } else if self.global_vars.contains(&name_str) {
+                            // Plan 327: module-level global variable assignment.
+                            self.emit(OpCode::DUP);
+                            self.emit_global_store(&name_str);
                         } else {
                             // Variable not found - this is an error
                             // For now, emit STORE_LOC_0 as a fallback
@@ -8668,6 +8720,22 @@ impl Codegen {
     /// Parameters: fn_scope_start <= index < fn_scope_start + n_args, stored at BP - n_args + (index - fn_scope_start)
     /// Locals: otherwise, stored at BP + 1 + (index - fn_scope_start - n_args)
     /// Uses dedicated opcodes for locals 0-2 for performance
+    /// Plan 327: Emit LOAD_GLOBAL for a module-level variable.
+    fn emit_global_load(&mut self, name: &str) {
+        let idx = self.strings.len() as u8;
+        self.strings.push(name.as_bytes().to_vec());
+        self.emit(OpCode::LOAD_GLOBAL);
+        self.code.push(idx);
+    }
+
+    /// Plan 327: Emit STORE_GLOBAL for a module-level variable.
+    fn emit_global_store(&mut self, name: &str) {
+        let idx = self.strings.len() as u8;
+        self.strings.push(name.as_bytes().to_vec());
+        self.emit(OpCode::STORE_GLOBAL);
+        self.code.push(idx);
+    }
+
     fn emit_load_loc(&mut self, index: usize) {
         vm_debug!("DEBUG: emit_load_loc called with index={}, n_args={}, fn_scope_start={}",
             index, self.current_fn_n_args, self.fn_scope_start

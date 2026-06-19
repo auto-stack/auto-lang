@@ -272,6 +272,11 @@ pub struct AutoVM {
     // pending_messages lived on AutoTask (which is behind tokio::sync::Mutex).
     pub task_mailboxes: DashMap<u64, std::sync::Mutex<Vec<auto_val::Value>>>,
 
+    // Plan 327: Global variables (module-level `var x = ...`).
+    // String-keyed so any function can read/write them via LOAD_GLOBAL/
+    // STORE_GLOBAL. DashMap for thread-safety (concurrent HTTP handlers).
+    pub globals: DashMap<String, auto_val::NanoValue>,
+
     // Plan 197 Task 9: Generic registry for field name lookup at runtime
     pub generic_registry: crate::vm::generic_registry::GenericRegistry,
 
@@ -378,6 +383,7 @@ impl AutoVM {
             futures: DashMap::new(),
             future_id_gen: AtomicU32::new(1),
             task_mailboxes: DashMap::new(), // Plan 327 Phase 1
+            globals: DashMap::new(), // Plan 327: module-level var storage
             // Plan 197 Task 9: Generic registry for runtime field name lookup
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(),
             // Plan 177: stdout capture (None = normal println)
@@ -5704,6 +5710,28 @@ impl AutoVM {
                         task.state_vars.resize(field_idx + 1, 0);
                     }
                     task.state_vars[field_idx] = val_nv;
+                }
+                // Plan 327: Global variable access (module-level var).
+                // name_idx: u16 indexes the string pool.
+                OpCode::LOAD_GLOBAL => {
+                    let name_idx = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+                    let name = self.strings.read().unwrap()
+                        .get(name_idx)
+                        .map(|b| String::from_utf8_lossy(b).to_string())
+                        .unwrap_or_default();
+                    let nv = self.globals.get(&name).map(|v| *v).unwrap_or(0);
+                    task.ram.push_nv(nv);
+                }
+                OpCode::STORE_GLOBAL => {
+                    let name_idx = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+                    let name = self.strings.read().unwrap()
+                        .get(name_idx)
+                        .map(|b| String::from_utf8_lossy(b).to_string())
+                        .unwrap_or_default();
+                    let nv = task.ram.pop_nv();
+                    self.globals.insert(name, nv);
                 }
                 OpCode::LOAD_LOC_1 => {
                     task.ram.push_nv(task.ram.read_nv(task.bp + 2));

@@ -598,6 +598,25 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
         codegen.emit_op(crate::vm::opcode::OpCode::RESERVE_STACK);
         codegen.emit_byte(n_locals as u8);
 
+        // Plan 327: Register module-level `var x = ...` as globals — but ONLY
+        // when this program has #[api] routes (HTTP server mode). In server
+        // mode, #[api] handlers are separate fns that can't see the script
+        // wrapper's locals, so module-level vars must be globals. In normal
+        // scripts (no #[api]), top-level vars stay as script-wrapper locals
+        // (the existing behavior, which many tests rely on).
+        let has_api_routes = other_stmts.iter().any(|s| {
+            matches!(s, crate::ast::Stmt::Fn(fd) if fd.api_attrs.is_some())
+        });
+        if has_api_routes {
+            for stmt in other_stmts.iter() {
+                if let crate::ast::Stmt::Store(store) = stmt {
+                    let name = store.name.to_string();
+                    codegen.global_vars.insert(name.clone());
+                    codegen.global_inits.push((name, store.expr.clone()));
+                }
+            }
+        }
+
         // Now compile the statements
         for stmt in other_stmts.iter() {
             codegen.compile_stmt(stmt)?;

@@ -269,6 +269,13 @@ pub enum OpCode {
     LOAD_STATE_FIELD = 0xC3,  // field_idx: u8 -> value (load actor state field)
     STORE_STATE_FIELD = 0xC4, // field_idx: u8, value -> void (store actor state field)
 
+    // === Plan 327: Global variables (module-level var accessible from all fns) ===
+    // String-keyed global storage on AutoVM.globals (DashMap). name_idx: u16
+    // indexes into the string pool. Top-level `var x = ...` compiles to
+    // STORE_GLOBAL; any fn reading/writing `x` compiles to LOAD/STORE_GLOBAL.
+    LOAD_GLOBAL = 0xC5,    // name_idx: u16 -> value
+    STORE_GLOBAL = 0xC6,   // name_idx: u16, value -> void
+
     // === Debug ===
     SOURCE_LINE = 0xFE, // line: u16 -> void (Plan 199: record current source line)
     PRINT = 0xF0,
@@ -326,8 +333,8 @@ impl OpCode {
         0xB8, 0xB9,
         // Async
         0xC0, 0xC1, 0xC2,
-        // Plan 327: Actor state fields
-        0xC3, 0xC4,
+        // Plan 327: Actor state fields + global variables
+        0xC3, 0xC4, 0xC5, 0xC6,
         // Error/Option
         0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5,
         // Type casts
@@ -516,6 +523,8 @@ impl OpCode {
             Self::POLL_FUTURE => "poll.future",
             Self::LOAD_STATE_FIELD => "load.state_field",
             Self::STORE_STATE_FIELD => "store.state_field",
+            Self::LOAD_GLOBAL => "load.global",
+            Self::STORE_GLOBAL => "store.global",
             Self::SOURCE_LINE => ".line",
             Self::PRINT => "print",
             Self::PUSH_NIL => "push.nil",
@@ -694,6 +703,8 @@ impl OpCode {
             "poll.future" => Some(Self::POLL_FUTURE),
             "load.state_field" => Some(Self::LOAD_STATE_FIELD),
             "store.state_field" => Some(Self::STORE_STATE_FIELD),
+            "load.global" => Some(Self::LOAD_GLOBAL),
+            "store.global" => Some(Self::STORE_GLOBAL),
             ".line" => Some(Self::SOURCE_LINE),
             "print" => Some(Self::PRINT),
             "push.nil" => Some(Self::PUSH_NIL),

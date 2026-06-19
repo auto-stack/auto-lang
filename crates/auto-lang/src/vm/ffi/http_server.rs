@@ -704,26 +704,32 @@ fn counter_handler() ~Iter<int> {{
         let code = format!(r#"
 type Note {{ id int; title str; body str; time str }}
 
+var notes = [
+    Note {{ id: 0, title: "Welcome", body: "first", time: "now" }},
+    Note {{ id: 1, title: "Shopping", body: "milk", time: "ago" }},
+]
+var nextid int = 2
+
 #[api(method = "GET", path = "/api/notes")]
 fn list_notes() []Note {{
-    return [
-        Note {{ id: 0, title: "Welcome", body: "first", time: "now" }},
-        Note {{ id: 1, title: "Shopping", body: "milk", time: "ago" }},
-    ]
+    return notes
 }}
 
 #[api(method = "GET", path = "/api/notes/:id")]
 fn get_note(id int) ?Note {{
-    let notes = [
-        Note {{ id: 0, title: "Welcome", body: "first", time: "now" }},
-        Note {{ id: 1, title: "Shopping", body: "milk", time: "ago" }},
-    ]
     for note in notes {{
         if note.id == id {{
             return Some(note)
         }}
     }}
     return None
+}}
+
+#[api(method = "POST", path = "/api/notes")]
+fn create_note(title str, body str) Note {{
+    let note = Note {{ id: nextid, title: title, body: body, time: "now" }}
+    nextid = nextid + 1
+    return note
 }}
 "#);
         let _server = std::thread::Builder::new()
