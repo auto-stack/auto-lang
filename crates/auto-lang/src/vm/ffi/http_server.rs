@@ -689,6 +689,69 @@ fn counter_handler() ~Iter<int> {{
         assert!(body2.contains("data: 1") && body2.contains("data: 2") && body2.contains("data: 3"),
             "conn2 incomplete: body={:?}", body2);
     }
+
+    /// Plan 327 Phase 4 validation: 015-notes-style CRUD on the async HTTP
+    /// server. Exercises the same patterns as examples/ui/015-notes/src/back:
+    ///   - list: returns []Note (array of structs → JSON array of objects)
+    ///   - get:  :id path param + ?Note (Option → inner value or null)
+    ///   - create: POST body (title/body) → Note
+    /// Uses a module-level var for in-memory storage (like db.at's `var notes`).
+    #[test]
+    #[ignore]
+    fn e2e_notes_crud() {
+        let port = 18736;
+        std::env::set_var("AUTO_HTTP_PORT", port.to_string());
+        let code = format!(r#"
+type Note {{ id int; title str; body str; time str }}
+
+#[api(method = "GET", path = "/api/notes")]
+fn list_notes() []Note {{
+    return [
+        Note {{ id: 0, title: "Welcome", body: "first", time: "now" }},
+        Note {{ id: 1, title: "Shopping", body: "milk", time: "ago" }},
+    ]
+}}
+
+#[api(method = "GET", path = "/api/notes/:id")]
+fn get_note(id int) ?Note {{
+    let notes = [
+        Note {{ id: 0, title: "Welcome", body: "first", time: "now" }},
+        Note {{ id: 1, title: "Shopping", body: "milk", time: "ago" }},
+    ]
+    for note in notes {{
+        if note.id == id {{
+            return Some(note)
+        }}
+    }}
+    return None
+}}
+"#);
+        let _server = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let _ = crate::run(&code);
+            })
+            .expect("spawn server thread");
+
+        // GET /api/notes → JSON array of Note objects
+        let resp_list = http_get(port, "/api/notes");
+        let body_list = body_of(&resp_list);
+        assert!(body_list.contains("\"title\": \"Welcome\""),
+            "list: body={:?}", body_list);
+        assert!(body_list.contains("\"title\": \"Shopping\""),
+            "list: body={:?}", body_list);
+        // Should be a JSON array: starts with [
+        assert!(body_list.trim_start().starts_with('['),
+            "list not array: body={:?}", body_list);
+
+        // GET /api/notes/1 → single Note (Option.Some unwrapped)
+        let resp_get = http_get(port, "/api/notes/1");
+        let body_get = body_of(&resp_get);
+        assert!(body_get.contains("\"id\": 1"),
+            "get id=1: body={:?}", body_get);
+        assert!(body_get.contains("\"title\": \"Shopping\""),
+            "get title: body={:?}", body_get);
+    }
 }
 
 /// Run the HTTP server in blocking mode using std::net (MVP).
