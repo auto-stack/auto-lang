@@ -302,6 +302,21 @@ pub fn synthesize_widget_module(
 
     let mut codegen = Codegen::new();
 
+    // 0. Pre-register every imported fn's return type so forward references
+    //    resolve during body compilation. Without this, an fn that calls a
+    //    LATER-defined helper (e.g. build_month_grid calls day_style, declared
+    //    below it in calendar_util.at) can't infer the call's return type, so
+    //    Codegen's infer_object_type defaults it to NestedObject — and an Obj
+    //    field whose value is that call (e.g. `style: day_style(...)`) gets
+    //    stored as a VmRef instead of a String, corrupting the value.
+    for stmt in &import_stmts {
+        if let Stmt::Fn(f) = stmt {
+            codegen
+                .fn_return_types
+                .insert(f.name.to_string(), f.ret.clone());
+        }
+    }
+
     // 1. Imports (functions, types, enums) — only declarations, skip `use`/script stmts.
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
