@@ -616,6 +616,40 @@ fn counter_handler() ~Iter<int> {{
         assert!(body.contains("data: 2"), "SSE frame 2: body={:?}", body);
         assert!(body.contains("data: 3"), "SSE frame 3: body={:?}", body);
     }
+
+    /// Plan 327 Phase 3 遗留: SSE handler that INDIRECTLY calls a generator
+    /// (handler itself has no yield; it calls a generator fn). The handler
+    /// returns the iter_id from the inner generator; SSE detection must still
+    /// fire on that iter_id.
+    #[test]
+    #[ignore]
+    fn e2e_sse_indirect_generator() {
+        let port = 18734;
+        std::env::set_var("AUTO_HTTP_PORT", port.to_string());
+        let code = format!(r#"
+fn counter() ~Iter<int> {{
+    yield 1
+    yield 2
+    yield 3
+}}
+#[api(method = "GET", path = "/api/stream")]
+fn stream_handler() ~Iter<int> {{
+    return counter()
+}}
+"#);
+        let _server = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let _ = crate::run(&code);
+            })
+            .expect("spawn server thread");
+
+        let resp = http_get(port, "/api/stream");
+        let body = body_of(&resp);
+        assert!(body.contains("data: 1"), "indirect SSE frame 1: body={:?}", body);
+        assert!(body.contains("data: 2"), "indirect SSE frame 2: body={:?}", body);
+        assert!(body.contains("data: 3"), "indirect SSE frame 3: body={:?}", body);
+    }
 }
 
 /// Run the HTTP server in blocking mode using std::net (MVP).

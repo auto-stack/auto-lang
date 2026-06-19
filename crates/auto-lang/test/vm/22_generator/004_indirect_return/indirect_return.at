@@ -1,0 +1,17 @@
+fn counter() ~Iter<int> {
+    yield 1
+    yield 2
+    yield 3
+}
+
+fn get_counter() ~Iter<int> {
+    return counter()
+}
+
+fn main() {
+    var sum = 0
+    for n in get_counter() {
+        sum = sum + n
+    }
+    print(sum)
+}

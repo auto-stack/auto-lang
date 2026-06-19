@@ -1064,6 +1064,19 @@ mod tests {
             Value::Obj(obj) => {
                 let label = obj.get_str("label").expect("cell.label must resolve");
                 assert!(!label.is_empty(), "cell.label should be a day number");
+                // Diagnostic: which fields does the cell Obj actually carry?
+                eprintln!(
+                    "[cell-diag] label={:?} date={:?} is_other_month(get_str)={:?} style={:?}",
+                    obj.get_str("label"),
+                    obj.get_str("date"),
+                    obj.get_str("is_other_month"),
+                    obj.get_str("style")
+                );
+                eprintln!(
+                    "[cell-diag] is_other_month raw = {:?}",
+                    obj.get("is_other_month")
+                );
+                eprintln!("[cell-diag] style raw = {:?}", obj.get("style"));
             }
             other => panic!(
                 "materialize_obj_ref(cell) should yield Value::Obj, got {:?}",

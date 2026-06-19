@@ -891,6 +891,7 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_22_generator_001_sum() { test_vm("22_generator/001_sum").unwrap(); }
 #[test] #[ignore] fn test_22_generator_002_no_dup() { test_vm("22_generator/002_no_dup").unwrap(); }
 #[test] #[ignore] fn test_22_generator_003_string_yields() { test_vm("22_generator/003_string_yields").unwrap(); }
+#[test] #[ignore] fn test_22_generator_004_indirect_return() { test_vm("22_generator/004_indirect_return").unwrap(); }
 
 // === 23_actor (Plan 327: Task/Msg actor handler execution + state) ===
 #[test] #[ignore] fn test_23_actor_001_start_hook() { test_vm("23_actor/001_start_hook").unwrap(); }

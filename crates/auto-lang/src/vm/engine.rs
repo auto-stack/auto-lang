@@ -4084,6 +4084,33 @@ impl AutoVM {
                     vm_debug!("DEBUG CALL: Calling function at address 0x{:04x}", target);
                     task.ip += 4;
 
+                    // Plan 327: Generator short-circuit. If the callee is a
+                    // generator function (contains YIELD_VAL), don't execute
+                    // its body inline — create an Iterator::Generator and push
+                    // its id, just like call_fn_by_name does. This makes
+                    // `fn handler() ~Iter<int> { counter() }` (indirect call)
+                    // work the same as inline yield, so SSE detection fires on
+                    // the returned iter_id. The generator body runs lazily on
+                    // the first next() (shim_iterator_next).
+                    let n_args_for_gen = task.current_fn_n_args; // best-effort; FN_PROLOG would set this
+                    if self.is_generator_fn(target) {
+                        let gen_state = GeneratorState {
+                            task_id: None,
+                            func_addr: target as u32,
+                            n_args: n_args_for_gen as u8,
+                            started: false,
+                            done: false,
+                            resume_ip: 0,
+                            resume_bp: 0,
+                            resume_sp: 0,
+                            stack_snapshot: Vec::new(),
+                        };
+                        let next_id = self.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        self.iterators.insert(next_id, Iterator::Generator(gen_state));
+                        task.ram.push_i32(next_id as i32);
+                        return Ok(StepResult::Continue);
+                    }
+
                     // Push Return Address (IP)
                     task.ram.push_i32(task.ip as i32);
                     // Push Old Stack Frame (BP)

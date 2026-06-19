@@ -7,6 +7,18 @@ use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
 use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
+
+/// Plan 327: Check whether a function body contains a `yield` expression.
+/// Used to avoid misclassifying wrapper functions like
+/// `fn get() ~Iter<int> { return counter() }` (no yield of their own) as
+/// generators — which would short-circuit them and skip the return. Matches
+/// the runtime is_generator_fn byte-scan (which looks for YIELD_VAL opcodes).
+/// Uses Debug-format substring scan for simplicity (the `Yield` token is
+/// unambiguous in the AST Debug output).
+fn body_contains_yield(body: &crate::ast::Body) -> bool {
+    format!("{:?}", body).contains("Yield")
+}
+
 // Plan 076 Phase 1: Generic type support
 use crate::vm::generic::{extract_generic_instance, GenericTable};
 // Plan 076 Phase 2: Monomorphization support
@@ -810,10 +822,16 @@ impl Codegen {
                     ));
                 }
 
-                // Plan 321: Detect generator functions (return type ~Iter<T> or ~Stream<T>)
-                // and mark them so call sites emit CREATE_GENERATOR instead of CALL.
+                // Plan 321/327: Detect generator functions (return type ~Iter<T>
+                // or ~Stream<T> AND body contains at least one yield). Marking
+                // only by return type would misclassify wrapper functions like
+                // `fn get() ~Iter<int> { return counter() }` (no yield of its
+                // own) as generators — short-circuiting them skips the return,
+                // yielding an empty iterator (sum=0 bug). Requiring a yield in
+                // the body matches the runtime is_generator_fn byte-scan.
                 if matches!(&fn_decl.ret, Type::GenericInstance(inst)
                     if inst.base_name.as_str() == "Iter" || inst.base_name.as_str() == "Stream")
+                    && body_contains_yield(&fn_decl.body)
                 {
                     self.generator_fns.insert(fn_decl.name.to_string());
                 }
