@@ -1627,8 +1627,10 @@ impl<'a> AuraViewBuilder<'a> {
             _ => "",
         };
         let style = {
-            let user = self.extract_string(props, "class")
-                .or_else(|| self.extract_string(props, "style"));
+            // Binding-aware so a class can come from the loop variable, e.g.
+            // `class: cell.style` where each cell carries its own Tailwind class.
+            let user = self.extract_string_with(props, "class", bindings)
+                .or_else(|| self.extract_string_with(props, "style", bindings));
             let merged = match (preset, user.as_deref()) {
                 ("", None) => String::new(),
                 ("", Some(c)) => c.to_string(),

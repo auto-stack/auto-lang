@@ -98,7 +98,7 @@ pub fn build_month_grid(year int, month int, today str, selected str) {
     for i < offset {
         let d = prev_dim - offset + 1 + i
         let ds = format_date(prev_year, prev_month, d)
-        cells.push({ label: d.to_string(), date: ds, is_other_month: true })
+        cells.push({ label: d.to_string(), date: ds, is_other_month: true, style: day_style(ds == today, ds == selected, true) })
         i = i + 1
     }
 
@@ -106,7 +106,7 @@ pub fn build_month_grid(year int, month int, today str, selected str) {
     var day = 1
     for day <= dim {
         let ds = format_date(year, month, day)
-        cells.push({ label: day.to_string(), date: ds, is_other_month: false })
+        cells.push({ label: day.to_string(), date: ds, is_other_month: false, style: day_style(ds == today, ds == selected, false) })
         day = day + 1
     }
 
@@ -116,7 +116,7 @@ pub fn build_month_grid(year int, month int, today str, selected str) {
     var nday = 1
     for cells.len() < 42 {
         let ds = format_date(next_year, next_month, nday)
-        cells.push({ label: nday.to_string(), date: ds, is_other_month: true })
+        cells.push({ label: nday.to_string(), date: ds, is_other_month: true, style: day_style(ds == today, ds == selected, true) })
         nday = nday + 1
     }
 
@@ -129,13 +129,13 @@ pub fn build_month_grid(year int, month int, today str, selected str) {
 /// loop bindings. Plan 323 Phase 2.)
 pub fn day_style(is_today bool, is_selected bool, is_other_month bool) str {
     if is_selected {
-        return "text-sm text-center py-2 bg-blue-500 text-white rounded-full font-bold"
+        return "text-sm text-center py-2 w-full bg-blue-500 text-white rounded-full font-bold"
     }
     if is_today {
-        return "text-sm text-center py-2 bg-blue-100 text-blue-700 rounded-full font-semibold"
+        return "text-sm text-center py-2 w-full bg-blue-100 text-blue-700 rounded-full font-semibold"
     }
     if is_other_month {
-        return "text-sm text-center py-2 text-gray-300"
+        return "text-sm text-center py-2 w-full text-gray-300"
     }
-    return "text-sm text-center py-2 text-gray-700 hover:bg-gray-100 rounded"
+    return "text-sm text-center py-2 w-full text-gray-700 hover:bg-gray-100 rounded"
 }
