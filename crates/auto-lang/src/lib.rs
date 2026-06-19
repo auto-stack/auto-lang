@@ -772,7 +772,18 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
                 let vm_ref: &AutoVM = unsafe {
                     &*(vm_addr_usize as *const AutoVM)
                 };
-                crate::vm::ffi::http_server::serve_blocking_stdnet(vm_ref, &addr_clone);
+                // Plan 327 Phase 4: concurrent server via tokio LocalSet.
+                // LocalSet allows spawn_local with !Send futures (AutoVM is
+                // !Send). All connection-handler tasks run cooperatively on
+                // this single thread — Goroutine-style concurrency.
+                let local_rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("local runtime for HTTP server");
+                let local_set = tokio::task::LocalSet::new();
+                local_set.block_on(&local_rt, async move {
+                    crate::vm::ffi::http_server::serve_async(vm_ref, &addr_clone).await;
+                });
             })
             .expect("Failed to spawn HTTP server thread");
 

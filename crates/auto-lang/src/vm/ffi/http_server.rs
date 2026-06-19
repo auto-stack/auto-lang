@@ -650,6 +650,45 @@ fn stream_handler() ~Iter<int> {{
         assert!(body.contains("data: 2"), "indirect SSE frame 2: body={:?}", body);
         assert!(body.contains("data: 3"), "indirect SSE frame 3: body={:?}", body);
     }
+
+    /// Plan 327 Phase 4: concurrent SSE — two simultaneous connections to the
+    /// same streaming endpoint. Both must receive complete data. Under the old
+    /// serial server, the second connection would block until the first's
+    /// generator exhausted. With serve_async + spawn_local + yield_now, the
+    /// two handlers interleave (Goroutine-style cooperative scheduling).
+    #[test]
+    #[ignore]
+    fn e2e_concurrent_sse() {
+        let port = 18735;
+        std::env::set_var("AUTO_HTTP_PORT", port.to_string());
+        let code = format!(r#"
+#[api(method = "GET", path = "/api/count")]
+fn counter_handler() ~Iter<int> {{
+    yield 1
+    yield 2
+    yield 3
+}}
+"#);
+        let _server = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let _ = crate::run(&code);
+            })
+            .expect("spawn server thread");
+
+        // Fire two connections concurrently from separate threads.
+        let h1 = std::thread::spawn(move || http_get(port, "/api/count"));
+        let h2 = std::thread::spawn(move || http_get(port, "/api/count"));
+        let resp1 = h1.join().expect("conn1");
+        let resp2 = h2.join().expect("conn2");
+        let body1 = body_of(&resp1);
+        let body2 = body_of(&resp2);
+        // Both connections must receive all three frames.
+        assert!(body1.contains("data: 1") && body1.contains("data: 2") && body1.contains("data: 3"),
+            "conn1 incomplete: body={:?}", body1);
+        assert!(body2.contains("data: 1") && body2.contains("data: 2") && body2.contains("data: 3"),
+            "conn2 incomplete: body={:?}", body2);
+    }
 }
 
 /// Run the HTTP server in blocking mode using std::net (MVP).
@@ -857,4 +896,227 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
         );
         let _ = stream.write_all(response.as_bytes());
     }
+}
+
+/// Plan 327 Phase 4: Concurrent HTTP server using tokio async I/O.
+///
+/// Replaces the serial `serve_blocking_stdnet` for the Goroutine-style
+/// concurrency model. The tokio runtime is `worker_threads(1)` (lib.rs:14),
+/// so all `tokio::spawn` tasks run cooperatively on a single thread — this
+/// matches Auto's Task model (single-thread, cooperative yield). &AutoVM is
+/// safe to share because there is no cross-thread access.
+///
+/// Each accepted connection becomes a `tokio::spawn` task:
+///   - JSON handlers: call_fn_by_name (synchronous), write response, done.
+///   - SSE handlers: pull generator values, write a frame per value, and
+///     `yield_now().await` after each frame so other connections' tasks get
+///     scheduled. This gives interleaved streaming (connection A's frame,
+///     connection B's frame, ...) without any single connection monopolizing
+///     the single worker.
+pub async fn serve_async(vm: &crate::vm::engine::AutoVM, addr: &str) {
+    use tokio::net::TcpListener;
+
+    // AutoVM is !Send and we need the spawned futures to be 'static (tokio
+    // requirement). Encode the VM reference as a usize (which is 'static +
+    // Send + Sync) and reconstruct &AutoVM inside each task. This is sound
+    // because serve_async runs in a LocalSet on the VM-owning thread; all
+    // spawned-local tasks run on that same thread.
+    let vm_ptr = vm as *const crate::vm::engine::AutoVM as usize;
+
+    let listener = match TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[HTTP] Async server bind failed on {}: {}", addr, e);
+            return;
+        }
+    };
+    eprintln!("[HTTP] Async server listening on {} (concurrent, single-worker)", addr);
+
+    let routes = get_routes();
+
+    loop {
+        let (mut stream, _peer) = match listener.accept().await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[HTTP] Accept error: {}", e);
+                continue;
+            }
+        };
+
+        let routes_clone = routes.clone();
+        let vp = vm_ptr; // usize is 'static + Copy
+        tokio::task::spawn_local(async move {
+            // SAFETY: LocalSet ensures single-thread execution. The VM lives
+            // for the duration of serve_async (server = process lifetime).
+            let vm: &crate::vm::engine::AutoVM = unsafe { &*(vp as *const _) };
+            handle_connection_async(vm, &mut stream, &routes_clone).await;
+        });
+    }
+}
+
+/// Handle a single HTTP connection (async). Parses the request, dispatches to
+/// the matched #[api] handler via call_fn_by_name, and writes the response.
+/// SSE handlers interleave with other connections via yield_now.
+async fn handle_connection_async(
+    vm: &crate::vm::engine::AutoVM,
+    stream: &mut tokio::net::TcpStream,
+    routes: &[HttpRoute],
+) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // Read the request line + headers (raw bytes; minimal parser).
+    let mut buf = vec![0u8; 8192];
+    let n = match stream.read(&mut buf).await {
+        Ok(n) if n > 0 => n,
+        _ => return,
+    };
+    let raw = String::from_utf8_lossy(&buf[..n]).to_string();
+    let mut lines = raw.lines();
+    let request_line = match lines.next() {
+        Some(l) => l,
+        None => return,
+    };
+    let parts: Vec<&str> = request_line.split_whitespace().collect();
+    if parts.len() < 2 {
+        let _ = stream.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n").await;
+        return;
+    }
+    let req_method = parts[0].to_uppercase();
+    let req_path = parts[1].to_string();
+
+    // Parse body (after blank line) if Content-Length present.
+    let mut content_length = 0usize;
+    let mut body = String::new();
+    let mut header_done = false;
+    for line in lines {
+        if !header_done {
+            if line.is_empty() {
+                header_done = true;
+                continue;
+            }
+            if line.to_lowercase().starts_with("content-length:") {
+                content_length = line[15..].trim().parse().unwrap_or(0);
+            }
+        } else if body.len() < content_length {
+            body.push_str(line);
+        }
+    }
+
+    // Route match
+    let route_match = match match_route(routes, &req_method, &req_path) {
+        Some(rm) => rm,
+        None => {
+            let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(resp.as_bytes()).await;
+            return;
+        }
+    };
+
+    // Dispatch to handler via call_fn_by_name (synchronous VM execution).
+    let handler_task_id = vm.spawn_task(0, 65536);
+    let n_args = build_handler_args(vm, handler_task_id, &route_match, &body);
+
+    let result_json = if let Some(_task_arc) = vm.tasks.get(&handler_task_id) {
+        let mut ht = match _task_arc.try_lock() {
+            Ok(t) => t,
+            Err(_) => { vm.tasks.remove(&handler_task_id); return; }
+        };
+        match vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args) {
+            Ok(()) => {
+                let nv = ht.ram.pop_nv();
+                // SSE detection: generator/iterator return → stream frames.
+                if auto_val::is_i32(nv) {
+                    let iter_id = auto_val::decode_i32(nv) as u32;
+                    if vm.iterators.contains_key(&iter_id) {
+                        drop(ht);
+                        let sse_header = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n";
+                        let _ = stream.write_all(sse_header.as_bytes()).await;
+                        let _ = stream.flush().await;
+                        // Pull generator values and write SSE frames. After each
+                        // frame, yield_now so other connections get scheduled
+                        // (Goroutine-style cooperative concurrency on the single
+                        // worker thread).
+                        loop {
+                            let next_task_id = vm.spawn_task(0, 1024);
+                            let next_val = if let Some(nt_arc) = vm.tasks.get(&next_task_id) {
+                                let mut nt = nt_arc.try_lock().unwrap();
+                                nt.ram.push_i32(iter_id as i32);
+                                let _ = crate::vm::native::shim_iterator_next(&mut nt, vm);
+                                nt.ram.pop_i32()
+                            } else { -1 };
+                            vm.tasks.remove(&next_task_id);
+                            if next_val == -1 { break; }
+                            let frame = format!("data: {}\n\n", next_val);
+                            let _ = stream.write_all(frame.as_bytes()).await;
+                            let _ = stream.flush().await;
+                            // Cooperative yield: let other connections' tasks run.
+                            tokio::task::yield_now().await;
+                        }
+                        None
+                    } else {
+                        nv_to_json(vm, nv, 0)
+                    }
+                } else {
+                    nv_to_json(vm, nv, 0)
+                }
+            }
+            Err(e) => {
+                eprintln!("[HTTP] Handler '{}' error: {:?}", route_match.fn_name, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    vm.tasks.remove(&handler_task_id);
+
+    // Non-SSE: write JSON response.
+    if let Some(result_json) = result_json {
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            result_json.len(), result_json
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+    }
+}
+
+/// Build handler arguments on the task's stack (path params + body).
+/// Returns the number of args pushed.
+fn build_handler_args(
+    vm: &crate::vm::engine::AutoVM,
+    task_id: u64,
+    route_match: &RouteMatch,
+    body: &str,
+) -> usize {
+    let mut n_args = 0;
+    if let Some(_task_arc) = vm.tasks.get(&task_id) {
+        if let Ok(mut task) = _task_arc.try_lock() {
+            for (_param_name, param_val) in &route_match.path_params {
+                if let Ok(i) = param_val.parse::<i32>() {
+                    task.ram.push_i32(i);
+                } else {
+                    let idx = {
+                        let mut strings = vm.strings.write().unwrap();
+                        let i = strings.len();
+                        strings.push(param_val.as_bytes().to_vec());
+                        i
+                    };
+                    task.ram.push_nv(auto_val::encode_string(idx as u32));
+                }
+                n_args += 1;
+            }
+            if !body.is_empty() {
+                let idx = {
+                    let mut strings = vm.strings.write().unwrap();
+                    let i = strings.len();
+                    strings.push(body.as_bytes().to_vec());
+                    i
+                };
+                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                n_args += 1;
+            }
+        }
+    }
+    n_args
 }

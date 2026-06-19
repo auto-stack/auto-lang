@@ -302,7 +302,7 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         .map_err(|e| format!("Failed to create rust/src: {}", e))?;
 
     // Generate Cargo.toml (workspace member version — no [workspace])
-    let cargo_toml = generate_cargo_toml();
+    let cargo_toml = generate_cargo_toml(&back_name);
     std::fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
         .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
 
@@ -330,19 +330,27 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
 }
 
 /// Generate Cargo.toml for the Rust server (workspace member version).
-fn generate_cargo_toml() -> String {
-    r#"[package]
-name = "api-server"
+///
+/// `package_name` must be unique across the shared workspace — multiple
+/// projects' backends live as siblings under `D:/.auto/rust-workspace`, and
+/// cargo forbids two members with the same package name. Use the per-project
+/// `back_member_name` (e.g. "015-notes-back"), not a fixed "api-server".
+fn generate_cargo_toml(package_name: &str) -> String {
+    format!(
+        r#"[package]
+name = "{}"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 axum.workspace = true
-tokio = { version = "1", features = ["full"] }
+tokio = {{ version = "1", features = ["full"] }}
 serde.workspace = true
 serde_json.workspace = true
 tower-http.workspace = true
-"#.to_string()
+"#,
+        package_name
+    )
 }
 
 /// Generate types.rs with serde structs
