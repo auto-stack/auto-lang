@@ -98,7 +98,7 @@ pub fn build_month_grid(year int, month int, today str, selected str) {
     for i < offset {
         let d = prev_dim - offset + 1 + i
         let ds = format_date(prev_year, prev_month, d)
-        cells.push({ label: d.to_string(), date: ds, is_other_month: true, style: "" + day_style(ds == today, ds == selected, true) })
+        cells.push({ label: d.to_string(), date: ds, is_other_month: true, style: day_style(ds == today, ds == selected, true) })
         i = i + 1
     }
 
@@ -106,7 +106,7 @@ pub fn build_month_grid(year int, month int, today str, selected str) {
     var day = 1
     for day <= dim {
         let ds = format_date(year, month, day)
-        cells.push({ label: day.to_string(), date: ds, is_other_month: false, style: "" + day_style(ds == today, ds == selected, false) })
+        cells.push({ label: day.to_string(), date: ds, is_other_month: false, style: day_style(ds == today, ds == selected, false) })
         day = day + 1
     }
 
@@ -116,7 +116,7 @@ pub fn build_month_grid(year int, month int, today str, selected str) {
     var nday = 1
     for cells.len() < 42 {
         let ds = format_date(next_year, next_month, nday)
-        cells.push({ label: nday.to_string(), date: ds, is_other_month: true, style: "" + day_style(ds == today, ds == selected, true) })
+        cells.push({ label: nday.to_string(), date: ds, is_other_month: true, style: day_style(ds == today, ds == selected, true) })
         nday = nday + 1
     }
 
