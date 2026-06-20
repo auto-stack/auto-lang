@@ -1243,7 +1243,21 @@ impl Automan {
                     let api_path = root_dir.join("src/back/api.at");
                     if api_path.exists() {
                         eprintln!("[AutoVM] Starting HTTP server from {} (module flattening enabled)", api_path.display());
-                        let _ = auto_lang::run_file(&api_path.to_string_lossy());
+                        let api_str = api_path.to_string_lossy().to_string();
+                        // Run in a large-stack thread (32MB) to avoid main-
+                        // thread stack overflow on large flattened code (015-notes
+                        // db.at + api.at + types.at combined exceeds the 1MB
+                        // default main-thread stack during parser/codegen recursion).
+                        let handle = std::thread::Builder::new()
+                            .stack_size(32 * 1024 * 1024)
+                            .name("auto-vm-server".into())
+                            .spawn(move || {
+                                if let Err(e) = auto_lang::run_file(&api_str) {
+                                    eprintln!("[AutoVM] Server error: {}", e);
+                                }
+                            })
+                            .expect("spawn VM server thread");
+                        let _ = handle.join();
                         Ok(())
                     } else {
                         Err("AutoVM server mode requires src/back/api.at".into())

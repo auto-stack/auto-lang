@@ -1953,42 +1953,51 @@ pub fn run_file(path: &str) -> AutoResult<String> {
 /// modules). The caller's `db.func()` calls are handled by codegen's module-
 /// prefix stripping (B3).
 fn flatten_module_deps(code: &str, source_path: &str) -> String {
+    let mut visited = std::collections::HashSet::new();
+    let mut parts: Vec<String> = Vec::new();
+    flatten_recursive(code, source_path, &mut visited, &mut parts);
+
+    // Main code last (already added by flatten_recursive for the entry point).
+    parts.join("\n")
+}
+
+/// Recursive helper: collect module deps depth-first, dedup by canonical path
+/// to break circular dependencies (e.g. api.at use db, db.at use api).
+fn flatten_recursive(
+    code: &str,
+    source_path: &str,
+    visited: &mut std::collections::HashSet<std::path::PathBuf>,
+    parts: &mut Vec<String>,
+) {
     let source_p = std::path::Path::new(source_path);
     let dir = source_p.parent().unwrap_or(std::path::Path::new("."));
 
     let deps = crate::use_scanner::scan_use_statements(code);
-    let mut parts: Vec<String> = Vec::new();
-    let mut visited = std::collections::HashSet::new();
-
     for dep in &deps {
         if dep.is_c_import || dep.is_rust_import {
             continue;
         }
-        // Resolve module path relative to source dir: use db → dir/db.at
         let module_file = dir.join(format!("{}.at", dep.module));
         let canon = match module_file.canonicalize() {
             Ok(c) => c,
-            Err(_) => continue, // module not found, skip
+            Err(_) => continue,
         };
         if !visited.insert(canon) {
-            continue;
+            continue; // already inlined (breaks circular deps)
         }
         if let Ok(dep_code) = std::fs::read_to_string(&module_file) {
-            // Recursively flatten the dependency's own deps.
             let dep_path = module_file.to_string_lossy().to_string();
-            parts.push(flatten_module_deps(&dep_code, &dep_path));
+            flatten_recursive(&dep_code, &dep_path, visited, parts);
         }
     }
 
-    // Dependencies first, then the main code. Strip `use <module>` lines
-    // (Auto modules) from the main code since their contents are now inlined.
-    // Keep `use.rust`/`use.c`/`use.py` (handled by resolve_deps/imports).
-    let main_code: String = code.lines().filter(|line| {
+    // Strip `use <module>` lines (Auto modules) — their contents are now inlined.
+    // Keep `use.rust`/`use.c`/`use.py`.
+    let clean_code: String = code.lines().filter(|line| {
         let trimmed = line.trim();
         !(trimmed.starts_with("use ") && !trimmed.starts_with("use."))
     }).collect::<Vec<_>>().join("\n");
-    parts.push(main_code);
-    parts.join("\n")
+    parts.push(clean_code);
 }
 
 /// Plan 199 Phase 5: Debug an Auto program with GDB-style interactive debugger
