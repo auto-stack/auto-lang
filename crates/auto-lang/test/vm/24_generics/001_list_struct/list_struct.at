@@ -1,0 +1,13 @@
+type Note { id int; title str }
+
+fn main() {
+    let notes = List<Note>.new([
+        Note { id: 0, title: "first" },
+        Note { id: 1, title: "second" },
+    ])
+    var count = 0
+    for n in notes {
+        count = count + 1
+    }
+    print(count)
+}

@@ -900,3 +900,6 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_23_actor_004_else_handler() { test_vm("23_actor/004_else_handler").unwrap(); }
 #[test] #[ignore] fn test_23_actor_005_state_write() { test_vm("23_actor/005_state_write").unwrap(); }
 #[test] #[ignore] fn test_23_actor_006_state_increment() { test_vm("23_actor/006_state_increment").unwrap(); }
+
+// === 24_generics (Plan 327: List<T> with custom struct elements) ===
+#[test] #[ignore] fn test_24_generics_001_list_struct() { test_vm("24_generics/001_list_struct").unwrap(); }
