@@ -1933,9 +1933,62 @@ pub fn run_file(path: &str) -> AutoResult<String> {
         return run_file_dynamic_ui(&code, Some(path));
     }
 
+    // Plan 327 Phase B: Flatten module dependencies (use db) into a single
+    // code unit. Collects db.at (and its transitive deps) relative to the
+    // source file's directory, prepends their code so all symbols are in one
+    // compilation unit. This lets #[api] handlers call db.all_notes() without
+    // a separate linker/module-loader pass.
+    let merged_code = flatten_module_deps(&code, path);
+
     // Plan 088 Phase 4: Use AutoVM instead of deprecated Interpreter
-    // This enables smart parameter passing and other AutoVM features
-    run(&code)
+    run(&merged_code)
+}
+
+/// Plan 327 Phase B: Flatten `use <module>` dependencies into the source code.
+///
+/// Reads each Auto module (e.g. `use db` → db.at) relative to the source file's
+/// directory, and prepends their contents. The result is a single code unit
+/// where all functions/types/vars from dependencies are top-level. `use`
+/// statements are kept (harmless — execute_autovm's resolve_uses ignores Auto
+/// modules). The caller's `db.func()` calls are handled by codegen's module-
+/// prefix stripping (B3).
+fn flatten_module_deps(code: &str, source_path: &str) -> String {
+    let source_p = std::path::Path::new(source_path);
+    let dir = source_p.parent().unwrap_or(std::path::Path::new("."));
+
+    let deps = crate::use_scanner::scan_use_statements(code);
+    let mut parts: Vec<String> = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+
+    for dep in &deps {
+        if dep.is_c_import || dep.is_rust_import {
+            continue;
+        }
+        // Resolve module path relative to source dir: use db → dir/db.at
+        let module_file = dir.join(format!("{}.at", dep.module));
+        let canon = match module_file.canonicalize() {
+            Ok(c) => c,
+            Err(_) => continue, // module not found, skip
+        };
+        if !visited.insert(canon) {
+            continue;
+        }
+        if let Ok(dep_code) = std::fs::read_to_string(&module_file) {
+            // Recursively flatten the dependency's own deps.
+            let dep_path = module_file.to_string_lossy().to_string();
+            parts.push(flatten_module_deps(&dep_code, &dep_path));
+        }
+    }
+
+    // Dependencies first, then the main code. Strip `use <module>` lines
+    // (Auto modules) from the main code since their contents are now inlined.
+    // Keep `use.rust`/`use.c`/`use.py` (handled by resolve_deps/imports).
+    let main_code: String = code.lines().filter(|line| {
+        let trimmed = line.trim();
+        !(trimmed.starts_with("use ") && !trimmed.starts_with("use."))
+    }).collect::<Vec<_>>().join("\n");
+    parts.push(main_code);
+    parts.join("\n")
 }
 
 /// Plan 199 Phase 5: Debug an Auto program with GDB-style interactive debugger

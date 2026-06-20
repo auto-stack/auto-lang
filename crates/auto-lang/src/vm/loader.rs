@@ -275,18 +275,31 @@ impl Linker {
             let mut mod_code = module.code.clone();
 
             for reloc in &module.relocs {
-                // Find symbol
-                let target_addr = global_symbols.get(&reloc.symbol_name).ok_or_else(|| {
-                    LinkError {
-                        message: format!(
-                            "Undefined symbol: {} in module {}",
-                            reloc.symbol_name, module.name
-                        ),
-                        symbol: reloc.symbol_name.clone(),
-                        module: module.name.clone(),
-                        source_pos: reloc.source_pos,
-                    }
-                })?;
+                // Find symbol. Plan 327 Phase B: after module flattening,
+                // "db.all_notes" should resolve to the "all_notes" export.
+                // Try exact match first, then strip module prefix and retry.
+                let target_addr = global_symbols.get(&reloc.symbol_name)
+                    .copied()
+                    .or_else(|| {
+                        reloc.symbol_name.split('.').last().and_then(|stripped| {
+                            if stripped != reloc.symbol_name {
+                                global_symbols.get(stripped).copied()
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .ok_or_else(|| {
+                        LinkError {
+                            message: format!(
+                                "Undefined symbol: {} in module {}",
+                                reloc.symbol_name, module.name
+                            ),
+                            symbol: reloc.symbol_name.clone(),
+                            module: module.name.clone(),
+                            source_pos: reloc.source_pos,
+                        }
+                    })?;
 
                 // Patch code
                 match reloc.reloc_type {

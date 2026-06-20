@@ -6769,7 +6769,20 @@ impl Codegen {
                 // a) The receiver's declared type is a spec, OR
                 // b) The function name (e.g., "tool.fly") doesn't exist in exports — likely dynamic dispatch
                 // But NOT when it's a known native (e.g., str.find) — those use CALL_NAT
-                let resolved_func = func_name.as_ref().and_then(|name| self.exports.get(name).copied());
+                let resolved_func = func_name.as_ref().and_then(|name| {
+                    // Plan 327 Phase B: module-prefix fallback. After flattening
+                    // (db.at inlined), "db.all_notes" should resolve to the
+                    // "all_notes" export. Strip the module prefix and retry.
+                    if let Some(addr) = self.exports.get(name).copied() {
+                        return Some(addr);
+                    }
+                    if let Some(stripped) = name.split('.').last() {
+                        if stripped != name {
+                            return self.exports.get(stripped).copied();
+                        }
+                    }
+                    None
+                });
                 let is_native = func_name.as_ref()
                     .map(|name| BIGVM_NATIVES.lock().unwrap().resolve_qualified(name).is_some())
                     .unwrap_or(false);
