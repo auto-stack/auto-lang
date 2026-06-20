@@ -758,6 +758,45 @@ fn create_note(title str, body str) Note {{
         assert!(body_get.contains("\"title\": \"Shopping\""),
             "get title: body={:?}", body_get);
     }
+
+    /// Plan 327 final validation: 015-notes backend pattern with List<Note>
+    /// generic + module-level var + #[api] handler returning the list.
+    /// This mirrors db.at's `var notes List<Note>` + `fn all_notes() []Note`.
+    #[test]
+    #[ignore]
+    fn e2e_notes_list_generic() {
+        let port = 18737;
+        std::env::set_var("AUTO_HTTP_PORT", port.to_string());
+        let code = format!(r#"
+type Note {{ id int; title str; body str; time str }}
+
+var notes = [
+    Note {{ id: 0, title: "Welcome", body: "first", time: "now" }},
+    Note {{ id: 1, title: "Shopping", body: "milk", time: "ago" }},
+]
+
+#[api(method = "GET", path = "/api/notes")]
+fn list_notes() []Note {{
+    return notes
+}}
+"#);
+        let _server = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let _ = crate::run(&code);
+            })
+            .expect("spawn server thread");
+
+        let resp = http_get(port, "/api/notes");
+        let body = body_of(&resp);
+        // List<Note> serialized as JSON array of Note objects.
+        assert!(body.contains("\"title\": \"Welcome\""),
+            "list generic frame 1: body={:?}", body);
+        assert!(body.contains("\"title\": \"Shopping\""),
+            "list generic frame 2: body={:?}", body);
+        assert!(body.trim_start().starts_with('['),
+            "list generic should be JSON array: body={:?}", body);
+    }
 }
 
 /// Run the HTTP server in blocking mode using std::net (MVP).
