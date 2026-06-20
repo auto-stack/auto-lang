@@ -1983,7 +1983,14 @@ impl<'a> Parser<'a> {
                 break;
             }
             self.next(); // skip binary op
-                         // Check for whether assignment is allowed
+            // Plan 327: Allow line continuation after || and && (and other
+            // binary ops) so multi-line conditions work:
+            //   if a.contains(x) ||
+            //      b.contains(x) {
+            if matches!(op, Op::Or | Op::And) {
+                self.skip_empty_lines();
+            }
+            // Check for whether assignment is allowed
             match op {
                 Op::Asn => {
                     self.check_asn(&lhs)?;
