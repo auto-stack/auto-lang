@@ -26,6 +26,7 @@ pub struct Automan {
     cache: Option<AutoManCache>, // Optional cache for builds
     render_override: Option<String>, // --render CLI override
     root_dir: PathBuf, // Project root directory (from pac.at location)
+    vm_server_mode: bool, // Plan 327: --server=vm → AutoVM HTTP backend
 }
 
 // Static API
@@ -218,6 +219,7 @@ impl Automan {
             cache: None,
             render_override: None,
             root_dir,
+            vm_server_mode: false,
         })
     }
 
@@ -279,6 +281,7 @@ impl Automan {
             }
         }
 
+        am.vm_server_mode = false;
         Ok(am)
     }
 
@@ -289,6 +292,11 @@ impl Automan {
 
     pub fn set_render(&mut self, render: String) {
         self.render_override = Some(render);
+    }
+
+    /// Plan 327: Enable AutoVM HTTP server backend (--server=vm).
+    pub fn set_vm_server_mode(&mut self, enabled: bool) {
+        self.vm_server_mode = enabled;
     }
 
     /// Resolve which backend to use:
@@ -1228,7 +1236,21 @@ impl Automan {
                 }
             }
             auto_lang::config::BackendType::Vm => {
-                crate::rust_ui::run_vm_ui(&root_dir, args)
+                if self.vm_server_mode {
+                    // Plan 327: --server=vm → AutoVM HTTP server with module
+                    // flattening. Find back/api.at (or main entry), run via
+                    // run_file which flattens use deps + starts serve_async.
+                    let api_path = root_dir.join("src/back/api.at");
+                    if api_path.exists() {
+                        eprintln!("[AutoVM] Starting HTTP server from {} (module flattening enabled)", api_path.display());
+                        let _ = auto_lang::run_file(&api_path.to_string_lossy());
+                        Ok(())
+                    } else {
+                        Err("AutoVM server mode requires src/back/api.at".into())
+                    }
+                } else {
+                    crate::rust_ui::run_vm_ui(&root_dir, args)
+                }
             }
             auto_lang::config::BackendType::Vscode => {
                 println!("Running VSCode extension (backend: vscode)");

@@ -269,6 +269,8 @@ enum Commands {
         port: Option<String>,
         #[arg(short, long, help = "Render target to use (vue, rust, vm, jet, arkts, tauri)")]
         render: Option<String>,
+        #[arg(long, help = "Backend server mode: vm (AutoVM HTTP) or rust (a2r, default)")]
+        server: Option<String>,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -604,7 +606,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, render, args }) => {
+        Some(Commands::Run { dir, port, render, server, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -629,6 +631,12 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             if let Some(b) = render {
                 am.set_render(b);
+            }
+            // Plan 327: --server=vm uses AutoVM HTTP server (with module
+            // flattening for use db), --server=rust (default) uses a2r.
+            let vm_server_mode = server.as_deref() == Some("vm");
+            if vm_server_mode {
+                am.set_vm_server_mode(true);
             }
             if !ai_mode {
                 info!("Running project ...");
