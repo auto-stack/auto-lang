@@ -236,6 +236,15 @@ impl CompileSession {
 
     }
 
+    /// Plan 327: Add a source directory to the search path for module resolution.
+    /// Called by execute_autovm_with_path to seed the directory of the source file,
+    /// so `use db` finds db.at relative to the source.
+    pub fn add_source_dir(&mut self, dir: std::path::PathBuf) {
+        if !self.source_dirs.contains(&dir) {
+            self.source_dirs.push(dir);
+        }
+    }
+
 
 
     /// Get reference to the type store (Plan 085)
@@ -1533,6 +1542,14 @@ impl CompileSession {
                 }
 
                 crate::ast::Stmt::Use(_) => {
+
+                    codegen.compile_stmt(stmt)?;
+
+                }
+
+                // Plan 327: module-level var (Stmt::Store) — compile so
+                // module vars like `var notes` are available to module fns.
+                crate::ast::Stmt::Store(_) => {
 
                     codegen.compile_stmt(stmt)?;
 

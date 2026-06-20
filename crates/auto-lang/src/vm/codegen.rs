@@ -307,6 +307,12 @@ pub struct Codegen {
     /// Plan 300: Bare Python module names (from `use.py math` without items).
     /// Used to resolve `module.method()` dot-calls at compile time.
     py_modules: std::collections::HashSet<String>,
+    /// Plan 327: Auto modules imported via `use <module>` (e.g. db, api).
+    /// When a method call's receiver matches one of these (e.g. db.func()),
+    /// codegen generates a CALL with reloc symbol "<module>.<func>" which
+    /// the linker resolves to the module's exported function (with prefix
+    /// fallback).
+    auto_modules: std::collections::HashSet<String>,
 
     /// Plan 212 Phase 2.2: Maps variable name → opaque crate name
     /// Tracks which variables hold opaque handles (e.g., "re" → "regex")
@@ -391,6 +397,7 @@ impl Codegen {
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
+            auto_modules: std::collections::HashSet::new(), // Plan 327: Auto modules
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
         };
@@ -553,6 +560,7 @@ impl Codegen {
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
+            auto_modules: std::collections::HashSet::new(), // Plan 327: Auto modules
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
         };
@@ -3364,6 +3372,12 @@ impl Codegen {
         // Only handle Auto imports (not C/Rust use)
         if !matches!(use_stmt.kind, crate::ast::UseKind::Auto) {
             return;
+        }
+
+        // Plan 327: Register the module name so codegen knows `db.func()`
+        // is a cross-module call (generates CALL with reloc "db.func").
+        if !use_stmt.paths.is_empty() {
+            self.auto_modules.insert(use_stmt.paths[0].to_string());
         }
 
         // Get the module path string
@@ -6803,10 +6817,34 @@ impl Codegen {
                             .unwrap_or(false)
                     } else { false }
                 } else { false };
+                // Plan 327: If this is an Auto module call (db.func()), generate
+                // a CALL with reloc so the linker resolves it to the module's
+                // exported function. Don't fall through to CALL_SPEC.
+                let is_auto_module_call = func_name.as_ref()
+                    .map(|name| {
+                        name.split('.').next()
+                            .map(|mod_name| self.auto_modules.contains(mod_name))
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false);
+
                 // Also use CALL_SPEC for unresolved static-like calls (e.g., Normal.new, Complex.new)
                 // where the type name starts with uppercase but isn't in exports/natives
                 // (is_unresolved_static was computed above before arg compilation)
-                if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static)) {
+                if is_auto_module_call && resolved_func.is_none() {
+                    // Generate CALL with reloc symbol = func_name (e.g. "db2.hello").
+                    // Linker's prefix fallback resolves it to the module's "hello".
+                    self.emit(OpCode::CALL);
+                    let placeholder_idx = self.code.len();
+                    self.code.extend_from_slice(&0u32.to_le_bytes());
+                    self.relocs.push(RelocEntry {
+                        offset: placeholder_idx as u32,
+                        symbol_name: func_name.as_ref().unwrap().clone(),
+                        reloc_type: RelocType::FuncCall,
+                        source_pos: None,
+                    });
+                    return Ok(());
+                } else if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static)) {
                     // Plan 249: Transparent unwrap for opaque handle values.
                     // If this is .unwrap()/.expect() on an opaque Rust crate value,
                     // skip CALL_SPEC — the receiver (inner call result) is already a valid handle.

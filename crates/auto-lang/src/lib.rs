@@ -537,6 +537,14 @@ fn init_py_ffi(_session: &compile::CompileSession) -> Option<crate::vm::native::
 /// Internal AutoVM execution function (async)
 /// Plan 177: capture parameter enables stdout capture for testing
 async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String)> {
+    execute_autovm_with_path(code, capture, None).await
+}
+
+/// Plan 327: execute_autovm with an optional source file path.
+/// When provided, the source directory is added to CompileSession.source_dirs
+/// so that `use db` can resolve db.at relative to the source file (true
+/// multi-module loading, not string flattening).
+async fn execute_autovm_with_path(code: &str, capture: bool, path: Option<&str>) -> AutoResult<(String, String)> {
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::opcode::OpCode;
@@ -545,6 +553,13 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
 
     // Plan 085: Pre-process use statements to load dependencies
     let mut session = compile::CompileSession::new();
+    // Plan 327: seed source_dirs with the source file's directory so that
+    // `use db` resolves db.at relative to the source, not the CWD.
+    if let Some(p) = path {
+        if let Some(dir) = std::path::Path::new(p).parent() {
+            session.add_source_dir(dir.to_path_buf());
+        }
+    }
     session.collect_rust_imports(code)?; // Plan 212b: collect use.rust imports before resolving deps
     session.collect_py_imports(code)?; // Plan 214: collect use.py imports
     session.resolve_deps(code)?; // Plan 212b: resolve dep statements (triggers compile_dep)
@@ -1933,71 +1948,30 @@ pub fn run_file(path: &str) -> AutoResult<String> {
         return run_file_dynamic_ui(&code, Some(path));
     }
 
-    // Plan 327 Phase B: Flatten module dependencies (use db) into a single
-    // code unit. Collects db.at (and its transitive deps) relative to the
-    // source file's directory, prepends their code so all symbols are in one
-    // compilation unit. This lets #[api] handlers call db.all_notes() without
-    // a separate linker/module-loader pass.
-    let merged_code = flatten_module_deps(&code, path);
-
-    // Plan 088 Phase 4: Use AutoVM instead of deprecated Interpreter
-    run(&merged_code)
+    // Plan 327: True multi-module loading via CompileSession. The source
+    // file's directory is added to source_dirs, so `use db` resolves db.at
+    // relative to the source. No string flattening — modules are compiled
+    // separately and linked by the Linker.
+    run_with_path(&code, path)
 }
 
-/// Plan 327 Phase B: Flatten `use <module>` dependencies into the source code.
-///
-/// Reads each Auto module (e.g. `use db` → db.at) relative to the source file's
-/// directory, and prepends their contents. The result is a single code unit
-/// where all functions/types/vars from dependencies are top-level. `use`
-/// statements are kept (harmless — execute_autovm's resolve_uses ignores Auto
-/// modules). The caller's `db.func()` calls are handled by codegen's module-
-/// prefix stripping (B3).
-fn flatten_module_deps(code: &str, source_path: &str) -> String {
-    let mut visited = std::collections::HashSet::new();
-    let mut parts: Vec<String> = Vec::new();
-    flatten_recursive(code, source_path, &mut visited, &mut parts);
-
-    // Main code last (already added by flatten_recursive for the entry point).
-    parts.join("\n")
-}
-
-/// Recursive helper: collect module deps depth-first, dedup by canonical path
-/// to break circular dependencies (e.g. api.at use db, db.at use api).
-fn flatten_recursive(
-    code: &str,
-    source_path: &str,
-    visited: &mut std::collections::HashSet<std::path::PathBuf>,
-    parts: &mut Vec<String>,
-) {
-    let source_p = std::path::Path::new(source_path);
-    let dir = source_p.parent().unwrap_or(std::path::Path::new("."));
-
-    let deps = crate::use_scanner::scan_use_statements(code);
-    for dep in &deps {
-        if dep.is_c_import || dep.is_rust_import {
-            continue;
-        }
-        let module_file = dir.join(format!("{}.at", dep.module));
-        let canon = match module_file.canonicalize() {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        if !visited.insert(canon) {
-            continue; // already inlined (breaks circular deps)
-        }
-        if let Ok(dep_code) = std::fs::read_to_string(&module_file) {
-            let dep_path = module_file.to_string_lossy().to_string();
-            flatten_recursive(&dep_code, &dep_path, visited, parts);
-        }
-    }
-
-    // Strip `use <module>` lines (Auto modules) — their contents are now inlined.
-    // Keep `use.rust`/`use.c`/`use.py`.
-    let clean_code: String = code.lines().filter(|line| {
-        let trimmed = line.trim();
-        !(trimmed.starts_with("use ") && !trimmed.starts_with("use."))
-    }).collect::<Vec<_>>().join("\n");
-    parts.push(clean_code);
+/// Run code with a source file path for module resolution.
+fn run_with_path(code: &str, path: &str) -> AutoResult<String> {
+    let code = code.to_string();
+    let path = path.to_string();
+    let handle = std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(move || {
+            let rt = get_global_runtime();
+            rt.block_on(async {
+                execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout)| {
+                    if !stdout.is_empty() { println!("{}", stdout); }
+                    r
+                })
+            })
+        })
+        .expect("Failed to spawn execution thread");
+    handle.join().unwrap()
 }
 
 /// Plan 199 Phase 5: Debug an Auto program with GDB-style interactive debugger
