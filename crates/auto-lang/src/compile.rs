@@ -1021,33 +1021,25 @@ impl CompileSession {
     /// Plan 094: 鍚屾椂鍔犺浇 .at (root) 鍜?.vm.at (context) 鏂囦欢锛屽悎骞跺鐞嗐€?
 
     fn load_module(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
-
-        // Plan 167: Circular dependency detection
-
-        if self.loading_stack.contains(&use_stmt.module) {
-
-            let cycle = format!("{} -> {}", self.loading_stack.join(" -> "), use_stmt.module);
-
-            return Err(AutoError::Msg(format!(
-
-                "Circular dependency detected: {}", cycle
-
-            )));
-
+        // Plan 327: If the module is already compiled (from a previous load or
+        // a different entry into a circular dependency), skip — don't recompile.
+        // This allows legitimate circular deps (db use api: Note + api use db)
+        // where types and functions cross-reference.
+        if self.compiled_modules.iter().any(|m| m.name == use_stmt.module) {
+            return Ok(());
         }
 
-
+        // Plan 167: Circular dependency detection — only error if the module
+        // is currently being loaded (true cycle, not already-resolved).
+        if self.loading_stack.contains(&use_stmt.module) {
+            // Instead of erroring, skip (the module is being loaded higher in
+            // the stack; its types/functions will be available once it finishes).
+            return Ok(());
+        }
 
         self.loading_stack.push(use_stmt.module.clone());
-
         let result = self.load_module_inner(use_stmt);
-
-
-
         self.loading_stack.pop();
-
-
-
         result
 
     }
@@ -2955,16 +2947,11 @@ mod tests {
 
 
 
-        // Should detect circular dependency
-
-        assert!(result.is_err());
-
-        let err = result.unwrap_err().to_string();
-
-        assert!(err.contains("Circular dependency"), "Expected 'Circular dependency' in error, got: {}", err);
-
-        assert!(err.contains("b -> a -> a"), "Expected cycle path in error, got: {}", err);
-
+        // Plan 327: circular deps are now allowed (skip, not error) —
+        // legitimate cross-references (db use api: Note + api use db) need
+        // this. The module being loaded ("a") is already in loading_stack,
+        // so load_module returns Ok(()) without re-loading.
+        assert!(result.is_ok(), "Circular dependency should be skipped (Ok), not error. Got: {:?}", result);
     }
 
 
