@@ -7617,6 +7617,16 @@ impl<'a> Parser<'a> {
             // This is a type alias: type List<T> = List<T, DefaultStorage>;
             self.next(); // Consume '='
 
+            // Plan 327: Record type alias: `type Note = { id: int; name: str }`
+            // The `=` is followed by `{` (record body), not a type name. Parse
+            // the fields and create a UserType (same as `type Note { ... }`).
+            if self.cur.kind == TokenKind::LBrace {
+                // Fall through to the normal type body parsing below (don't
+                // consume the `{` — the body parser expects it).
+            } else {
+            let target = self.parse_type()?;
+            self.expect(TokenKind::Semi)?;
+
             let target = self.parse_type()?;
             self.expect(TokenKind::Semi)?;
 
@@ -7641,6 +7651,7 @@ impl<'a> Parser<'a> {
                 params,
                 target,
             }));
+            } // close else (non-record type alias)
         }
 
         // Plan 052: Populate current_const_params map with const generic parameters
@@ -8058,6 +8069,12 @@ impl<'a> Parser<'a> {
         // Capture the position of the field name for LSP
         let name = self.parse_name()?;
         let name_pos = self.prev.pos;
+
+        // Plan 327: Support `name: Type` (colon-separated) in addition to
+        // `name Type` (space-separated). Record type aliases use colons.
+        if self.is_kind(TokenKind::Colon) {
+            self.next(); // consume ':'
+        }
 
         let ty = self.parse_type()?;
         let mut value = None;
