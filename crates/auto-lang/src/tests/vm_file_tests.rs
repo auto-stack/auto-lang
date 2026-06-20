@@ -903,3 +903,5 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 
 // === 24_generics (Plan 327: List<T> with custom struct elements) ===
 #[test] #[ignore] fn test_24_generics_001_list_struct() { test_vm("24_generics/001_list_struct").unwrap(); }
+#[test] #[ignore] fn test_24_generics_002_to_array() { test_vm("24_generics/002_to_array").unwrap(); }
+#[test] #[ignore] fn test_24_generics_003_filter() { test_vm("24_generics/003_filter").unwrap(); }

@@ -2739,6 +2739,35 @@ impl<'a> Parser<'a> {
             return self.group();
         }
 
+        // Plan 327: Anonymous function expression: fn(params) ret_type { body }
+        // Used as method args, e.g. notes.filter(fn(n Note) bool { n.id > 0 }).
+        if self.is_kind(TokenKind::Fn) {
+            self.next(); // consume 'fn'
+            // Parse params: (name Type, name Type, ...) or ()
+            self.expect(TokenKind::LParen)?;
+            let mut params = Vec::new();
+            if !self.is_kind(TokenKind::RParen) {
+                loop {
+                    let pname = self.parse_name()?;
+                    let pty = if self.is_type_name() { Some(self.parse_type()?) } else { None };
+                    params.push(crate::ast::ClosureParam::new(pname, pty));
+                    if !self.is_kind(TokenKind::Comma) { break; }
+                    self.next();
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+            // Optional return type
+            if self.is_type_name() { let _ = self.parse_type()?; }
+            // Body
+            self.skip_empty_lines();
+            let body = if self.is_kind(TokenKind::LBrace) {
+                Expr::Block(self.body()?)
+            } else {
+                self.parse_expr()?
+            };
+            return Ok(Expr::Closure(crate::ast::Closure::new(params, None, body)));
+        }
+
         // Handle generic type instances specially (e.g., List<int, Heap>)
         // This must be checked before the match statement since we need to consume
         // the identifier and potentially parse type parameters

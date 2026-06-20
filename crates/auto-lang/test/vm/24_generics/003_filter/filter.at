@@ -1,0 +1,13 @@
+type Note { id int; title str }
+
+fn main() {
+    let notes = List<Note>.new([
+        Note { id: 0, title: "a" },
+        Note { id: 1, title: "b" },
+        Note { id: 2, title: "c" },
+    ])
+    let filtered = notes.filter(fn(n Note) bool {
+        return n.id > 0
+    })
+    print("ok")
+}

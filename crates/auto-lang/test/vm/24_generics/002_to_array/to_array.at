@@ -1,0 +1,10 @@
+type Note { id int; title str }
+
+fn main() {
+    let notes = List<Note>.new([
+        Note { id: 0, title: "a" },
+        Note { id: 1, title: "b" },
+    ])
+    let arr = notes.to_array()
+    print("ok")
+}
