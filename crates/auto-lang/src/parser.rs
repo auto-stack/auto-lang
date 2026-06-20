@@ -2751,6 +2751,12 @@ impl<'a> Parser<'a> {
                     is_type = registry.borrow().is_type(&name);
                 }
             }
+            // Plan 327: Built-in container types (List, Array, Map) are always
+            // recognized as types so that List<Note>.new(...) parses as a
+            // GenName generic instance rather than "List < Note" comparison.
+            if !is_type && matches!(name.as_str(), "List" | "Array" | "Map") {
+                is_type = true;
+            }
 
             // Check for generic type instance: Identifier<Type, ...>
             if self.is_kind(TokenKind::Lt) && is_type {

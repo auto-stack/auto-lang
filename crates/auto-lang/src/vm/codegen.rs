@@ -5688,6 +5688,17 @@ impl Codegen {
                                     func_name
                                 }
                             }
+                            Expr::GenName(gen_name) => {
+                                // Plan 327: Generic type static method call, e.g.
+                                // List<Note>.new([...]). GenName is "List<Note>".
+                                // Strip the type args to get the base type name,
+                                // then build func_name as "Type.method" so the
+                                // existing BIGVM_NATIVES dispatch resolves it
+                                // (e.g. "List.new" → auto.list.new, "List.push"
+                                // → auto.list.push).
+                                let base = gen_name.split('<').next().unwrap_or(gen_name);
+                                Some(format!("{}.{}", base, method))
+                            }
                             _ => {
                                 // Complex expression (e.g., arr[0].push, foo().method, self.field.method)
                                 // Or literal expressions (e.g., 1.str(), "hello".upper())
@@ -7626,6 +7637,17 @@ impl Codegen {
                     self.emit_store_loc(var_idx);
                 }
                 // Push null as the expression result
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(0);
+            }
+            Expr::GenName(name) => {
+                // Plan 327: Generic type name as expression (e.g. List<Note>).
+                // This appears as the receiver of List<Note>.new(...). In that
+                // case the Dot/Call path handles it (5493 GenName arm). If it
+                // reaches compile_expr directly, it's a type reference with no
+                // runtime value — push a placeholder 0 (shouldn't happen in
+                // correct code; the method-call path intercepts it first).
+                let _ = name;
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(0);
             }
