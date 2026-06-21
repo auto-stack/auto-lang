@@ -684,6 +684,71 @@ impl Target {
             dep.transpile_auto()?;
         }
 
+        // Plan 328: If this is a Rust target with #[api] endpoints, generate
+        // the Axum server code (router.rs + main.rs) after a2r transpilation.
+        if self.lang.as_str() == "rust" {
+            if let Err(e) = self.generate_api_server() {
+                eprintln!("[a2r] API server generation failed: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Plan 328: Generate Axum HTTP server code from #[api] endpoints.
+    ///
+    /// Parses all .at source files, extracts #[api] endpoints via ApiExtractor,
+    /// then uses AxumGenerator to produce router.rs (handlers + router) and
+    /// main.rs (server entry point). These are written to rust/src/ alongside
+    /// the a2r-generated business logic files.
+    fn generate_api_server(&self) -> Result<(), String> {
+        use auto_lang::api::{ApiExtractor, ApiModule};
+        use auto_lang::api::targets::AxumGenerator;
+        use auto_lang::api::TargetGenerator;
+
+        // Collect #[api] endpoints from all .at source files
+        let mut combined_module = ApiModule::new("api".to_string());
+        let extractor = ApiExtractor::new();
+
+        for path in self.autos.iter() {
+            let content = std::fs::read_to_string(path.as_str())
+                .map_err(|e| format!("Failed to read '{}': {}", path, e))?;
+            // Parse the source file to get AST
+            let mut parser = auto_lang::parser::Parser::new(&content);
+            let code = match parser.parse() {
+                Ok(c) => c,
+                Err(_) => continue, // skip unparseable files
+            };
+            let api_module = extractor.extract("api", &code.stmts);
+            for endpoint in api_module.endpoints {
+                combined_module.add_endpoint(endpoint);
+            }
+            for typ in api_module.types {
+                combined_module.types.push(typ);
+            }
+        }
+
+        if combined_module.endpoints.is_empty() {
+            return Ok(()); // No #[api] endpoints, skip server generation
+        }
+
+        info!("[a2r] Generating Axum server with {} endpoint(s)", combined_module.endpoints.len());
+
+        // Generate router.rs (handlers + router)
+        let gen = AxumGenerator::new();
+        let router_code = gen.generate_full(&combined_module);
+        let rs_dir = "rust/src";
+        std::fs::create_dir_all(rs_dir)
+            .map_err(|e| format!("Failed to create dir '{}': {}", rs_dir, e))?;
+        std::fs::write(format!("{}/router.rs", rs_dir), router_code)
+            .map_err(|e| format!("Failed to write router.rs: {}", e))?;
+
+        // Generate main.rs (server entry point)
+        let main_code = gen.generate_server_main();
+        std::fs::write(format!("{}/main.rs", rs_dir), main_code)
+            .map_err(|e| format!("Failed to write main.rs: {}", e))?;
+
+        info!("[a2r] Generated rust/src/router.rs and rust/src/main.rs");
         Ok(())
     }
 

@@ -253,6 +253,61 @@ impl AxumGenerator {
 
         lines.join("\n")
     }
+
+    /// Plan 328: Generate the server main.rs — the entry point that starts
+    /// the Axum HTTP server. Binds to 0.0.0.0:8080 (or AUTO_HTTP_PORT env).
+    pub fn generate_server_main(&self) -> String {
+        let mut lines = Vec::new();
+        lines.push("#[tokio::main]".to_string());
+        lines.push("async fn main() {".to_string());
+        lines.push("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")".to_string());
+        lines.push("        .ok().and_then(|s| s.parse().ok()).unwrap_or(8080);".to_string());
+        lines.push("    let addr = format!(\"0.0.0.0:{}\", port);".to_string());
+        lines.push("    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();".to_string());
+        lines.push("    println!(\"[a2r] Server listening on {}\", addr);".to_string());
+        lines.push("    let app = create_api_router();".to_string());
+        lines.push("    axum::serve(listener, app).await.unwrap();".to_string());
+        lines.push("}".to_string());
+        lines.join("\n")
+    }
+
+    /// Plan 328: Generate the complete router.rs file content (handlers + router).
+    pub fn generate_full(&self, module: &ApiModule) -> String {
+        let mut output = Vec::new();
+
+        // Use declarations
+        output.push("// Plan 328: Auto-generated Axum HTTP server (a2r)".to_string());
+        output.push("use axum::{{Router, routing::{{get, post, put, delete}}, Json, extract::{{Path, Query}}, response::{{StatusCode, Sse, sse::Event}}}};".to_string());
+        output.push("use serde::{{Serialize, Deserialize}};".to_string());
+        output.push("use futures::StreamExt;".to_string());
+        output.push("".to_string());
+
+        // Handlers
+        for endpoint in &module.endpoints {
+            output.push(self.generate_handler(endpoint));
+            output.push("".to_string());
+        }
+
+        // Router
+        output.push("pub fn create_api_router() -> Router {".to_string());
+        output.push("    Router::new()".to_string());
+        for endpoint in &module.endpoints {
+            let handler_name = format!("{}_handler", endpoint.fn_name);
+            let method = endpoint.attrs.method.as_deref().unwrap_or("get").to_lowercase();
+            let path = endpoint.attrs.path.as_deref().unwrap_or("/");
+            let route = match method.as_str() {
+                "get" => format!("        .route(\"{}\", get({}))", path, handler_name),
+                "post" => format!("        .route(\"{}\", post({}))", path, handler_name),
+                "put" => format!("        .route(\"{}\", put({}))", path, handler_name),
+                "delete" => format!("        .route(\"{}\", delete({}))", path, handler_name),
+                _ => format!("        .route(\"{}\", post({}))", path, handler_name),
+            };
+            output.push(route);
+        }
+        output.push("}".to_string());
+
+        output.join("\n")
+    }
 }
 
 impl TargetGenerator for AxumGenerator {

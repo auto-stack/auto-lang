@@ -200,6 +200,20 @@ edition = "2021"
             }
         }
 
+        // Plan 328: If router.rs exists (a2r generated Axum server), inject
+        // fixed-version dependencies for axum/tokio/serde. These are required
+        // for the generated server code but won't appear via scan_rs_for_crates
+        // because they're in auto-generated use statements.
+        let router_rs = self.path.parent().join("src").join("router.rs");
+        if router_rs.path().exists() {
+            cargo_toml.push_str("axum = \"0.7\"\n");
+            cargo_toml.push_str("tokio = { version = \"1\", features = [\"full\"] }\n");
+            cargo_toml.push_str("serde = { version = \"1\", features = [\"derive\"] }\n");
+            cargo_toml.push_str("serde_json = \"1\"\n");
+            cargo_toml.push_str("futures = \"0.3\"\n");
+            eprintln!("[a2r] Injected axum/tokio/serde/futures dependencies");
+        }
+
         // Prevent cargo from detecting parent workspace
         cargo_toml.push_str("\n\n[workspace]\n");
 

@@ -131,13 +131,18 @@ impl ApiExtractor {
         api_module
     }
 
-    /// Extract API endpoint from function declaration
+    /// Extract API endpoint from function declaration.
+    /// Plan 328: now reads Fn.api_attrs (set by parser from #[api(method, path)]),
+    /// not a name-based heuristic. Only functions with #[api] become endpoints.
     fn extract_endpoint(&self, fn_decl: &Fn) -> Option<ApiEndpoint> {
-        // Check if function has API annotation or is public (if include_all_public)
-        // For now, we'll use a simple heuristic: check function name prefix
-        // In a full implementation, we'd store annotations on the Fn struct
-
-        let mut endpoint = ApiEndpoint::new(fn_decl.name.to_string(), ApiAttrs::new());
+        let ast_attrs = fn_decl.api_attrs.as_ref()?;
+        // Convert ast::ApiAttrs (String method/path) to api::types::ApiAttrs (Option)
+        let api_attrs = ApiAttrs {
+            method: Some(ast_attrs.method.clone()),
+            path: Some(ast_attrs.path.clone()),
+            ..Default::default()
+        };
+        let mut endpoint = ApiEndpoint::new(fn_decl.name.to_string(), api_attrs);
 
         // Extract parameters
         for param in &fn_decl.params {
