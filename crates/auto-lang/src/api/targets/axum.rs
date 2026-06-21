@@ -38,6 +38,14 @@ impl AxumGenerator {
             (trimmed, false)
         };
 
+        // Plan 328 env 5: SSE types (~Iter<T>, ~Stream<T>)
+        // These are detected in generate_handler for Sse response; here we
+        // map the inner element type.
+        if base_type.starts_with("~Iter<") || base_type.starts_with("~Stream<") {
+            let inner = &base_type[6..base_type.len()-1];
+            return self.to_rust_type(inner);
+        }
+
         // Handle array types
         let rust_type = if base_type.starts_with('[') && base_type.ends_with(']') {
             let inner = &base_type[1..base_type.len()-1];
@@ -176,12 +184,23 @@ impl AxumGenerator {
             }
         }
 
-        // Generate handler function
-        let return_type = self.to_rust_type(&endpoint.return_type);
-        let return_type = if return_type == "()" {
-            "axum::response::StatusCode".to_string()
+        // Plan 328 env 5+6: Determine return type wrapper.
+        // ~Iter<T> / ~Stream<T> → Sse<impl Stream> (SSE handler)
+        // []T → Json<Vec<T>>
+        // ?T → Json<Option<T>>
+        // void → StatusCode
+        let is_sse = endpoint.return_type.contains("~Iter") || endpoint.return_type.contains("~Stream");
+
+        let (return_type, is_sse_handler) = if is_sse {
+            // SSE handler: returns Sse<impl Stream<Item = Result<Event, Infallible>>>
+            ("axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>".to_string(), true)
         } else {
-            format!("Json<{}>", return_type)
+            let rt = self.to_rust_type(&endpoint.return_type);
+            if rt == "()" {
+                ("axum::response::StatusCode".to_string(), false)
+            } else {
+                (format!("Json<{}>", rt), false)
+            }
         };
 
         lines.push(format!("async fn {}_handler(", endpoint.fn_name));
@@ -207,7 +226,14 @@ impl AxumGenerator {
             }
         }
 
-        if return_type == "axum::response::StatusCode" {
+        if is_sse_handler {
+            // SSE: wrap the generator stream in Sse with Event mapping
+            lines.push(format!("{}let stream = api::{}({});", self.indent, endpoint.fn_name, call_args.join(", ")));
+            lines.push(format!("{}let sse_stream = stream.map(|item| {{", self.indent));
+            lines.push(format!("{}{}Ok(axum::response::sse::Event::default().data(item.to_string()))", self.indent, self.indent));
+            lines.push(format!("{}}});", self.indent));
+            lines.push(format!("{}axum::response::Sse::new(sse_stream)", self.indent));
+        } else if return_type == "axum::response::StatusCode" {
             lines.push(format!("{}api::{}({});", self.indent, endpoint.fn_name, call_args.join(", ")));
             lines.push(format!("{}axum::response::StatusCode::OK", self.indent));
         } else {
