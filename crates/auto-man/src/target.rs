@@ -704,6 +704,7 @@ impl Target {
     fn generate_api_server(&self) -> Result<(), String> {
         use auto_lang::api::{ApiExtractor, ApiModule};
         use auto_lang::api::targets::AxumGenerator;
+        use auto_lang::api::targets::TauriGenerator; // Plan 328 IPC
         use auto_lang::api::TargetGenerator;
 
         // Collect #[api] endpoints from all .at source files
@@ -732,23 +733,42 @@ impl Target {
             return Ok(()); // No #[api] endpoints, skip server generation
         }
 
-        info!("[a2r] Generating Axum server with {} endpoint(s)", combined_module.endpoints.len());
-
-        // Generate router.rs (handlers + router)
-        let gen = AxumGenerator::new();
-        let router_code = gen.generate_full(&combined_module);
         let rs_dir = "rust/src";
         std::fs::create_dir_all(rs_dir)
             .map_err(|e| format!("Failed to create dir '{}': {}", rs_dir, e))?;
-        std::fs::write(format!("{}/router.rs", rs_dir), router_code)
-            .map_err(|e| format!("Failed to write router.rs: {}", e))?;
 
-        // Generate main.rs (server entry point)
-        let main_code = gen.generate_server_main();
-        std::fs::write(format!("{}/main.rs", rs_dir), main_code)
-            .map_err(|e| format!("Failed to write main.rs: {}", e))?;
+        // Plan 328 IPC: detect Tauri frontend by checking for tauri.conf.json
+        // in the project root. If present → IPC commands (invoke_handler).
+        // Otherwise → Axum HTTP server.
+        let at_str = self.at.to_string();
+        let project_root = std::path::Path::new(&at_str)
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
+        let is_tauri = project_root.join("tauri.conf.json").exists()
+            || project_root.join("src-tauri").exists()
+            || project_root.join("tauri/tauri.conf.json").exists();
 
-        info!("[a2r] Generated rust/src/router.rs and rust/src/main.rs");
+        if is_tauri {
+            eprintln!("[a2r] Generating Tauri IPC commands with {} endpoint(s)", combined_module.endpoints.len());
+            let gen = TauriGenerator::new();
+            let commands_code = gen.generate_full(&combined_module);
+            std::fs::write(format!("{}/commands.rs", rs_dir), commands_code)
+                .map_err(|e| format!("Failed to write commands.rs: {}", e))?;
+            let main_code = gen.generate_server_main(&combined_module.endpoints);
+            std::fs::write(format!("{}/main.rs", rs_dir), main_code)
+                .map_err(|e| format!("Failed to write main.rs: {}", e))?;
+            eprintln!("[a2r] Generated rust/src/commands.rs and rust/src/main.rs (Tauri IPC)");
+        } else {
+            eprintln!("[a2r] Generating Axum HTTP server with {} endpoint(s)", combined_module.endpoints.len());
+            let gen = AxumGenerator::new();
+            let router_code = gen.generate_full(&combined_module);
+            std::fs::write(format!("{}/router.rs", rs_dir), router_code)
+                .map_err(|e| format!("Failed to write router.rs: {}", e))?;
+            let main_code = gen.generate_server_main();
+            std::fs::write(format!("{}/main.rs", rs_dir), main_code)
+                .map_err(|e| format!("Failed to write main.rs: {}", e))?;
+            eprintln!("[a2r] Generated rust/src/router.rs and rust/src/main.rs (Axum HTTP)");
+        }
         Ok(())
     }
 

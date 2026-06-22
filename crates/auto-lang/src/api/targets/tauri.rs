@@ -123,51 +123,22 @@ impl TauriGenerator {
         };
         lines.push(format!("{} {{", signature));
 
-        // Function body - generate stub/mock implementation
-        lines.push(self.generate_stub_body(endpoint));
+        // Plan 328 IPC: call the real a2r-transpiled business function
+        // (api::fn_name), not a stub. The function body mirrors AxumGenerator:
+        // collect params, call api::fn, return result.
+        let call_args: Vec<String> = endpoint.params
+            .iter()
+            .map(|p| p.name.to_string())
+            .collect();
+        let rt = endpoint.return_type.trim();
+        if rt == "()" || rt == "void" {
+            lines.push(format!("{}api::{}({})", self.indent, endpoint.fn_name, call_args.join(", ")));
+        } else {
+            lines.push(format!("{}api::{}({})", self.indent, endpoint.fn_name, call_args.join(", ")));
+        }
 
         lines.push("}".to_string());
         lines.join("\n")
-    }
-
-    /// Generate stub/mock function body
-    fn generate_stub_body(&self, endpoint: &ApiEndpoint) -> String {
-        let rt = endpoint.return_type.trim();
-
-        // Special-case known demo endpoints with mock data
-        match endpoint.fn_name.as_str() {
-            "listusers" => {
-                return format!("{}// Mock data for demo\n{}vec![\n{}    User {{ id: 1, name: \"Alice\".to_string(), email: \"alice@example.com\".to_string() }},\n{}    User {{ id: 2, name: \"Bob\".to_string(), email: \"bob@example.com\".to_string() }},\n{}    User {{ id: 3, name: \"Charlie\".to_string(), email: \"charlie@example.com\".to_string() }},\n{}]", 
-                    self.indent, self.indent, self.indent, self.indent, self.indent, self.indent);
-            }
-            "getuser" => {
-                return format!("{}// Mock data for demo\n{}User {{ id, name: \"Alice\".to_string(), email: \"alice@example.com\".to_string() }}", 
-                    self.indent, self.indent);
-            }
-            "createuser" => {
-                return format!("{}// Mock data for demo\n{}User {{ id: 1, name: req.name, email: req.email }}", 
-                    self.indent, self.indent);
-            }
-            "deleteuser" => {
-                return format!("{}// Mock data for demo\n{}true", self.indent, self.indent);
-            }
-            "searchusers" => {
-                return format!("{}// Mock data for demo\n{}vec![\n{}    User {{ id: 1, name: \"Alice\".to_string(), email: \"alice@example.com\".to_string() }},\n{}]", 
-                    self.indent, self.indent, self.indent, self.indent);
-            }
-            _ => {}
-        }
-
-        // Generic fallback based on return type
-        if rt == "()" || rt == "void" {
-            format!("{}// TODO: implement", self.indent)
-        } else if rt == "bool" || rt == "boolean" {
-            format!("{}// TODO: implement\n{}true", self.indent, self.indent)
-        } else if rt.starts_with("[]") || rt.starts_with("Vec<") || rt.starts_with("List<") {
-            format!("{}// TODO: implement\n{}vec![]", self.indent, self.indent)
-        } else {
-            format!("{}// TODO: implement\n{}Default::default()", self.indent, self.indent)
-        }
     }
 
     /// Generate command registration code
@@ -187,6 +158,56 @@ impl TauriGenerator {
         lines.push(format!("{}])", self.indent));
         lines.push("}".to_string());
 
+        lines.join("\n")
+    }
+
+    /// Plan 328 IPC: Generate the complete commands.rs file (types + commands + registration).
+    pub fn generate_full(&self, module: &ApiModule) -> String {
+        let mut output = Vec::new();
+
+        // Use declarations
+        output.push("// Plan 328 IPC: Auto-generated Tauri commands (a2r)".to_string());
+        output.push("use serde::{Serialize, Deserialize};".to_string());
+        output.push("".to_string());
+
+        // Type definitions
+        let types = self.generate_types(module);
+        if !types.is_empty() {
+            output.push(types);
+            output.push("".to_string());
+        }
+
+        // Commands (call real api::fn business logic)
+        output.push("// Tauri Commands (IPC)".to_string());
+        output.push("".to_string());
+        for endpoint in &module.endpoints {
+            output.push(self.generate_command(endpoint));
+            output.push("".to_string());
+        }
+
+        // Registration
+        output.push("// Command Registration".to_string());
+        output.push(self.generate_registration(&module.endpoints));
+
+        output.join("\n")
+    }
+
+    /// Plan 328 IPC: Generate the Tauri main.rs entry point.
+    /// Unlike Axum's server (TcpListener + serve), Tauri uses Builder +
+    /// invoke_handler to register IPC commands.
+    pub fn generate_server_main(&self, endpoints: &[ApiEndpoint]) -> String {
+        let mut lines = Vec::new();
+        lines.push("#[tokio::main]".to_string());
+        lines.push("async fn main() {".to_string());
+        lines.push("    tauri::Builder::default()".to_string());
+        lines.push("        .invoke_handler(tauri::generate_handler![".to_string());
+        for endpoint in endpoints {
+            lines.push(format!("            {},", endpoint.fn_name));
+        }
+        lines.push("        ])".to_string());
+        lines.push("        .run(tauri::generate_context!())".to_string());
+        lines.push("        .expect(\"error while running tauri application\");".to_string());
+        lines.push("}".to_string());
         lines.join("\n")
     }
 
