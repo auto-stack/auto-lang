@@ -31,6 +31,13 @@ impl TauriGenerator {
     fn to_rust_type(&self, auto_type: &str) -> String {
         let trimmed = auto_type.trim();
 
+        // Plan 329: ~Iter<T> / ~Stream<T> → extract inner element type T
+        // (SSE handlers use Channel, not the stream type directly)
+        if trimmed.starts_with("~Iter<") || trimmed.starts_with("~Stream<") {
+            let inner = &trimmed[6..trimmed.len() - 1];
+            return self.to_rust_type(inner);
+        }
+
         // Handle optional types (ending with ?)
         let (base_type, is_optional) = if let Some(inner) = trimmed.strip_suffix('?') {
             (inner, true)
@@ -94,12 +101,15 @@ impl TauriGenerator {
         // Add Tauri command attribute
         lines.push("#[tauri::command]".to_string());
 
+        // Plan 329: SSE handler → Channel command (async, streaming via emit)
+        let is_sse = endpoint.return_type.contains("~Iter")
+            || endpoint.return_type.contains("~Stream");
+
         // Build function signature
-        let params: Vec<String> = endpoint.params
+        let mut params: Vec<String> = endpoint.params
             .iter()
             .map(|p| {
                 let rust_type = self.to_rust_type(&p.ty);
-                // Wrap in Option if parameter is optional
                 let final_type = if p.optional {
                     format!("Option<{}>", rust_type)
                 } else {
@@ -109,32 +119,47 @@ impl TauriGenerator {
             })
             .collect();
 
-        let return_type = self.to_rust_type(&endpoint.return_type);
-        let return_sig = if return_type == "()" {
-            "".to_string()
-        } else {
-            format!("-> {}", return_type)
-        };
+        // SSE: add on_event: tauri::ipc::Channel parameter
+        if is_sse {
+            params.push("on_event: tauri::ipc::Channel".to_string());
+        }
 
-        let signature = if return_sig.is_empty() {
-            format!("pub fn {}({})", endpoint.fn_name, params.join(", "))
-        } else {
-            format!("pub fn {}({}) {}", endpoint.fn_name, params.join(", "), return_sig)
-        };
-        lines.push(format!("{} {{", signature));
-
-        // Plan 328 IPC: call the real a2r-transpiled business function
-        // (api::fn_name), not a stub. The function body mirrors AxumGenerator:
-        // collect params, call api::fn, return result.
         let call_args: Vec<String> = endpoint.params
             .iter()
             .map(|p| p.name.to_string())
             .collect();
-        let rt = endpoint.return_type.trim();
-        if rt == "()" || rt == "void" {
-            lines.push(format!("{}api::{}({})", self.indent, endpoint.fn_name, call_args.join(", ")));
+
+        let signature = if is_sse {
+            format!("pub async fn {}({}) {{", endpoint.fn_name, params.join(", "))
         } else {
-            lines.push(format!("{}api::{}({})", self.indent, endpoint.fn_name, call_args.join(", ")));
+            let return_type = self.to_rust_type(&endpoint.return_type);
+            let return_sig = if return_type == "()" {
+                "".to_string()
+            } else {
+                format!("-> {}", return_type)
+            };
+            if return_sig.is_empty() {
+                format!("pub fn {}({}) {{", endpoint.fn_name, params.join(", "))
+            } else {
+                format!("pub fn {}({}) {} {{", endpoint.fn_name, params.join(", "), return_sig)
+            }
+        };
+        lines.push(signature);
+
+        // Plan 329: SSE handler → for loop + channel.emit (streaming).
+        // Non-SSE → call api::fn and return result.
+        if is_sse {
+            // SSE: iterate the generator stream and emit each item via Channel
+            lines.push(format!("{}for item in api::{}({}) {{", self.indent, endpoint.fn_name, call_args.join(", ")));
+            lines.push(format!("{}{}let _ = on_event.emit(serde_json::json!(item));", self.indent, self.indent));
+            lines.push(format!("{}}}", self.indent));
+        } else {
+            let rt = endpoint.return_type.trim();
+            if rt == "()" || rt == "void" {
+                lines.push(format!("{}api::{}({})", self.indent, endpoint.fn_name, call_args.join(", ")));
+            } else {
+                lines.push(format!("{}api::{}({})", self.indent, endpoint.fn_name, call_args.join(", ")));
+            }
         }
 
         lines.push("}".to_string());
@@ -168,6 +193,7 @@ impl TauriGenerator {
         // Use declarations
         output.push("// Plan 328 IPC: Auto-generated Tauri commands (a2r)".to_string());
         output.push("use serde::{Serialize, Deserialize};".to_string());
+        output.push("use serde_json; // Plan 329: for SSE channel emit".to_string());
         output.push("".to_string());
 
         // Type definitions
