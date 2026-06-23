@@ -557,6 +557,14 @@ fn write_project_files(
     fs::write(output_path.join("package.json"), package_json)
         .map_err(|e| format!("Failed to write package.json: {}", e))?;
 
+    // Plan 328: Remove stale pnpm-workspace.yaml if present — older versions
+    // wrote it here, but it makes pnpm v10+ treat the dir as a (broken)
+    // workspace. Build approvals are in .npmrc now.
+    let stale_workspace = output_path.join("pnpm-workspace.yaml");
+    if stale_workspace.exists() {
+        let _ = fs::remove_file(&stale_workspace);
+    }
+
     // .npmrc — allow esbuild etc. to run postinstall builds (pnpm 9+ blocks them by default)
     fs::write(output_path.join(".npmrc"),
         "manage-package-manager-versions=true\nonlyBuiltDependencies[]=esbuild\nonlyBuiltDependencies[]=vue-demi\n")

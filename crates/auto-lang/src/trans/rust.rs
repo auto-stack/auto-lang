@@ -11776,9 +11776,15 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
             .collect::<String>()
             .to_lowercase();
 
+        // Plan 328: Cargo package names can't start with a digit.
+        let safe_name = if project_name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+            format!("app-{}", project_name)
+        } else {
+            project_name.to_string()
+        };
         let mut cargo_toml = format!(
             "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-            project_name
+            safe_name
         );
 
         // Scan parsed ASTs for external Rust crate imports (.rust use kind)
