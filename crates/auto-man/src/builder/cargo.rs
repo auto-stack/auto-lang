@@ -150,13 +150,21 @@ impl Builder for CargoBuilder {
             "\n[lib]"
         };
 
+        // Cargo package names can't start with a digit. Sanitize by prepending
+        // "app-" if the name starts with a digit (e.g. 015-notes → app-015-notes).
+        let pkg_name = if target.name.as_str().chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+            format!("app-{}", target.name.as_str())
+        } else {
+            target.name.as_str().to_string()
+        };
+
         let mut cargo_toml = format!(
             r#"[package]
 name = "{}"
 version = "{}"
 edition = "2021"
 {}"#,
-            target.name.as_str(),
+            pkg_name,
             version,
             crate_type
         );
