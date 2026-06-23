@@ -10,7 +10,9 @@ license = "MIT"
 keywords = ["automation", "language", "scripting"]
 
 [features]
-default = ["with-file-history", "ui-iced", "python"]
+# Plan 330: ui-iced and python are heavy optional backends — no longer default.
+# Consumers opt in explicitly (auto via its own default; auto-man via features).
+default = ["with-file-history"]
 # Plan 289: Feature-gated test groups for faster daily development
 test-vm-files = []
 test-trans = []

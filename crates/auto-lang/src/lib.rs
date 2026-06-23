@@ -1732,7 +1732,9 @@ pub fn has_ui_keywords(code: &str) -> bool {
 
 /// Return the declared name of an importable top-level statement
 /// (`fn`/`type`/`enum`/`ext`), used to filter `use module: items` imports.
-#[cfg(feature = "ui-iced")]
+// Plan 330: un-gated — these helpers (stmt_symbol_name, resolve_module_path,
+// collect_module_imports) are pure path/parsing utilities with no iced dep, so
+// they compile in any feature config and tests can call them without ui-iced.
 fn stmt_symbol_name(stmt: &crate::ast::Stmt) -> Option<String> {
     use crate::ast::Stmt;
     match stmt {
