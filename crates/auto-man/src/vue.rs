@@ -195,9 +195,6 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
     "postcss": "^8.4.0",
     "tailwindcss-animate": "^1.0.7",
     "@types/prismjs": "^1.26.0"
-  }},
-  "pnpm": {{
-    "onlyBuiltDependencies": ["esbuild", "vue-demi"]
   }}
 }}
 "#, name, router_dep)
@@ -1241,21 +1238,10 @@ export default router
         let pm = crate::pkg::display_name();
 
         // Ensure package.json has pnpm onlyBuiltDependencies for esbuild/vue-demi
-        let pkg_path = self.output_dir.join("package.json");
-        if pkg_path.exists() {
-            let existing_pkg = fs::read_to_string(&pkg_path)
-                .map_err(|e| format!("Failed to read package.json: {}", e))?;
-            if !existing_pkg.contains("onlyBuiltDependencies") {
-                let new_pkg = generate_package_json(&self.name, self.has_routes);
-                fs::write(&pkg_path, &new_pkg)
-                    .map_err(|e| format!("Failed to write package.json: {}", e))?;
-                println!("{}", "  ✓ Updated package.json (added pnpm build approvals)".bright_green());
-                // Remove stale lockfile (e.g. bun's) so pnpm regenerates it fresh
-                let lockfile = self.output_dir.join("pnpm-lock.yaml");
-                if lockfile.exists() {
-                    let _ = fs::remove_file(&lockfile);
-                }
-            }
+        // Plan 328: Ensure pnpm-workspace.yaml has correct build approvals.
+        // pnpm v10+ reads onlyBuiltDependencies from yaml, not package.json.
+        if ensure_pnpm_build_approvals(&self.output_dir) {
+            // yaml written (or already correct)
         }
 
         if !crate::pkg::command_exists(crate::pkg::install_cmd()) {
