@@ -840,8 +840,11 @@ impl Automan {
             }
             auto_lang::config::BackendType::Tauri => {
                 println!("Building Tauri project (backend: tauri)");
-                // Tauri uses Vue as base
-                self.build_vue()?;
+                let root_dir = std::env::current_dir()
+                    .map_err(|e| format!("Failed to get current directory: {}", e))?;
+                // Tauri build uses run_tauri_project's build phase (generate +
+                // API gen + install). The actual server launch is deferred to run.
+                crate::tauri::run_tauri_project(&root_dir, vec![])?;
             }
             auto_lang::config::BackendType::Jet => {
                 println!("Building Jetpack Compose project (backend: jet)");
@@ -1268,12 +1271,11 @@ impl Automan {
             }
             auto_lang::config::BackendType::Tauri => {
                 // Plan 328 IPC: Tauri uses IPC commands (#[tauri::command]),
-                // not HTTP server. The build phase (transpile_auto →
-                // generate_api_server) detects tauri.conf.json and generates
-                // commands.rs via TauriGenerator. The run phase uses the same
-                // Vue dev server flow but with IPC backend.
+                // not HTTP server. tauri.rs handles the full flow: Vue gen +
+                // generate_api("tauri") → commands.rs + TS IPC client +
+                // npm install + Vite dev.
                 println!("Running Tauri project (backend: ipc)");
-                self.run_vue(args)
+                crate::tauri::run_tauri_project(&root_dir, args)
             }
             auto_lang::config::BackendType::Vscode => {
                 println!("Running VSCode extension (backend: vscode)");
