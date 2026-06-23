@@ -336,6 +336,12 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
 /// cargo forbids two members with the same package name. Use the per-project
 /// `back_member_name` (e.g. "015-notes-back"), not a fixed "api-server".
 fn generate_cargo_toml(package_name: &str) -> String {
+    // Plan 328: Cargo rejects names starting with a digit.
+    let safe_name = if package_name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        format!("app-{}", package_name)
+    } else {
+        package_name.to_string()
+    };
     format!(
         r#"[package]
 name = "{}"
@@ -349,7 +355,7 @@ serde.workspace = true
 serde_json.workspace = true
 tower-http.workspace = true
 "#,
-        package_name
+        safe_name
     )
 }
 

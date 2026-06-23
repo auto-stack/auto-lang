@@ -1043,9 +1043,31 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
 
     println!();
     println!("{}", "▶ Starting API backend server...".bright_cyan());
-    println!("  cargo run --manifest-path {}", api_backend_dir.join("Cargo.toml").display());
 
     let cargo_toml = api_backend_dir.join("Cargo.toml");
+
+    // Plan 328: Sanitize Cargo package name — cargo rejects names starting
+    // with a digit (e.g. 015-notes-back). Fix in-place if stale Cargo.toml
+    // has an unsanitized name.
+    if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
+        for line in content.lines() {
+            if let Some(rest) = line.strip_prefix("name = \"") {
+                if let Some(name) = rest.strip_suffix("\"") {
+                    if name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                        let fixed = content.replace(
+                            &format!("name = \"{}\"", name),
+                            &format!("name = \"app-{}\"", name),
+                        );
+                        let _ = std::fs::write(&cargo_toml, fixed);
+                        println!("  {} Fixed package name: {} → app-{}", "⚠".bright_yellow(), name, name);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    println!("  cargo run --manifest-path {}", cargo_toml.display());
     let api_server = std::process::Command::new("cargo")
         .args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")])
         .stdout(std::process::Stdio::inherit())
