@@ -11,9 +11,9 @@ members = [
     "crates/auto-lsp",
     "crates/auto-val",
     "crates/auto-vm",
-    "crates/auto-shell",
-    # Plan 295: Ash Core + Ash TUI split
-    "crates/ash-core",
+    # Plan 330: auto-shell + ash-core moved to separate repo (../auto-shell)
+    # "crates/auto-shell",
+    # "crates/ash-core",
     # Plan 325: AI crates moved to separate auto-ai repo (../auto-ai)
     # "crates/auto-xml",  # Temporarily disabled due to Cargo.toml issues
     # Plan 082: AutoCache global build cache
