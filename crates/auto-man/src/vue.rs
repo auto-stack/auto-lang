@@ -532,16 +532,19 @@ export function cn(...inputs: ClassValue[]) {
 /// `package.json` (see [`generate_package_json`]), which pnpm 10/11 reads
 /// directly.
 ///
-/// **Do NOT write a `pnpm-workspace.yaml` here.** This generator targets
-/// single-package apps (one `package.json` under `output_dir`), not monorepos.
-/// Writing `pnpm-workspace.yaml` at the package root makes pnpm treat it as a
-/// workspace root and demand a `packages:` field — which we don't have —
-/// failing the install with "packages field missing or empty".
+/// Plan 328: Write `pnpm-workspace.yaml` with build approvals for pnpm v10+.
 ///
-/// Returns `false` (nothing written) so the caller skips its "Wrote
-/// pnpm-workspace.yaml" message.
-fn ensure_pnpm_build_approvals(_dir: &Path) -> bool {
-    false
+/// pnpm v10+ no longer reads `pnpm.onlyBuiltDependencies` from package.json.
+/// It now reads from `pnpm-workspace.yaml`. The file must include both
+/// `packages: []` (to satisfy pnpm's workspace check) and
+/// `onlyBuiltDependencies` (to approve esbuild/vue-demi builds).
+fn ensure_pnpm_build_approvals(dir: &Path) -> bool {
+    let yaml_path = dir.join("pnpm-workspace.yaml");
+    let content = "packages: []\nonlyBuiltDependencies:\n  - esbuild\n  - vue-demi\n";
+    match fs::write(&yaml_path, content) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
 }
 
 /// Write all project files
@@ -557,13 +560,8 @@ fn write_project_files(
     fs::write(output_path.join("package.json"), package_json)
         .map_err(|e| format!("Failed to write package.json: {}", e))?;
 
-    // Plan 328: Remove stale pnpm-workspace.yaml if present — older versions
-    // wrote it here, but it makes pnpm v10+ treat the dir as a (broken)
-    // workspace. Build approvals are in .npmrc now.
-    let stale_workspace = output_path.join("pnpm-workspace.yaml");
-    if stale_workspace.exists() {
-        let _ = fs::remove_file(&stale_workspace);
-    }
+    // Plan 328: Write pnpm-workspace.yaml with build approvals (pnpm v10+).
+    ensure_pnpm_build_approvals(output_path);
 
     // .npmrc — allow esbuild etc. to run postinstall builds (pnpm 9+ blocks them by default)
     fs::write(output_path.join(".npmrc"),
