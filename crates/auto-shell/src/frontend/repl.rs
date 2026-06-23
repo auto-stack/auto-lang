@@ -347,12 +347,10 @@ impl Repl {
 
         let client = AiClient::new().map_err(|e| format!("AI client init: {}", e))?;
 
-        // Get the default model from the client's first provider.
-        let model = client
-            .providers()
-            .first()
-            .and_then(|p| client.models(p).first().cloned())
-            .unwrap_or_else(|| "gpt-4o".to_string());
+        // The client is daemon-only and carries no provider/model knowledge;
+        // emit a tier token ("tier:mid") that the daemon resolves to a concrete
+        // model from its config.
+        let model = "tier:mid".to_string();
 
         let req = CompletionRequest::single(&model, question)
             .with_system(&system)
