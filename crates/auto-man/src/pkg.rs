@@ -132,6 +132,14 @@ pub fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), Stri
     if status.success() {
         Ok(())
     } else {
+        // Plan 328: pnpm v9+ exits non-zero for "ignored builds" warnings
+        // (ERR_PNPM_IGNORED_BUILDS), even though the install succeeded.
+        // Check if node_modules exists (install actually completed).
+        let node_modules = cwd.join("node_modules");
+        if cmd == "pnpm" && node_modules.exists() {
+            // Install succeeded despite non-zero exit code.
+            return Ok(());
+        }
         Err(format!("{} exited with code {:?}", cmd, status.code()))
     }
 }
