@@ -203,7 +203,7 @@ fn type_to_string(ty: &Type) -> String {
         Type::Bool => "bool".to_string(),
         Type::StrFixed(len) => format!("str[{}]", len),
         Type::CStrLit => "cstr".to_string(),
-        Type::StrSlice => "str_slice".to_string(),
+        Type::StrSlice => "str".to_string(),
         Type::StrOwned => "String".to_string(),
         Type::Char => "char".to_string(),
         Type::Void => "void".to_string(),
