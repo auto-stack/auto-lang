@@ -1,6 +1,13 @@
 # Plan 330：ash 项目独立化 + ui-iced feature 隔离
 
-> **For Claude:** 本计划做两件事：(1) 把 `ui-iced`/`python` 从 auto-lang 的 default feature 拿掉，改为按需 opt-in；(2) 把 `auto-shell`(+`ash-core`) 从 auto-lang workspace 拆成独立 repo，内部用"一个 repo 两个 workspace"结构，为将来的 `Ash`(CLI) / `AshGUI`(AutoUI) 双版本做隔离。**前置**：`cargo build` 当前被 `crates/auto-lang/src/vm/ffi/http_server.rs`（另一 Agent 未提交的 VM HTTP 改造）阻断，Phase 1 起需要等它收尾才能编译验证。改 Cargo.toml 后 `cargo build -p auto` + `cargo build -p auto-shell`（或新 repo 内对应命令）。计划文件本身是 doc，可直接在 master 写；代码实现走专用 worktree。
+> **状态（2026-06-23）：✅ 全部完成（Phase 1/2/3）。**
+> - **Phase 1**（`08613dd3`）：ui-iced/python 移出 auto-lang `default`；`auto` 自带 default 透传、`auto-man` 显式 `features=["ui-iced"]`；三个纯辅助函数 un-gate。
+> - **Phase 2**（auto-lang `a69d023d`）：auto-shell 拆到独立 repo `D:\autostack\auto-shell`（git-filter-repo 保留 83 commit 历史）；`ash/` workspace 编 auto-lang **无 iced**，已验证 `cargo build` 不编 iced。auto-lang workspace 移除两成员。
+> - **Phase 3**（auto-shell `5a82171`）：`ash-gui/` 独立 workspace 骨架，编 auto-lang **带 iced**，与 `ash/` 互不污染；`ash-gui` 二进制能跑、`has_ui_keywords`（ui-iced 门控）生效。
+> - **隔离双向验收**：`ash/` cargo tree 无 ui-iced；`ash-gui/` cargo tree 有 ui-iced。
+> - **遗留**（非阻塞）：① auto-shell 的 path 依赖（`../../../auto-lang/...`）待 auto-lang/auto-val 上 GitHub/发版后改 git/version；② 真 ash-gui 应用（AutoUI 组件渲染 ash-core 结果）未做，是独立大项。
+
+> **For Claude（历史，保留）：** 本计划做两件事：(1) 把 `ui-iced`/`python` 从 auto-lang 的 default feature 拿掉，改为按需 opt-in；(2) 把 `auto-shell`(+`ash-core`) 从 auto-lang workspace 拆成独立 repo，内部用"一个 repo 两个 workspace"结构，为将来的 `Ash`(CLI) / `AshGUI`(AutoUI) 双版本做隔离。**前置**：`cargo build` 当前被 `crates/auto-lang/src/vm/ffi/http_server.rs`（另一 Agent 未提交的 VM HTTP 改造）阻断，Phase 1 起需要等它收尾才能编译验证。改 Cargo.toml 后 `cargo build -p auto` + `cargo build -p auto-shell`（或新 repo 内对应命令）。计划文件本身是 doc，可直接在 master 写；代码实现走专用 worktree。
 
 ## 背景（为什么做）
 
