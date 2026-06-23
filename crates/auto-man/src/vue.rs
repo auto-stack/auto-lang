@@ -562,7 +562,7 @@ fn write_project_files(
 
     // .npmrc — allow esbuild etc. to run postinstall builds (pnpm 9+ blocks them by default)
     fs::write(output_path.join(".npmrc"),
-        "manage-package-manager-versions=true\nonlyBuiltDependencies[]=esbuild\nonlyBuiltDependencies[]=vue-demi\n")
+        "manage-package-manager-versions=true\nverify-deps-before-run=false\n")
         .map_err(|e| format!("Failed to write .npmrc: {}", e))?;
 
     // components.json (shadcn-vue config)
