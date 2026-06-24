@@ -115,3 +115,6 @@ lines.txt
 out.txt
 test_temp.txt
 
+
+# Windows null-device artifact (git-bash 2>/dev/null creates a literal file)
+/nul
