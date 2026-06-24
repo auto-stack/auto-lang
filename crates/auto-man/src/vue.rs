@@ -532,16 +532,56 @@ export function cn(...inputs: ClassValue[]) {
 /// `package.json` (see [`generate_package_json`]), which pnpm 10/11 reads
 /// directly.
 ///
-/// Plan 328: Write `pnpm-workspace.yaml` with build approvals for pnpm v10+.
+/// Plan 328: Configure pnpm v10+ build approvals via `.npmrc`.
 ///
-/// pnpm v10+ no longer reads `pnpm.onlyBuiltDependencies` from package.json.
-/// It now reads from `pnpm-workspace.yaml`. The file must include both
-/// `packages: []` (to satisfy pnpm's workspace check) and
-/// `onlyBuiltDependencies` (to approve esbuild/vue-demi builds).
+/// pnpm v10+ blocks postinstall build scripts (esbuild, vue-demi, …) unless
+/// they are explicitly approved. pnpm v11 moved this setting out of
+/// `package.json`'s `pnpm` field.
+///
+/// We use the `.npmrc` form (`only-built-dependencies[]=name`) rather than
+/// `pnpm-workspace.yaml`. The workspace YAML form is the documented location,
+/// but its mere presence activates pnpm's *workspace* mode, which then makes
+/// `pnpm add` (run by `shadcn-vue add`) fail with `ERR_PNPM_ADDING_TO_ROOT`.
+/// `.npmrc` conveys the same approvals without turning the project into a
+/// workspace.
+///
+/// Merges any approvals already present in the file so we never drop one that
+/// another tool (or the user) added. Idempotent.
 fn ensure_pnpm_build_approvals(dir: &Path) -> bool {
+    let npmrc_path = dir.join(".npmrc");
+
+    // A leftover pnpm-workspace.yaml (e.g. from an older generator version, or
+    // scaffolded by pnpm itself) would activate workspace mode and make
+    // `pnpm add` fail with ERR_PNPM_ADDING_TO_ROOT. We no longer use it —
+    // approvals live in .npmrc — so remove it if present.
     let yaml_path = dir.join("pnpm-workspace.yaml");
-    let content = "packages: []\nonlyBuiltDependencies:\n  - esbuild\n  - vue-demi\n";
-    match fs::write(&yaml_path, content) {
+    if yaml_path.exists() {
+        let _ = fs::remove_file(&yaml_path);
+    }
+
+    // Build the set of approved deps, starting from the defaults we always want.
+    let mut deps: Vec<String> = vec!["esbuild".to_string(), "vue-demi".to_string()];
+
+    // Preserve any existing only-built-dependencies[]= entries from .npmrc.
+    if let Ok(existing) = fs::read_to_string(&npmrc_path) {
+        for line in existing.lines() {
+            if let Some(name) = line.trim().strip_prefix("only-built-dependencies[]=") {
+                let name = name.trim().to_string();
+                if !name.is_empty() && !deps.iter().any(|d| d == &name) {
+                    deps.push(name);
+                }
+            }
+        }
+    }
+
+    let mut content = String::from("manage-package-manager-versions=true\n");
+    content.push_str("verify-deps-before-run=false\n");
+    for d in &deps {
+        content.push_str("only-built-dependencies[]=");
+        content.push_str(d);
+        content.push('\n');
+    }
+    match fs::write(&npmrc_path, content) {
         Ok(_) => true,
         Err(_) => false,
     }
@@ -560,13 +600,9 @@ fn write_project_files(
     fs::write(output_path.join("package.json"), package_json)
         .map_err(|e| format!("Failed to write package.json: {}", e))?;
 
-    // Plan 328: Write pnpm-workspace.yaml with build approvals (pnpm v10+).
+    // Plan 328: Configure pnpm v10+ build approvals via .npmrc.
+    // (This also writes manage-package-manager-versions / verify-deps-before-run.)
     ensure_pnpm_build_approvals(output_path);
-
-    // .npmrc — allow esbuild etc. to run postinstall builds (pnpm 9+ blocks them by default)
-    fs::write(output_path.join(".npmrc"),
-        "manage-package-manager-versions=true\nverify-deps-before-run=false\n")
-        .map_err(|e| format!("Failed to write .npmrc: {}", e))?;
 
     // components.json (shadcn-vue config)
     let components_json = auto_lang::ui_gen::VueGenerator::generate_components_json();
@@ -1241,8 +1277,8 @@ export default router
         let pm = crate::pkg::display_name();
 
         // Ensure package.json has pnpm onlyBuiltDependencies for esbuild/vue-demi
-        // Plan 328: Ensure pnpm-workspace.yaml has correct build approvals.
-        // pnpm v10+ reads onlyBuiltDependencies from yaml, not package.json.
+        // Plan 328: Ensure .npmrc has correct pnpm v10+ build approvals.
+        // pnpm v10+ reads build approvals from .npmrc (only-built-dependencies[]).
         if ensure_pnpm_build_approvals(&self.output_dir) {
             // yaml written (or already correct)
         }
@@ -1252,11 +1288,11 @@ export default router
             return Err(format!("{} not found", pm).into());
         }
 
-        // pnpm 10/11 reads build approvals from pnpm-workspace.yaml, not
-        // package.json/.npmrc. Write the correct list before install so it
-        // doesn't scaffold a broken file and exit 1.
+        // pnpm 10/11 reads build approvals from .npmrc (only-built-dependencies[]),
+        // not package.json. Write the correct list before install so it doesn't
+        // exit 1 with ERR_PNPM_IGNORED_BUILDS.
         if pm == "pnpm" && ensure_pnpm_build_approvals(&self.output_dir) {
-            println!("{}", "  ✓ Wrote pnpm-workspace.yaml (build approvals for esbuild/vue-demi)".bright_green());
+            println!("{}", "  ✓ Wrote .npmrc (build approvals for esbuild/vue-demi)".bright_green());
         }
 
         println!();
@@ -1289,7 +1325,7 @@ export default router
                     // Re-assert build approvals in case pnpm clobbered the file
                     // with a broken scaffold during the failed attempt.
                     if ensure_pnpm_build_approvals(&self.output_dir) {
-                        println!("{}", "  ✓ Re-wrote pnpm-workspace.yaml".bright_green());
+                        println!("{}", "  ✓ Re-wrote .npmrc".bright_green());
                     }
                     match crate::pkg::install(&self.output_dir) {
                         Ok(_) => {
@@ -1357,11 +1393,19 @@ export default router
                 println!("{}", "  ✓ shadcn-vue components added".bright_green());
                 // Fix known compatibility issues in installed components
                 self.fix_shadcn_compatibility_issues();
+                // shadcn-vue add runs `pnpm install`/`pnpm add` internally. pnpm may
+                // leave a scaffolded pnpm-workspace.yaml behind (activating workspace
+                // mode) or clobber .npmrc. Re-assert the correct build approvals so
+                // subsequent pnpm invocations don't fail.
+                ensure_pnpm_build_approvals(&self.output_dir);
                 Ok(())
             }
             Err(e) => {
-                println!("{} {}", "  ✗ Failed:".bright_red(), e);
+                println!("  ✗ shadcn-vue add failed: {}", e.to_string().bright_red());
                 println!("  You may need to run '{} shadcn-vue@latest add {} -y' manually.", crate::pkg::exec_cmd(), self.shadcn_components.join(" "));
+                // shadcn-vue add may have partially run pnpm and left a stray
+                // pnpm-workspace.yaml / clobbered .npmrc — re-assert approvals.
+                ensure_pnpm_build_approvals(&self.output_dir);
                 // Don't fail - user can install manually
                 Ok(())
             }

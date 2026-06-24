@@ -104,6 +104,10 @@ fn parse_pkg_from_at(content: &str) -> Option<PkgManagerKind> {
 
 /// Run a command with live output (inherits stdout/stderr).
 /// On Windows, uses `cmd /C` to properly resolve commands from PATH.
+///
+/// Always sets `CI=true` so child processes (notably pnpm v11's build-approval
+/// prompt triggered inside `shadcn-vue add`) run non-interactively instead of
+/// hanging on a TTY prompt that has no one to answer it.
 pub fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
     #[cfg(windows)]
     let status = {
@@ -112,6 +116,7 @@ pub fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), Stri
         Command::new("cmd")
             .args(&full_args)
             .current_dir(cwd)
+            .env("CI", "true")
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .status()
@@ -123,6 +128,7 @@ pub fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), Stri
         Command::new(cmd)
             .args(args)
             .current_dir(cwd)
+            .env("CI", "true")
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .status()
