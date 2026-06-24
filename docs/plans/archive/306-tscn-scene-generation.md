@@ -1,5 +1,8 @@
 # Plan: Auto → Godot .tscn 场景生成方案
 
+> **Status**: ✅ Completed(Phase 1-4 全部交付,2026-06)
+> **归档**: 本计划已归档至 `docs/plans/archive/`
+
 ## Context
 
 a2gd 已能将 Auto 代码转译为 GDScript (.gd)，但一个完整的 Godot 工程还需要 `.tscn` 场景文件来描述节点树结构、属性和信号连接。当前用户需要手写 .tscn 文件（如 `examples/godot/` 中的示例），这阻碍了 Auto→Godot 的自动化流程。
