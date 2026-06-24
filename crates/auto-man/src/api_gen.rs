@@ -771,7 +771,14 @@ fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
     s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
     s.push_str("#[tokio::main]\n");
     s.push_str("async fn main() {\n");
-    s.push_str("    println!(\"Server running on http://127.0.0.1:8080\");\n");
+    // Resolve the bind port from AUTO_HTTP_PORT (default 8080) so multiple
+    // `auto run` instances — or other services sharing the host — can coexist.
+    s.push_str("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")\n");
+    s.push_str("        .ok()\n");
+    s.push_str("        .and_then(|v| v.trim().parse().ok())\n");
+    s.push_str("        .unwrap_or(8080);\n");
+    s.push_str("    let addr = format!(\"127.0.0.1:{}\", port);\n");
+    s.push_str("    println!(\"Server running on http://{}\", addr);\n");
     s.push_str("    println!(\"CORS enabled for all origins\");\n\n");
     s.push_str("    // Initial data\n");
     s.push_str(&format!("    let data: Db = Arc::new(Mutex::new({}));\n\n", initial_data));
@@ -784,7 +791,7 @@ fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
     s.push_str(&format!("{}\n", routes_str));
     s.push_str("        .with_state(data)\n");
     s.push_str("        .layer(cors);\n\n");
-    s.push_str("    let listener = tokio::net::TcpListener::bind(\"127.0.0.1:8080\").await.unwrap();\n");
+    s.push_str("    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();\n");
     s.push_str("    axum::serve(listener, app).await.unwrap();\n");
     s.push_str("}\n");
     s
