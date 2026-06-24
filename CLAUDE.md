@@ -218,6 +218,11 @@ When implementing VM FFI functions in `crates/auto-lang/src/vm/ffi/stdlib.rs`, u
 
 Keep commit messages concise and focused. Focus on what changed and why, not implementation details.
 
+**Git identity & trailers (CRITICAL):**
+- This repo's git identity is `zhaopuming <zhaopuming@gmail.com>` (set via local config). Do NOT override it.
+- **NEVER add a `Co-Authored-By` trailer** (or any `Generated with`/`Co-Authored-By: Claude`/`GLM` attribution) to commit messages. Commits are authored solely by the configured user. Historical commits that contain such trailers are left as-is and not rewritten.
+- The primary remote is GitHub (`origin` → `git@github.com:auto-stack/auto-lang.git`). Gitee (`gitee`) is a mirror remote.
+
 ### Working with Temporary Test Files
 
 Always place temporary test files in the `tmp/` directory (in `.gitignore`). Never create test files in the project root.
