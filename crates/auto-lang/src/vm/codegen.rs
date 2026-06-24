@@ -4329,6 +4329,20 @@ impl Codegen {
                                 let field_idx = self.strings.len() as u16;
                                 self.strings.push(field_bytes);
                                 self.emit_u16(field_idx);
+
+                                // Plan 118 Phase 7: Set last_expr_type from the field's
+                                // declared type, so bool/float/char/etc. fields format
+                                // correctly at the REPL/last-expression boundary. Non-generic
+                                // types are also registered in generic_registry (see
+                                // register_type), so we can reuse the same lookup as the
+                                // generic branch above.
+                                if let Some(class_type) = self.generic_registry.get_type(&type_name) {
+                                    if let Some(field_type) = class_type.field_type(&field_str) {
+                                        self.last_expr_type = self.type_to_object_type(&field_type);
+                                        vm_debug!("DEBUG: Field '{}' type = {:?}, last_expr_type = {:?}",
+                                            field, field_type, self.last_expr_type);
+                                    }
+                                }
                             }
                         } else {
                             // Fallback: type not found in var_types, use GET_FIELD
