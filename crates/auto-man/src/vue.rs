@@ -532,56 +532,81 @@ export function cn(...inputs: ClassValue[]) {
 /// `package.json` (see [`generate_package_json`]), which pnpm 10/11 reads
 /// directly.
 ///
-/// Plan 328: Configure pnpm v10+ build approvals via `.npmrc`.
+/// Plan 328: Configure pnpm build approvals via `pnpm-workspace.yaml`.
 ///
 /// pnpm v10+ blocks postinstall build scripts (esbuild, vue-demi, …) unless
-/// they are explicitly approved. pnpm v11 moved this setting out of
-/// `package.json`'s `pnpm` field.
+/// they are explicitly approved.
 ///
-/// We use the `.npmrc` form (`only-built-dependencies[]=name`) rather than
-/// `pnpm-workspace.yaml`. The workspace YAML form is the documented location,
-/// but its mere presence activates pnpm's *workspace* mode, which then makes
-/// `pnpm add` (run by `shadcn-vue add`) fail with `ERR_PNPM_ADDING_TO_ROOT`.
-/// `.npmrc` conveys the same approvals without turning the project into a
-/// workspace.
+/// **Format matters by version:**
+/// - pnpm v10: reads `onlyBuiltDependencies:` (a YAML list) from
+///   `pnpm-workspace.yaml`.
+/// - pnpm v11: reads `allowBuilds:` (a YAML map of `name: true/false`) from
+///   `pnpm-workspace.yaml`. It does **not** honor `.npmrc`'s
+///   `only-built-dependencies[]` for this.
 ///
-/// Merges any approvals already present in the file so we never drop one that
-/// another tool (or the user) added. Idempotent.
+/// We write **both** keys so the file works under either major version. We
+/// must also set `packages: []` so pnpm accepts the file as a valid workspace
+/// manifest (required even though this is a single-package project; `pnpm add`
+/// works fine under it).
+///
+/// Crucially, the values are real booleans (`true`), not the placeholder
+/// string `"set this to true or false"` that pnpm v11's *interactive*
+/// `approve-builds` writes when stdin has no answer in a non-interactive
+/// context — that placeholder is what caused the cascading failures.
 fn ensure_pnpm_build_approvals(dir: &Path) -> bool {
-    let npmrc_path = dir.join(".npmrc");
-
-    // A leftover pnpm-workspace.yaml (e.g. from an older generator version, or
-    // scaffolded by pnpm itself) would activate workspace mode and make
-    // `pnpm add` fail with ERR_PNPM_ADDING_TO_ROOT. We no longer use it —
-    // approvals live in .npmrc — so remove it if present.
     let yaml_path = dir.join("pnpm-workspace.yaml");
-    if yaml_path.exists() {
-        let _ = fs::remove_file(&yaml_path);
-    }
 
     // Build the set of approved deps, starting from the defaults we always want.
     let mut deps: Vec<String> = vec!["esbuild".to_string(), "vue-demi".to_string()];
 
-    // Preserve any existing only-built-dependencies[]= entries from .npmrc.
-    if let Ok(existing) = fs::read_to_string(&npmrc_path) {
+    // Preserve any approvals already present in the file (added by other tools
+    // or the user) so we never drop a needed approval.
+    if let Ok(existing) = fs::read_to_string(&yaml_path) {
+        // pnpm v10 list form: "- name"
+        let mut in_list = false;
         for line in existing.lines() {
-            if let Some(name) = line.trim().strip_prefix("only-built-dependencies[]=") {
-                let name = name.trim().to_string();
-                if !name.is_empty() && !deps.iter().any(|d| d == &name) {
+            let t = line.trim();
+            if t.starts_with("onlyBuiltDependencies:") {
+                in_list = true;
+                continue;
+            }
+            if in_list {
+                if let Some(name) = t.strip_prefix("- ") {
+                    let name = name.trim().to_string();
+                    if !name.is_empty() && !deps.iter().any(|d| d == &name) {
+                        deps.push(name);
+                    }
+                } else if !t.is_empty() && !line.starts_with(' ') && !line.starts_with('\t') {
+                    in_list = false;
+                }
+            }
+        }
+        // pnpm v11 map form: "  name: true"
+        for line in existing.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_suffix(": true") {
+                let name = rest.trim().to_string();
+                if !name.is_empty() && !name.contains(' ') && !deps.iter().any(|d| d == &name) {
                     deps.push(name);
                 }
             }
         }
     }
 
-    let mut content = String::from("manage-package-manager-versions=true\n");
-    content.push_str("verify-deps-before-run=false\n");
+    let mut content = String::from("packages: []\n");
+    // pnpm v10 form
+    content.push_str("onlyBuiltDependencies:\n");
     for d in &deps {
-        content.push_str("only-built-dependencies[]=");
+        content.push_str("  - ");
         content.push_str(d);
         content.push('\n');
     }
-    match fs::write(&npmrc_path, content) {
+    // pnpm v11 form (real booleans, not placeholders)
+    content.push_str("allowBuilds:\n");
+    for d in &deps {
+        content.push_str(&format!("  {}: true\n", d));
+    }
+    match fs::write(&yaml_path, content) {
         Ok(_) => true,
         Err(_) => false,
     }
@@ -600,9 +625,18 @@ fn write_project_files(
     fs::write(output_path.join("package.json"), package_json)
         .map_err(|e| format!("Failed to write package.json: {}", e))?;
 
-    // Plan 328: Configure pnpm v10+ build approvals via .npmrc.
-    // (This also writes manage-package-manager-versions / verify-deps-before-run.)
+    // Plan 328: Write pnpm-workspace.yaml with build approvals (pnpm v10+).
+    // Writes both onlyBuiltDependencies (v10) and allowBuilds (v11) forms.
     ensure_pnpm_build_approvals(output_path);
+
+    // .npmrc — basic pnpm settings.
+    // `ignore-workspace-root-check=true` lets `pnpm add` (run internally by
+    // `shadcn-vue add`) write to the workspace root instead of failing with
+    // ERR_PNPM_ADDING_TO_ROOT. `verify-deps-before-run=false` stops pnpm from
+    // re-running install (and re-triggering build approval) before `vite`.
+    fs::write(output_path.join(".npmrc"),
+        "manage-package-manager-versions=true\nverify-deps-before-run=false\nignore-workspace-root-check=true\n")
+        .map_err(|e| format!("Failed to write .npmrc: {}", e))?;
 
     // components.json (shadcn-vue config)
     let components_json = auto_lang::ui_gen::VueGenerator::generate_components_json();
