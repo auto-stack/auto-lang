@@ -153,6 +153,30 @@ fn atty_check() -> bool {
     io::stdin().is_terminal()
 }
 
+/// Default HTTP port for the backend API server.
+const DEFAULT_HTTP_PORT: u16 = 8080;
+
+/// Resolve the backend HTTP port.
+///
+/// Reads `AUTO_HTTP_PORT` (u16) from the environment so multiple `auto run`
+/// instances — or other services on the same host — can coexist. Falls back to
+/// the default (8080) when unset or invalid.
+///
+/// All generated artifacts (backend bind address, vite proxy target, Rust UI
+/// client base URL, readiness probe) must source the port from here so the
+/// frontend and backend always agree.
+pub fn http_port() -> u16 {
+    match std::env::var("AUTO_HTTP_PORT") {
+        Ok(v) => v.trim().parse::<u16>().unwrap_or(DEFAULT_HTTP_PORT),
+        Err(_) => DEFAULT_HTTP_PORT,
+    }
+}
+
+/// The backend base URL (e.g. `http://127.0.0.1:8080`) for the resolved port.
+pub fn http_base_url() -> String {
+    format!("http://127.0.0.1:{}", http_port())
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -170,5 +194,28 @@ mod tests {
         let (first, second) = split_last("assets/templates/lib/mylib.h", '/');
         assert_eq!(first, "assets/templates/lib");
         assert_eq!(second, "mylib.h");
+    }
+
+    #[test]
+    fn test_http_port_default() {
+        // When unset, falls back to 8080. (May differ if env happens to be set
+        // in CI, so we only assert the documented default when the var is absent.)
+        std::env::remove_var("AUTO_HTTP_PORT");
+        assert_eq!(http_port(), DEFAULT_HTTP_PORT);
+        assert_eq!(http_base_url(), "http://127.0.0.1:8080");
+    }
+
+    #[test]
+    fn test_http_port_override() {
+        std::env::set_var("AUTO_HTTP_PORT", "18080");
+        assert_eq!(http_port(), 18080);
+        std::env::remove_var("AUTO_HTTP_PORT");
+    }
+
+    #[test]
+    fn test_http_port_invalid_falls_back() {
+        std::env::set_var("AUTO_HTTP_PORT", "not-a-port");
+        assert_eq!(http_port(), DEFAULT_HTTP_PORT);
+        std::env::remove_var("AUTO_HTTP_PORT");
     }
 }

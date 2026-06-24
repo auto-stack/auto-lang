@@ -347,7 +347,8 @@ fn deduplicate_imports(imports: &mut Vec<String>) {
 /// Parses the API definition from src/back/api.at and generates ureq HTTP calls.
 /// Falls back to heuristic stubs if the API file can't be parsed.
 fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
-    const BASE_URL: &str = "http://127.0.0.1:8080";
+    // AUTO_HTTP_PORT lets multiple `auto run` instances coexist; default 8080.
+    let base_url = crate::util::http_base_url();
 
     // Try to parse api.at to get real endpoint definitions
     let api_module = parse_api_module(project_dir);
@@ -357,7 +358,7 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
         code.push_str("// API client functions (auto-generated, uses ureq HTTP client)\n\n");
 
         for endpoint in &module.endpoints {
-            code.push_str(&generate_endpoint_fn(endpoint, BASE_URL));
+            code.push_str(&generate_endpoint_fn(endpoint, &base_url));
             code.push('\n');
         }
         return code;
@@ -1084,10 +1085,14 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
             let start = std::time::Instant::now();
             let mut ready = false;
 
+            // AUTO_HTTP_PORT (default 8080) — must match the backend's bind address.
+            let port = crate::util::http_port();
+            let probe_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+
             while start.elapsed() < max_wait {
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 match std::net::TcpStream::connect_timeout(
-                    &"127.0.0.1:8080".parse().unwrap(),
+                    &probe_addr,
                     std::time::Duration::from_secs(1),
                 ) {
                     Ok(_) => {
@@ -1099,7 +1104,7 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
             }
 
             if ready {
-                println!("  {} API server is ready on http://127.0.0.1:8080", "✓".bright_green());
+                println!("  {} API server is ready on http://127.0.0.1:{}", "✓".bright_green(), port);
             } else {
                 println!("  {} API server did not respond within {}s, continuing anyway...",
                     "⚠".bright_yellow(), max_wait.as_secs());

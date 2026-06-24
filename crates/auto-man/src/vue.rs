@@ -201,6 +201,8 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
 }
 
 fn generate_vite_config() -> String {
+    // AUTO_HTTP_PORT lets multiple `auto run` instances coexist; default 8080.
+    let proxy_target = format!("http://127.0.0.1:{}", crate::util::http_port());
     r#"import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
@@ -227,16 +229,17 @@ export default defineConfig({
     // Only auto-open browser when NOT running under Tauri
     // Tauri sets TAURI_ENV before running vite
     open: !process.env.TAURI_ENV,
-    // Proxy API requests to Rust backend
+    // Proxy API requests to Rust backend.
+    // AUTO_HTTP_PORT lets multiple `auto run` instances coexist; default 8080.
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8080',
+        target: process.env.AUTO_HTTP_PROXY || '__PROXY_TARGET__',
         changeOrigin: true,
       }
     }
   }
 })
-"#.to_string()
+"#.replace("__PROXY_TARGET__", &proxy_target)
 }
 
 fn generate_tsconfig() -> String {
