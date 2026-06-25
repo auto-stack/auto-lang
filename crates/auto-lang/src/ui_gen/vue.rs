@@ -1019,74 +1019,31 @@ impl VueGenerator {
     /// Emits a standalone `.vue` file backed by `reka-ui` (never
     /// `@/components/ui/*`), driven by the widget's library template.
     pub fn generate_widget_sfc(&mut self, name: &str) -> GenResult<String> {
-        // Phase 1.2: button only; generalized in 1.4 via registry lookup.
-        debug_assert_eq!(name, "button"); // removed in 1.4
-        Ok(r#"<script setup lang="ts">
-import { computed } from 'vue'
-import { Primitive } from 'reka-ui'
-import { cn } from '../utils'
-import { buttonVariants } from './variants'
-import type { ButtonVariants } from './variants'
-
-const props = withDefaults(defineProps<{
-  variant?: ButtonVariants['variant']
-  size?: ButtonVariants['size']
-  class?: string
-  as?: string
-  asChild?: boolean
-}>(), { variant: 'default', size: 'default', as: 'button' })
-</script>
-
-<template>
-  <Primitive :as="as" :as-child="asChild" :class="cn(buttonVariants({ variant, size }), props.class)">
-    <slot />
-  </Primitive>
-</template>
-"#.to_string())
+        let tpl = library_template(name)
+            .ok_or_else(|| GenError::UnknownWidget(name.to_string()))?;
+        Ok(format!(
+            "<script setup lang=\"ts\">\n{script}\n</script>\n\n<template>\n{template}\n</template>\n",
+            script = tpl.script,
+            template = tpl.template,
+        ))
     }
 
     /// Emit the per-widget support files (relative path, contents) that the
     /// generated SFC depends on, so a copied component is self-contained.
-    ///
-    /// Phase 1.3: button only; generalized in 1.4.
     pub fn generate_widget_support_files(&self, name: &str) -> Vec<(String, String)> {
-        debug_assert_eq!(name, "button"); // removed in 1.4
-        let index_ts = r#"export { default as Button } from './Button.vue'
-"#;
-        let variants_ts = r#"import { cva, type VariantProps } from 'class-variance-authority'
-
-export const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
-  {
-    variants: {
-      variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-        outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
-      },
-      size: {
-        default: 'h-10 px-4 py-2',
-        sm: 'h-9 rounded-md px-3',
-        lg: 'h-11 rounded-md px-8',
-        icon: 'h-10 w-10',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
-      size: 'default',
-    },
-  },
-)
-
-export type ButtonVariants = VariantProps<typeof buttonVariants>
-"#;
-        vec![
-            ("index.ts".to_string(), index_ts.to_string()),
-            ("variants.ts".to_string(), variants_ts.to_string()),
-        ]
+        let pascal = pascal_case(name);
+        let mut files = vec![(
+            "index.ts".to_string(),
+            format!("export {{ default as {pascal} }} from './{pascal}.vue'\n"),
+        )];
+        if let Some(tpl) = library_template(name) {
+            files.extend(
+                tpl.extra_support_files
+                    .into_iter()
+                    .map(|(n, c)| (n.to_string(), c.to_string())),
+            );
+        }
+        files
     }
 
     /// Reset state for new widget
@@ -7851,6 +7808,124 @@ impl Default for VueGenerator {
 }
 
 // ============================================================================
+// Plan 331: Library templates — self-contained per-widget SFC definitions.
+// ============================================================================
+
+/// The rendered pieces of a single primitive widget for `VueMode::Library`.
+struct WidgetTemplate {
+    /// Body inside `<script setup lang="ts">`.
+    script: &'static str,
+    /// Body inside `<template>`.
+    template: &'static str,
+    /// Support files beyond `index.ts` (e.g. `variants.ts`), as (name, body).
+    extra_support_files: Vec<(&'static str, &'static str)>,
+}
+
+/// Convert a kebab/lower widget key (`button`) to PascalCase (`Button`).
+fn pascal_case(name: &str) -> String {
+    name.split('_')
+        .flat_map(|part| part.split('-'))
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
+/// Look up the library template for a primitive widget name.
+///
+/// Phase 1.4: button / input / label. Remaining v1 widgets land in Phase 5.
+fn library_template(name: &str) -> Option<WidgetTemplate> {
+    match name {
+        "button" => Some(WidgetTemplate {
+            script: r#"import { Primitive } from 'reka-ui'
+import { cn } from '../utils'
+import { buttonVariants } from './variants'
+import type { ButtonVariants } from './variants'
+
+const props = withDefaults(defineProps<{
+  variant?: ButtonVariants['variant']
+  size?: ButtonVariants['size']
+  class?: string
+  as?: string
+  asChild?: boolean
+}>(), { variant: 'default', size: 'default', as: 'button' })"#,
+            template: r#"  <Primitive :as="as" :as-child="asChild" :class="cn(buttonVariants({ variant, size }), props.class)">
+    <slot />
+  </Primitive>"#,
+            extra_support_files: vec![(
+                "variants.ts",
+                r#"import { cva, type VariantProps } from 'class-variance-authority'
+
+export const buttonVariants = cva(
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+  {
+    variants: {
+      variant: {
+        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+        outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        ghost: 'hover:bg-accent hover:text-accent-foreground',
+        link: 'text-primary underline-offset-4 hover:underline',
+      },
+      size: {
+        default: 'h-10 px-4 py-2',
+        sm: 'h-9 rounded-md px-3',
+        lg: 'h-11 rounded-md px-8',
+        icon: 'h-10 w-10',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  },
+)
+
+export type ButtonVariants = VariantProps<typeof buttonVariants>
+"#,
+            )],
+        }),
+        "input" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { cn } from '../utils'
+
+const props = defineProps<{
+  defaultValue?: string | number
+  modelValue?: string | number
+  class?: HTMLAttributes['class']
+}>()
+const emits = defineEmits<{ 'update:modelValue': [value: string | number] }>()"#,
+            template: r#"  <input
+    :value="modelValue ?? defaultValue"
+    @input="emits('update:modelValue', ($event.target as HTMLInputElement).value)"
+    :class="cn('flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50', props.class)"
+  />"#,
+            extra_support_files: vec![],
+        }),
+        "label" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { Label, type LabelProps } from 'reka-ui'
+import { cn } from '../utils'
+
+const props = defineProps<LabelProps & { class?: HTMLAttributes['class'] }>()"#,
+            template: r#"  <Label
+    :for="props.for"
+    :class="cn('text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70', props.class)"
+  >
+    <slot />
+  </Label>"#,
+            extra_support_files: vec![],
+        }),
+        _ => None,
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -7996,6 +8071,32 @@ mod tests {
         assert!(names.contains(&"index.ts"), "index.ts present: {:?}", names);
         let index = files.iter().find(|(p, _)| p == "index.ts").unwrap();
         assert!(index.1.contains("Button"), "index re-exports Button");
+    }
+
+    #[test]
+    fn test_library_input_sfc_is_self_contained() {
+        let mut gen = VueGenerator::new_library();
+        let sfc = gen.generate_widget_sfc("input").unwrap();
+        assert!(sfc.contains("<template>"), "has template");
+        assert!(sfc.contains("<script setup"), "has script setup");
+        assert!(!sfc.contains("@/components/ui/"), "must NOT import shadcn-vue");
+    }
+
+    #[test]
+    fn test_library_label_sfc_uses_reka_ui() {
+        let mut gen = VueGenerator::new_library();
+        let sfc = gen.generate_widget_sfc("label").unwrap();
+        assert!(sfc.contains("<template>"), "has template");
+        assert!(sfc.contains("<script setup"), "has script setup");
+        assert!(sfc.contains("reka-ui"), "label uses reka-ui Label");
+        assert!(!sfc.contains("@/components/ui/"), "must NOT import shadcn-vue");
+    }
+
+    #[test]
+    fn test_library_unknown_widget_errors() {
+        let mut gen = VueGenerator::new_library();
+        let err = gen.generate_widget_sfc("does-not-exist").unwrap_err();
+        assert!(format!("{err}").contains("Unknown widget"), "got: {err}");
     }
 
     #[test]
