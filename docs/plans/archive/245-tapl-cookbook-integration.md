@@ -1,5 +1,7 @@
 # Plan 245: TAPL 书中集成 Cookbook 实战示例
 
+> **Status**: ✅ Completed — 所有 20 个 listing 文件 + markdown 引用 + 中英文版均已就位(2026-06)
+
 ## Context
 
 TAPL（《The Auto Programming Language》）教程已覆盖 Auto 语言的特性层面（22 章，137 个 listings），但缺乏实战领域的代码配方。Cookbook 的 143 个示例中有约 20-25 个可直接或稍作修改后加入 TAPL，补足书中"知道语法但不知道怎么用"的空白。
