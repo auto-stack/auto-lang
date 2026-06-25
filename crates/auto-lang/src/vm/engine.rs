@@ -4784,7 +4784,7 @@ impl AutoVM {
                             }
                             _ => {
                                 // Identity operations: return receiver unchanged, only pop args
-                                if matches!(method_name.as_str(), "collect" | "rev" | "filter_map" | "flatten" | "into_iter" | "iter" | "iter_mut" | "par_iter" | "par_iter_mut" | "for_each" | "map" | "filter" | "find" | "any" | "all" | "reduce" | "fold") {
+                                if matches!(method_name.as_str(), "collect" | "rev" | "filter_map" | "flatten" | "into_iter" | "iter" | "iter_mut" | "par_iter" | "par_iter_mut" | "for_each" | "map" | "filter" | "find" | "any" | "all" | "reduce" | "fold" | "to_array") {
                                     // Pop args only (not receiver) — receiver stays as return value
                                     { for _ in 0..arg_count { task.ram.pop_nv(); } }
                                 } else {
