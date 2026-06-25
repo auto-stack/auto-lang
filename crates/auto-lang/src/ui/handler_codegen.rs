@@ -339,7 +339,28 @@ pub fn synthesize_widget_module(
         }
     }
 
-    // 1. Imports (functions, types, enums) — only declarations, skip `use`/script stmts.
+    // 1. Imports (functions, types, enums) — declarations + module-level
+    //    stores and use statements.
+    //    Order matters: compile Stmt::Use first so auto_modules are registered
+    //    (so a later `db.func()` body call generates a linkable CALL reloc),
+    //    then Stmt::Store (module globals like `var notes`), then Fn/Type/Ext
+    //    whose bodies may reference both. Without Use/Store, imported #[api]
+    //    fns that read module globals or call cross-module helpers fail with
+    //    "Undefined symbol" at link time (015-notes).
+    for stmt in &import_stmts {
+        if let crate::ast::Stmt::Use(_) = stmt {
+            if let Err(e) = codegen.compile_stmt(stmt) {
+                log::warn!("handler_codegen: import use stmt failed to compile: {}", e);
+            }
+        }
+    }
+    for stmt in &import_stmts {
+        if let crate::ast::Stmt::Store(_) = stmt {
+            if let Err(e) = codegen.compile_stmt(stmt) {
+                log::warn!("handler_codegen: import store stmt failed to compile: {}", e);
+            }
+        }
+    }
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
             if let Err(e) = codegen.compile_stmt(stmt) {

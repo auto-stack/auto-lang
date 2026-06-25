@@ -1757,13 +1757,32 @@ fn resolve_module_path(
     module: &str,
 ) -> Option<std::path::PathBuf> {
     let rel = module.replace('.', std::path::MAIN_SEPARATOR_STR);
-    let as_file = base_dir.join(format!("{}.at", rel));
-    if as_file.exists() {
-        return Some(as_file);
+    // Helper to probe a candidate directory for {rel}.at or {rel}/mod.at.
+    let probe = |dir: &std::path::Path| -> Option<std::path::PathBuf> {
+        let as_file = dir.join(format!("{}.at", rel));
+        if as_file.exists() {
+            return Some(as_file);
+        }
+        let as_mod = dir.join(&rel).join("mod.at");
+        if as_mod.exists() {
+            return Some(as_mod);
+        }
+        None
+    };
+    // Direct resolution relative to base_dir.
+    if let Some(p) = probe(base_dir) {
+        return Some(p);
     }
-    let as_mod = base_dir.join(rel).join("mod.at");
-    if as_mod.exists() {
-        return Some(as_mod);
+    // Plan 327 Phase B: fall back to the parent directory so a sibling layout
+    // like src/{front,back}/ resolves. `app.at` in src/front/ imports
+    // `back.api` (src/back/api.at); base_dir is src/front/, so the direct probe
+    // misses it. Trying the parent (src/) finds src/back/api.at. This mirrors
+    // the script path, which seeds CompileSession.source_dirs with the source
+    // dir's parent.
+    if let Some(parent) = base_dir.parent() {
+        if let Some(p) = probe(parent) {
+            return Some(p);
+        }
     }
     None
 }
@@ -1795,26 +1814,64 @@ fn collect_module_imports(
         Ok(c) => c,
         Err(_) => return,
     };
-    let session = crate::session::CompilerSession::ui();
+    // Choose session by module location: front/ modules are UI components (need
+    // the UI session to parse `widget`/`view`/`model`), while back/ modules are
+    // plain Auto scripts. The UI session's stricter parsing rejects backend
+    // module-level `var notes = List<Note>.new([...])` with "undefined variable"
+    // (015-notes back/db.at). Core parses backend scripts fine. The collected
+    // declarations are re-compiled in the UI codegen context below regardless.
+    let is_back_module = module_path
+        .components()
+        .any(|c| c.as_os_str() == "back");
+    let session = if is_back_module {
+        crate::session::CompilerSession::core()
+    } else {
+        crate::session::CompilerSession::ui()
+    };
     let mut parser = Parser::from(code.as_str()).with_session(session);
     let ast = match parser.parse() {
         Ok(a) => a,
         Err(_) => return,
     };
     // 1. Take every declaration in this module (dedup by symbol name).
+    //    Include Stmt::Store (module-level vars like `var notes` in back/db.at)
+    //    and Stmt::Use (top-level `use db`/`use api: T`) so that an imported
+    //    fn's body — which references module globals and calls into other
+    //    modules via `db.func()` — can compile and link. Without these, the
+    //    synthesized widget module drops the storage and the auto_modules
+    //    registration, causing "Undefined symbol" link errors (015-notes).
+    let mut emitted = Vec::new();
     for stmt in &ast.stmts {
-        if matches!(
-            stmt,
-            crate::ast::Stmt::Fn(_) | crate::ast::Stmt::TypeDecl(_)
-            | crate::ast::Stmt::EnumDecl(_) | crate::ast::Stmt::Ext(_)
-        ) {
-            if let Some(name) = stmt_symbol_name(stmt) {
-                if seen.insert(name) {
+        match stmt {
+            crate::ast::Stmt::Fn(_)
+            | crate::ast::Stmt::TypeDecl(_)
+            | crate::ast::Stmt::EnumDecl(_)
+            | crate::ast::Stmt::Ext(_) => {
+                if let Some(name) = stmt_symbol_name(stmt) {
+                    if seen.insert(name.clone()) {
+                        emitted.push(name);
+                        out.push(stmt.clone());
+                    }
+                }
+            }
+            // Use statements have no dedup key; emit them as-is. (codegen
+            // re-dedups auto_modules registration by name.)
+            crate::ast::Stmt::Use(_) => {
+                out.push(stmt.clone());
+            }
+            // Module-level stores (globals). Dedup by the variable name so a
+            // transitive re-import doesn't double-declare.
+            crate::ast::Stmt::Store(s) => {
+                let key = format!("__store:{}", s.name);
+                if seen.insert(key.clone()) {
+                    emitted.push(key);
                     out.push(stmt.clone());
                 }
             }
+            _ => {}
         }
     }
+    let _ = emitted;
     // 2. Recurse into this module's own `use` dependencies, each resolved
     //    relative to THIS module's directory (so back/api.at's `use db` finds
     //    back/db.at).
