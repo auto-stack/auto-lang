@@ -1045,6 +1045,50 @@ const props = withDefaults(defineProps<{
 "#.to_string())
     }
 
+    /// Emit the per-widget support files (relative path, contents) that the
+    /// generated SFC depends on, so a copied component is self-contained.
+    ///
+    /// Phase 1.3: button only; generalized in 1.4.
+    pub fn generate_widget_support_files(&self, name: &str) -> Vec<(String, String)> {
+        debug_assert_eq!(name, "button"); // removed in 1.4
+        let index_ts = r#"export { default as Button } from './Button.vue'
+"#;
+        let variants_ts = r#"import { cva, type VariantProps } from 'class-variance-authority'
+
+export const buttonVariants = cva(
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+  {
+    variants: {
+      variant: {
+        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+        outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        ghost: 'hover:bg-accent hover:text-accent-foreground',
+        link: 'text-primary underline-offset-4 hover:underline',
+      },
+      size: {
+        default: 'h-10 px-4 py-2',
+        sm: 'h-9 rounded-md px-3',
+        lg: 'h-11 rounded-md px-8',
+        icon: 'h-10 w-10',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  },
+)
+
+export type ButtonVariants = VariantProps<typeof buttonVariants>
+"#;
+        vec![
+            ("index.ts".to_string(), index_ts.to_string()),
+            ("variants.ts".to_string(), variants_ts.to_string()),
+        ]
+    }
+
     /// Reset state for new widget
     fn reset(&mut self) {
         self.imports.clear();
@@ -7941,6 +7985,17 @@ mod tests {
         assert!(sfc.contains("<script setup"), "has script setup");
         assert!(!sfc.contains("@/components/ui/"), "must NOT import shadcn-vue");
         assert!(sfc.contains("reka-ui"), "uses reka-ui as backend");
+    }
+
+    #[test]
+    fn test_library_button_support_files() {
+        let gen = VueGenerator::new_library();
+        let files = gen.generate_widget_support_files("button");
+        let names: Vec<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
+        assert!(names.contains(&"variants.ts"), "variants.ts present: {:?}", names);
+        assert!(names.contains(&"index.ts"), "index.ts present: {:?}", names);
+        let index = files.iter().find(|(p, _)| p == "index.ts").unwrap();
+        assert!(index.1.contains("Button"), "index re-exports Button");
     }
 
     #[test]
