@@ -225,7 +225,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    // AUTO_FRONT_PORT (default 3000) lets multiple `auto run` instances coexist.
+    port: Number(process.env.AUTO_FRONT_PORT || 3000),
     // Only auto-open browser when NOT running under Tauri
     // Tauri sets TAURI_ENV before running vite
     open: !process.env.TAURI_ENV,

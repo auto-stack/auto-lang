@@ -258,8 +258,10 @@ enum Commands {
         dir: Option<String>,
         #[arg(short, long)]
         port: Option<String>,
-        #[arg(short = 'P', long = "http-port", help = "HTTP API server port (default 8080)")]
-        http_port: Option<String>,
+        #[arg(short = 'B', long = "back-port", help = "Backend HTTP API server port (default 8080)")]
+        back_port: Option<String>,
+        #[arg(short = 'F', long = "front-port", help = "Frontend dev server port (default 3000)")]
+        front_port: Option<String>,
         #[arg(short, long, help = "Render target to use (vue, rust, vm, jet, arkts, tauri)")]
         render: Option<String>,
     },
@@ -269,8 +271,10 @@ enum Commands {
         dir: Option<String>,
         #[arg(short, long)]
         port: Option<String>,
-        #[arg(short = 'P', long = "http-port", help = "HTTP API server port (default 8080)")]
-        http_port: Option<String>,
+        #[arg(short = 'B', long = "back-port", help = "Backend HTTP API server port (default 8080)")]
+        back_port: Option<String>,
+        #[arg(short = 'F', long = "front-port", help = "Frontend dev server port (default 3000)")]
+        front_port: Option<String>,
         #[arg(short, long, help = "Render target to use (vue, rust, vm, jet, arkts, tauri)")]
         render: Option<String>,
         #[arg(long, help = "Backend server mode: vm (AutoVM HTTP) or rust (a2r, default)")]
@@ -566,7 +570,7 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== Build & Run ==========
-        Some(Commands::Build { dir, port, http_port, render }) => {
+        Some(Commands::Build { dir, port, back_port, front_port, render }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -592,16 +596,25 @@ fn real_main(cli: Cli) -> Result<()> {
             if let Some(b) = render {
                 am.set_render(b);
             }
-            // Plan 330: bake the HTTP port into generated artifacts (vite proxy,
-            // rust-ui client) the same way `run` does, for symmetry.
-            if let Some(p) = &http_port {
+            // Plan 330: bake ports into generated artifacts the same way `run`
+            // does, for symmetry (so `build` then manual run matches).
+            if let Some(p) = &back_port {
                 if p.trim().parse::<u16>().is_err() {
                     return Err(miette::miette!(
-                        "Invalid HTTP port '{}': must be a number 0-65535", p
+                        "Invalid backend port '{}': must be a number 0-65535", p
                     ));
                 }
                 std::env::set_var("AUTO_HTTP_PORT", p.trim());
-                println!("  HTTP API server port: {}", p.trim());
+                println!("  Backend API server port: {}", p.trim());
+            }
+            if let Some(p) = &front_port {
+                if p.trim().parse::<u16>().is_err() {
+                    return Err(miette::miette!(
+                        "Invalid frontend port '{}': must be a number 0-65535", p
+                    ));
+                }
+                std::env::set_var("AUTO_FRONT_PORT", p.trim());
+                println!("  Frontend dev server port: {}", p.trim());
             }
             am.scan().map_err(|e| {
                 if ai_mode {
@@ -621,7 +634,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, http_port, render, server, args }) => {
+        Some(Commands::Run { dir, port, back_port, front_port, render, server, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -653,20 +666,32 @@ fn real_main(cli: Cli) -> Result<()> {
             if vm_server_mode {
                 am.set_vm_server_mode(true);
             }
-            // Plan 330: `--http-port`/`-P` selects the backend HTTP API port.
+            // Plan 330: `--back-port`/`-B` selects the backend HTTP API port.
             // We inject it into AUTO_HTTP_PORT so all three port consumers stay
             // in sync: the generated backend main.rs (reads it at runtime, via
             // inherited child env), the vite proxy, and the rust-ui client (both
             // read crate::util::http_port() at generation time, which happens
             // inside am.run below). Falls back to 8080 when unset.
-            if let Some(p) = &http_port {
+            if let Some(p) = &back_port {
                 if p.trim().parse::<u16>().is_err() {
                     return Err(miette::miette!(
-                        "Invalid HTTP port '{}': must be a number 0-65535", p
+                        "Invalid backend port '{}': must be a number 0-65535", p
                     ));
                 }
                 std::env::set_var("AUTO_HTTP_PORT", p.trim());
-                println!("  HTTP API server port: {}", p.trim());
+                println!("  Backend API server port: {}", p.trim());
+            }
+            // Plan 330: `--front-port`/`-F` selects the frontend dev server port.
+            // Injected into AUTO_FRONT_PORT, which the generated vite config reads
+            // at dev-server start. Falls back to 3000 when unset.
+            if let Some(p) = &front_port {
+                if p.trim().parse::<u16>().is_err() {
+                    return Err(miette::miette!(
+                        "Invalid frontend port '{}': must be a number 0-65535", p
+                    ));
+                }
+                std::env::set_var("AUTO_FRONT_PORT", p.trim());
+                println!("  Frontend dev server port: {}", p.trim());
             }
             if !ai_mode {
                 info!("Running project ...");
