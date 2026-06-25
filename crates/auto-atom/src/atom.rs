@@ -548,6 +548,26 @@ impl Atom {
     }
 }
 
+// ========== AtomSource: emit .at source (the write direction) ============
+
+/// Emit an `Atom` as round-trippable `.at` source via auto-val's escape-correct
+/// emitter. Delegates to the inner `Node`/`Obj`/`Array`; `Empty` is blank.
+///
+/// This is the companion to `AtomParser::parse` — together they give a full
+/// programmatic build → serialize → re-parse loop (see the round-trip test
+/// below). Prefer this over `Atom::to_astr()`/`Display` for any value that may
+/// contain `"`, `\`, or control chars — those paths don't escape.
+impl auto_val::AtomSource for Atom {
+    fn to_at_source(&self) -> String {
+        match self {
+            Atom::Node(n) => n.to_at_source(),
+            Atom::Obj(o) => auto_val::Value::Obj(o.clone()).to_at_source(),
+            Atom::Array(a) => auto_val::Value::Array(a.clone()).to_at_source(),
+            Atom::Empty => String::new(),
+        }
+    }
+}
+
 // ========== AtomBuilder ==========
 
 /// Builder for creating `Atom` objects with conditional construction support
@@ -689,6 +709,7 @@ impl fmt::Display for Atom {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auto_val::AtomSource; // bring to_at_source() into scope for the round-trip tests
 
     #[test]
     fn test_array() {
@@ -1013,5 +1034,94 @@ mod tests {
             assert_eq!(node.get_prop_of("version"), auto_val::Value::Str("1.0".into()));
             assert_eq!(node.get_prop_of("debug"), auto_val::Value::Bool(true));
         }
+    }
+
+    // ── round-trip: build → to_at_source() → AtomParser::parse() → same ──────
+    //
+    // This is the regression guard for the whole ecosystem's `.at` write
+    // direction. If it ever fails, it means a string with `"`, `\`, or control
+    // chars can no longer survive a programmatic build + re-parse — which is
+    // exactly what the Role config writer (Plan 004) depends on.
+
+    #[test]
+    fn roundtrip_node_scalars() {
+        let node = auto_val::Node::new("role")
+            .with_prop("name", "precise-coder")
+            .with_prop("temperature", 0.3)
+            .with_prop("max_turns", 40)
+            .with_prop("model_tier", "max");
+        let src = node.to_at_source();
+        let parsed = crate::AtomParser::parse(&src).expect("re-parse must succeed");
+        let parsed_node = match parsed {
+            Atom::Node(n) => n,
+            other => panic!("expected Node, got {:?}", other),
+        };
+        assert_eq!(parsed_node.name, "role");
+        assert_eq!(parsed_node.get_prop_of("name"), auto_val::Value::str("precise-coder"));
+        // Float survives as a float.
+        assert!(matches!(parsed_node.get_prop_of("temperature"), auto_val::Value::Double(_)));
+        // Bare integer literals are parsed as Int (i32); the value survives.
+        assert_eq!(parsed_node.get_prop_of("max_turns"), auto_val::Value::Int(40));
+        assert_eq!(parsed_node.get_prop_of("model_tier"), auto_val::Value::str("max"));
+    }
+
+    #[test]
+    fn roundtrip_string_with_special_chars() {
+        // The three chars the old Display impl corrupts: quote, backslash, newline.
+        let tricky = "She said \"hi\", path C:\\win, then\nnew line";
+        let node = auto_val::Node::new("x").with_prop("msg", auto_val::Value::str(tricky));
+        let src = node.to_at_source();
+        let parsed = crate::AtomParser::parse(&src).expect("re-parse must succeed");
+        let parsed_node = match parsed {
+            Atom::Node(n) => n,
+            other => panic!("expected Node, got {:?}", other),
+        };
+        assert_eq!(
+            parsed_node.get_prop_of("msg"),
+            auto_val::Value::str(tricky),
+            "string must survive round-trip verbatim"
+        );
+    }
+
+    #[test]
+    fn roundtrip_string_array() {
+        let skills = auto_val::Value::Array(auto_val::Array {
+            values: vec![
+                auto_val::Value::str("test-driven-development"),
+                auto_val::Value::str("brainstorming"),
+            ],
+        });
+        let node = auto_val::Node::new("role").with_prop("skills", skills);
+        let src = node.to_at_source();
+        let parsed = crate::AtomParser::parse(&src).expect("re-parse must succeed");
+        let parsed_node = match parsed {
+            Atom::Node(n) => n,
+            other => panic!("expected Node, got {:?}", other),
+        };
+        match parsed_node.get_prop_of("skills") {
+            auto_val::Value::Array(a) => {
+                assert_eq!(a.values.len(), 2);
+                assert_eq!(a.values[0], auto_val::Value::str("test-driven-development"));
+                assert_eq!(a.values[1], auto_val::Value::str("brainstorming"));
+            }
+            other => panic!("expected Array, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn roundtrip_atom_source_trait() {
+        // The Atom-level trait (the public API Role code will use).
+        let atom = Atom::Node(
+            auto_val::Node::new("role")
+                .with_prop("name", "x")
+                .with_prop("token_budget", auto_val::Value::Uint(2_000_000)),
+        );
+        let src = atom.to_at_source();
+        let parsed = crate::AtomParser::parse(&src).expect("re-parse must succeed");
+        let parsed_node = match parsed {
+            Atom::Node(n) => n,
+            other => panic!("expected Node, got {:?}", other),
+        };
+        assert_eq!(parsed_node.get_prop_of("token_budget"), auto_val::Value::Int(2_000_000));
     }
 }

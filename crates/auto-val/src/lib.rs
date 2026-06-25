@@ -50,6 +50,9 @@ pub use node::*;
 mod path;
 pub use path::*;
 
+mod emit;
+pub use emit::*;
+
 pub type AutoError = Box<dyn std::error::Error>;
 pub type AutoResult<T> = Result<T, AutoError>;
 
