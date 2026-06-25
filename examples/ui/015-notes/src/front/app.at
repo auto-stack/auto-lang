@@ -51,7 +51,7 @@ widget App {
             .notes = list_notes()
         }
 
-        .SelectNote -> {
+        .SelectNote(id) -> {
             .active_id = id
             .editing = false
         }
