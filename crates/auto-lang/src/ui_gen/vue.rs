@@ -7835,6 +7835,15 @@ fn pascal_case(name: &str) -> String {
         .collect()
 }
 
+/// All widget names with a library template (Plan 331). Kept in sync with
+/// [`library_template`]; the CLI `auto ui list` reads this.
+pub const LIBRARY_WIDGETS: &[&str] = &["button", "input", "label"];
+
+impl VueGenerator {
+    /// Names of all widgets with a self-contained library template (Plan 331).
+    pub const LIBRARY_WIDGETS: &'static [&'static str] = LIBRARY_WIDGETS;
+}
+
 /// Look up the library template for a primitive widget name.
 ///
 /// Phase 1.4: button / input / label. Remaining v1 widgets land in Phase 5.

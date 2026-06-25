@@ -6,6 +6,7 @@ use colored::Colorize;
 use log::info;
 
 mod cmd_a2c_stdlib;
+mod cmd_ui;
 
 // Helper to convert AutoError to miette Report - this preserves all diagnostic info
 fn to_miette_err(err: AutoError) -> miette::Report {
@@ -237,6 +238,21 @@ enum TransTarget {
 }
 
 #[derive(Subcommand, Debug)]
+enum UiAction {
+    /// Generate self-contained widget SFCs into an output directory
+    Build {
+        #[arg(long, help = "Target framework (default: vue)", default_value = "vue")]
+        target: String,
+        #[arg(long, help = "Output directory (default: packages/widgets/registry)", default_value = "packages/widgets/registry")]
+        out: String,
+        #[arg(long, value_delimiter = ',', help = "Comma-separated widget names (default: all registered)")]
+        widgets: Vec<String>,
+    },
+    /// List registered library widgets
+    List,
+}
+
+#[derive(Subcommand, Debug)]
 enum Commands {
     // ========== Project Creation ==========
     #[command(about = "Create a new Auto project (app, lib, gear, gadget)")]
@@ -344,6 +360,13 @@ enum Commands {
         output: Option<String>,
         #[arg(short, long, help = "Generate full project structure")]
         project: bool,
+    },
+
+    // ========== AutoUI Widget Library (Plan 331) ==========
+    #[command(about = "AutoUI widget library commands")]
+    Ui {
+        #[command(subcommand)]
+        action: UiAction,
     },
 
     // ========== Legacy / Dev Tools ==========
@@ -1159,6 +1182,11 @@ fn real_main(cli: Cli) -> Result<()> {
             if ai_mode {
                 println!("{}", format_success_json(json!({"message": "Code generated"})));
             }
+        }
+
+        // ========== AutoUI Widget Library (Plan 331) ==========
+        Some(Commands::Ui { action }) => {
+            cmd_ui::run(action)?;
         }
 
         // ========== Legacy / Dev Tools ==========
