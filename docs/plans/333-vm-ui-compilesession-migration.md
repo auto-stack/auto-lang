@@ -105,6 +105,33 @@ fn collect_module_imports(module_path, visited, out, seen) {
 
 **产出**：本计划追加「Phase 0 结论」，锁定 Phase 1 的确切改法。
 
+## Phase 0 调查结论（2026-06-25）
+
+调查确认 script 路径机制**完全可直接复用**，无需新建：
+
+1. **`resolve_uses` 是递归的**（compile.rs:1332）：加载每个模块时，先 `self.resolve_uses(&module_source)` 解析该模块自身的 `use` 链，再 `parse_module_to_type_store`。传递依赖自动落地。
+2. **`type_store` 跨模块共享**（compile.rs:252 `type_store()` 返回 `Arc<RwLock<TypeStore>>`，1374-1380 `store.merge`/`import_items`）。`Parser::new_with_type_store(code, session.type_store())` 接受的正是这个类型。
+3. **关键发现**：`with_session` 接收的是 `crate::session::CompilerSession`（parser 的 scenario 载体），与 `crate::compile::CompileSession`（type_store 拥有者）是**两个不同的类型**。所以正确做法是：共享 `compile::CompileSession`（type_store）+ 每个 parser 用按位置构造的 `session::CompilerSession`（scenario）。
+4. **`source_dirs` 是私有字段**，用公共方法 `add_source_dir`（compile.rs:242，已含去重）。
+
+**Phase 1 改法确认**：thread 一个共享 `compile::CompileSession` 贯穿递归，每模块 `resolve_uses` 预解析 + `add_source_dir`（含父目录）+ `new_with_type_store` 解析。
+
+## 实施结果（2026-06-25）
+
+**已完成并验证**：
+- Phase 1 ✅ `collect_module_imports` 接入共享 `CompileSession`（type_store 预解析 + source_dirs 父目录回退）
+- Phase 2 ✅ 链接器前缀回退验证通过（0 link failures）
+- 回归 ✅ 016-calendar vm 模式窗口正常打开
+- 回归 ✅ handler_codegen 测试 5/5 + calendar imports 测试通过
+
+**VM 模式结果**：`auto run --render=vm` 的 App 组件**成功启动**（窗口打开，0 个 Undefined symbol / link failed / panic）。跨模块 `db.func()` 链接完全工作。**Plan 333 核心目标达成。**
+
+**剩余（独立、非本计划阻断）**：子组件（EditorPanel 的 `.Delete`/`.Edit`/`.Save`）报 `Undefined variable: self` 警告。根因是 handler body 对 **prop**（`.note`，widget 参数）赋值（`.note.title = .edit_title`），被重写成 `self.note` 但 `self` 未绑定。这是子组件 prop 赋值的既有能力缺口，源码 `editor.at` 在 `63c6cdb5` 就是如此，早于本计划。非致命（App 仍启动），记为后续。
+
+**Rust 模式**：`--render=rust` 的代码路径（rust_ui.rs → a2r → HTTP）**完全不经过** `collect_module_imports`（本次唯一改动），无回归风险。验证时遇到的编译错误是共享 rust workspace 缓存损坏（`015-notes-back` 成员引用的目录被清理），非代码缺陷。
+
+**结论**：本计划核心目标（VM 模式跑通 015-notes 的跨模块链接）已达成。子组件 prop 赋值作为独立后续任务。
+
 ## Phase 2 — 链接器对 db.func() 前缀回退验证
 
 **文件**：`crates/auto-lang/src/vm/loader.rs`（`Linker::link`，约 246-302）

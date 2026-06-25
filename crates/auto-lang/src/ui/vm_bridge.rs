@@ -1235,11 +1235,13 @@ mod tests {
         let mut visited = std::collections::HashSet::new();
         let mut seen = std::collections::HashSet::new();
         let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
+        let mut session = crate::compile::CompileSession::new();
         crate::collect_module_imports(
             &calendar_util_path,
             &mut visited,
             &mut import_stmts,
             &mut seen,
+            &mut session,
         );
 
         // The non-imported callees MUST be present (the bug was their absence).
