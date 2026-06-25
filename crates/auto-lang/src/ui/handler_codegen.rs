@@ -93,6 +93,28 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
                 field.clone(),
             ))
         }
+        // A method call whose receiver is a bare state-field ident, e.g.
+        // `notes.remove(1)` (parsed as Call { name: Dot(Ident("notes"), "remove") }).
+        // Rewrite just the receiver to `__state.notes`, keeping the method name.
+        Expr::Dot(obj, field)
+            if matches!(
+                obj.as_ref(),
+                Expr::Ident(n) if state_fields.contains(n.as_str())
+            ) =>
+        {
+            // Safe to unwrap: the match guard guarantees obj is an Ident.
+            let state_name = match obj.as_ref() {
+                Expr::Ident(n) => n.clone(),
+                _ => unreachable!("guard guarantees Ident"),
+            };
+            Some(Expr::Dot(
+                Box::new(Expr::Dot(
+                    Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                    state_name,
+                )),
+                field.clone(),
+            ))
+        }
         _ => None,
     };
     if let Some(new_e) = replacement {
@@ -374,7 +396,7 @@ pub fn synthesize_widget_module(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Store, StoreKind};
+    use crate::ast::{Arg, Args, Call, Name, Store, StoreKind, Type};
     use auto_val::Op;
 
     fn make_state_fields(names: &[&str]) -> HashSet<String> {
@@ -422,6 +444,44 @@ mod tests {
         // self/. references must be gone
         assert!(!rendered.contains("(name self)"), "{}", rendered);
         assert!(!rendered.contains("(name .)"), "{}", rendered);
+    }
+
+    #[test]
+    fn rewrites_state_field_as_method_receiver() {
+        // Regression for 015-notes: `notes.remove(1)` where `notes` is a state
+        // field must rewrite the receiver to `__state.notes`. Previously only
+        // bare reads (`notes`) and `self.x` / `.x` forms were rewritten; a
+        // method call whose receiver is a bare state-field ident was left
+        // untouched, causing "Undefined variable: notes" at VM compile time.
+        // notes.remove(1) parses to Call { name: Dot(Ident("notes"), "remove"), args: [1] }
+        let mut stmt = Stmt::Expr(Expr::Call(Call {
+            name: Box::new(Expr::Dot(
+                Box::new(Expr::Ident(Name::from("notes"))),
+                Name::from("remove"),
+            )),
+            args: Args { args: vec![Arg::Pos(Expr::Int(1))] },
+            ret: Type::Unknown,
+            type_args: Vec::new(),
+            pos: None,
+        }));
+        let fields = make_state_fields(&["notes"]);
+        rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &fields);
+        match &stmt {
+            Stmt::Expr(Expr::Call(c)) => {
+                let rendered = format!("{}", c.name);
+                assert!(
+                    rendered.contains("(name __state)"),
+                    "receiver should be rewritten to __state.notes, got: {}",
+                    rendered
+                );
+                assert!(
+                    rendered.contains(".notes"),
+                    "expected .notes in receiver, got: {}",
+                    rendered
+                );
+            }
+            other => panic!("expected Call, got {:?}", other),
+        }
     }
 
     #[test]
