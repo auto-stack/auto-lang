@@ -762,6 +762,9 @@ pub enum VueMode {
     Plain,
     /// shadcn-vue components with accessibility built-in
     Shadcn,
+    /// Self-contained library widgets (Plan 331): each primitive emits an
+    /// independent SFC importing `reka-ui` directly, never `@/components/ui/*`.
+    Library,
 }
 
 /// Vue3 SFC generator
@@ -974,6 +977,16 @@ impl VueGenerator {
         }
     }
 
+    /// Create a new Vue generator in library mode (Plan 331): emits
+    /// self-contained per-widget SFCs backed by `reka-ui`.
+    pub fn new_library() -> Self {
+        Self {
+            mode: VueMode::Library,
+            widget_registry: WidgetRegistry::with_defaults(),
+            ..Self::new()
+        }
+    }
+
     /// Set the generation mode
     pub fn with_mode(mut self, mode: VueMode) -> Self {
         self.mode = mode;
@@ -989,6 +1002,11 @@ impl VueGenerator {
     /// Check if using shadcn-vue mode
     pub fn is_shadcn(&self) -> bool {
         self.mode == VueMode::Shadcn
+    }
+
+    /// Check if using library mode (Plan 331)
+    pub fn is_library(&self) -> bool {
+        self.mode == VueMode::Library
     }
 
     /// Check if outputting TypeScript (Plan 100)
@@ -7872,6 +7890,16 @@ mod tests {
 
         let gen = VueGenerator::new();
         assert!(!gen.is_shadcn());
+    }
+
+    #[test]
+    fn test_library_mode_constructor() {
+        let gen = VueGenerator::new_library();
+        assert!(gen.is_library());
+        assert!(!gen.is_shadcn());
+
+        let gen = VueGenerator::new().with_mode(VueMode::Library);
+        assert!(gen.is_library());
     }
 
     #[test]
