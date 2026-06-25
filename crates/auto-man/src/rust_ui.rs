@@ -1183,7 +1183,21 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 /// the frontend through the in-process interpreter instead of
 /// transpiling to Rust.
 pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
-    let mut _api_child = start_api_server(project_dir);
+    // Plan 334: vm+vm 同进程合并。前端 widget VM（经 Plan 333）直接链接后端
+    // 函数访问数据（list_notes → db.all_notes → notes 全局），不需要独立的 Axum
+    // HTTP 后端进程。跳过 start_api_server 可消除冗余 cargo 编译、端口占用、
+    // 启动等待。设 AUTO_VM_WITH_HTTP=1 可保留旧行为（启动 HTTP 后端进程），用于
+    // 调试或与外部 HTTP 客户端联调。
+    let mut _api_child = if std::env::var("AUTO_VM_WITH_HTTP").as_deref() == Ok("1") {
+        start_api_server(project_dir)
+    } else {
+        println!();
+        println!(
+            "  {} vm+vm merged mode: backend runs in-process (no HTTP server)",
+            "✓".bright_green()
+        );
+        None
+    };
 
     let entry = project_dir.join("src").join("front").join("app.at");
     if !entry.exists() {
@@ -1191,7 +1205,10 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
         return Err(format!("Frontend entry not found: {}", entry.display()).into());
     }
 
-    println!("{}", "Running VM interpreter UI (backend: vm)".bright_cyan());
+    println!(
+        "{}",
+        "Running VM interpreter UI (backend: vm, merged)".bright_cyan()
+    );
 
     // Change CWD to src/front/ so `use` imports resolve correctly
     let front_dir = project_dir.join("src").join("front");
