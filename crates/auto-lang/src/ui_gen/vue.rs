@@ -1033,17 +1033,30 @@ impl VueGenerator {
     /// generated SFC depends on, so a copied component is self-contained.
     pub fn generate_widget_support_files(&self, name: &str) -> Vec<(String, String)> {
         let pascal = pascal_case(name);
-        let mut files = vec![(
-            "index.ts".to_string(),
-            format!("export {{ default as {pascal} }} from './{pascal}.vue'\n"),
-        )];
+        // Collect every `.vue` file this widget emits: the primary SFC plus any
+        // companion `.vue` files declared in `extra_support_files` (composite
+        // widgets like card/dialog/tabs ship several SFCs in one directory).
+        let mut vue_files = vec![format!("{pascal}.vue")];
+        let mut extras: Vec<(String, String)> = Vec::new();
         if let Some(tpl) = library_template(name) {
-            files.extend(
-                tpl.extra_support_files
-                    .into_iter()
-                    .map(|(n, c)| (n.to_string(), c.to_string())),
-            );
+            for (n, c) in tpl.extra_support_files.iter() {
+                let n = n.to_string();
+                if n.ends_with(".vue") {
+                    vue_files.push(n.clone());
+                }
+                extras.push((n, c.to_string()));
+            }
         }
+        // index.ts re-exports every emitted `.vue` by its PascalCase basename.
+        let mut index = String::new();
+        for file in &vue_files {
+            let stem = file.trim_end_matches(".vue");
+            index.push_str(&format!(
+                "export {{ default as {stem} }} from './{file}'\n"
+            ));
+        }
+        let mut files = vec![("index.ts".to_string(), index)];
+        files.extend(extras);
         files
     }
 
@@ -7838,7 +7851,20 @@ fn pascal_case(name: &str) -> String {
 
 /// All widget names with a library template (Plan 331). Kept in sync with
 /// [`library_template`]; the CLI `auto ui list` reads this.
-pub const LIBRARY_WIDGETS: &[&str] = &["button", "input", "label"];
+pub const LIBRARY_WIDGETS: &[&str] = &[
+    "badge",
+    "avatar",
+    "button",
+    "card",
+    "checkbox",
+    "dialog",
+    "input",
+    "label",
+    "separator",
+    "switch",
+    "tabs",
+    "textarea",
+];
 
 impl VueGenerator {
     /// Names of all widgets with a self-contained library template (Plan 331).
@@ -7938,6 +7964,279 @@ const props = defineProps<LabelProps & { class?: HTMLAttributes['class'] }>()"#,
     <slot />
   </Label>"#,
             extra_support_files: vec![],
+        }),
+        "textarea" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { cn } from '../utils'
+
+const props = defineProps<{
+  defaultValue?: string | number
+  modelValue?: string | number
+  class?: HTMLAttributes['class']
+}>()
+const emits = defineEmits<{ 'update:modelValue': [value: string | number] }>()"#,
+            template: r#"  <textarea
+    :value="modelValue ?? defaultValue"
+    @input="emits('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
+    :class="cn('flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50', props.class)"
+  />"#,
+            extra_support_files: vec![],
+        }),
+        "checkbox" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { computed } from 'vue'
+import {
+  CheckboxRoot,
+  CheckboxIndicator,
+  type CheckboxRootEmits,
+  type CheckboxRootProps,
+  useForwardPropsEmits,
+} from 'reka-ui'
+import { cn } from '../utils'
+
+const props = defineProps<CheckboxRootProps & { class?: HTMLAttributes['class'] }>()
+const emits = defineEmits<CheckboxRootEmits>()
+
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
+const forwarded = useForwardPropsEmits(delegatedProps, emits)"#,
+            template: r#"  <CheckboxRoot
+    v-bind="forwarded"
+    :class="cn('peer h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground', props.class)"
+  >
+    <CheckboxIndicator class="flex h-full w-full items-center justify-center text-current">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5"><polyline points="20 6 9 17 4 12" /></svg>
+    </CheckboxIndicator>
+  </CheckboxRoot>"#,
+            extra_support_files: vec![],
+        }),
+        "switch" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { computed } from 'vue'
+import {
+  SwitchRoot,
+  SwitchThumb,
+  type SwitchRootEmits,
+  type SwitchRootProps,
+  useForwardPropsEmits,
+} from 'reka-ui'
+import { cn } from '../utils'
+
+const props = defineProps<SwitchRootProps & { class?: HTMLAttributes['class'] }>()
+const emits = defineEmits<SwitchRootEmits>()
+
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
+const forwarded = useForwardPropsEmits(delegatedProps, emits)"#,
+            template: r#"  <SwitchRoot
+    v-bind="forwarded"
+    :class="cn('peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input', props.class)"
+  >
+    <SwitchThumb class="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0" />
+  </SwitchRoot>"#,
+            extra_support_files: vec![],
+        }),
+        "card" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { cn } from '../utils'
+
+const props = defineProps<{ class?: HTMLAttributes['class'] }>()"#,
+            template: r#"  <div :class="cn('rounded-lg border bg-card text-card-foreground shadow-sm', props.class)">
+    <slot />
+  </div>"#,
+            extra_support_files: vec![
+                ("CardHeader.vue", "<!-- Generated by AutoUI from widgets/card.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { cn } from '../utils'\n\nconst props = defineProps<{ class?: HTMLAttributes['class'] }>()\n</script>\n\n<template>\n  <div :class=\"cn('flex flex-col space-y-1.5 p-6', props.class)\"><slot /></div>\n</template>\n"),
+                ("CardTitle.vue", "<!-- Generated by AutoUI from widgets/card.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { cn } from '../utils'\n\nconst props = defineProps<{ class?: HTMLAttributes['class'] }>()\n</script>\n\n<template>\n  <h3 :class=\"cn('text-2xl font-semibold leading-none tracking-tight', props.class)\"><slot /></h3>\n</template>\n"),
+                ("CardDescription.vue", "<!-- Generated by AutoUI from widgets/card.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { cn } from '../utils'\n\nconst props = defineProps<{ class?: HTMLAttributes['class'] }>()\n</script>\n\n<template>\n  <p :class=\"cn('text-sm text-muted-foreground', props.class)\"><slot /></p>\n</template>\n"),
+                ("CardContent.vue", "<!-- Generated by AutoUI from widgets/card.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { cn } from '../utils'\n\nconst props = defineProps<{ class?: HTMLAttributes['class'] }>()\n</script>\n\n<template>\n  <div :class=\"cn('p-6 pt-0', props.class)\"><slot /></div>\n</template>\n"),
+                ("CardFooter.vue", "<!-- Generated by AutoUI from widgets/card.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { cn } from '../utils'\n\nconst props = defineProps<{ class?: HTMLAttributes['class'] }>()\n</script>\n\n<template>\n  <div :class=\"cn('flex items-center p-6 pt-0', props.class)\"><slot /></div>\n</template>\n"),
+            ],
+        }),
+        "separator" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { computed } from 'vue'
+import { SeparatorRoot, type SeparatorRootProps, useForwardProps } from 'reka-ui'
+import { cn } from '../utils'
+
+const props = withDefaults(
+  defineProps<SeparatorRootProps & { class?: HTMLAttributes['class'] }>(),
+  { orientation: 'horizontal', decorative: true },
+)
+
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
+const forwarded = useForwardProps(delegatedProps)"#,
+            template: r#"  <SeparatorRoot
+    v-bind="forwarded"
+    :class="cn('shrink-0 bg-border', props.orientation === 'vertical' ? 'h-full w-[1px]' : 'h-[1px] w-full', props.class)"
+  />"#,
+            extra_support_files: vec![],
+        }),
+        "badge" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { cn } from '../utils'
+import { badgeVariants, type BadgeVariants } from './variants'
+
+const props = defineProps<{
+  variant?: BadgeVariants['variant']
+  class?: HTMLAttributes['class']
+}>()"#,
+            template: r#"  <div :class="cn(badgeVariants({ variant: props.variant }), props.class)">
+    <slot />
+  </div>"#,
+            extra_support_files: vec![(
+                "variants.ts",
+                r#"import { cva, type VariantProps } from 'class-variance-authority'
+
+export const badgeVariants = cva(
+  'inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+  {
+    variants: {
+      variant: {
+        default: 'border-transparent bg-primary text-primary-foreground hover:bg-primary/80',
+        secondary: 'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        destructive: 'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80',
+        outline: 'text-foreground',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+    },
+  },
+)
+
+export type BadgeVariants = VariantProps<typeof badgeVariants>
+"#,
+            )],
+        }),
+        "avatar" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { computed } from 'vue'
+import { AvatarRoot, type AvatarRootProps, useForwardProps } from 'reka-ui'
+import { cn } from '../utils'
+
+const props = defineProps<AvatarRootProps & { class?: HTMLAttributes['class'] }>()
+
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
+const forwarded = useForwardProps(delegatedProps)"#,
+            template: r#"  <AvatarRoot v-bind="forwarded" :class="cn('relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full', props.class)">
+    <slot />
+  </AvatarRoot>"#,
+            extra_support_files: vec![
+                ("AvatarImage.vue", "<!-- Generated by AutoUI from widgets/avatar.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { AvatarImage, type AvatarImageProps } from 'reka-ui'\n\nconst props = defineProps<AvatarImageProps & { class?: HTMLAttributes['class'] }>()\n</script>\n\n<template>\n  <AvatarImage v-bind=\"props\" class=\"aspect-square h-full w-full\" />\n</template>\n"),
+                ("AvatarFallback.vue", "<!-- Generated by AutoUI from widgets/avatar.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { AvatarFallback, type AvatarFallbackProps } from 'reka-ui'\nimport { cn } from '../utils'\n\nconst props = defineProps<AvatarFallbackProps & { class?: HTMLAttributes['class'] }>()\n</script>\n\n<template>\n  <AvatarFallback v-bind=\"props\" :class=\"cn('flex h-full w-full items-center justify-center rounded-full bg-muted', props.class)\"><slot /></AvatarFallback>\n</template>\n"),
+            ],
+        }),
+        "dialog" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { computed } from 'vue'
+import {
+  DialogRoot,
+  DialogTrigger,
+  type DialogRootEmits,
+  type DialogRootProps,
+  useForwardPropsEmits,
+} from 'reka-ui'
+import { cn } from '../utils'
+
+const props = defineProps<DialogRootProps & { class?: HTMLAttributes['class'] }>()
+const emits = defineEmits<DialogRootEmits>()
+
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
+const forwarded = useForwardPropsEmits(delegatedProps, emits)"#,
+            template: r#"  <DialogRoot v-bind="forwarded">
+    <DialogTrigger v-if="$slots.trigger" as-child><slot name="trigger" /></DialogTrigger>
+    <slot />
+  </DialogRoot>"#,
+            extra_support_files: vec![
+                ("DialogContent.vue", r#"<!-- Generated by AutoUI from widgets/dialog.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->
+<script setup lang="ts">
+import type { HTMLAttributes } from 'vue'
+import { computed } from 'vue'
+import {
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  type DialogContentEmits,
+  type DialogContentProps,
+  useForwardPropsEmits,
+} from 'reka-ui'
+import { cn } from '../utils'
+
+const props = defineProps<DialogContentProps & { class?: HTMLAttributes['class'] }>()
+const emits = defineEmits<DialogContentEmits>()
+
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
+const forwarded = useForwardPropsEmits(delegatedProps, emits)
+</script>
+
+<template>
+  <DialogPortal>
+    <DialogOverlay class="fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <DialogContent
+      v-bind="forwarded"
+      :class="cn('fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg', props.class)"
+    >
+      <slot />
+      <DialogTitle v-if="$slots.title" as-child><slot name="title" /></DialogTitle>
+      <DialogDescription v-if="$slots.description" as-child><slot name="description" /></DialogDescription>
+      <DialogClose class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+        <span class="sr-only">Close</span>
+      </DialogClose>
+    </DialogContent>
+  </DialogPortal>
+</template>
+"#),
+                ("DialogHeader.vue", "<!-- Generated by AutoUI from widgets/dialog.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { cn } from '../utils'\n\nconst props = defineProps<{ class?: HTMLAttributes['class'] }>()\n</script>\n\n<template>\n  <div :class=\"cn('flex flex-col space-y-1.5 text-center sm:text-left', props.class)\"><slot /></div>\n</template>\n"),
+                ("DialogFooter.vue", "<!-- Generated by AutoUI from widgets/dialog.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { cn } from '../utils'\n\nconst props = defineProps<{ class?: HTMLAttributes['class'] }>()\n</script>\n\n<template>\n  <div :class=\"cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2', props.class)\"><slot /></div>\n</template>\n"),
+            ],
+        }),
+        "tabs" => Some(WidgetTemplate {
+            script: r#"import type { HTMLAttributes } from 'vue'
+import { computed } from 'vue'
+import {
+  TabsRoot,
+  type TabsRootEmits,
+  type TabsRootProps,
+  useForwardPropsEmits,
+} from 'reka-ui'
+import { cn } from '../utils'
+
+const props = defineProps<TabsRootProps & { class?: HTMLAttributes['class'] }>()
+const emits = defineEmits<TabsRootEmits>()
+
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
+const forwarded = useForwardPropsEmits(delegatedProps, emits)"#,
+            template: r#"  <TabsRoot v-bind="forwarded" :class="cn('relative', props.class)">
+    <slot />
+  </TabsRoot>"#,
+            extra_support_files: vec![
+                ("TabsList.vue", "<!-- Generated by AutoUI from widgets/tabs.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { TabsList, type TabsListProps } from 'reka-ui'\nimport { cn } from '../utils'\n\nconst props = defineProps<TabsListProps & { class?: HTMLAttributes['class'] }>()\n</script>\n\n<template>\n  <TabsList v-bind=\"props\" :class=\"cn('inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground', props.class)\" />\n</template>\n"),
+                ("TabsTrigger.vue", "<!-- Generated by AutoUI from widgets/tabs.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { computed } from 'vue'\nimport { TabsTrigger, type TabsTriggerProps, useForwardProps } from 'reka-ui'\nimport { cn } from '../utils'\n\nconst props = defineProps<TabsTriggerProps & { class?: HTMLAttributes['class'] }>()\nconst delegatedProps = computed(() => { const { class: _, ...d } = props; return d })\nconst forwarded = useForwardProps(delegatedProps)\n</script>\n\n<template>\n  <TabsTrigger v-bind=\"forwarded\" :class=\"cn('inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm', props.class)\" />\n</template>\n"),
+                ("TabsContent.vue", "<!-- Generated by AutoUI from widgets/tabs.at. Visual layer derived from shadcn-vue (MIT). See NOTICES. -->\n<script setup lang=\"ts\">\nimport type { HTMLAttributes } from 'vue'\nimport { computed } from 'vue'\nimport { TabsContent, type TabsContentProps, useForwardProps } from 'reka-ui'\nimport { cn } from '../utils'\n\nconst props = defineProps<TabsContentProps & { class?: HTMLAttributes['class'] }>()\nconst delegatedProps = computed(() => { const { class: _, ...d } = props; return d })\nconst forwarded = useForwardProps(delegatedProps)\n</script>\n\n<template>\n  <TabsContent v-bind=\"forwarded\" :class=\"cn('mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', props.class)\" />\n</template>\n"),
+            ],
         }),
         _ => None,
     }
@@ -8128,6 +8427,75 @@ mod tests {
         );
         assert!(sfc.contains("shadcn-vue (MIT)"), "must cite shadcn-vue (MIT)");
         assert!(sfc.contains("NOTICES"), "must point to NOTICES");
+    }
+
+    #[test]
+    fn test_library_all_widgets_self_contained() {
+        let mut gen = VueGenerator::new_library();
+        for name in VueGenerator::LIBRARY_WIDGETS {
+            let sfc = gen.generate_widget_sfc(name).unwrap_or_else(|e| panic!("generate {name}: {e}"));
+            assert!(sfc.contains("<template>"), "{name}: has template");
+            assert!(sfc.contains("<script setup"), "{name}: has script setup");
+            assert!(!sfc.contains("@/components/ui/"), "{name}: self-contained");
+            assert!(
+                sfc.starts_with("<!-- Generated by AutoUI"),
+                "{name}: attribution header"
+            );
+        }
+    }
+
+    #[test]
+    fn test_library_reka_ui_backed_widgets() {
+        let mut gen = VueGenerator::new_library();
+        // widget -> a marker that proves it binds the right reka-ui primitive.
+        let markers: &[(&str, &str)] = &[
+            ("checkbox", "CheckboxRoot"),
+            ("switch", "SwitchRoot"),
+            ("separator", "SeparatorRoot"),
+            ("avatar", "AvatarRoot"),
+            ("dialog", "DialogRoot"),
+            ("tabs", "TabsRoot"),
+            ("label", "Label"),
+        ];
+        for (name, marker) in markers {
+            let sfc = gen.generate_widget_sfc(name).unwrap();
+            assert!(sfc.contains(marker), "{name}: should use {marker}");
+        }
+    }
+
+    #[test]
+    fn test_library_composite_widget_support_files() {
+        let gen = VueGenerator::new_library();
+        // card ships 5 companion SFCs.
+        let card_files: Vec<String> =
+            gen.generate_widget_support_files("card").into_iter().map(|(n, _)| n).collect();
+        for companion in [
+            "index.ts",
+            "CardHeader.vue",
+            "CardTitle.vue",
+            "CardDescription.vue",
+            "CardContent.vue",
+            "CardFooter.vue",
+        ] {
+            assert!(card_files.contains(&companion.to_string()), "card missing {companion}");
+        }
+        // tabs ships 3 companion SFCs.
+        let tabs_files: Vec<String> =
+            gen.generate_widget_support_files("tabs").into_iter().map(|(n, _)| n).collect();
+        for companion in ["index.ts", "TabsList.vue", "TabsTrigger.vue", "TabsContent.vue"] {
+            assert!(tabs_files.contains(&companion.to_string()), "tabs missing {companion}");
+        }
+    }
+
+    #[test]
+    fn test_library_index_reexports_all_vue_files() {
+        let gen = VueGenerator::new_library();
+        let files = gen.generate_widget_support_files("card");
+        let index = files.iter().find(|(n, _)| n == "index.ts").unwrap();
+        // primary + 5 companions = 6 re-exports
+        assert_eq!(index.1.matches("export").count(), 6, "index: {}", index.1);
+        assert!(index.1.contains("Card"), "re-exports Card");
+        assert!(index.1.contains("CardHeader"), "re-exports CardHeader");
     }
 
     #[test]
