@@ -1,0 +1,42 @@
+@auto-ui/widgets
+Copyright (c) 2024 Soutek Co. Ltd. (MIT)
+
+This package distributes AutoUI-generated Vue 3 component primitives. The
+generated visual layer is derived from the projects listed below; their
+licenses (all MIT) are acknowledged here.
+
+================================================================================
+reka-ui
+https://reka-ui.com
+--------------------------------------------------------------------------------
+License: MIT
+Copyright (c) Radix Vue / reka-ui contributors
+
+The behavior layer (accessibility, keyboard navigation, focus management) of
+every generated component is built on top of reka-ui primitives, imported at
+runtime via `import { ... } from 'reka-ui'`. reka-ui is declared as a (optional)
+peer dependency.
+
+================================================================================
+shadcn-vue
+https://www.shadcn-vue.com
+--------------------------------------------------------------------------------
+License: MIT
+Copyright (c) shadcn-vue contributors
+
+The Tailwind CSS class recipes ("visual layer") emitted into each generated
+`.vue` file are derived from the shadcn-vue reference implementation. Per the
+shadcn-vue model, components are copied into the consumer's project and owned
+by the consumer. Attribution is preserved in this file and in a header comment
+atop each generated `.vue`.
+
+================================================================================
+Tailwind CSS
+https://tailwindcss.com
+--------------------------------------------------------------------------------
+License: MIT
+Copyright (c) Adam Wathan, Jonathan Reinink, and Tailwind CSS contributors
+
+Utility class names referenced by the generated components are part of the
+Tailwind CSS vocabulary. A precompiled `dist/styles.css` is offered for
+zero-config consumers.
