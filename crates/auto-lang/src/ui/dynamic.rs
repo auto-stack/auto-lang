@@ -622,8 +622,14 @@ impl DynamicComponent {
     /// initial state (e.g. `build_month_grid(...)`) is populated before the
     /// first render.
     pub fn fire_init(&mut self) {
-        if self.bridge.call_handler("Init", &[]).is_ok() {
-            self.dirty = true;
+        // Plan 333: run imported module-level initializers (var notes = ... etc.)
+        // before Init, so globals have defined values when Init reads them.
+        if let Err(e) = self.bridge.run_module_init() {
+            log::warn!("fire_init: __module_init failed: {:?}", e);
+        }
+        match self.bridge.call_handler("Init", &[]) {
+            Ok(_) => self.dirty = true,
+            Err(e) => log::warn!("fire_init: Init handler failed (state may be unpopulated): {:?}", e),
         }
     }
 

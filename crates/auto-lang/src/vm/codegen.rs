@@ -164,6 +164,14 @@ pub struct Codegen {
     pub global_vars: std::collections::HashSet<String>,
     pub global_inits: Vec<(String, crate::ast::Expr)>,
 
+    /// Plan 333: when true, `var name = expr` inside a fn body compiles to
+    /// STORE_GLOBAL (instead of a local) for any name in `global_vars`. Used by
+    /// the widget `__module_init` fn, which runs module-level initializers from
+    /// inside a function scope (the codegen's `scope_stack.len() <= 1` guard
+    /// would otherwise treat them as locals). Defaults false so normal fns
+    /// still allow a `var x` shadow over a same-named global.
+    pub force_global_store: bool,
+
     /// Variable type tracking (Plan 080: support for instance methods on List, etc.)
     /// Maps variable name -> its type (e.g., "x" -> Type::List(Type::Int))
     /// Used to generate correct native method calls (e.g., x.push -> List.push)
@@ -365,6 +373,7 @@ impl Codegen {
             current_task_state_fields: HashMap::new(), // Plan 327: actor state fields
             global_vars: std::collections::HashSet::new(), // Plan 327: module-level vars
             global_inits: Vec::new(), // Plan 327: global var initializers
+            force_global_store: false, // Plan 333: set true inside __module_init
             var_types: HashMap::new(), // Plan 080: variable type tracking
             var_mutability: HashMap::new(), // Plan 080+: variable mutability tracking
             captured_vars_stack: Vec::new(),
@@ -528,6 +537,7 @@ impl Codegen {
             current_task_state_fields: HashMap::new(), // Plan 327
             global_vars: std::collections::HashSet::new(), // Plan 327
             global_inits: Vec::new(), // Plan 327
+            force_global_store: false, // Plan 333
             var_types: HashMap::new(),
             var_mutability: HashMap::new(),
             captured_vars_stack: Vec::new(),
@@ -1146,7 +1156,12 @@ impl Codegen {
                 // Plan 327: module-level global variable (top-level `var`).
                 // Compile the init expr and STORE_GLOBAL; skip local slot
                 // registration so the value lives in vm.globals (cross-fn).
-                if self.global_vars.contains(&name_str) && self.scope_stack.len() <= 1 {
+                // Plan 333: force_global_store (set inside __module_init) makes
+                // this apply even within a fn body, so module-level initializers
+                // wrapped in __module_init store globally rather than as locals.
+                if self.global_vars.contains(&name_str)
+                    && (self.scope_stack.len() <= 1 || self.force_global_store)
+                {
                     // Only treat as global at top level (scope_stack.len() <= 1
                     // = script wrapper scope). Inside fns, a `var x` with the
                     // same name as a global is a local shadow, not a global store.

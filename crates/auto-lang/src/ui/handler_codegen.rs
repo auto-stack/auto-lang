@@ -28,6 +28,11 @@ use crate::vm::loader::Module;
 /// The synthesized receiver parameter name holding the widget-state heap id.
 const STATE_PARAM: &str = "__state";
 
+/// Plan 333: the exported fn that initializes imported module-level globals
+/// (`var notes = ...` etc.). VmBridge runs it once before `.Init` so the
+/// globals have defined values when handlers (e.g. db.all_notes → notes) read them.
+pub const MODULE_INIT_FN: &str = "__module_init";
+
 /// Error type for handler synthesis.
 pub type SynthResult<T> = Result<T, String>;
 
@@ -354,12 +359,53 @@ pub fn synthesize_widget_module(
             }
         }
     }
+    // Plan 333: register imported module-level `var` declarations as GLOBALS
+    // BEFORE compiling them, mirroring the script path (lib.rs:625-633). Without
+    // this, `var notes = List<Note>.new([...])` compiles as a script-wrapper
+    // LOCAL, so `db.all_notes()` (a separate fn) reads `notes` as nil →
+    // "no function '.to_array' for type 'unknown_nv'". Globals live in
+    // vm.globals and are visible from every function via LOAD_GLOBAL/STORE_GLOBAL.
     for stmt in &import_stmts {
-        if let crate::ast::Stmt::Store(_) = stmt {
-            if let Err(e) = codegen.compile_stmt(stmt) {
-                log::warn!("handler_codegen: import store stmt failed to compile: {}", e);
+        if let crate::ast::Stmt::Store(s) = stmt {
+            if matches!(s.kind, crate::ast::StoreKind::Var) {
+                codegen.global_vars.insert(s.name.to_string());
             }
         }
+    }
+    // Plan 333: wrap the module-level store initializers into a synthesized
+    // `__module_init` fn rather than compiling them as bare top-level code.
+    // Why: the widget VM never runs from address 0 (it only jumps to handler
+    // entries via call_handler), and codegen.finish() emits no RET after the
+    // top-level statements — so bare init code would fall through into the next
+    // handler's bytecode. An exported __module_init fn is callable explicitly
+    // (VmBridge runs it once before .Init), giving the globals defined values.
+    let store_inits: Vec<Stmt> = import_stmts.iter()
+        .filter_map(|s| {
+            if let crate::ast::Stmt::Store(st) = s {
+                // Keep only `var`/reassignment stores (declarations with an
+                // initializer). These set the global to its initial value.
+                Some(Stmt::Store(st.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if !store_inits.is_empty() {
+        // Plan 333: force these `var` stores to compile as STORE_GLOBAL even
+        // though they're inside a fn body (see codegen Stmt::Store guard).
+        codegen.force_global_store = true;
+        let init_fn = Stmt::Fn(Fn::new(
+            FnKind::Function,
+            Name::from(MODULE_INIT_FN),
+            None,
+            Vec::new(),
+            Body { stmts: store_inits, has_new_line: false, source_lines: Vec::new() },
+            Type::Void,
+        ));
+        if let Err(e) = codegen.compile_stmt(&init_fn) {
+            log::warn!("handler_codegen: __module_init failed to compile: {}", e);
+        }
+        codegen.force_global_store = false;
     }
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {

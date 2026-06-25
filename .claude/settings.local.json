@@ -1,7 +1,4 @@
 {
-  "worktree": {
-    "baseRef": "head"
-  },
   "permissions": {
     "allow": [
       "Bash(cmake:*)",
@@ -145,11 +142,15 @@
       "Bash(env)",
       "Bash(python3 -c ' *)",
       "Bash(ls -la \"d:/.auto/rust-workspace/\" 2>/dev/null | head -20)",
-      "Read(//d/.auto/rust-workspace/**)"
+      "Read(//d/.auto/rust-workspace/**)",
+      "Bash(git worktree *)"
     ],
     "additionalDirectories": [
       "d:\\autostack\\auto-lang\\docs\\plans",
       "C:\\Users\\zhaop\\.claude"
     ]
+  },
+  "worktree": {
+    "baseRef": "head"
   }
 }

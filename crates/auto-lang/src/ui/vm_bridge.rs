@@ -371,6 +371,21 @@ impl VmBridge {
         result
     }
 
+    /// Plan 333: run the synthesized `__module_init` fn, which initializes
+    /// imported module-level globals (`var notes = ...` etc.). Must be called
+    /// once before `Init` (and before any handler that reads those globals).
+    /// No-op (returns Ok) if the fn isn't present (no module-level stores).
+    pub fn run_module_init(&mut self) -> Result<()> {
+        let fn_name = crate::ui::handler_codegen::MODULE_INIT_FN;
+        if !self.vm.flash.exports_by_name.contains_key(fn_name) {
+            return Ok(());
+        }
+        let mut task = AutoTask::new(0, 4096, 0);
+        self.vm
+            .call_fn_by_name(&mut task, fn_name, 0)
+            .map_err(|e| VmBridgeError::VmError(format!("{:?}", e)))
+    }
+
     /// Call a handler by name with arguments.
     ///
     /// Looks up the synthesized `handler_<Name>` function in the module exports,
