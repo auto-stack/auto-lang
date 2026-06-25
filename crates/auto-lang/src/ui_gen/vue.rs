@@ -1014,6 +1014,37 @@ impl VueGenerator {
         self.use_typescript
     }
 
+    /// Generate a self-contained SFC for a single primitive widget (Plan 331).
+    ///
+    /// Emits a standalone `.vue` file backed by `reka-ui` (never
+    /// `@/components/ui/*`), driven by the widget's library template.
+    pub fn generate_widget_sfc(&mut self, name: &str) -> GenResult<String> {
+        // Phase 1.2: button only; generalized in 1.4 via registry lookup.
+        debug_assert_eq!(name, "button"); // removed in 1.4
+        Ok(r#"<script setup lang="ts">
+import { computed } from 'vue'
+import { Primitive } from 'reka-ui'
+import { cn } from '../utils'
+import { buttonVariants } from './variants'
+import type { ButtonVariants } from './variants'
+
+const props = withDefaults(defineProps<{
+  variant?: ButtonVariants['variant']
+  size?: ButtonVariants['size']
+  class?: string
+  as?: string
+  asChild?: boolean
+}>(), { variant: 'default', size: 'default', as: 'button' })
+</script>
+
+<template>
+  <Primitive :as="as" :as-child="asChild" :class="cn(buttonVariants({ variant, size }), props.class)">
+    <slot />
+  </Primitive>
+</template>
+"#.to_string())
+    }
+
     /// Reset state for new widget
     fn reset(&mut self) {
         self.imports.clear();
@@ -7900,6 +7931,16 @@ mod tests {
 
         let gen = VueGenerator::new().with_mode(VueMode::Library);
         assert!(gen.is_library());
+    }
+
+    #[test]
+    fn test_library_button_sfc_is_self_contained() {
+        let mut gen = VueGenerator::new_library();
+        let sfc = gen.generate_widget_sfc("button").unwrap();
+        assert!(sfc.contains("<template>"), "has template");
+        assert!(sfc.contains("<script setup"), "has script setup");
+        assert!(!sfc.contains("@/components/ui/"), "must NOT import shadcn-vue");
+        assert!(sfc.contains("reka-ui"), "uses reka-ui as backend");
     }
 
     #[test]
