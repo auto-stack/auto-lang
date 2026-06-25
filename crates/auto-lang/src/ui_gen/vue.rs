@@ -8605,7 +8605,7 @@ mod tests {
     #[test]
     fn test_dashboard_01_compiles() {
         use crate::ui_build_shadcn;
-        let result = ui_build_shadcn("../../examples/component-gallery/source/front/pages/blocks/dashboard_01.at", None);
+        let result = ui_build_shadcn("../../examples/gallery/source/front/pages/blocks/dashboard_01.at", None);
         assert!(result.is_ok(), "dashboard_01 should compile: {:?}", result.err());
         let code = result.unwrap();
         assert!(code.contains("<AreaChart"), "AreaChart tag missing in dashboard");

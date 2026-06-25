@@ -1,7 +1,7 @@
 // pac.at - Component Gallery Workspace Config
 // AutoUI 组件库文档站点示例
 
-name: "component-gallery"
+name: "gallery"
 version: "1.0.0"
 description: "AutoUI Component Gallery - Interactive component documentation"
 

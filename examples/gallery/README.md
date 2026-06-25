@@ -7,7 +7,7 @@
 >
 > 当前这些文件作为 **UI 场景语法的规范示例**，展示了未来 AutoUI 的预期语法。
 >
-> 运行 `auto.exe vue examples/component-gallery` 将产生解析错误，因为编译器尚未支持 Widget DSL。
+> 运行 `auto.exe vue examples/gallery` 将产生解析错误，因为编译器尚未支持 Widget DSL。
 
 ## Widget DSL 语法示例
 
@@ -41,7 +41,7 @@ widget Counter {
 ## 目录结构
 
 ```
-component-gallery/
+gallery/
 ├── pac.at                      # 工作区配置
 ├── source/
 │   └── front/
@@ -88,16 +88,16 @@ component-gallery/
 
 ```bash
 # 从项目根目录
-auto.exe vue examples/component-gallery
+auto.exe vue examples/gallery
 
 # 或者
-cargo run --release -- vue examples/component-gallery
+cargo run --release -- vue examples/gallery
 ```
 
 ### 开发模式
 
 ```bash
-cd examples/component-gallery/generated/vue
+cd examples/gallery/generated/vue
 npm install
 npm run dev
 ```
@@ -105,7 +105,7 @@ npm run dev
 ### 构建生产版本
 
 ```bash
-cd examples/component-gallery/generated/vue
+cd examples/gallery/generated/vue
 npm run build
 ```
 
@@ -150,7 +150,7 @@ npm run build
 
 项目配置了 GitHub Actions 自动部署到 GitHub Pages。
 
-当 `examples/component-gallery/` 目录下的文件发生变更并推送到 `main` 分支时，会自动触发部署。
+当 `examples/gallery/` 目录下的文件发生变更并推送到 `main` 分支时，会自动触发部署。
 
 ## 相关文档
 
