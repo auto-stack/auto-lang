@@ -1787,8 +1787,9 @@ fn resolve_module_path(
     None
 }
 
-/// Recursively collect ALL declarations (Fn/TypeDecl/EnumDecl/Ext) from a
-/// module and its transitive `use` dependencies, for VM-render compilation.
+/// Recursively collect ALL declarations (Fn/TypeDecl/EnumDecl/Ext/Store/Use)
+/// from a module and its transitive `use` dependencies, for VM-render
+/// compilation.
 ///
 /// Why "all declarations" rather than just the `use`-named items: an imported
 /// function's body may call sibling helpers in the same module that are NOT
@@ -1798,11 +1799,20 @@ fn resolve_module_path(
 /// modules it itself imports — must be fed to the single Codegen pass for
 /// callees to resolve. Dedups by canonical path (cycle guard) and by symbol
 /// name (first definition wins).
+///
+/// Plan 333: a shared `CompileSession` is threaded through the recursion so
+/// that `resolve_uses` pre-registers imported types (e.g. `Note` from
+/// `use api: Note` in back/db.at) into a `type_store` BEFORE each module is
+/// parsed. Without this, db.at's `var notes List<Note> = List<Note>.new([...])`
+/// fails to parse with "undefined variable: Note", dropping all of db.at's
+/// functions and breaking `db.func()` linking. This mirrors the script path
+/// (`execute_autovm_with_path`), which already does this.
 fn collect_module_imports(
     module_path: &std::path::Path,
     visited: &mut std::collections::HashSet<std::path::PathBuf>,
     out: &mut Vec<crate::ast::Stmt>,
     seen: &mut std::collections::HashSet<String>,
+    session: &mut crate::compile::CompileSession,
 ) {
     let canon = module_path
         .canonicalize()
@@ -1814,21 +1824,41 @@ fn collect_module_imports(
         Ok(c) => c,
         Err(_) => return,
     };
-    // Choose session by module location: front/ modules are UI components (need
-    // the UI session to parse `widget`/`view`/`model`), while back/ modules are
-    // plain Auto scripts. The UI session's stricter parsing rejects backend
-    // module-level `var notes = List<Note>.new([...])` with "undefined variable"
-    // (015-notes back/db.at). Core parses backend scripts fine. The collected
-    // declarations are re-compiled in the UI codegen context below regardless.
-    let is_back_module = module_path
+    // Plan 333: pre-resolve this module's `use` deps into the shared type_store
+    // so types like `Note` (from `use api: Note`) are registered before parse.
+    // resolve_uses is itself recursive (it follows each module's own uses), so
+    // transitive types land in the store. Seed source_dirs with this module's
+    // directory AND its parent so `back.api` resolves from `src/front/` and
+    // `use api` resolves from `src/back/`.
+    if let Some(dir) = module_path.parent() {
+        let abs = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        session.add_source_dir(abs);
+        if let Some(parent) = dir.parent() {
+            let abs_parent = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+            session.add_source_dir(abs_parent);
+        }
+    }
+    // Tolerate resolve_uses failures (e.g. a rust dep not declared); we still
+    // attempt the parse below with whatever types did resolve.
+    let _ = session.resolve_uses(&code);
+
+    // Choose session scenario by module location: front/ modules are UI
+    // components (need the UI session to parse `widget`/`view`/`model`), while
+    // back/ modules are plain Auto scripts parsed under Core. The shared
+    // type_store is carried via `new_with_type_store` regardless of scenario.
+    // (Note: with_session takes a crate::session::CompilerSession — the parser's
+    // scenario carrier — which is distinct from the crate::compile::CompileSession
+    // that owns the type_store. The type_store is shared via new_with_type_store.)
+    let parser_session = if module_path
         .components()
-        .any(|c| c.as_os_str() == "back");
-    let session = if is_back_module {
+        .any(|c| c.as_os_str() == "back")
+    {
         crate::session::CompilerSession::core()
     } else {
         crate::session::CompilerSession::ui()
     };
-    let mut parser = Parser::from(code.as_str()).with_session(session);
+    let mut parser =
+        Parser::new_with_type_store(code.as_str(), session.type_store()).with_session(parser_session);
     let ast = match parser.parse() {
         Ok(a) => a,
         Err(_) => return,
@@ -1840,7 +1870,6 @@ fn collect_module_imports(
     //    modules via `db.func()` — can compile and link. Without these, the
     //    synthesized widget module drops the storage and the auto_modules
     //    registration, causing "Undefined symbol" link errors (015-notes).
-    let mut emitted = Vec::new();
     for stmt in &ast.stmts {
         match stmt {
             crate::ast::Stmt::Fn(_)
@@ -1848,8 +1877,7 @@ fn collect_module_imports(
             | crate::ast::Stmt::EnumDecl(_)
             | crate::ast::Stmt::Ext(_) => {
                 if let Some(name) = stmt_symbol_name(stmt) {
-                    if seen.insert(name.clone()) {
-                        emitted.push(name);
+                    if seen.insert(name) {
                         out.push(stmt.clone());
                     }
                 }
@@ -1863,15 +1891,13 @@ fn collect_module_imports(
             // transitive re-import doesn't double-declare.
             crate::ast::Stmt::Store(s) => {
                 let key = format!("__store:{}", s.name);
-                if seen.insert(key.clone()) {
-                    emitted.push(key);
+                if seen.insert(key) {
                     out.push(stmt.clone());
                 }
             }
             _ => {}
         }
     }
-    let _ = emitted;
     // 2. Recurse into this module's own `use` dependencies, each resolved
     //    relative to THIS module's directory (so back/api.at's `use db` finds
     //    back/db.at).
@@ -1883,7 +1909,7 @@ fn collect_module_imports(
             continue;
         }
         if let Some(dep_path) = resolve_module_path(module_dir, &dep.module) {
-            collect_module_imports(&dep_path, visited, out, seen);
+            collect_module_imports(&dep_path, visited, out, seen, session);
         }
     }
 }
@@ -1923,6 +1949,9 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
     // transitive deps load once.
     let mut visited = std::collections::HashSet::new();
     let mut seen_symbols = std::collections::HashSet::new();
+    // Plan 333: a shared CompileSession carries the type_store across the whole
+    // recursive import walk so imported types resolve before each module parse.
+    let mut import_session = crate::compile::CompileSession::new();
     if let Some(file_path) = path {
         let use_stmts = crate::use_scanner::scan_use_statements(code);
         let base_dir = std::path::Path::new(file_path)
@@ -1974,6 +2003,7 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
                 &mut visited,
                 &mut import_stmts,
                 &mut seen_symbols,
+                &mut import_session,
             );
         }
     }
