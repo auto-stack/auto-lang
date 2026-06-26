@@ -91,10 +91,13 @@ pub struct AuraViewBuilder<'a> {
     /// Optional widget registry for child widget rendering
     widget_registry: Option<&'a crate::ui::widget_registry::WidgetRegistry>,
 
-    /// Plan 336: imported declarations (back/api.at functions etc.) shared with
-    /// child widgets so their handlers can call imported functions (delete_note,
-    /// update_note). None when the builder has no imports (legacy).
+    /// Plan 336: imported declarations shared with child widgets.
     import_stmts: Option<&'a [crate::ast::Stmt]>,
+
+    /// Plan 337: when rendering a child widget's view tree, this overrides the
+    /// bridge's root state_obj_id so read_state reads from the child's state
+    /// object instead of the root widget's. None = use root state.
+    override_state_obj_id: Option<u64>,
 }
 
 impl<'a> AuraViewBuilder<'a> {
@@ -110,6 +113,7 @@ impl<'a> AuraViewBuilder<'a> {
             widget_name: widget_name.to_string(),
             widget_registry: None,
             import_stmts: None,
+            override_state_obj_id: None,
         }
     }
 
@@ -124,6 +128,7 @@ impl<'a> AuraViewBuilder<'a> {
             widget_name: widget_name.to_string(),
             widget_registry: Some(registry),
             import_stmts: None,
+            override_state_obj_id: None,
         }
     }
 
@@ -142,6 +147,7 @@ impl<'a> AuraViewBuilder<'a> {
             widget_name: widget_name.to_string(),
             widget_registry: Some(registry),
             import_stmts: Some(import_stmts),
+            override_state_obj_id: None,
         }
     }
 
@@ -1218,6 +1224,7 @@ impl<'a> AuraViewBuilder<'a> {
             widget_name: child_widget.name.clone(),
             widget_registry: self.widget_registry,
             import_stmts: self.import_stmts,
+            override_state_obj_id: None,
         };
 
         child_builder.build(&child_widget.view_tree)

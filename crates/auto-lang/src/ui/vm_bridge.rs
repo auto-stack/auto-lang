@@ -113,6 +113,11 @@ pub struct VmBridge {
 
     /// Widget name for debugging
     widget_name: String,
+
+    /// Plan 337: child widget state heap object IDs, keyed by widget name.
+    /// Each child widget instance gets its own GenericInstanceData on the same
+    /// VM heap (single VM, multiple state objects).
+    child_state_map: std::collections::HashMap<String, u64>,
 }
 
 impl VmBridge {
@@ -139,17 +144,25 @@ impl VmBridge {
     ///
     /// Returns an error if handler synthesis or VM initialization fails.
     pub fn new_with_imports(widget: &AuraWidget, import_stmts: Vec<Stmt>) -> Result<Self> {
+        Self::new_with_children(widget, &[], import_stmts)
+    }
+
+    /// Plan 337: create a VmBridge compiling root widget + child widgets into
+    /// ONE VM module (single VM widget tree). Child handlers get namespaced fn
+    /// names (handler_<Widget>_<Event>) so they coexist in one module.
+    pub fn new_with_children(
+        widget: &AuraWidget,
+        child_widgets: &[crate::aura::AuraWidget],
+        import_stmts: Vec<Stmt>,
+    ) -> Result<Self> {
         // Ensure BIGVM_NATIVES is populated before AutoVM::new()
         crate::vm::native_registry::register_builtin_natives();
 
         let widget_name = widget.name.clone();
 
-        // 1. Synthesize imports + AppState type + handler fns into ONE Module
-        //    via the genuine VM Codegen. Handler bodies have their `.field`
-        //    references rewritten to `__state.field` first.
-        //    Plan 336: also returns the populated generic_registry so the runtime
-        //    VM can resolve struct field names in CONSTRUCT_INSTANCE.
-        let (module, registry) = crate::ui::handler_codegen::synthesize_widget_module(widget, import_stmts)
+        // 1. Synthesize imports + ALL widgets' state types + handlers into ONE
+        //    Module via the genuine VM Codegen. Plan 337: single VM.
+        let (module, registry) = crate::ui::handler_codegen::synthesize_widget_module(widget, child_widgets, import_stmts)
             .map_err(|e| VmBridgeError::InvalidState(format!(
                 "handler synthesis failed for '{}': {}", widget_name, e
             )))?;
@@ -199,6 +212,7 @@ impl VmBridge {
             state_obj_id,
             state_field_names: field_names,
             widget_name,
+            child_state_map: std::collections::HashMap::new(),
         })
     }
 
@@ -491,13 +505,131 @@ impl VmBridge {
     ///
     /// Returns an error if the handler is not found or VM execution fails.
     /// UI should handle errors gracefully (log and continue).
-    pub fn call_handler(&mut self, event_name: &str, args: &[Value]) -> Result<()> {
-        let fn_name = format!("handler_{}", extract_handler_name(event_name));
+    /// Plan 337: ensure a child widget's state object exists on the VM heap,
+    /// and update its prop fields. Returns the child state heap id.
+    /// Called by render_child_widget (which no longer creates a new VM).
+    pub fn ensure_child_state(
+        &mut self,
+        widget_name: &str,
+        state_field_names: &[String],
+        props: &std::collections::HashMap<String, auto_val::Value>,
+    ) -> u64 {
+        use crate::vm::generic_registry::GenericInstanceData;
+
+        let mono_name = crate::ui::handler_codegen::state_type_name(widget_name);
+
+        // Get or create the child state object.
+        let child_id = if let Some(&id) = self.child_state_map.get(widget_name) {
+            id
+        } else {
+            let field_count = state_field_names.len();
+            let default_values: Vec<auto_val::Value> = (0..field_count)
+                .map(|_| auto_val::Value::Nil)
+                .collect();
+            let instance = GenericInstanceData::new_with_names(
+                mono_name.clone(),
+                default_values,
+                state_field_names.to_vec(),
+            );
+            let id = self.vm.insert_heap_object(instance);
+            self.child_state_map.insert(widget_name.to_string(), id);
+            id
+        };
+
+        // Write prop values into the child state object by field name.
+        if let Some(obj) = self.vm.get_heap_object_mut(child_id) {
+            let mut guard = obj.write().unwrap();
+            if let Some(inst) = guard.as_any_mut().downcast_mut::<GenericInstanceData>() {
+                // Collect (index, value) pairs first to avoid borrowing inst.field_names
+                // while mutably borrowing inst.fields.
+                let updates: Vec<(usize, auto_val::Value)> = inst.field_names
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, name)| props.get(name).map(|v| (i, v.clone())))
+                    .collect();
+                for (i, val) in updates {
+                    let _ = inst.set_field(i, val);
+                }
+            }
+        }
+
+        child_id
+    }
+
+    /// Plan 337: read a state field from a SPECIFIC child widget's state object
+    /// (by heap id), not the root widget's state.
+    pub fn read_child_state(&self, child_state_id: u64, field_name: &str) -> Result<auto_val::Value> {
+        use crate::vm::generic_registry::GenericInstanceData;
+        let obj = self.vm.get_heap_object(child_state_id)
+            .ok_or_else(|| VmBridgeError::InvalidState(
+                format!("child state heap object {} not found", child_state_id)
+            ))?;
+        let guard = obj.read().unwrap();
+        let inst = guard.as_any().downcast_ref::<GenericInstanceData>()
+            .ok_or_else(|| VmBridgeError::InvalidState("not GenericInstanceData".into()))?;
+        let idx = inst.field_names.iter().position(|n| n == field_name)
+            .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))?;
+        inst.get_field(idx)
+            .cloned()
+            .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))
+    }
+
+    /// Call a handler by name with arguments.
+    ///
+    /// Looks up the synthesized `handler_<WidgetName>_<EventName>` function in
+    /// the module exports (Plan 337: single-VM namespaced handlers). Pushes the
+    /// state heap id as the first argument (`__state`) followed by the
+    /// caller-supplied args, then dispatches via `call_fn_by_name`.
+    ///
+    /// # Arguments
+    ///
+    /// * `widget_name` - Widget that owns the handler (e.g. "App", "EditorPanel")
+    /// * `event_name` - Handler name (e.g., "Inc", "Init", "Edit")
+    /// * `args` - Arguments to pass to the handler (after `__state`)
+    pub fn call_handler_for(&mut self, widget_name: &str, event_name: &str, state_obj_id: u64, args: &[Value]) -> Result<()> {
+        let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
 
         // Verify the handler is exported before setting up a call frame.
         if !self.vm.flash.exports_by_name.contains_key(&fn_name) {
-            return Err(VmBridgeError::HandlerNotFound(event_name.to_string()));
+            return Err(VmBridgeError::HandlerNotFound(format!("{}.{}", widget_name, event_name)));
         }
+
+        let mut task = AutoTask::new(0, 4096, 0);
+        task.ram.push_i32(state_obj_id as i32);
+        for a in args {
+            if let Value::Str(s) = a {
+                let idx = {
+                    let mut strings = self.vm.strings.write().unwrap();
+                    let idx = strings.len();
+                    strings.push(s.as_bytes().to_vec());
+                    idx
+                };
+                task.ram.push_str_idx(idx as u32);
+            } else {
+                push_value(&mut task.ram, a);
+            }
+        }
+
+        self.vm
+            .call_fn_by_name(&mut task, &fn_name, 1 + args.len())
+            .map_err(|e| VmBridgeError::VmError(format!("{:?}", e)))
+    }
+
+    /// Legacy call_handler — calls handler on the ROOT widget (widget_name
+    /// defaults to this bridge's widget name). Uses self.state_obj_id.
+    pub fn call_handler(&mut self, event_name: &str, args: &[Value]) -> Result<()> {
+        let fn_name = format!("handler_{}", extract_handler_name(event_name));
+
+        // Plan 337: try namespaced first (handler_<WidgetName>_<Event>),
+        // then fall back to legacy (handler_<Event>) for backward compat.
+        let namespaced = crate::ui::handler_codegen::namespaced_handler_fn_name(&self.widget_name, event_name);
+        let fn_name = if self.vm.flash.exports_by_name.contains_key(&namespaced) {
+            namespaced
+        } else if self.vm.flash.exports_by_name.contains_key(&fn_name) {
+            fn_name
+        } else {
+            return Err(VmBridgeError::HandlerNotFound(event_name.to_string()));
+        };
 
         let mut task = AutoTask::new(0, 4096, 0);
 
