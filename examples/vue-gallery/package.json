@@ -11,12 +11,14 @@
     "@auto-ui/widgets": "file:../../packages/widgets",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "prismjs": "^1.29.0",
     "reka-ui": "^2.0.0",
     "tailwind-merge": "^2.2.0",
     "vue": "^3.4.0",
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
+    "@types/prismjs": "^1.26.0",
     "@vitejs/plugin-vue": "^5.0.0",
     "@vue/tsconfig": "^0.5.1",
     "typescript": "^5.4.0",

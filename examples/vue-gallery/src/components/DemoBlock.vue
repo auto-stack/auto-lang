@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import Prism from 'prismjs'
+import 'prismjs/components/prism-clike'
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-css'
+import 'prismjs/themes/prism-tomorrow.css'
 
 // Showcase shell: one bordered card with the live preview on top and the Vue
 // source below (collapsible, open by default). Mirrors examples/gallery's
@@ -12,6 +18,12 @@ const props = defineProps<{
 
 const open = ref(true)
 const copied = ref(false)
+
+// Highlight the SFC snippet with the markup grammar, which auto-highlights
+// JS inside <script> and CSS inside <style> — exactly right for a .vue file.
+const highlighted = computed(() =>
+  Prism.highlight(props.code ?? '', Prism.languages.markup, 'markup'),
+)
 
 async function copy() {
   try {
@@ -52,7 +64,7 @@ async function copy() {
         <button type="button" class="demo-copy" @click="copy">
           {{ copied ? 'Copied' : 'Copy' }}
         </button>
-        <pre class="demo-code"><code>{{ code }}</code></pre>
+        <pre class="demo-code"><code class="language-markup" v-html="highlighted"></code></pre>
       </div>
     </div>
   </section>

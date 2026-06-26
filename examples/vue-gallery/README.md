@@ -67,7 +67,9 @@ When a new widget lands in `packages/widgets/registry/<widget>/`:
    sizes → states → `PropTable`). Import the widget from
    `@auto-ui/widgets/registry/<widget>`. Each `DemoBlock` takes a `:code`
    string (a copy-paste-ready `<script setup>` + `<template>` snippet) shown
-   under a Preview/Code toggle — shadcn-docs style. Write the snippet as a
-   template-literal constant and escape any literal `</script>` as `<\/script>`.
+   beneath the live preview in one card, syntax-highlighted via Prism (markup
+   grammar — auto-highlights JS in `<script>` and CSS in `<style>`). Write the
+   snippet as a template-literal constant and escape any literal `</script>` as
+   `<\/script>`.
 3. Add a route in [`src/router.ts`](src/router.ts).
 4. `pnpm dev` to eyeball it, `pnpm build` to keep CI green.
