@@ -3,11 +3,11 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue'
 import { computed } from 'vue'
-import { SeparatorRoot, type SeparatorRootProps, useForwardProps } from 'reka-ui'
+import { Separator, type SeparatorProps, useForwardProps } from 'reka-ui'
 import { cn } from '../utils'
 
 const props = withDefaults(
-  defineProps<SeparatorRootProps & { class?: HTMLAttributes['class'] }>(),
+  defineProps<SeparatorProps & { class?: HTMLAttributes['class'] }>(),
   { orientation: 'horizontal', decorative: true },
 )
 
@@ -19,7 +19,7 @@ const forwarded = useForwardProps(delegatedProps)
 </script>
 
 <template>
-  <SeparatorRoot
+  <Separator
     v-bind="forwarded"
     :class="cn('shrink-0 bg-border', props.orientation === 'vertical' ? 'h-full w-[1px]' : 'h-[1px] w-full', props.class)"
   />

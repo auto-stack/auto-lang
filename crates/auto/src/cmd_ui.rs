@@ -91,6 +91,13 @@ fn build(target: &str, out: &str, widgets: &[String]) -> Result<()> {
         written += 1;
     }
 
+    // Shared files (registry root): the `cn` helper every widget imports.
+    for (rel, content) in gen.library_shared_files() {
+        let path = out_dir.join(rel);
+        fs::write(&path, content)
+            .map_err(|e| miette::miette!("write shared {path:?}: {e}"))?;
+    }
+
     println!(
         "wrote {} widget{} to {}",
         written,

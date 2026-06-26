@@ -1060,6 +1060,14 @@ impl VueGenerator {
         files
     }
 
+    /// Files shared by every library widget, written once at the registry root
+    /// (Plan 331). Currently the `cn` class-merge helper that all generated
+    /// SFCs import as `../utils`. `auto ui build` emits these alongside the
+    /// widget directories; `auto-ui add` copies them into the consumer root.
+    pub fn library_shared_files(&self) -> Vec<(&'static str, &'static str)> {
+        vec![("utils.ts", LIBRARY_UTILS_TS)]
+    }
+
     /// Reset state for new widget
     fn reset(&mut self) {
         self.imports.clear();
@@ -7871,6 +7879,16 @@ impl VueGenerator {
     pub const LIBRARY_WIDGETS: &'static [&'static str] = LIBRARY_WIDGETS;
 }
 
+/// The `cn` class-merge helper emitted at the registry root (`registry/utils.ts`)
+/// and imported by every library widget as `../utils`. Plan 331.
+const LIBRARY_UTILS_TS: &str = r#"import { type ClassValue, clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+"#;
+
 /// The attribution comment prepended to every generated library SFC (Plan 331).
 fn attribution_header(name: &str) -> String {
     format!(
@@ -8059,11 +8077,11 @@ const props = defineProps<{ class?: HTMLAttributes['class'] }>()"#,
         "separator" => Some(WidgetTemplate {
             script: r#"import type { HTMLAttributes } from 'vue'
 import { computed } from 'vue'
-import { SeparatorRoot, type SeparatorRootProps, useForwardProps } from 'reka-ui'
+import { Separator, type SeparatorProps, useForwardProps } from 'reka-ui'
 import { cn } from '../utils'
 
 const props = withDefaults(
-  defineProps<SeparatorRootProps & { class?: HTMLAttributes['class'] }>(),
+  defineProps<SeparatorProps & { class?: HTMLAttributes['class'] }>(),
   { orientation: 'horizontal', decorative: true },
 )
 
@@ -8072,7 +8090,7 @@ const delegatedProps = computed(() => {
   return delegated
 })
 const forwarded = useForwardProps(delegatedProps)"#,
-            template: r#"  <SeparatorRoot
+            template: r#"  <Separator
     v-bind="forwarded"
     :class="cn('shrink-0 bg-border', props.orientation === 'vertical' ? 'h-full w-[1px]' : 'h-[1px] w-full', props.class)"
   />"#,
@@ -8451,7 +8469,7 @@ mod tests {
         let markers: &[(&str, &str)] = &[
             ("checkbox", "CheckboxRoot"),
             ("switch", "SwitchRoot"),
-            ("separator", "SeparatorRoot"),
+            ("separator", "<Separator"),
             ("avatar", "AvatarRoot"),
             ("dialog", "DialogRoot"),
             ("tabs", "TabsRoot"),

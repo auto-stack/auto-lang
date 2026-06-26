@@ -11,7 +11,7 @@ import {
 } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { resolveRegistryWidget } from './paths.js'
+import { resolveRegistryDir, resolveRegistryWidget } from './paths.js'
 
 interface AddOptions {
   out?: string | boolean
@@ -117,7 +117,18 @@ export async function add(widget: string, opts: AddOptions): Promise<void> {
   }
   console.log(`copied ${widget} -> ${resolve(cwd, dest)}`)
 
-  // --- Task 4.3: auto-install reka-ui --------------------------------------
+  // --- shared `utils.ts` (cn helper) at the components root ----------------
+  // every widget imports `../utils`, so the consumer needs <outRoot>/utils.ts.
+  const sharedUtilsSrc = resolve(resolveRegistryDir(), 'utils.ts')
+  if (existsSync(sharedUtilsSrc)) {
+    const sharedUtilsDst = join(outRoot, 'utils.ts')
+    if (!existsSync(sharedUtilsDst)) {
+      writeFileSync(sharedUtilsDst, readFileSync(sharedUtilsSrc, 'utf8'))
+      console.log(`copied utils.ts -> ${resolve(cwd, sharedUtilsDst)}`)
+    }
+  }
+
+  // --- Task 4.3: auto-install reka-ui + cn deps (clsx, tailwind-merge) -----
   const installDisabled = opts.install === false
   if (!installDisabled) {
     const effectivePkg = rekaPkg ?? 'reka-ui'
@@ -129,8 +140,12 @@ export async function add(widget: string, opts: AddOptions): Promise<void> {
     } else {
       console.log('reka-ui already present — skipping install')
     }
+    // utils.ts (cn) + variants.ts (cva) need these in every consumer.
+    for (const dep of ['clsx', 'tailwind-merge', 'class-variance-authority']) {
+      if (!hasDependency(cwd, dep)) installPackage(cwd, dep)
+    }
   } else {
-    console.log('--no-install: skipping reka-ui install')
+    console.log('--no-install: skipping dependency install')
   }
 
   // --- Task 4.4: Tailwind guidance -----------------------------------------
