@@ -1,5 +1,8 @@
 # Plan 244: Auto Language Tour
 
+> **Status**: ✅ Completed — 59 个 tour 示例全部通过 AutoVM(2026-06)
+> **归档**: 本计划已归档至 `docs/plans/archive/`
+
 ## Context
 
 需要为 Auto 语言创建一个类似 [Go Tour](https://tour.golang.org) 或 [Rust by Example](https://doc.rust-lang.org/rust-by-example/) 的 Language Tour，让新用户在 5-10 分钟内了解语言全貌。
