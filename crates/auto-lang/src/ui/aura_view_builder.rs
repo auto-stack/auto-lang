@@ -1895,11 +1895,14 @@ impl<'a> AuraViewBuilder<'a> {
                     // first, then index. Use read_state_as_vec via a temp field
                     // name when the target is a StateRef; otherwise deref inline.
                     (Value::VmRef(r), Value::Int(i)) => {
-                        self.bridge.index_list(r.id, *i)
+                        let v = self.bridge.index_list(r.id, *i);
+                        // Plan 336: list elements are struct ids (Int(4M)/VmRef);
+                        // materialize so FieldAccess (.note.title/.note.body) resolves.
+                        v.map(|e| self.bridge.materialize_obj_ref(&e))
                     }
                     (Value::Int(id), Value::Int(i)) if *id >= 2_000_000 => {
-                        // Array id (2M) — reuse index_list which handles arrays too.
-                        self.bridge.index_list(*id as usize, *i)
+                        let v = self.bridge.index_list(*id as usize, *i);
+                        v.map(|e| self.bridge.materialize_obj_ref(&e))
                     }
                     _ => None,
                 }
