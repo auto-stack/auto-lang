@@ -65,6 +65,9 @@ When a new widget lands in `packages/widgets/registry/<widget>/`:
 1. Add an entry to the relevant group in [`src/widgets.ts`](src/widgets.ts).
 2. Create `src/pages/<widget>.vue` following the existing pages (variants →
    sizes → states → `PropTable`). Import the widget from
-   `@auto-ui/widgets/registry/<widget>`.
+   `@auto-ui/widgets/registry/<widget>`. Each `DemoBlock` takes a `:code`
+   string (a copy-paste-ready `<script setup>` + `<template>` snippet) shown
+   under a Preview/Code toggle — shadcn-docs style. Write the snippet as a
+   template-literal constant and escape any literal `</script>` as `<\/script>`.
 3. Add a route in [`src/router.ts`](src/router.ts).
 4. `pnpm dev` to eyeball it, `pnpm build` to keep CI green.

@@ -197,6 +197,14 @@ pre {
   margin-bottom: 2rem;
 }
 
+.demo-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
 .demo-title {
   font-size: 1rem;
   font-weight: 600;
@@ -206,7 +214,36 @@ pre {
 .demo-desc {
   font-size: 0.8125rem;
   color: hsl(var(--muted-foreground));
-  margin: 0 0 0.75rem;
+  margin: 0;
+}
+
+.demo-tabs {
+  display: inline-flex;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.demo-tab {
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.3rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.demo-tab:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.demo-tab.active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 
 .demo-preview {
@@ -218,16 +255,49 @@ pre {
   background: hsl(var(--card));
   border-radius: var(--radius);
   padding: 1rem;
-  margin-bottom: 0.5rem;
+}
+
+.demo-code-wrap {
+  position: relative;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(222 47% 11%);
+  overflow: hidden;
+}
+
+.demo-code-wrap .demo-copy {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid hsl(0 0% 100% / 0.15);
+  border-radius: calc(var(--radius) - 4px);
+  background: hsl(0 0% 100% / 0.06);
+  color: hsl(210 40% 98%);
+  cursor: pointer;
+  z-index: 1;
+}
+
+.demo-code-wrap .demo-copy:hover {
+  background: hsl(0 0% 100% / 0.12);
 }
 
 .demo-code {
   margin: 0;
-  font-size: 0.75rem;
-  background: hsl(var(--muted) / 0.6);
-  border-radius: calc(var(--radius) - 4px);
-  padding: 0.5rem 0.75rem;
+  font-family: var(--vg-mono);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: hsl(210 40% 98%);
+  padding: 1rem 1.25rem;
   overflow-x: auto;
+  tab-size: 2;
+}
+
+.demo-code code {
+  font-family: inherit;
+  white-space: pre;
 }
 
 /* ---- PropTable ---- */
