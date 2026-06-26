@@ -6,7 +6,7 @@ import PropTable from '../components/PropTable.vue'
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Dialog</h2>
+  <h2 class="page-title">Dialog</h2>
 
   <DemoBlock title="Basic" description="Trigger slot opens the styled DialogContent overlay.">
     <Dialog>
@@ -14,7 +14,7 @@ import PropTable from '../components/PropTable.vue'
       <DialogContent>
         <template #title>Are you sure?</template>
         <template #description>This action cannot be undone.</template>
-        <div class="flex justify-end gap-2">
+        <div class="row-end">
           <Button variant="outline">Cancel</Button>
           <Button variant="destructive">Delete</Button>
         </div>

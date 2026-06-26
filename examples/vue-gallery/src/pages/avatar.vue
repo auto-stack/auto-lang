@@ -5,7 +5,7 @@ import PropTable from '../components/PropTable.vue'
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Avatar</h2>
+  <h2 class="page-title">Avatar</h2>
 
   <DemoBlock title="With image">
     <Avatar>

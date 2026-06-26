@@ -31,9 +31,14 @@ import { Button } from '@auto-ui/widgets/registry/button'
 import '@auto-ui/widgets/styles.css'   // precompiled stylesheet (zero-Tailwind path)
 ```
 
-The package is pulled in as a `file:` dependency. Styling is the precompiled
-`dist/styles.css` — this gallery runs **no Tailwind of its own**, validating the
-package's "Path A" zero-config stylesheet.
+The package is pulled in as a `file:` dependency. Widget styling comes from the
+precompiled `dist/styles.css` — this gallery runs **no Tailwind of its own**,
+validating the package's "Path A" zero-config stylesheet.
+
+The gallery's own chrome (layout, sidebar, cards, tables) is plain CSS in
+[`src/assets/app.css`](src/assets/app.css), reusing the design-token variables
+(`--background`, `--border`, `--card`, …) that `styles.css` defines, so the
+chrome stays consistent with the widgets. It loads after `styles.css`.
 
 > The package's `exports` map targets each widget's `index.ts`
 > (`"./registry/*": "./registry/*/index.ts"`); directory targets don't resolve

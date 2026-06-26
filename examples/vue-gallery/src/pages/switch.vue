@@ -8,11 +8,11 @@ const on = ref(true)
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Switch</h2>
+  <h2 class="page-title">Switch</h2>
 
   <DemoBlock title="Controlled">
     <Switch v-model="on" />
-    <span class="text-sm text-muted-foreground">on: {{ on }}</span>
+    <span class="text-sm muted">on: {{ on }}</span>
   </DemoBlock>
 
   <DemoBlock title="States">

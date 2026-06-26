@@ -9,23 +9,23 @@ defineProps<{ rows: Row[] }>()
 </script>
 
 <template>
-  <section class="mb-8">
-    <h3 class="text-base font-semibold mb-2">Props</h3>
-    <table class="w-full text-sm border border-border rounded">
-      <thead class="bg-muted/50 text-left">
+  <section>
+    <h3 class="props-title">Props</h3>
+    <table class="props-table">
+      <thead>
         <tr>
-          <th class="px-3 py-2 font-medium">Prop</th>
-          <th class="px-3 py-2 font-medium">Type</th>
-          <th class="px-3 py-2 font-medium">Default</th>
-          <th class="px-3 py-2 font-medium">Description</th>
+          <th>Prop</th>
+          <th>Type</th>
+          <th>Default</th>
+          <th>Description</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="r in rows" :key="r.prop" class="border-t border-border align-top">
-          <td class="px-3 py-2 font-mono">{{ r.prop }}</td>
-          <td class="px-3 py-2 font-mono text-muted-foreground">{{ r.type }}</td>
-          <td class="px-3 py-2 font-mono text-muted-foreground">{{ r.default ?? '—' }}</td>
-          <td class="px-3 py-2">{{ r.desc }}</td>
+        <tr v-for="r in rows" :key="r.prop">
+          <td>{{ r.prop }}</td>
+          <td>{{ r.type }}</td>
+          <td>{{ r.default ?? '—' }}</td>
+          <td>{{ r.desc }}</td>
         </tr>
       </tbody>
     </table>

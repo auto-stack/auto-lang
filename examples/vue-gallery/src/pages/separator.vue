@@ -11,18 +11,18 @@ const rows = [
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Separator</h2>
+  <h2 class="page-title">Separator</h2>
 
   <DemoBlock title="Horizontal">
-    <div class="w-full max-w-sm">
+    <div class="half">
       <p class="text-sm">Above</p>
-      <Separator class="my-2" />
+      <Separator class="myblock" />
       <p class="text-sm">Below</p>
     </div>
   </DemoBlock>
 
   <DemoBlock title="Vertical">
-    <div class="flex h-8 items-center gap-3">
+    <div class="vsep">
       <span class="text-sm">Left</span>
       <Separator orientation="vertical" />
       <span class="text-sm">Right</span>
