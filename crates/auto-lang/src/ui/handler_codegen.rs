@@ -177,6 +177,14 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
                 }
             }
         }
+        // Plan 336: recurse into Dot's object so nested `self` refs rewrite.
+        // E.g. `.note.title` = Dot(Dot(Ident("self"), "note"), "title"): the top
+        // Dot doesn't match the Phase-1 self/state-field patterns (its object is a
+        // Dot, not an Ident), so without recursing, the inner `self` survives and
+        // codegen reports "Undefined variable: self".
+        Expr::Dot(obj, _) => {
+            rewrite_expr(obj, state_fields);
+        }
         Expr::Block(b) => rewrite_state_refs_stmts(&mut b.stmts, state_fields),
         Expr::If(If { branches, else_ }) => {
             for Branch { cond, body } in branches {
