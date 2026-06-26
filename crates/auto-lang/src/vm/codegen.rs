@@ -9948,12 +9948,13 @@ impl Codegen {
             type_decl.methods.clone(),
         );
 
-        // Register in GenericRegistry
+        // Register in GenericRegistry — skip if already registered (idempotent).
+        // Child widgets receive the parent's import_stmts which re-compile the same
+        // TypeDecls; the registry already has them, so this is expected, not an error.
         if let Err(e) = self.generic_registry.register_template(template) {
-            eprintln!(
-                "Warning: Failed to register generic template '{}': {}",
-                type_decl.name, e
-            );
+            if !e.contains("already registered") {
+                eprintln!("Warning: Failed to register generic template '{}': {}", type_decl.name, e);
+            }
         }
     }
 
