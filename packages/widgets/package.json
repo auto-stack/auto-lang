@@ -22,7 +22,7 @@
   ],
   "exports": {
     "./styles.css": "./dist/styles.css",
-    "./registry/*": "./registry/*"
+    "./registry/*": "./registry/*/index.ts"
   },
   "peerDependencies": {
     "vue": "^3.4.0",
