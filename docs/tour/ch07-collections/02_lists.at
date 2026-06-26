@@ -8,7 +8,7 @@ fn main() {
     nums.push(1)
     nums.push(2)
     nums.push(3)
-    print(len(nums))
+    print(nums.len)
     print(nums[0])
 
     // List from literal

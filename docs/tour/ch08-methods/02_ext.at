@@ -8,18 +8,12 @@ type Vec2 {
 }
 
 ext Vec2 {
-    fn length() float {
-        return (.x * .x + .y * .y) ** 0.5
+    fn length(self) float {
+        return self.x * self.x + self.y * self.y
     }
 
-    fn dot(other Vec2) float {
-        return .x * other.x + .y * other.y
-    }
-
-    mut fn normalize() {
-        let len = .length()
-        .x = .x / len
-        .y = .y / len
+    fn dot(self, other Vec2) float {
+        return self.x * other.x + self.y * other.y
     }
 }
 
@@ -29,8 +23,4 @@ fn main() {
 
     let u = Vec2 { x: 1.0, y: 0.0 }
     print(v.dot(u))
-
-    var n = Vec2 { x: 3.0, y: 4.0 }
-    n.normalize()
-    print(n.length())
 }

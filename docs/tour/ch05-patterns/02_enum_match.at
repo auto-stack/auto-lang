@@ -10,16 +10,16 @@ enum Shape {
 
 fn area(s Shape) float {
     is s {
-        Shape::Circle(r) -> 3.14159 * r * r
-        Shape::Rectangle(w, h) -> w * h
-        Shape::Square(side) -> side * side
+        Shape.Circle(r) -> 3.14159 * r * r
+        Shape.Rectangle(w, h) -> w * h
+        Shape.Square(side) -> side * side
     }
 }
 
 fn main() {
-    let c = Shape::Circle(5.0)
-    let r = Shape::Rectangle(3.0, 4.0)
-    let s = Shape::Square(2.0)
+    let c = Shape.Circle(5.0)
+    let r = Shape.Rectangle(3.0, 4.0)
+    let s = Shape.Square(2.0)
 
     print(area(c))
     print(area(r))

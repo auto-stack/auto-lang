@@ -11,31 +11,13 @@ type Circle {
     radius float
 }
 
-ext Circle : Drawable {
-    fn draw() str {
+ext Circle {
+    fn draw(self) str {
         return f"Circle(r=$self.radius)"
     }
 }
 
-type Box {
-    width float
-    height float
-}
-
-ext Box : Drawable {
-    fn draw() str {
-        return f"Box(${self.width}x$self.height)"
-    }
-}
-
-fn render(d Drawable) {
-    print(d.draw())
-}
-
 fn main() {
     let c = Circle { radius: 5.0 }
-    let b = Box { width: 10.0, height: 20.0 }
-
-    render(c)
-    render(b)
+    print(c.draw())
 }

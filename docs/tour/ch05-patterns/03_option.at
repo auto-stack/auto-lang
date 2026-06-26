@@ -6,7 +6,7 @@
 fn find_user(id int) Option {
     if id == 1 {
         return Some("Alice")
-    } elif id == 2 {
+    } else if id == 2 {
         return Some("Bob")
     }
     return None

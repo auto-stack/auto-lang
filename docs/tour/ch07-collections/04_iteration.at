@@ -12,12 +12,12 @@ fn main() {
     }
 
     // Iterate with index
-    for i in 0..len(nums) {
+    for i in 0..nums.len {
         print(f"[$i] = ${nums[i]}")
     }
 
     // Reverse iteration
-    var i = len(nums) - 1
+    var i = nums.len - 1
     for i >= 0 {
         print(nums[i])
         i = i - 1

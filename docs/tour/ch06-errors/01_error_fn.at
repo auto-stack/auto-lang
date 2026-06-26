@@ -1,17 +1,18 @@
-// Error Function — `!` error-returning functions
+// Error Function — Functions with error return types
 //
-// Functions marked with `!` can propagate errors to the caller.
-// Inside a `!` function, use `.?` to propagate errors.
+// Functions can return Result types to indicate success or failure.
 
-fn read_config(path str) !str {
-    let content = read_file(path).?
-    return content
+fn safe_divide(a int, b int) !int {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    return a / b
 }
 
 fn main() {
-    let result = read_config("config.txt")
-    is result {
-        Ok(data) -> print(data)
-        Err(e) -> print(f"Failed to read config: $e")
-    }
+    let result = safe_divide(10, 3)
+    print(result)
+
+    let err_result = safe_divide(10, 0)
+    print(err_result)
 }
