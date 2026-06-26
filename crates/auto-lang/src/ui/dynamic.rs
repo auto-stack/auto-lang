@@ -95,6 +95,10 @@ pub struct DynamicComponent {
     /// Widget name, cached for efficient access.
     widget_name: String,
 
+    /// Plan 336: imported function/type declarations (back/api.at etc.) shared
+    /// with child widgets (EditorPanel needs delete_note/update_note from back.api).
+    import_stmts: Vec<crate::ast::Stmt>,
+
     /// Dirty flag -- set when state changes via `on()`, cleared after `view()`.
     dirty: bool,
 
@@ -165,6 +169,7 @@ impl DynamicComponent {
             bridge,
             view_template,
             widget_name,
+            import_stmts: Vec::new(),
             dirty: true,
             source_path: None,
             last_modified: None,
@@ -196,7 +201,7 @@ impl DynamicComponent {
     ) -> Result<Self, String> {
         // 1. Create VmBridge from widget + imports (synthesizes handlers into
         //    a single VM module and initializes state on the VM heap).
-        let bridge = VmBridge::new_with_imports(widget, import_stmts)
+        let bridge = VmBridge::new_with_imports(widget, import_stmts.clone())
             .map_err(|e| format!("VmBridge init failed for '{}': {}", widget.name, e))?;
 
         // 2. Extract view template
@@ -210,6 +215,7 @@ impl DynamicComponent {
             bridge,
             view_template,
             widget_name,
+            import_stmts,
             dirty: true,
             source_path: None,
             last_modified: None,
@@ -244,6 +250,7 @@ impl DynamicComponent {
             bridge,
             view_template,
             widget_name,
+            import_stmts: Vec::new(),
             dirty: true,
             source_path: None,
             last_modified: None,
@@ -352,7 +359,7 @@ impl DynamicComponent {
     /// zero-overhead capture bypass (Plan 307 Task 18), use
     /// [`view_with_debug_gated`] with `capture_probe = false`.
     pub fn view_with_debug(&self) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry(&self.bridge, &self.widget_name, &self.widget_registry);
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts);
         builder.build_with_debug(&self.view_template)
     }
 
@@ -366,7 +373,7 @@ impl DynamicComponent {
         &self,
         capture_probe: bool,
     ) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry(&self.bridge, &self.widget_name, &self.widget_registry);
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts);
         builder.build_with_debug_gated(&self.view_template, capture_probe)
     }
 
@@ -602,10 +609,11 @@ impl Component for DynamicComponent {
     /// state references from the VmBridge at build time. After rendering,
     /// the dirty flag is cleared.
     fn view(&self) -> View<Self::Msg> {
-        let builder = AuraViewBuilder::with_registry(
+        let builder = AuraViewBuilder::with_registry_and_imports(
             &self.bridge,
             &self.widget_name,
             &self.widget_registry,
+            &self.import_stmts,
         );
         let view = builder.build(&self.view_template);
 

@@ -90,6 +90,11 @@ pub struct AuraViewBuilder<'a> {
 
     /// Optional widget registry for child widget rendering
     widget_registry: Option<&'a crate::ui::widget_registry::WidgetRegistry>,
+
+    /// Plan 336: imported declarations (back/api.at functions etc.) shared with
+    /// child widgets so their handlers can call imported functions (delete_note,
+    /// update_note). None when the builder has no imports (legacy).
+    import_stmts: Option<&'a [crate::ast::Stmt]>,
 }
 
 impl<'a> AuraViewBuilder<'a> {
@@ -104,6 +109,7 @@ impl<'a> AuraViewBuilder<'a> {
             bridge,
             widget_name: widget_name.to_string(),
             widget_registry: None,
+            import_stmts: None,
         }
     }
 
@@ -117,6 +123,25 @@ impl<'a> AuraViewBuilder<'a> {
             bridge,
             widget_name: widget_name.to_string(),
             widget_registry: Some(registry),
+            import_stmts: None,
+        }
+    }
+
+    /// Create a builder with widget registry AND shared import declarations.
+    /// Plan 336: child widgets (EditorPanel) need back.api functions to be
+    /// available when their handlers are compiled; passing them here lets
+    /// render_child_widget reuse the parent's loaded imports.
+    pub fn with_registry_and_imports(
+        bridge: &'a VmBridge,
+        widget_name: &str,
+        registry: &'a crate::ui::widget_registry::WidgetRegistry,
+        import_stmts: &'a [crate::ast::Stmt],
+    ) -> Self {
+        Self {
+            bridge,
+            widget_name: widget_name.to_string(),
+            widget_registry: Some(registry),
+            import_stmts: Some(import_stmts),
         }
     }
 
@@ -1158,8 +1183,14 @@ impl<'a> AuraViewBuilder<'a> {
             });
         }
 
-        // 3. Create VmBridge (state fields now include props)
-        let mut child_bridge = match VmBridge::new(&modified_widget) {
+        // 3. Create VmBridge (state fields now include props).
+        // Plan 336: pass the parent's import_stmts so child handlers can call
+        // imported functions (delete_note, update_note from back.api). Without
+        // this, VmBridge::new uses empty imports and linking fails.
+        let child_imports: Vec<crate::ast::Stmt> = self.import_stmts
+            .map(|s| s.to_vec())
+            .unwrap_or_default();
+        let mut child_bridge = match VmBridge::new_with_imports(&modified_widget, child_imports) {
             Ok(b) => b,
             Err(e) => {
                 eprintln!("Warning: Failed to create child widget '{}': {:?}", child_widget.name, e);
@@ -1186,6 +1217,7 @@ impl<'a> AuraViewBuilder<'a> {
             bridge: &child_bridge,
             widget_name: child_widget.name.clone(),
             widget_registry: self.widget_registry,
+            import_stmts: self.import_stmts,
         };
 
         child_builder.build(&child_widget.view_tree)
