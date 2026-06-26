@@ -346,16 +346,30 @@ pub fn synthesize_widget_module(
 
     // 1. Imports (functions, types, enums) — declarations + module-level
     //    stores and use statements.
-    //    Order matters: compile Stmt::Use first so auto_modules are registered
-    //    (so a later `db.func()` body call generates a linkable CALL reloc),
-    //    then Stmt::Store (module globals like `var notes`), then Fn/Type/Ext
-    //    whose bodies may reference both. Without Use/Store, imported #[api]
-    //    fns that read module globals or call cross-module helpers fail with
-    //    "Undefined symbol" at link time (015-notes).
+    //    Order matters (Plan 336): Use → TypeDecl/EnumDecl → Store(__module_init)
+    //    → Fn/Ext.
+    //    - Use first: registers auto_modules so `db.func()` calls generate
+    //      linkable CALL relocs.
+    //    - TypeDecl/EnumDecl BEFORE __module_init: a `var notes = List<Note>.new`
+    //      initializer references the `Note` type. codegen's Expr::Node branch
+    //      checks `generic_registry.has_template("Note")`; if Note isn't
+    //      registered yet, it falls back to CREATE_NODE (node_id 3M) instead of
+    //      CONSTRUCT_INSTANCE/CREATE_OBJ (object id 1M) — corrupting the element
+    //      id (Plan 336). Registering types first fixes that.
+    //    - Store wrapped in __module_init (Plan 333): runs module-level globals
+    //      before Init.
+    //    - Fn/Ext last: their bodies reference globals and types.
     for stmt in &import_stmts {
         if let crate::ast::Stmt::Use(_) = stmt {
             if let Err(e) = codegen.compile_stmt(stmt) {
                 log::warn!("handler_codegen: import use stmt failed to compile: {}", e);
+            }
+        }
+    }
+    for stmt in &import_stmts {
+        if matches!(stmt, Stmt::TypeDecl(_) | Stmt::EnumDecl(_)) {
+            if let Err(e) = codegen.compile_stmt(stmt) {
+                log::warn!("handler_codegen: import type/enum decl failed to compile: {}", e);
             }
         }
     }
