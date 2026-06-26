@@ -160,6 +160,19 @@ impl<'a> AuraViewBuilder<'a> {
         self.convert_node_with(node, &Bindings::new())
     }
 
+    /// Plan 337: read a state field. When override_state_obj_id is set (rendering
+    /// a child widget's view), reads from the child's state object. Otherwise
+    /// reads from the root widget's state (legacy behavior).
+    fn read_state(&self, field_name: &str) -> Result<auto_val::Value, String> {
+        if let Some(child_id) = self.override_state_obj_id {
+            self.bridge.read_child_state(child_id, field_name)
+                .map_err(|e| e.to_string())
+        } else {
+            self.bridge.read_state(field_name)
+                .map_err(|e| e.to_string())
+        }
+    }
+
     /// Build a `View<DynamicMessage>` with debug sideband data (Plan 274 / 307 Task 9).
     ///
     /// Returns `(View, DebugIdMap, BuildProbe)` where:
@@ -1158,6 +1171,10 @@ impl<'a> AuraViewBuilder<'a> {
     ///
     /// This resolves props from parent state, injects them as state fields,
     /// creates a child VmBridge, and recursively renders the child's view tree.
+    /// Plan 337: render a child widget WITHOUT creating a new VM.
+    /// Uses the same VmBridge (same VM), creates/updates the child's state
+    /// object on the heap, and renders the child's view tree with an
+    /// override_state_obj_id so read_state reads from the child's state.
     fn render_child_widget(
         &self,
         child_widget: &crate::aura::AuraWidget,
@@ -1165,7 +1182,7 @@ impl<'a> AuraViewBuilder<'a> {
         _events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        // 1. Resolve prop values from parent state
+        // 1. Resolve prop values from parent state.
         let mut resolved_props: HashMap<String, Value> = HashMap::new();
         for (prop_name, prop_value) in props {
             if let AuraPropValue::Expr(expr) = prop_value {
@@ -1175,56 +1192,42 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
 
-        // 2. Clone the widget and inject props as state vars so VmBridge registers them
-        let mut modified_widget = child_widget.clone();
-        for (prop_name, _val) in &resolved_props {
-            if modified_widget.state_vars.iter().any(|v| v.name == *prop_name) {
-                continue;
-            }
-            modified_widget.state_vars.push(crate::aura::AuraStateDef {
-                name: prop_name.clone(),
-                type_info: crate::ast::Type::StrOwned,
-                initial: AuraExpr::Literal("".to_string()),
-                decorators: vec![],
-            });
-        }
-
-        // 3. Create VmBridge (state fields now include props).
-        // Plan 336: pass the parent's import_stmts so child handlers can call
-        // imported functions (delete_note, update_note from back.api). Without
-        // this, VmBridge::new uses empty imports and linking fails.
-        let child_imports: Vec<crate::ast::Stmt> = self.import_stmts
-            .map(|s| s.to_vec())
-            .unwrap_or_default();
-        let mut child_bridge = match VmBridge::new_with_imports(&modified_widget, child_imports) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("Warning: Failed to create child widget '{}': {:?}", child_widget.name, e);
-                return View::Empty;
-            }
-        };
-
-        // 4. Overwrite prop state fields with actual resolved values
-        for (prop_name, val) in &resolved_props {
-            let _ = child_bridge.write_state(prop_name, val.clone());
-        }
-
-        // 4b. Sync parent state to child's matching model vars
-        // This allows hardcoded handlers (NewNote, Edit, etc.) that update
-        // parent state (editing, edit_title, edit_body) to flow into the child widget.
-        for state_var in &child_widget.state_vars {
-            if let Ok(parent_val) = self.bridge.read_state(&state_var.name) {
-                let _ = child_bridge.write_state(&state_var.name, parent_val);
+        // 2. Collect child state field names (model vars + injected props).
+        let mut child_field_names: Vec<String> = child_widget.state_vars
+            .iter()
+            .map(|v| v.name.clone())
+            .collect();
+        for prop_name in resolved_props.keys() {
+            if !child_field_names.contains(prop_name) {
+                child_field_names.push(prop_name.clone());
             }
         }
 
-        // 5. Build a child view builder and render the child's view tree
+        // 3. Also sync matching parent state → child (editing, edit_title, etc.)
+        //    so child handlers can read/write shared parent state.
+        for field_name in &child_field_names {
+            if !resolved_props.contains_key(field_name) {
+                if let Ok(parent_val) = self.bridge.read_state(field_name) {
+                    resolved_props.insert(field_name.clone(), parent_val);
+                }
+            }
+        }
+
+        // 4. Ensure child state object exists on the VM heap + write props.
+        let child_state_id = self.bridge.ensure_child_state(
+            &child_widget.name,
+            &child_field_names,
+            &resolved_props,
+        );
+
+        // 5. Build a child view builder using the SAME bridge but with
+        //    override_state_obj_id pointing to the child's state object.
         let child_builder = AuraViewBuilder {
-            bridge: &child_bridge,
+            bridge: self.bridge,
             widget_name: child_widget.name.clone(),
             widget_registry: self.widget_registry,
             import_stmts: self.import_stmts,
-            override_state_obj_id: None,
+            override_state_obj_id: Some(child_state_id),
         };
 
         child_builder.build(&child_widget.view_tree)

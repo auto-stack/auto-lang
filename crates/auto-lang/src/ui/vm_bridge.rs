@@ -116,8 +116,10 @@ pub struct VmBridge {
 
     /// Plan 337: child widget state heap object IDs, keyed by widget name.
     /// Each child widget instance gets its own GenericInstanceData on the same
-    /// VM heap (single VM, multiple state objects).
-    child_state_map: std::collections::HashMap<String, u64>,
+    /// VM heap (single VM, multiple state objects). Uses RefCell for interior
+    /// mutability so AuraViewBuilder (which holds &VmBridge) can create/update
+    /// child states during rendering.
+    child_state_map: std::cell::RefCell<std::collections::HashMap<String, u64>>,
 }
 
 impl VmBridge {
@@ -212,7 +214,7 @@ impl VmBridge {
             state_obj_id,
             state_field_names: field_names,
             widget_name,
-            child_state_map: std::collections::HashMap::new(),
+            child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
         })
     }
 
@@ -509,7 +511,7 @@ impl VmBridge {
     /// and update its prop fields. Returns the child state heap id.
     /// Called by render_child_widget (which no longer creates a new VM).
     pub fn ensure_child_state(
-        &mut self,
+        &self,
         widget_name: &str,
         state_field_names: &[String],
         props: &std::collections::HashMap<String, auto_val::Value>,
@@ -519,21 +521,25 @@ impl VmBridge {
         let mono_name = crate::ui::handler_codegen::state_type_name(widget_name);
 
         // Get or create the child state object.
-        let child_id = if let Some(&id) = self.child_state_map.get(widget_name) {
-            id
-        } else {
-            let field_count = state_field_names.len();
-            let default_values: Vec<auto_val::Value> = (0..field_count)
-                .map(|_| auto_val::Value::Nil)
-                .collect();
-            let instance = GenericInstanceData::new_with_names(
-                mono_name.clone(),
-                default_values,
-                state_field_names.to_vec(),
-            );
-            let id = self.vm.insert_heap_object(instance);
-            self.child_state_map.insert(widget_name.to_string(), id);
-            id
+        let child_id = {
+            let map = self.child_state_map.borrow();
+            if let Some(&id) = map.get(widget_name) {
+                id
+            } else {
+                drop(map);
+                let field_count = state_field_names.len();
+                let default_values: Vec<auto_val::Value> = (0..field_count)
+                    .map(|_| auto_val::Value::Nil)
+                    .collect();
+                let instance = GenericInstanceData::new_with_names(
+                    mono_name.clone(),
+                    default_values,
+                    state_field_names.to_vec(),
+                );
+                let id = self.vm.insert_heap_object(instance);
+                self.child_state_map.borrow_mut().insert(widget_name.to_string(), id);
+                id
+            }
         };
 
         // Write prop values into the child state object by field name.
