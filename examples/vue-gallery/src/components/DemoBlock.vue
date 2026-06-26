@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-// Showcase shell: title + description + Preview/Code toggle (shadcn-style).
-// Preview = live slot; Code = the Vue snippet that produces it, with copy.
+// Showcase shell: one bordered card with the live preview on top and the Vue
+// source below (collapsible, open by default). Mirrors examples/gallery's
+// DemoSection layout, minus the Auto/Vue toggle (vue-gallery only ships Vue).
 const props = defineProps<{
   title: string
   description?: string
   code?: string
 }>()
 
-const tab = ref<'preview' | 'code'>('preview')
+const open = ref(true)
 const copied = ref(false)
 
 async function copy() {
@@ -25,40 +26,34 @@ async function copy() {
 
 <template>
   <section class="demo-block">
-    <div class="demo-head">
-      <div>
-        <h3 class="demo-title">{{ title }}</h3>
-        <p v-if="description" class="demo-desc">{{ description }}</p>
-      </div>
-      <div v-if="code" class="demo-tabs">
-        <button
-          type="button"
-          class="demo-tab"
-          :class="{ active: tab === 'preview' }"
-          @click="tab = 'preview'"
-        >
-          Preview
-        </button>
-        <button
-          type="button"
-          class="demo-tab"
-          :class="{ active: tab === 'code' }"
-          @click="tab = 'code'"
-        >
-          Code
-        </button>
-      </div>
-    </div>
+    <header class="demo-head">
+      <h3 class="demo-title">{{ title }}</h3>
+      <p v-if="description" class="demo-desc">{{ description }}</p>
+    </header>
 
-    <div v-show="tab === 'preview'" class="demo-preview">
-      <slot />
-    </div>
+    <div class="demo-card">
+      <!-- Live preview -->
+      <div class="demo-preview">
+        <slot />
+      </div>
 
-    <div v-if="code && tab === 'code'" class="demo-code-wrap">
-      <button type="button" class="demo-copy" @click="copy">
-        {{ copied ? 'Copied' : 'Copy' }}
+      <!-- Code section (collapsible, open by default) -->
+      <button v-if="code" type="button" class="demo-code-bar" @click="open = !open">
+        <span class="demo-code-label">Vue</span>
+        <svg
+          class="demo-chevron"
+          :class="{ rotated: open }"
+          xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+        ><path d="m6 9 6 6 6-6" /></svg>
       </button>
-      <pre class="demo-code"><code>{{ code }}</code></pre>
+
+      <div v-if="code && open" class="demo-code-wrap">
+        <button type="button" class="demo-copy" @click="copy">
+          {{ copied ? 'Copied' : 'Copy' }}
+        </button>
+        <pre class="demo-code"><code>{{ code }}</code></pre>
+      </div>
     </div>
   </section>
 </template>
