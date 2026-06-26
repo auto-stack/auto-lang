@@ -14,6 +14,7 @@
 pub mod shared;
 pub mod ts_adapter;
 pub mod vue;
+pub mod block;
 pub mod rust;
 pub mod style;
 pub mod jet;
