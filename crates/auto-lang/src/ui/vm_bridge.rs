@@ -361,19 +361,41 @@ impl VmBridge {
     /// string-keyed fields mirror the `ObjectData`. Non-object values (real ints,
     /// already-inline `Value::Obj`, etc.) pass through unchanged.
     pub fn materialize_obj_ref(&self, v: &Value) -> Value {
-        if let Value::Int(id) = v {
-            if let Some(arc) = self.vm.objects.get(&(*id as u64)) {
-                let obj = arc.read().unwrap();
-                let mut out = auto_val::Obj::new();
-                for (key, val) in obj.fields.iter() {
-                    if let auto_val::ValueKey::Str(s) = key {
-                        out.set(s.clone(), val.clone());
+        match v {
+            Value::Int(id) => {
+                if let Some(arc) = self.vm.objects.get(&(*id as u64)) {
+                    let obj = arc.read().unwrap();
+                    let mut out = auto_val::Obj::new();
+                    for (key, val) in obj.fields.iter() {
+                        if let auto_val::ValueKey::Str(s) = key {
+                            out.set(s.clone(), val.clone());
+                        }
+                    }
+                    Value::Obj(out)
+                } else {
+                    v.clone()
+                }
+            }
+            // Plan 335: struct instances from `List<Struct>.new` / heap objects are
+            // VmRef(id 4000000+). Materialize them so ForLoop bodies (e.g.
+            // `note.title` in 015-notes) can read fields.
+            Value::VmRef(r) => {
+                if let Some(obj) = self.vm.get_heap_object(r.id as u64) {
+                    let guard = obj.read().unwrap();
+                    if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                        let mut out = auto_val::Obj::new();
+                        for (val, name) in inst.fields.iter().zip(inst.field_names.iter()) {
+                            if name != "_unknown" {
+                                out.set(name.clone(), val.clone());
+                            }
+                        }
+                        return Value::Obj(out);
                     }
                 }
-                return Value::Obj(out);
+                v.clone()
             }
+            _ => v.clone(),
         }
-        v.clone()
     }
 
     /// Read all state fields as a name -> value map.
