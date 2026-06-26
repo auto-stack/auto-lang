@@ -80,9 +80,25 @@ function parseListingAttrs(tag) {
 }
 
 function resolveListingDir(bookDir, attrs) {
-  // If file contains path separators, use it directly as directory
+  // Plan 244: Tour mode — file="ch01-hello/01_hello.at" resolves relative
+  // to the tour/ subdirectory. bookDir is docs/ root, so prepend "tour/".
   if (attrs.file && (attrs.file.includes('/') || attrs.file.includes('\\'))) {
-    return path.join(bookDir, attrs.file)
+    // If the path starts with a known top-level dir (design/language/tour/etc),
+    // use it directly. Otherwise, if it looks like a tour path (chXX-name/NN_),
+    // prepend 'tour/'.
+    let fullPath = attrs.file
+    if (bookDir && !fullPath.startsWith('tour/') && !fullPath.startsWith('tour' + path.sep)) {
+      if (/^ch\d/i.test(fullPath)) {
+        fullPath = 'tour/' + fullPath
+      }
+    }
+    // Split into directory and filename
+    const parts = fullPath.replace(/\\/g, '/').split('/')
+    const fileName = parts.pop()
+    const dirPath = path.join(bookDir, parts.join(path.sep))
+    // Stash fileName for resolveListingFileName
+    attrs._resolvedFileName = fileName + (fileName.endsWith('.at') ? '' : '.at')
+    return dirPath
   }
 
   // If number is provided, derive directory: number "1-1" → listings/ch01/listing-01-01
@@ -102,6 +118,10 @@ function resolveListingDir(bookDir, attrs) {
 }
 
 function resolveListingFileName(attrs) {
+  // Plan 244: If resolveListingDir stashed a filename, use it
+  if (attrs._resolvedFileName) {
+    return attrs._resolvedFileName
+  }
   if (attrs['file-name']) {
     return attrs['file-name']
   }
@@ -301,6 +321,7 @@ const DOCS_INCLUDE = new Set([
   'examples',
   'releases',
   'features',
+  'tour',  // Plan 244: Auto Language Tour
 ])
 
 function shouldIncludeDoc(relPath) {
@@ -323,24 +344,35 @@ function prepareDocs() {
   const zhFiles = []
 
   walkDir(DOCS_SRC, (fullPath, name) => {
-    if (!name.endsWith('.md')) return
     const relPath = path.relative(DOCS_SRC, fullPath)
     if (!shouldIncludeDoc(relPath)) return
 
+    // Plan 244: Copy .at files from tour/ directory (needed for Listing reference)
+    if (name.endsWith('.at') && relPath.startsWith('tour' + path.sep)) {
+      const dstPath = path.join(DOCS_DST_EN, relPath)
+      copyFile(fullPath, dstPath)
+      return
+    }
+
+    if (!name.endsWith('.md')) return
+
     // Always copy to EN
+    // Plan 244: Pass docs/ root as bookDir for tour/ files so <Listing> resolves
+    const isTour = relPath.startsWith('tour' + path.sep)
+    const docBookDir = isTour ? DOCS_SRC : null
     const enDstPath = path.join(DOCS_DST_EN, relPath)
-    copyFile(fullPath, enDstPath)
+    copyFile(fullPath, enDstPath, docBookDir)
     enFiles.push(relPath)
 
     if (name.endsWith('.cn.md')) {
-      // Chinese version goes to ZH without .cn suffix
+      // Chinese version goes to ZH without .cn prefix
       const zhDstPath = path.join(DOCS_DST_ZH, relPath.replace(/\.cn\.md$/, '.md'))
-      copyFile(fullPath, zhDstPath)
+      copyFile(fullPath, zhDstPath, docBookDir)
       zhFiles.push(relPath.replace(/\.cn\.md$/, '.md'))
     } else {
       // Non-Chinese files also go to ZH as fallback
       const zhDstPath = path.join(DOCS_DST_ZH, relPath)
-      copyFile(fullPath, zhDstPath)
+      copyFile(fullPath, zhDstPath, docBookDir)
       zhFiles.push(relPath)
     }
   })
