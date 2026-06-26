@@ -116,6 +116,11 @@ impl<'a> Disassembler<'a> {
                 let v = self.flash.read_u8(ip);
                 (format!("{}", v), 1)
             }
+            // Plan 336: PUSH_BOOL byte operand (0|1)
+            OpCode::PUSH_BOOL => {
+                let v = self.flash.read_u8(ip);
+                (if v != 0 { "true".into() } else { "false".into() }, 1)
+            }
             OpCode::POP_N => {
                 let v = self.flash.read_u8(ip);
                 (format!("{}", v), 1)

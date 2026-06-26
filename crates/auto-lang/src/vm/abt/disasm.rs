@@ -231,6 +231,7 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
         | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
         | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
         | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+        | OpCode::PUSH_BOOL   // Plan 336: 1 byte operand (0|1)
             => 1,
 
         OpCode::FN_PROLOG => 2,
@@ -388,7 +389,8 @@ fn decode_operands(
 
         OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
         | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
-        | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL => {
+        | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+        | OpCode::PUSH_BOOL => {  // Plan 336: 1 byte operand (0|1)
             let v = flash.read_u8(ip);
             // Plan 087/088: parameters encoded as 0x80 + param_index
             let operand = if v >= 0x80 {

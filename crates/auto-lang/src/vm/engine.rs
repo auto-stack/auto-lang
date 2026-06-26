@@ -2123,6 +2123,15 @@ impl AutoVM {
                         task.ram.push_nv(auto_val::encode_null());
                     }
                 }
+                // Plan 336: push a real bool (nanbox tag=3), not Int(0/1). Without
+                // this, `.editing = false` stores Value::Int(0) and the view
+                // builder's `.editing == false` comparison fails ("0" != "false"),
+                // hiding conditional blocks (note.title/body). byte: 0=false, 1=true.
+                OpCode::PUSH_BOOL => {
+                    let b = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+                    task.ram.push_nv(auto_val::encode_bool(b != 0));
+                }
                 OpCode::TYPE_CAST_F64 => {
                     // Always pop i32 and push f32 (1 slot → 1 slot)
                     let v = task.ram.pop_i32();

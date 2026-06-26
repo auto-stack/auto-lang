@@ -3580,8 +3580,11 @@ impl Codegen {
             }
             Expr::Bool(b) => {
                 self.last_expr_type = ObjectType::Bool;
-                self.emit(OpCode::CONST_I32);
-                self.emit_i32(if *b { 1 } else { 0 });
+                // Plan 336: emit PUSH_BOOL so the value carries the bool nanbox tag
+                // (not CONST_I32). Without this, `.editing = false` stores Int(0) and
+                // `.editing == false` comparisons in the view builder fail.
+                self.emit(OpCode::PUSH_BOOL);
+                self.code.push(if *b { 1 } else { 0 });
             }
             // Plan 073 Stage A.5: Float literal support
             // Plan 118: Track type for output formatting
