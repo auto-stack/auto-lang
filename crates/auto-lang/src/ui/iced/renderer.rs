@@ -3073,7 +3073,9 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             state.input_values.insert(event_name.clone(), text.clone());
         }
 
-        state.component.on_with_input(&event_name, msg.input_value);
+        // Plan 337: route event to the correct widget's handler (single VM).
+        let widget_name = &msg.widget;
+        state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
 
         // After handler runs, clear input_values for OTHER inputs whose state
         // fields may have been modified by the handler. For example, the

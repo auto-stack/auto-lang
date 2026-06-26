@@ -173,6 +173,17 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+    /// Plan 337: read a state field as Vec<Value> (override-aware).
+    fn read_state_as_vec(&self, field_name: &str) -> Result<Vec<auto_val::Value>, String> {
+        if let Some(child_id) = self.override_state_obj_id {
+            self.bridge.read_child_state_as_vec(child_id, field_name)
+                .map_err(|e| e.to_string())
+        } else {
+            self.bridge.read_state_as_vec(field_name)
+                .map_err(|e| e.to_string())
+        }
+    }
+
     /// Build a `View<DynamicMessage>` with debug sideband data (Plan 274 / 307 Task 9).
     ///
     /// Returns `(View, DebugIdMap, BuildProbe)` where:
@@ -236,11 +247,11 @@ impl<'a> AuraViewBuilder<'a> {
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
                 let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
                 // Read the iterable array from VmBridge state
-                let array = match self.bridge.read_state(state_name) {
+                let array = match self.read_state(state_name) {
                     Ok(Value::Array(arr)) => arr,
                     Ok(other) => {
                         // Try read_state_as_vec for Value::Int(array_id) refs
-                        match self.bridge.read_state_as_vec(state_name) {
+                        match self.read_state_as_vec(state_name) {
                             Ok(vec) => {
                                 // Re-wrap as Array for consistent iteration
                                 let owned: Vec<Value> = vec;
@@ -420,7 +431,7 @@ impl<'a> AuraViewBuilder<'a> {
                 // (the latter is how `var x = []; x.push(...)` arrays are stored —
                 // e.g. 016-calendar's `.days`). A bare `read_state` + `Value::Array`
                 // match misses the heap-id form and silently renders an empty loop.
-                let array: Vec<Value> = match self.bridge.read_state_as_vec(state_name) {
+                let array: Vec<Value> = match self.read_state_as_vec(state_name) {
                     Ok(v) => v,
                     _ => return View::Empty,
                 };
@@ -755,7 +766,7 @@ impl<'a> AuraViewBuilder<'a> {
                     // the form `var x = []; x.push(...)` produces — e.g. .days) are
                     // iterated, not just inline Value::Array. Otherwise the grid's
                     // `for cell in .days` renders empty even though state is populated.
-                    let array: Vec<Value> = match self.bridge.read_state_as_vec(state_name) {
+                    let array: Vec<Value> = match self.read_state_as_vec(state_name) {
                         Ok(v) => v,
                         _ => continue,
                     };
@@ -1326,9 +1337,9 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> Vec<View<DynamicMessage>> {
         let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
-        let array = match self.bridge.read_state(state_name) {
+        let array = match self.read_state(state_name) {
             Ok(Value::Array(arr)) => arr,
-            Ok(_) => match self.bridge.read_state_as_vec(state_name) {
+            Ok(_) => match self.read_state_as_vec(state_name) {
                 Ok(vec) => auto_val::Array::from(vec),
                 Err(_) => return Vec::new(),
             },
@@ -1873,7 +1884,7 @@ impl<'a> AuraViewBuilder<'a> {
         if let Some(val) = bindings.get(field_name) {
             return value_to_display_string(val);
         }
-        match self.bridge.read_state(field_name) {
+        match self.read_state(field_name) {
             Ok(value) => value_to_display_string(&value),
             Err(_) => format!("${{{}}}", field_name),
         }
@@ -1912,7 +1923,7 @@ impl<'a> AuraViewBuilder<'a> {
         match expr {
             AuraExpr::StateRef(name) => {
                 bindings.get(name).cloned()
-                    .or_else(|| self.bridge.read_state(name).ok())
+                    .or_else(|| self.read_state(name).ok())
             }
             AuraExpr::FieldAccess { object, field } => {
                 let obj = self.resolve_expr_to_value(object, bindings)?;
@@ -1962,7 +1973,7 @@ impl<'a> AuraViewBuilder<'a> {
     /// Reads the `search` state field. If it's empty or doesn't exist, all items match.
     /// If non-empty and the item is an Obj, checks if any string field contains the search text.
     fn matches_search(&self, item: &Value) -> bool {
-        let search_text = match self.bridge.read_state("search") {
+        let search_text = match self.read_state("search") {
             Ok(Value::Str(s)) => s.to_string(),
             Ok(Value::String(s)) => s.to_string(),
             _ => return true, // no search field or non-string → show all
@@ -2079,7 +2090,7 @@ impl<'a> AuraViewBuilder<'a> {
             (&cond[..pos], "<=", cond[pos + 4..].trim())
         } else if cond.starts_with('.') {
             // Bare state ref — truthy check
-            return self.bridge.read_state(&cond[1..])
+            return self.read_state(&cond[1..])
                 .map(|v| v.as_bool())
                 .unwrap_or(false);
         } else {
@@ -2096,11 +2107,11 @@ impl<'a> AuraViewBuilder<'a> {
         let lhs_val = if let Some(field_name) = lhs_normalized.strip_suffix(".len()") {
             // Strip leading dot from state ref (e.g., ".todos" → "todos")
             let field_name = field_name.trim_start_matches('.');
-            match self.bridge.read_state(field_name) {
+            match self.read_state(field_name) {
                 Ok(Value::Array(arr)) => arr.len().to_string(),
                 Ok(other) => {
                     // Also try read_state_as_vec for Value::Int(array_id) refs
-                    match self.bridge.read_state_as_vec(field_name) {
+                    match self.read_state_as_vec(field_name) {
                         Ok(vec) => vec.len().to_string(),
                         Err(_) => value_to_display_string(&other),
                     }
@@ -2113,12 +2124,12 @@ impl<'a> AuraViewBuilder<'a> {
         } else if lhs.starts_with('.') {
             // State ref (e.g., ".filter")
             let name = &lhs[1..];
-            match self.bridge.read_state(name) {
+            match self.read_state(name) {
                 Ok(v) => value_to_display_string(&v),
                 Err(_) => return false,
             }
         } else {
-            match self.bridge.read_state(lhs) {
+            match self.read_state(lhs) {
                 Ok(v) => value_to_display_string(&v),
                 Err(_) => return false,
             }
@@ -2363,7 +2374,7 @@ impl<'a> AuraViewBuilder<'a> {
                 AuraExpr::Int(i) => Some(*i as f64),
                 AuraExpr::Float(f) => Some(*f),
                 AuraExpr::StateRef(name) => {
-                    match self.bridge.read_state(name) {
+                    match self.read_state(name) {
                         Ok(value) => match value {
                             Value::Int(i) => Some(i as f64),
                             Value::Float(f) => Some(f as f64),

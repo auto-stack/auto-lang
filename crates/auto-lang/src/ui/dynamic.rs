@@ -649,27 +649,46 @@ impl DynamicComponent {
     /// from `input_state_map` and writes the text as the field's value before
     /// running the handler. This enables two-way binding for text inputs.
     pub fn on_with_input(&mut self, event_name: &str, input_value: Option<String>) {
-        // Split off any payload embedded in the event string by the renderer's
-        // encode_payload (carries onclick args like cell.date across iced's Send
-        // boundary). `clean_name` is the bare handler name; `payload` is the
-        // decoded arg to forward to call_handler.
+        let widget_name = self.widget_name.clone();
+        self.on_with_input_for(&widget_name, event_name, input_value);
+    }
+
+    /// Plan 337: dispatch event to a specific widget's handler in the single VM.
+    /// Resolves the widget's state_obj_id (root or child) and calls the
+    /// namespaced handler fn (handler_<Widget>_<Event>).
+    pub fn on_with_input_for(&mut self, widget_name: &str, event_name: &str, input_value: Option<String>) {
         let (clean_name, payload) = decode_payload(event_name);
 
-        // If this event comes from an input, update the bound state field first
+        // If this event comes from an input, update the bound state field first.
         if let Some(text) = &input_value {
             if let Some(state_field) = self.input_state_map.get(&clean_name) {
                 let value = parse_input_value_for_field(text, state_field, &self.bridge);
+                // Write to the root state (input bindings are root-level).
                 let _ = self.bridge.write_state(state_field, value);
-                self.dirty = true; // input value changed state
+                self.dirty = true;
             }
         }
 
-        // Run the handler via VM bytecode closure, forwarding the decoded
-        // payload so a handler declared `.SelectDay(date) ->` receives it.
+        // Resolve the state_obj_id for this widget (root or child).
+        let state_obj_id = if widget_name == &self.widget_name {
+            self.bridge.state_obj_id()
+        } else {
+            // Child widget — look up its state id from the bridge's child_state_map.
+            self.bridge.get_child_state_id(widget_name)
+                .unwrap_or_else(|| self.bridge.state_obj_id())
+        };
+
+        // Run the handler via VM. call_handler_for looks up the namespaced fn.
         let args: Vec<auto_val::Value> = payload.into_iter().collect();
-        match self.bridge.call_handler(&clean_name, &args) {
+        match self.bridge.call_handler_for(widget_name, &clean_name, state_obj_id, &args) {
             Ok(()) => { self.dirty = true; }
-            Err(_) => {}
+            Err(_) => {
+                // Fallback: try legacy handler_<Event> on root state (backward compat).
+                match self.bridge.call_handler(&clean_name, &args) {
+                    Ok(()) => { self.dirty = true; }
+                    Err(_) => {}
+                }
+            }
         }
     }
 }

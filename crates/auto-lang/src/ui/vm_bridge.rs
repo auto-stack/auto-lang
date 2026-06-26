@@ -507,6 +507,16 @@ impl VmBridge {
     ///
     /// Returns an error if the handler is not found or VM execution fails.
     /// UI should handle errors gracefully (log and continue).
+    /// Get the state object heap ID (for event routing).
+    pub fn state_obj_id(&self) -> u64 {
+        self.state_obj_id
+    }
+
+    /// Plan 337: get a child widget's state object heap ID (if it exists).
+    pub fn get_child_state_id(&self, widget_name: &str) -> Option<u64> {
+        self.child_state_map.borrow().get(widget_name).copied()
+    }
+
     /// Plan 337: ensure a child widget's state object exists on the VM heap,
     /// and update its prop fields. Returns the child state heap id.
     /// Called by render_child_widget (which no longer creates a new VM).
@@ -578,6 +588,25 @@ impl VmBridge {
         inst.get_field(idx)
             .cloned()
             .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))
+    }
+
+    /// Plan 337: read a child widget's state field as Vec<Value> (for for-loops).
+    pub fn read_child_state_as_vec(&self, child_state_id: u64, field_name: &str) -> Result<Vec<auto_val::Value>> {
+        let val = self.read_child_state(child_state_id, field_name)?;
+        match val {
+            auto_val::Value::Array(arr) => Ok(arr.values),
+            auto_val::Value::Int(id) if id >= 2000000 => {
+                self.vm.arrays.get(&(id as u64))
+                    .map(|r| r.read().unwrap().clone())
+                    .ok_or_else(|| VmBridgeError::InvalidState(
+                        format!("array_id {} not found", id)
+                    ))
+            }
+            auto_val::Value::VmRef(r) => self.vmref_to_vec(r.id),
+            other => Err(VmBridgeError::InvalidState(
+                format!("Expected array for '{}', got {:?}", field_name, other)
+            )),
+        }
     }
 
     /// Call a handler by name with arguments.
@@ -673,11 +702,6 @@ impl VmBridge {
     /// Get the state field names.
     pub fn state_fields(&self) -> &[String] {
         &self.state_field_names
-    }
-
-    /// Get the state heap object ID (for advanced VM integration).
-    pub fn state_obj_id(&self) -> u64 {
-        self.state_obj_id
     }
 
     /// Get a reference to the underlying AutoVM (for advanced VM integration).
