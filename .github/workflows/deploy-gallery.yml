@@ -4,7 +4,7 @@
 # and deploys it to GitHub Pages.
 #
 # Triggered on:
-# - Push to main branch with changes in examples/component-gallery/
+# - Push to main branch with changes in examples/gallery/
 # - Manual dispatch
 
 name: Deploy Component Gallery
@@ -13,8 +13,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'examples/component-gallery/**'
-      - '.github/workflows/deploy-component-gallery.yml'
+      - 'examples/gallery/**'
+      - '.github/workflows/deploy-gallery.yml'
   workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
@@ -41,7 +41,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: examples/component-gallery/generated/vue/package-lock.json
+          cache-dependency-path: examples/gallery/generated/vue/package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -51,19 +51,19 @@ jobs:
 
       - name: Generate Vue Code
         run: |
-          cd examples/component-gallery
+          cd examples/gallery
           auto.exe vue .
         continue-on-error: true  # Continue even if transpiler isn't ready
 
       - name: Install Dependencies
         run: |
-          cd examples/component-gallery/generated/vue
+          cd examples/gallery/generated/vue
           npm ci
         continue-on-error: true
 
       - name: Build Vue App
         run: |
-          cd examples/component-gallery/generated/vue
+          cd examples/gallery/generated/vue
           npm run build
         continue-on-error: true
 
@@ -73,7 +73,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./examples/component-gallery/generated/vue/dist
+          path: ./examples/gallery/generated/vue/dist
 
   # Deployment job
   deploy:

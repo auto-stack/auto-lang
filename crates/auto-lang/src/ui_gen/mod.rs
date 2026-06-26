@@ -48,6 +48,9 @@ pub enum GenError {
 
     /// IO error
     Io(String),
+
+    /// Unknown widget requested from the library template table (Plan 331)
+    UnknownWidget(String),
 }
 
 impl std::fmt::Display for GenError {
@@ -57,6 +60,7 @@ impl std::fmt::Display for GenError {
             GenError::UnsupportedStmt(msg) => write!(f, "Unsupported statement: {}", msg),
             GenError::InvalidStateRef(msg) => write!(f, "Invalid state reference: {}", msg),
             GenError::Io(msg) => write!(f, "IO error: {}", msg),
+            GenError::UnknownWidget(msg) => write!(f, "Unknown widget: {}", msg),
         }
     }
 }
