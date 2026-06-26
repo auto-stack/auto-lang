@@ -1888,6 +1888,19 @@ impl<'a> AuraViewBuilder<'a> {
                         if idx < arr.len() { Some(arr[idx].clone()) } else { None }
                     }
                     (Value::Obj(map), Value::Str(key)) => map.get(key.as_str()),
+                    // Plan 336: index into a list/array stored as a VmRef or Int
+                    // array_id (List<T> / Vec from `var x = []; x.push(...)`). The
+                    // EditorPanel's `note: .notes[.active_id]` reads `.notes`
+                    // (a VmRef to ListData) and indexes it. Deref to Vec<Value>
+                    // first, then index. Use read_state_as_vec via a temp field
+                    // name when the target is a StateRef; otherwise deref inline.
+                    (Value::VmRef(r), Value::Int(i)) => {
+                        self.bridge.index_list(r.id, *i)
+                    }
+                    (Value::Int(id), Value::Int(i)) if *id >= 2_000_000 => {
+                        // Array id (2M) — reuse index_list which handles arrays too.
+                        self.bridge.index_list(*id as usize, *i)
+                    }
                     _ => None,
                 }
             }

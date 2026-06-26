@@ -307,8 +307,20 @@ impl VmBridge {
     /// ListData<i32>), then vm.arrays. Order avoids depending on id-range
     /// conventions (4000000 heap / 2000000 arrays) so it stays correct if the
     /// generators' start values change.
-    fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {
-        // Path 1: heap_objects (4000000+) — ListData<Value> or ListData<i32>.
+    /// Plan 336: index into a list value held as a `VmRef` (heap id) or array_id,
+    /// returning the element at `i`. Used by the view builder's Index expr
+    /// (e.g. `.notes[.active_id]`) to dereference a List<Note> element.
+    pub fn index_list(&self, id: usize, i: i32) -> Option<Value> {
+        if let Ok(elems) = self.vmref_to_vec(id) {
+            let idx = i as usize;
+            if idx < elems.len() {
+                return Some(elems[idx].clone());
+            }
+        }
+        None
+    }
+
+    fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {        // Path 1: heap_objects (4000000+) — ListData<Value> or ListData<i32>.
         if let Some(obj) = self.vm.get_heap_object(id as u64) {
             let guard = obj.read().unwrap();
             use crate::vm::types::ListData;
