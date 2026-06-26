@@ -1,29 +1,22 @@
 // Function Values — Functions as first-class values
 //
-// Functions can be stored in variables, passed as arguments,
-// and returned from other functions.
+// Functions can be stored in variables and passed as arguments.
+// Closures capture variables from their enclosing scope.
 
 fn apply(f fn(int) int, x int) int {
     return f(x)
 }
 
-fn make_adder(n int) fn(int) int {
-    return (x int) int {
-        return x + n
-    }
-}
-
 fn main() {
-    // Store function in variable
-    let double = (x int) int {
-        return x * 2
-    }
+    // Store closure in variable
+    let double = (x int) => x * 2
 
     // Pass function as argument
     let result = apply(double, 5)
     print(result)
 
-    // Return function from function
-    let add3 = make_adder(3)
-    print(add3(10))
+    // Closure capturing a variable
+    var n = 3
+    let add_n = (x int) => x + n
+    print(add_n(10))
 }

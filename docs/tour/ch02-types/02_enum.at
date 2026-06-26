@@ -16,9 +16,9 @@ enum Shape {
 }
 
 fn main() {
-    let c = Color::Red
+    let c = Color.Red
     print(c)
 
-    let r = Shape::Rectangle(3.0, 4.0)
+    let r = Shape.Rectangle(3.0, 4.0)
     print(r)
 }
