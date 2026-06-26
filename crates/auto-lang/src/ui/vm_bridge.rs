@@ -147,7 +147,9 @@ impl VmBridge {
         // 1. Synthesize imports + AppState type + handler fns into ONE Module
         //    via the genuine VM Codegen. Handler bodies have their `.field`
         //    references rewritten to `__state.field` first.
-        let module = crate::ui::handler_codegen::synthesize_widget_module(widget, import_stmts)
+        //    Plan 336: also returns the populated generic_registry so the runtime
+        //    VM can resolve struct field names in CONSTRUCT_INSTANCE.
+        let (module, registry) = crate::ui::handler_codegen::synthesize_widget_module(widget, import_stmts)
             .map_err(|e| VmBridgeError::InvalidState(format!(
                 "handler synthesis failed for '{}': {}", widget_name, e
             )))?;
@@ -167,6 +169,11 @@ impl VmBridge {
         // 3. Build flash + VM with unified metadata tables.
         let flash = VirtualFlash::from_vec_with_metadata(code, exports, object_keys, object_types);
         let mut vm = AutoVM::new(flash, 4096);
+        // Plan 336: load the codegen's generic_registry so CONSTRUCT_INSTANCE can
+        // resolve struct field names (Note.title). Without this, field_names fall
+        // back to "_unknown" and struct field access in handler bodies / for-loop
+        // bindings fails.
+        vm.load_generic_registry(registry);
         vm.load_strings(strings);
 
         // 4. Build state fields and default values, then create the state
@@ -363,6 +370,7 @@ impl VmBridge {
     pub fn materialize_obj_ref(&self, v: &Value) -> Value {
         match v {
             Value::Int(id) => {
+                // 1M segment: CREATE_OBJ → ObjectData in vm.objects
                 if let Some(arc) = self.vm.objects.get(&(*id as u64)) {
                     let obj = arc.read().unwrap();
                     let mut out = auto_val::Obj::new();
@@ -371,14 +379,29 @@ impl VmBridge {
                             out.set(s.clone(), val.clone());
                         }
                     }
-                    Value::Obj(out)
-                } else {
-                    v.clone()
+                    return Value::Obj(out);
                 }
+                // Plan 336: 4M segment: CONSTRUCT_INSTANCE → GenericInstanceData in
+                // heap_objects. List<Note>.new([Note{...}]) stores Note instances
+                // as bare Int(heap_id) elements; without this arm, note.title in a
+                // for-loop body can't resolve.
+                if *id >= 4_000_000 {
+                    if let Some(obj) = self.vm.get_heap_object(*id as u64) {
+                        let guard = obj.read().unwrap();
+                        if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                            let mut out = auto_val::Obj::new();
+                            for (val, name) in inst.fields.iter().zip(inst.field_names.iter()) {
+                                if name != "_unknown" {
+                                    out.set(name.clone(), val.clone());
+                                }
+                            }
+                            return Value::Obj(out);
+                        }
+                    }
+                }
+                v.clone()
             }
-            // Plan 335: struct instances from `List<Struct>.new` / heap objects are
-            // VmRef(id 4000000+). Materialize them so ForLoop bodies (e.g.
-            // `note.title` in 015-notes) can read fields.
+            // Plan 335: VmRef (heap id from other paths) — same GenericInstanceData deref.
             Value::VmRef(r) => {
                 if let Some(obj) = self.vm.get_heap_object(r.id as u64) {
                     let guard = obj.read().unwrap();

@@ -319,7 +319,7 @@ fn synthesize_handler_fn(
 pub fn synthesize_widget_module(
     widget: &AuraWidget,
     import_stmts: Vec<Stmt>,
-) -> SynthResult<Module> {
+) -> SynthResult<(Module, crate::vm::generic_registry::GenericRegistry)> {
     let state_fields: HashSet<String> = widget
         .state_vars
         .iter()
@@ -471,7 +471,13 @@ pub fn synthesize_widget_module(
         }
     }
 
-    Ok(codegen.finish(widget.name.clone()))
+    // Plan 336: return the codegen's populated generic_registry along with the
+    // module. CONSTRUCT_INSTANCE (runtime) reads field_names from the VM's
+    // generic_registry; if the widget VM doesn't inherit the registry that
+    // compiled the types (Note), field_names fall back to "_unknown" and struct
+    // field access (note.title) fails. new_with_imports loads this into the VM.
+    let registry = std::mem::take(&mut codegen.generic_registry);
+    Ok((codegen.finish(widget.name.clone()), registry))
 }
 
 #[cfg(test)]
