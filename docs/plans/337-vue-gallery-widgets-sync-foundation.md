@@ -75,6 +75,34 @@ AURA WidgetRegistry  ──(backlog 命令:列出未覆盖)──▶  @auto-ui/w
 
 ---
 
+## 4. 未来 TODO(Roadmap)
+
+本计划(337)只做**薄同步层**,为后续扩张铺路。以下三项是明确的后续工作,单独成 Plan,**依赖 337 先落地**:
+
+### TODO-A:扩到全量 ~60+ widget(覆盖所有 AutoUI 组件)
+- **目标**:`@auto-ui/widgets` 从 ~25-30 的"精选子集"扩成 AURA `WidgetRegistry` 的**近 1:1 镜像**(~60)。
+- **前置**:337 的 `auto ui backlog` 列表正是这个扩张的工作清单;337 的自洽/守卫测试保证扩张期不漂移。
+- **要点**:复合 widget(table/tree/alert-dialog…)的库形态决策(一个目录多 SFC,见 Plan 331 §5);复杂组件(chart/calendar/data-table)的 reka-ui 底座可用性核实;逐个加 `library_template` 条目 + vue-gallery 页。
+- **可能成 Plan**:339(全量覆盖)。
+
+### TODO-B:扩展 demo 内容(更多示例 + 更全文档)
+- **目标**:每个 widget 的 vue-gallery 页从"最小骨架"升级到 shadcn 文档级 —— 覆盖所有 props/variant/状态/组合用例 + 用法说明 + 边界情况。
+- **前置**:在 widget 集**稳定后**做(否则文档跟着组件变,反复重写)。建议在 TODO-A 完成(或阶段性冻结)后启动。
+- **要点**:每页多个 `DemoBlock`(基础/变体/受控/组合/无障碍);Prism 高亮的真实示例;per-widget "何时用/不用"说明;可与 TODO-A 增量并行(先稳定的组件先补文档)。
+- **可能成 Plan**:340(demo/docs 富化)。
+
+### TODO-C:深层同步机制(从 WidgetSpec 自动派生库 Vue)
+- **目标**:消除 `library_template` 与 AURA `WidgetSpec`/`BackendMapping` 的**双真值**——库的 Vue SFC 由 codegen 从 AURA spec 派生,使 `@auto-ui/widgets` 成为 AURA registry 的**真镜像**,新增 AURA widget 时库零手写。
+- **前置**:等 TODO-A 把足够多的 widget 手写一遍,沉淀出"spec → Vue SFC"的稳定映射规则后再做(否则规则未定型就上自动派生 = 投机重构)。是三项里**最后**做的。
+- **要点**:扩展 `WidgetSpec` 携带 library 渲染元信息;`library_template` 退化为派生缓存或删除;`auto ui build --target vue` 由 spec 驱动;保留手写逃生口(复杂组件)。
+- **可能成 Plan**:341(deep codegen unification)。
+
+### 建议顺序
+**337(薄同步)→ TODO-A(全量)→ TODO-B(富文档)→ TODO-C(深同步)**。
+TODO-A 期间 337 的工具(backlog/守卫/gallery-stubs)持续生效;TODO-B 可在 TODO-A 阶段性冻结后切入;TODO-C 最后做。
+
+---
+
 # 第二部分:实施计划
 
 > **Repo rules (CLAUDE.md):** 在专用 worktree 开发;改 codegen/CLI 后跑 `cargo build -p auto`;改 codegen 后跑 `cargo test -p auto-lang --lib -- test_library`。
