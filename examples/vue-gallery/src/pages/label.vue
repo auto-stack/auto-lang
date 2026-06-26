@@ -6,10 +6,10 @@ import PropTable from '../components/PropTable.vue'
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Label</h2>
+  <h2 class="page-title">Label</h2>
 
   <DemoBlock title="Associated with an input" description="Click the label to focus the input (reka-ui Label `for`).">
-    <div class="flex flex-col gap-1">
+    <div class="stack">
       <Label for="email">Email</Label>
       <Input id="email" placeholder="you@example.com" />
     </div>

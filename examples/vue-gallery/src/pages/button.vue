@@ -16,7 +16,7 @@ const rows = [
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Button</h2>
+  <h2 class="page-title">Button</h2>
 
   <DemoBlock title="Variants">
     <Button v-for="v in variants" :key="v" :variant="v">{{ v }}</Button>

@@ -13,10 +13,10 @@ import PropTable from '../components/PropTable.vue'
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Card</h2>
+  <h2 class="page-title">Card</h2>
 
   <DemoBlock title="Composed" description="Card with header / title / description / content / footer.">
-    <Card class="w-full max-w-sm">
+    <Card class="half">
       <CardHeader>
         <CardTitle>Upgrade plan</CardTitle>
         <CardDescription>Get more from your workspace.</CardDescription>

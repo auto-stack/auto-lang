@@ -8,12 +8,12 @@ defineProps<{
 </script>
 
 <template>
-  <section class="mb-8">
-    <h3 class="text-base font-semibold mb-1">{{ title }}</h3>
-    <p v-if="description" class="text-sm text-muted-foreground mb-3">{{ description }}</p>
-    <div class="rounded-md border border-border p-4 flex flex-wrap items-center gap-3 mb-2 bg-card">
+  <section class="demo-block">
+    <h3 class="demo-title">{{ title }}</h3>
+    <p v-if="description" class="demo-desc">{{ description }}</p>
+    <div class="demo-preview">
       <slot />
     </div>
-    <pre v-if="code" class="text-xs bg-muted/50 rounded p-2 overflow-x-auto"><code>{{ code }}</code></pre>
+    <pre v-if="code" class="demo-code"><code>{{ code }}</code></pre>
   </section>
 </template>

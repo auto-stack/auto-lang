@@ -12,7 +12,7 @@ const rows = [
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Badge</h2>
+  <h2 class="page-title">Badge</h2>
 
   <DemoBlock title="Variants">
     <Badge v-for="v in variants" :key="v" :variant="v">{{ v }}</Badge>

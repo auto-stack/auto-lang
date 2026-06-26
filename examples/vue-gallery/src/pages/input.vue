@@ -8,11 +8,11 @@ const value = ref('Hello')
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Input</h2>
+  <h2 class="page-title">Input</h2>
 
   <DemoBlock title="Default (controlled)" description="Two-way bound via v-model.">
     <Input v-model="value" />
-    <span class="text-sm text-muted-foreground">value: {{ value }}</span>
+    <span class="text-sm muted">value: {{ value }}</span>
   </DemoBlock>
 
   <DemoBlock title="Placeholder">

@@ -8,10 +8,10 @@ const active = ref('account')
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Tabs</h2>
+  <h2 class="page-title">Tabs</h2>
 
   <DemoBlock title="Controlled">
-    <Tabs v-model="active" class="w-full max-w-sm">
+    <Tabs v-model="active" class="half">
       <TabsList>
         <TabsTrigger value="account">Account</TabsTrigger>
         <TabsTrigger value="password">Password</TabsTrigger>

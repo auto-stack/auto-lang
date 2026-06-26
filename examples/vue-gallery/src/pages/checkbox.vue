@@ -8,11 +8,11 @@ const checked = ref(true)
 </script>
 
 <template>
-  <h2 class="text-2xl font-bold tracking-tight mb-6">Checkbox</h2>
+  <h2 class="page-title">Checkbox</h2>
 
   <DemoBlock title="Controlled">
     <Checkbox v-model="checked" />
-    <span class="text-sm text-muted-foreground">checked: {{ checked }}</span>
+    <span class="text-sm muted">checked: {{ checked }}</span>
   </DemoBlock>
 
   <DemoBlock title="States">
