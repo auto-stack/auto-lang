@@ -1,0 +1,46 @@
+# Build regression for examples/vue-gallery — the @auto-ui/widgets dogfood
+# consumer. Type-checks + bundles the showcase so package/example breakage
+# shows up here instead of in a downstream Vue project.
+#
+# Triggers on changes to the showcase or to the package's committed registry.
+
+name: Build vue-gallery
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'examples/vue-gallery/**'
+      - 'packages/widgets/registry/**'
+      - 'packages/widgets/package.json'
+      - '.github/workflows/build-vue-gallery.yml'
+  pull_request:
+    paths:
+      - 'examples/vue-gallery/**'
+      - 'packages/widgets/registry/**'
+      - 'packages/widgets/package.json'
+      - '.github/workflows/build-vue-gallery.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: examples/vue-gallery/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: examples/vue-gallery
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (vue-tsc --noEmit && vite build)
+        working-directory: examples/vue-gallery
+        run: pnpm build
