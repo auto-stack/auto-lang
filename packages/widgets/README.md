@@ -57,6 +57,33 @@ auto ui build --target vue --out packages/widgets/registry
 Then rebuild the precompiled stylesheet (see Phase 6 build script) and bump the
 version before `npm publish`.
 
+## Release procedure (maintainers)
+
+```bash
+cd packages/widgets
+
+# 1. Regenerate the committed registry from the compiler (from repo root):
+#      cargo build -p auto
+#      auto ui build --target vue --out packages/widgets/registry
+
+# 2. Rebuild the precompiled stylesheet + the CLI dist:
+npm install            # dev toolchain (tailwindcss, typescript, ...)
+npm run build:css      # -> dist/styles.css
+npm run build:cli      # -> cli/dist/index.js (the `auto-ui` bin)
+
+# 3. Bump the version, then verify the publish artifact:
+npm version patch      # or minor / major
+npm pack               # inspect the .tgz: must contain only
+                       # registry/, dist/, cli/dist/, README, LICENSE, NOTICES
+
+# 4. Publish (requires npm login + 2FA):
+npm publish
+```
+
+`cli/dist/` and `node_modules/` are gitignored — the CLI dist is rebuilt in
+step 2 so it lands in the tarball even though it isn't committed. Do **not**
+commit `package-lock.json` (consumers resolve their own).
+
 ## Credits
 
 Based on [reka-ui] and [shadcn-vue]. Tailwind class recipes are derived from
