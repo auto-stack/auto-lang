@@ -307,20 +307,12 @@ pre {
   background: transparent;
 }
 
-/* Override prism-tomorrow's own background/padding/margin — .demo-code-wrap
-   supplies the dark panel and .demo-code supplies padding. Keep token colors. */
-.demo-code code[class*='language-'],
-.demo-code pre[class*='language-'] {
-  background: transparent;
-  margin: 0;
-  padding: 0;
-  font-size: inherit;
-  line-height: inherit;
-  text-shadow: none;
-}
-
+/* The <code> has no `language-*` class on purpose: prism-tomorrow's base panel
+   background (#2d2d2d) is gated on that class, so omitting it lets our uniform
+   .demo-code-wrap panel show through. Token colors (.token.*) are global. */
 .demo-code code {
   font-family: inherit;
+  background: transparent;
   white-space: pre;
 }
 

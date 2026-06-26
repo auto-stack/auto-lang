@@ -64,7 +64,7 @@ async function copy() {
         <button type="button" class="demo-copy" @click="copy">
           {{ copied ? 'Copied' : 'Copy' }}
         </button>
-        <pre class="demo-code"><code class="language-markup" v-html="highlighted"></code></pre>
+        <pre class="demo-code"><code v-html="highlighted"></code></pre>
       </div>
     </div>
   </section>
