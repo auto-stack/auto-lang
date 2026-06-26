@@ -272,6 +272,10 @@ impl VmBridge {
     ///
     /// When the state field is `Value::Array`, returns its inner Vec directly.
     /// When it's `Value::Int(id)` (array_id from `[...]` literal), reads from vm.arrays.
+    /// Plan 335: `Value::VmRef` (heap id 4000000+ from `List<T>.new` for struct
+    /// element lists) is dereferenced: try heap_objects (ListData<Value>/ListData<i32>)
+    /// first, then vm.arrays. This unblocks 015-notes vm rendering where
+    /// `list_notes()` → `notes.to_array()` returns a VmRef to the struct list.
     pub fn read_state_as_vec(&self, field_name: &str) -> Result<Vec<Value>> {
         let val = self.read_state(field_name)?;
         match val {
@@ -284,10 +288,37 @@ impl VmBridge {
                         format!("array_id {} not found in arrays DashMap", arr_id)
                     ))
             }
+            Value::VmRef(r) => self.vmref_to_vec(r.id),
             other => Err(VmBridgeError::InvalidState(
                 format!("Expected array for field '{}', got {:?}", field_name, other)
             )),
         }
+    }
+
+    /// Plan 335: dereference a `VmRef` holding a list into `Vec<Value>`. Tries
+    /// heap_objects first (ListData<Value> from `List<T>.new` of structs, or
+    /// ListData<i32>), then vm.arrays. Order avoids depending on id-range
+    /// conventions (4000000 heap / 2000000 arrays) so it stays correct if the
+    /// generators' start values change.
+    fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {
+        // Path 1: heap_objects (4000000+) — ListData<Value> or ListData<i32>.
+        if let Some(obj) = self.vm.get_heap_object(id as u64) {
+            let guard = obj.read().unwrap();
+            use crate::vm::types::ListData;
+            if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+                return Ok(list.elems.clone());
+            }
+            if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                return Ok(list.elems.iter().map(|i| Value::Int(*i)).collect());
+            }
+        }
+        // Path 2: vm.arrays (2000000+) — Vec<Value>.
+        if let Some(arr_ref) = self.vm.arrays.get(&(id as u64)) {
+            return Ok(arr_ref.read().unwrap().clone());
+        }
+        Err(VmBridgeError::InvalidState(format!(
+            "VmRef {} is not a readable list (not in heap_objects as ListData nor in arrays)", id
+        )))
     }
 
     /// Write a Vec<Value> back to a state field that holds an array reference.
