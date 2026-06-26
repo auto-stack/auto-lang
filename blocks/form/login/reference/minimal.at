@@ -1,0 +1,83 @@
+// reference/minimal.at — LoginBox block, "minimal" variant.
+// Self-contained UI widget (no backend): the consumer wires `dataSource.attempt`
+// to their #[api] login endpoint and handles the Submit msg.
+// EDIT regions mark where per-app customization is expected.
+
+widget LoginForm {
+    msg Msg {
+        Submit,
+        EditEmail,
+        EditPassword,
+        ToggleRemember
+    }
+
+    model {
+        var email str = ""
+        var password str = ""
+        var remember bool = true
+        var loading bool = false
+        var error str = ""
+    }
+
+    view {
+        col {
+            // ── EDIT: fields (credential fields live here) ──
+            col {
+                label "Email" { for: "email" }
+                input {
+                    id: "email"
+                    value: .email
+                    oninput: .EditEmail
+                    placeholder: "you@example.com"
+                    style: "w-full px-3 py-2 border rounded-lg text-sm"
+                }
+
+                label "Password" { for: "password" }
+                input {
+                    id: "password"
+                    value: .password
+                    oninput: .EditPassword
+                    placeholder: "••••••••"
+                    style: "w-full px-3 py-2 border rounded-lg text-sm"
+                }
+
+                checkbox {
+                    checked: .remember
+                    onchange: .ToggleRemember
+                }
+                label "Remember me" { for: "remember" }
+                style: "gap-2"
+            }
+
+            // ── EDIT: error_display ──
+            if .error != "" {
+                text .error { style: "text-sm text-red-600" }
+            }
+
+            // ── EDIT: submit ──
+            button .loading {
+                label: "Sign in"
+                onclick: .Submit
+                disabled: .loading
+                variant: "default"
+                style: "w-full px-4 py-2 bg-blue-600 text-white rounded-lg"
+            }
+
+            style: "w-full max-w-sm mx-auto p-6 gap-4"
+        }
+    }
+
+    on {
+        .EditEmail(e) -> { .email = e }
+        .EditPassword(p) -> { .password = p }
+        .ToggleRemember -> { .remember = !.remember }
+
+        .Submit -> {
+            .loading = true
+            .error = ""
+            // consumer wires dataSource.attempt(email, password) here;
+            // on success -> navigate; on failure -> set .error, .loading = false
+            .loading = false
+        }
+    }
+}

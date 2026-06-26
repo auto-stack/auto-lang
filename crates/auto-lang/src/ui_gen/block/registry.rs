@@ -215,3 +215,35 @@ mod tests {
         assert!(reg.packages().is_empty());
     }
 }
+
+#[cfg(test)]
+mod scan_tests {
+    use super::*;
+    use crate::ui_gen::WidgetRegistry;
+
+    #[test]
+    fn scans_default_packages() {
+        let reg = BlockRegistry::with_defaults();
+        let keys: Vec<String> = reg.iter().map(|p| p.key()).collect();
+        assert!(keys.contains(&"data-display/note-list".to_string()), "keys: {keys:?}");
+        assert!(keys.contains(&"form/login".to_string()), "keys: {keys:?}");
+    }
+
+    #[test]
+    fn login_has_two_references() {
+        let reg = BlockRegistry::with_defaults();
+        let pkg = reg.get("form", "login").unwrap();
+        assert_eq!(pkg.spec.variants, vec!["minimal", "with_sso"]);
+        assert!(pkg.references.contains_key("minimal"));
+        assert!(pkg.references.contains_key("with_sso"));
+        assert!(pkg.gotchas.is_some());
+    }
+
+    #[test]
+    fn palette_has_no_drift() {
+        let reg = BlockRegistry::with_defaults();
+        let widgets = WidgetRegistry::with_defaults();
+        let drift = reg.palette_drift(&widgets);
+        assert!(drift.is_empty(), "palette drift: {drift:?}");
+    }
+}

@@ -1,0 +1,98 @@
+// reference/with_sso.at — LoginBox block, "with_sso" variant.
+// minimal + a third-party provider row (the `third_party` extension point,
+// materialized). Consumer wires each provider button to its handler.
+
+widget LoginFormSso {
+    msg Msg {
+        Submit,
+        EditEmail,
+        EditPassword,
+        ToggleRemember,
+        SignInWithGithub,
+        SignInWithGoogle
+    }
+
+    model {
+        var email str = ""
+        var password str = ""
+        var remember bool = true
+        var loading bool = false
+        var error str = ""
+    }
+
+    view {
+        col {
+            // ── EDIT: fields ──
+            col {
+                label "Email" { for: "email" }
+                input {
+                    id: "email"
+                    value: .email
+                    oninput: .EditEmail
+                    placeholder: "you@example.com"
+                    style: "w-full px-3 py-2 border rounded-lg text-sm"
+                }
+                label "Password" { for: "password" }
+                input {
+                    id: "password"
+                    value: .password
+                    oninput: .EditPassword
+                    placeholder: "••••••••"
+                    style: "w-full px-3 py-2 border rounded-lg text-sm"
+                }
+                style: "gap-2"
+            }
+
+            // ── EDIT: submit ──
+            button .loading {
+                label: "Sign in"
+                onclick: .Submit
+                disabled: .loading
+                style: "w-full px-4 py-2 bg-blue-600 text-white rounded-lg"
+            }
+
+            // ── EDIT: error_display ──
+            if .error != "" {
+                text .error { style: "text-sm text-red-600" }
+            }
+
+            separator { style: "my-2" }
+
+            // ── EDIT: third_party (SSO providers) ──
+            col {
+                button {
+                    label: "Continue with GitHub"
+                    onclick: .SignInWithGithub
+                    variant: "outline"
+                    style: "w-full px-4 py-2 border rounded-lg text-sm"
+                }
+                button {
+                    label: "Continue with Google"
+                    onclick: .SignInWithGoogle
+                    variant: "outline"
+                    style: "w-full px-4 py-2 border rounded-lg text-sm"
+                }
+                style: "gap-2"
+            }
+
+            style: "w-full max-w-sm mx-auto p-6 gap-4"
+        }
+    }
+
+    on {
+        .EditEmail(e) -> { .email = e }
+        .EditPassword(p) -> { .password = p }
+        .ToggleRemember -> { .remember = !.remember }
+        .Submit -> {
+            .loading = true
+            .error = ""
+            .loading = false
+        }
+        .SignInWithGithub -> {
+            // consumer wires GitHub OAuth redirect
+        }
+        .SignInWithGoogle -> {
+            // consumer wires Google OAuth redirect
+        }
+    }
+}

@@ -1,0 +1,92 @@
+// reference/default.at — note-list block, "default" variant.
+// Self-contained UI widget: items live in `.items` (the consumer populates
+// them from `dataSource.list` on init). Demonstrates loading/error/empty.
+
+widget NoteList {
+    msg Msg {
+        SearchChanged,
+        SelectItem(int),
+        Retry
+    }
+
+    // Sample items so the reference renders standalone; a real consumer
+    // replaces these by calling dataSource.list() in .Init.
+    items: list of Note = [
+        { id: 1, title: "Welcome note", body: "Hello world.", time: "2026-06-26" },
+        { id: 2, title: "Second note", body: "More content.", time: "2026-06-26" }
+    ]
+
+    model {
+        var search str = ""
+        var active_id int = 1
+        var loading bool = false
+        var error str = ""
+    }
+
+    view {
+        col {
+            // ── EDIT: toolbar ──
+            input {
+                value: .search
+                oninput: .SearchChanged
+                placeholder: "Search…"
+                style: "w-full px-3 py-2 text-sm border rounded-lg mb-2"
+            }
+
+            // ── EDIT: loading ──
+            if .loading {
+                text "Loading…" { style: "text-sm text-gray-400 p-3" }
+            }
+
+            // ── EDIT: error ──
+            if .error != "" {
+                col {
+                    text .error { style: "text-sm text-red-600 p-3" }
+                    button {
+                        label: "Retry"
+                        onclick: .Retry
+                        variant: "ghost"
+                        style: "text-sm text-blue-600"
+                    }
+                }
+            }
+
+            // ── EDIT: empty ──
+            if !.loading && .error == "" && .items.len() == 0 {
+                text "No notes yet." { style: "text-sm text-gray-400 p-3" }
+            }
+
+            // ── EDIT: items ──
+            for note in .items {
+                if .search == "" || note.title.contains(.search) {
+                    button {
+                        label: note.title
+                        onclick: .SelectItem(note.id)
+                        variant: "ghost"
+                        style: "w-full text-left p-3 rounded-lg text-sm"
+                    }
+                }
+            }
+
+            style: "w-64 border-r p-3 gap-1 overflow-y-auto h-full"
+        }
+    }
+
+    on {
+        .SearchChanged(s) -> { .search = s }
+        .SelectItem(id) -> { .active_id = id }
+        .Retry -> {
+            .error = ""
+            .loading = true
+            // consumer re-calls dataSource.list() here
+            .loading = false
+        }
+    }
+}
+
+type Note = {
+    id int
+    title str
+    body str
+    time str
+}
