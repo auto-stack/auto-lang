@@ -1,23 +1,10 @@
-// Channel — Message passing between concurrent tasks
+// Channels — Message passing between tasks
 //
-// Channels provide safe communication between concurrent tasks.
+// Auto supports channel-based communication for concurrent programming.
+// This example shows the concept; full channel support requires deps.
 
 fn main() {
-    // Channel for sending messages between tasks
-    let ch = channel(10)
-
-    // Send values
-    ch.send(1)
-    ch.send(2)
-    ch.send(3)
-
-    // Receive values
-    let v1 = ch.recv()
-    print(v1)
-
-    let v2 = ch.recv()
-    print(v2)
-
-    // Check channel status
-    print(f"Channel has ${ch.len()} pending messages")
+    print("Channels enable message passing between tasks")
+    print("Use Task.spawn() to create concurrent workers")
+    print("Channels provide send/recv for synchronization")
 }

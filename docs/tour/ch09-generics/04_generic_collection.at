@@ -14,21 +14,21 @@ type Stack<T> {
     }
 
     fn pop() ?T {
-        if len(.items) == 0 {
+        if .items.len == 0 {
             return None
         }
         return Some(.items.pop())
     }
 
     fn peek() ?T {
-        if len(.items) == 0 {
+        if .items.len == 0 {
             return None
         }
-        return Some(.items[len(.items) - 1])
+        return Some(.items[.items.len - 1])
     }
 
     fn size() int {
-        return len(.items)
+        return .items.len
     }
 }
 

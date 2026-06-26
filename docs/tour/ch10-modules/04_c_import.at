@@ -1,16 +1,11 @@
 // C Import — Using C libraries
 //
-// Use `use c` to import C headers for FFI interop.
-// Auto can call C functions directly.
-
-// Import C standard library
-use c <stdio.h>
-use c <stdlib.h>
-use c <string.h>
+// Use `use c <header.h>` to import C headers for FFI interop.
+// This example shows the concept; actual C imports require
+// the C transpiler target.
 
 fn main() {
-    // C functions are available after import
-    print("C headers imported successfully")
+    print("C headers are imported with: use c <stdio.h>")
     print("C FFI enables system-level programming")
-    print("Use use c <header.h> to import C headers")
+    print("C functions become available after import")
 }
