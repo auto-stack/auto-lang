@@ -1,12 +1,29 @@
 <script setup lang="ts">
-// Phase 1 smoke test: consume @auto-ui/widgets directly via its exports map.
-import { Button } from '@auto-ui/widgets/registry/button'
+import { widgetGroups } from './widgets'
 </script>
 
 <template>
-  <main style="padding: 2rem; display: flex; gap: 1rem; align-items: center">
-    <Button variant="default">It works</Button>
-    <Button variant="destructive">Destructive</Button>
-    <Button variant="outline">Outline</Button>
-  </main>
+  <div class="min-h-screen flex bg-background text-foreground">
+    <aside class="w-60 shrink-0 border-r border-border p-4 overflow-y-auto">
+      <h1 class="text-lg font-semibold mb-1">@auto-ui/widgets</h1>
+      <p class="text-xs text-muted-foreground mb-4">vue-gallery dogfood</p>
+      <nav v-for="group in widgetGroups" :key="group.label" class="mb-4">
+        <div class="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+          {{ group.label }}
+        </div>
+        <RouterLink
+          v-for="w in group.widgets"
+          :key="w.route"
+          :to="w.route"
+          class="block rounded px-2 py-1 text-sm hover:bg-accent hover:text-accent-foreground"
+          active-class="!bg-primary !text-primary-foreground"
+        >
+          {{ w.name }}
+        </RouterLink>
+      </nav>
+    </aside>
+    <main class="flex-1 p-8 overflow-y-auto">
+      <RouterView />
+    </main>
+  </div>
 </template>

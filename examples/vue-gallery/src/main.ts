@@ -3,5 +3,6 @@ import { createApp } from 'vue'
 // instead of running our own Tailwind.
 import '@auto-ui/widgets/styles.css'
 import App from './App.vue'
+import { router } from './router'
 
-createApp(App).mount('#app')
+createApp(App).use(router).mount('#app')
