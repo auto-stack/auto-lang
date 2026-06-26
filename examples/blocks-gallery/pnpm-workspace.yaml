@@ -1,0 +1,3 @@
+# pnpm 11.6 build-script approvals (esbuild is required by vite).
+allowBuilds:
+  esbuild: true

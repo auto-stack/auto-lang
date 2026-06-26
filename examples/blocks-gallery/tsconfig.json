@@ -1,0 +1,9 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "moduleResolution": "Bundler",
+    "baseUrl": "."
+  },
+  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "shims.d.ts"]
+}

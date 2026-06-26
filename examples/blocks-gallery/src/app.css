@@ -1,0 +1,62 @@
+/* blocks-gallery chrome — reuses @auto-ui/widgets design tokens (no Tailwind). */
+
+:root {
+  --bg-sidebar-width: 16rem;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-shell { display: flex; min-height: 100vh; background: hsl(var(--background)); color: hsl(var(--foreground)); }
+.sidebar {
+  width: var(--bg-sidebar-width); flex-shrink: 0; border-right: 1px solid hsl(var(--border));
+  background: hsl(var(--card)); padding: 1.25rem 1rem; overflow-y: auto; position: sticky; top: 0; height: 100vh;
+}
+.sidebar-title { font-size: 1rem; font-weight: 700; margin: 0; }
+.sidebar-subtitle { font-size: 0.75rem; color: hsl(var(--muted-foreground)); margin: 0.125rem 0 1.25rem; }
+.nav-group { margin-bottom: 1.25rem; }
+.nav-group-label { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); margin-bottom: 0.25rem; padding: 0 0.5rem; }
+.nav-link { display: block; padding: 0.3rem 0.5rem; border-radius: calc(var(--radius) - 2px); font-size: 0.875rem; color: hsl(var(--foreground)); text-decoration: none; }
+.nav-link:hover { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+.nav-link.router-link-active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-weight: 500; }
+.content { flex: 1; min-width: 0; padding: 2.5rem; max-width: 56rem; }
+
+.page-title { font-size: 1.875rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 1.75rem; font-family: var(--mono); }
+code { font-family: var(--mono); font-size: 0.85em; background: hsl(var(--muted)); padding: 0.1em 0.35em; border-radius: 4px; }
+
+.home-header { margin-bottom: 2rem; }
+.home-title { font-size: 1.875rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+.home-lead { color: hsl(var(--muted-foreground)); margin: 0.5rem 0 0; line-height: 1.5; }
+.home-group { margin-bottom: 1.75rem; }
+.home-group-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); margin-bottom: 0.5rem; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.75rem; }
+.home-card { display: block; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 1rem; text-decoration: none; color: inherit; }
+.home-card:hover { background: hsl(var(--accent)); }
+.home-card-name { font-family: var(--mono); font-weight: 600; }
+.home-card-blurb { font-size: 0.8125rem; color: hsl(var(--muted-foreground)); margin-top: 0.25rem; }
+
+.block-section { margin-bottom: 2rem; }
+.section-title { font-size: 1rem; font-weight: 600; margin: 0 0 0.5rem; }
+.spec-body, .gotchas-body {
+  margin: 0; font-family: var(--mono); font-size: 0.8125rem; line-height: 1.55;
+  white-space: pre-wrap; color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 0.4); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); padding: 1rem 1.25rem; overflow-x: auto;
+}
+
+.variant-tabs { display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: calc(var(--radius) - 2px); overflow: hidden; margin-bottom: 0.5rem; }
+.variant-tab { font: inherit; font-size: 0.8125rem; padding: 0.3rem 0.75rem; border: 0; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer; }
+.variant-tab:hover { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+.variant-tab.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+
+.hint { font-size: 0.8125rem; color: hsl(var(--muted-foreground)); margin: 0 0 0.5rem; }
+
+.code-wrap { border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(222 47% 11%); overflow: hidden; }
+.code { margin: 0; font-family: var(--mono); font-size: 0.8125rem; line-height: 1.55; color: hsl(210 40% 98%); padding: 1rem 1.25rem; overflow-x: auto; tab-size: 2; }
+.code code { background: transparent; font-family: inherit; white-space: pre; }
