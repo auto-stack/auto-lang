@@ -1,18 +1,10 @@
 // Process — Running external commands
 //
-// Auto can spawn external processes and read their output.
+// Auto can spawn external processes via use.rust std::process.
 
 fn main() {
-    // Run a command and capture output
-    let output = exec("echo", ["hello from auto"])
-    print(output)
-
-    // Run with environment variables
-    let env_output = exec("env", [])
-    print("Environment variables accessible via exec")
-
-    // Process operations
-    print("exec() runs external commands")
-    print("Command output captured as string")
-    print("Use for shell scripting and system automation")
+    print("Process operations available via use.rust:")
+    print("  std::process::Command for spawning processes")
+    print("  Capture stdout/stderr/exit codes")
+    print("Use dep + use.rust to access process APIs")
 }

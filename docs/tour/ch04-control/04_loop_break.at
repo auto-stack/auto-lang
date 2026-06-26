@@ -1,7 +1,6 @@
 // Loop & Break — Infinite loops with break
 //
 // `loop` creates an infinite loop. Use `break` to exit.
-// `break` can also return a value from the loop.
 
 fn main() {
     // Simple infinite loop with break
@@ -14,13 +13,10 @@ fn main() {
         i = i + 1
     }
 
-    // Loop with break value
+    // Find first number whose square > 100
     var n = 1
-    let found = loop {
-        if n * n > 100 {
-            break n
-        }
+    for n * n <= 100 {
         n = n + 1
     }
-    print(f"First number whose square > 100: $found")
+    print(f"First number whose square > 100: $n")
 }

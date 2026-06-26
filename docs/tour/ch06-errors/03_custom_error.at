@@ -1,7 +1,6 @@
 // Custom Errors — Defining error types
 //
-// Define your own error types using `enum` and handle them
-// with pattern matching.
+// Define your own error types using `enum`.
 
 enum AppError {
     NotFound(str)
@@ -11,24 +10,18 @@ enum AppError {
 
 fn load_resource(name str) Result {
     if name == "" {
-        return Err(AppError::InvalidInput("name cannot be empty"))
+        return Err(AppError.InvalidInput("name cannot be empty"))
     }
     if name == "secret" {
-        return Err(AppError::PermissionDenied("access denied"))
+        return Err(AppError.PermissionDenied("access denied"))
     }
     return Ok(f"loaded: $name")
 }
 
 fn main() {
-    let resources = ["config", "", "secret", "data"]
-    for name in resources {
+    let names = ["config", "", "secret", "data"]
+    for name in names {
         let result = load_resource(name)
-        is result {
-            Ok(data) -> print(f"  OK: $data")
-            Err(AppError::NotFound(msg)) -> print(f"  Not Found: $msg")
-            Err(AppError::PermissionDenied(msg)) -> print(f"  Denied: $msg")
-            Err(AppError::InvalidInput(msg)) -> print(f"  Invalid: $msg")
-            Err(other) -> print(f"  Error: $other")
-        }
+        print(f"$name: $result")
     }
 }

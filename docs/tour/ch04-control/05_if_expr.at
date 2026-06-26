@@ -10,7 +10,7 @@ fn abs(x int) int {
 fn classify_age(age int) str {
     return if age < 13 {
         "child"
-    } elif age < 18 {
+    } else if age < 18 {
         "teenager"
     } else {
         "adult"

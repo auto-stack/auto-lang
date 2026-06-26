@@ -11,7 +11,7 @@ fn main() {
 
     // Static array type
     let buffer = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    print(len(buffer))
+    print(buffer.len)
 
     // Modify array elements
     var arr = [10, 20, 30]
@@ -19,5 +19,5 @@ fn main() {
     print(arr[1])
 
     // Array length
-    print(len(nums))
+    print(nums.len)
 }

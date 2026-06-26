@@ -1,12 +1,12 @@
 // If / Else — Conditional branching
 //
-// Use `if`, `elif`, and `else` for conditional execution.
+// Use `if`, `else if`, and `else` for conditional execution.
 // Conditions do not need parentheses.
 
 fn classify(n int) str {
     if n > 0 {
         return "positive"
-    } elif n < 0 {
+    } else if n < 0 {
         return "negative"
     } else {
         return "zero"

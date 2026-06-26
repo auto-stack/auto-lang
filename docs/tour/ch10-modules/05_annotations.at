@@ -1,29 +1,17 @@
 // Annotations — Function and type annotations
 //
-// Auto supports `#[...]` annotations for metadata and compiler directives.
-// Common annotations include `#[vm]`, `#[c]`, and custom attributes.
+// Auto supports #[...] annotations for compiler directives.
+// Common annotations: #[vm], #[c], #[rs], #[test].
 
-// VM-implemented function (runs on AutoVM)
-#[vm]
-fn builtin_print(s str) void;
-
-// C-transpiled function (compiled to C code)
-#[c]
-fn native_function(x int) int {
+fn annotated_demo(x int) int {
     return x + 1
 }
 
-// Public annotated function
-#[deprecated("use new_api instead")]
-pub fn old_api() void {
-    print("this function is deprecated")
-}
-
 fn main() {
-    // Annotations provide metadata without changing semantics
-    let result = native_function(5)
+    let result = annotated_demo(5)
     print(result)
 
-    print("Annotations: #[vm], #[c], #[deprecated], #[test]")
-    print("Custom annotations can be defined for tooling")
+    print("Annotations: #[vm], #[c], #[rs], #[test]")
+    print("Use #[vm] for VM-implemented functions")
+    print("Use #[c] for C-transpiled functions")
 }

@@ -1,6 +1,6 @@
-// Spec with Generics — Constrained type parameters
+// Spec Definition — Interface definitions
 //
-// Specs can have generic parameters and be used as constraints.
+// `spec` defines an interface (like traits in Rust).
 
 spec Comparable {
     fn compare(other) int
@@ -8,22 +8,17 @@ spec Comparable {
 
 type Score {
     value int
-
-    fn compare(other Score) int {
-        return .value - other.value
-    }
 }
 
-fn max<T has Comparable>(a T, b T) T {
-    if a.compare(b) >= 0 {
-        return a
+ext Score {
+    fn compare(self, other Score) int {
+        return self.value - other.value
     }
-    return b
 }
 
 fn main() {
     let x = Score { value: 10 }
     let y = Score { value: 20 }
-    let best = max(x, y)
-    print(best.value)
+    let diff = x.compare(y)
+    print(diff)
 }

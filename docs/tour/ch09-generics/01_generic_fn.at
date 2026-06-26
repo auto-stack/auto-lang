@@ -4,7 +4,7 @@
 // Type parameters are declared after the function name.
 
 fn first<T>(items List) ?T {
-    if len(items) == 0 {
+    if items.len == 0 {
         return None
     }
     return Some(items[0])

@@ -1,24 +1,33 @@
-// Multiple Returns — Returning multiple values
+// Multiple Returns — Returning composite values
 //
-// Functions can return multiple values using tuples or by returning
-// composite types like Option and Result.
+// Functions can return composite types like structs and Option.
+// Auto does not support tuple return types — use a struct instead.
 
 fn divide(a int, b int) int {
     return a / b
 }
 
-fn min_max(a int, b int) (int, int) {
+type Pair {
+    lo int
+    hi int
+}
+
+fn min_max(a int, b int) Pair {
     if a < b {
-        return (a, b)
+        return Pair { lo: a, hi: b }
     }
-    return (b, a)
+    return Pair { lo: b, hi: a }
 }
 
 fn main() {
     let result = divide(10, 3)
     print(result)
 
-    let (lo, hi) = min_max(7, 3)
-    print(lo)
-    print(hi)
+    let r = min_max(7, 3)
+    print(r.lo)
+    print(r.hi)
+
+    let r2 = min_max(3, 7)
+    print(r2.lo)
+    print(r2.hi)
 }

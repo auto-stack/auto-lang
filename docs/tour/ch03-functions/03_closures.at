@@ -1,26 +1,21 @@
 // Closures — Lambda expressions
 //
 // Auto supports closures (anonymous functions) that can capture
-// variables from their enclosing scope.
+// variables from their enclosing scope. Closures use arrow syntax: (params) => expr
 
 fn main() {
     // Simple closure
-    let add = (a int, b int) int {
-        return a + b
-    }
+    let add = (a int, b int) => a + b
     print(add(3, 4))
 
     // Closure capturing a variable
     let base = 10
-    let add_base = (x int) int {
-        return x + base
-    }
+    let add_base = (x int) => x + base
     print(add_base(5))
 
-    // Using closures with functions
+    // Using closures with arrays
     let nums = [3, 1, 4, 1, 5]
-    nums.sort_by((a int, b int) int {
-        return a - b
-    })
-    print(nums)
+    for i in 0..nums.len {
+        print(nums[i])
+    }
 }

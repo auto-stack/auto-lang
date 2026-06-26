@@ -1,28 +1,23 @@
 // Error Propagation — `.?` operator
 //
 // The `.?` operator unwraps an Ok value or propagates the Err upward.
-// Use it to chain fallible operations concisely.
 
-fn parse_int(s str) Result {
-    return Ok(int(s))
+fn safe_divide(a int, b int) !int {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    return a / b
 }
 
-fn add_parsed(a str, b str) !int {
-    let x = parse_int(a).?
-    let y = parse_int(b).?
-    return Ok(x + y)
+fn compute(a int, b int) !int {
+    let quotient = safe_divide(a, b).?
+    return quotient * 2
 }
 
 fn main() {
-    let r1 = add_parsed("10", "20")
-    is r1 {
-        Ok(n) -> print(f"Sum: $n")
-        Err(e) -> print(f"Error: $e")
-    }
+    let r1 = compute(10, 2)
+    print(r1)
 
-    let r2 = add_parsed("10", "abc")
-    is r2 {
-        Ok(n) -> print(n)
-        Err(e) -> print(f"Error: $e")
-    }
+    let r2 = compute(10, 0)
+    print(r2)
 }
