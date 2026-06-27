@@ -669,14 +669,13 @@ impl DynamicComponent {
             }
         }
 
-        // Resolve the state_obj_id for this widget (root or child).
-        let state_obj_id = if widget_name == &self.widget_name {
-            self.bridge.state_obj_id()
-        } else {
-            // Child widget — look up its state id from the bridge's child_state_map.
-            self.bridge.get_child_state_id(widget_name)
-                .unwrap_or_else(|| self.bridge.state_obj_id())
-        };
+        // Plan 337: child widget handlers (EditorPanel.Edit) operate on parent
+        // state fields (editing, edit_title, edit_body defined in App's model).
+        // The child's state_obj_id only carries props (note) for rendering.
+        // So route ALL handlers to the ROOT state_obj_id so writes propagate to
+        // the state the App view reads. Child state is sync'd back from parent
+        // during render_child_widget.
+        let state_obj_id = self.bridge.state_obj_id();
 
         // Run the handler via VM. call_handler_for looks up the namespaced fn.
         let args: Vec<auto_val::Value> = payload.into_iter().collect();
