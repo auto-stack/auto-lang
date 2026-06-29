@@ -26,10 +26,12 @@ widget App {
                 col {
                     input { placeholder: "Search...", value: .search, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg mb-2" }
                     for note in .notes {
-                        button note.title {
-                            onclick: .SelectNote(note.id)
-                            variant: "ghost"
-                            style: "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                        if .search == "" || note.title.contains(.search) {
+                            button note.title {
+                                onclick: .SelectNote(note.id)
+                                variant: "ghost"
+                                style: "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                            }
                         }
                     }
                     style: "w-64 border border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
@@ -71,7 +73,6 @@ widget App {
 
         .DeleteNote -> {
             delete_note(.active_id)
-            notes.remove(.active_id)
             .notes = list_notes()
             if .active_id >= notes.len() {
                 .active_id = notes.len() - 1
@@ -83,6 +84,10 @@ widget App {
             update_note(.active_id, .edit_title, .edit_body)
             .notes = list_notes()
             .editing = false
+        }
+
+        .SearchChanged -> {
+            .search = .search
         }
     }
 }
