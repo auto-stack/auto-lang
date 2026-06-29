@@ -37,7 +37,7 @@ type Note {
     title str
 }
 
-var notes List<Note> = List<Note>.new([])
+var notes = List<Note>.new([])
 
 pub fn add_note(title str) Note {
     let note = Note {
@@ -64,7 +64,7 @@ print(result.title)
         // Test len at top level (not in a function)
         let code = r#"
 type Item { name str }
-var items List<Item> = List<Item>.new([])
+var items = List<Item>.new([])
 print(items.len())
 "#;
         let result = run_with_capture(code);
@@ -80,7 +80,7 @@ print(items.len())
         // Push at top level, then check len
         let code = r#"
 type Item { name str }
-var items List<Item> = List<Item>.new([])
+var items = List<Item>.new([])
 items.push(Item { name: "a" })
 print(items.len())
 "#;
@@ -97,7 +97,7 @@ print(items.len())
         // Push inside a function — the real repro
         let code = r#"
 type Item { name str }
-var items List<Item> = List<Item>.new([])
+var items = List<Item>.new([])
 
 pub fn add_and_count(name str) int {
     let item = Item { name: name }

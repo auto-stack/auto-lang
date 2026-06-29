@@ -1153,6 +1153,12 @@ impl Codegen {
                 // - x = 7: reassignment (error if x was declared with let)
 
                 let name_str = store.name.to_string();
+                // Plan 338: auto-register top-level `var` as a global so it's
+                // visible from functions via LOAD_GLOBAL. Without this, script-path
+                // module-level vars are treated as locals (invisible to fns).
+                if matches!(store.kind, crate::ast::StoreKind::Var) && self.scope_stack.len() <= 1 {
+                    self.global_vars.insert(name_str.clone());
+                }
                 // Plan 327: module-level global variable (top-level `var`).
                 // Compile the init expr and STORE_GLOBAL; skip local slot
                 // registration so the value lives in vm.globals (cross-fn).
@@ -5189,13 +5195,25 @@ impl Codegen {
                 // IMPORTANT: Skip inline construction if the type has a user-defined new() method
                 let is_generic_constructor = if let Expr::Dot(obj, method) = call.name.as_ref() {
                     if method == "new" {
-                        if let Expr::Ident(type_name) = obj.as_ref() {
-                            // Check if a user-defined TypeName.new method exists
-                            let mangled = format!("{}.new", type_name.as_ref());
-                            if self.exports.contains_key(&mangled) {
+                        // Plan 338: Handle both Ident("Type") and GenName("List<Item>")
+                        let type_name_opt: Option<&str> = match obj.as_ref() {
+                            Expr::Ident(name) => Some(name.as_ref()),
+                            Expr::GenName(full) => {
+                                // Extract base type name: "List<Item>" → "List"
+                                full.as_str().split('<').next()
+                            }
+                            _ => None,
+                        };
+                        if let Some(type_name) = type_name_opt {
+                            // Plan 338: List<T>.new is NOT a generic constructor — it's
+                            // a builtin that creates ListData, not GenericInstanceData.
+                            // Let it fall through to the normal call path (shim_list_new).
+                            if type_name == "List" || type_name == "Array" || type_name == "Map" {
+                                false
+                            } else if self.exports.contains_key(&format!("{}.new", type_name)) {
                                 false // User defined their own new() — use regular CALL
                             } else {
-                                self.generic_registry.has_template(type_name.as_ref())
+                                self.generic_registry.has_template(type_name)
                             }
                         } else {
                             false
@@ -5206,6 +5224,11 @@ impl Codegen {
                 } else {
                     false
                 };
+                // DEBUG: trace generic constructor decision for List.new
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    if method == "new" {
+                    }
+                }
 
                 if is_generic_constructor {
                     // Plan 087 Phase 2: Generic constructor call
@@ -6600,6 +6623,12 @@ impl Codegen {
                                 || self.is_type_name_heuristic(obj_name)
                                 || self.is_type(obj_name)
                         }
+                        // Plan 338: GenName("List<Item>") is a static type name, not
+                        // an instance. Without this, List<Item>.new([]) compiles the
+                        // GenName as a receiver expression (creating an Item struct
+                        // instance via CONSTRUCT_INSTANCE) instead of treating it as
+                        // a static call to List.new (shim_list_new).
+                        Expr::GenName(_) => true,
                         _ => false,
                     };
 
