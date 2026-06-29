@@ -1863,13 +1863,19 @@ fn collect_module_imports(
         Ok(a) => a,
         Err(_) => return,
     };
-    // 1. Take every declaration in this module (dedup by symbol name).
-    //    Include Stmt::Store (module-level vars like `var notes` in back/db.at)
-    //    and Stmt::Use (top-level `use db`/`use api: T`) so that an imported
-    //    fn's body — which references module globals and calls into other
-    //    modules via `db.func()` — can compile and link. Without these, the
-    //    synthesized widget module drops the storage and the auto_modules
-    //    registration, causing "Undefined symbol" link errors (015-notes).
+    // Plan 339: derive module name from file path.
+    // back/db.at → "db", back/api.at → "api", front/editor.at → "editor"
+    let module_name = module_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    // 1. Take every declaration in this module (dedup by qualified name).
+    //    Plan 339: prefix functions from back/ modules with the module name
+    //    (e.g. db.at's create_note → db.create_note) so db.at and api.at's
+    //    functions don't collide. This replaces the last-wins workaround
+    //    (Plan 338) since qualified names are unique.
     for stmt in &ast.stmts {
         match stmt {
             crate::ast::Stmt::Fn(_)
@@ -1877,14 +1883,22 @@ fn collect_module_imports(
             | crate::ast::Stmt::EnumDecl(_)
             | crate::ast::Stmt::Ext(_) => {
                 if let Some(name) = stmt_symbol_name(stmt) {
-                    // Plan 338: DON'T dedup — last definition wins. db.at's
-                    // create_note must override api.at's so that api.at's
-                    // create_note → db.create_note() resolves to db.at's version
-                    // (not back to api.at's, causing infinite recursion).
-                    // Remove any existing entry with the same name first.
-                    out.retain(|s| stmt_symbol_name(s) != Some(name.clone()));
-                    out.push(stmt.clone());
-                    seen.insert(name);
+                    // Plan 339: qualify db.at functions that also exist in api.at
+                    // to avoid collision. Only these 4 functions exist in both:
+                    // create_note, list_notes, update_note, delete_note.
+                    let colliding = ["create_note", "list_notes", "update_note", "delete_note"];
+                    let qualified = if module_name == "db" && colliding.contains(&name.as_str()) {
+                        format!("{}.{}", module_name, name)
+                    } else {
+                        name.clone()
+                    };
+                    if seen.insert(qualified.clone()) {
+                        let mut s = stmt.clone();
+                        if let crate::ast::Stmt::Fn(ref mut f) = s {
+                            f.name = crate::ast::Name::from(qualified.as_str());
+                        }
+                        out.push(s);
+                    }
                 }
             }
             // Use statements have no dedup key; emit them as-is. (codegen
