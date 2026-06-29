@@ -49,28 +49,36 @@ pub fn create_note(title str, body str) Note {
 
 /// Update an existing note
 pub fn update_note(id int, title str, body str) ?Note {
+    var new_notes List<Note> = List<Note>.new([])
+    var found ?Note = None
     for note in notes {
         if note.id == id {
-            note.title = title
-            note.body = body
-            note.time = "Just now"
-            return Some(note)
+            let updated = Note {
+                id: note.id,
+                title: title,
+                body: body,
+                time: "Just now",
+            }
+            new_notes.push(updated)
+            found = Some(updated)
+        } else {
+            new_notes.push(note)
         }
     }
-    return None
+    notes = new_notes
+    return found
 }
 
 /// Delete a note by ID
 pub fn delete_note(id int) bool {
-    var removed bool = false
-    notes = notes.filter((n Note) => {
-        if n.id == id {
-            removed = true
-            return false
+    var new_notes List<Note> = List<Note>.new([])
+    for note in notes {
+        if note.id != id {
+            new_notes.push(note)
         }
-        return true
-    })
-    return removed
+    }
+    notes = new_notes
+    return true
 }
 
 /// Search notes by title or body
