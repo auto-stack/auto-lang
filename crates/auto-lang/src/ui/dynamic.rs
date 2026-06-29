@@ -689,9 +689,18 @@ impl DynamicComponent {
 
         // Run the handler via VM. call_handler_for looks up the namespaced fn.
         let args: Vec<auto_val::Value> = payload.into_iter().collect();
+        let is_trace = clean_name == "DeleteNote" || clean_name == "SaveNote" || clean_name == "NewNote" || clean_name == "SelectNote";
+        if is_trace {
+            let pre_notes = self.bridge.read_state_as_vec("notes").map(|v| v.len()).unwrap_or(999);
+            let pre_idx = self.bridge.read_state("active_index").ok();
+        }
         let t0 = std::time::Instant::now();
         match self.bridge.call_handler_for(widget_name, &clean_name, state_obj_id, &args) {
             Ok(()) => {
+                if is_trace {
+                    let post_notes = self.bridge.read_state_as_vec("notes").map(|v| v.len()).unwrap_or(999);
+                    let post_idx = self.bridge.read_state("active_index").ok();
+                }
                 let handler_ms = t0.elapsed().as_millis();
                 let t1 = std::time::Instant::now();
                 self.dirty = true;

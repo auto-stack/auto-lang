@@ -1198,7 +1198,10 @@ impl<'a> AuraViewBuilder<'a> {
         for (prop_name, prop_value) in props {
             if let AuraPropValue::Expr(expr) = prop_value {
                 if let Some(val) = self.resolve_expr_to_value(expr, bindings) {
+                    if prop_name == "note" {
+                    }
                     resolved_props.insert(prop_name.clone(), val);
+                } else if prop_name == "note" {
                 }
             }
         }
@@ -1922,6 +1925,16 @@ impl<'a> AuraViewBuilder<'a> {
                             String::new()
                         }
                     }
+                    Some(Value::VmRef(r)) => {
+                        let materialized = self.bridge.materialize_obj_ref(&Value::VmRef(r));
+                        if let Value::Obj(map) = materialized {
+                            map.get(field.as_str())
+                                .map(|v| value_to_display_string(&v))
+                                .unwrap_or_default()
+                        } else {
+                            String::new()
+                        }
+                    }
                     _ => String::new(),
                 }
             }
@@ -1945,6 +1958,15 @@ impl<'a> AuraViewBuilder<'a> {
                     Value::Int(id) if id >= 4_000_000 => {
                         let raw = Value::Int(id);
                         let materialized = self.bridge.materialize_obj_ref(&raw);
+                        if let Value::Obj(map) = materialized {
+                            map.get(field.as_str())
+                        } else {
+                            None
+                        }
+                    }
+                    // Plan 338: VmRef struct instances (from list rebuild after delete)
+                    Value::VmRef(r) => {
+                        let materialized = self.bridge.materialize_obj_ref(&Value::VmRef(r));
                         if let Value::Obj(map) = materialized {
                             map.get(field.as_str())
                         } else {
