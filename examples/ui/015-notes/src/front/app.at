@@ -30,7 +30,11 @@ widget App {
                             button note.title {
                                 onclick: .SelectNote(i)
                                 variant: "ghost"
-                                style: "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                                style: if i == .active_index {
+                                    "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50 bg-blue-50"
+                                } else {
+                                    "w-full text-left p-3 rounded-lg text-sm font-semibold text-white hover:bg-blue-50"
+                                }
                             }
                         }
                     }
