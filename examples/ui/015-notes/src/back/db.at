@@ -69,13 +69,15 @@ pub fn update_note(id int, title str, body str) ?Note {
     return found
 }
 
-/// Delete a note by ID
+/// Delete a note by index (not by id)
 pub fn delete_note(id int) bool {
     var new_notes List<Note> = List<Note>.new([])
+    var i int = 0
     for note in notes {
-        if note.id != id {
+        if i != id {
             new_notes.push(note)
         }
+        i = i + 1
     }
     notes = new_notes
     return true

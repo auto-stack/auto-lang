@@ -74,8 +74,12 @@ widget App {
         .DeleteNote -> {
             delete_note(.active_id)
             .notes = list_notes()
-            if .active_id >= notes.len() {
-                .active_id = notes.len() - 1
+            if .active_id >= .notes.len() {
+                if .notes.len() > 0 {
+                    .active_id = .notes.len() - 1
+                } else {
+                    .active_id = 0
+                }
             }
             .editing = false
         }
