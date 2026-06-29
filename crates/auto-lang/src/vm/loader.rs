@@ -284,7 +284,6 @@ impl Linker {
                         reloc.symbol_name.split('.').last().and_then(|stripped| {
                             if stripped != reloc.symbol_name {
                                 let r = global_symbols.get(stripped).copied();
-                                eprintln!("DEBUG[linker] '{}' → stripped '{}' → {:?}", reloc.symbol_name, stripped, r);
                                 r
                             } else {
                                 None

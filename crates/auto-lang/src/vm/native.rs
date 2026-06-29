@@ -960,15 +960,13 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    // Plan 327: pop_nv + tag decode so struct/object/string elements are
-    // preserved (not just i32). Reference: engine.rs CREATE_ARRAY decoding.
     let elem_nv = task.ram.pop_nv();
     let elem_val = if auto_val::is_i32(elem_nv) {
         Value::Int(auto_val::decode_i32(elem_nv))
     } else if auto_val::is_object(elem_nv) {
         Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(elem_nv) as usize })
     } else if auto_val::is_string(elem_nv) {
-        Value::Int(auto_val::decode_string(elem_nv) as i32) // store string idx as Int tag
+        Value::Int(auto_val::decode_string(elem_nv) as i32)
     } else if auto_val::is_null(elem_nv) {
         Value::Nil
     } else if auto_val::is_bool(elem_nv) {

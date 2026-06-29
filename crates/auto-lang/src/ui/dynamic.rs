@@ -699,7 +699,6 @@ impl DynamicComponent {
                 let _ = self.view_with_debug_gated(false);
                 let render_ms = t1.elapsed().as_millis();
                 if handler_ms > 100 || render_ms > 100 {
-                    eprintln!("PERF[{}] handler={}ms render={}ms", clean_name, handler_ms, render_ms);
                 }
             }
             Err(_) => {

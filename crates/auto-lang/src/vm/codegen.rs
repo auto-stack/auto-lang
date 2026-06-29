@@ -6228,6 +6228,11 @@ impl Codegen {
                 } else {
                     None
                 };
+                // DEBUG
+                if let Expr::Dot(_, m) = call.name.as_ref() {
+                    if m == "push" || m == "len" {
+                    }
+                }
 
                 // Plan 118 Phase 7: Check if calling a closure variable
                 // If call.name is Ident and the variable has Fn type, use CALL_CLOSURE

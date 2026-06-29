@@ -4311,7 +4311,6 @@ impl AutoVM {
                     // Construct function name: TypeName.method
                     let func_name = format!("{}.{}", type_name, method_name);
                     if method_name == "push" || method_name == "len" {
-                        eprintln!("DEBUG[CALL_SPEC] type_name='{}' method='{}' func='{}'", type_name, method_name, func_name);
                     }
 
                     // Plan 212 Phase 2.2: .unwrap() and similar on opaque handles is identity
@@ -4595,7 +4594,6 @@ impl AutoVM {
                         } else {
                             auto_val::decode_object(receiver_nv) as u64
                         };
-                        eprintln!("DEBUG[CALL_SPEC List] method={} list_id={} in_heap={}", method_name, list_id, self.heap_objects.contains_key(&list_id));
                         match method_name.as_str() {
                             "count" | "len" => {
                                 let len = if let Some(obj) = self.heap_objects.get(&list_id) {
