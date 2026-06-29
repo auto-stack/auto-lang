@@ -675,12 +675,33 @@ impl DynamicComponent {
         // So route ALL handlers to the ROOT state_obj_id so writes propagate to
         // the state the App view reads. Child state is sync'd back from parent
         // during render_child_widget.
+        //
+        // BUT: child handlers also read props (.note.title). The root state
+        // doesn't have these props. So before executing the handler, copy the
+        // child's prop values into root state as temporary fields. This lets
+        // `.edit_title = .note.title` resolve .note from root state.
         let state_obj_id = self.bridge.state_obj_id();
+        if widget_name != &self.widget_name {
+            if let Some(child_id) = self.bridge.get_child_state_id(widget_name) {
+                self.bridge.sync_child_props_to_root(child_id);
+            }
+        }
 
         // Run the handler via VM. call_handler_for looks up the namespaced fn.
         let args: Vec<auto_val::Value> = payload.into_iter().collect();
+        let t0 = std::time::Instant::now();
         match self.bridge.call_handler_for(widget_name, &clean_name, state_obj_id, &args) {
-            Ok(()) => { self.dirty = true; }
+            Ok(()) => {
+                let handler_ms = t0.elapsed().as_millis();
+                let t1 = std::time::Instant::now();
+                self.dirty = true;
+                // Force a view rebuild to measure render time
+                let _ = self.view_with_debug_gated(false);
+                let render_ms = t1.elapsed().as_millis();
+                if handler_ms > 100 || render_ms > 100 {
+                    eprintln!("PERF[{}] handler={}ms render={}ms", clean_name, handler_ms, render_ms);
+                }
+            }
             Err(_) => {
                 // Fallback: try legacy handler_<Event> on root state (backward compat).
                 match self.bridge.call_handler(&clean_name, &args) {

@@ -60,10 +60,10 @@ widget App {
         }
 
         .NewNote -> {
-            let note = create_note("", "")
-            notes.push(note)
-            .active_id = note.id
-            .editing = true
+            let note = create_note(.edit_title, .edit_body)
+            .active_id = notes.len()
+            .notes = list_notes()
+            .editing = false
             .edit_title = ""
             .edit_body = ""
             .search = ""
@@ -72,6 +72,7 @@ widget App {
         .DeleteNote -> {
             delete_note(.active_id)
             notes.remove(.active_id)
+            .notes = list_notes()
             if .active_id >= notes.len() {
                 .active_id = notes.len() - 1
             }
@@ -80,6 +81,7 @@ widget App {
 
         .SaveNote -> {
             update_note(.active_id, .edit_title, .edit_body)
+            .notes = list_notes()
             .editing = false
         }
     }

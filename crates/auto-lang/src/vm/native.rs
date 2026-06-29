@@ -911,8 +911,10 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     if let Some(arr_ref) = vm.arrays.get(&(arg as u64)) {
         let arr = arr_ref.read().unwrap();
-        let all_int = arr.iter().all(|v| matches!(v, Value::Int(_)));
-        if all_int {
+        // Plan 337: empty lists default to ListData<Value> (not ListData<i32>)
+        // so struct pushes (List<Note>) work. Only use ListData<i32> when there
+        // are actual int elements.
+        if !arr.is_empty() && arr.iter().all(|v| matches!(v, Value::Int(_))) {
             let mut list: ListData<i32> = ListData::new();
             for v in arr.iter() {
                 if let Value::Int(i) = v { list.push(*i); }
@@ -920,9 +922,13 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             let list_id = vm.insert_heap_object(list);
             task.ram.push_i32(list_id as i32);
         } else {
-            let id = vm.array_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            vm.arrays.insert(id, std::sync::Arc::new(std::sync::RwLock::new(arr.clone())));
-            task.ram.push_i32(id as i32);
+            // Plan 337: use ListData<Value> for empty or mixed/struct lists.
+            let mut list: ListData<Value> = ListData::new();
+            for v in arr.iter() {
+                list.push(v.clone());
+            }
+            let list_id = vm.insert_heap_object(list);
+            task.ram.push_i32(list_id as i32);
         }
         return Ok(());
     }
@@ -972,11 +978,17 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     };
     let list_id = task.ram.pop_i32() as u64;
 
-    // First try heap_objects (ListData<i32> from List.new())
+    // First try heap_objects (ListData<i32> OR ListData<Value> from List<T>.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             list.push(auto_val::decode_i32(elem_nv));
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+        // Plan 337: ListData<Value> (struct element lists like List<Note>)
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            list.push(elem_val);
             task.ram.push_i32(0);
             return Ok(());
         }
@@ -1034,10 +1046,15 @@ pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     let list_id = task.ram.pop_i32() as u64;
 
-    // First try heap_objects (ListData<i32> from List.new())
+    // First try heap_objects (ListData<i32> OR ListData<Value> from List<T>.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
         let guard = obj.read().unwrap();
         if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            task.ram.push_i32(list.len() as i32);
+            return Ok(());
+        }
+        // Plan 337: ListData<Value> (struct element lists like List<Note>)
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
             task.ram.push_i32(list.len() as i32);
             return Ok(());
         }

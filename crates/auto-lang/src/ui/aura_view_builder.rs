@@ -1911,6 +1911,17 @@ impl<'a> AuraViewBuilder<'a> {
                             .map(|v| value_to_display_string(&v))
                             .unwrap_or_default()
                     }
+                    Some(Value::Int(id)) if id >= 4_000_000 => {
+                        let raw = Value::Int(id);
+                        let materialized = self.bridge.materialize_obj_ref(&raw);
+                        if let Value::Obj(map) = materialized {
+                            map.get(field.as_str())
+                                .map(|v| value_to_display_string(&v))
+                                .unwrap_or_default()
+                        } else {
+                            String::new()
+                        }
+                    }
                     _ => String::new(),
                 }
             }
@@ -1929,6 +1940,17 @@ impl<'a> AuraViewBuilder<'a> {
                 let obj = self.resolve_expr_to_value(object, bindings)?;
                 match obj {
                     Value::Obj(map) => map.get(field.as_str()),
+                    // Plan 337: raw struct heap id from Index — materialize to Obj
+                    // so FieldAccess can read fields.
+                    Value::Int(id) if id >= 4_000_000 => {
+                        let raw = Value::Int(id);
+                        let materialized = self.bridge.materialize_obj_ref(&raw);
+                        if let Value::Obj(map) = materialized {
+                            map.get(field.as_str())
+                        } else {
+                            None
+                        }
+                    }
                     _ => None,
                 }
             }
@@ -1948,14 +1970,14 @@ impl<'a> AuraViewBuilder<'a> {
                     // first, then index. Use read_state_as_vec via a temp field
                     // name when the target is a StateRef; otherwise deref inline.
                     (Value::VmRef(r), Value::Int(i)) => {
-                        let v = self.bridge.index_list(r.id, *i);
-                        // Plan 336: list elements are struct ids (Int(4M)/VmRef);
-                        // materialize so FieldAccess (.note.title/.note.body) resolves.
-                        v.map(|e| self.bridge.materialize_obj_ref(&e))
+                        // Plan 336/337: return the raw element (struct heap id)
+                        // without materializing. View FieldAccess handles
+                        // materialization via materialize_obj_ref; handler
+                        // GET_FIELD needs the raw id to do heap_objects lookup.
+                        self.bridge.index_list(r.id, *i)
                     }
                     (Value::Int(id), Value::Int(i)) if *id >= 2_000_000 => {
-                        let v = self.bridge.index_list(*id as usize, *i);
-                        v.map(|e| self.bridge.materialize_obj_ref(&e))
+                        self.bridge.index_list(*id as usize, *i)
                     }
                     _ => None,
                 }

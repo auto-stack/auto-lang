@@ -34,7 +34,7 @@ cargo test -p auto-lang -- trans  # Run transpiler (a2c/a2r) tests
 
 - Always run `cargo test` after modifying VM-related code
 - Always run `cargo build` after modifying codegen or parser code
-- **Always run `cargo build -p auto` after modifying any code**, to ensure the latest `auto.exe` is built before running tests or regenerating examples
+- **CRITICAL: After EVERY edit session (before reporting completion to the user), ALWAYS run `cargo build -p auto` to rebuild `auto.exe`.** This ensures the latest binary is ready for immediate testing without the user having to wait for a rebuild. Do not skip this even for small changes — incremental builds are fast but the user should never have to compile manually.
 
 ## Auto Code Generation Rules
 

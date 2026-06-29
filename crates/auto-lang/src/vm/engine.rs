@@ -999,7 +999,9 @@ impl AutoVM {
 
         // 5. Execute until function returns (BP restored to saved_bp)
         let budget = 10_000_000;
+        let mut steps = 0u64;
         for _ in 0..budget {
+            steps += 1;
             match self.run_one_instruction(task)? {
                 StepResult::Continue => {
                     if task.bp == saved_bp {
@@ -1028,6 +1030,23 @@ impl AutoVM {
                     self.handle_await_future(task, future_id, body_offset)?;
                 }
             }
+        }
+
+        // Budget exhausted — likely an infinite loop or very expensive operation.
+        if steps >= budget as u64 {
+            let ip = task.ip;
+            // Dump 10 instructions around current ip for diagnosis
+            let mut trace = String::new();
+            let start = ip.saturating_sub(20);
+            for i in start..(start + 30).min(self.flash.memory.len()) {
+                let b = self.flash.memory[i];
+                if b == 0x06 { // RESERVE_STACK = fn prologue marker
+                    trace.push_str(&format!("[FN_PROLOGUE@{}] ", i));
+                }
+            }
+            let fn_name = task.call_stack.last().and_then(|f| f.fn_name.clone()).unwrap_or_default();
+            let call_depth = task.call_stack.len();
+            eprintln!("WARN[budget] fn='{}' ip={} call_depth={} trace={}", fn_name, ip, call_depth, trace);
         }
 
         // 6. Restore non-stack state (return value already on stack top)
@@ -4291,6 +4310,9 @@ impl AutoVM {
 
                     // Construct function name: TypeName.method
                     let func_name = format!("{}.{}", type_name, method_name);
+                    if method_name == "push" || method_name == "len" {
+                        eprintln!("DEBUG[CALL_SPEC] type_name='{}' method='{}' func='{}'", type_name, method_name, func_name);
+                    }
 
                     // Plan 212 Phase 2.2: .unwrap() and similar on opaque handles is identity
                     // (constructors already handle errors by raising VMError)
@@ -4566,12 +4588,22 @@ impl AutoVM {
                             }
                         }
                     } else if type_name == "List" {
+                        // Plan 337: receiver may be Int(heap_id) or VmRef(decode_object).
+                        // Try both to get the list_id.
+                        let list_id = if auto_val::is_i32(receiver_nv) {
+                            auto_val::decode_i32(receiver_nv) as u64
+                        } else {
+                            auto_val::decode_object(receiver_nv) as u64
+                        };
+                        eprintln!("DEBUG[CALL_SPEC List] method={} list_id={} in_heap={}", method_name, list_id, self.heap_objects.contains_key(&list_id));
                         match method_name.as_str() {
                             "count" | "len" => {
-                                let list_id = auto_val::decode_object(receiver_nv) as u64;
                                 let len = if let Some(obj) = self.heap_objects.get(&list_id) {
                                     let guard = obj.read().unwrap();
                                     if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+                                        list.len() as i32
+                                    } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                                        // Plan 337: ListData<Value> (struct lists)
                                         list.len() as i32
                                     } else { 0 }
                                 } else { 0 };
@@ -4603,44 +4635,33 @@ impl AutoVM {
                                 }
                             }
                             "push" => {
-                                // Push element to end of List (arrays DashMap)
-                                let arr_key = if auto_val::is_object(receiver_nv) {
-                                    auto_val::decode_object(receiver_nv) as u64
-                                } else if auto_val::is_i32(receiver_nv) {
-                                    auto_val::decode_i32(receiver_nv) as u64
-                                } else {
-                                    0u64
-                                };
-                                // Pop the element arg
+                                // Push element to end of List (uses unified list_id above).
                                 let elem_nv = task.ram.pop_nv();
-                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
-                                    let mut arr = arr_ref.write().unwrap();
-                                    {
-                                        let value = if auto_val::is_i32(elem_nv) {
-                                            auto_val::Value::Int(auto_val::decode_i32(elem_nv))
-                                        } else if auto_val::is_object(elem_nv) {
-                                            auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(elem_nv) as usize })
-                                        } else if auto_val::is_string(elem_nv) {
-                                            let idx = auto_val::decode_string(elem_nv) as usize;
-                                            let bytes = self.strings.read().unwrap().get(idx).cloned().unwrap_or_default();
-                                            auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
-                                        } else if auto_val::is_bool(elem_nv) {
-                                            auto_val::Value::Bool(auto_val::decode_bool(elem_nv))
-                                        } else if auto_val::is_f64(elem_nv) {
-                                            auto_val::Value::Double(auto_val::decode_f64(elem_nv))
-                                        } else if auto_val::is_f32(elem_nv) {
-                                            auto_val::Value::Float(auto_val::decode_f32(elem_nv) as f64)
-                                        } else if auto_val::is_null(elem_nv) {
-                                            auto_val::Value::Nil
-                                        } else {
-                                            auto_val::Value::Int(auto_val::decode_i32(elem_nv))
-                                        };
-                                        arr.push(value);
-                                    }
+                                let elem_val = if auto_val::is_i32(elem_nv) {
+                                    auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                } else if auto_val::is_object(elem_nv) {
+                                    auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(elem_nv) as usize })
+                                } else if auto_val::is_string(elem_nv) {
+                                    let idx = auto_val::decode_string(elem_nv) as usize;
+                                    let bytes = self.strings.read().unwrap().get(idx).cloned().unwrap_or_default();
+                                    auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
+                                } else if auto_val::is_bool(elem_nv) {
+                                    auto_val::Value::Bool(auto_val::decode_bool(elem_nv))
+                                } else if auto_val::is_null(elem_nv) {
+                                    auto_val::Value::Nil
                                 } else {
+                                    auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                };
+                                // Plan 337: push into ListData<Value> or ListData<i32>.
+                                if let Some(obj) = self.get_heap_object(list_id) {
+                                    let mut guard = obj.write().unwrap();
+                                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
+                                        list.push(elem_val);
+                                    } else if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<i32>>() {
+                                        list.push(auto_val::decode_i32(elem_nv));
+                                    }
                                 }
-                                // Pop receiver, push 0 (void)
-                                { task.ram.pop_nv(); task.ram.push_i32(0); }
+                                { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_i32(0); }
                             }
                             "remove" => {
                                 // Remove element at index from List (arrays DashMap)
