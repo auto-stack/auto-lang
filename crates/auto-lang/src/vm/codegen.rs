@@ -1165,9 +1165,13 @@ impl Codegen {
                 // Plan 333: force_global_store (set inside __module_init) makes
                 // this apply even within a fn body, so module-level initializers
                 // wrapped in __module_init store globally rather than as locals.
-                if self.global_vars.contains(&name_str)
-                    && (self.scope_stack.len() <= 1 || self.force_global_store)
-                {
+                // Plan 338: global_vars variables ALWAYS go through STORE_GLOBAL
+                // regardless of scope — a function that reassigns a module-level
+                // global (e.g. db.at's `notes = new_notes`) must update the global,
+                // not a local shadow. Without this, delete_note/create_note's
+                // `notes = ...` writes to a local, and list_notes() reads the
+                // stale global.
+                if self.global_vars.contains(&name_str) {
                     // Only treat as global at top level (scope_stack.len() <= 1
                     // = script wrapper scope). Inside fns, a `var x` with the
                     // same name as a global is a local shadow, not a global store.
