@@ -8,7 +8,7 @@ widget App {
 
     model {
         var notes = []
-        var active_id int = 0
+        var active_index int = 0
         var search str = ""
         var editing bool = false
         var edit_title str = ""
@@ -25,10 +25,10 @@ widget App {
             row {
                 col {
                     input { placeholder: "Search...", value: .search, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg mb-2" }
-                    for note in .notes {
+                    for i, note in .notes {
                         if .search == "" {
                             button note.title {
-                                onclick: .SelectNote(note.id)
+                                onclick: .SelectNote(i)
                                 variant: "ghost"
                                 style: "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
                             }
@@ -38,7 +38,7 @@ widget App {
                 }
                 col {
                     if .notes.len() > 0 {
-                        EditorPanel(note: .notes[.active_id])
+                        EditorPanel(note: .notes[.active_index])
                     }
                     style: "flex-1"
                 }
@@ -53,8 +53,8 @@ widget App {
             .notes = list_notes()
         }
 
-        .SelectNote(id) -> {
-            .active_id = id
+        .SelectNote(i) -> {
+            .active_index = i
             .editing = false
         }
 
@@ -64,7 +64,7 @@ widget App {
         .NewNote -> {
             create_note("New Note", "")
             .notes = list_notes()
-            .active_id = .notes.len() - 1
+            .active_index = .notes.len() - 1
             .editing = true
             .edit_title = "New Note"
             .edit_body = ""
@@ -72,16 +72,16 @@ widget App {
         }
 
         .DeleteNote -> {
-            delete_note(.active_id)
+            delete_note(.active_index)
             .notes = list_notes()
-            if .active_id >= .notes.len() {
-                .active_id = 0
+            if .active_index >= .notes.len() {
+                .active_index = 0
             }
             .editing = false
         }
 
         .SaveNote -> {
-            update_note(.active_id, .edit_title, .edit_body)
+            update_note(.active_index, .edit_title, .edit_body)
             .notes = list_notes()
             .editing = false
         }
