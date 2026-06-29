@@ -6,6 +6,7 @@ use colored::Colorize;
 use log::info;
 
 mod cmd_a2c_stdlib;
+mod cmd_block;
 mod cmd_ui;
 
 // Helper to convert AutoError to miette Report - this preserves all diagnostic info
@@ -253,6 +254,36 @@ enum UiAction {
 }
 
 #[derive(Subcommand, Debug)]
+enum BlockAction {
+    /// List block packages (grouped by kind)
+    List,
+    /// Print a block's spec + variants + gotchas (the agent skill interface)
+    Show {
+        /// `kind/name` of the block (e.g. `form/login`)
+        key: String,
+    },
+    /// Copy a reference implementation into a consumer project (adopt-and-edit)
+    Add {
+        /// `kind/name` of the block (e.g. `form/login`)
+        key: String,
+        /// Variant to copy (default: the package's first variant)
+        #[arg(long)]
+        reference: Option<String>,
+        /// Output directory (default: src/front/blocks)
+        #[arg(long, default_value = "src/front/blocks")]
+        out: String,
+    },
+    /// Static acceptance check on a generated/copied .at (agent repair-loop gate)
+    Check {
+        /// Path to the .at file to check
+        file: String,
+        /// Optional `kind/name` spec to check extension-point EDIT markers against
+        #[arg(long)]
+        spec: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum Commands {
     // ========== Project Creation ==========
     #[command(about = "Create a new Auto project (app, lib, gear, gadget)")]
@@ -367,6 +398,13 @@ enum Commands {
     Ui {
         #[command(subcommand)]
         action: UiAction,
+    },
+
+    // ========== AutoUI Blocks (Plan 343, Design 17) ==========
+    #[command(about = "AutoUI block catalog commands (Skill-tier)")]
+    Block {
+        #[command(subcommand)]
+        action: BlockAction,
     },
 
     // ========== Legacy / Dev Tools ==========
@@ -1187,6 +1225,11 @@ fn real_main(cli: Cli) -> Result<()> {
         // ========== AutoUI Widget Library (Plan 331) ==========
         Some(Commands::Ui { action }) => {
             cmd_ui::run(action)?;
+        }
+
+        // ========== AutoUI Blocks (Plan 343, Design 17) ==========
+        Some(Commands::Block { action }) => {
+            cmd_block::run(action)?;
         }
 
         // ========== Legacy / Dev Tools ==========
