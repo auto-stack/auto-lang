@@ -212,6 +212,19 @@ pub fn handler_fn_name(pattern: &str) -> String {
     format!("handler_{}", bare)
 }
 
+/// Plan 337: namespaced handler fn name: `handler_<WidgetName>_<EventName>`.
+/// E.g. `handler_App_SelectNote`, `handler_EditorPanel_Edit`.
+pub fn namespaced_handler_fn_name(widget_name: &str, pattern: &str) -> String {
+    let full = handler_fn_name(pattern); // "handler_<Event>"
+    let bare = full.strip_prefix("handler_").unwrap_or(&full);
+    format!("handler_{}_{}", widget_name, bare)
+}
+
+/// Plan 337: state type name per widget: `<WidgetName>_State`.
+pub fn state_type_name(widget_name: &str) -> String {
+    format!("{}_State", widget_name)
+}
+
 /// Look up a handler's parameter type from the widget's message definitions.
 ///
 /// Returns `Type::StrSlice` as a permissive default when the payload type is
@@ -228,7 +241,9 @@ fn handler_param_type(widget: &AuraWidget, handler_bare: &str) -> Type {
     Type::StrSlice
 }
 
-/// Synthesize the widget's state `type AppState { ... }`.
+/// Synthesize the widget's state `type <WidgetName>_State { ... }`.
+/// Plan 337: state type is namespaced by widget name so multiple widgets'
+/// state types coexist in one module.
 fn synthesize_state_type(widget: &AuraWidget) -> TypeDecl {
     let members: Vec<Member> = widget
         .state_vars
@@ -251,7 +266,7 @@ fn synthesize_state_type(widget: &AuraWidget) -> TypeDecl {
         .collect();
 
     TypeDecl {
-        name: Name::from("AppState"),
+        name: Name::from(state_type_name(&widget.name).as_str()),
         kind: TypeDeclKind::UserType,
         parent: None,
         has: Vec::new(),
@@ -268,7 +283,10 @@ fn synthesize_state_type(widget: &AuraWidget) -> TypeDecl {
 }
 
 /// Synthesize a single widget handler as a real VM function statement.
+/// Plan 337: `widget_name` is used to namespace the handler fn name
+/// (handler_<WidgetName>_<EventName>) so multiple widgets coexist in one module.
 fn synthesize_handler_fn(
+    widget_name: &str,
     state_type: &TypeDecl,
     state_fields: &HashSet<String>,
     widget: &AuraWidget,
@@ -309,7 +327,7 @@ fn synthesize_handler_fn(
 
     Stmt::Fn(Fn::new(
         FnKind::Function,
-        Name::from(handler_fn_name(event_pattern).as_str()),
+        Name::from(namespaced_handler_fn_name(widget_name, event_pattern).as_str()),
         None,
         params,
         body,
@@ -326,15 +344,9 @@ fn synthesize_handler_fn(
 /// literal metadata shares one unified table.
 pub fn synthesize_widget_module(
     widget: &AuraWidget,
+    child_widgets: &[AuraWidget],
     import_stmts: Vec<Stmt>,
 ) -> SynthResult<(Module, crate::vm::generic_registry::GenericRegistry)> {
-    let state_fields: HashSet<String> = widget
-        .state_vars
-        .iter()
-        .map(|v| v.name.clone())
-        .collect();
-    let state_type = synthesize_state_type(widget);
-
     let mut codegen = Codegen::new();
 
     // 0. Pre-register every imported fn's return type so forward references
@@ -437,45 +449,60 @@ pub fn synthesize_widget_module(
         }
     }
 
-    // 2. State type declaration.
-    if let Err(e) = codegen.compile_stmt(&Stmt::TypeDecl(state_type.clone())) {
-        log::warn!("handler_codegen: AppState type failed to compile: {}", e);
-    }
-
-    // 3. Handlers + lifecycle methods (sorted for deterministic layout).
+    // 2. Compile state types + handlers for ALL widgets (root + children).
+    //    Plan 337: single VM — all widgets' state types and handlers are compiled
+    //    into one module. Handler fns are namespaced: handler_<Widget>_<Event>.
+    //    State types are namespaced: <Widget>_State.
     //
-    // NOTE: `.Init` / `.Destroy` are MOVED out of `widget.handlers` into
-    // `widget.lifecycle` during aura extraction (see aura/extract.rs). They must
-    // be synthesized as real `handler_<Name>` fns too, otherwise `Init` (which
-    // populates state like `.days = build_month_grid(...)`) never runs.
-    let mut all_handlers: Vec<(String, &LogicPayload)> = widget
-        .handlers
-        .iter()
-        .map(|(p, pl)| (p.clone(), pl))
+    //    The root widget is compiled first, then children. Each widget's state
+    //    type uses its own field set; handlers reference their own state type.
+    let all_widgets: Vec<&AuraWidget> = std::iter::once(widget)
+        .chain(child_widgets.iter())
         .collect();
-    for lc in &widget.lifecycle {
-        all_handlers.push((lc.name.clone(), &lc.payload));
-    }
-    all_handlers.sort_by(|a, b| handler_fn_name(&a.0).cmp(&handler_fn_name(&b.0)));
 
-    for (event_pattern, payload) in &all_handlers {
-        let body_stmts = match payload {
-            LogicPayload::AstStmts(stmts) => stmts,
-            _ => continue,
-        };
-        let handler_fn = synthesize_handler_fn(
-            &state_type,
-            &state_fields,
-            widget,
-            event_pattern,
-            body_stmts,
-        );
-        if let Err(e) = codegen.compile_stmt(&handler_fn) {
-            log::warn!(
-                "handler_codegen: handler '{}' failed to compile: {}",
+    for w in &all_widgets {
+        let w_state_fields: HashSet<String> = w
+            .state_vars
+            .iter()
+            .map(|v| v.name.clone())
+            .collect();
+        let w_state_type = synthesize_state_type(w);
+
+        // State type declaration.
+        if let Err(e) = codegen.compile_stmt(&Stmt::TypeDecl(w_state_type.clone())) {
+            log::warn!("handler_codegen: {} state type failed: {}", w.name, e);
+        }
+
+        // Handlers + lifecycle (sorted for deterministic layout).
+        let mut w_handlers: Vec<(String, &LogicPayload)> = w
+            .handlers
+            .iter()
+            .map(|(p, pl)| (p.clone(), pl))
+            .collect();
+        for lc in &w.lifecycle {
+            w_handlers.push((lc.name.clone(), &lc.payload));
+        }
+        w_handlers.sort_by(|a, b| handler_fn_name(&a.0).cmp(&handler_fn_name(&b.0)));
+
+        for (event_pattern, payload) in &w_handlers {
+            let body_stmts = match payload {
+                LogicPayload::AstStmts(stmts) => stmts,
+                _ => continue,
+            };
+            let handler_fn = synthesize_handler_fn(
+                &w.name,
+                &w_state_type,
+                &w_state_fields,
+                w,
                 event_pattern,
-                e
+                body_stmts,
             );
+            if let Err(e) = codegen.compile_stmt(&handler_fn) {
+                log::warn!(
+                    "handler_codegen: {}.{} failed: {}",
+                    w.name, event_pattern, e
+                );
+            }
         }
     }
 

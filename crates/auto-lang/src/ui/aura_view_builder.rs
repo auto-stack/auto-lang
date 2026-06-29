@@ -91,10 +91,13 @@ pub struct AuraViewBuilder<'a> {
     /// Optional widget registry for child widget rendering
     widget_registry: Option<&'a crate::ui::widget_registry::WidgetRegistry>,
 
-    /// Plan 336: imported declarations (back/api.at functions etc.) shared with
-    /// child widgets so their handlers can call imported functions (delete_note,
-    /// update_note). None when the builder has no imports (legacy).
+    /// Plan 336: imported declarations shared with child widgets.
     import_stmts: Option<&'a [crate::ast::Stmt]>,
+
+    /// Plan 337: when rendering a child widget's view tree, this overrides the
+    /// bridge's root state_obj_id so read_state reads from the child's state
+    /// object instead of the root widget's. None = use root state.
+    override_state_obj_id: Option<u64>,
 }
 
 impl<'a> AuraViewBuilder<'a> {
@@ -110,6 +113,7 @@ impl<'a> AuraViewBuilder<'a> {
             widget_name: widget_name.to_string(),
             widget_registry: None,
             import_stmts: None,
+            override_state_obj_id: None,
         }
     }
 
@@ -124,6 +128,7 @@ impl<'a> AuraViewBuilder<'a> {
             widget_name: widget_name.to_string(),
             widget_registry: Some(registry),
             import_stmts: None,
+            override_state_obj_id: None,
         }
     }
 
@@ -142,6 +147,7 @@ impl<'a> AuraViewBuilder<'a> {
             widget_name: widget_name.to_string(),
             widget_registry: Some(registry),
             import_stmts: Some(import_stmts),
+            override_state_obj_id: None,
         }
     }
 
@@ -152,6 +158,30 @@ impl<'a> AuraViewBuilder<'a> {
     /// VmBridge at build time.
     pub fn build(&self, node: &AuraNode) -> View<DynamicMessage> {
         self.convert_node_with(node, &Bindings::new())
+    }
+
+    /// Plan 337: read a state field. When override_state_obj_id is set (rendering
+    /// a child widget's view), reads from the child's state object. Otherwise
+    /// reads from the root widget's state (legacy behavior).
+    fn read_state(&self, field_name: &str) -> Result<auto_val::Value, String> {
+        if let Some(child_id) = self.override_state_obj_id {
+            self.bridge.read_child_state(child_id, field_name)
+                .map_err(|e| e.to_string())
+        } else {
+            self.bridge.read_state(field_name)
+                .map_err(|e| e.to_string())
+        }
+    }
+
+    /// Plan 337: read a state field as Vec<Value> (override-aware).
+    fn read_state_as_vec(&self, field_name: &str) -> Result<Vec<auto_val::Value>, String> {
+        if let Some(child_id) = self.override_state_obj_id {
+            self.bridge.read_child_state_as_vec(child_id, field_name)
+                .map_err(|e| e.to_string())
+        } else {
+            self.bridge.read_state_as_vec(field_name)
+                .map_err(|e| e.to_string())
+        }
     }
 
     /// Build a `View<DynamicMessage>` with debug sideband data (Plan 274 / 307 Task 9).
@@ -217,11 +247,11 @@ impl<'a> AuraViewBuilder<'a> {
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
                 let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
                 // Read the iterable array from VmBridge state
-                let array = match self.bridge.read_state(state_name) {
+                let array = match self.read_state(state_name) {
                     Ok(Value::Array(arr)) => arr,
                     Ok(other) => {
                         // Try read_state_as_vec for Value::Int(array_id) refs
-                        match self.bridge.read_state_as_vec(state_name) {
+                        match self.read_state_as_vec(state_name) {
                             Ok(vec) => {
                                 // Re-wrap as Array for consistent iteration
                                 let owned: Vec<Value> = vec;
@@ -401,7 +431,7 @@ impl<'a> AuraViewBuilder<'a> {
                 // (the latter is how `var x = []; x.push(...)` arrays are stored —
                 // e.g. 016-calendar's `.days`). A bare `read_state` + `Value::Array`
                 // match misses the heap-id form and silently renders an empty loop.
-                let array: Vec<Value> = match self.bridge.read_state_as_vec(state_name) {
+                let array: Vec<Value> = match self.read_state_as_vec(state_name) {
                     Ok(v) => v,
                     _ => return View::Empty,
                 };
@@ -736,7 +766,7 @@ impl<'a> AuraViewBuilder<'a> {
                     // the form `var x = []; x.push(...)` produces — e.g. .days) are
                     // iterated, not just inline Value::Array. Otherwise the grid's
                     // `for cell in .days` renders empty even though state is populated.
-                    let array: Vec<Value> = match self.bridge.read_state_as_vec(state_name) {
+                    let array: Vec<Value> = match self.read_state_as_vec(state_name) {
                         Ok(v) => v,
                         _ => continue,
                     };
@@ -1152,6 +1182,10 @@ impl<'a> AuraViewBuilder<'a> {
     ///
     /// This resolves props from parent state, injects them as state fields,
     /// creates a child VmBridge, and recursively renders the child's view tree.
+    /// Plan 337: render a child widget WITHOUT creating a new VM.
+    /// Uses the same VmBridge (same VM), creates/updates the child's state
+    /// object on the heap, and renders the child's view tree with an
+    /// override_state_obj_id so read_state reads from the child's state.
     fn render_child_widget(
         &self,
         child_widget: &crate::aura::AuraWidget,
@@ -1159,7 +1193,7 @@ impl<'a> AuraViewBuilder<'a> {
         _events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        // 1. Resolve prop values from parent state
+        // 1. Resolve prop values from parent state.
         let mut resolved_props: HashMap<String, Value> = HashMap::new();
         for (prop_name, prop_value) in props {
             if let AuraPropValue::Expr(expr) = prop_value {
@@ -1169,55 +1203,42 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
 
-        // 2. Clone the widget and inject props as state vars so VmBridge registers them
-        let mut modified_widget = child_widget.clone();
-        for (prop_name, _val) in &resolved_props {
-            if modified_widget.state_vars.iter().any(|v| v.name == *prop_name) {
-                continue;
-            }
-            modified_widget.state_vars.push(crate::aura::AuraStateDef {
-                name: prop_name.clone(),
-                type_info: crate::ast::Type::StrOwned,
-                initial: AuraExpr::Literal("".to_string()),
-                decorators: vec![],
-            });
-        }
-
-        // 3. Create VmBridge (state fields now include props).
-        // Plan 336: pass the parent's import_stmts so child handlers can call
-        // imported functions (delete_note, update_note from back.api). Without
-        // this, VmBridge::new uses empty imports and linking fails.
-        let child_imports: Vec<crate::ast::Stmt> = self.import_stmts
-            .map(|s| s.to_vec())
-            .unwrap_or_default();
-        let mut child_bridge = match VmBridge::new_with_imports(&modified_widget, child_imports) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("Warning: Failed to create child widget '{}': {:?}", child_widget.name, e);
-                return View::Empty;
-            }
-        };
-
-        // 4. Overwrite prop state fields with actual resolved values
-        for (prop_name, val) in &resolved_props {
-            let _ = child_bridge.write_state(prop_name, val.clone());
-        }
-
-        // 4b. Sync parent state to child's matching model vars
-        // This allows hardcoded handlers (NewNote, Edit, etc.) that update
-        // parent state (editing, edit_title, edit_body) to flow into the child widget.
-        for state_var in &child_widget.state_vars {
-            if let Ok(parent_val) = self.bridge.read_state(&state_var.name) {
-                let _ = child_bridge.write_state(&state_var.name, parent_val);
+        // 2. Collect child state field names (model vars + injected props).
+        let mut child_field_names: Vec<String> = child_widget.state_vars
+            .iter()
+            .map(|v| v.name.clone())
+            .collect();
+        for prop_name in resolved_props.keys() {
+            if !child_field_names.contains(prop_name) {
+                child_field_names.push(prop_name.clone());
             }
         }
 
-        // 5. Build a child view builder and render the child's view tree
+        // 3. Also sync matching parent state → child (editing, edit_title, etc.)
+        //    so child handlers can read/write shared parent state.
+        for field_name in &child_field_names {
+            if !resolved_props.contains_key(field_name) {
+                if let Ok(parent_val) = self.bridge.read_state(field_name) {
+                    resolved_props.insert(field_name.clone(), parent_val);
+                }
+            }
+        }
+
+        // 4. Ensure child state object exists on the VM heap + write props.
+        let child_state_id = self.bridge.ensure_child_state(
+            &child_widget.name,
+            &child_field_names,
+            &resolved_props,
+        );
+
+        // 5. Build a child view builder using the SAME bridge but with
+        //    override_state_obj_id pointing to the child's state object.
         let child_builder = AuraViewBuilder {
-            bridge: &child_bridge,
+            bridge: self.bridge,
             widget_name: child_widget.name.clone(),
             widget_registry: self.widget_registry,
             import_stmts: self.import_stmts,
+            override_state_obj_id: Some(child_state_id),
         };
 
         child_builder.build(&child_widget.view_tree)
@@ -1316,9 +1337,9 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> Vec<View<DynamicMessage>> {
         let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
-        let array = match self.bridge.read_state(state_name) {
+        let array = match self.read_state(state_name) {
             Ok(Value::Array(arr)) => arr,
-            Ok(_) => match self.bridge.read_state_as_vec(state_name) {
+            Ok(_) => match self.read_state_as_vec(state_name) {
                 Ok(vec) => auto_val::Array::from(vec),
                 Err(_) => return Vec::new(),
             },
@@ -1863,7 +1884,7 @@ impl<'a> AuraViewBuilder<'a> {
         if let Some(val) = bindings.get(field_name) {
             return value_to_display_string(val);
         }
-        match self.bridge.read_state(field_name) {
+        match self.read_state(field_name) {
             Ok(value) => value_to_display_string(&value),
             Err(_) => format!("${{{}}}", field_name),
         }
@@ -1902,7 +1923,7 @@ impl<'a> AuraViewBuilder<'a> {
         match expr {
             AuraExpr::StateRef(name) => {
                 bindings.get(name).cloned()
-                    .or_else(|| self.bridge.read_state(name).ok())
+                    .or_else(|| self.read_state(name).ok())
             }
             AuraExpr::FieldAccess { object, field } => {
                 let obj = self.resolve_expr_to_value(object, bindings)?;
@@ -1952,7 +1973,7 @@ impl<'a> AuraViewBuilder<'a> {
     /// Reads the `search` state field. If it's empty or doesn't exist, all items match.
     /// If non-empty and the item is an Obj, checks if any string field contains the search text.
     fn matches_search(&self, item: &Value) -> bool {
-        let search_text = match self.bridge.read_state("search") {
+        let search_text = match self.read_state("search") {
             Ok(Value::Str(s)) => s.to_string(),
             Ok(Value::String(s)) => s.to_string(),
             _ => return true, // no search field or non-string → show all
@@ -2069,7 +2090,7 @@ impl<'a> AuraViewBuilder<'a> {
             (&cond[..pos], "<=", cond[pos + 4..].trim())
         } else if cond.starts_with('.') {
             // Bare state ref — truthy check
-            return self.bridge.read_state(&cond[1..])
+            return self.read_state(&cond[1..])
                 .map(|v| v.as_bool())
                 .unwrap_or(false);
         } else {
@@ -2086,11 +2107,11 @@ impl<'a> AuraViewBuilder<'a> {
         let lhs_val = if let Some(field_name) = lhs_normalized.strip_suffix(".len()") {
             // Strip leading dot from state ref (e.g., ".todos" → "todos")
             let field_name = field_name.trim_start_matches('.');
-            match self.bridge.read_state(field_name) {
+            match self.read_state(field_name) {
                 Ok(Value::Array(arr)) => arr.len().to_string(),
                 Ok(other) => {
                     // Also try read_state_as_vec for Value::Int(array_id) refs
-                    match self.bridge.read_state_as_vec(field_name) {
+                    match self.read_state_as_vec(field_name) {
                         Ok(vec) => vec.len().to_string(),
                         Err(_) => value_to_display_string(&other),
                     }
@@ -2103,12 +2124,12 @@ impl<'a> AuraViewBuilder<'a> {
         } else if lhs.starts_with('.') {
             // State ref (e.g., ".filter")
             let name = &lhs[1..];
-            match self.bridge.read_state(name) {
+            match self.read_state(name) {
                 Ok(v) => value_to_display_string(&v),
                 Err(_) => return false,
             }
         } else {
-            match self.bridge.read_state(lhs) {
+            match self.read_state(lhs) {
                 Ok(v) => value_to_display_string(&v),
                 Err(_) => return false,
             }
@@ -2353,7 +2374,7 @@ impl<'a> AuraViewBuilder<'a> {
                 AuraExpr::Int(i) => Some(*i as f64),
                 AuraExpr::Float(f) => Some(*f),
                 AuraExpr::StateRef(name) => {
-                    match self.bridge.read_state(name) {
+                    match self.read_state(name) {
                         Ok(value) => match value {
                             Value::Int(i) => Some(i as f64),
                             Value::Float(f) => Some(f as f64),
