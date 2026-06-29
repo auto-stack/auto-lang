@@ -280,11 +280,26 @@ impl Linker {
                 // Try exact match first, then strip module prefix and retry.
                 let target_addr = global_symbols.get(&reloc.symbol_name)
                     .copied()
+                    // Plan 338: try module#name qualified lookup for dotted symbols.
+                    // E.g. db.create_note → db#create_note (resolves to db.at's
+                    // version, not api.at's duplicate). This prevents infinite
+                    // recursion when api.at's create_note calls db.create_note
+                    // and the unqualified fallback resolves back to api.at's.
+                    .or_else(|| {
+                        if reloc.symbol_name.contains('.') {
+                            let prefix = reloc.symbol_name.split('.').next().unwrap_or("");
+                            let rest = reloc.symbol_name.split('.').last().unwrap_or("");
+                            let qualified = format!("{}#{}", prefix, rest);
+                            global_symbols.get(&qualified).copied()
+                        } else {
+                            None
+                        }
+                    })
+                    // Fallback: strip prefix, try unqualified name.
                     .or_else(|| {
                         reloc.symbol_name.split('.').last().and_then(|stripped| {
                             if stripped != reloc.symbol_name {
-                                let r = global_symbols.get(stripped).copied();
-                                r
+                                global_symbols.get(stripped).copied()
                             } else {
                                 None
                             }
