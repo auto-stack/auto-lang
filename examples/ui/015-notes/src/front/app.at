@@ -64,7 +64,7 @@ widget App {
         .NewNote -> {
             create_note("New Note", "")
             .notes = list_notes()
-            .active_id = notes.len() - 1
+            .active_id = .notes.len() - 1
             .editing = true
             .edit_title = "New Note"
             .edit_body = ""
@@ -75,11 +75,7 @@ widget App {
             delete_note(.active_id)
             .notes = list_notes()
             if .active_id >= .notes.len() {
-                if .notes.len() > 0 {
-                    .active_id = .notes.len() - 1
-                } else {
-                    .active_id = 0
-                }
+                .active_id = 0
             }
             .editing = false
         }

@@ -65,9 +65,13 @@ widget EditorPanel(note: str) {
         .EditTitle -> {
         }
         .Delete -> {
-            delete_note(.note.id)
-            .note.deleted = true
+            delete_note(.active_id)
+            .notes = list_notes()
+            if .active_id >= .notes.len() {
+                .active_id = 0
+            }
             .editing = false
+            .search = ""
         }
     }
 }
