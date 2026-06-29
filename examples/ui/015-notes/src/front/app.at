@@ -60,11 +60,11 @@ widget App {
         }
 
         .NewNote -> {
-            let note = create_note(.edit_title, .edit_body)
-            .active_id = notes.len()
+            create_note("New Note", "")
             .notes = list_notes()
-            .editing = false
-            .edit_title = ""
+            .active_id = notes.len() - 1
+            .editing = true
+            .edit_title = "New Note"
             .edit_body = ""
             .search = ""
         }
