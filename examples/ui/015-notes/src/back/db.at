@@ -83,14 +83,13 @@ pub fn delete_note(id int) bool {
     return true
 }
 
-/// Search notes by title or body
+/// Search notes by title
 pub fn search_notes(query str) []Note {
     let query_lower str = query.to_lower()
     let results List<Note> = List<Note>.new([])
 
     for note in notes {
-        if note.title.to_lower().contains(query_lower) ||
-           note.body.to_lower().contains(query_lower) {
+        if note.title.to_lower().contains(query_lower) {
             results.push(note)
         }
     }
