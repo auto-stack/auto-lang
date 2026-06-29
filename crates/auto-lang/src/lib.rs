@@ -1877,9 +1877,14 @@ fn collect_module_imports(
             | crate::ast::Stmt::EnumDecl(_)
             | crate::ast::Stmt::Ext(_) => {
                 if let Some(name) = stmt_symbol_name(stmt) {
-                    if seen.insert(name) {
-                        out.push(stmt.clone());
-                    }
+                    // Plan 338: DON'T dedup — last definition wins. db.at's
+                    // create_note must override api.at's so that api.at's
+                    // create_note → db.create_note() resolves to db.at's version
+                    // (not back to api.at's, causing infinite recursion).
+                    // Remove any existing entry with the same name first.
+                    out.retain(|s| stmt_symbol_name(s) != Some(name.clone()));
+                    out.push(stmt.clone());
+                    seen.insert(name);
                 }
             }
             // Use statements have no dedup key; emit them as-is. (codegen
