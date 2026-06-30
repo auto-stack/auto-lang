@@ -346,8 +346,16 @@ pub fn synthesize_widget_module(
     widget: &AuraWidget,
     child_widgets: &[AuraWidget],
     import_stmts: Vec<Stmt>,
+    import_aliases: &std::collections::HashMap<String, String>,
 ) -> SynthResult<(Module, crate::vm::generic_registry::GenericRegistry)> {
     let mut codegen = Codegen::new();
+
+    // Plan 339 Phase 4: populate import_scope directly from use_scanner data.
+    // This maps bare function names to their module-qualified exports so
+    // `delete_note(...)` resolves to `api.delete_note` in the exports table.
+    for (bare, qualified) in import_aliases {
+        codegen.import_scope.insert(bare.clone(), qualified.clone());
+    }
 
     // 0. Pre-register every imported fn's return type so forward references
     //    resolve during body compilation. Without this, an fn that calls a

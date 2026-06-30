@@ -146,7 +146,8 @@ impl VmBridge {
     ///
     /// Returns an error if handler synthesis or VM initialization fails.
     pub fn new_with_imports(widget: &AuraWidget, import_stmts: Vec<Stmt>) -> Result<Self> {
-        Self::new_with_children(widget, &[], import_stmts)
+        let empty = std::collections::HashMap::new();
+        Self::new_with_children(widget, &[], import_stmts, &empty)
     }
 
     /// Plan 337: create a VmBridge compiling root widget + child widgets into
@@ -156,6 +157,7 @@ impl VmBridge {
         widget: &AuraWidget,
         child_widgets: &[crate::aura::AuraWidget],
         import_stmts: Vec<Stmt>,
+        import_aliases: &std::collections::HashMap<String, String>,
     ) -> Result<Self> {
         // Ensure BIGVM_NATIVES is populated before AutoVM::new()
         crate::vm::native_registry::register_builtin_natives();
@@ -164,7 +166,7 @@ impl VmBridge {
 
         // 1. Synthesize imports + ALL widgets' state types + handlers into ONE
         //    Module via the genuine VM Codegen. Plan 337: single VM.
-        let (module, registry) = crate::ui::handler_codegen::synthesize_widget_module(widget, child_widgets, import_stmts)
+        let (module, registry) = crate::ui::handler_codegen::synthesize_widget_module(widget, child_widgets, import_stmts, import_aliases)
             .map_err(|e| VmBridgeError::InvalidState(format!(
                 "handler synthesis failed for '{}': {}", widget_name, e
             )))?;

@@ -287,7 +287,7 @@ pub struct Codegen {
     /// Plan 203 Phase 2: Import scope for name resolution
     /// Maps local name → qualified name (e.g., "read_text" → "auto.fs.read_text")
     /// Populated from use statements with specific imports: `use auto.fs: read_text`
-    import_scope: HashMap<String, String>,
+    pub import_scope: HashMap<String, String>,
 
     /// Known module prefixes from module-level imports (e.g., `use types`)
     /// Used to recognize qualified access patterns like `types.SectionType.Goals`
@@ -3416,9 +3416,15 @@ impl Codegen {
 
         // Only populate scope for specific item imports (e.g., use mod: name1, name2)
         if !use_stmt.items.is_empty() {
+            // Plan 339 Phase 5: use file_stem as module qualifier (matching
+            // collect_module_imports). E.g. `use back.api: create_note`
+            // → import_scope["create_note"] = "api.create_note"
+            let module_qualifier = use_stmt.paths.last()
+                .map(|p| p.as_str().to_string())
+                .unwrap_or_else(|| module_path.split('.').last().unwrap_or(&module_path).to_string());
             for item in &use_stmt.items {
                 let local_name = item.as_str();
-                let qualified = format!("{}.{}", module_path, local_name);
+                let qualified = format!("{}.{}", module_qualifier, local_name);
                 self.import_scope.insert(local_name.to_string(), qualified);
             }
         } else {
@@ -6854,15 +6860,25 @@ impl Codegen {
                 // b) The function name (e.g., "tool.fly") doesn't exist in exports — likely dynamic dispatch
                 // But NOT when it's a known native (e.g., str.find) — those use CALL_NAT
                 let resolved_func = func_name.as_ref().and_then(|name| {
-                    // Plan 327 Phase B: module-prefix fallback. After flattening
-                    // (db.at inlined), "db.all_notes" should resolve to the
-                    // "all_notes" export. Strip the module prefix and retry.
+                    // Plan 339 Phase 4: check use alias mapping first.
+                    if let Some(qualified) = self.import_scope.get(name) {
+                        if let Some(addr) = self.exports.get(qualified).copied() {
+                            return Some(addr);
+                        }
+                        // If alias exists but export not found, fall through to
+                        // bare-name and prefix-strip resolution below.
+                    }
+                    // Plan 327 Phase B: exact match in exports.
                     if let Some(addr) = self.exports.get(name).copied() {
                         return Some(addr);
                     }
+                    // Prefix-strip fallback (for calls like "db.create_note" → "db.create_note").
                     if let Some(stripped) = name.split('.').last() {
                         if stripped != name {
-                            return self.exports.get(stripped).copied();
+                            // Try the stripped bare name
+                            if let Some(addr) = self.exports.get(stripped).copied() {
+                                return Some(addr);
+                            }
                         }
                     }
                     None
@@ -6907,9 +6923,16 @@ impl Codegen {
                     self.emit(OpCode::CALL);
                     let placeholder_idx = self.code.len();
                     self.code.extend_from_slice(&0u32.to_le_bytes());
+                    // Plan 339 Phase 4: apply import_scope alias to the reloc
+                    // symbol so bare calls (e.g. "delete_note") resolve to the
+                    // module-qualified export (e.g. "api.delete_note").
+                    let reloc_symbol = func_name.as_ref().and_then(|name| {
+                        self.import_scope.get(name).cloned()
+                            .or_else(|| Some(name.clone()))
+                    }).unwrap_or_default();
                     self.relocs.push(RelocEntry {
                         offset: placeholder_idx as u32,
-                        symbol_name: func_name.as_ref().unwrap().clone(),
+                        symbol_name: reloc_symbol,
                         reloc_type: RelocType::FuncCall,
                         source_pos: None,
                     });
@@ -6993,10 +7016,14 @@ impl Codegen {
                     self.code.extend_from_slice(&0u32.to_le_bytes());
 
                     // Create Relocation Entry
-                    let reloc_name = func_name.clone().unwrap_or_else(|| match call.name.as_ref() {
+                    // Plan 339: apply import_scope alias to the reloc symbol name
+                    // so bare calls like `delete_note` get the module-qualified
+                    // reloc name `api.delete_note` that matches the export.
+                    let raw_name = func_name.clone().unwrap_or_else(|| match call.name.as_ref() {
                         Expr::Ident(name) => name.to_string(),
                         _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
                     });
+                    let reloc_name = self.import_scope.get(&raw_name).cloned().unwrap_or(raw_name);
 
                     vm_debug!("DEBUG: Creating reloc for function '{}' at offset 0x{:04x}",
                         reloc_name, placeholder_idx
