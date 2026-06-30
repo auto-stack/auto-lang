@@ -1938,6 +1938,22 @@ impl<'a> AuraViewBuilder<'a> {
                     _ => String::new(),
                 }
             }
+            // Plan 339: if-expression for conditional string values (e.g. style)
+            AuraExpr::If { cond, then_branch, else_branch } => {
+                let cond_val = self.resolve_expr_to_value(cond, bindings);
+                let is_true = match cond_val {
+                    Some(Value::Bool(false)) | Some(Value::Nil) | None => false,
+                    Some(Value::Int(i)) if i == 0 => false,
+                    _ => true,
+                };
+                if is_true {
+                    self.resolve_expr_to_string_with(then_branch, bindings)
+                } else if let Some(eb) = else_branch {
+                    self.resolve_expr_to_string_with(eb, bindings)
+                } else {
+                    String::new()
+                }
+            }
             _ => String::new(),
         }
     }
