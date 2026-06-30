@@ -27,8 +27,8 @@ with-file-history = []
 use-bigvm = []
 # Fallback to TreeWalker evaluator (for debugging/comparison)
 use-evaluator = []
-# Plan 152: SSE parsing + advanced streaming support
-streaming-http = ["tokio-util", "futures"]
+# Plan 152: SSE parsing + advanced streaming support (futures now unconditional per Plan 341)
+streaming-http = ["tokio-util"]
 
 # Plan 214: Python FFI (embed CPython via PyO3)
 python = ["pyo3"]
@@ -74,8 +74,8 @@ urlencoding = { workspace = true }
 # Plan 199 Phase 7: Colored output for debugger
 colored = { workspace = true }
 
-# Plan 154: 真正的 HTTP 流式实现（reqwest::blocking）
-reqwest = { version = "0.12", features = ["blocking"] }
+# Plan 154/341: HTTP client — blocking (Plan 154) + async + stream (Plan 341 异步客户端/SSE)
+reqwest = { version = "0.12", features = ["blocking", "json", "stream"] }
 # Plan 159: Directory walking for AutoCode agent
 walkdir = "2"
 # Plan 212 Phase 2.2: Opaque struct shims
@@ -97,9 +97,9 @@ flate2 = "1"
 # Plan 267 Phase C: same_file handle comparison
 same-file = "1"
 ansi_term = "0.12"
-# Plan 152: SSE 解析（保留可选依赖用于高级流式场景）
+# Plan 152/341: SSE 解析 + 异步流式（Plan 341 异步客户端需要 StreamExt）
 tokio-util = { version = "0.7", features = ["io"], optional = true }
-futures = { version = "0.3", optional = true }
+futures = "0.3"
 
 # Plan 015: UI Backend dependencies (optional)
 gpui-lib = { version = "0.2.2", package = "gpui", optional = true }

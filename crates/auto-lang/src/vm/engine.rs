@@ -139,6 +139,16 @@ pub struct HttpStreamIterator {
     pub done: bool,
 }
 
+/// Plan 341: Async HTTP stream iterator — wraps an async SSE/stream handle.
+/// Events are produced by a tokio::spawn'd future (reqwest async) and pulled
+/// via try_recv in shim_iterator_next. `done` is set locally when the channel
+/// reports Done or is closed.
+#[derive(Debug, Clone)]
+pub struct AsyncStreamIterator {
+    pub stream_id: u64,
+    pub done: bool,
+}
+
 /// Unified iterator type
 #[derive(Debug, Clone)]
 pub enum Iterator {
@@ -150,6 +160,8 @@ pub enum Iterator {
     Generator(GeneratorState),
     /// Plan 321: HTTP stream iterator (wraps HTTPStream for for-loop consumption)
     HttpStream(HttpStreamIterator),
+    /// Plan 341: Async HTTP stream iterator (SSE / async streaming response)
+    AsyncHttpStream(AsyncStreamIterator),
 }
 
 // ============================================================================

@@ -1783,6 +1783,10 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 // HttpStream as Map source not yet supported
                 -1
             }
+            Iterator::AsyncHttpStream(_) => {
+                // Plan 341: AsyncHttpStream as Map source not yet supported
+                -1
+            }
                         Iterator::Enumerate(enumerate_iter) => {
                             // Get next from source, then push index on top
                             if let Some(mut source_iter) = vm.iterators.get_mut(&enumerate_iter.source_iterator_id) {
@@ -2074,6 +2078,75 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 }
                 return Ok(());
             }
+            crate::vm::engine::Iterator::AsyncHttpStream(async_iter) => {
+                // Plan 341: pull next SSE/stream event from the async channel.
+                if async_iter.done {
+                    return Ok(());
+                }
+                // The SSE future runs on a dedicated OS thread (see
+                // spawn_async_sse_stream), so it is safe to block-wait here
+                // without deadlocking the VM's single-worker runtime. We poll
+                // with a short sleep until an event arrives or the future ends.
+                let event = loop {
+                    let ev = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
+                        .lock()
+                        .ok()
+                        .and_then(|map| {
+                            map.get(&async_iter.stream_id).and_then(|handle| {
+                                handle.rx.lock().ok().and_then(|mut rx| rx.try_recv().ok())
+                            })
+                        });
+                    if let Some(e) = ev {
+                        break Some(e);
+                    }
+                    // No event yet. Check if the producing future is done.
+                    let future_done = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
+                        .lock()
+                        .ok()
+                        .and_then(|map| {
+                            map.get(&async_iter.stream_id).map(|handle| {
+                                handle.done.load(std::sync::atomic::Ordering::SeqCst)
+                            })
+                        })
+                        .unwrap_or(true);
+                    if future_done {
+                        // Future finished and channel drained — end of stream.
+                        // Double-check the channel one last time (race window).
+                        let last = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
+                            .lock()
+                            .ok()
+                            .and_then(|map| {
+                                map.get(&async_iter.stream_id).and_then(|handle| {
+                                    handle.rx.lock().ok().and_then(|mut rx| rx.try_recv().ok())
+                                })
+                            });
+                        break last;
+                    }
+                    // Still waiting — short sleep (HTTP future is on another
+                    // thread, so this won't deadlock).
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                };
+                match event {
+                    Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(s)) => {
+                        let idx = {
+                            let mut strings = vm.strings.write().unwrap();
+                            let i = strings.len();
+                            strings.push(s.into_bytes());
+                            i
+                        };
+                        task.ram.push_nv(auto_val::encode_string(idx as u32));
+                    }
+                    Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Done)
+                    | Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Error(_))
+                    | None => {
+                        // End of stream — push -1 sentinel so the for-loop
+                        // (which compares the result against -1) terminates.
+                        async_iter.done = true;
+                        task.ram.push_i32(-1);
+                    }
+                }
+                return Ok(());
+            }
         }
     } else {
         // Fallback: if iterator_id is actually a heap list object, auto-create iterator
@@ -2258,7 +2331,7 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) | Iterator::HttpStream(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) | Iterator::HttpStream(_) | Iterator::AsyncHttpStream(_) => {
                 // For adapters, we'd need to recursively call next()
                 // For MVP, only support direct list iteration
                 return Err(VMError::RuntimeError("Collect from adapters not yet implemented".to_string()));
@@ -2315,7 +2388,7 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) | Iterator::HttpStream(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) | Iterator::HttpStream(_) | Iterator::AsyncHttpStream(_) => {
                 return Err(VMError::RuntimeError("Reduce from adapters not yet implemented".to_string()));
             }
         }
@@ -2361,7 +2434,7 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) | Iterator::HttpStream(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) | Iterator::Generator(_) | Iterator::HttpStream(_) | Iterator::AsyncHttpStream(_) => {
                 return Err(VMError::RuntimeError("Find from adapters not yet implemented".to_string()));
             }
         }

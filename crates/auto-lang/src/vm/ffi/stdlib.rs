@@ -2216,6 +2216,150 @@ thread_local! {
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
+// ============================================================================
+// Plan 341: 异步 HTTP 客户端基础设施（对称 server 的 serve_async）
+// ============================================================================
+//
+// 架构：reqwest async future 是 Send 的（不含 &AutoVM），所以用普通
+// tokio::spawn（无需 LocalSet）即可。future 跑异步请求，把结果经
+// tokio::sync::mpsc channel 推回。VM 侧迭代器从 Receiver try_recv。
+// GLOBAL_RT 是单 worker 多线程 runtime，spawn 的 future 在 await 网络
+// 时让出，run_task_loop 得以推进 → 不阻塞 UI。
+
+/// Plan 341: 异步流事件 —— 从异步 HTTP 请求/SSE 流推给 VM 侧的事件。
+#[derive(Debug)]
+pub enum AsyncStreamEvent {
+    /// 一个数据块/响应体（普通请求的完整 body，或 SSE 的一帧）。
+    Data(String),
+    /// 流结束（对端关闭 / 请求完成）。
+    Done,
+    /// 出错。
+    Error(String),
+}
+
+/// Plan 341: 异步流句柄 —— 持有一个 mpsc Receiver，VM 侧迭代器从此拉事件。
+pub struct AsyncStreamHandle {
+    pub rx: std::sync::Mutex<tokio::sync::mpsc::Receiver<AsyncStreamEvent>>,
+    pub done: std::sync::atomic::AtomicBool,
+}
+
+/// Plan 341: 全局异步流注册表。key = stream_id（从 NET_HANDLE_COUNTER 分配）。
+/// 用 Mutex<HashMap> 而非 thread_local，因为 tokio::spawn 的 future 与 VM
+/// task 可能在不同异步上下文（虽同线程，但 Mutex 更稳妥）。
+lazy_static::lazy_static! {
+    pub(crate) static ref ASYNC_HTTP_STREAMS: std::sync::Mutex<std::collections::HashMap<u64, Arc<AsyncStreamHandle>>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+    pub(crate) static ref ASYNC_HTTP_RESULTS: std::sync::Mutex<std::collections::HashMap<u64, Option<Result<String, String>>>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
+/// Plan 341: 分配一个新的异步流 id。
+fn alloc_async_id() -> u64 {
+    NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst)
+}
+
+/// Plan 341: 在 GLOBAL_RT 上 spawn 一个异步 HTTP 请求（普通 GET/POST 等）。
+/// 完成后把 body 字符串存入 ASYNC_HTTP_RESULTS[request_id]。
+fn spawn_async_request(method: String, url: String, body: Option<String>, request_id: u64) {
+    let rt = crate::get_global_runtime();
+    rt.spawn(async move {
+        let client = reqwest::Client::new();
+        let mut builder = match method.as_str() {
+            "POST" => client.post(&url),
+            "PUT" => client.put(&url),
+            "DELETE" => client.delete(&url),
+            _ => client.get(&url),
+        };
+        if let Some(b) = body {
+            builder = builder.header("Content-Type", "application/json").body(b);
+        }
+        let result = match builder.send().await {
+            Ok(resp) => Ok(resp.text().await.unwrap_or_default()),
+            Err(e) => Err(format!("HTTP {}: {}", method, e)),
+        };
+        // Store the result; the polling native will pick it up.
+        if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+            map.insert(request_id, Some(result));
+        }
+    });
+}
+
+/// Plan 341: 在独立 OS 线程（自带 tokio runtime）上 spawn 一个 SSE 流式接收
+/// future。每收到一帧 SSE 事件就经 channel 推一个 AsyncStreamEvent::Data。
+///
+/// 为什么用独立线程而非 GLOBAL_RT.spawn：GLOBAL_RT 是单 worker runtime，
+/// 如果在 VM native（同步）里阻塞等待 channel，会卡住那个唯一 worker，
+/// 导致 spawn 的 future 永远得不到调度（死锁）。独立线程 + 独立 runtime
+/// 让 HTTP future 自由推进，VM 侧用 try_recv 轮询。
+fn spawn_async_sse_stream(url: String, _stream_id: u64) -> Arc<AsyncStreamHandle> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
+    let handle = Arc::new(AsyncStreamHandle {
+        rx: std::sync::Mutex::new(rx),
+        done: std::sync::atomic::AtomicBool::new(false),
+    });
+    let handle_clone = handle.clone();
+    std::thread::Builder::new()
+        .name("auto-sse-client".into())
+        .spawn(move || {
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(_) => {
+                    handle_clone.done.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
+            rt.block_on(async move {
+                let client = reqwest::Client::new();
+                let resp = match client.get(&url).send().await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        let _ = tx.send(AsyncStreamEvent::Error(e.to_string())).await;
+                        let _ = tx.send(AsyncStreamEvent::Done).await;
+                        handle_clone.done.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                };
+                use futures::StreamExt;
+                let mut stream = resp.bytes_stream();
+                let mut buffer = String::new();
+                while let Some(chunk_result) = stream.next().await {
+                    match chunk_result {
+                        Ok(bytes) => {
+                            buffer.push_str(&String::from_utf8_lossy(&bytes));
+                            // Split on "\n\n" (SSE event delimiter). Each event
+                            // may span multiple "data:" lines; join them.
+                            while let Some(idx) = buffer.find("\n\n") {
+                                let event_block: String = buffer.drain(..idx + 2).collect();
+                                let data: String = event_block
+                                    .lines()
+                                    .filter_map(|line| {
+                                        line.strip_prefix("data:")
+                                            .map(|s| s.trim_start().to_string())
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+                                if !data.is_empty() {
+                                    let _ = tx.send(AsyncStreamEvent::Data(data)).await;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx.send(AsyncStreamEvent::Error(e.to_string())).await;
+                            break;
+                        }
+                    }
+                }
+                let _ = tx.send(AsyncStreamEvent::Done).await;
+                handle_clone.done.store(true, Ordering::SeqCst);
+            });
+        })
+        .expect("spawn SSE client thread");
+    handle
+}
+
 // Plan 195: RequestBuilder data storage
 #[derive(Debug, Clone)]
 struct HttpRequestBuilderData {
@@ -3228,6 +3372,44 @@ pub fn shim_http_stream_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     let iter_id = {
         let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         vm.iterators.insert(next_id, crate::vm::engine::Iterator::HttpStream(hs_iter));
+        next_id
+    };
+    task.ram.push_i32(iter_id as i32);
+    Ok(())
+}
+
+/// Plan 341: `auto.http.sse_get_stream(url) -> iterator_id`
+///
+/// Opens an SSE (Server-Sent Events) connection to `url` and returns an
+/// iterator id. The connection is driven asynchronously via tokio::spawn
+/// (reqwest async + bytes_stream); each parsed SSE `data:` event is pushed
+/// through an mpsc channel. The VM-side iterator (Iterator::AsyncHttpStream)
+/// pulls events via try_recv in shim_iterator_next.
+///
+/// Usage in Auto: `for event in http.sse_get_stream(url) { print(event) }`
+pub fn shim_http_sse_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let stream_id = alloc_async_id();
+    let handle = spawn_async_sse_stream(url, stream_id);
+
+    // Register the async stream handle.
+    if let Ok(mut map) = ASYNC_HTTP_STREAMS.lock() {
+        map.insert(stream_id, handle);
+    }
+
+    // Create the VM-side iterator.
+    let async_iter = crate::vm::engine::AsyncStreamIterator {
+        stream_id,
+        done: false,
+    };
+    let iter_id = {
+        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        vm.iterators.insert(
+            next_id,
+            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
+        );
         next_id
     };
     task.ram.push_i32(iter_id as i32);
@@ -4404,6 +4586,11 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.post_json", shim_http_post_json);
     natives.register_shim_by_name("auto.http.put_json", shim_http_put_json);
     natives.register_shim_by_name("auto.http.delete_json", shim_http_delete_json);
+
+    // Plan 341: 异步 SSE 流式接收 — 返回 iterator_id 供 for-in 消费。
+    natives.register_shim_by_name("auto.http.sse_get_stream", shim_http_sse_get_stream);
+    natives.register_shim_by_name("http.sse_get_stream", shim_http_sse_get_stream);
+    natives.register_shim_by_name("http.sse_stream", shim_http_sse_get_stream);
 
     natives.register_shim_by_name("Response.status_code", shim_response_status_code);
     natives.register_shim_by_name("Response.header_get", shim_response_header_get);
