@@ -186,7 +186,7 @@ impl DynamicComponent {
         widget: &AuraWidget,
         registry: crate::ui::widget_registry::WidgetRegistry,
     ) -> Result<Self, String> {
-        Self::with_registry_and_imports(widget, registry, Vec::new())
+        Self::with_registry_and_imports(widget, registry, Vec::new(), &std::collections::HashMap::new())
     }
 
     /// Create a DynamicComponent with a widget registry AND imported symbols.
@@ -198,12 +198,13 @@ impl DynamicComponent {
         widget: &AuraWidget,
         registry: crate::ui::widget_registry::WidgetRegistry,
         import_stmts: Vec<crate::ast::Stmt>,
+        import_aliases: &std::collections::HashMap<String, String>,
     ) -> Result<Self, String> {
         // 1. Create VmBridge from widget + imports + ALL child widgets.
         //    Plan 337: single VM — child widgets' handlers compiled into the
         //    same module so they can be called when events fire.
         let child_widgets: Vec<crate::aura::AuraWidget> = registry.all().collect();
-        let bridge = VmBridge::new_with_children(widget, &child_widgets, import_stmts.clone())
+        let bridge = VmBridge::new_with_children(widget, &child_widgets, import_stmts.clone(), import_aliases)
             .map_err(|e| format!("VmBridge init failed for '{}': {}", widget.name, e))?;
 
         // 2. Extract view template

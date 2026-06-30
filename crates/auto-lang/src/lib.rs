@@ -1878,26 +1878,27 @@ fn collect_module_imports(
     //    (Plan 338) since qualified names are unique.
     for stmt in &ast.stmts {
         match stmt {
-            crate::ast::Stmt::Fn(_)
-            | crate::ast::Stmt::TypeDecl(_)
-            | crate::ast::Stmt::EnumDecl(_)
-            | crate::ast::Stmt::Ext(_) => {
+            crate::ast::Stmt::Fn(_) => {
                 if let Some(name) = stmt_symbol_name(stmt) {
-                    // Plan 339: qualify db.at functions that also exist in api.at
-                    // to avoid collision. Only these 4 functions exist in both:
-                    // create_note, list_notes, update_note, delete_note.
-                    let colliding = ["create_note", "list_notes", "update_note", "delete_note"];
-                    let qualified = if module_name == "db" && colliding.contains(&name.as_str()) {
-                        format!("{}.{}", module_name, name)
-                    } else {
-                        name.clone()
-                    };
+                    // Plan 339 Phase 3: ALL Fn declarations from ALL modules get
+                    // a module-qualified name (e.g. api.create_note, db.create_note).
+                    // TypeDecl/EnumDecl/Ext are NOT qualified — types are shared.
+                    let qualified = format!("{}.{}", module_name, name);
                     if seen.insert(qualified.clone()) {
                         let mut s = stmt.clone();
                         if let crate::ast::Stmt::Fn(ref mut f) = s {
                             f.name = crate::ast::Name::from(qualified.as_str());
                         }
                         out.push(s);
+                    }
+                }
+            }
+            crate::ast::Stmt::TypeDecl(_)
+            | crate::ast::Stmt::EnumDecl(_)
+            | crate::ast::Stmt::Ext(_) => {
+                if let Some(name) = stmt_symbol_name(stmt) {
+                    if seen.insert(name.clone()) {
+                        out.push(stmt.clone());
                     }
                 }
             }
@@ -1971,6 +1972,8 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
     // Plan 333: a shared CompileSession carries the type_store across the whole
     // recursive import walk so imported types resolve before each module parse.
     let mut import_session = crate::compile::CompileSession::new();
+    // Plan 339 Phase 4: collect use alias mappings (bare name → module-qualified name)
+    let mut import_aliases: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     if let Some(file_path) = path {
         let use_stmts = crate::use_scanner::scan_use_statements(code);
         let base_dir = std::path::Path::new(file_path)
@@ -2024,12 +2027,22 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
                 &mut seen_symbols,
                 &mut import_session,
             );
+
+            // Plan 339 Phase 4: populate import_scope aliases directly from the
+            // use_scanner data. This is more reliable than parsing use statements.
+            // use back.api: create_note → import_aliases["create_note"] = "api.create_note"
+            let module_qualifier = use_stmt.module.split('.').last()
+                .unwrap_or(&use_stmt.module);
+            for item in &use_stmt.items {
+                let qualified = format!("{}.{}", module_qualifier, item);
+                import_aliases.insert(item.clone(), qualified);
+            }
         }
     }
 
 
     // 3. Create DynamicComponent with registry + imported symbols
-    let mut comp = DynamicComponent::with_registry_and_imports(&widget, registry, import_stmts)
+    let mut comp = DynamicComponent::with_registry_and_imports(&widget, registry, import_stmts, &import_aliases)
         .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
 
     // 3b. Set source path for hot-reload tracking
@@ -3843,6 +3856,9 @@ mod tests;
 
 #[cfg(test)]
 mod plan337_tests;
+
+#[cfg(test)]
+mod plan339_tests;
 
 // =============================================================================
 // Plan 015: AutoUI Core (feature-gated)
