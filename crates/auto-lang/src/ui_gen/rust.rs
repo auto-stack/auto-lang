@@ -3160,6 +3160,7 @@ impl RustGenerator {
     /// Convert AuraExpr to Rust
     fn expr_to_rust(&self, expr: &AuraExpr) -> String {
         match expr {
+        AuraExpr::If { .. } => unreachable!(),
             AuraExpr::Literal(s) => format!("\"{}\".to_string()", s),
             AuraExpr::Int(n) => n.to_string(),
             AuraExpr::Float(n) => {

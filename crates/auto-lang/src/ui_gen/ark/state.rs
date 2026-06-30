@@ -491,6 +491,7 @@ fn stmt_to_arkts(stmt: &AuraStmt) -> String {
 /// Convert AURA expression to ArkTS code
 fn expr_to_arkts(expr: &AuraExpr) -> String {
     match expr {
+    AuraExpr::If { .. } => unreachable!(),
         AuraExpr::Literal(s) => {
             // Check if it's a resource reference - don't quote it
             if s.starts_with("$r(") {

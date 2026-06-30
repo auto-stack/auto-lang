@@ -631,6 +631,14 @@ pub enum AuraExpr {
     /// Object literal: { key: value, ... }
     Object(HashMap<String, AuraExpr>),
 
+    /// Conditional expression: if cond { then } else { else }
+    /// Used for conditional values like `style: if x {"a"} else {"b"}`
+    If {
+        cond: Box<AuraExpr>,
+        then_branch: Box<AuraExpr>,
+        else_branch: Option<Box<AuraExpr>>,
+    },
+
     /// Lambda expression: |params| body
     Lambda {
         /// Parameter names

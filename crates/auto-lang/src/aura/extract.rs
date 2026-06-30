@@ -282,6 +282,53 @@ pub fn extract_expr(expr: &Expr) -> ExtractResult<AuraExpr> {
             })
         }
 
+        // Plan 339: if-expression for conditional values (e.g., style values)
+        Expr::If(if_expr) => {
+            let branches = &if_expr.branches;
+            if branches.is_empty() {
+                Err(ExtractError::UnsupportedExpr("if with no branches".into()))
+            } else {
+                let cond = extract_expr(&branches[0].cond)?;
+                let then_body = &branches[0].body;
+                // Only single-expression bodies are supported
+                let then_val = if then_body.stmts.len() == 1 {
+                    if let Stmt::Expr(e) = &then_body.stmts[0] {
+                        extract_expr(e)?
+                    } else {
+                        return Err(ExtractError::UnsupportedExpr(
+                            "if branch body must be a single expression".into()
+                        ));
+                    }
+                } else {
+                    return Err(ExtractError::UnsupportedExpr(
+                        "if branch body must be a single expression".into()
+                    ));
+                };
+                let else_val = if let Some(ref else_body) = if_expr.else_ {
+                    if else_body.stmts.len() == 1 {
+                        if let Stmt::Expr(e) = &else_body.stmts[0] {
+                            Some(Box::new(extract_expr(e)?))
+                        } else {
+                            return Err(ExtractError::UnsupportedExpr(
+                                "else branch body must be a single expression".into()
+                            ));
+                        }
+                    } else {
+                        return Err(ExtractError::UnsupportedExpr(
+                            "else branch body must be a single expression".into()
+                        ));
+                    }
+                } else {
+                    None
+                };
+                Ok(AuraExpr::If {
+                    cond: Box::new(cond),
+                    then_branch: Box::new(then_val),
+                    else_branch: else_val,
+                })
+            }
+        }
+
         // Other expressions not yet supported in view
         _ => Err(ExtractError::UnsupportedExpr(format!("{:?}", expr))),
     }

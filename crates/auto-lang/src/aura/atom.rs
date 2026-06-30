@@ -384,6 +384,18 @@ fn serialize_expr(expr: &AuraExpr, output: &mut String) {
             serialize_expr(index, output);
             output.push_str(")");
         }
+        AuraExpr::If { cond, then_branch, else_branch } => {
+            output.push_str("If(");
+            serialize_expr(cond, output);
+            output.push_str(", ");
+            serialize_expr(then_branch, output);
+            if let Some(eb) = else_branch {
+                output.push_str(", ");
+                serialize_expr(eb, output);
+            }
+            output.push_str(")");
+        }
+        _ => output.push_str("Unknown"),
     }
 }
 

@@ -2008,6 +2008,22 @@ impl<'a> AuraViewBuilder<'a> {
             AuraExpr::Float(f) => Some(Value::Double(*f)),
             AuraExpr::Bool(b) => Some(Value::Bool(*b)),
             AuraExpr::Literal(s) => Some(Value::Str(s.as_str().into())),
+            // Plan 339: conditional if-expression for style/attribute values
+            AuraExpr::If { cond, then_branch, else_branch } => {
+                let cond_val = self.resolve_expr_to_value(cond, bindings)?;
+                let is_true = match &cond_val {
+                    Value::Bool(false) | Value::Nil => false,
+                    Value::Int(i) if *i == 0 => false,
+                    _ => true,
+                };
+                if is_true {
+                    self.resolve_expr_to_value(then_branch, bindings)
+                } else if let Some(eb) = else_branch {
+                    self.resolve_expr_to_value(eb, bindings)
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }

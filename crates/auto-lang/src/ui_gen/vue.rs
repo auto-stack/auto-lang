@@ -2949,6 +2949,13 @@ impl VueGenerator {
             AuraExpr::Index { target, index } => {
                 format!("{}[{}]", self.expr_to_auto_string(target), self.expr_to_auto_string(index))
             }
+            AuraExpr::If { cond, then_branch, else_branch } => {
+                let else_str = else_branch.as_ref()
+                    .map(|e| format!(" else {{ {} }}", self.expr_to_auto_string(e)))
+                    .unwrap_or_default();
+                format!("if {} {{ {} }}{}", self.expr_to_auto_string(cond), self.expr_to_auto_string(then_branch), else_str)
+            }
+            _ => "/* unsupported expr */".to_string(),
         }
     }
 
@@ -3711,6 +3718,17 @@ impl VueGenerator {
                 let index_js = self.expr_to_js(index)?;
                 Ok(format!("{}[{}]", target_js, index_js))
             }
+            AuraExpr::If { cond, then_branch, else_branch } => {
+                let cond_js = self.expr_to_js(cond)?;
+                let then_js = self.expr_to_js(then_branch)?;
+                let else_js = else_branch.as_ref()
+                    .map(|e| self.expr_to_js(e))
+                    .transpose()?
+                    .unwrap_or_else(|| "undefined".to_string());
+                Ok(format!("({} ? {} : {})", cond_js, then_js, else_js))
+            }
+            AuraExpr::If { .. } => Ok("undefined".to_string()),
+            _ => Ok("undefined".to_string()),
         }
     }
 
@@ -3918,6 +3936,7 @@ impl VueGenerator {
     /// Extract API function calls from an expression (recursive)
     fn extract_api_calls_from_expr(&mut self, expr: &AuraExpr) {
         match expr {
+        AuraExpr::If { .. } => unreachable!(),
             AuraExpr::MethodCall { object, method, args } => {
                 // Check if this is a direct API function call (e.g., listusers())
                 if let AuraExpr::StateRef(name) = object.as_ref() {
@@ -4022,6 +4041,7 @@ impl VueGenerator {
     /// Check if an expression contains API calls (non-mutating version)
     fn expr_has_api_calls(&self, expr: &AuraExpr) -> bool {
         match expr {
+        AuraExpr::If { .. } => unreachable!(),
             AuraExpr::MethodCall { object, method, args } => {
                 // Check if method name is an API function
                 if self.is_api_function(&method) {
