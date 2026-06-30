@@ -327,7 +327,8 @@ enum Commands {
         #[arg(long, help = "Backend server mode: vm (AutoVM HTTP) or rust (a2r, default)")]
         server: Option<String>,
         #[arg(long, help = "Plan 340: merge frontend+backend VM in-process (default true). --no-merge uses HTTP between VMs")]
-        merge: Option<bool>,
+        #[arg(long = "no-merge", action = clap::ArgAction::SetTrue, help = "Plan 340: use HTTP between VMs (split mode)")]
+        no_merge: bool,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -697,7 +698,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, back_port, front_port, render, server, merge, args }) => {
+        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -730,10 +731,10 @@ fn real_main(cli: Cli) -> Result<()> {
                 am.set_vm_server_mode(true);
             }
             // Plan 340: --merge/--no-merge controls VM+VM in-process merging.
-            // Default (merge=true) keeps the existing fast in-process path.
+            // Default (no --no-merge) keeps the existing fast in-process path.
             // --no-merge sets AUTO_VM_MERGE=0 so run_file_dynamic_ui rewrites
             // #[api] calls to HTTP requests against the separate backend.
-            let merge_mode = merge.unwrap_or(true);
+            let merge_mode = !no_merge;
             std::env::set_var("AUTO_VM_MERGE", if merge_mode { "1" } else { "0" });
             if !merge_mode {
                 println!("  {} split mode: frontend↔backend over HTTP", "→".bright_cyan());
