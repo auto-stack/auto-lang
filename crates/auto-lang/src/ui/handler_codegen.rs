@@ -357,6 +357,43 @@ pub fn synthesize_widget_module(
         codegen.import_scope.insert(bare.clone(), qualified.clone());
     }
 
+    // Plan 339 Phase 6b: intra-module bare calls. After flattening, every
+    // imported fn is module-qualified (e.g. calendar_util.day_style), but a
+    // sibling's body still calls it by its bare name (day_style). For forward
+    // references the export isn't populated yet at the call site, so the
+    // unique bare-name → qualified fallback in resolved_func/resolve_call_symbol
+    // can't fire. Pre-register every flattened fn's bare name → qualified name
+    // here. When two modules define the same bare name (db.create_note AND
+    // api.create_note) this is ambiguous — last-write-wins is wrong, so we
+    // only register a bare alias when the name is unique across all modules.
+    {
+        // Count how many modules define each bare name.
+        let mut bare_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for stmt in &import_stmts {
+            if let Stmt::Fn(f) = stmt {
+                if let Some(bare) = f.name.to_string().split('.').last() {
+                    *bare_counts.entry(bare.to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+        for stmt in &import_stmts {
+            if let Stmt::Fn(f) = stmt {
+                let qualified = f.name.to_string();
+                if let Some(bare) = qualified.split('.').last() {
+                    // Only auto-alias unique bare names; ambiguous ones must
+                    // come through the explicit `use` import_aliases.
+                    if bare_counts.get(bare) == Some(&1) {
+                        codegen
+                            .import_scope
+                            .entry(bare.to_string())
+                            .or_insert(qualified);
+                    }
+                }
+            }
+        }
+    }
+
     // 0. Pre-register every imported fn's return type so forward references
     //    resolve during body compilation. Without this, an fn that calls a
     //    LATER-defined helper (e.g. build_month_grid calls day_style, declared

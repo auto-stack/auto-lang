@@ -332,27 +332,20 @@ pub fn create_note(title str, body str) Note {
             import_aliases
         );
 
-        // 3. Run the full synthesis pipeline. This compiles every handler +
-        //    imported fn on one Codegen and links CALL relocs. Any failure to
-        //    resolve a cross-module call surfaces here.
-        let result = crate::ui::handler_codegen::synthesize_widget_module(
+        // 3. Run the FULL pipeline through VmBridge (synthesis + link + VM
+        //    init). This is exactly what run_file_dynamic_ui does, minus the
+        //    iced render loop. A bare cross-module call (e.g. `search_notes`
+        //    which lives in db.at but is not listed in `use back.api:`) must
+        //    still link via the unique bare-name → qualified fallback.
+        let bridge = crate::ui::vm_bridge::VmBridge::new_with_children(
             &widget,
             &[],
             import_stmts,
             &import_aliases,
         );
-        match &result {
-            Ok((module, _registry)) => {
-                eprintln!(
-                    "plan339: synthesized App OK — {} exports, {} relocs",
-                    module.exports.len(),
-                    module.relocs.len()
-                );
-                // The four api functions should be resolvable exports OR at
-                // least present as reloc symbols. The key assertion is that
-                // synthesis did not error.
-            }
-            Err(e) => panic!("015-notes App synthesis failed: {:?}", e),
+        match &bridge {
+            Ok(_) => eprintln!("plan339: 015-notes VmBridge OK (link succeeded)"),
+            Err(e) => panic!("015-notes VmBridge init failed: {:?}", e),
         }
     }
 
@@ -432,21 +425,15 @@ pub fn create_note(title str, body str) Note {
         }
 
         eprintln!("plan339: 016 import_aliases = {:?}", import_aliases);
-        let result = crate::ui::handler_codegen::synthesize_widget_module(
+        let bridge = crate::ui::vm_bridge::VmBridge::new_with_children(
             &widget,
             &[],
             import_stmts,
             &import_aliases,
         );
-        match &result {
-            Ok((module, _registry)) => {
-                eprintln!(
-                    "plan339: synthesized 016-calendar App OK — {} exports, {} relocs",
-                    module.exports.len(),
-                    module.relocs.len()
-                );
-            }
-            Err(e) => panic!("016-calendar App synthesis failed: {:?}", e),
+        match &bridge {
+            Ok(_) => eprintln!("plan339: 016-calendar VmBridge OK (link succeeded)"),
+            Err(e) => panic!("016-calendar VmBridge init failed: {:?}", e),
         }
     }
 }

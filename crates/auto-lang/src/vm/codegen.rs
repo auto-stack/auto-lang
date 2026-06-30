@@ -3371,10 +3371,40 @@ impl Codegen {
     /// Handles `use module.path: name1, name2` style imports by mapping
     /// each imported name to its fully qualified path in `import_scope`.
     ///
-    /// Examples:
-    /// - `use auto.fs: read_text` → scope["read_text"] = "auto.fs.read_text"
-    /// - `use auto.list: push` → scope["push"] = "auto.list.push"
-    /// - `use auto.fs` (no items) → nothing added (module-level import handled differently)
+    /// Plan 339 Phase 6: resolve a call's bare name to the symbol name the
+    /// linker will bind. Order:
+    ///   1. `import_scope` alias (from `use back.api: create_note`)
+    ///   2. exact export key (already qualified, e.g. `db.all_notes`)
+    ///   3. unique bare-name → module-qualified fallback: if exactly one export
+    ///      ends with `.name`, use it. Ambiguous names stay bare so the
+    ///      explicit `use` alias remains authoritative.
+    /// Returns the input unchanged if no better resolution is found.
+    fn resolve_call_symbol(&self, name: &str) -> String {
+        // 1. import_scope alias. Don't require the export to exist yet — this
+        //    is the relocation SYMBOL (the name the linker will later bind),
+        //    and forward references (e.g. day_style declared below its caller)
+        //    are exactly the case where the export isn't populated yet.
+        if let Some(qualified) = self.import_scope.get(name) {
+            return qualified.clone();
+        }
+        // 2. exact export key.
+        if self.exports.contains_key(name) {
+            return name.to_string();
+        }
+        // 3. unique bare-name → module-qualified fallback.
+        if !name.contains('.') {
+            let mut hits = self.exports.keys().filter(|k| {
+                k.split('.').last() == Some(name)
+            });
+            if let Some(first) = hits.next() {
+                if hits.next().is_none() {
+                    return first.clone();
+                }
+            }
+        }
+        name.to_string()
+    }
+
     fn handle_use_stmt(&mut self, use_stmt: &crate::ast::Use) {
         // Handle Rust imports (Plan 212b Task 3)
         if matches!(use_stmt.kind, crate::ast::UseKind::Rust) {
@@ -6881,6 +6911,25 @@ impl Codegen {
                             }
                         }
                     }
+                    // Plan 339 Phase 6: bare-name → module-qualified fallback.
+                    // A bare call to a function that wasn't named in any `use`
+                    // clause (e.g. `search_notes(...)` from db.at) should still
+                    // resolve if exactly ONE module-qualified export ends with
+                    // that name. Ambiguous names (two modules define it) stay
+                    // unresolved so the explicit `use` alias remains authoritative.
+                    if !name.contains('.') {
+                        let mut hits = self.exports.keys().filter(|k| {
+                            k.split('.').last() == Some(name.as_str())
+                        });
+                        let first = hits.next();
+                        if let Some(k) = first {
+                            if hits.next().is_none() {
+                                if let Some(addr) = self.exports.get(k).copied() {
+                                    return Some(addr);
+                                }
+                            }
+                        }
+                    }
                     None
                 });
                 let is_native = func_name.as_ref()
@@ -7016,14 +7065,15 @@ impl Codegen {
                     self.code.extend_from_slice(&0u32.to_le_bytes());
 
                     // Create Relocation Entry
-                    // Plan 339: apply import_scope alias to the reloc symbol name
-                    // so bare calls like `delete_note` get the module-qualified
-                    // reloc name `api.delete_note` that matches the export.
+                    // Plan 339: resolve the bare call name to its module-qualified
+                    // export name so the linker binds the right target. Checks
+                    // import_scope alias first, then a unique bare-name →
+                    // qualified fallback (see resolved_func above).
                     let raw_name = func_name.clone().unwrap_or_else(|| match call.name.as_ref() {
                         Expr::Ident(name) => name.to_string(),
                         _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
                     });
-                    let reloc_name = self.import_scope.get(&raw_name).cloned().unwrap_or(raw_name);
+                    let reloc_name = self.resolve_call_symbol(&raw_name);
 
                     vm_debug!("DEBUG: Creating reloc for function '{}' at offset 0x{:04x}",
                         reloc_name, placeholder_idx
