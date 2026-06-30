@@ -1128,6 +1128,63 @@ pub fn stop_api_server(child: &mut Option<std::process::Child>) {
     }
 }
 
+/// Plan 340 fix: Start the AutoVM HTTP server (not the a2r Rust backend) for
+/// VM+VM split mode. Spawns a background thread running
+/// `auto_lang::run_file(api.at)`, which detects #[api] routes and enters
+/// `serve_async`. Polls the port until ready (or timeout). The thread runs
+/// for the process lifetime (cleaned up when the process exits).
+///
+/// Returns true if the server became ready, false on timeout / missing api.at.
+fn start_vm_server(project_dir: &Path) -> bool {
+    let api_path = project_dir.join("src").join("back").join("api.at");
+    if !api_path.exists() {
+        eprintln!("  {} VM split mode requires src/back/api.at (not found)", "⚠".bright_yellow());
+        return false;
+    }
+
+    let port = crate::util::http_port();
+    println!();
+    println!(
+        "  {} Starting AutoVM HTTP server (VM backend, port {})...",
+        "▶".bright_cyan(), port
+    );
+    println!("    api.at: {}", api_path.display());
+
+    let api_str = api_path.to_string_lossy().to_string();
+    // Spawn the VM server on a large-stack background thread (the flattened
+    // api.at + db.at + types.at exceeds the 1MB default during parse/codegen).
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .name("auto-vm-http-server".into())
+        .spawn(move || {
+            if let Err(e) = auto_lang::run_file(&api_str) {
+                eprintln!("[AutoVM server] error: {}", e);
+            }
+        })
+        .expect("spawn VM server thread");
+
+    // Wait for the server to become ready by polling the port.
+    println!("    Waiting for AutoVM server to be ready...");
+    let max_wait = std::time::Duration::from_secs(60);
+    let start = std::time::Instant::now();
+    let probe_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+    while start.elapsed() < max_wait {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        if std::net::TcpStream::connect_timeout(&probe_addr, std::time::Duration::from_secs(1)).is_ok() {
+            println!(
+                "  {} AutoVM server ready on http://127.0.0.1:{}",
+                "✓".bright_green(), port
+            );
+            return true;
+        }
+    }
+    println!(
+        "  {} AutoVM server did not respond within {}s, continuing anyway...",
+        "⚠".bright_yellow(), max_wait.as_secs()
+    );
+    false
+}
+
 pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // Rust project now lives in the shared workspace at D:/.auto/rust-workspace/{name}/
     let ws_dir = get_rust_workspace_dir();
@@ -1191,10 +1248,16 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     // Plan 340: --no-merge（AUTO_VM_MERGE=0）切换到分离模式：启动独立后端 HTTP
     // 进程，前端 VM 通过 HTTP 调用后端 API（codegen 把 #[api] 调用改写成 HTTP）。
     // AUTO_VM_WITH_HTTP=1 是旧开关，等价于分离模式（向后兼容）。
+    //
+    // Plan 340 fix: 分离模式启动 **AutoVM HTTP server**（run_file(api.at)），
+    // 而非 a2r 转译的 Rust 后端（start_api_server，那需要预生成的 Cargo.toml，
+    // 且是 VM+Rust 而非 VM+VM）。这才是名副其实的 VM+VM 分离。
     let split_mode = std::env::var("AUTO_VM_MERGE").as_deref() == Ok("0")
         || std::env::var("AUTO_VM_WITH_HTTP").as_deref() == Ok("1");
     let mut _api_child = if split_mode {
-        start_api_server(project_dir)
+        // VM+VM split: AutoVM HTTP server as backend.
+        start_vm_server(project_dir);
+        None
     } else {
         println!();
         println!(

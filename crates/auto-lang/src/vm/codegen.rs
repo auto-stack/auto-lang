@@ -3448,7 +3448,11 @@ impl Codegen {
         // 1. Build the URL. Start from the path template; for each `:param`
         //    segment, splice the corresponding positional arg (stringified).
         //    The arg consumed by a path param is NOT included in the body.
-        let mut path = api.path.clone();
+        //    Plan 340 fix: prepend the backend base URL (host:port from
+        //    AUTO_HTTP_PORT, default 8080) — api.path is just "/api/notes".
+        let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
+        let base_url = format!("http://127.0.0.1:{}", port);
+        let mut path = format!("{}{}", base_url, api.path);
         let mut body_arg_indices: Vec<usize> = Vec::new();
         for (ai, expr) in arg_exprs.iter().enumerate() {
             // Only positional args map to path params by position.
