@@ -32,7 +32,7 @@ use std::collections::HashMap;
 
 use auto_val::Value;
 
-use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraEvent};
+use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraEvent, AuraBinOp};
 
 /// Loop variable bindings: variable name → current Value.
 /// Passed through the conversion call chain to resolve `FieldAccess`
@@ -2024,6 +2024,17 @@ impl<'a> AuraViewBuilder<'a> {
             AuraExpr::Float(f) => Some(Value::Double(*f)),
             AuraExpr::Bool(b) => Some(Value::Bool(*b)),
             AuraExpr::Literal(s) => Some(Value::Str(s.as_str().into())),
+            // Plan 339: binary comparison for if-expressions (e.g., i == .active_index)
+            AuraExpr::Binary { left, op: AuraBinOp::Eq, right } => {
+                let l = self.resolve_expr_to_value(left, bindings)?;
+                let r = self.resolve_expr_to_value(right, bindings)?;
+                Some(Value::Bool(l == r))
+            }
+            AuraExpr::Binary { left, op: AuraBinOp::Ne, right } => {
+                let l = self.resolve_expr_to_value(left, bindings)?;
+                let r = self.resolve_expr_to_value(right, bindings)?;
+                Some(Value::Bool(l != r))
+            }
             // Plan 339: conditional if-expression for style/attribute values
             AuraExpr::If { cond, then_branch, else_branch } => {
                 let cond_val = self.resolve_expr_to_value(cond, bindings)?;
