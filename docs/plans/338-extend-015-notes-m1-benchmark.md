@@ -9,7 +9,30 @@
 
 ---
 
-## 1. 目标
+## 0. 重定范围(2026-06-26):前后端拆开做
+
+**背景**:015-notes 身兼二职 —— 既是 widget/block 双层架构展示,又是**前后端通讯测试床**。现阶段 VM 模式通讯刚跑通、Rust 模式仍在修(另一 agent 在做)。原地扩 015 的前端,会与通讯修复工作互相冲突。
+
+**新策略**:把 Plan 338 的前端丰富工作**拆到新示例 `examples/ui/025-notes-extended`**(纯前端、内存数据、零后端),015 的通讯/持久化工作**留在 015**(另一 agent)。通讯稳定后再**合并 025 前端回 015**。
+
+| 范围 | 去向 | 谁做 |
+|---|---|---|
+| 前端:routing / 标签 / Markdown / 采纳 note-list block / SPEC | **新建 `025-notes-extended`** | 本 Plan(现在) |
+| 后端:持久化 / 类型化契约 / Rust 通讯 | **留 `015-notes`** | 通讯 agent |
+| 合并 025 前端 → 015(重接真后端) | **新跟踪任务** | 触发:015 Rust 通讯绿后 |
+
+**025 后端决策**:**无后端、内存数据**(笔记存组件 state)。理由:025 目标是展示 widget/block 双层架构(前端关注点);`dataSource` 模式仍可展示(槽接内存 fn),真接真后端在合并回 015 时做。完全去后端 = 与通讯工作零耦合、不被其阻塞、迭代更快。
+
+**对原 Plan 阶段的重新指向**:
+- 原 Phase 1(routing)、Phase 2(标签/Markdown)、Phase 4(SPEC/README 的前端部分)→ **在 025 做**。
+- 原 Phase 3(后端持久化 + 类型化契约)→ **留 015**(通讯 agent)。
+- **新增任务 M-merge**:015 Rust 通讯绿后,把 025 前端移植回 015 并重接真后端 —— 这才是完整 M1 基准的落成。合并非平凡(前端已分叉、内存数据重接真后端),单列清单管控。
+
+> 下方原 §1–DoD 描述的是"完整 M1"目标;实施按本 §0 拆分。025 的 DoD 见本 Plan 末尾"§0.025"。
+
+---
+
+## 1. 目标(原完整 M1 目标,保留作背景)
 
 把 `examples/ui/015-notes` 从"单视图 CRUD demo"升级为**第一个真正的基准 app(M1)**:
 1. **加 routing**(Rung 1 app shell —— 当前 015 完全没有 `routes{}`),把单视图拆成多页。
@@ -154,3 +177,22 @@ cd ../auto-lang-338
 
 - **Gap 分析**(研究):让 AI 仅凭 `SPEC.md` 再生 015-notes,记录失败模式 → 驱动 Rung 2(类型化契约/数据生命周期)投资。
 - **M2-M6**:见 design 16;各自单独立 Plan(022-kanban、017-chat、016-calendar、023-realworld、auto-musk)。
+
+---
+
+## §0.025 — `examples/ui/025-notes-extended` 的 Definition of Done(本阶段实施目标)
+
+纯前端、内存数据、零后端;展示 widget/block 双层架构;采纳 `data-display/note-list` block。
+
+- [ ] `examples/ui/025-notes-extended/` 脚手架:`pac.at`(`scene: ui`,无 `api:`/无后端)+ 目录结构。
+- [ ] **routing —— 推迟(blocked)**:Auto 路由 `"/p" -> use <widget>` **不传 prop**,且无后端时跨页共享状态需 Rung 4(共享 store,未建)。025 无后端 → 多页路由暂不可行。**改为单视图富 UI**(App 持 notes、传给子 widget,015 已验证);路由连同合并回 015 时(有真后端作 shared source)再做。这是 Design 16 的一个 Rung 4 发现。
+- [ ] **采纳 note-list block**:把 `blocks/data-display/note-list/reference/default.at` 的 `NoteList` widget 置入 025(经 `auto block add` 或手拷),列表页用它。
+- [ ] **标签**:`Note.tags` + `/tags/:tag` 过滤页。
+- [ ] **Markdown**:笔记只读态前端渲染(marked)。
+- [ ] **内存数据**:笔记存组件 state(无 `use back.api`),seed 若干笔记;CRUD 在内存。
+- [ ] **SPEC.md**:人话功能 + 路由 + 数据模型 + 用到的 block(无代码,供 AI 再生)。
+- [ ] **README**:说明 025 = 015 前端丰富版(纯前端)、与 015 的关系、合并回 015 的触发条件。
+- [ ] `auto build` 绿(或至少解析/类型通过);生成的 vue 可 `pnpm dev` 起。
+- [ ] worktree 分支在 build 绿后合并回 `master`。
+
+> **合并回 015(任务 M-merge,触发:015 Rust 通讯绿)**:移植 025 的 routing/标签/Markdown/block 采纳到 015,内存数据重接真 `#[api]` 后端,删除 025 或保留作"纯前端展示"分支。届时单列清单。

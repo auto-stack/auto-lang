@@ -1,0 +1,98 @@
+// app.at — Notes (extended) root widget.
+// Pure frontend, in-memory data (no backend / no `use back.api`).
+// Showcases the widget tier: button / input / text / col / row / h2, plus the
+// presentational NoteEditor. The sidebar is intended to be the
+// `data-display/note-list` block once child-handler binding lands (README).
+//
+// Note: ids are 0-based and align with list index (the proven 015 pattern), so
+// `.notes[.active_id]` and `.notes.remove(.active_id)` work directly.
+
+use types: Note
+use note_editor: NoteEditor
+
+widget App {
+    msg Msg { NewNote, SelectNote(int), SetTag(str), SearchChanged, DeleteActive }
+
+    model {
+        var notes []Note = [
+            { id: 0, title: "Welcome", body: "Extended notes demo. Frontend-only (in-memory).", time: "2026-06-26", tags: ["intro"] },
+            { id: 1, title: "Shopping", body: "Milk, eggs, bread.", time: "2026-06-26", tags: ["home"] },
+            { id: 2, title: "Sprint plan", body: "Block tier + app generation.", time: "2026-06-26", tags: ["work"] },
+            { id: 3, title: "Ideas", body: "Tag filtering + markdown render.", time: "2026-06-26", tags: ["work", "intro"] }
+        ]
+        var next_id int = 4
+        var active_id int = 0
+        var active_tag str = ""
+        var search str = ""
+    }
+
+    view {
+        col {
+            // header
+            row {
+                h2 "Notes" { style: "text-xl font-bold text-gray-800" }
+                button "+ New" { onclick: .NewNote, style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600" }
+                style: "w-full items-center p-4 border-b border-gray-200"
+            }
+
+            // tag filter bar
+            row {
+                button "All" { onclick: .SetTag(""), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
+                button "intro" { onclick: .SetTag("intro"), style: "text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200" }
+                button "home" { onclick: .SetTag("home"), style: "text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200" }
+                button "work" { onclick: .SetTag("work"), style: "text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200" }
+                style: "gap-2 px-4 py-2 border-b border-gray-200"
+            }
+
+            // body: list + editor
+            row {
+                col {
+                    input { placeholder: "Search…", value: .search, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg mb-2" }
+                    for note in .notes {
+                        if .active_tag == "" || note.tags.contains(.active_tag) {
+                            if .search == "" || note.title.contains(.search) {
+                                button note.title {
+                                    onclick: .SelectNote(note.id)
+                                    style: "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                                }
+                            }
+                        }
+                    }
+                    style: "w-64 border-r border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
+                }
+                col {
+                    if .notes.len() > 0 {
+                        NoteEditor(note: .notes[.active_id])
+                    }
+                    button "Delete note" { onclick: .DeleteActive, style: "ml-auto mr-4 mb-4 px-3 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600" }
+                    style: "flex-1 flex-col"
+                }
+                style: "flex-1"
+            }
+            style: "w-full h-screen bg-white flex-col"
+        }
+    }
+
+    on {
+        .NewNote -> {
+            let n = { id: .next_id, title: "Untitled", body: "", time: "2026-06-26", tags: [] }
+            .next_id = .next_id + 1
+            .notes.push(n)
+            .active_id = .notes.len() - 1
+            .search = ""
+        }
+        .SelectNote(id) -> {
+            .active_id = id
+        }
+        .SetTag(tg) -> {
+            .active_tag = tg
+        }
+        .SearchChanged -> { }
+        .DeleteActive -> {
+            .notes.remove(.active_id)
+            if .active_id >= .notes.len() && .notes.len() > 0 {
+                .active_id = .notes.len() - 1
+            }
+        }
+    }
+}
