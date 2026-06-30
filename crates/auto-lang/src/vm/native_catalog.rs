@@ -946,6 +946,16 @@ macro_rules! for_each_bigvm_native {
             ("auto.json.keys", 1915, Void),
             ("auto.json.has_key", 1917, Void),
 
+            // === Plan 340: JSON ↔ VM value conversion + JSON HTTP helpers (3100-3106) ===
+            ("auto.json.to_value", 3100, Void),
+            ("auto.json.from_value", 3101, Void),
+            ("Json.to_value", 3100, Void),
+            ("Json.from_value", 3101, Void),
+            ("auto.http.get_json", 3102, Void),
+            ("auto.http.post_json", 3103, Void),
+            ("auto.http.put_json", 3104, Void),
+            ("auto.http.delete_json", 3105, Void),
+
             // === serde_json aliases ===
             ("auto.serde_json.to_string", 1900, Void),
             ("auto.json.to_string", 1900, Void),
@@ -1570,6 +1580,15 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.json.is_null", 1914),
     ("auto.json.keys", 1915),
     ("auto.json.has_key", 1917),
+    // Plan 340: JSON ↔ VM value + JSON HTTP helpers
+    ("auto.json.to_value", 3100),
+    ("auto.json.from_value", 3101),
+    ("Json.to_value", 3100),
+    ("Json.from_value", 3101),
+    ("auto.http.get_json", 3102),
+    ("auto.http.post_json", 3103),
+    ("auto.http.put_json", 3104),
+    ("auto.http.delete_json", 3105),
     ("auto.serde_json.to_string", 1900),
     ("auto.json.to_string", 1900),
     ("json.to_string", 1900),

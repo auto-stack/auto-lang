@@ -40,7 +40,7 @@ pub enum StackTag {
 
 /// Push a string tag onto the stack.
 #[inline(always)]
-fn push_str_tag(ram: &mut VirtualRAM, idx: u32) {
+pub fn push_str_tag(ram: &mut VirtualRAM, idx: u32) {
     ram.push_string(idx);
 }
 

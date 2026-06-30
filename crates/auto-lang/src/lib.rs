@@ -2042,7 +2042,12 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
 
 
     // 3. Create DynamicComponent with registry + imported symbols
-    let mut comp = DynamicComponent::with_registry_and_imports(&widget, registry, import_stmts, &import_aliases)
+    // Plan 340: AUTO_VM_MERGE=0 (i.e. --no-merge) enables API-over-HTTP:
+    // cross-module `#[api]` calls are rewritten at codegen time into HTTP
+    // requests instead of in-process direct calls. Default (merge) keeps the
+    // existing in-process behavior.
+    let api_over_http = std::env::var("AUTO_VM_MERGE").as_deref() == Ok("0");
+    let mut comp = DynamicComponent::with_registry_and_imports(&widget, registry, import_stmts, &import_aliases, api_over_http)
         .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
 
     // 3b. Set source path for hot-reload tracking
@@ -3859,6 +3864,9 @@ mod plan337_tests;
 
 #[cfg(test)]
 mod plan339_tests;
+
+#[cfg(test)]
+mod plan340_tests;
 
 // =============================================================================
 // Plan 015: AutoUI Core (feature-gated)

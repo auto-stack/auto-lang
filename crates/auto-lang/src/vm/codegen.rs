@@ -96,6 +96,16 @@ pub struct ParamInfo {
     pub mode: ParamMode,
 }
 
+/// Plan 340: Metadata for an API function whose bare call should be rewritten
+/// to an HTTP request in VM+VM split mode.
+#[derive(Clone)]
+pub struct ApiCallInfo {
+    pub method: String,   // "GET" | "POST" | "PUT" | "DELETE"
+    pub path: String,     // "/api/notes", "/api/notes/:id"
+    pub params: Vec<String>, // parameter names in declaration order
+    pub ret_type: crate::ast::Type, // return type (for last_expr_type)
+}
+
 /// Type hint for f-string parts
 enum FStrPartType {
     Int,     // i32 on stack (4 bytes)
@@ -289,6 +299,15 @@ pub struct Codegen {
     /// Populated from use statements with specific imports: `use auto.fs: read_text`
     pub import_scope: HashMap<String, String>,
 
+    /// Plan 340: When true (VM+VM split mode), rewrite bare calls to `#[api]`
+    /// functions into HTTP requests instead of in-process CALL relocs.
+    pub api_over_http: bool,
+
+    /// Plan 340: API function metadata for HTTP rewriting. Key = bare fn name
+    /// (e.g. "list_notes"). Populated by synthesize_widget_module from the
+    /// api_attrs of imported Fn declarations.
+    pub api_funcs: HashMap<String, ApiCallInfo>,
+
     /// Known module prefixes from module-level imports (e.g., `use types`)
     /// Used to recognize qualified access patterns like `types.SectionType.Goals`
     known_module_prefixes: HashSet<String>,
@@ -400,6 +419,8 @@ impl Codegen {
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
+            api_over_http: false, // Plan 340: VM+VM split mode HTTP rewriting
+            api_funcs: HashMap::new(), // Plan 340: API fn metadata
             known_module_prefixes: HashSet::new(),
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
@@ -564,6 +585,8 @@ impl Codegen {
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
+            api_over_http: false, // Plan 340: VM+VM split mode HTTP rewriting
+            api_funcs: HashMap::new(), // Plan 340: API fn metadata
             known_module_prefixes: HashSet::new(),
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
@@ -3405,6 +3428,168 @@ impl Codegen {
         name.to_string()
     }
 
+    /// Plan 340: Rewrite a bare API function call into an HTTP request.
+    ///
+    /// Emits bytecode equivalent to:
+    ///   GET    /api/notes                   → http.get_json(url)    → json.to_value
+    ///   POST   /api/notes, body             → http.post_json(url,body) → json.to_value
+    ///   PUT    /api/notes/:id, body         → http.put_json(url,body)  → json.to_value
+    ///   DELETE /api/notes/:id               → http.delete_json(url)  → json.to_value
+    ///
+    /// Path params (`:id`) are spliced from the matching positional argument
+    /// (stringified via str concatenation). Remaining args form the JSON body
+    /// via `json.from_value`.
+    fn emit_api_http_call(&mut self, api: &ApiCallInfo, call: &crate::ast::Call) -> AutoResult<()> {
+        use crate::ast::Arg;
+
+        // Collect positional arg expressions in order.
+        let arg_exprs: Vec<Expr> = call.args.args.iter().map(|a| a.get_expr()).collect();
+
+        // 1. Build the URL. Start from the path template; for each `:param`
+        //    segment, splice the corresponding positional arg (stringified).
+        //    The arg consumed by a path param is NOT included in the body.
+        let mut path = api.path.clone();
+        let mut body_arg_indices: Vec<usize> = Vec::new();
+        for (ai, expr) in arg_exprs.iter().enumerate() {
+            // Only positional args map to path params by position.
+            let param_name = api.params.get(ai).cloned().unwrap_or_default();
+            let placeholder = format!(":{}", param_name);
+            if path.contains(&placeholder) {
+                // Splice: push base-path-before, arg-str, base-path-after, STR_CAT chain.
+                // We build the full URL via repeated STR_CAT. To keep it simple,
+                // we construct the URL at runtime: emit a sequence of LOAD_STR
+                // (literal segments) + arg str + STR_CAT.
+                // For now, defer URL construction to a helper that emits the
+                // concatenation chain.
+                self.emit_url_with_param(&path, &placeholder, expr)?;
+                path = String::new(); // marker: URL already emitted
+            } else {
+                body_arg_indices.push(ai);
+            }
+        }
+        // If no path-param substitution happened (path unchanged), emit the
+        // literal URL now.
+        if !path.is_empty() {
+            self.emit_str_const_push(&path);
+        }
+
+        // 2. Determine the HTTP native name and whether a body is needed.
+        let method = api.method.to_uppercase();
+        let needs_body = matches!(method.as_str(), "POST" | "PUT");
+        let http_native = match method.as_str() {
+            "GET" => "auto.http.get_json",
+            "POST" => "auto.http.post_json",
+            "PUT" => "auto.http.put_json",
+            "DELETE" => "auto.http.delete_json",
+            other => {
+                return Err(format!(
+                    "emit_api_http_call: unsupported method '{}' for {}",
+                    other, api.path
+                ).into());
+            }
+        };
+
+        // 3. For POST/PUT, build the JSON body from the non-path args.
+        if needs_body {
+            // Build a JSON object string: {"p1":<v1>,"p2":<v2>,...}
+            // Emit: for each param, key literal + json.from_value(arg) + concat.
+            // Start with "{" then append "\"p1\":" + from_value(v1) + "," ...
+            self.emit_str_const_push("{");
+            let body_params: Vec<(String, &Expr)> = body_arg_indices
+                .iter()
+                .map(|&i| (api.params.get(i).cloned().unwrap_or_else(|| format!("arg{}", i)), &arg_exprs[i]))
+                .collect();
+            for (i, (pname, expr)) in body_params.iter().enumerate() {
+                if i > 0 {
+                    self.emit_str_const_push(",");
+                    self.emit(OpCode::STR_CAT);
+                }
+                // key: "\"name\":"
+                self.emit_str_const_push(&format!("\"{}\":", pname));
+                self.emit(OpCode::STR_CAT);
+                // value: json.from_value(arg) → string
+                self.compile_expr(expr)?;
+                self.emit_call_nat_by_name("auto.json.from_value", 1)?;
+                self.emit(OpCode::STR_CAT);
+            }
+            self.emit_str_const_push("}");
+            self.emit(OpCode::STR_CAT);
+        }
+
+        // 4. Call the HTTP native. Stack (POST/PUT): [url, body]
+        //    (GET/DELETE): [url]. Native pops body then url.
+        let arg_count: u16 = if needs_body { 2 } else { 1 };
+        self.emit_call_nat_by_name(http_native, arg_count)?;
+        // Stack: [response_body_string]
+
+        // 5. json.to_value(response_body) → VM value.
+        self.emit_call_nat_by_name("auto.json.to_value", 1)?;
+
+        // 6. Set last_expr_type from the API fn's return type.
+        self.last_expr_type = match &api.ret_type {
+            crate::ast::Type::Array(_) | crate::ast::Type::List(_) => ObjectType::NestedObject,
+            crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned
+            | crate::ast::Type::CStrLit | crate::ast::Type::StrSlice => ObjectType::String,
+            crate::ast::Type::Int | crate::ast::Type::I64 => ObjectType::Int,
+            crate::ast::Type::Uint | crate::ast::Type::U64 | crate::ast::Type::USize => ObjectType::Uint,
+            crate::ast::Type::Bool => ObjectType::Bool,
+            crate::ast::Type::Float => ObjectType::Float,
+            crate::ast::Type::Double => ObjectType::Double,
+            _ => ObjectType::NestedObject, // struct / Option / unknown
+        };
+
+        // Discard if the result isn't needed (statement context).
+        if self.should_pop_expr_result {
+            self.emit(OpCode::POP);
+        }
+        Ok(())
+    }
+
+    /// Emit a CALL_NAT by resolved native name with the given arg count.
+    fn emit_call_nat_by_name(&mut self, name: &str, _arg_count: u16) -> AutoResult<()> {
+        let native_id = BIGVM_NATIVES.lock().unwrap()
+            .resolve_qualified(name)
+            .ok_or_else(|| format!("emit_call_nat_by_name: native '{}' not registered", name))?;
+        self.emit(OpCode::CALL_NAT);
+        self.emit_u16(native_id);
+        Ok(())
+    }
+
+    /// Push a string literal onto the stack (intern in the strings pool).
+    fn emit_str_const_push(&mut self, s: &str) {
+        let idx = self.add_string(s);
+        self.emit(OpCode::LOAD_STR);
+        self.code.extend_from_slice(&idx.to_le_bytes());
+    }
+
+    /// Emit URL construction with a path-param substitution.
+    /// Produces a single string on the stack: the URL with `:param` replaced
+    /// by the runtime value of `arg_expr` (stringified).
+    fn emit_url_with_param(
+        &mut self,
+        path: &str,
+        placeholder: &str,
+        arg_expr: &Expr,
+    ) -> AutoResult<()> {
+        // Split path at the placeholder.
+        let (before, after) = path.split_once(placeholder)
+            .unwrap_or((path, ""));
+        self.emit_str_const_push(before);
+        // Stringify the arg: compile it, then to_string via str conversion.
+        // For int args, use I32_TO_STR; for others, assume string-compatible.
+        self.compile_expr(arg_expr)?;
+        // Best-effort stringification: try I32_TO_STR (harmless on strings as
+        // the value is already a string tag). For robustness, we rely on the
+        // arg being int or str — the common case for :id params.
+        self.emit(OpCode::TO_STR);
+        self.emit(OpCode::STR_CAT); // before + arg
+        if !after.is_empty() {
+            self.emit_str_const_push(after);
+            self.emit(OpCode::STR_CAT); // (before+arg) + after
+        }
+        Ok(())
+    }
+
     fn handle_use_stmt(&mut self, use_stmt: &crate::ast::Use) {
         // Handle Rust imports (Plan 212b Task 3)
         if matches!(use_stmt.kind, crate::ast::UseKind::Rust) {
@@ -5876,6 +6061,22 @@ impl Codegen {
                     }
                     _ => None,
                 };
+
+                // Plan 340: API-over-HTTP rewriting (VM+VM split mode). When
+                // api_over_http is set, rewrite bare calls to #[api] functions
+                // into HTTP requests. Must come BEFORE any native/local/external
+                // resolution so the call never reaches the normal CALL path.
+                if self.api_over_http {
+                    if let Some(name) = func_name.as_ref() {
+                        // Only bare-name calls (Expr::Ident) are candidates;
+                        // qualified calls (db.all_notes) skip rewriting.
+                        if matches!(call.name.as_ref(), Expr::Ident(_)) {
+                            if let Some(api) = self.api_funcs.get(name).cloned() {
+                                return self.emit_api_http_call(&api, call);
+                            }
+                        }
+                    }
+                }
 
                 // Plan 197 Task 14: Array.len() emits ARRAY_LEN opcode directly
                 if func_name.as_deref() == Some("Array.len") && call.args.args.is_empty() {
