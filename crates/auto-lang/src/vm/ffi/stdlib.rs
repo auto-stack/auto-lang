@@ -1299,6 +1299,260 @@ pub fn shim_toml_from_str(s: String) -> String {
     s
 }
 
+// ============================================================================
+// Plan 340: JSON ↔ VM value conversion natives (for VM+VM split mode HTTP API)
+// ============================================================================
+
+/// Recursively convert a `serde_json::Value` into a VM heap object and return
+/// the encoded object id (pushed onto the stack as a NaN-boxed object ref).
+///
+/// - JSON object  → GenericInstanceData (field_names = JSON keys)
+/// - JSON array   → ListData<Value> (elements recurse)
+/// - scalars      → pushed directly (int/bool/nil/string)
+///
+/// Returns `Some(obj_id)` for compound values (the caller pushes the encoded
+/// ref), or `None` for scalars (already pushed by this function).
+fn json_to_vm_value(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    value: &serde_json::Value,
+    depth: u32,
+) -> Result<(), VMError> {
+    const MAX_DEPTH: u32 = 64;
+    if depth >= MAX_DEPTH {
+        return Err(VMError::RuntimeError(format!(
+            "json_to_vm_value: nesting depth exceeded ({})", MAX_DEPTH
+        )));
+    }
+    use auto_val::Value;
+    match value {
+        serde_json::Value::Null => {
+            task.ram.push_nv(auto_val::encode_null());
+        }
+        serde_json::Value::Bool(b) => {
+            task.ram.push_nv(auto_val::encode_bool(*b));
+        }
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                task.ram.push_nv(auto_val::encode_i32(i as i32));
+            } else if let Some(f) = n.as_f64() {
+                task.ram.push_f64(f);
+            } else {
+                task.ram.push_nv(auto_val::encode_i32(0));
+            }
+        }
+        serde_json::Value::String(s) => {
+            let bytes = s.as_bytes().to_vec();
+            let str_idx = {
+                let mut strings = vm.strings.write().unwrap();
+                let idx = strings.len();
+                strings.push(bytes);
+                idx as u32
+            };
+            crate::vm::engine::push_str_tag(&mut task.ram, str_idx);
+        }
+        serde_json::Value::Array(arr) => {
+            use crate::vm::types::ListData;
+            // Recurse each element, collecting as Value (VmRef for compound).
+            let mut list: ListData<Value> = ListData::new();
+            for elem in arr {
+                let v = json_to_vm_value_inner(vm, elem, depth + 1)?;
+                list.push(v);
+            }
+            let id = vm.insert_heap_object(list);
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+        }
+        serde_json::Value::Object(obj) => {
+            use crate::vm::generic_registry::GenericInstanceData;
+            let mut field_names = Vec::with_capacity(obj.len());
+            let mut fields = Vec::with_capacity(obj.len());
+            for (k, v) in obj {
+                field_names.push(k.clone());
+                fields.push(json_to_vm_value_inner(vm, v, depth + 1)?);
+            }
+            let inst = GenericInstanceData::new_with_names(
+                "__json_object".to_string(),
+                fields,
+                field_names,
+            );
+            let id = vm.insert_heap_object(inst);
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+        }
+    }
+    Ok(())
+}
+
+/// Inner helper: convert a JSON value to a `Value` without touching the task
+/// stack. Used when building compound values (array elements / object fields)
+/// where the element must be a `Value::VmRef`, not pushed to the stack.
+fn json_to_vm_value_inner(
+    vm: &AutoVM,
+    value: &serde_json::Value,
+    depth: u32,
+) -> Result<auto_val::Value, VMError> {
+    const MAX_DEPTH: u32 = 64;
+    if depth >= MAX_DEPTH {
+        return Err(VMError::RuntimeError(format!(
+            "json_to_vm_value_inner: nesting depth exceeded ({})", MAX_DEPTH
+        )));
+    }
+    use auto_val::Value;
+    match value {
+        serde_json::Value::Null => Ok(Value::Nil),
+        serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(Value::Int(i as i32))
+            } else if let Some(f) = n.as_f64() {
+                Ok(Value::Double(f))
+            } else {
+                Ok(Value::Int(0))
+            }
+        }
+        serde_json::Value::String(s) => Ok(Value::Str(auto_val::AutoStr::from(s.as_str()))),
+        serde_json::Value::Array(arr) => {
+            use crate::vm::types::ListData;
+            let mut list: ListData<Value> = ListData::new();
+            for elem in arr {
+                list.push(json_to_vm_value_inner(vm, elem, depth + 1)?);
+            }
+            let id = vm.insert_heap_object(list);
+            Ok(Value::VmRef(auto_val::VmRef { id: id as usize }))
+        }
+        serde_json::Value::Object(obj) => {
+            use crate::vm::generic_registry::GenericInstanceData;
+            let mut field_names = Vec::with_capacity(obj.len());
+            let mut fields = Vec::with_capacity(obj.len());
+            for (k, v) in obj {
+                field_names.push(k.clone());
+                fields.push(json_to_vm_value_inner(vm, v, depth + 1)?);
+            }
+            let inst = GenericInstanceData::new_with_names(
+                "__json_object".to_string(),
+                fields,
+                field_names,
+            );
+            let id = vm.insert_heap_object(inst);
+            Ok(Value::VmRef(auto_val::VmRef { id: id as usize }))
+        }
+    }
+}
+
+/// `auto.json.to_value(json_str) -> NanoValue`
+/// Parse a JSON string and push the resulting VM value onto the stack.
+pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let json_str: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+        VMError::RuntimeError(format!("json.to_value: parse error: {}", e))
+    })?;
+    json_to_vm_value(task, vm, &parsed, 0)
+}
+
+/// Recursively serialize a VM heap object into a `serde_json::Value`.
+fn vm_value_to_json(
+    vm: &AutoVM,
+    value: &auto_val::Value,
+    depth: u32,
+) -> Result<serde_json::Value, VMError> {
+    const MAX_DEPTH: u32 = 64;
+    if depth >= MAX_DEPTH {
+        return Err(VMError::RuntimeError(format!(
+            "vm_value_to_json: nesting depth exceeded ({})", MAX_DEPTH
+        )));
+    }
+    use auto_val::Value;
+    match value {
+        Value::Nil => Ok(serde_json::Value::Null),
+        Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+        Value::Int(i) => Ok(serde_json::json!(*i)),
+        Value::Uint(u) => Ok(serde_json::json!(*u)),
+        Value::Float(f) => serde_json::Number::from_f64(*f as f64)
+            .map(serde_json::Value::Number)
+            .ok_or_else(|| VMError::RuntimeError("json.from_value: NaN/Inf float".into())),
+        Value::Double(d) => serde_json::Number::from_f64(*d)
+            .map(serde_json::Value::Number)
+            .ok_or_else(|| VMError::RuntimeError("json.from_value: NaN/Inf double".into())),
+        Value::Str(s) => Ok(serde_json::Value::String(s.to_string())),
+        Value::Char(c) => Ok(serde_json::Value::String(c.to_string())),
+        Value::VmRef(vmref) => {
+            let id = vmref.id as u64;
+            if let Some(heap_ref) = vm.heap_objects.get(&id) {
+                let obj = heap_ref.read().unwrap();
+                use crate::vm::generic_registry::GenericInstanceData;
+                use crate::vm::types::ListData;
+                if let Some(inst) = obj.as_any().downcast_ref::<GenericInstanceData>() {
+                    let mut map = serde_json::Map::new();
+                    for (i, name) in inst.field_names.iter().enumerate() {
+                        if let Some(fv) = inst.fields.get(i) {
+                            map.insert(name.clone(), vm_value_to_json(vm, fv, depth + 1)?);
+                        }
+                    }
+                    Ok(serde_json::Value::Object(map))
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+                    let mut arr = Vec::with_capacity(list.elems.len());
+                    for elem in &list.elems {
+                        arr.push(vm_value_to_json(vm, elem, depth + 1)?);
+                    }
+                    Ok(serde_json::Value::Array(arr))
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<i32>>() {
+                    let arr = list.elems.iter().map(|i| serde_json::json!(*i)).collect();
+                    Ok(serde_json::Value::Array(arr))
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<String>>() {
+                    let arr = list.elems.iter().map(|s| serde_json::json!(s)).collect();
+                    Ok(serde_json::Value::Array(arr))
+                } else {
+                    Ok(serde_json::Value::Null)
+                }
+            } else {
+                Ok(serde_json::Value::Null)
+            }
+        }
+        _ => Ok(serde_json::Value::Null),
+    }
+}
+
+/// `auto.json.from_value(NanoValue) -> String`
+/// Serialize a VM value (incl. heap objects) into a JSON string.
+pub fn shim_json_from_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop the raw stack value and decode it.
+    let nv = task.ram.pop_nv();
+    let value = if auto_val::is_object(nv) {
+        auto_val::Value::VmRef(auto_val::VmRef {
+            id: auto_val::decode_object(nv) as usize,
+        })
+    } else if auto_val::is_i32(nv) {
+        auto_val::Value::Int(auto_val::decode_i32(nv))
+    } else if auto_val::is_bool(nv) {
+        auto_val::Value::Bool(auto_val::decode_bool(nv))
+    } else if auto_val::is_null(nv) {
+        auto_val::Value::Nil
+    } else if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv) as usize;
+        let s = vm
+            .strings
+            .read()
+            .unwrap()
+            .get(idx)
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .unwrap_or_default();
+        auto_val::Value::Str(auto_val::AutoStr::from(s.as_str()))
+    } else {
+        auto_val::Value::Nil
+    };
+    let json_val = vm_value_to_json(vm, &value, 0)?;
+    let s = serde_json::to_string(&json_val).unwrap_or_default();
+    let bytes = s.into_bytes();
+    let str_idx = {
+        let mut strings = vm.strings.write().unwrap();
+        let idx = strings.len();
+        strings.push(bytes);
+        idx as u32
+    };
+    crate::vm::engine::push_str_tag(&mut task.ram, str_idx);
+    Ok(())
+}
+
 /// Prettify a JSON string
 #[auto_macros::rust_fn("Json.prettify")]
 pub fn shim_json_prettify(s: String) -> String {
@@ -3206,6 +3460,82 @@ fn simple_http_request(method: &str, url: &str, body: Option<&str>) -> i64 {
     }
 }
 
+/// Plan 340: Simple JSON HTTP helpers for VM+VM split mode codegen rewriting.
+/// These return the response body as a STRING (not a handle), so codegen can
+/// feed it directly into `auto.json.to_value`. Each runs `reqwest::blocking`
+/// in a dedicated OS thread (same pattern as `simple_http_request`).
+fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
+    let method = method.to_string();
+    let url = url.to_string();
+    let body = body.map(|s| s.to_string());
+    let result = std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::new();
+        let mut builder = match method.as_str() {
+            "POST" => client.post(&url),
+            "PUT" => client.put(&url),
+            "DELETE" => client.delete(&url),
+            _ => client.get(&url),
+        };
+        if let Some(b) = body {
+            builder = builder.header("Content-Type", "application/json").body(b);
+        }
+        builder.send().map(|r| r.text().unwrap_or_default())
+    }).join();
+    match result {
+        Ok(Ok(text)) => text,
+        _ => String::from("null"),
+    }
+}
+
+/// `auto.http.get_json(url) -> String` — GET, return body as string.
+pub fn shim_http_get_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let body = simple_http_json("GET", &url, None);
+    push_string_result(task, _vm, body)
+}
+
+/// `auto.http.post_json(url, body) -> String` — POST JSON, return body.
+pub fn shim_http_post_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let resp = simple_http_json("POST", &url, Some(&body));
+    push_string_result(task, vm, resp)
+}
+
+/// `auto.http.put_json(url, body) -> String` — PUT JSON, return body.
+pub fn shim_http_put_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let resp = simple_http_json("PUT", &url, Some(&body));
+    push_string_result(task, vm, resp)
+}
+
+/// `auto.http.delete_json(url) -> String` — DELETE, return body.
+pub fn shim_http_delete_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let resp = simple_http_json("DELETE", &url, None);
+    push_string_result(task, vm, resp)
+}
+
+/// Helper: push a response-body string onto the stack as a tagged string.
+fn push_string_result(task: &mut AutoTask, vm: &AutoVM, s: String) -> Result<(), VMError> {
+    let bytes = s.into_bytes();
+    let str_idx = {
+        let mut strings = vm.strings.write().unwrap();
+        let idx = strings.len();
+        strings.push(bytes);
+        idx as u32
+    };
+    crate::vm::engine::push_str_tag(&mut task.ram, str_idx);
+    Ok(())
+}
+
 /// Synchronous HTTP POST with auth headers (for Anthropic API calls from AutoVM).
 /// Returns response body as string and stores status code in thread-local.
 /// Uses std::thread::spawn to avoid tokio runtime conflict with reqwest::blocking.
@@ -4059,6 +4389,21 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("RequestBuilder.timeout", shim_request_builder_timeout);
     natives.register_shim_by_name("RequestBuilder.json", shim_request_builder_json);
     natives.register_shim_by_name("RequestBuilder.send", shim_request_builder_send);
+
+    // Plan 340: JSON ↔ VM value conversion (for VM+VM split mode HTTP API).
+    // These replace the placeholder Json.parse (returns string as-is) with real
+    // (de)serialization that produces/consumes VM heap objects.
+    natives.register_shim_by_name("auto.json.to_value", shim_json_to_value);
+    natives.register_shim_by_name("auto.json.from_value", shim_json_from_value);
+    natives.register_shim_by_name("Json.to_value", shim_json_to_value);
+    natives.register_shim_by_name("Json.from_value", shim_json_from_value);
+
+    // Plan 340: Simple JSON HTTP helpers (return body string directly) for
+    // VM+VM split mode codegen rewriting.
+    natives.register_shim_by_name("auto.http.get_json", shim_http_get_json);
+    natives.register_shim_by_name("auto.http.post_json", shim_http_post_json);
+    natives.register_shim_by_name("auto.http.put_json", shim_http_put_json);
+    natives.register_shim_by_name("auto.http.delete_json", shim_http_delete_json);
 
     natives.register_shim_by_name("Response.status_code", shim_response_status_code);
     natives.register_shim_by_name("Response.header_get", shim_response_header_get);

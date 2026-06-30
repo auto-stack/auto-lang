@@ -1186,9 +1186,14 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     // Plan 334: vm+vm 同进程合并。前端 widget VM（经 Plan 333）直接链接后端
     // 函数访问数据（list_notes → db.all_notes → notes 全局），不需要独立的 Axum
     // HTTP 后端进程。跳过 start_api_server 可消除冗余 cargo 编译、端口占用、
-    // 启动等待。设 AUTO_VM_WITH_HTTP=1 可保留旧行为（启动 HTTP 后端进程），用于
-    // 调试或与外部 HTTP 客户端联调。
-    let mut _api_child = if std::env::var("AUTO_VM_WITH_HTTP").as_deref() == Ok("1") {
+    // 启动等待。
+    //
+    // Plan 340: --no-merge（AUTO_VM_MERGE=0）切换到分离模式：启动独立后端 HTTP
+    // 进程，前端 VM 通过 HTTP 调用后端 API（codegen 把 #[api] 调用改写成 HTTP）。
+    // AUTO_VM_WITH_HTTP=1 是旧开关，等价于分离模式（向后兼容）。
+    let split_mode = std::env::var("AUTO_VM_MERGE").as_deref() == Ok("0")
+        || std::env::var("AUTO_VM_WITH_HTTP").as_deref() == Ok("1");
+    let mut _api_child = if split_mode {
         start_api_server(project_dir)
     } else {
         println!();

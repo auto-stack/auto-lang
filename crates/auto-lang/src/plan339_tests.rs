@@ -342,6 +342,7 @@ pub fn create_note(title str, body str) Note {
             &[],
             import_stmts,
             &import_aliases,
+            false,
         );
         match &bridge {
             Ok(_) => eprintln!("plan339: 015-notes VmBridge OK (link succeeded)"),
@@ -430,6 +431,7 @@ pub fn create_note(title str, body str) Note {
             &[],
             import_stmts,
             &import_aliases,
+            false,
         );
         match &bridge {
             Ok(_) => eprintln!("plan339: 016-calendar VmBridge OK (link succeeded)"),

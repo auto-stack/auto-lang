@@ -347,14 +347,38 @@ pub fn synthesize_widget_module(
     child_widgets: &[AuraWidget],
     import_stmts: Vec<Stmt>,
     import_aliases: &std::collections::HashMap<String, String>,
+    api_over_http: bool,
 ) -> SynthResult<(Module, crate::vm::generic_registry::GenericRegistry)> {
     let mut codegen = Codegen::new();
+    codegen.api_over_http = api_over_http;
 
     // Plan 339 Phase 4: populate import_scope directly from use_scanner data.
     // This maps bare function names to their module-qualified exports so
     // `delete_note(...)` resolves to `api.delete_note` in the exports table.
     for (bare, qualified) in import_aliases {
         codegen.import_scope.insert(bare.clone(), qualified.clone());
+    }
+
+    // Plan 340: build api_funcs metadata from imported Fn declarations that
+    // carry #[api(method,path)] attrs. Used by Expr::Call to rewrite bare API
+    // calls into HTTP requests when api_over_http is set.
+    if api_over_http {
+        for stmt in &import_stmts {
+            if let Stmt::Fn(f) = stmt {
+                if let Some(api) = &f.api_attrs {
+                    let bare = f.name.to_string().split('.').last()
+                        .unwrap_or(&f.name.to_string()).to_string();
+                    let params: Vec<String> = f.params.iter()
+                        .map(|p| p.name.to_string()).collect();
+                    codegen.api_funcs.insert(bare, crate::vm::codegen::ApiCallInfo {
+                        method: api.method.clone(),
+                        path: api.path.clone(),
+                        params,
+                        ret_type: f.ret.clone(),
+                    });
+                }
+            }
+        }
     }
 
     // Plan 339 Phase 6b: intra-module bare calls. After flattening, every
