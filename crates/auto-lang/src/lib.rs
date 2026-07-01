@@ -711,12 +711,42 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
     }
 }
 
+/// Plan 346: Remap CREATE_OBJ (0x2E) key_index by adding a base offset.
+/// CREATE_OBJ encodes: opcode(1 byte) + key_index(u16 LE) + field_count(u8).
+/// We add `base` to the key_index so it points into the merged pool.
+fn remap_create_obj_indices(code: &mut Vec<u8>, base: u16) {
+    if base == 0 {
+        return;
+    }
+    let mut i = 0;
+    while i < code.len() {
+        if code[i] == 0x2E {
+            // CREATE_OBJ: next 2 bytes are key_index (u16 LE)
+            if i + 2 < code.len() {
+                let old_idx = u16::from_le_bytes([code[i + 1], code[i + 2]]);
+                let new_idx = old_idx + base;
+                let bytes = new_idx.to_le_bytes();
+                code[i + 1] = bytes[0];
+                code[i + 2] = bytes[1];
+                i += 4; // skip opcode + key_index + field_count
+            } else {
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+}
 
     // and remap string indices in their bytecode. Without this, LOAD_STR /
     // STORE_GLOBAL / LOAD_GLOBAL instructions in dep modules reference wrong
     // strings (the main pool's indices don't match), causing globals to be
     // stored under empty/wrong keys.
     let main_string_count = strings.len() as u8;
+    // Plan 346: object_keys/types declared here so the dep module merge loop
+    // can append to them. Initialized from the main module's codegen.
+    let mut object_keys = codegen.object_keys.clone();
+    let mut object_types = codegen.object_types.clone();
     for module in dep_modules.iter_mut() {
         if module.strings.is_empty() {
             continue;
@@ -737,17 +767,28 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
         // a string pool index (LOAD_STR, STORE_GLOBAL, LOAD_GLOBAL, etc.).
         // These opcodes are followed by a u8 string index.
         remap_string_indices(&mut module.code, &remap);
+
+        // Plan 346: Merge object_keys/object_types pools and remap CREATE_OBJ
+        // key_index (u16) in bytecode. Without this, Note { id: 0, ... } in
+        // db.at references wrong field names from the main module's pool.
+        if !module.object_keys.is_empty() {
+            let obj_keys_base = object_keys.len();
+            for (i, keys) in module.object_keys.iter().enumerate() {
+                object_keys.push(keys.clone());
+                if let Some(ty) = module.object_types.get(i) {
+                    object_types.push(ty.clone());
+                }
+            }
+            // Remap CREATE_OBJ (0x2E) key_index: add base offset.
+            remap_create_obj_indices(&mut module.code, obj_keys_base as u16);
+        }
     }
 
     for module in dep_modules {
         linker.add_module(module);
     }
 
-    // Plan 346: Merge dep modules' object pools + generic_registry into main.
-    let mut object_keys = codegen.object_keys.clone();
-    let mut object_types = codegen.object_types.clone();
-    object_keys.extend(session.dep_object_keys.borrow().iter().cloned());
-    object_types.extend(session.dep_object_types.borrow().iter().cloned());
+    // Plan 346: object_keys/types already merged in the dep module loop above.
     let result_type = codegen.last_expr_type.clone();
     // Plan 197 Task 9: Extract generic registry before finish() consumes the codegen
     let mut generic_registry = std::mem::take(&mut codegen.generic_registry);
