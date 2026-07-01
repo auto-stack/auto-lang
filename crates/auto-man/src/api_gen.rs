@@ -416,7 +416,7 @@ fn has_path_param(path: &str) -> bool {
 
 
 /// Determine the primary type from an ApiModule (first defined type)
-fn primary_type_name(api_module: &auto_lang::api::ApiModule) -> Option<String> {
+pub fn primary_type_name_pub(api_module: &auto_lang::api::ApiModule) -> Option<String> {
     api_module.types.first().map(|t| t.name.clone())
 }
 
@@ -456,7 +456,7 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
     ];
 
     // Determine primary type and generate Db type alias
-    let primary_type = match primary_type_name(api_module) {
+    let primary_type = match primary_type_name_pub(api_module) {
         Some(t) => t,
         None => {
             // Fallback: generate skeleton handlers
@@ -694,8 +694,8 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
 }
 
 /// Generate initial sample data for the primary type
-fn generate_initial_data(api_module: &auto_lang::api::ApiModule) -> String {
-    let primary_type = match primary_type_name(api_module) {
+pub fn generate_initial_data_pub(api_module: &auto_lang::api::ApiModule) -> String {
+    let primary_type = match primary_type_name_pub(api_module) {
         Some(t) => t,
         None => return "Vec::new()".to_string(),
     };
@@ -763,7 +763,7 @@ fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
         })
         .collect();
 
-    let initial_data = generate_initial_data(api_module);
+    let initial_data = generate_initial_data_pub(api_module);
     let routes_str = routes.join("\n");
 
     let mut s = String::new();
