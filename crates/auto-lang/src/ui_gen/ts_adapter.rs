@@ -383,6 +383,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         write!(out, "await {}", func_name).ok();
                     } else if func_name == "print" {
                         write!(out, "console.log").ok();
+                    } else if ctx.is_prop(func_name) {
+                        // Plan 345 (gap K2/N4): callback prop call -> props.<name>(...)
+                        write!(out, "props.{}", func_name).ok();
                     } else {
                         write!(out, "{}", func_name).ok();
                     }
