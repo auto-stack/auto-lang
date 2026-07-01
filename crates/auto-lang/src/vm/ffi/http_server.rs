@@ -200,9 +200,20 @@ fn heap_object_to_json(
             }
             return Some(format!("[{}]", parts.join(", ")));
         }
-        // ListData<i32> (int collections).
+        // ListData<i32> (int collections, or struct lists where elements are
+        // stored as heap object IDs >= 4000000).
         if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
-            let parts: Vec<String> = list.elems.iter().map(|i| i.to_string()).collect();
+            let mut parts: Vec<String> = Vec::new();
+            for &i in &list.elems {
+                if i >= 4_000_000 {
+                    // Heap object ID — expand recursively.
+                    let json = heap_object_to_json(vm, i as u64, depth + 1)
+                        .unwrap_or_else(|| i.to_string());
+                    parts.push(json);
+                } else {
+                    parts.push(i.to_string());
+                }
+            }
             return Some(format!("[{}]", parts.join(", ")));
         }
         // Other heap objects (opaque types) — can't serialize generically.
