@@ -3160,7 +3160,17 @@ impl RustGenerator {
     /// Convert AuraExpr to Rust
     fn expr_to_rust(&self, expr: &AuraExpr) -> String {
         match expr {
-        AuraExpr::If { .. } => unreachable!(),
+        AuraExpr::If { cond, then_branch, else_branch } => {
+                let cond_str = self.expr_to_rust(cond);
+                let then_str = self.expr_to_rust(then_branch);
+                match else_branch {
+                    Some(else_expr) => {
+                        let else_str = self.expr_to_rust(else_expr);
+                        format!("if {} {{ {} }} else {{ {} }}", cond_str, then_str, else_str)
+                    }
+                    None => format!("if {} {{ {} }} else {{ \"\".to_string() }}", cond_str, then_str),
+                }
+            }
             AuraExpr::Literal(s) => format!("\"{}\".to_string()", s),
             AuraExpr::Int(n) => n.to_string(),
             AuraExpr::Float(n) => {
