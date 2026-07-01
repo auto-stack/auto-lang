@@ -104,6 +104,15 @@ pub struct RustGenerator {
     init_api_info: Option<InitApiInfo>,
 }
 
+// Plan 346: Thread-local store for the root widget's state field names + types.
+// Populated when the root widget (App) is generated; read by child widgets
+// (EditorPanel, etc.) so their structs include parent state fields for unified
+// state access (mirrors VM path's Plan 337 override_state_obj_id).
+thread_local! {
+    static ROOT_STATE_FIELDS: std::cell::RefCell<Vec<(String, String)>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
 /// Detected Init handler pattern: `self.state_var = api_func()`
 struct InitApiInfo {
     /// State variable being assigned (e.g., "notes")
@@ -555,13 +564,16 @@ impl RustGenerator {
         code.push_str("#[derive(Debug)]\n");
         code.push_str(&format!("pub struct {} {{\n", widget.name));
 
+        // Track this widget's own fields (for dedup with root state fields).
+        let mut own_fields: std::collections::HashSet<String> = std::collections::HashSet::new();
+
         // Props (from widget signature, e.g., EditorPanel's `note` parameter)
         for prop in &widget.props {
-            // Use pre-computed prop type (which includes Value upgrade from initial pass)
             let field_type = self.prop_types.get(&prop.name)
                 .cloned()
                 .unwrap_or_else(|| self.prop_rust_type(prop));
             code.push_str(&format!("    pub {}: {},\n", prop.name, field_type));
+            own_fields.insert(prop.name.clone());
         }
 
         // State variables (use refined types from state_types)
@@ -569,6 +581,33 @@ impl RustGenerator {
             let field_name = &state.name;
             let field_type = self.state_rust_type(state);
             code.push_str(&format!("    pub {}: {},\n", field_name, field_type));
+            own_fields.insert(field_name.clone());
+        }
+
+        // Plan 346: If this is a child widget (not App/root), add root state
+        // fields that it doesn't already have. This mirrors VM path's Plan 337
+        // unified state — child handlers can reference parent state fields.
+        let is_root = widget.name == "App";
+        if is_root {
+            // Record root state fields for child widgets to pick up.
+            ROOT_STATE_FIELDS.with(|rsf| {
+                let mut fields = rsf.borrow_mut();
+                fields.clear();
+                for state in &widget.state_vars {
+                    let ty = self.state_rust_type(state);
+                    fields.push((state.name.clone(), ty));
+                }
+            });
+        } else {
+            // Add root state fields not already in own_fields.
+            ROOT_STATE_FIELDS.with(|rsf| {
+                let fields = rsf.borrow();
+                for (name, ty) in fields.iter() {
+                    if !own_fields.contains(name) {
+                        code.push_str(&format!("    pub {}: {},\n", name, ty));
+                    }
+                }
+            });
         }
 
         code.push_str("}\n");
@@ -619,6 +658,36 @@ impl RustGenerator {
         for state in &widget.state_vars {
             let init = self.expr_to_rust(&state.initial);
             code.push_str(&format!("            {}: {},\n", state.name, init));
+        }
+
+        // Plan 346: Initialize root state fields (for child widgets) with defaults.
+        if widget.name != "App" {
+            let own_names: std::collections::HashSet<String> = widget.state_vars.iter()
+                .map(|s| s.name.clone())
+                .collect();
+            let own_props: std::collections::HashSet<String> = widget.props.iter()
+                .map(|p| p.name.clone())
+                .collect();
+            ROOT_STATE_FIELDS.with(|rsf| {
+                let fields = rsf.borrow();
+                for (name, ty) in fields.iter() {
+                    if !own_names.contains(name) && !own_props.contains(name) {
+                        // Generate a type-appropriate default value.
+                        let default_val = if ty.starts_with("Vec<") {
+                            "vec![]".to_string()
+                        } else if ty == "serde_json::Value" {
+                            "serde_json::Value::Null".to_string()
+                        } else if ty == "i32" {
+                            "0".to_string()
+                        } else if ty == "bool" {
+                            "false".to_string()
+                        } else {
+                            "\"\".to_string()".to_string()
+                        };
+                        code.push_str(&format!("            {}: {},\n", name, default_val));
+                    }
+                }
+            });
         }
 
         if sync_init {
@@ -702,8 +771,10 @@ impl RustGenerator {
                 // Tick handler: guard with running check if "running" field exists
                 let is_tick_guarded = variant_name == "Tick" && self.state_types.contains_key("running");
                 if has_payload {
-                    // Use a named binding instead of _ so handler body can reference it
-                    code.push_str(&format!("            {}::{}(id) => {{\n", msg_name, variant_name));
+                    // Plan 346: use the source parameter name (e.g., `i` from
+                    // `.SelectNote(i)`) as the match binding, not a hardcoded `id`.
+                    let payload_name = self.extract_payload_name(pattern);
+                    code.push_str(&format!("            {}::{}({}) => {{\n", msg_name, variant_name, payload_name));
                 } else {
                     code.push_str(&format!("            {}::{} => {{\n", msg_name, variant_name));
                 }
@@ -1787,6 +1858,13 @@ impl RustGenerator {
                 // and we're iterating a Value collection, insert .filter() before .map()
                 let search_filter = if is_value_iter && self.state_types.contains_key("search") {
                     let var_ref = var.clone();
+                    // When enumerate() is used (index present), the filter closure
+                    // receives &(usize, &Value) — destructure to access the element.
+                    let filter_pattern = if index.is_some() {
+                        format!("(_, {})", var_ref)
+                    } else {
+                        var_ref.clone()
+                    };
                     Some(format!(
                         ".filter(|{}| {{ \
                             let __q = self.search.to_lowercase(); \
@@ -1794,14 +1872,16 @@ impl RustGenerator {
                             let __t = {}[\"title\"].as_str().unwrap_or_default().to_lowercase(); \
                             __t.contains(&__q) \
                         }})",
-                        var_ref, var_ref
+                        filter_pattern, var_ref
                     ))
                 } else {
                     None
                 };
 
                 if let Some(idx) = index {
-                    format!("{}.enumerate(){}{}.map(|({}, {})| {{ {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", idx, var, body_code.join("\n"))
+                    // Cast the usize index to i32 so comparisons with state
+                    // fields (typically i32) type-check.
+                    format!("{}.iter().enumerate(){}{}.map(|({}, {})| {{ let {} = {} as i32; {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", idx, var, idx, idx, body_code.join("\n"))
                 } else {
                     format!("{}.iter(){}{}.map(|{}| {{ {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", var, body_code.join("\n"))
                 }
@@ -1921,13 +2001,9 @@ impl RustGenerator {
         let mut fields = Vec::new();
         for state in &widget.state_vars {
             let name = &state.name;
-            // Skip collection types and id types — these don't map to child fields
-            let ty = self.state_types.get(name).map(|s| s.as_str()).unwrap_or("");
-            if ty.starts_with("Vec<") || name.ends_with("_id") || name == "notes" || name == "search" {
-                continue;
-            }
-            // State vars like "editing", "edit_title", "edit_body" are candidates
-            // to sync with child components that have the same fields
+            // Plan 346: include ALL parent state fields for child sync. The
+            // child struct needs these fields so child handlers that reference
+            // parent state (via Plan 337 unified state in VM mode) can compile.
             fields.push(name.clone());
         }
         fields
@@ -2170,25 +2246,36 @@ impl RustGenerator {
                 let value_str = self.expr_to_rust(expr);
                 match key {
                     "class" | "className" => {
-                        // Strip quotes and .to_string() suffix from expression
-                        let class_str = value_str.trim_matches('"')
-                            .trim_end_matches(".to_string()")
-                            .trim_matches('"');
-                        // Use .style() directly — same Style::parse() path as VM mode
-                        if class_str.is_empty() {
-                            builder.to_string()
+                        // Plan 346: for Literal strings, use .style("literal");
+                        // for dynamic expressions (If/Binary/StateRef), use
+                        // .style(expr) without quotes (expr already produces String).
+                        if matches!(expr, AuraExpr::Literal(_)) {
+                            let class_str = value_str.trim_matches('"')
+                                .trim_end_matches(".to_string()")
+                                .trim_matches('"');
+                            if class_str.is_empty() {
+                                builder.to_string()
+                            } else {
+                                format!("{}.style(\"{}\")", builder, class_str)
+                            }
                         } else {
-                            format!("{}.style(\"{}\")", builder, class_str)
+                            format!("{}.style({}.as_str())", builder, value_str)
                         }
                     }
                     "style" => {
-                        let style_str = value_str.trim_matches('"')
-                            .trim_end_matches(".to_string()")
-                            .trim_matches('"');
-                        if style_str.is_empty() {
-                            builder.to_string()
+                        // Plan 346: same as class — Literal uses quoted string,
+                        // dynamic expressions use unquoted Rust expression.
+                        if matches!(expr, AuraExpr::Literal(_)) {
+                            let style_str = value_str.trim_matches('"')
+                                .trim_end_matches(".to_string()")
+                                .trim_matches('"');
+                            if style_str.is_empty() {
+                                builder.to_string()
+                            } else {
+                                format!("{}.style(\"{}\")", builder, style_str)
+                            }
                         } else {
-                            format!("{}.style(\"{}\")", builder, style_str)
+                            format!("{}.style({}.as_str())", builder, value_str)
                         }
                     }
                     "padding" => format!("{}.padding({})", builder, value_str),
@@ -2308,12 +2395,36 @@ impl RustGenerator {
     /// Extract variant name from pattern (e.g., "Msg::Inc" or ".Inc" -> "Inc")
     fn extract_variant_name(&self, pattern: &str) -> String {
         if pattern.starts_with('.') {
-            pattern[1..].to_string()
+            // .SelectNote(i) → SelectNote
+            let after_dot = &pattern[1..];
+            if let Some(paren) = after_dot.find('(') {
+                after_dot[..paren].to_string()
+            } else {
+                after_dot.to_string()
+            }
         } else if let Some(variant) = pattern.split("::").last() {
             variant.to_string()
         } else {
             pattern.to_string()
         }
+    }
+
+    /// Plan 346: Extract the payload parameter name from a handler pattern.
+    /// `.SelectNote(i)` → `i`. The pattern stored by the aura extractor may
+    /// be just "SelectNote" (without the arg). In that case, scan the handler
+    /// body for the first identifier that's likely the payload parameter.
+    /// Falls back to `_payload` if nothing found.
+    fn extract_payload_name(&self, pattern: &str) -> String {
+        if let Some(start) = pattern.find('(') {
+            if let Some(end) = pattern.rfind(')') {
+                let inner = &pattern[start + 1..end].trim();
+                if !inner.is_empty() {
+                    return inner.to_string();
+                }
+            }
+        }
+        // Fallback: common parameter names for single-int payloads.
+        "i".to_string()
     }
 
     /// Generate handler body from LogicPayload
@@ -3178,7 +3289,15 @@ impl RustGenerator {
                 if s.contains('.') { s } else { format!("{}.0", n) }
             }
             AuraExpr::Bool(b) => b.to_string(),
-            AuraExpr::StateRef(name) => format!("self.{}", name),
+            AuraExpr::StateRef(name) => {
+                // Plan 346: loop variables (for i, note in ...) are locals,
+                // not state fields — don't prefix with self.
+                if self.loop_vars.contains(&name.to_string()) {
+                    name.to_string()
+                } else {
+                    format!("self.{}", name)
+                }
+            }
             AuraExpr::Binary { left, op, right } => {
                 // Detect string concatenation: use format! instead of +
                 // because Rust's + only works with String + &str, not String + String
