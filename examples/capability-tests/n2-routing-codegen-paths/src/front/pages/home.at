@@ -1,0 +1,8 @@
+widget home {
+    view {
+        col {
+            text "home page" { }
+            style: "p-4"
+        }
+    }
+}

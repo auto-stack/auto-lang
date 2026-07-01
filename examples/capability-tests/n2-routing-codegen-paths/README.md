@@ -1,9 +1,15 @@
-# n2-routing-codegen-paths (canary, RED)
+# n2-routing-codegen-paths (canary, GREEN)
 
-Status: **RED** — the gap feature is not yet implemented; `auto build` is
-expected to fail until it lands. See `src/front/app.at` for the desired
-behavior and the "What's needed" note at its top.
+Status: **GREEN** — `auto build` + `vue-tsc` + `vite build` all pass.
 
-This canary is the executable spec for the gap; it flips to GREEN when the
-feature in [Plan 345](../../../docs/plans/345-gap-canary-tests.md) is
-implemented.
+The original "gap N2" (router imports `@/pages/<name>.vue` that don't exist)
+turned out to be an **undocumented convention**, not a codegen bug:
+
+- Route-target pages MUST live in `src/front/pages/<name>.at`.
+- The generator (`cmd_vue.rs`) emits each to `src/pages/<name>.vue` — the
+  exact path `router/index.ts` imports.
+- Declaring page widgets inline in `app.at` does NOT emit them, so the
+  router's imports dangle (the RED state).
+
+So this canary now documents the correct usage. The codegen itself is sound.
+See [Plan 345](../../../docs/plans/345-gap-canary-tests.md).

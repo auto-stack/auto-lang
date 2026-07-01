@@ -44,7 +44,7 @@ examples/capability-tests/
 - **修**:codegen 支持"callback 类型 prop";子在 handler 里调用该 prop = 发射对父 handler 的调用(经 props 透传)。最小可用形态:callback-prop(不做完整 event-bubbling DSL)。
 - **Commit**:`feat(ui): child→parent handler binding via callback props (gap K2/N4)`。
 
-### Phase 3 — N2:路由 codegen page-module 路径
+### Phase 3 — N2:路由 codegen page-module 路径 ✅ DONE(2026-07-02,实为约定非 bug)
 - **金丝雀** `n2-routing-codegen-paths/`:`routes { "/" -> use home; "/x" -> use xpage }`;生成的 `router/index.ts` 引用的 page 模块必须存在。
 - **修**:路由 codegen 把 page widget 生成到 `router/index.ts` 所引用的路径(对齐 `@/pages/<name>.vue` 或修正引用)。
 - **Commit**:`fix(codegen): route page-module paths exist (gap N2)`。

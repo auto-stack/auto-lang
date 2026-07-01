@@ -1,17 +1,13 @@
-// Canary N2 — routing codegen must generate the page modules it references.
-// STATUS: RED (feature partially broken).
+// Canary N2 — routing codegen. GREEN.
 //
-// Desired: `routes { "/" -> use home; "/other" -> use other_page }` + `outlet`
-// generates a working vue-router config where every referenced page module
-// exists at the path router/index.ts imports.
+// Convention (the actual "gap" was undocumented convention, not a codegen bug):
+// route-target pages MUST live in `src/front/pages/<name>.at`. The generator
+// (cmd_vue.rs) emits each to `src/pages/<name>.vue` — exactly the path that
+// the generated `router/index.ts` imports (`@/pages/<name>.vue`). Declaring
+// page widgets inline in app.at does NOT work — they won't be emitted, and the
+// router's imports dangle (the original RED failure).
 //
-// Current failure (gap enumeration N2):
-//   router/index.ts: Cannot find module '@/pages/<name>.vue'
-// The router config references page modules that aren't generated at that path.
-//
-// What's needed (codegen): route page widgets must be emitted to the exact
-// path the generated router config imports (align `@/pages/<name>.vue` with
-// where the page .vue is written, or fix the import path).
+// Layout: app.at = router shell (routes + outlet); pages/*.at = the targets.
 
 widget App {
     routes {
@@ -21,24 +17,6 @@ widget App {
     view {
         col {
             outlet
-            style: "p-4"
-        }
-    }
-}
-
-widget home {
-    view {
-        col {
-            text "home page" { }
-            style: "p-4"
-        }
-    }
-}
-
-widget other_page {
-    view {
-        col {
-            text "other page" { }
             style: "p-4"
         }
     }

@@ -39,3 +39,7 @@
 ## 后续发现(2026-06-30,K2 实现期)
 
 **OOM:callback + 计算型 msg 实参**:子 widget 同时(1)收到 callback prop、(2)在事件绑定里用计算型 msg 实参(如 `onclick: .Bump(.n + 1)`)时,codegen 触发 51GB 内存分配( runaway)。单独 callback 或单独计算实参均不触发;是 callback codegen 与 Plan 339(`AuraExpr::If`)的交互。canary 用字面实参 `.Bump(1)` 绕过(演示 callback 通);此 OOM 单独跟踪为 codegen bug。
+
+## N2 复核(2026-07-02):实为"约定未文档化",非 codegen bug
+
+N2 经 canary 复核:**路由 codegen 本身正确**。原探针把 page widget 内联在 app.at,导致 page 未生成、router 的 `@/pages/<name>.vue` import 悬空。约定是:路由目标页必须放 `src/front/pages/<name>.at`,`cmd_vue.rs` 才会生成到 `src/pages/<name>.vue`(与 router import 路径对齐)。canary 按约定写即绿。归档为"文档/约定"项,非语言/codegen 缺口。

@@ -1,0 +1,8 @@
+widget other_page {
+    view {
+        col {
+            text "other page" { }
+            style: "p-4"
+        }
+    }
+}
