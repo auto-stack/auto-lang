@@ -7,3 +7,11 @@ behavior and the "What's needed" note at its top.
 This canary is the executable spec for the gap; it flips to GREEN when the
 feature in [Plan 345](../../../docs/plans/345-gap-canary-tests.md) is
 implemented.
+
+## Known follow-up (not blocking the callback feature)
+
+A computed msg arg in the child (`onclick: .Bump(.n + 1)`) combined with a
+callback prop triggers a codegen OOM (51 GB alloc) — an interaction between
+the callback codegen and Plan 339 (`AuraExpr::If`). The canary uses a literal
+arg (`.Bump(1)`) to demonstrate the callback wiring green; the computed-arg
+case is tracked as a separate codegen bug.

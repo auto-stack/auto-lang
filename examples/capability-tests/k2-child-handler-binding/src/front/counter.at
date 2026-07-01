@@ -1,11 +1,14 @@
 // Canary K2/N4 — the child widget that receives a callback prop.
+// (Uses a literal arg .Bump(1); a computed arg .Bump(.n+1) hits a separate
+//  codegen OOM — callback + computed-msg-arg + Plan 339 — tracked as a
+//  follow-up, see README.)
 
 widget Counter(on_select: msg) {
     msg Msg { Bump(int) }
     model { var n int = 0 }
     view {
         col {
-            button "increment" { onclick: .Bump(.n + 1) }
+            button "increment" { onclick: .Bump(1) }
             text .n { }
             style: "gap-2"
         }

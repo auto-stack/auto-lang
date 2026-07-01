@@ -35,3 +35,7 @@
 ## 输出
 
 本清单直接驱动下一计划:**gap 金丝雀测试**(每差距一个最小 Auto UI 工程,初始红、特性落地后绿),按上述优先级逐个实现。
+
+## 后续发现(2026-06-30,K2 实现期)
+
+**OOM:callback + 计算型 msg 实参**:子 widget 同时(1)收到 callback prop、(2)在事件绑定里用计算型 msg 实参(如 `onclick: .Bump(.n + 1)`)时,codegen 触发 51GB 内存分配( runaway)。单独 callback 或单独计算实参均不触发;是 callback codegen 与 Plan 339(`AuraExpr::If`)的交互。canary 用字面实参 `.Bump(1)` 绕过(演示 callback 通);此 OOM 单独跟踪为 codegen bug。
