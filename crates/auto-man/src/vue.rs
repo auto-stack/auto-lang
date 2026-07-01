@@ -607,6 +607,10 @@ fn ensure_pnpm_build_approvals(dir: &Path) -> bool {
     for d in &deps {
         content.push_str(&format!("  {}: true\n", d));
     }
+    // Plan 346: Disable pnpm 11.x supply-chain minimum-release-age check.
+    // Without this, freshly-published transitive deps (caniuse-lite, etc.)
+    // are rejected with ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION.
+    content.push_str("minimumReleaseAge: 0\n");
     match fs::write(&yaml_path, content) {
         Ok(_) => true,
         Err(_) => false,
