@@ -3403,6 +3403,23 @@ impl VueGenerator {
                         classes.push(s.clone());
                     }
                 }
+                AuraPropValue::Expr(AuraExpr::If { cond, then_branch, else_branch }) => {
+                    // Plan 346: conditional style → Vue :class ternary.
+                    // style: if i == .active_index { "hl" } else { "normal" }
+                    // → :class="i === active_index ? 'hl' : 'normal'"
+                    let cond_str = self.expr_to_vue_bound_value(cond).unwrap_or_else(|_| "false".to_string());
+                    let then_str = match then_branch.as_ref() {
+                        AuraExpr::Literal(s) => s.clone(),
+                        _ => String::new(),
+                    };
+                    let else_str = else_branch.as_ref()
+                        .and_then(|e| match e.as_ref() {
+                            AuraExpr::Literal(s) => Some(s.clone()),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    dynamic_binding = Some(format!("{} ? '{}' : '{}'", cond_str, then_str, else_str));
+                }
                 _ => {}
             }
         }
