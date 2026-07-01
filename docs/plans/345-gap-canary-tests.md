@@ -33,7 +33,7 @@ examples/capability-tests/
 
 ## 3. 优先级与阶段(按 枪杆 × 范围,见枚举 §优先级)
 
-### Phase 1 — N1:`.contains` → `.includes` codegen 修(最高 ROI)
+### Phase 1 — N1:`.contains` → `.includes` codegen 修(最高 ROI)✅ DONE(2026-06-30)
 - **金丝雀** `n1-contains-includes/`:字符串 `.contains` + 列表 `.contains` 各一例;`auto build` + vue-tsc 须过。
 - **修**:codegen 发射 `.includes(...)`(字符串与列表均然;或在 AST 层把 `.contains` 语义映射到 JS `.includes`)。
 - **附带受益**:025 的 latent vue-tsc 失败随之消失(回归验证)。
