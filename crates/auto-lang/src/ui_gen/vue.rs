@@ -858,9 +858,10 @@ pub struct VueGenerator {
     /// When inside a `for note in .notes { ... }`, this is set to Some("note")
     current_loop_var: Option<String>,
 
-    /// Handlers that need a loop-id parameter (e.g., "SelectNote" needs `id: any`)
-    /// Populated during template generation, consumed during script generation
-    loop_param_handlers: HashSet<String>,
+    /// Handlers that need a loop-id parameter (e.g., "SelectNote" needs `i: any`)
+    /// Populated during template generation, consumed during script generation.
+    /// Maps handler name → loop variable name (e.g., "SelectNote" → "i").
+    loop_param_handlers: HashMap<String, String>,
 
     /// Whether to generate handleChildDelete function (auto-wired when sub-widget emits Delete)
     needs_child_delete_handler: bool,
@@ -934,7 +935,7 @@ impl VueGenerator {
             use_curve_type: false,
             known_sub_widgets: HashSet::new(),
             current_loop_var: None,
-            loop_param_handlers: HashSet::new(),
+            loop_param_handlers: HashMap::new(),
             needs_child_delete_handler: false,
             explicit_api_imports: false,
         }
@@ -1557,8 +1558,8 @@ impl VueGenerator {
 
             // Build params: check for loop-param handlers first, then user-defined params
             let pattern_key = format!(".{}", handler_name);
-            let params_str = if self.loop_param_handlers.contains(handler_name) {
-                "id: any".to_string()
+            let params_str = if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
+                format!("{}: any", loop_var)
             } else {
                 widget.handler_params.get(&pattern_key)
                     .map(|params| {
@@ -1578,10 +1579,13 @@ impl VueGenerator {
             };
 
             // For loop-param handlers with empty body, auto-generate active_id assignment
-            let auto_body = if self.loop_param_handlers.contains(handler_name) && handler_body.is_empty() {
-                // Try to find a state variable that looks like an active_id selector
-                if let Some(target_var) = self.find_active_id_var(handler_name) {
-                    Some(format!("{}.value = id", target_var))
+            let auto_body = if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
+                if handler_body.is_empty() {
+                    if let Some(target_var) = self.find_active_id_var(handler_name) {
+                        Some(format!("{}.value = {}", target_var, loop_var))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -1609,14 +1613,14 @@ impl VueGenerator {
             }
             let return_type = if self.use_typescript { ": void" } else { "" };
             // Check if this stub needs loop-param
-            let params_str = if self.loop_param_handlers.contains(handler_name) {
-                "id: any".to_string()
+            let params_str = if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
+                format!("{}: any", loop_var)
             } else {
                 String::new()
             };
-            let auto_body = if self.loop_param_handlers.contains(handler_name) {
+            let auto_body = if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
                 if let Some(target_var) = self.find_active_id_var(handler_name) {
-                    Some(format!("{}.value = id", target_var))
+                    Some(format!("{}.value = {}", target_var, loop_var))
                 } else {
                     None
                 }
@@ -2068,9 +2072,9 @@ impl VueGenerator {
                         // Only append if handler doesn't already have params from aura_event
                         if let Some(ref loop_var) = self.current_loop_var {
                             if aura_event.params.is_empty() {
-                                handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                                handler_fn = format!("{}({})", handler_fn, loop_var);
                             }
-                            self.loop_param_handlers.insert(handler_name.clone());
+                            self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
                         }
                         self.used_handlers.insert(handler_name);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
@@ -2219,9 +2223,9 @@ impl VueGenerator {
                         // pass the loop variable's .id as argument (e.g., SelectNote(note.id))
                         if let Some(ref loop_var) = self.current_loop_var {
                             if aura_event.params.is_empty() {
-                                handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                                handler_fn = format!("{}({})", handler_fn, loop_var);
                             }
-                            self.loop_param_handlers.insert(handler_name.clone());
+                            self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
                         }
                         self.used_handlers.insert(handler_name);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
@@ -7347,9 +7351,9 @@ impl VueGenerator {
             // Only append if handler doesn't already have params from aura_event
             if let Some(ref loop_var) = self.current_loop_var {
                 if aura_event.params.is_empty() {
-                    handler_fn = format!("{}({}.id)", handler_fn, loop_var);
+                    handler_fn = format!("{}({})", handler_fn, loop_var);
                 }
-                self.loop_param_handlers.insert(handler_name.clone());
+                self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
             }
             self.used_handlers.insert(handler_name);
             attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
