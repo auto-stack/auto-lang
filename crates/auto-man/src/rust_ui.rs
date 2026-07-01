@@ -1275,7 +1275,11 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
 
     println!(
         "{}",
-        "Running VM interpreter UI (backend: vm, merged)".bright_cyan()
+        if split_mode {
+            "Running VM interpreter UI (backend: vm, split over HTTP)".bright_cyan()
+        } else {
+            "Running VM interpreter UI (backend: vm, merged)".bright_cyan()
+        }
     );
 
     // Change CWD to src/front/ so `use` imports resolve correctly

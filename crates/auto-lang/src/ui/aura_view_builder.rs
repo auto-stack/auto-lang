@@ -433,7 +433,10 @@ impl<'a> AuraViewBuilder<'a> {
                 // match misses the heap-id form and silently renders an empty loop.
                 let array: Vec<Value> = match self.read_state_as_vec(state_name) {
                     Ok(v) => v,
-                    _ => return View::Empty,
+                    Err(e) => {
+                        log::warn!("view_builder: read_state_as_vec('{}') failed: {}", state_name, e);
+                        return View::Empty;
+                    }
                 };
                 let child_views: Vec<View<DynamicMessage>> = array.iter().enumerate()
                     .filter_map(|(i, item)| {
