@@ -336,6 +336,20 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             write!(out, ".length").ok();
                             return;
                         }
+                        // Plan 345 (gap N1): Auto `.contains` -> JS `.includes`
+                        // (JS strings and arrays both use .includes, not .contains).
+                        "contains" => {
+                            transpile_expr(object, ctx, out);
+                            write!(out, ".includes(").ok();
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    write!(out, ", ").ok();
+                                }
+                                transpile_expr(&arg.get_expr(), ctx, out);
+                            }
+                            write!(out, ")").ok();
+                            return;
+                        }
                         "remove" => {
                             // AutoLang notes.remove(idx) → TypeScript notes.value.splice(idx, 1)
                             transpile_expr(object, ctx, out);

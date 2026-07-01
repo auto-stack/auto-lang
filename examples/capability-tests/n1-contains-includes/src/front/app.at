@@ -1,0 +1,32 @@
+// Canary N1 — `.contains` on string and list must map to JS `.includes`.
+// RED today: generated Vue uses `.contains()` → vue-tsc fails
+//   ("Property 'contains' does not exist on type 'string'/'any[]'").
+// GREEN when codegen emits `.includes(...)` for both.
+
+widget App {
+    msg Msg { CheckStr(str), CheckList(str) }
+    model {
+        var haystack str = "hello world"
+        var tags []str = ["work", "intro"]
+        var str_hit bool = false
+        var list_hit bool = false
+    }
+    view {
+        col {
+            text .haystack { }
+            text .str_hit { }
+            text .list_hit { }
+            button "check str" { onclick: .CheckStr("world") }
+            button "check list" { onclick: .CheckList("work") }
+            style: "p-4 gap-2"
+        }
+    }
+    on {
+        .CheckStr(needle) -> {
+            .str_hit = .haystack.contains(needle)
+        }
+        .CheckList(t) -> {
+            .list_hit = .tags.contains(t)
+        }
+    }
+}

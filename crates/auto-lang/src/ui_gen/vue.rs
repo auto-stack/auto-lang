@@ -3658,6 +3658,9 @@ impl VueGenerator {
                     .collect::<Result<Vec<_>, _>>()?;
                 match method.as_str() {
                     "len" => Ok(format!("{}.length", object_js)),
+                    // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
+                    // for both strings and arrays (JS has no `.contains`).
+                    "contains" => Ok(format!("{}.includes({})", object_js, args_js.join(", "))),
                     "to_string" => Ok(format!("{}.toString()", object_js)),
                     "to_int" => {
                         if args_js.is_empty() {
