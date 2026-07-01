@@ -2050,10 +2050,19 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     println!("▶ Step {}/{}: Copying public assets...", current_step, total_steps);
     project.copy_public_assets()?;
 
-    // Step 5.5: Start API backend server if one exists in the shared workspace
+    // Step 5.5: Start API backend server.
+    // Plan 346: --server=vm starts AutoVM HTTP server; --server=rust (default)
+    // starts the a2r-generated Rust axum server.
     let mut _api_child: Option<std::process::Child> = None;
-    if let Some(child) = crate::rust_ui::start_api_server(root_dir) {
-        _api_child = Some(child);
+    let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_else(|_| "rust".to_string());
+    if backend_impl == "vm" {
+        // Vue+VM: AutoVM HTTP server as backend.
+        crate::rust_ui::start_vm_server(root_dir);
+    } else {
+        // Vue+Rust: a2r-generated Rust axum server.
+        if let Some(child) = crate::rust_ui::start_api_server(root_dir) {
+            _api_child = Some(child);
+        }
     }
 
     // Step 6: npm run dev
@@ -2065,7 +2074,10 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // Cleanup: stop API backend server when dev server exits
     if let Some(mut child) = _api_child {
         let _ = child.kill();
-        println!("  ✓ API server stopped");
+        println!("  ✓ API server (Rust) stopped");
+    } else if backend_impl == "vm" {
+        // VM server runs on a background thread — process exit cleans it up.
+        println!("  ✓ API server (VM) stopped");
     }
 
     Ok(())

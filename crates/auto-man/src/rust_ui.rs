@@ -1043,7 +1043,7 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
     }
 
     println!();
-    println!("{}", "▶ Starting API backend server...".bright_cyan());
+    println!("{}", "▶ Starting API backend server (Rust axum)...".bright_cyan());
 
     let cargo_toml = api_backend_dir.join("Cargo.toml");
 
@@ -1124,7 +1124,7 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
 pub fn stop_api_server(child: &mut Option<std::process::Child>) {
     if let Some(c) = child {
         let _ = c.kill();
-        println!("  {} API server stopped", "✓".bright_green());
+        println!("  {} API server (Rust) stopped", "✓".bright_green());
     }
 }
 
@@ -1135,7 +1135,7 @@ pub fn stop_api_server(child: &mut Option<std::process::Child>) {
 /// for the process lifetime (cleaned up when the process exits).
 ///
 /// Returns true if the server became ready, false on timeout / missing api.at.
-fn start_vm_server(project_dir: &Path) -> bool {
+pub fn start_vm_server(project_dir: &Path) -> bool {
     let api_path = project_dir.join("src").join("back").join("api.at");
     if !api_path.exists() {
         eprintln!("  {} VM split mode requires src/back/api.at (not found)", "⚠".bright_yellow());
