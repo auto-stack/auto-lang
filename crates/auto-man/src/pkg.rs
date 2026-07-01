@@ -186,7 +186,48 @@ pub fn install(cwd: &Path) -> Result<(), String> {
 pub fn run_script(script: &str, extra_args: &[&str], cwd: &Path) -> Result<(), String> {
     let mut args = vec!["run", script];
     args.extend(extra_args);
-    run_command_live(install_cmd(), &args, cwd)
+    // Plan 346: dev server (vite) needs interactive mode — do NOT set CI=true
+    // (CI=true disables Vite's TTY watcher, so `q` to quit stops working).
+    // Also inherit stdin so the user can type `q` + Enter to stop Vite.
+    run_script_live(install_cmd(), &args, cwd)
+}
+
+/// Run a package script (e.g., `pnpm run dev`) with full interactivity.
+/// Unlike `run_command_live`, this does NOT set CI=true and DOES inherit
+/// stdin, so interactive tools like Vite's dev server work properly
+/// (press `q` + Enter to quit).
+pub fn run_script_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    let status = {
+        let mut full_args = vec!["/C", cmd];
+        full_args.extend(args);
+        Command::new("cmd")
+            .args(&full_args)
+            .current_dir(cwd)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .stdin(Stdio::inherit())
+            .status()
+            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?
+    };
+
+    #[cfg(not(windows))]
+    let status = {
+        Command::new(cmd)
+            .args(args)
+            .current_dir(cwd)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .stdin(Stdio::inherit())
+            .status()
+            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?
+    };
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("{} exited with code {:?}", cmd, status.code()))
+    }
 }
 
 /// Run a one-off package via `pnpm dlx` or `npx --yes`.
