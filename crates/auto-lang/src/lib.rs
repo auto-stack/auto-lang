@@ -656,6 +656,10 @@ async fn execute_autovm_with_path(code: &str, capture: bool, path: Option<&str>)
 
     let mut linker = Linker::new();
     let dep_modules = session.take_compiled_modules();
+    // Plan 345: capture dependency module names (for __module_init lookup).
+    let dep_module_names: Vec<String> = dep_modules.iter()
+        .map(|m| m.name.clone())
+        .collect();
     for module in dep_modules {
         linker.add_module(module);
     }
@@ -709,6 +713,15 @@ async fn execute_autovm_with_path(code: &str, capture: bool, path: Option<&str>)
     vm_debug!("DEBUG: Linked code size: {} bytes", linked_code.len());
     vm_debug!("DEBUG: Global symbols: {:?}", global_symbols);
 
+    // Plan 345: Capture module init addresses BEFORE global_symbols is moved
+    // into VirtualFlash. Each dep module's __module_init_{name} fn address.
+    let module_init_addrs: Vec<(String, usize)> = dep_module_names.iter()
+        .filter_map(|name| {
+            let sym = format!("__module_init_{}", name);
+            global_symbols.get(&sym).map(|&addr| (name.clone(), addr as usize))
+        })
+        .collect();
+
     // 4. Load into VM
     // Plan 073: Include object_keys and object_types for object literal support
     // Pass global_symbols as exports_by_name for CALL_SPEC dynamic dispatch
@@ -758,6 +771,20 @@ async fn execute_autovm_with_path(code: &str, capture: bool, path: Option<&str>)
     };
 
     // Plan 118: Store the codegen's result type for formatting
+
+    // Plan 345: Execute dependency module initializers (__module_init_{name})
+    // BEFORE the main task. Each dep module's top-level `var` declarations are
+    // wrapped into a __module_init_{name} fn (see compile.rs). Running them here
+    // initializes cross-module globals (e.g. db.notes) so that handler fns can
+    // read them. Without this, `notes` is nil and db.all_notes() crashes.
+    for (mod_name, init_addr) in &module_init_addrs {
+        vm_debug!("DEBUG: Running module init '{}' at 0x{:x}", mod_name, init_addr);
+        let init_task_id = vm.spawn_task(*init_addr, 65536);
+        // Run this init task to completion before continuing.
+        vm.run_task_loop().await;
+        // Clean up the init task.
+        vm.tasks.remove(&init_task_id);
+    }
 
     // 5. Execute - Find main/test entry point
     let task_id = vm.spawn_task(main_entry, 65536);
