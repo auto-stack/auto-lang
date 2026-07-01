@@ -231,16 +231,17 @@ export default defineConfig({
     // Tauri sets TAURI_ENV before running vite
     open: !process.env.TAURI_ENV,
     // Proxy API requests to Rust backend.
-    // AUTO_HTTP_PORT lets multiple `auto run` instances coexist; default 8080.
+    // Read the backend port at RUNTIME from AUTO_HTTP_PORT (set by `auto run -B`),
+    // so the proxy target updates without regenerating vite.config.ts.
     proxy: {
       '/api': {
-        target: process.env.AUTO_HTTP_PROXY || '__PROXY_TARGET__',
+        target: process.env.AUTO_HTTP_PROXY || `http://127.0.0.1:${process.env.AUTO_HTTP_PORT || __PROXY_PORT__}`,
         changeOrigin: true,
       }
     }
   }
 })
-"#.replace("__PROXY_TARGET__", &proxy_target)
+"#.replace("__PROXY_PORT__", &crate::util::http_port().to_string())
 }
 
 fn generate_tsconfig() -> String {
