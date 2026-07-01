@@ -1249,15 +1249,27 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     // 进程，前端 VM 通过 HTTP 调用后端 API（codegen 把 #[api] 调用改写成 HTTP）。
     // AUTO_VM_WITH_HTTP=1 是旧开关，等价于分离模式（向后兼容）。
     //
-    // Plan 340 fix: 分离模式启动 **AutoVM HTTP server**（run_file(api.at)），
-    // 而非 a2r 转译的 Rust 后端（start_api_server，那需要预生成的 Cargo.toml，
-    // 且是 VM+Rust 而非 VM+VM）。这才是名副其实的 VM+VM 分离。
+    // Plan 340 fix: 分离模式启动独立后端 HTTP 进程。后端可以是 AutoVM server
+    // （VM+VM split）或 a2r 转译的 Rust axum server（VM+Rust）。
+    // AUTO_BACKEND_IMPL=rust → Rust 后端（start_api_server）
+    // AUTO_BACKEND_IMPL=vm 或未设 → AutoVM 后端（start_vm_server）
     let split_mode = std::env::var("AUTO_VM_MERGE").as_deref() == Ok("0")
         || std::env::var("AUTO_VM_WITH_HTTP").as_deref() == Ok("1");
+    let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_else(|_| "vm".to_string());
     let mut _api_child = if split_mode {
-        // VM+VM split: AutoVM HTTP server as backend.
-        start_vm_server(project_dir);
-        None
+        if backend_impl == "rust" {
+            // VM+Rust split: ensure the Rust axum server is generated, then
+            // start it. generate_api("rust") writes Cargo.toml + main.rs +
+            // api.rs + types.rs from #[api] annotations (idempotent).
+            if let Err(e) = crate::api_gen::generate_api(project_dir, "rust") {
+                eprintln!("  {} Failed to generate Rust backend: {}", "⚠".bright_yellow(), e);
+            }
+            start_api_server(project_dir)
+        } else {
+            // VM+VM split: AutoVM HTTP server as backend.
+            start_vm_server(project_dir);
+            None
+        }
     } else {
         println!();
         println!(
@@ -1276,7 +1288,7 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!(
         "{}",
         if split_mode {
-            "Running VM interpreter UI (backend: vm, split over HTTP)".bright_cyan()
+            format!("Running VM interpreter UI (backend: {}, split over HTTP)", backend_impl).bright_cyan()
         } else {
             "Running VM interpreter UI (backend: vm, merged)".bright_cyan()
         }
