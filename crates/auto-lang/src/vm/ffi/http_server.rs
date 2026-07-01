@@ -190,6 +190,21 @@ fn heap_object_to_json(
             }
             return Some(format!("{{{}}}", parts.join(", ")));
         }
+        // Plan 346: ListData<Value> (List<T>.new(...) collections).
+        if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+            let mut parts: Vec<String> = Vec::new();
+            for elem in &list.elems {
+                let json = value_to_json(vm, elem, depth + 1)
+                    .unwrap_or_else(|| "null".to_string());
+                parts.push(json);
+            }
+            return Some(format!("[{}]", parts.join(", ")));
+        }
+        // ListData<i32> (int collections).
+        if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+            let parts: Vec<String> = list.elems.iter().map(|i| i.to_string()).collect();
+            return Some(format!("[{}]", parts.join(", ")));
+        }
         // Other heap objects (opaque types) — can't serialize generically.
         return None;
     }

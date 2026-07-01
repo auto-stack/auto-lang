@@ -743,11 +743,15 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
         linker.add_module(module);
     }
 
-    let object_keys = codegen.object_keys.clone();
-    let object_types = codegen.object_types.clone();
+    // Plan 346: Merge dep modules' object pools + generic_registry into main.
+    let mut object_keys = codegen.object_keys.clone();
+    let mut object_types = codegen.object_types.clone();
+    object_keys.extend(session.dep_object_keys.borrow().iter().cloned());
+    object_types.extend(session.dep_object_types.borrow().iter().cloned());
     let result_type = codegen.last_expr_type.clone();
     // Plan 197 Task 9: Extract generic registry before finish() consumes the codegen
-    let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    let mut generic_registry = std::mem::take(&mut codegen.generic_registry);
+    generic_registry.merge(&session.dep_generic_registry.borrow());
     // Plan 327 Phase 1: take task handler registry before finish() consumes codegen,
     // so HANDLE_MSG opcode can find `task` `on { }` handlers at runtime.
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
@@ -792,12 +796,24 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
     vm_debug!("DEBUG: Linked code size: {} bytes", linked_code.len());
     vm_debug!("DEBUG: Global symbols: {:?}", global_symbols);
 
-    // Plan 345: Capture module init addresses BEFORE global_symbols is moved
-    // into VirtualFlash. Each dep module's __module_init_{name} fn address.
+    // Plan 346: Capture dep module START addresses (module top-level code).
+    // After reverting __module_init, each dep module's var initializers are
+    // at the module's code start (before function definitions). We spawn a
+    // task at each module's start offset to run the initializers.
+    let module_offsets: Vec<u32> = {
+        let mut offsets = Vec::new();
+        let mut cur = 0u32;
+        for m in &linker.modules {
+            offsets.push(cur);
+            cur += m.code.len() as u32;
+        }
+        offsets
+    };
+    // dep modules are all except the last (main) module.
     let module_init_addrs: Vec<(String, usize)> = dep_module_names.iter()
-        .filter_map(|name| {
-            let sym = format!("__module_init_{}", name);
-            global_symbols.get(&sym).map(|&addr| (name.clone(), addr as usize))
+        .enumerate()
+        .filter_map(|(i, name)| {
+            module_offsets.get(i).map(|&offset| (name.clone(), offset as usize))
         })
         .collect();
 
@@ -851,12 +867,11 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
 
     // Plan 118: Store the codegen's result type for formatting
 
-    // Plan 345: Execute dependency module initializers (__module_init_{name})
-    // BEFORE the main task. Each dep module's top-level `var` declarations are
-    // wrapped into a __module_init_{name} fn (see compile.rs). Running them here
-    // initializes cross-module globals (e.g. db.notes) so that handler fns can
-    // read them. Without this, `notes` is nil and db.all_notes() crashes.
-    for (mod_name, init_addr) in &module_init_addrs {
+    // Plan 345: Execute dependency module initializers.
+    // Each dep module's top-level var declarations are at the module's code
+    // start (before function definitions). Spawning a task at the module's
+    // start offset runs the initializers, populating vm.globals.
+    for (_mod_name, init_addr) in &module_init_addrs {
         let init_task_id = vm.spawn_task(*init_addr, 65536);
         vm.run_task_loop().await;
         vm.tasks.remove(&init_task_id);

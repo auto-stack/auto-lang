@@ -128,6 +128,18 @@ pub struct CompileSession {
 
     compiled_modules: Vec<crate::vm::loader::Module>,
 
+    /// Plan 346: Generic registries from compiled dependency modules.
+    /// These are merged into the main module's generic_registry at link time
+    /// so that cross-module generic types (e.g. List<Note> in db.at where Note
+    /// is defined in api.at) resolve correctly at runtime.
+    pub dep_generic_registry: std::cell::RefCell<crate::vm::generic_registry::GenericRegistry>,
+
+    /// Plan 346: Object metadata pools from compiled dependency modules.
+    /// Merged into the main module's pools at link time so object literals
+    /// in dep modules (e.g. Note { id: 0, ... }) resolve correctly.
+    pub dep_object_keys: std::cell::RefCell<Vec<Vec<auto_val::ValueKey>>>,
+    pub dep_object_types: std::cell::RefCell<Vec<Vec<crate::vm::codegen::ObjectType>>>,
+
     /// Directories where source files have been found (for multi-dir module resolution)
     source_dirs: Vec<std::path::PathBuf>,
 
@@ -175,6 +187,9 @@ impl Clone for CompileSession {
             loading_stack: Vec::new(),
 
             compiled_modules: Vec::new(),
+            dep_generic_registry: std::cell::RefCell::new(crate::vm::generic_registry::GenericRegistry::new()),
+            dep_object_keys: std::cell::RefCell::new(Vec::new()),
+            dep_object_types: std::cell::RefCell::new(Vec::new()),
 
             source_dirs: self.source_dirs.clone(),
 
@@ -223,6 +238,9 @@ impl CompileSession {
             loading_stack: Vec::new(),
 
             compiled_modules: Vec::new(),
+            dep_generic_registry: std::cell::RefCell::new(crate::vm::generic_registry::GenericRegistry::new()),
+            dep_object_keys: std::cell::RefCell::new(Vec::new()),
+            dep_object_types: std::cell::RefCell::new(Vec::new()),
 
             source_dirs: Vec::new(),
 
@@ -1516,22 +1534,15 @@ impl CompileSession {
         // (e.g. "db.notes" instead of "notes"), providing cross-module isolation.
         codegen.current_module = module_name.clone();
 
-        // Plan 345: register module-level `var` declarations as globals and
-        // collect their initializers. We wrap them into a __module_init_{name}
-        // fn (mirroring handler_codegen.rs:496-511) so the caller can execute
-        // them at startup — otherwise the module's top-level code is never run
-        // (Linker only jumps to function addresses, not module entry).
-        for stmt in &ast.stmts {
-            if let crate::ast::Stmt::Store(s) = stmt {
-                if matches!(s.kind, crate::ast::StoreKind::Var) {
-                    codegen.global_vars.insert(s.name.to_string());
-                    codegen.global_inits.push((s.name.to_string(), s.expr.clone()));
-                }
-            }
-        }
-
-        // Compile type declarations first (they're needed by var initializers
-        // and function bodies).
+        // Plan 346 revert: compile ALL statements in declaration order (Type,
+        // Store, Fn, Use) as normal top-level bytecode — do NOT wrap Store
+        // into __module_init. The __module_init approach broke object literal
+        // indices (db module's Note{} literals referenced wrong object_keys
+        // pool indices after string/pool merge). By compiling in-place, all
+        // pools (strings, object_keys, object_types) are self-consistent within
+        // the module. The module's top-level var init code runs when __module_init
+        // is called from execute_autovm_with_path (which spawns a task at the
+        // module's code start address — Store code is at the top before Fn code).
         for stmt in &ast.stmts {
             match stmt {
                 crate::ast::Stmt::TypeDecl(_)
@@ -1541,44 +1552,20 @@ impl CompileSession {
                 _ => {}
             }
         }
-
-        // Wrap module-level var initializers into __module_init_{module_name}.
-        let init_fn_name = format!("__module_init_{}", module_name);
-        if !codegen.global_inits.is_empty() {
-            codegen.force_global_store = true;
-            let init_inits = codegen.global_inits.clone();
-            let init_body_stmts: Vec<_> = init_inits.iter().map(|(name, expr)| {
-                crate::ast::Stmt::Store(crate::ast::Store {
-                    name: crate::ast::Name::from(name.as_str()),
-                    kind: crate::ast::StoreKind::Var,
-                    ty: crate::ast::Type::Unknown,
-                    expr: expr.clone(),
-                    attrs: Vec::new(),
-                })
-            }).collect();
-            let init_fn = crate::ast::Stmt::Fn(crate::ast::Fn::new(
-                crate::ast::FnKind::Function,
-                crate::ast::Name::from(init_fn_name.as_str()),
-                None,
-                Vec::new(),
-                crate::ast::Body { stmts: init_body_stmts, has_new_line: false, source_lines: Vec::new() },
-                crate::ast::Type::Void,
-            ));
-            codegen.compile_stmt(&init_fn)?;
-            codegen.force_global_store = false;
+        // Compile Store (var) statements — these go into the module's top-level
+        // bytecode, before function definitions. They use STORE_GLOBAL with
+        // module-qualified keys (e.g. "db.notes").
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::Store(_) = stmt {
+                codegen.compile_stmt(stmt)?;
+            }
         }
-
-        // Compile remaining declarations (Fn, Ext, Use). Store statements are
-        // already handled via __module_init — skip them here.
+        // Compile Fn, Ext, Use.
         for stmt in &ast.stmts {
             match stmt {
-                crate::ast::Stmt::Fn(_) => {
-                    codegen.compile_stmt(stmt)?;
-                }
-                crate::ast::Stmt::Ext(_) => {
-                    codegen.compile_stmt(stmt)?;
-                }
-                crate::ast::Stmt::Use(_) => {
+                crate::ast::Stmt::Fn(_)
+                | crate::ast::Stmt::Ext(_)
+                | crate::ast::Stmt::Use(_) => {
                     codegen.compile_stmt(stmt)?;
                 }
                 _ => {}
@@ -1589,7 +1576,11 @@ impl CompileSession {
 
         codegen.code.push(OpCode::HALT as u8);
 
-
+        // Plan 346: Merge this module's generic_registry + object pools into
+        // the session so they can be combined with the main module's at link time.
+        self.dep_generic_registry.borrow_mut().merge(&codegen.generic_registry);
+        self.dep_object_keys.borrow_mut().extend(codegen.object_keys.iter().cloned());
+        self.dep_object_types.borrow_mut().extend(codegen.object_types.iter().cloned());
 
         Ok(codegen.finish(module_name))
 

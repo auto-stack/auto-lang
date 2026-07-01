@@ -653,6 +653,22 @@ impl GenericRegistry {
         self.templates.insert(name, Arc::new(template));
     }
 
+    /// Plan 346: Merge another GenericRegistry into this one. Templates and
+    /// types that don't already exist are inserted (existing ones are kept).
+    /// Used to combine dep modules' generic registries with the main module's.
+    pub fn merge(&mut self, other: &GenericRegistry) {
+        for (name, template) in &other.templates {
+            if !self.templates.contains_key(name) {
+                self.templates.insert(name.clone(), template.clone());
+            }
+        }
+        for (name, ty) in &other.types {
+            if !self.types.contains_key(name) {
+                self.types.insert(name.clone(), ty.clone());
+            }
+        }
+    }
+
     /// Get template by name
     pub fn get_template(&self, name: &str) -> Option<Arc<ClassTemplate>> {
         self.templates.get(name).cloned()
