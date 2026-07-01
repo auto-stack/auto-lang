@@ -635,8 +635,10 @@ fn write_project_files(
     // `shadcn-vue add`) write to the workspace root instead of failing with
     // ERR_PNPM_ADDING_TO_ROOT. `verify-deps-before-run=false` stops pnpm from
     // re-running install (and re-triggering build approval) before `vite`.
+    // `minimum-release-age=0` disables pnpm's supply-chain minimum-age check
+    // which blocks freshly-published transitive deps (caniuse-lite etc).
     fs::write(output_path.join(".npmrc"),
-        "manage-package-manager-versions=true\nverify-deps-before-run=false\nignore-workspace-root-check=true\n")
+        "manage-package-manager-versions=true\nverify-deps-before-run=false\nignore-workspace-root-check=true\nminimum-release-age=0\n")
         .map_err(|e| format!("Failed to write .npmrc: {}", e))?;
 
     // components.json (shadcn-vue config)
