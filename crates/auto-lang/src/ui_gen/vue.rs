@@ -2324,9 +2324,12 @@ impl VueGenerator {
                     format!("v-for=\"{} in {}\"", var, v_for_iterable)
                 };
 
-                // Set loop variable context so child events can pass it as arg
+                // Set loop variable context so child events can pass it as arg.
+                // Plan 346: When the loop has an index (for i, note in ...), use
+                // the INDEX variable (i) as the loop_var — handlers like
+                // SelectNote(i) pass the index, not the value.
                 let prev_loop_var = self.current_loop_var.clone();
-                self.current_loop_var = Some(var.clone());
+                self.current_loop_var = Some(index.clone().unwrap_or_else(|| var.clone()));
 
                 // If body has a single Element or Component, put v-for directly on it
                 // to avoid <template> scoping issues with vue-tsc
