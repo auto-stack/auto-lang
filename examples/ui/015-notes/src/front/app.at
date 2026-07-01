@@ -89,11 +89,7 @@ widget App {
         }
 
         .SearchChanged -> {
-            if .search == "" {
-                .notes = list_notes()
-            } else {
-                .notes = search_notes(.search)
-            }
+            .notes = list_notes()
             .active_index = 0
         }
     }
