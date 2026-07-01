@@ -83,6 +83,10 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
         "vue" => {
             generate_vue_api(&api_module, root_dir)?;
         }
+        "rust" => {
+            // Plan 345: VM+Rust mode — generate Rust axum server from #[api].
+            generate_rust_server(&api_module, root_dir)?;
+        }
         _ => {
             // No API generation for other backends
         }

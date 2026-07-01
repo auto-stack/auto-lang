@@ -730,6 +730,14 @@ fn real_main(cli: Cli) -> Result<()> {
             if vm_server_mode {
                 am.set_vm_server_mode(true);
             }
+            // Plan 345: --server=rust with --render=vm selects VM+Rust mode
+            // (frontend VM + backend Rust axum server, HTTP between them).
+            // AUTO_BACKEND_IMPL tells run_vm_ui which backend to start in split mode.
+            if let Some(s) = &server {
+                if s == "rust" || s == "vm" {
+                    std::env::set_var("AUTO_BACKEND_IMPL", s);
+                }
+            }
             // Plan 340: --merge/--no-merge controls VM+VM in-process merging.
             // Default (no --no-merge) keeps the existing fast in-process path.
             // --no-merge sets AUTO_VM_MERGE=0 so run_file_dynamic_ui rewrites
@@ -737,7 +745,8 @@ fn real_main(cli: Cli) -> Result<()> {
             let merge_mode = !no_merge;
             std::env::set_var("AUTO_VM_MERGE", if merge_mode { "1" } else { "0" });
             if !merge_mode {
-                println!("  {} split mode: frontend↔backend over HTTP", "→".bright_cyan());
+                let backend = server.as_deref().unwrap_or("vm");
+                println!("  {} split mode: frontend VM ↔ backend {} over HTTP", "→".bright_cyan(), backend);
             }
             // Plan 330: `--back-port`/`-B` selects the backend HTTP API port.
             // We inject it into AUTO_HTTP_PORT so all three port consumers stay
