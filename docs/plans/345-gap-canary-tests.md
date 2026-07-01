@@ -54,15 +54,15 @@ examples/capability-tests/
 - **修**:引入最小 store 概念(全局/模块级 reactive state),路由页读 store;`routes{}` 页可消费 store。
 - **范围较大**;可单列子计划。**Commit**:`feat(ui): shared store for cross-route state (Rung 4, gap K1)`。
 
-### Phase 5 — N3:handler 内局部可变变量
+### Phase 5 — N3:handler 内局部可变变量 ✅ DONE(2026-07-02,已在 master 实现)
 - **金丝雀** `n3-handler-local-vars/`:`var i = 0; for n in ns { .sum += n; i += 1 }` 须解析通过。
 - **修**:parser/AST 支持 handler 块内 `var` 局部声明 + 赋值(不进 state)。
 - **Commit**:`feat(lang): local mutable vars in handler blocks (gap N3)`。
 
-### Phase 6 — K3:markdown / JS-interop bridge(最大,最后)
+### Phase 6 — K3:markdown / JS-interop bridge(最大,最后)⏸ DEFERRED(独立子计划)
 - **金丝雀** `k3-markdown-interop/`:`markdown .body` 渲染 marked 输出。
 - **修**:最小 JS-interop bridge(`extern`/FFI 到 JS fn,如 `marked`);codegen 发射对应调用。
-- **可单列子计划**。**Commit**:`feat(ui): markdown render via JS-interop bridge (gap K3)`。
+- **本计划不实施**:需新的 JS-interop/FFI 基建(范围最大),按本计划原始排序"最大,最后"独立成子计划。当前 pass 完成 N1/K2/N4/N2/N3;K3 + 已跟踪的 OOM(callback+计算型实参)单列后续。
 
 ---
 

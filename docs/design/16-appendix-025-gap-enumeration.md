@@ -43,3 +43,7 @@
 ## N2 复核(2026-07-02):实为"约定未文档化",非 codegen bug
 
 N2 经 canary 复核:**路由 codegen 本身正确**。原探针把 page widget 内联在 app.at,导致 page 未生成、router 的 `@/pages/<name>.vue` import 悬空。约定是:路由目标页必须放 `src/front/pages/<name>.at`,`cmd_vue.rs` 才会生成到 `src/pages/<name>.vue`(与 router import 路径对齐)。canary 按约定写即绿。归档为"文档/约定"项,非语言/codegen 缺口。
+
+## N3 复核(2026-07-02):已在 master 实现
+
+N3(handler 内局部可变变量)经 canary 复核:**已工作**。codegen 正确发射 `let i = 0`、裸局部赋值 `i = i + 1`(无 `.value`),state 赋值仍用 `.value`。原 gap 枚举基于较旧 base;master 后续提交已补此能力。canary 作回归测试钉住。非缺口。
