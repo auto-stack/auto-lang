@@ -657,8 +657,8 @@ fn real_main(cli: Cli) -> Result<()> {
                     miette::miette!("{}", e)
                 })?;
             }
-            if let Some(b) = render {
-                am.set_render(b);
+            if let Some(ref b) = render {
+                am.set_render(b.clone());
             }
             // Plan 330: bake ports into generated artifacts the same way `run`
             // does, for symmetry (so `build` then manual run matches).
@@ -721,8 +721,8 @@ fn real_main(cli: Cli) -> Result<()> {
                     miette::miette!("{}", e)
                 })?;
             }
-            if let Some(b) = render {
-                am.set_render(b);
+            if let Some(ref b) = render {
+                am.set_render(b.clone());
             }
             // Plan 327: --server=vm uses AutoVM HTTP server (with module
             // flattening for use db), --server=rust (default) uses a2r.
@@ -746,7 +746,8 @@ fn real_main(cli: Cli) -> Result<()> {
             std::env::set_var("AUTO_VM_MERGE", if merge_mode { "1" } else { "0" });
             if !merge_mode {
                 let backend = server.as_deref().unwrap_or("vm");
-                println!("  {} split mode: frontend VM ↔ backend {} over HTTP", "→".bright_cyan(), backend);
+                let frontend = render.as_deref().unwrap_or("vm");
+                println!("  {} split mode: frontend {} ↔ backend {} over HTTP", "→".bright_cyan(), frontend, backend);
             }
             // Plan 330: `--back-port`/`-B` selects the backend HTTP API port.
             // We inject it into AUTO_HTTP_PORT so all three port consumers stay
