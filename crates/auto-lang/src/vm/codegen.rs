@@ -182,6 +182,12 @@ pub struct Codegen {
     /// still allow a `var x` shadow over a same-named global.
     pub force_global_store: bool,
 
+    /// Plan 345: Current module name for global variable qualification.
+    /// Empty = main module (no prefix). When set (e.g. "db"), global variable
+    /// keys become "db.notes" instead of "notes", providing cross-module
+    /// isolation in the flat vm.globals DashMap.
+    pub current_module: String,
+
     /// Variable type tracking (Plan 080: support for instance methods on List, etc.)
     /// Maps variable name -> its type (e.g., "x" -> Type::List(Type::Int))
     /// Used to generate correct native method calls (e.g., x.push -> List.push)
@@ -393,6 +399,7 @@ impl Codegen {
             global_vars: std::collections::HashSet::new(), // Plan 327: module-level vars
             global_inits: Vec::new(), // Plan 327: global var initializers
             force_global_store: false, // Plan 333: set true inside __module_init
+            current_module: String::new(), // Plan 345: module name for global qualification
             var_types: HashMap::new(), // Plan 080: variable type tracking
             var_mutability: HashMap::new(), // Plan 080+: variable mutability tracking
             captured_vars_stack: Vec::new(),
@@ -559,6 +566,7 @@ impl Codegen {
             global_vars: std::collections::HashSet::new(), // Plan 327
             global_inits: Vec::new(), // Plan 327
             force_global_store: false, // Plan 333
+            current_module: String::new(), // Plan 345
             var_types: HashMap::new(),
             var_mutability: HashMap::new(),
             captured_vars_stack: Vec::new(),
@@ -9146,17 +9154,29 @@ impl Codegen {
     /// Locals: otherwise, stored at BP + 1 + (index - fn_scope_start - n_args)
     /// Uses dedicated opcodes for locals 0-2 for performance
     /// Plan 327: Emit LOAD_GLOBAL for a module-level variable.
+    /// Plan 345: Qualify a global variable name with the current module prefix.
+    /// When current_module is "db", "notes" becomes "db.notes".
+    fn qualified_global_name(&self, name: &str) -> String {
+        if self.current_module.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}.{}", self.current_module, name)
+        }
+    }
+
     fn emit_global_load(&mut self, name: &str) {
+        let qname = self.qualified_global_name(name);
         let idx = self.strings.len() as u8;
-        self.strings.push(name.as_bytes().to_vec());
+        self.strings.push(qname.as_bytes().to_vec());
         self.emit(OpCode::LOAD_GLOBAL);
         self.code.push(idx);
     }
 
     /// Plan 327: Emit STORE_GLOBAL for a module-level variable.
     fn emit_global_store(&mut self, name: &str) {
+        let qname = self.qualified_global_name(name);
         let idx = self.strings.len() as u8;
-        self.strings.push(name.as_bytes().to_vec());
+        self.strings.push(qname.as_bytes().to_vec());
         self.emit(OpCode::STORE_GLOBAL);
         self.code.push(idx);
     }

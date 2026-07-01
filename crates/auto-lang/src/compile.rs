@@ -1499,66 +1499,7 @@ impl CompileSession {
 
             .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;
 
-
-
-        let mut codegen = Codegen::new_with_type_store(self.type_store.clone());
-
-
-
-        for stmt in &ast.stmts {
-
-            match stmt {
-
-                crate::ast::Stmt::Fn(_) => {
-
-                    codegen.compile_stmt(stmt)?;
-
-                }
-
-                crate::ast::Stmt::TypeDecl(_) => {
-
-                    codegen.compile_stmt(stmt)?;
-
-                }
-
-                crate::ast::Stmt::EnumDecl(_) => {
-
-                    codegen.compile_stmt(stmt)?;
-
-                }
-
-                crate::ast::Stmt::Ext(_) => {
-
-                    codegen.compile_stmt(stmt)?;
-
-                }
-
-                crate::ast::Stmt::Use(_) => {
-
-                    codegen.compile_stmt(stmt)?;
-
-                }
-
-                // Plan 327: module-level var (Stmt::Store) — compile so
-                // module vars like `var notes` are available to module fns.
-                crate::ast::Stmt::Store(_) => {
-
-                    codegen.compile_stmt(stmt)?;
-
-                }
-
-                _ => {}
-
-            }
-
-        }
-
-
-
-        codegen.code.push(OpCode::HALT as u8);
-
-
-
+        // Plan 345: compute module name early (needed for global qualification).
         let module_name = path.replace('\\', "/")
 
             .rsplit('/').next().unwrap_or("unknown")
@@ -1568,6 +1509,85 @@ impl CompileSession {
             .trim_end_matches(".auto")
 
             .to_string();
+
+        let mut codegen = Codegen::new_with_type_store(self.type_store.clone());
+
+        // Plan 345: set module context so global variables get qualified keys
+        // (e.g. "db.notes" instead of "notes"), providing cross-module isolation.
+        codegen.current_module = module_name.clone();
+
+        // Plan 345: register module-level `var` declarations as globals and
+        // collect their initializers. We wrap them into a __module_init_{name}
+        // fn (mirroring handler_codegen.rs:496-511) so the caller can execute
+        // them at startup — otherwise the module's top-level code is never run
+        // (Linker only jumps to function addresses, not module entry).
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::Store(s) = stmt {
+                if matches!(s.kind, crate::ast::StoreKind::Var) {
+                    codegen.global_vars.insert(s.name.to_string());
+                    codegen.global_inits.push((s.name.to_string(), s.expr.clone()));
+                }
+            }
+        }
+
+        // Compile type declarations first (they're needed by var initializers
+        // and function bodies).
+        for stmt in &ast.stmts {
+            match stmt {
+                crate::ast::Stmt::TypeDecl(_)
+                | crate::ast::Stmt::EnumDecl(_) => {
+                    codegen.compile_stmt(stmt)?;
+                }
+                _ => {}
+            }
+        }
+
+        // Wrap module-level var initializers into __module_init_{module_name}.
+        let init_fn_name = format!("__module_init_{}", module_name);
+        if !codegen.global_inits.is_empty() {
+            codegen.force_global_store = true;
+            let init_inits = codegen.global_inits.clone();
+            let init_body_stmts: Vec<_> = init_inits.iter().map(|(name, expr)| {
+                crate::ast::Stmt::Store(crate::ast::Store {
+                    name: crate::ast::Name::from(name.as_str()),
+                    kind: crate::ast::StoreKind::Var,
+                    ty: crate::ast::Type::Unknown,
+                    expr: expr.clone(),
+                    attrs: Vec::new(),
+                })
+            }).collect();
+            let init_fn = crate::ast::Stmt::Fn(crate::ast::Fn::new(
+                crate::ast::FnKind::Function,
+                crate::ast::Name::from(init_fn_name.as_str()),
+                None,
+                Vec::new(),
+                crate::ast::Body { stmts: init_body_stmts, has_new_line: false, source_lines: Vec::new() },
+                crate::ast::Type::Void,
+            ));
+            codegen.compile_stmt(&init_fn)?;
+            codegen.force_global_store = false;
+        }
+
+        // Compile remaining declarations (Fn, Ext, Use). Store statements are
+        // already handled via __module_init — skip them here.
+        for stmt in &ast.stmts {
+            match stmt {
+                crate::ast::Stmt::Fn(_) => {
+                    codegen.compile_stmt(stmt)?;
+                }
+                crate::ast::Stmt::Ext(_) => {
+                    codegen.compile_stmt(stmt)?;
+                }
+                crate::ast::Stmt::Use(_) => {
+                    codegen.compile_stmt(stmt)?;
+                }
+                _ => {}
+            }
+        }
+
+
+
+        codegen.code.push(OpCode::HALT as u8);
 
 
 

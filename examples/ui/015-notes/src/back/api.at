@@ -17,12 +17,12 @@ pub type Note = {
 // API Endpoints
 // ═══════════════════════════════════════════════════════════
 
+use db
+
 /// List all notes
 /// GET /api/notes
 #[api(method = "GET", path = "/api/notes")]
 pub fn list_notes() []Note {
-    use db
-
     return db.all_notes()
 }
 
@@ -30,8 +30,6 @@ pub fn list_notes() []Note {
 /// GET /api/notes/:id
 #[api(method = "GET", path = "/api/notes/:id")]
 pub fn get_note(id int) ?Note {
-    use db
-
     return db.find_note(id)
 }
 
@@ -39,8 +37,6 @@ pub fn get_note(id int) ?Note {
 /// POST /api/notes
 #[api(method = "POST", path = "/api/notes")]
 pub fn create_note(title str, body str) Note {
-    use db
-
     let note = db.create_note(title, body)
     return note
 }
@@ -49,8 +45,6 @@ pub fn create_note(title str, body str) Note {
 /// PUT /api/notes/:id
 #[api(method = "PUT", path = "/api/notes/:id")]
 pub fn update_note(id int, title str, body str) ?Note {
-    use db
-
     return db.update_note(id, title, body)
 }
 
@@ -58,7 +52,5 @@ pub fn update_note(id int, title str, body str) ?Note {
 /// DELETE /api/notes/:id
 #[api(method = "DELETE", path = "/api/notes/:id")]
 pub fn delete_note(id int) bool {
-    use db
-
     return db.delete_note(id)
 }
