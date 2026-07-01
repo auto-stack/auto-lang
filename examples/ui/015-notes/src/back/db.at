@@ -31,7 +31,7 @@ pub fn find_note(id int) ?Note {
 
 /// Get all notes
 pub fn all_notes() []Note {
-    return notes.to_array()
+    return notes
 }
 
 /// Create a new note
@@ -94,5 +94,5 @@ pub fn search_notes(query str) []Note {
         }
     }
 
-    return results.to_array()
+    return results
 }
