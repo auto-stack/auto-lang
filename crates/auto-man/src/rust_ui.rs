@@ -353,6 +353,19 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
     // Try to parse api.at to get real endpoint definitions
     let api_module = parse_api_module(project_dir);
 
+    // Plan 347: In merged mode (AUTO_VM_MERGE != "0", the default), generate
+    // in-process direct-call functions instead of HTTP client code.
+    let merged_mode = std::env::var("AUTO_VM_MERGE").as_deref() != Ok("0");
+
+    if merged_mode {
+        if let Some(module) = &api_module {
+            return generate_merged_api_client(module);
+        }
+        // Fallback to stubs if no api.at found
+        return generate_api_stubs(api_imports);
+    }
+
+    // Split mode: generate ureq HTTP client functions.
     if let Some(module) = &api_module {
         let mut code = String::new();
         code.push_str("// API client functions (auto-generated, uses ureq HTTP client)\n\n");
@@ -608,6 +621,127 @@ fn generate_api_stubs(api_imports: &[String]) -> String {
             ));
         }
     }
+    code
+}
+
+/// Plan 347: Generate JSON initial data for the merged-mode global store.
+/// Returns a string like `[json!({"id":0,"title":"Welcome",...}), ...]`
+/// (without the outer `vec![]` wrapper).
+fn generate_json_initial_data(module: &auto_lang::api::ApiModule) -> String {
+    let primary_type = crate::api_gen::primary_type_name_pub(module);
+    let primary_type = match primary_type {
+        Some(t) => t,
+        None => return "[]".to_string(),
+    };
+    let api_type = match module.types.iter().find(|t| t.name == primary_type) {
+        Some(t) => t,
+        None => return "[]".to_string(),
+    };
+
+    let mut items = vec![];
+    for i in 0..3i64 {
+        let fields: Vec<String> = api_type.fields.iter().map(|f| {
+            let val = match f.ty.as_str() {
+                "int" | "i64" => format!("{}", i),
+                "bool" => "false".to_string(),
+                _ => {
+                    let sample = match f.name.as_str() {
+                        "title" | "name" => match i { 0 => "Welcome", 1 => "Shopping List", _ => "Meeting Notes" },
+                        "body" | "description" | "content" => match i { 0 => "This is your notes app. Click on any note to view it.", 1 => "Milk, Eggs, Bread, Cheese", _ => "Q3 roadmap discussion with the team" },
+                        "time" | "date" | "created_at" => match i { 0 => "Just now", 1 => "2 hours ago", _ => "Yesterday" },
+                        _ => "Sample",
+                    };
+                    format!("\"{}\"", sample)
+                }
+            };
+            format!("\"{}\": {}", f.name, val)
+        }).collect();
+        items.push(format!("serde_json::json!({{{}}})", fields.join(", ")));
+    }
+    format!("[{}]", items.join(", "))
+}
+
+/// Plan 347: Generate in-process API functions for Rust+Rust merged mode.
+/// Instead of HTTP calls, functions operate on a global `static DATA: Mutex<Vec<Value>>`.
+/// Function signatures match the HTTP version so widget call sites don't change.
+fn generate_merged_api_client(module: &auto_lang::api::ApiModule) -> String {
+    let mut code = String::new();
+    code.push_str("// API functions (auto-generated, in-process merged mode — no HTTP)\n\n");
+
+    // Generate JSON initial data (not strong-typed structs).
+    let initial_items = generate_json_initial_data(module);
+    code.push_str("use std::sync::{LazyLock, Mutex};\n");
+    code.push_str("use serde_json::Value;\n\n");
+    code.push_str(&format!(
+        "static API_DATA: LazyLock<Mutex<Vec<Value>>> = LazyLock::new(|| {{\n    Mutex::new(vec!{})\n}});\n",
+        initial_items
+    ));
+    code.push_str("static API_NEXT_ID: LazyLock<Mutex<i64>> = LazyLock::new(|| Mutex::new(100));\n\n");
+
+    for endpoint in &module.endpoints {
+        let fn_name = &endpoint.fn_name;
+        let method = endpoint.method().to_uppercase();
+        let params: Vec<&str> = endpoint.params.iter().map(|p| p.name.as_str()).collect();
+        let path_params: Vec<_> = endpoint.params.iter()
+            .filter(|p| endpoint.path().contains(&format!(":{}", p.name)))
+            .collect();
+        let body_params: Vec<_> = endpoint.params.iter()
+            .filter(|p| !endpoint.path().contains(&format!(":{}", p.name)))
+            .collect();
+
+        match method.as_str() {
+            "GET" => {
+                if params.is_empty() {
+                    // list: return all
+                    code.push_str(&format!(
+                        "fn {}() -> Vec<Value> {{\n    API_DATA.lock().unwrap().clone()\n}}\n\n", fn_name
+                    ));
+                } else {
+                    // get by id/path param
+                    let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
+                    code.push_str(&format!(
+                        "fn {}({}: i32) -> Option<Value> {{\n    API_DATA.lock().unwrap().iter().find(|n| n[\"id\"].as_i64() == Some({} as i64)).cloned()\n}}\n\n",
+                        fn_name, id_param, id_param
+                    ));
+                }
+            }
+            "POST" => {
+                let body_fields: Vec<String> = body_params.iter()
+                    .map(|p| format!("\"{}\": serde_json::Value::from({}.clone())", p.name, p.name))
+                    .collect();
+                code.push_str(&format!(
+                    "fn {}({}) -> Value {{\n    let mut data = API_DATA.lock().unwrap();\n    let id = {{ let mut next = API_NEXT_ID.lock().unwrap(); *next += 1; *next }};\n    let item = serde_json::json!({{\"id\": id, {}}});\n    data.push(item.clone());\n    item\n}}\n\n",
+                    fn_name,
+                    body_params.iter().map(|p| format!("{}: String", p.name)).collect::<Vec<_>>().join(", "),
+                    body_fields.join(", ")
+                ));
+            }
+            "PUT" => {
+                let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
+                let body_fields: Vec<String> = body_params.iter()
+                    .map(|p| format!("item[\"{}\"] = serde_json::Value::from({}.clone())", p.name, p.name))
+                    .collect();
+                code.push_str(&format!(
+                    "fn {}({}: i32, {}) -> Option<Value> {{\n    let mut data = API_DATA.lock().unwrap();\n    if let Some(item) = data.iter_mut().find(|n| n[\"id\"].as_i64() == Some({} as i64)) {{\n        {};\n        return Some(item.clone());\n    }}\n    None\n}}\n\n",
+                    fn_name, id_param,
+                    body_params.iter().map(|p| format!("{}: String", p.name)).collect::<Vec<_>>().join(", "),
+                    id_param,
+                    body_fields.join("; ")
+                ));
+            }
+            "DELETE" => {
+                let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
+                code.push_str(&format!(
+                    "fn {}({}: i32) {{\n    let mut data = API_DATA.lock().unwrap();\n    data.retain(|n| n[\"id\"].as_i64() != Some({} as i64));\n}}\n\n",
+                    fn_name, id_param, id_param
+                ));
+            }
+            _ => {
+                code.push_str(&format!("fn {}() {{}}\n\n", fn_name));
+            }
+        }
+    }
+
     code
 }
 
@@ -1200,9 +1334,28 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         regenerate_code_only(project_dir, &rust_dir)?;
     }
 
-    let mut _api_child = start_api_server(project_dir);
+    // Plan 347: In merged mode, skip the backend HTTP server — API functions
+    // are in-process (generated as direct-call code in main.rs).
+    let merged_mode = std::env::var("AUTO_VM_MERGE").as_deref() != Ok("0");
+    let mut _api_child = if merged_mode {
+        println!();
+        println!(
+            "  {} rust+rust merged mode: backend runs in-process (no HTTP server)",
+            "✓".bright_green()
+        );
+        None
+    } else {
+        start_api_server(project_dir)
+    };
 
-    println!("{}", "Running Rust UI app (backend: rust-ui)".bright_cyan());
+    println!(
+        "{}",
+        if merged_mode {
+            "Running Rust UI app (backend: rust-ui, merged in-process)".bright_cyan()
+        } else {
+            "Running Rust UI app (backend: rust-ui, split over HTTP)".bright_cyan()
+        }
+    );
 
     // Set CWD to src/front/ so local assets (e.g. avatar.png) can be found
     // by the Iced renderer's load_image_bytes(). The cargo subprocess uses
