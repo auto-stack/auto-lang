@@ -87,6 +87,7 @@ pub mod ownership;
 pub mod parser;
 pub mod query;
 pub use parser::Parser;
+pub mod dialect; // 方言扩展体系（PR-1 基建）
 // Plan 088 Phase 6: Type checking module for parameter passing modes
 pub mod autovm_repl;
 pub mod patch;

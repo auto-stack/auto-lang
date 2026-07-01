@@ -142,10 +142,6 @@ fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
     }
 }
 
-pub trait BlockParser {
-    fn parse(&self, parser: &mut Parser) -> AutoResult<Body>;
-}
-
 // pub fn parse(code: &str, scope: Rc<RefCell<Universe>>, interpreter: &'a Interpreter) -> AutoResult<Code> {
 // let mut parser = Parser::new(code, scope, interpreter);
 // parser.parse()
@@ -183,7 +179,10 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     pub cur: Token,
     prev: Token, // Track previous token for validation
-    pub special_blocks: HashMap<AutoStr, Box<dyn BlockParser>>,
+    /// 方言表：按 session 装配，语句派发时按优先级查询。
+    /// PR-1 阶段初始为空（无方言注册），行为与现状一致。
+    /// PR-2 将把 UI 关键字迁入 UiDialect 并在 build_dialects 中注册。
+    pub dialects: Vec<Box<dyn crate::dialect::Dialect>>,
     pub skip_check: bool,
     pub compile_dest: CompileDest,
     /// Error recovery: collected errors during parsing
@@ -251,7 +250,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             compile_dest: CompileDest::Interp,
-            special_blocks: HashMap::new(),
+            dialects: Vec::new(),
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
@@ -294,10 +293,6 @@ impl<'a> Parser<'a> {
         self.db = Some(db);
     }
 
-    pub fn add_special_block(&mut self, block: AutoStr, parser: Box<dyn BlockParser>) {
-        self.special_blocks.insert(block, parser);
-    }
-
     pub fn new_with_note(code: &'a str, note: char) -> Self {
         let mut lexer = Lexer::new(code);
         lexer.set_fstr_note(note);
@@ -318,7 +313,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             compile_dest: CompileDest::Interp,
-            special_blocks: HashMap::new(),
+            dialects: Vec::new(),
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
@@ -364,7 +359,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             compile_dest: CompileDest::Interp,
-            special_blocks: HashMap::new(),
+            dialects: Vec::new(),
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
@@ -399,7 +394,47 @@ impl<'a> Parser<'a> {
     /// in UI scenario.
     pub fn with_session(mut self, session: crate::session::CompilerSession) -> Self {
         self.session = session;
+        self.dialects = Self::build_dialects(&self.session);
         self
+    }
+
+    /// 按 session 装配方言表。集中所有方言注册，便于一眼看清"当前有哪些方言"。
+    /// PR-1 阶段返回空 Vec（无方言）；PR-2 起在此注册 UiDialect。
+    fn build_dialects(
+        _session: &crate::session::CompilerSession,
+    ) -> Vec<Box<dyn crate::dialect::Dialect>> {
+        // PR-2 将在此插入：
+        //   if session.scenario == crate::session::Scenario::UI {
+        //       v.push(Box::new(crate::dialect::ui::UiDialect));
+        //   }
+        Vec::new()
+    }
+
+    /// 尝试用已注册的方言解析当前语句起始标识符。
+    /// 在 parse_stmt_inner 的 TokenKind::Ident 分支首位置调用。
+    /// 返回 Ok(Some(stmt)) 表示某方言已处理；Ok(None) 表示无方言接管。
+    /// PR-1 阶段 dialects 恒空，此方法永远返回 Ok(None)，不影响现有派发。
+    ///
+    /// 注意：不能用 `for d in &self.dialects` 直接遍历——方言的 try_parse_stmt
+    /// 需要 `&mut Parser`，而迭代器持有 `&self` 的不可变借用会产生冲突。
+    /// 用 `mem::take` 临时移出 dialects，遍历局部变量后再放回，规避自引用借用。
+    fn try_dialect_stmt(&mut self, ident: &str) -> AutoResult<Option<Stmt>> {
+        let mut dialects = std::mem::take(&mut self.dialects);
+        let mut result = Ok(None);
+        for d in &dialects {
+            if !d.keywords().contains(&ident) {
+                continue;
+            }
+            match d.try_parse_stmt(self, ident)? {
+                Some(stmt) => {
+                    result = Ok(Some(stmt));
+                    break;
+                }
+                None => continue,
+            }
+        }
+        self.dialects = dialects;
+        result
     }
 
     /// Check if current scenario is UI (Plan 096)
@@ -9411,7 +9446,6 @@ impl<'a> Parser<'a> {
         args: Args,
         kind: &AutoStr,
     ) -> AutoResult<Node> {
-        let n = name.clone().into();
         let mut node = Node::new(name.clone());
 
         if let Some(prime) = primary {
@@ -9475,11 +9509,7 @@ impl<'a> Parser<'a> {
         if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
         } else {
             if self.is_kind(TokenKind::LBrace) {
-                if self.special_blocks.contains_key(&n) {
-                    node.body = self.special_block(&n)?;
-                } else {
-                    node.body = self.parse_node_body()?;
-                }
+                node.body = self.parse_node_body()?;
             }
         }
 
@@ -9847,23 +9877,6 @@ impl<'a> Parser<'a> {
             path: Box::new(path),
             params,
         })
-    }
-
-    fn special_block(&mut self, name: &AutoStr) -> AutoResult<Body> {
-        self.expect(TokenKind::LBrace)?;
-        let block_parser = self.special_blocks.remove(name);
-        if block_parser.is_none() {
-            return Err(SyntaxError::Generic {
-                message: format!("Unknown special block: {}", name),
-                span: pos_to_span(self.cur.pos),
-            }
-            .into());
-        }
-        let block_parser = block_parser.unwrap();
-        let body = block_parser.parse(self)?;
-        self.special_blocks.insert(name.clone(), block_parser);
-        self.expect(TokenKind::RBrace)?;
-        Ok(body)
     }
 
     pub fn grid(&mut self) -> AutoResult<Grid> {
@@ -11786,6 +11799,31 @@ mod tests {
     fn parse_with_err(code: &str) -> AutoResult<Code> {
         let mut parser = Parser::from(code);
         parser.parse()
+    }
+
+    #[test]
+    fn test_node_body_after_special_blocks_removal() {
+        // PR-1: 删除 special_blocks 后，节点实例化带 body 仍走 parse_node_body 正常工作
+        let code = "App {\n  Column {\n    Text(\"hi\")\n  }\n}";
+        let ast = parse_once(code);
+        assert!(!ast.stmts.is_empty());
+    }
+
+    #[test]
+    fn test_empty_dialects_core_scenario_unchanged() {
+        // PR-1: Core 场景下方言表为空，普通代码按既有路径解析（不受 dialects 影响）。
+        let mut parser = Parser::from("x = 1");
+        assert!(parser.dialects.is_empty()); // 默认 Core，build_dialects 返回空
+        let ast = parser.parse().unwrap();
+        assert!(!ast.stmts.is_empty());
+    }
+
+    #[test]
+    fn test_with_session_builds_empty_dialects_in_pr1() {
+        // PR-1: with_session 后方言表存在但为空（build_dialects 返回空 Vec）。
+        // PR-2 起 UiDialect 注册后此断言会变为非空。
+        let parser = Parser::from("x = 1").with_session(crate::session::CompilerSession::ui());
+        assert!(parser.dialects.is_empty());
     }
 
     #[test]
