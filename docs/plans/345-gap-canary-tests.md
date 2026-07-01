@@ -39,7 +39,7 @@ examples/capability-tests/
 - **附带受益**:025 的 latent vue-tsc 失败随之消失(回归验证)。
 - **Commit**:`fix(codegen): emit .includes for str/list .contains (gap N1)`。
 
-### Phase 2 — K2/N4:父子 handler 绑定(callback-prop 最小形态)
+### Phase 2 — K2/N4:父子 handler 绑定 ✅ DONE(2026-06-30)(callback-prop 最小形态)
 - **金丝雀** `k2-child-handler-binding/`:父 widget 传 `on_select: .Selected` 给子;子内 `onclick: .Pick(id)` → 调 `on_select(id)` → 父 `.Selected(id)` 改 state。
 - **修**:codegen 支持"callback 类型 prop";子在 handler 里调用该 prop = 发射对父 handler 的调用(经 props 透传)。最小可用形态:callback-prop(不做完整 event-bubbling DSL)。
 - **Commit**:`feat(ui): child→parent handler binding via callback props (gap K2/N4)`。

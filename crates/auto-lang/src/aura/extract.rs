@@ -28,6 +28,23 @@ fn key_to_string(key: &Key) -> String {
     }
 }
 
+/// Plan 345 (gap K2/N4): classify an `on*` attribute key as a DOM-native
+/// event (→ `events`, emitted `@click` etc.) vs a callback prop (→ `props`,
+/// emitted `:on_select="Handler"`). Only the common DOM event names are
+/// native; anything else starting with `on` is a callback prop.
+fn is_native_event_key(key: &str) -> bool {
+    matches!(
+        key,
+        "onclick" | "onClick" | "on_click"
+            | "oninput" | "onInput" | "on_input"
+            | "onchange" | "onChange" | "on_change"
+            | "onenter" | "onEnter" | "on_enter"
+            | "onsubmit"
+            | "onkeyup" | "onkeydown" | "onkeypress"
+            | "onfocus" | "onblur"
+    )
+}
+
 // ============================================================================
 // Extraction Error
 // ============================================================================
@@ -483,7 +500,12 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                         if let Expr::Object(pairs) = expr {
                             for pair in pairs {
                                 let key = key_to_string(&pair.key);
-                                if key.starts_with("on") {
+                                // Plan 345 (gap K2/N4): only DOM-native `on*`
+                                // keys are events; other `on_*` (e.g. on_select,
+                                // on_submit) are callback props passed to child
+                                // widgets, so they stay in `props` and emit as
+                                // `:on_select="Handler"` (function ref).
+                                if is_native_event_key(&key) {
                                     let handler = extract_event_handler(&pair.value)?;
                                     events.insert(key, handler);
                                 } else {

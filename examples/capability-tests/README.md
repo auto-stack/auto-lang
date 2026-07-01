@@ -8,7 +8,7 @@ Tracked by [Plan 345](../../docs/plans/345-gap-canary-tests.md).
 | Canary | Gap | Status | What it pins |
 |---|---|---|---|
 | `n1-contains-includes/` | N1 | 🟢 GREEN | `.contains` → JS `.includes` (str + list) |
-| `k2-child-handler-binding/` | K2/N4 | 🔴 RED | parent↔child handler wiring (callback prop) |
+| `k2-child-handler-binding/` | K2/N4 | 🟢 GREEN | parent↔child handler wiring (callback prop) |
 | `n2-routing-codegen-paths/` | N2 | 🔴 RED | route page-module paths exist |
 | `n3-handler-local-vars/` | N3 | 🔴 RED | local mutable vars in handler blocks |
 

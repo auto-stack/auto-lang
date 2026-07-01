@@ -1,0 +1,19 @@
+// Canary K2/N4 — the child widget that receives a callback prop.
+
+widget Counter(on_select: msg) {
+    msg Msg { Bump(int) }
+    model { var n int = 0 }
+    view {
+        col {
+            button "increment" { onclick: .Bump(.n + 1) }
+            text .n { }
+            style: "gap-2"
+        }
+    }
+    on {
+        .Bump(next) -> {
+            .n = next
+            on_select(next)
+        }
+    }
+}
