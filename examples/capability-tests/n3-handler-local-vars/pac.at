@@ -1,0 +1,4 @@
+name: "cap-n3-handler-local-vars"
+version: "0.1.0"
+scene: "ui"
+render: "vue"

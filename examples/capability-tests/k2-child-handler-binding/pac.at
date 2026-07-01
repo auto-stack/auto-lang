@@ -1,0 +1,4 @@
+name: "cap-k2-child-handler-binding"
+version: "0.1.0"
+scene: "ui"
+render: "vue"

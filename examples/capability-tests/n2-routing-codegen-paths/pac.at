@@ -1,0 +1,4 @@
+name: "cap-n2-routing-codegen-paths"
+version: "0.1.0"
+scene: "ui"
+render: "vue"

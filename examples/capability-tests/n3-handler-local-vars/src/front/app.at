@@ -1,0 +1,45 @@
+// Canary N3 — local mutable variables inside handler blocks.
+// STATUS: RED (feature not yet implemented).
+//
+// Desired: a handler can declare a local `var i = 0`, mutate it in a loop,
+// and use it — without polluting component state. AI naturally writes loop
+// counters, accumulators, find-by-id loops this way.
+//
+// Current failure (gap enumeration N3):
+//   `var i int = 0; for n in .ns { i = i + 1 }`
+//   → Parse error: "Expected term, got RBrace"
+// `AuraStmt` has no local-declaration variant (only Assign/Update/MethodCall);
+// the handler-body parser rejects `var`.
+//
+// What's needed:
+//   1. Parser: accept `var name [: type] = expr` in handler (on-block) context.
+//   2. AuraStmt: add a Local/Let variant (or a scope for handler locals).
+//   3. ts_adapter + vue handler emit: emit `let name = ...; name = ...`
+//      (bare local, NOT `.value`).
+// Workaround today: use a state field (`.i`) — works but pollutes state.
+
+widget App {
+    msg Msg { Sum }
+    model {
+        var ns []int = [1, 2, 3, 4]
+        var total int = 0
+    }
+    view {
+        col {
+            button "sum" { onclick: .Sum }
+            text .total { }
+            style: "p-4 gap-2"
+        }
+    }
+    on {
+        .Sum -> {
+            var i int = 0
+            var acc int = 0
+            for n in .ns {
+                acc = acc + n
+                i = i + 1
+            }
+            .total = acc
+        }
+    }
+}

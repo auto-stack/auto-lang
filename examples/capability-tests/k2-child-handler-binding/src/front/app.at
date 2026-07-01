@@ -1,0 +1,46 @@
+// Canary K2/N4 — child→parent handler binding via callback prop.
+// STATUS: RED (feature not yet implemented).
+//
+// Desired: parent App passes a callback (`on_select: .Selected`) to a child
+// widget; child calls `on_select(i)` in a handler; parent's `.Selected(i)`
+// runs and mutates parent state. Demonstrates app↔block event wiring.
+//
+// What's needed (codegen):
+//   1. Child: a callback-typed param (`on_select: msg`) → Vue `defineEmits` +
+//      emit on call, OR a function prop (`props.on_select(i)`).
+//   2. Child handler `on_select(i)` → emit/prop invocation.
+//   3. Parent call site `on_select: .Selected` → `@select="Selected"` or
+//      `:on-select="(i) => Selected(i)"`.
+
+widget App {
+    msg Msg { Selected(int) }
+    model { var active int = 0 }
+    view {
+        col {
+            // pass a callback to the child:
+            Counter(on_select: .Selected)
+            text .active { }
+            style: "p-4 gap-2"
+        }
+    }
+    on {
+        .Selected(i) -> { .active = i }
+    }
+}
+
+widget Counter(on_select: msg) {
+    msg Msg { Bump(int) }
+    model { var n int = 0 }
+    view {
+        col {
+            button "inc" { onclick: .Bump(.n + 1) }
+            style: "gap-2"
+        }
+    }
+    on {
+        .Bump(next) -> {
+            .n = next
+            on_select(next)
+        }
+    }
+}
