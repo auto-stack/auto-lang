@@ -1,11 +1,15 @@
+use store: CounterStore
+
 widget settings {
-    use store: CounterStore
+    msg Msg { Inc }
     view {
         col {
-            text "settings (same count)"
+            text "settings"
             text .store.count { }
-            button "inc" { onclick: .store.Inc }
             style: "p-4 gap-2"
         }
+    }
+    on {
+        .Inc -> { }
     }
 }

@@ -1,12 +1,15 @@
+use store: CounterStore
+
 widget home {
-    use store: CounterStore
+    msg Msg { Inc }
     view {
         col {
             text "home"
             text .store.count { }
-            button "inc" { onclick: .store.Inc }
-            button "dec" { onclick: .store.Dec }
             style: "p-4 gap-2"
         }
+    }
+    on {
+        .Inc -> { }
     }
 }

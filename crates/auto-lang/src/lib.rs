@@ -7,6 +7,18 @@ use std::sync::OnceLock;
 use std::sync::Arc;
 static GLOBAL_RT: OnceLock<Arc<tokio::runtime::Runtime>> = OnceLock::new();
 
+// Plan 351: thread-local for passing store composable files out-of-band
+// (avoids changing the return type of ui_build_* functions).
+thread_local! {
+    pub static STORE_EXTRA_FILES: std::cell::RefCell<Vec<(String, String)>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
+/// Drain and return stashed store composable files (filename, content).
+pub fn drain_store_extra_files() -> Vec<(String, String)> {
+    STORE_EXTRA_FILES.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
+}
+
 pub fn get_global_runtime() -> Arc<tokio::runtime::Runtime> {
     GLOBAL_RT.get_or_init(|| {
         Arc::new(
@@ -3488,7 +3500,7 @@ pub fn ui_build(
     }
 
     if widgets.is_empty() {
-        return Err("No widget declarations found in input file".into());
+        return Err("No widget or store declarations found in input file".into());
     }
 
     // Generate code based on backend
@@ -3595,7 +3607,7 @@ pub fn ui_build_shadcn(
     }
 
     if widgets.is_empty() {
-        return Err("No widget declarations found in input file".into());
+        return Err("No widget or store declarations found in input file".into());
     }
 
     // Generate code with shadcn-vue mode
@@ -3673,6 +3685,32 @@ fn is_api_use_stmt(use_stmt: &crate::ast::Use) -> bool {
     false
 }
 
+/// Check if a use statement targets `store` module (Plan 351).
+fn is_store_use_stmt(use_stmt: &crate::ast::Use) -> bool {
+    if use_stmt.paths.len() == 1 && use_stmt.paths[0].as_str() == "store" {
+        return true;
+    }
+    if let Some(ref mp) = use_stmt.module_path {
+        if mp.display() == "store" {
+            return true;
+        }
+    }
+    false
+}
+
+/// Extract store names from `use store: <Name>` declarations.
+fn extract_store_imports_from_ast(code: &crate::ast::Code) -> Vec<String> {
+    let mut stores = Vec::new();
+    for stmt in &code.stmts {
+        if let crate::ast::Stmt::Use(ref use_stmt) = stmt {
+            if is_store_use_stmt(use_stmt) {
+                stores.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+    stores
+}
+
 /// // Check if any widget has routes
 /// let has_routes = widgets.iter().any(|w| w.routes.is_some());
 /// ```
@@ -3698,6 +3736,26 @@ pub fn ui_build_shadcn_with_widgets(
 
     // Extract API imports from `use back.api: ...` statements
     let api_imports = extract_api_imports_from_ast(&ast);
+    let store_deps = extract_store_imports_from_ast(&ast);
+
+    // Extract AURA stores from AST (Plan 351)
+    let mut stores: Vec<crate::aura::AuraStore> = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+            let store = crate::aura::extract_store_from_decl(store_decl)
+                .map_err(|e| e.to_string())?;
+            stores.push(store);
+        }
+    }
+
+    // Generate store composable files and stash them via thread-local
+    for store in &stores {
+        let composable = crate::ui_gen::VueGenerator::generate_store_composable(store);
+        let filename = format!("stores/use{}Store.ts", store.name);
+        crate::STORE_EXTRA_FILES.with(|cell| {
+            cell.borrow_mut().push((filename, composable));
+        });
+    }
 
     // Extract AURA widgets from AST
     let mut widgets = Vec::new();
@@ -3710,12 +3768,12 @@ pub fn ui_build_shadcn_with_widgets(
         }
     }
 
-    if widgets.is_empty() {
-        return Err("No widget declarations found in input file".into());
+    if widgets.is_empty() && stores.is_empty() {
+        return Err("No widget or store declarations found in input file".into());
     }
 
     // Generate code with shadcn-vue mode (with explicit API imports if present)
-    let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
+    let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_store_deps(store_deps.clone());
     if !api_imports.is_empty() {
         gen = gen.with_project_api_functions(api_imports.clone());
     }
@@ -3733,7 +3791,7 @@ pub fn ui_build_shadcn_with_widgets(
         for widget in &widgets {
             let out_path = std::path::Path::new(out_dir)
                 .join(format!("{}.vue", widget.name));
-            let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
+            let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_store_deps(store_deps.clone());
             if !api_imports.is_empty() {
                 gen = gen.with_project_api_functions(api_imports.clone());
             }
@@ -3770,6 +3828,7 @@ pub fn ui_build_shadcn_with_sub_widgets(
 
     // Extract API imports from `use back.api: ...` statements
     let api_imports = extract_api_imports_from_ast(&ast);
+    let store_deps = extract_store_imports_from_ast(&ast);
 
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
@@ -3782,11 +3841,11 @@ pub fn ui_build_shadcn_with_sub_widgets(
     }
 
     if widgets.is_empty() {
-        return Err("No widget declarations found in input file".into());
+        return Err("No widget or store declarations found in input file".into());
     }
 
     // Generate code with shadcn-vue mode, passing known sub-widget names
-    let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_sub_widgets(sub_widget_names.clone());
+    let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_store_deps(store_deps.clone()).with_sub_widgets(sub_widget_names.clone());
     if !api_imports.is_empty() {
         gen = gen.with_project_api_functions(api_imports.clone());
     }
@@ -3803,7 +3862,7 @@ pub fn ui_build_shadcn_with_sub_widgets(
         for widget in &widgets {
             let out_path = std::path::Path::new(out_dir)
                 .join(format!("{}.vue", widget.name));
-            let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_sub_widgets(sub_widget_names.clone());
+            let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_store_deps(store_deps.clone()).with_sub_widgets(sub_widget_names.clone());
             if !api_imports.is_empty() {
                 gen = gen.with_project_api_functions(api_imports.clone());
             }

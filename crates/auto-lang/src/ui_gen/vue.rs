@@ -781,6 +781,9 @@ pub struct VueGenerator {
     /// Prop names (for defineProps — no .value suffix needed)
     prop_names: Vec<String>,
 
+    /// Store dependencies from `use store:` (Plan 351)
+    store_deps: Vec<String>,
+
     /// Event handler definitions (name, body, is_async)
     handlers: Vec<(String, String, bool)>,
 
@@ -902,6 +905,7 @@ impl VueGenerator {
             imports: Vec::new(),
             state_names: Vec::new(),
             prop_names: Vec::new(),
+            store_deps: Vec::new(),
             handlers: Vec::new(),
             emit_events: Vec::new(),
             has_emit: false,
@@ -954,6 +958,12 @@ impl VueGenerator {
             self.explicit_api_imports = true;
         }
         self.project_api_functions = functions;
+        self
+    }
+
+    /// Set store dependencies from `use store:` declarations (Plan 351).
+    pub fn with_store_deps(mut self, deps: Vec<String>) -> Self {
+        self.store_deps = deps;
         self
     }
 
@@ -1218,6 +1228,11 @@ impl VueGenerator {
         // Register prop names (props are NOT refs — no .value suffix in script)
         for prop in &widget.props {
             self.prop_names.push(prop.name.clone());
+        }
+
+        // Plan 351: register 'store' as a pseudo-prop when store deps exist
+        if !self.store_deps.is_empty() {
+            self.prop_names.push("store".to_string());
         }
 
         // Activate emit generation for sub-widgets that have messages
@@ -1529,6 +1544,19 @@ impl VueGenerator {
                 script.push_str(&format!("  {}: []\n", event));
             }
             script.push_str("}>()\n\n");
+        }
+
+        // Plan 351: store composable imports + const store
+        if !self.store_deps.is_empty() {
+            for dep in &self.store_deps {
+                script.push_str(&format!(
+                    "import {{ use{}Store }} from '@/stores/use{}Store'\n",
+                    dep, dep
+                ));
+            }
+            // v1: single store → const store = useXxxStore()
+            let first = &self.store_deps[0];
+            script.push_str(&format!("const store = use{}Store()\n\n", first));
         }
 
         // Generate event handlers
