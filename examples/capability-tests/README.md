@@ -6,6 +6,7 @@ driving the gap's feature via TDD (initially RED → GREEN when implemented).
 Tracked by [Plan 345](../../docs/plans/345-gap-canary-tests.md).
 
 | Canary | Gap | Status | What it pins |
+| `k1-shared-store-routing/` | K1/Rung-4 | 🟢 GREEN | shared store (cross-route state) |
 |---|---|---|---|
 | `n1-contains-includes/` | N1 | 🟢 GREEN | `.contains` → JS `.includes` (str + list) |
 | `k2-child-handler-binding/` | K2/N4 | 🟢 GREEN | parent↔child handler wiring (callback prop) |
