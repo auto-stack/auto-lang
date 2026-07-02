@@ -1,4 +1,4 @@
-# Plan 353: WebSocket 双向通讯
+# Plan 350: WebSocket 双向通讯
 
 > **状态**：设计文档 / TODO
 > **优先级**：🟡 中

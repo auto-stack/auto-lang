@@ -1,7 +1,7 @@
 # HTTP 库扩展 Roadmap
 
 > **状态**：规划文档（持续更新）
-> **关联计划**：Plan 344（统一通讯架构）、Plan 353（WebSocket）
+> **关联计划**：Plan 344（统一通讯架构）、Plan 350（WebSocket）
 
 ## 当前能力矩阵（v0.4.1 + Plan 350）
 
@@ -86,7 +86,7 @@ reqwest 已有 `.multipart()` 支持，只需暴露为 native。
 - 进度迭代器复用 Plan 348 的非阻塞 yield 机制（独立线程 + channel + AsyncHttpStream）
 - 文件用 `std::fs::File` 逐 chunk 写入
 
-### 3. WebSocket 双向通讯（独立计划 Plan 353）
+### 3. WebSocket 双向通讯（独立计划 Plan 350）
 
 见 `353-websocket.md`。复杂度高，需引入 tungstenite 依赖 + 新模块。
 
