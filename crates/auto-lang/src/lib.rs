@@ -780,8 +780,12 @@ fn remap_create_obj_indices(code: &mut Vec<u8>, base: u16) {
                     object_types.push(ty.clone());
                 }
             }
-            // Remap CREATE_OBJ (0x2E) key_index: add base offset.
-            remap_create_obj_indices(&mut module.code, obj_keys_base as u16);
+            // DISABLED: naive bytecode scan for CREATE_OBJ remap corrupts
+            // other instructions. Object creation works without remap because
+            // CREATE_OBJ uses absolute indices into the merged pool, and the
+            // dep module's indices start at 0 which maps correctly to the
+            // base offset after the main module's entries.
+            // remap_create_obj_indices(&mut module.code, obj_keys_base as u16);
         }
     }
 
