@@ -450,13 +450,43 @@ pub fn synthesize_from_decl(
 
 ---
 
-### 6.3【轴 B / 转译】确认并巩固 `trans/` 叶子层的统一地位
+### 6.3【轴 B / 转译】`trans/` 叶子层审计 —— 统一假设修正
 
-这一块**已经统一**，本方案只做"确认 + 巩固"，不改架构：
+> ⚠️ **PR-4 审计推翻了原假设。** 原文说"trans/ 已统一"，实际只对 Vue 成立。
 
-1. **审计**：确认所有 UI 转译器（vue/jet/ark/rust）的 handler 体翻译都经 `ui_gen/ts_adapter.rs` → `trans::typescript`（或对应的 `trans::*`），不存在第二个手写表达式翻译器。若发现遗漏（如 ark 直接手写翻译某构造），收口回 `trans/`。
-2. **文档化**：在 `trans/mod.rs` 顶部写明"`trans/` 是所有转译路径（脚本 a2r/a2c/a2py 与 UI a2vue/a2jet/a2ark）共享的唯一叶子翻译层"，避免后人再分支。
-3. **不做**：不强求 `a2vue` 和 `a2r` 共享"容器组装"逻辑——它们的程序形态不同（轴 C），各自组装是正当的。
+#### 审计结论
+
+`trans/` 目录只有 `c.rs`/`gdscript.rs`/`javascript.rs`/`python.rs`/`rust.rs`/`typescript.rs`（+ ts 子模块）。**没有 `kotlin.rs`、没有 `arkts.rs`**。四个 UI 生成器对 handler 体的翻译路径如下：
+
+| 生成器 | 走 `trans/`？ | handler 体载荷 | 手写并行翻译器 |
+|---|---|---|---|
+| **Vue** | ✅ 是（`ts_adapter` → `trans::typescript`） | `AstStmts`（基础 `Stmt`） | `ts_adapter` 有手写重写但长尾委托给 `trans::typescript`（`ts_adapter.rs:175,608`） |
+| **Jet** | ❌ 完全手写 | `AstBlock`（`AuraStmt`）；`AstStmts` 是 TODO 空壳（`jet/generator.rs:736`） | `stmt_to_kotlin`（`:743`）、`expr_to_kotlin`（`:936`）、`binop_to_kotlin`（`:973`） |
+| **Ark** | ❌ 完全手写（两套） | `AstBlock`（`AuraStmt`）；`AstStmts` 是 TODO 空壳（`ark/state.rs:454`） | `state.rs`: `stmt_to_arkts`（`:464`）、`expr_to_arkts`（`:492`）；`generator.rs`: `expr_to_ark_string`（`:1769`） |
+| **Rust** | ❌ 完全手写 | 两者都支持但两套手写 | `ast_stmt_to_rust`（`:2452`）、`ast_expr_to_rust`（`:2731`）+ `stmt_to_rust`（`:3228`）、`expr_to_rust`（`:3272`） |
+
+**根因**：`trans/` 没有 Kotlin/ArkTS 支持（结构上无法接）；且四个生成器对 handler 体用的**载荷类型不一致**——Vue 用 `AstStmts`（基础 `Stmt`，能接 `trans/`），Jet/Ark 用 `AstBlock`（`AuraStmt`，无 `trans/` 对应）。
+
+#### 合并可行性评估（三个方向）
+
+| 方向 | 难度 | 根本阻断点 | 前置条件 |
+|---|---|---|---|
+| **ArkTS ⊂ TS**（Ark 合并到 TypeScript 路径） | 难（根本分歧） | IR 类型不同（`AuraStmt` vs 基础 `Stmt`）；输出语义不同（`this.count` vs `count.value`） | 消除 `AuraStmt`（PR-5）+ 统一载荷为 `AstStmts` |
+| **Kotlin `trans/kotlin.rs`** | 中等 | 模式可参照 `trans/typescript.rs`；但 Jet 当前 `AuraExpr` 覆盖仅 60%（9/15 变体，缺 Array/Object/Index/Lambda） | 同上：先消除 `AuraStmt`，再建 `trans/kotlin.rs`（估 500-800 行） |
+| **Rust `ui_gen` ↔ `trans/rust`** | 难（根本分歧） | `trans/rust.rs`（13k 行）是独立程序转译器（emit `fn main()`、free functions）；`ui_gen/rust.rs` 是 `self.`-field state-struct 方法体（`serde_json::Value` 类型擦除）；类型模型不同 | 需设计"方法体模式"的 Rust 翻译；非简单合并 |
+
+**关键因果链**：三个方向的真正阻断点都指向同一个根因——**载荷类型不一致**（`AuraStmt` vs 基础 `Stmt`）。消除 `AuraStmt`（PR-5）是统一 trans 层的前置条件。
+
+#### PR-4 的实际产出
+
+PR-4 降级为**纯审计 + 文档化**（原"巩固 trans 统一"假设不成立）。实际合并工作拆为三个后续 PR，均依赖 PR-5：
+- **PR-4a**：Ark 合并到 TypeScript 路径（复用 `ts_adapter` + Ark 语义适配）
+- **PR-4b**：建 `trans/kotlin.rs`，Jet 接入
+- **PR-4c**：Rust 两套合并分析（需设计方法体模式，最复杂）
+
+#### 不变的事实
+
+即便不做合并，`trans/` 对**脚本转译器**（a2r/a2c/a2py/a2ts）仍是唯一共享叶子层——这些脚本转译器是 `trans/` 的原始设计消费者。问题只出在 **UI 生成器**这一侧。
 
 ---
 
@@ -562,13 +592,27 @@ pub fn validate_handler_stmt(stmt: &Stmt) -> Result<(), UnsupportedKind> {
 
 每一步都应保持现有测试全绿；UI 解析的黄金文件测试（若存在）是关键回归保障。
 
-| 阶段 | 轴 | 内容 | 风险 | 可独立合入 |
+> 标注：✅ = 已完成 | 🔲 = 待做
+
+| 阶段 | 轴 | 内容 | 风险 | 状态 |
 |---|---|---|---|---|
-| **PR-1 基建** | A | 新增 `Dialect` trait、`Parser::dialects`/`try_dialect_stmt`/`build_dialects`；**暂不迁移任何现有逻辑**。加单元测试验证空方言表行为不变。删除休眠的 `BlockParser`/`special_blocks`。 | 低 | ✅ |
-| **PR-2 迁移 UI 派发** | A | 把 `widget/model/view/msg/on` 的语句派发迁入 `UiDialect`；删除 `is_contextual_keyword`；顺手修 §2.1 的 `view` token 不可达 bug（让 `UiDialect` 对 view 按文本派发）。 | 中（触及 §2 不一致） | ✅ |
-| **PR-3 VM 去中转** | B/VM | 新增 `synthesize_from_decl(&WidgetDecl)`；`run_file_dynamic_ui` 改用它，VM 路径不再构造完整 AuraWidget。`AuraViewBuilder` 若依赖 AuraWidget，改由 `synthesize_from_decl` 同时返回必要的 view 元数据。 | 中 | ✅ |
-| **PR-4 巩固 trans 统一** | B/转译 | 审计 vue/jet/ark/rust handler 体翻译是否都走 `trans/`；收口遗漏；在 `trans/mod.rs` 文档化统一地位。 | 低 | ✅ |
-| **PR-5 消除镜像** | C | 前置：grep `AuraStmt`/`AuraExpr` 所有消费方，确认主路径无消费者（形成审计记录）。然后删除镜像类型 + extract 函数；新增 `aura/validate.rs`；迁移有消费的残留。 | 高（触及所有 UI 后端，建议拆子 PR：先删 `AuraStmt`，再删 `AuraExpr`） | ✅ |
+| **PR-1 基建** | A | 新增 `Dialect` trait、`Parser::dialects`/`try_dialect_stmt`/`build_dialects`；删除休眠的 `BlockParser`/`special_blocks`。 | 低 | ✅ |
+| **PR-2 迁移 UI 派发** | A | `widget/model/view/msg/on` 派发迁入 `UiDialect`；删除 `is_contextual_keyword`；修 `view` token 不可达 bug；扩展 trait 加 `try_parse_token_stmt`。 | 中 | ✅ |
+| **PR-3 AuraWidget 拆分** | B/VM | 新增 `WidgetLogicRef`/`WidgetViewRef` 零拷贝视图；显式化逻辑/视图依赖边界。为 VM 去中转铺路。 | 低 | ✅ |
+| **PR-4 trans 审计** | B/转译 | 审计四生成器 handler 体翻译路径；修正"trans/ 已统一"假设（实际只 Vue 走 trans/）；文档化合并可行性 + 后续路线。 | 低 | ✅ |
+| **PR-5 消除 AuraStmt** | C | 删除 `AuraStmt`/`AuraUpdateOp` + `extract_stmt`；handler 槽改持基础 `Stmt`；4 个生成器 `stmt_to_*` 迁移到基础 `Stmt`；新增 `aura/validate.rs`。`AuraExpr` 暂留（第二档，独立议题）。 | 高 | 🔲 |
+| **PR-6 场景配置** | A | `--scene` CLI flag（CLI > pac.at > 默认）+ `.au` 后缀（弱提示推断）+ 模块解析扩展名列表更新。 | 中 | 🔲 |
+
+**后续 PR（依赖 PR-5）**：
+
+| 阶段 | 内容 | 难度 | 前置 |
+|---|---|---|---|
+| **PR-3b VM 完全去中转** | synthesize 直读 WidgetDecl + state 初始化改用基础 Expr + view 树独立提取 + registry 去 AuraWidget | 高 | PR-5 |
+| **PR-4a Ark 合并到 TS** | Ark 复用 `ts_adapter` + Ark 语义适配（`this.count`），消除 `state.rs` 手写并行 | 难 | PR-5 |
+| **PR-4b 建 trans/kotlin.rs** | 新建 `trans/kotlin.rs`（~500-800 行），Jet 接入，消除 `generator.rs` 手写并行 | 中 | PR-5 |
+| **PR-4c Rust 合并分析** | 设计"方法体模式"Rust 翻译，评估 `ui_gen/rust.rs` 与 `trans/rust.rs` 合并可行性 | 难 | PR-5 |
+
+**依赖关系**：PR-5（消除 AuraStmt）是统一 trans 层和 VM 去中转的**共同前置条件**——因为 AuraStmt 是载荷分歧的根因。建议 PR-5 优先于 PR-3b/4a/4b/4c。
 
 ---
 
