@@ -781,6 +781,9 @@ pub struct VueGenerator {
     /// Prop names (for defineProps — no .value suffix needed)
     prop_names: Vec<String>,
 
+    /// Store dependencies from `use store:` (Plan 351)
+    store_deps: Vec<String>,
+
     /// Event handler definitions (name, body, is_async)
     handlers: Vec<(String, String, bool)>,
 
@@ -902,6 +905,7 @@ impl VueGenerator {
             imports: Vec::new(),
             state_names: Vec::new(),
             prop_names: Vec::new(),
+            store_deps: Vec::new(),
             handlers: Vec::new(),
             emit_events: Vec::new(),
             has_emit: false,
@@ -954,6 +958,12 @@ impl VueGenerator {
             self.explicit_api_imports = true;
         }
         self.project_api_functions = functions;
+        self
+    }
+
+    /// Set store dependencies from `use store:` declarations (Plan 351).
+    pub fn with_store_deps(mut self, deps: Vec<String>) -> Self {
+        self.store_deps = deps;
         self
     }
 
@@ -1218,6 +1228,11 @@ impl VueGenerator {
         // Register prop names (props are NOT refs — no .value suffix in script)
         for prop in &widget.props {
             self.prop_names.push(prop.name.clone());
+        }
+
+        // Plan 351: register 'store' as a pseudo-prop when store deps exist
+        if !self.store_deps.is_empty() {
+            self.prop_names.push("store".to_string());
         }
 
         // Activate emit generation for sub-widgets that have messages
@@ -1529,6 +1544,19 @@ impl VueGenerator {
                 script.push_str(&format!("  {}: []\n", event));
             }
             script.push_str("}>()\n\n");
+        }
+
+        // Plan 351: store composable imports + const store
+        if !self.store_deps.is_empty() {
+            for dep in &self.store_deps {
+                script.push_str(&format!(
+                    "import {{ use{}Store }} from '@/stores/use{}Store'\n",
+                    dep, dep
+                ));
+            }
+            // v1: single store → const store = useXxxStore()
+            let first = &self.store_deps[0];
+            script.push_str(&format!("const store = use{}Store()\n\n", first));
         }
 
         // Generate event handlers
@@ -7688,6 +7716,68 @@ export function cn(...inputs: ClassValue[]) {
   }
 }
 "#.to_string()
+    }
+
+    /// Generate a composable singleton `.ts` file for a shared store
+    /// (Plan 351 / Design 18). Produces module-level `ref`s + an exported
+    /// `useXxxStore()` function returning state refs and action functions.
+    pub fn generate_store_composable(store: &crate::aura::AuraStore) -> String {
+        use crate::ui_gen::ts_adapter::{transpile_handler_body, AuraTsContext};
+
+        let mut code = String::new();
+        code.push_str("import { ref } from 'vue'\n\n");
+
+        // Module-level ref declarations (singleton state).
+        for sv in &store.state_vars {
+            let init = Self::store_init_to_js(&sv.initial);
+            code.push_str(&format!("const {} = ref({})\n", sv.name, init));
+        }
+        code.push('\n');
+
+        // Build ctx for handler transpilation (state_names → .value emission).
+        let state_names: std::collections::HashSet<String> =
+            store.state_vars.iter().map(|s| s.name.clone()).collect();
+        let ctx = AuraTsContext::new(state_names)
+            .with_props(std::collections::HashSet::new());
+
+        // Export function.
+        let fn_name = format!("use{}Store", store.name);
+        code.push_str(&format!("export function {}() {{\n", fn_name));
+        code.push_str("    return {\n");
+
+        // Expose state refs by name.
+        for sv in &store.state_vars {
+            code.push_str(&format!("        {},\n", sv.name));
+        }
+
+        // Expose handlers as action functions.
+        for (pattern, payload) in &store.handlers {
+            let action_name = pattern.trim_start_matches('.');
+            let body = match payload {
+                crate::aura::LogicPayload::AstStmts(stmts) => transpile_handler_body(stmts, &ctx),
+                _ => String::new(),
+            };
+            code.push_str(&format!(
+                "        {}: () => {{ {} }},\n",
+                action_name, body
+            ));
+        }
+
+        code.push_str("    }\n");
+        code.push_str("}\n");
+        code
+    }
+
+    /// Convert an initial-value AuraExpr to a JS literal (v1: simple cases).
+    fn store_init_to_js(expr: &crate::aura::AuraExpr) -> String {
+        use crate::aura::AuraExpr;
+        match expr {
+            AuraExpr::Int(n) => n.to_string(),
+            AuraExpr::Literal(s) => format!("'{}'", s.replace('\'', "\\'")),
+            AuraExpr::Bool(b) => b.to_string(),
+            AuraExpr::Array(_) => "[]".to_string(),
+            _ => "null".to_string(),
+        }
     }
 
     /// Generate Vue Router configuration file (Plan 105)

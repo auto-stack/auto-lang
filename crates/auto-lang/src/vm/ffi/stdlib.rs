@@ -4132,11 +4132,51 @@ fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
 }
 
 /// `auto.http.get_json(url) -> String` — GET, return body as string.
+/// Helper: check if a previously spawned async HTTP request has completed.
+/// Returns Some(body_string) if ready, None if still pending.
+fn check_async_http_result(request_id: u64) -> Option<String> {
+    ASYNC_HTTP_RESULTS.lock().ok().and_then(|mut map| {
+        map.get_mut(&request_id).and_then(|opt| opt.take())
+    }).and_then(|result| result.ok())
+}
+
+/// Helper: spawn an async HTTP request on a dedicated thread.
+/// Result is stored in ASYNC_HTTP_RESULTS[request_id].
+fn spawn_async_http(method: String, url: String, body: Option<String>, request_id: u64) {
+    std::thread::spawn(move || {
+        let result = simple_http_json(&method, &url, body.as_deref());
+        if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+            map.insert(request_id, Some(Ok(result)));
+        }
+    });
+}
+
 pub fn shim_http_get_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let body = simple_http_json("GET", &url, None);
-    push_string_result(task, _vm, body)
+
+    // Plan 349 step 7: Non-blocking async HTTP.
+    // Check if we have a pending request (re-entry after yield).
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(body) = check_async_http_result(req_id) {
+            // Result ready — push and return.
+            task.waiting_http_request_id = None;
+            return push_string_result(task, _vm, body);
+        }
+        // Still pending — yield again.
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
+
+    // First call — spawn the request and yield.
+    let req_id = alloc_async_id();
+    spawn_async_http("GET".into(), url, None, req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+        map.insert(req_id, None); // Mark as pending.
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
 }
 
 /// `auto.http.post_json(url, body) -> String` — POST JSON, return body.
@@ -4145,8 +4185,24 @@ pub fn shim_http_post_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let resp = simple_http_json("POST", &url, Some(&body));
-    push_string_result(task, vm, resp)
+
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(resp) = check_async_http_result(req_id) {
+            task.waiting_http_request_id = None;
+            return push_string_result(task, vm, resp);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
+
+    let req_id = alloc_async_id();
+    spawn_async_http("POST".into(), url, Some(body), req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
 }
 
 /// `auto.http.put_json(url, body) -> String` — PUT JSON, return body.
@@ -4155,16 +4211,48 @@ pub fn shim_http_put_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let resp = simple_http_json("PUT", &url, Some(&body));
-    push_string_result(task, vm, resp)
+
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(resp) = check_async_http_result(req_id) {
+            task.waiting_http_request_id = None;
+            return push_string_result(task, vm, resp);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
+
+    let req_id = alloc_async_id();
+    spawn_async_http("PUT".into(), url, Some(body), req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
 }
 
 /// `auto.http.delete_json(url) -> String` — DELETE, return body.
 pub fn shim_http_delete_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let resp = simple_http_json("DELETE", &url, None);
-    push_string_result(task, vm, resp)
+
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(resp) = check_async_http_result(req_id) {
+            task.waiting_http_request_id = None;
+            return push_string_result(task, vm, resp);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
+
+    let req_id = alloc_async_id();
+    spawn_async_http("DELETE".into(), url, None, req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
 }
 
 /// Helper: push a response-body string onto the stack as a tagged string.

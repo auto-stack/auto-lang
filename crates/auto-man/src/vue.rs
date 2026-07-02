@@ -1544,6 +1544,16 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     // Load project context
     let project = VueProject::from_workspace(root_dir)?;
 
+    // Plan 351: drain stashed store composable files and write them
+    for (filename, content) in auto_lang::drain_store_extra_files() {
+        let stores_dir = project.output_dir.join("src").join("stores");
+        fs::create_dir_all(&stores_dir).ok();
+        let clean_name = filename.strip_prefix("stores/").unwrap_or(&filename);
+        let path = stores_dir.join(clean_name);
+        fs::write(&path, &content).ok();
+        println!("  ✓ Store composable: {}", path.display());
+    }
+
     // Step 1: Generate project structure if not exists, or regenerate source files if exists
     let total_steps = if project.exists() { 5 } else { 6 };
     let mut current_step = 0;

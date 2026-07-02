@@ -1,0 +1,4 @@
+name: "cap-k1-shared-store"
+version: "0.1.0"
+scene: "ui"
+render: "vue"

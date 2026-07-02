@@ -1,0 +1,15 @@
+use store: CounterStore
+
+widget home {
+    msg Msg { Inc }
+    view {
+        col {
+            text "home"
+            text .store.count { }
+            style: "p-4 gap-2"
+        }
+    }
+    on {
+        .Inc -> { }
+    }
+}

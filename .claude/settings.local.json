@@ -143,7 +143,9 @@
       "Bash(python3 -c ' *)",
       "Bash(ls -la \"d:/.auto/rust-workspace/\" 2>/dev/null | head -20)",
       "Read(//d/.auto/rust-workspace/**)",
-      "Bash(git worktree *)"
+      "Bash(git worktree *)",
+      "Bash(cd /d/autostack/auto-lang; echo \"=== plans 338-343 ===\"; ls docs/plans/ | grep -E \"^33[89]|^34[0-3]\" | sort; echo \"=== 340 exists? ===\"; ls docs/plans/340* 2>&1)",
+      "Read(//d/autostack/auto-lang/**)"
     ],
     "additionalDirectories": [
       "d:\\autostack\\auto-lang\\docs\\plans",

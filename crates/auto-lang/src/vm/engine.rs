@@ -1342,6 +1342,24 @@ impl AutoVM {
                     }
                 }
 
+                // Plan 349 step 7: Wake source 5 — async HTTP request completed.
+                if let Some(req_id) = task.waiting_http_request_id {
+                    let ready = crate::vm::ffi::stdlib::ASYNC_HTTP_RESULTS
+                        .lock()
+                        .ok()
+                        .and_then(|map| {
+                            map.get(&req_id).map(|opt| opt.is_some())
+                        })
+                        .unwrap_or(true); // Entry gone → wake (error fallback)
+                    if ready {
+                        task.waiting_http_request_id = None;
+                        task.status = TaskStatus::Ready;
+                    } else {
+                        alive_count += 1;
+                        continue; // Still waiting for HTTP response
+                    }
+                }
+
                 alive_count += 1;
 
                 // Check if task is runnable
@@ -5099,7 +5117,14 @@ impl AutoVM {
                         // Plan 327 Phase 1: TaskHandle.send -> vm-aware (push to pending_messages)
                         crate::vm::ffi::stdlib::shim_task_send_vm(task, self)?;
                     } else if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                        let pre_call_ip = task.ip;
                         shim(task, self)?;
+                        // Plan 349 step 7: if HTTP json native yielded (async
+                        // request pending), back up IP to retry CALL_NAT.
+                        if task.waiting_http_request_id.is_some() {
+                            task.ip = pre_call_ip - 3;
+                            return Ok(StepResult::Yield);
+                        }
                     } else {
                         return Err(VMError::MissingNative(native_id));
                     }

@@ -70,6 +70,8 @@ pub struct AutoTask {
     // Plan 348: SSE stream this task is waiting on (None = not waiting).
     // When set, run_task_loop checks the channel and wakes the task when data arrives.
     pub waiting_sse_stream_id: Option<u64>,
+    // Plan 349 step 7: HTTP request this task is waiting on (None = not waiting).
+    pub waiting_http_request_id: Option<u64>,
 }
 
 impl AutoTask {
@@ -98,6 +100,7 @@ impl AutoTask {
             current_source: None,
             call_stack: Vec::new(),
             waiting_sse_stream_id: None,
+            waiting_http_request_id: None,
         }
     }
 }

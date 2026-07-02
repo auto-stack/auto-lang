@@ -208,6 +208,8 @@ pub enum Stmt {
     Ext(Ext),  // Type extension (like Rust's impl)
     // Plan 096: UI scenario statements
     WidgetDecl(WidgetDecl),
+    // Plan 351: shared store (scene:ui)
+    StoreDecl(crate::ast::ui::StoreDecl),
     MsgDecl(MsgDecl),
     ModelBlock(ModelBlock),
     ViewBlock(ViewBlock),
@@ -286,6 +288,7 @@ impl fmt::Display for Stmt {
             Stmt::Dep(dep) => write!(f, "{}", dep),
             // Plan 096: UI scenario statements
             Stmt::WidgetDecl(widget) => write!(f, "(widget {})", widget.name),
+            Stmt::StoreDecl(store) => write!(f, "(store {})", store.name),
             Stmt::MsgDecl(msg) => write!(f, "(msg {})", msg.name),
             Stmt::ModelBlock(model) => write!(f, "(model {} fields)", model.fields.len()),
             Stmt::ViewBlock(_view) => write!(f, "(view)"),
@@ -1148,6 +1151,11 @@ impl ToNode for Stmt {
                 node.add_arg(auto_val::Arg::Pos(Value::str(widget.name.as_str())));
                 node
             }
+            Stmt::StoreDecl(store) => {
+                let mut node = AutoNode::new("store");
+                node.add_arg(auto_val::Arg::Pos(Value::str(store.name.as_str())));
+                node
+            }
             Stmt::MsgDecl(msg) => {
                 let mut node = AutoNode::new("msg");
                 node.add_arg(auto_val::Arg::Pos(Value::str(msg.name.as_str())));
@@ -1221,6 +1229,7 @@ impl ToAtom for Stmt {
             Stmt::Dep(dep) => dep.to_atom(),
             // Plan 096: UI scenario statements
             Stmt::WidgetDecl(widget) => format!("(widget {})", widget.name).into(),
+            Stmt::StoreDecl(store) => format!("(store {})", store.name).into(),
             Stmt::MsgDecl(msg) => format!("(msg {})", msg.name).into(),
             Stmt::ModelBlock(model) => format!("(model {} fields)", model.fields.len()).into(),
             Stmt::ViewBlock(_) => "(view)".into(),

@@ -706,7 +706,31 @@ pub fn extract_type(ty: &Type) -> Type {
 // Widget Declaration Extractor (Plan 096)
 // ============================================================================
 
-use crate::ast::{WidgetDecl, ModelBlock, ViewBlock, OnBlock, BindBlock, MsgDecl, PropDecl, ViewNode, ViewText};
+use crate::ast::{WidgetDecl, StoreDecl, ModelBlock, ViewBlock, OnBlock, BindBlock, MsgDecl, PropDecl, ViewNode, ViewText};
+
+/// Extract AuraStore from parsed StoreDecl (Plan 351 / Design 18).
+/// A store is a view-less widget: state + msg + handlers → module-level refs + actions.
+pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
+    let state_vars = if let Some(model) = &decl.model {
+        extract_model_fields(model)?
+    } else {
+        Vec::new()
+    };
+    let messages: Vec<AuraMessage> = decl.messages.iter()
+        .map(|m| extract_msg_decl(m))
+        .collect();
+    let (handlers, _handler_params) = if let Some(on) = &decl.on {
+        extract_on_block(on)?
+    } else {
+        (HashMap::new(), HashMap::new())
+    };
+    Ok(AuraStore {
+        name: decl.name.as_str().to_string(),
+        state_vars,
+        messages,
+        handlers,
+    })
+}
 
 /// Extract AuraWidget from parsed WidgetDecl
 pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> {
