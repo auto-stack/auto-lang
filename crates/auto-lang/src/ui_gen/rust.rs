@@ -55,7 +55,7 @@
 //! Based on auto-ui/trans/rust_gen.rs, adapted for AuraWidget input.
 
 use super::{BackendGenerator, GenResult};
-use crate::aura::{AuraEvent, AuraExpr, AuraMsgVariant, AuraNode, AuraPropValue, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraExpr, AuraMsgVariant, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 
 /// Rust/GPUI code generator
 pub struct RustGenerator {
@@ -1020,17 +1020,6 @@ impl RustGenerator {
         match payload {
             LogicPayload::AstStmts(stmts) => {
                 self.scan_ast_stmts_for_value_locals(stmts);
-            }
-            LogicPayload::AstBlock(stmts) => {
-                for stmt in stmts {
-                    if let AuraStmt::Assign { target, value } = stmt {
-                        if !target.contains('.') {
-                            if matches!(value, AuraExpr::MethodCall { .. }) {
-                                self.value_locals.insert(target.clone());
-                            }
-                        }
-                    }
-                }
             }
             _ => {}
         }
@@ -2430,12 +2419,6 @@ impl RustGenerator {
     /// Generate handler body from LogicPayload
     fn generate_handler_body(&self, payload: &LogicPayload) -> String {
         match payload {
-            LogicPayload::AstBlock(stmts) => {
-                let bodies: Vec<String> = stmts.iter()
-                    .map(|s| self.stmt_to_rust(s))
-                    .collect();
-                bodies.join(";\n                ")
-            }
             LogicPayload::AstStmts(stmts) => {
                 let bodies: Vec<String> = stmts.iter()
                     .map(|s| self.ast_stmt_to_rust(s))
@@ -3222,50 +3205,6 @@ impl RustGenerator {
             }
         }
         format!("self.{}", target)
-    }
-
-    /// Convert AuraStmt to Rust
-    fn stmt_to_rust(&self, stmt: &AuraStmt) -> String {
-        match stmt {
-            AuraStmt::Assign { target, value } => {
-                let value_str = self.expr_to_rust(value);
-                // Check if target is a dotted path on a Value-type var
-                let parts: Vec<&str> = target.split('.').collect();
-                if parts.len() >= 2 {
-                    let first = parts[0];
-                    if self.needs_index_access(first) {
-                        // Write to Value field: self.note["title"] = json!(value)
-                        let field = parts[1..].join(".");
-                        return format!("self.{}[\"{}\"] = serde_json::json!({})", first, field, value_str);
-                    }
-                }
-                format!("self.{} = {}", target, value_str)
-            }
-            AuraStmt::Update { target, op, value } => {
-                let value_str = self.expr_to_rust(value);
-                let op_str = match op {
-                    crate::aura::AuraUpdateOp::AddAssign => "+=",
-                    crate::aura::AuraUpdateOp::SubAssign => "-=",
-                    crate::aura::AuraUpdateOp::MulAssign => "*=",
-                    crate::aura::AuraUpdateOp::DivAssign => "/=",
-                };
-                format!("self.{} {} {}", target, op_str, value_str)
-            }
-            AuraStmt::MethodCall { object, method, args } => {
-                let args_str: Vec<String> = args.iter()
-                    .map(|a| self.expr_to_rust(a))
-                    .collect();
-                // .remove() takes usize — cast i32 args
-                if method == "remove" {
-                    let casted_args: Vec<String> = args_str.iter()
-                        .map(|a| format!("{} as usize", a))
-                        .collect();
-                    format!("self.{}.{}({})", object, method, casted_args.join(", "))
-                } else {
-                    format!("self.{}.{}({})", object, method, args_str.join(", "))
-                }
-            }
-        }
     }
 
     /// Convert AuraExpr to Rust

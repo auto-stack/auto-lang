@@ -631,10 +631,9 @@ impl AuraNode {
 /// - Executed by AutoVM (GPUI dynamic)
 #[derive(Debug, Clone)]
 pub enum LogicPayload {
-    /// AURA IR block (simplified statement types for handlers)
-    AstBlock(Vec<AuraStmt>),
-
-    /// Original AutoLang AST statements for a2ts delegation
+    /// Original AutoLang AST statements for handler bodies.
+    /// This is the only payload variant produced by extract_on_block.
+    /// Consumed by: Vue (ts_adapter), Rust (ast_stmt_to_rust), Jet/Ark (TODO stubs).
     AstStmts(Vec<crate::ast::Stmt>),
 
     /// Bytecode for AutoVM dynamic execution (GPUI)
@@ -789,52 +788,8 @@ pub enum AuraUnaryOp {
 // Statements
 // ============================================================================
 
-/// AURA statement: simplified statement types for handlers
-#[derive(Debug, Clone)]
-pub enum AuraStmt {
-    /// Assignment: target = value
-    Assign {
-        target: String,
-        value: AuraExpr,
-    },
-
-    /// Update with operator: target op= value (e.g., count += 1)
-    Update {
-        target: String,
-        op: AuraUpdateOp,
-        value: AuraExpr,
-    },
-
-    /// Method call statement: object.method(args)
-    MethodCall {
-        /// Object being called on
-        object: String,
-        /// Method name
-        method: String,
-        /// Arguments
-        args: Vec<AuraExpr>,
-    },
-}
-
-/// Update operators
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AuraUpdateOp {
-    AddAssign,  // +=
-    SubAssign, // -=
-    MulAssign, // *=
-    DivAssign, // /=
-}
-
-impl fmt::Display for AuraUpdateOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AuraUpdateOp::AddAssign => write!(f, "+="),
-            AuraUpdateOp::SubAssign => write!(f, "-="),
-            AuraUpdateOp::MulAssign => write!(f, "*="),
-            AuraUpdateOp::DivAssign => write!(f, "/="),
-        }
-    }
-}
+// PR-5: AuraStmt / AuraUpdateOp removed — handlers now use LogicPayload::AstStmts
+// (base crate::ast::Stmt) exclusively. See docs/design/dialect-extension-diagnosis.md §6.4.
 
 // ============================================================================
 // AURA Module
@@ -970,27 +925,6 @@ mod tests {
     }
 
     #[test]
-    fn test_aura_stmt_update() {
-        let stmt = AuraStmt::Update {
-            target: "count".to_string(),
-            op: AuraUpdateOp::AddAssign,
-            value: AuraExpr::Int(1),
-        };
-
-        match stmt {
-            AuraStmt::Update { target, op, value } => {
-                assert_eq!(target, "count");
-                assert_eq!(op, AuraUpdateOp::AddAssign);
-                match value {
-                    AuraExpr::Int(v) => assert_eq!(v, 1),
-                    _ => panic!("Expected Int"),
-                }
-            }
-            _ => panic!("Expected Update"),
-        }
-    }
-
-    #[test]
     fn test_aura_widget() {
         let widget = AuraWidget {
             name: "Counter".to_string(),
@@ -1020,10 +954,11 @@ mod tests {
 
     #[test]
     fn test_logic_payload() {
-        let ast_payload = LogicPayload::AstBlock(vec![]);
+        // PR-5: AstBlock removed; LogicPayload now has AstStmts + Bytecode.
+        let ast_payload = LogicPayload::AstStmts(vec![]);
         let bytecode_payload = LogicPayload::Bytecode(vec![0x01, 0x02, 0x03]);
 
-        assert!(matches!(ast_payload, LogicPayload::AstBlock(_)));
+        assert!(matches!(ast_payload, LogicPayload::AstStmts(_)));
         assert!(matches!(bytecode_payload, LogicPayload::Bytecode(_)));
     }
 

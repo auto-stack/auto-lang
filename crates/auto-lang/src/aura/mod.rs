@@ -8,7 +8,7 @@
 //!
 //! - **Extraction**: Converting WidgetDecl AST to AuraWidget (1:1 lossless mapping)
 //! - **Purity**: View tree contains no logic, only layout and bindings
-//! - **Dual Payload**: Handlers can be AstBlock (AOT) or Bytecode (AutoVM)
+//! - **Handler Payload**: Handlers carry base AST stmts (AstStmts) or pre-compiled Bytecode
 //!
 //! ## Architecture
 //!

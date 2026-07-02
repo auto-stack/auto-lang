@@ -402,9 +402,6 @@ fn serialize_expr(expr: &AuraExpr, output: &mut String) {
 /// Serialize a logic payload
 fn serialize_payload(payload: &LogicPayload, output: &mut String, _indent: usize) {
     match payload {
-        LogicPayload::AstBlock(stmts) => {
-            output.push_str(&format!("AstBlock([{} statements])", stmts.len()));
-        }
         LogicPayload::AstStmts(stmts) => {
             output.push_str(&format!("AstStmts([{} statements])", stmts.len()));
         }

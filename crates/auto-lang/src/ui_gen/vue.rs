@@ -104,7 +104,7 @@
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
-use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStmt, AuraTextContent, AuraUnaryOp, AuraWidget, LogicPayload};
+use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraUnaryOp, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
 // ============================================================================
@@ -1923,9 +1923,6 @@ impl VueGenerator {
                 }
                 Ok(crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx))
             }
-            LogicPayload::AstBlock(_) => {
-                Err(GenError::UnsupportedStmt("AstBlock legacy path removed — use AstStmts".to_string()))
-            }
             LogicPayload::Bytecode(_) => {
                 Err(GenError::UnsupportedStmt("Bytecode not supported in Vue generator".to_string()))
             }
@@ -3510,19 +3507,9 @@ impl VueGenerator {
         }
     }
 
-    /// Check if a statement contains NavCall (Plan 105)
-    fn stmt_has_nav_call(stmt: &AuraStmt) -> bool {
-        match stmt {
-            AuraStmt::Assign { value, .. } => Self::expr_has_nav_call(value),
-            AuraStmt::Update { value, .. } => Self::expr_has_nav_call(value),
-            AuraStmt::MethodCall { args, .. } => args.iter().any(Self::expr_has_nav_call),
-        }
-    }
-
     /// Check if LogicPayload contains NavCall (Plan 105)
     fn payload_has_nav_call(payload: &LogicPayload) -> bool {
         match payload {
-            LogicPayload::AstBlock(stmts) => stmts.iter().any(Self::stmt_has_nav_call),
             LogicPayload::AstStmts(_) => false, // NavCall handled at view tree level
             LogicPayload::Bytecode(_) => false, // Can't analyze bytecode
         }
@@ -3569,24 +3556,9 @@ impl VueGenerator {
         }
     }
 
-    /// Check if a statement contains router access (Plan 235)
-    fn stmt_has_route_access(stmt: &AuraStmt) -> bool {
-        match stmt {
-            AuraStmt::Assign { value, .. } => Self::expr_has_route_access(value),
-            AuraStmt::Update { value, .. } => Self::expr_has_route_access(value),
-            AuraStmt::MethodCall { object, args, .. } => {
-                if object == "router" {
-                    return true;
-                }
-                args.iter().any(Self::expr_has_route_access)
-            }
-        }
-    }
-
     /// Check if LogicPayload contains route access (Plan 235)
     fn payload_has_route_access(payload: &LogicPayload) -> bool {
         match payload {
-            LogicPayload::AstBlock(stmts) => stmts.iter().any(Self::stmt_has_route_access),
             LogicPayload::AstStmts(stmts) => {
                 crate::ui_gen::ts_adapter::stmts_have_route_access(stmts)
             }
@@ -3759,65 +3731,6 @@ impl VueGenerator {
         }
     }
 
-    /// Convert AuraStmt to JS statement
-    #[allow(dead_code)]
-    fn stmt_to_js(&self, stmt: &AuraStmt) -> GenResult<String> {
-        match stmt {
-            AuraStmt::Assign { target, value } => {
-                let value_js = self.expr_to_js(value)?;
-                // Check if target is a ref
-                if self.state_names.contains(target) {
-                    Ok(format!("{}.value = {}", target, value_js))
-                } else {
-                    Ok(format!("{} = {}", target, value_js))
-                }
-            }
-            AuraStmt::Update { target, op, value } => {
-                let value_js = self.expr_to_js(value)?;
-                let op_js = match op {
-                    crate::aura::AuraUpdateOp::AddAssign => "+=",
-                    crate::aura::AuraUpdateOp::SubAssign => "-=",
-                    crate::aura::AuraUpdateOp::MulAssign => "*=",
-                    crate::aura::AuraUpdateOp::DivAssign => "/=",
-                };
-                if self.state_names.contains(target) {
-                    Ok(format!("{}.value {} {}", target, op_js, value_js))
-                } else {
-                    Ok(format!("{} {} {}", target, op_js, value_js))
-                }
-            }
-            AuraStmt::MethodCall { object, method, args } => {
-                let args_js: Vec<String> = args.iter()
-                    .map(|a| self.expr_to_js(a))
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                // print() → console.log() for browser
-                if object.is_empty() && method == "print" {
-                    return Ok(format!("console.log({})", args_js.join(", ")));
-                }
-
-                // Plan 132: Check if this is a standalone API function call
-                // (object is API function name, method is likely empty or 'call')
-                if self.is_api_function(&object) && method.is_empty() {
-                    // Generate: await apiFunction(args)
-                    return Ok(format!("await {}({})", object, args_js.join(", ")));
-                }
-
-                // Check if object is an API function being called as a method
-                if self.is_api_function(&method) {
-                    // This might be something like api.listusers() - should be await listusers()
-                    return Ok(format!("await {}({})", method, args_js.join(", ")));
-                }
-
-                if self.state_names.contains(object) {
-                    Ok(format!("{}.value.{}({})", object, method, args_js.join(", ")))
-                } else {
-                    Ok(format!("{}.{}({})", object, method, args_js.join(", ")))
-                }
-            }
-        }
-    }
-
     /// Convert binary operator to JS
     fn bin_op_to_js(&self, op: &crate::aura::AuraBinOp) -> &'static str {
         match op {
@@ -3854,11 +3767,6 @@ impl VueGenerator {
     /// Extract API function calls from a LogicPayload and track them
     fn extract_api_calls_from_payload(&mut self, payload: &LogicPayload) {
         match payload {
-            LogicPayload::AstBlock(stmts) => {
-                for stmt in stmts {
-                    self.extract_api_calls_from_stmt(stmt);
-                }
-            }
             LogicPayload::AstStmts(stmts) => {
                 // Plan 132: Extract API calls from raw AST statements
                 self.extract_api_calls_from_ast_stmts(stmts);
@@ -3943,23 +3851,6 @@ impl VueGenerator {
         }
     }
 
-    /// Extract API function calls from a statement
-    fn extract_api_calls_from_stmt(&mut self, stmt: &AuraStmt) {
-        match stmt {
-            AuraStmt::Assign { value, .. } => {
-                self.extract_api_calls_from_expr(value);
-            }
-            AuraStmt::Update { value, .. } => {
-                self.extract_api_calls_from_expr(value);
-            }
-            AuraStmt::MethodCall { args, .. } => {
-                for arg in args {
-                    self.extract_api_calls_from_expr(arg);
-                }
-            }
-        }
-    }
-
     /// Extract API function calls from an expression (recursive)
     fn extract_api_calls_from_expr(&mut self, expr: &AuraExpr) {
         match expr {
@@ -4038,30 +3929,7 @@ impl VueGenerator {
                     crate::ui_gen::ts_adapter::stmts_contain_api_call_with(stmts, &self.project_api_functions)
                 }
             }
-            LogicPayload::AstBlock(stmts) => {
-                stmts.iter().any(|s| self.stmt_has_api_calls(s))
-            }
             LogicPayload::Bytecode(_) => false,
-        }
-    }
-
-    /// Check if a statement contains API calls
-    fn stmt_has_api_calls(&self, stmt: &AuraStmt) -> bool {
-        match stmt {
-            AuraStmt::Assign { value, .. } => self.expr_has_api_calls(value),
-            AuraStmt::Update { value, .. } => self.expr_has_api_calls(value),
-            AuraStmt::MethodCall { object, method, args } => {
-                // Check if method name is an API function
-                if self.is_api_function(&method) {
-                    return true;
-                }
-                // Check if object name is an API function (standalone call)
-                if self.is_api_function(&object) {
-                    return true;
-                }
-                // Check args
-                args.iter().any(|a| self.expr_has_api_calls(a))
-            }
         }
     }
 
