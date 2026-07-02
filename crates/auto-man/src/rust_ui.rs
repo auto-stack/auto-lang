@@ -372,6 +372,8 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
         code.push_str(&generate_http_client_helper());
         // Plan 349 step 2-3: Generate upload/download utility functions.
         code.push_str(&generate_http_utility_functions());
+        // Plan 350 step 4: Generate WebSocket client functions.
+        code.push_str(&generate_ws_functions());
 
         for endpoint in &module.endpoints {
             code.push_str(&generate_endpoint_fn(endpoint, &base_url));
@@ -843,6 +845,67 @@ fn download_file_resume(url: &str, file_path: &str, offset: u64) -> bool {
 "#.to_string()
 }
 
+/// Plan 350 step 4: Generate WebSocket client functions for a2r.
+fn generate_ws_functions() -> String {
+    r#"// Plan 350: WebSocket client (a2r)
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+
+lazy_static::lazy_static! {
+    static ref WS_CONNS: Mutex<HashMap<i32, WsConn>> = Mutex::new(HashMap::new());
+    static ref WS_NEXT_ID: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(1);
+}
+
+struct WsConn {
+    sender: Option<std::sync::mpsc::Sender<String>>,
+}
+
+fn ws_connect(url: &str) -> i32 {
+    let id = WS_NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let url = url.to_string();
+
+    std::thread::spawn(move || {
+        use tungstenite::Message;
+        let (mut socket, _) = match tungstenite::connect(&url) {
+            Ok(pair) => pair,
+            Err(_) => return,
+        };
+        loop {
+            // Check for outgoing messages (non-blocking).
+            if let Ok(msg) = rx.try_recv() {
+                if socket.send(Message::Text(msg.into())).is_err() { break; }
+            }
+            match socket.read() {
+                Ok(Message::Text(_)) | Ok(Message::Binary(_)) => {}
+                Ok(Message::Close(_)) | Err(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    WS_CONNS.lock().unwrap().insert(id, WsConn { sender: Some(tx) });
+    id
+}
+
+fn ws_send(handle: i32, message: &str) -> bool {
+    WS_CONNS.lock().unwrap()
+        .get(&handle)
+        .and_then(|conn| conn.sender.as_ref())
+        .and_then(|tx| tx.send(message.to_string()).ok())
+        .is_some()
+}
+
+fn ws_close(handle: i32) {
+    if let Some(conn) = WS_CONNS.lock().unwrap().get_mut(&handle) {
+        conn.sender = None;
+    }
+    WS_CONNS.lock().unwrap().remove(&handle);
+}
+
+"#.to_string()
+}
+
 /// Wrap generated components in a main() function with ICED/GPUI backend selection.
 fn wrap_example(project_name: &str, components: &str) -> String {
     let main_widget = extract_main_widget(components);
@@ -1057,6 +1120,8 @@ auto-lang.workspace = true
 serde_json.workspace = true
 ureq.workspace = true
 reqwest = {{ version = "0.12", features = ["blocking", "multipart"] }}
+tungstenite = {{ version = "0.24", features = ["native-tls"] }}
+lazy_static = "1"
 tokio.workspace = true
 iced.workspace = true
 "#
