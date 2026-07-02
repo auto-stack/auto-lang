@@ -1166,6 +1166,8 @@ async fn handle_connection_async(
     let mut header_done = false;
     let mut is_websocket = false;
     let mut content_type = String::new();
+    let mut cookie_header = String::new();
+    let mut auth_header = String::new();
     for line in lines {
         if !header_done {
             if line.is_empty() {
@@ -1181,6 +1183,13 @@ async fn handle_connection_async(
             }
             if lower.starts_with("content-type:") {
                 content_type = lower[13..].trim().to_string();
+            }
+            // Plan 351 stage 4: Parse Cookie and Authorization headers.
+            if lower.starts_with("cookie:") {
+                cookie_header = line[7..].trim().to_string();
+            }
+            if lower.starts_with("authorization:") {
+                auth_header = line[14..].trim().to_string();
             }
         } else if body.len() < content_length {
             body.push_str(line);
@@ -1309,7 +1318,7 @@ async fn handle_connection_async(
     // Plan 351 stage 2: Request logging + error handling.
     let request_start = std::time::Instant::now();
     let handler_task_id = vm.spawn_task(0, 65536);
-    let n_args = build_handler_args(vm, handler_task_id, &route_match, &body, &content_type);
+    let n_args = build_handler_args(vm, handler_task_id, &route_match, &body, &content_type, &cookie_header, &auth_header);
 
     let result_json = if let Some(_task_arc) = vm.tasks.get(&handler_task_id) {
         let mut ht = match _task_arc.try_lock() {
@@ -1429,6 +1438,8 @@ fn build_handler_args(
     route_match: &RouteMatch,
     body: &str,
     content_type: &str,
+    cookie_header: &str,
+    auth_header: &str,
 ) -> usize {
     let mut n_args = 0;
     if let Some(_task_arc) = vm.tasks.get(&task_id) {
@@ -1449,13 +1460,8 @@ fn build_handler_args(
                 n_args += 1;
             }
 
-            // Plan 351: Push query params as a JSON object string.
-            // The handler can parse it, or we can auto-map to named params.
-            // For now, push each query param value that matches a declared
-            // param name — but since we don't have the fn signature here,
-            // we push query params as a JSON string if body is empty.
+            // Plan 351: Push query params as a JSON object string if no body.
             if !route_match.query_params.is_empty() && body.is_empty() {
-                // Push query params as a JSON object string.
                 let json_parts: Vec<String> = route_match.query_params.iter()
                     .map(|(k, v)| format!("\"{}\":\"{}\"", k.replace('"', "\\\""), v.replace('"', "\\\"")))
                     .collect();
@@ -1470,11 +1476,9 @@ fn build_handler_args(
                 n_args += 1;
             }
 
-            // Plan 351: Push body. If Content-Type is JSON, push as-is (string).
-            // If urlencoded, parse and convert to JSON object.
+            // Plan 351: Push body.
             if !body.is_empty() {
                 let body_to_push = if content_type.contains("application/x-www-form-urlencoded") {
-                    // Parse urlencoded body → JSON object.
                     let pairs: Vec<String> = body.split('&')
                         .filter_map(|pair| {
                             let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
@@ -1494,6 +1498,31 @@ fn build_handler_args(
                 task.ram.push_nv(auto_val::encode_string(idx as u32));
                 n_args += 1;
             }
+
+            // Plan 351 stage 4: Push cookies + auth as a JSON metadata string.
+            // Format: {"cookies":{"key":"val"}, "auth":"Bearer xxx"}
+            let cookies_json: String = if cookie_header.is_empty() {
+                "{}".to_string()
+            } else {
+                let pairs: Vec<String> = cookie_header.split(';')
+                    .filter_map(|pair| {
+                        let pair = pair.trim();
+                        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                        Some(format!("\"{}\":\"{}\"", k.trim().replace('"', "\\\""), v.trim().replace('"', "\\\"")))
+                    })
+                    .collect();
+                format!("{{{}}}", pairs.join(","))
+            };
+            let auth_val = if auth_header.is_empty() { "".to_string() } else { auth_header.replace('"', "\\\"") };
+            let meta_json = format!(r#"{{"cookies":{},"auth":"{}"}}"#, cookies_json, auth_val);
+            let idx = {
+                let mut strings = vm.strings.write().unwrap();
+                let i = strings.len();
+                strings.push(meta_json.into_bytes());
+                i
+            };
+            task.ram.push_nv(auto_val::encode_string(idx as u32));
+            n_args += 1;
         }
     }
     n_args
