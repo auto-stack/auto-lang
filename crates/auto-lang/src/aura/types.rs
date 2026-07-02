@@ -97,6 +97,29 @@ pub struct AuraWidget {
 
 
 // ============================================================================
+// Plan 351 / Design 18: Shared Store (Rung 4)
+// ============================================================================
+
+/// An AURA shared store — a view-less widget whose state is shared across
+/// widgets/routes via `use store:`. Isomorphic to AuraWidget minus
+/// view_tree/routes/props.
+#[derive(Debug, Clone)]
+pub struct AuraStore {
+    /// Store name (e.g., "CounterStore")
+    pub name: String,
+
+    /// State variable definitions (→ module-level ref()s)
+    pub state_vars: Vec<AuraStateDef>,
+
+    /// Message type definitions (→ action functions)
+    pub messages: Vec<AuraMessage>,
+
+    /// Event handlers: pattern → logic (→ action function bodies)
+    pub handlers: HashMap<String, LogicPayload>,
+}
+
+
+// ============================================================================
 // Router Types (Plan 105)
 // ============================================================================
 
