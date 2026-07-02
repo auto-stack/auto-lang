@@ -2073,8 +2073,12 @@ impl VueGenerator {
                         if let Some(ref loop_var) = self.current_loop_var {
                             if aura_event.params.is_empty() {
                                 handler_fn = format!("{}({})", handler_fn, loop_var);
+                                // Plan 345: only register as a loop-param handler when we
+                                // actually auto-pass the loop var. A handler with explicit
+                                // args (e.g. .SelectNote(note.id)) must keep its declared
+                                // param name, not be renamed to the loop variable.
+                                self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
                             }
-                            self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
                         }
                         self.used_handlers.insert(handler_name);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
@@ -2224,8 +2228,12 @@ impl VueGenerator {
                         if let Some(ref loop_var) = self.current_loop_var {
                             if aura_event.params.is_empty() {
                                 handler_fn = format!("{}({})", handler_fn, loop_var);
+                                // Plan 345: only register as a loop-param handler when we
+                                // actually auto-pass the loop var. A handler with explicit
+                                // args (e.g. .SelectNote(note.id)) must keep its declared
+                                // param name, not be renamed to the loop variable.
+                                self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
                             }
-                            self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
                         }
                         self.used_handlers.insert(handler_name);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
@@ -7372,8 +7380,8 @@ impl VueGenerator {
             if let Some(ref loop_var) = self.current_loop_var {
                 if aura_event.params.is_empty() {
                     handler_fn = format!("{}({})", handler_fn, loop_var);
+                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
                 }
-                self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
             }
             self.used_handlers.insert(handler_name);
             attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
