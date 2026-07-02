@@ -67,6 +67,9 @@ pub struct AutoTask {
     pub current_source: Option<String>,
     // Plan 199: Structured call stack for debugging
     pub call_stack: Vec<CallFrame>,
+    // Plan 348: SSE stream this task is waiting on (None = not waiting).
+    // When set, run_task_loop checks the channel and wakes the task when data arrives.
+    pub waiting_sse_stream_id: Option<u64>,
 }
 
 impl AutoTask {
@@ -94,6 +97,7 @@ impl AutoTask {
             current_line: 0,
             current_source: None,
             call_stack: Vec::new(),
+            waiting_sse_stream_id: None,
         }
     }
 }

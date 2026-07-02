@@ -1313,6 +1313,35 @@ impl AutoVM {
                     continue;
                 }
 
+                // Plan 348: Wake source 4 — SSE stream data available.
+                // Task yielded with Waiting("sse") because the async channel
+                // had no data. Check if data has arrived since then.
+                if let Some(stream_id) = task.waiting_sse_stream_id {
+                    let has_data = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
+                        .lock()
+                        .ok()
+                        .and_then(|map| {
+                            map.get(&stream_id).map(|handle| {
+                                // Channel has data OR future is done (end of stream).
+                                // IMPORTANT: do NOT try_recv here — that would consume
+                                // the data. Use is_empty() to peek without consuming.
+                                let done = handle.done.load(std::sync::atomic::Ordering::SeqCst);
+                                let has_recv = handle.rx.lock()
+                                    .map(|rx| !rx.is_empty())
+                                    .unwrap_or(false);
+                                has_recv || done
+                            })
+                        })
+                        .unwrap_or(true); // Stream gone → wake up (will push -1)
+                    if has_data {
+                        task.waiting_sse_stream_id = None;
+                        task.status = TaskStatus::Ready;
+                    } else {
+                        alive_count += 1;
+                        continue; // Still waiting for SSE data
+                    }
+                }
+
                 alive_count += 1;
 
                 // Check if task is runnable
@@ -5051,7 +5080,18 @@ impl AutoVM {
 
                     // DEBUG: Bypass native_interface for iterator.next
                     if native_id == 112 {
+                        // Save IP before call — if shim_iterator_next yields
+                        // (SSE waiting), we need to retry this CALL_NAT.
+                        let pre_call_ip = task.ip;
                         crate::vm::native::shim_iterator_next(task, self)?;
+                        // Plan 348: if iterator_next yielded (SSE stream waiting),
+                        // back up IP so the CALL_NAT re-executes on resume,
+                        // and signal Yield so the scheduler can run other tasks.
+                        if task.waiting_sse_stream_id.is_some() {
+                            // Rewind past CALL_NAT opcode (1 byte) + native_id (2 bytes).
+                            task.ip = pre_call_ip - 3;
+                            return Ok(StepResult::Yield);
+                        }
                     } else if native_id == 2300 {
                         // Plan 327 Phase 1: Task.spawn -> vm-aware (register AutoVM task)
                         crate::vm::ffi::stdlib::shim_task_spawn_vm(task, self)?;
