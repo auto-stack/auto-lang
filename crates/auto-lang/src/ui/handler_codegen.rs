@@ -349,6 +349,11 @@ pub fn synthesize_widget_module(
     import_aliases: &std::collections::HashMap<String, String>,
     api_over_http: bool,
 ) -> SynthResult<(Module, crate::vm::generic_registry::GenericRegistry)> {
+    // PR-3: 此函数只依赖 widget 的【逻辑部分】（state_vars/handlers/lifecycle/
+    // messages/handler_params）。view_tree/span_map 等视图部分在本函数中不使用。
+    // 辅助函数（synthesize_state_type 等）暂仍接受 &AuraWidget 以避免大面积签名
+    // 变更；后续 PR-3b 去中转时改为直读 WidgetDecl。
+    let _logic = widget.logic();
     let mut codegen = Codegen::new();
     codegen.api_over_http = api_over_http;
 

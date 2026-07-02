@@ -384,47 +384,9 @@ fn extract_unary_op(op: &Op) -> AuraUnaryOp {
 // Statement Extractor
 // ============================================================================
 
-/// Extract AURA statement from AST statement
-pub fn extract_stmt(stmt: &Stmt) -> ExtractResult<AuraStmt> {
-    match stmt {
-        // Store statement: let x = value or x = value
-        Stmt::Store(store) => {
-            let target = store.name.as_str().to_string();
-            let value = extract_expr(&store.expr)?;
-            Ok(AuraStmt::Assign { target, value })
-        }
-
-        // Expression statement (e.g., method calls like todos.push(todo))
-        Stmt::Expr(expr) => {
-            match expr {
-                // Method call: object.method(args)
-                Expr::Call(call) => {
-                    match call.name.as_ref() {
-                        Expr::Dot(object, method) => {
-                            // Extract object name (for now, just simple identifiers)
-                            let object_name = match object.as_ref() {
-                                Expr::Ident(name) => name.as_str().to_string(),
-                                _ => return Err(ExtractError::UnsupportedExpr(format!("Complex method call object: {:?}", object)))
-                            };
-                            let args: Vec<AuraExpr> = call.args.args.iter()
-                                .map(|arg| extract_expr(&arg.get_expr()))
-                                .collect::<Result<Vec<_>, _>>()?;
-                            Ok(AuraStmt::MethodCall {
-                                object: object_name,
-                                method: method.as_str().to_string(),
-                                args,
-                            })
-                        }
-                        _ => Err(ExtractError::UnsupportedStmt(format!("Non-method call: {:?}", call.name)))
-                    }
-                }
-                _ => Err(ExtractError::UnsupportedStmt(format!("{:?}", stmt)))
-            }
-        }
-
-        _ => Err(ExtractError::UnsupportedStmt(format!("{:?}", stmt))),
-    }
-}
+// PR-5: extract_stmt removed — AuraStmt eliminated. Handler bodies now use
+// LogicPayload::AstStmts (base crate::ast::Stmt) directly. See
+// docs/design/dialect-extension-diagnosis.md §6.4.
 
 // ============================================================================
 // View Tree Extractor

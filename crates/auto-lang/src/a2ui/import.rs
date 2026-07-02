@@ -208,7 +208,7 @@ fn import_component_body(
                 // Create stub handler
                 handlers.insert(
                     action.name.clone(),
-                    LogicPayload::AstBlock(vec![]),
+                    LogicPayload::AstStmts(vec![]),
                 );
             }
 

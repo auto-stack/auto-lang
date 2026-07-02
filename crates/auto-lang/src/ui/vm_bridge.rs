@@ -1499,6 +1499,7 @@ mod tests {
             &mut import_stmts,
             &mut seen,
             &mut session,
+            None, // PR-6: no scenario override in test
         );
 
         // The non-imported callees MUST be present (the bug was their absence).

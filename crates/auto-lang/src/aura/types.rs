@@ -95,6 +95,77 @@ pub struct AuraWidget {
     pub api_imports: Vec<String>,
 }
 
+// ============================================================================
+// Logic / View 拆分视图（PR-3）
+// ============================================================================
+//
+// AuraWidget 的消费方天然分为两类：
+// - 逻辑消费者：synthesize（VM 合成）、VmBridge state 初始化
+// - 视图消费者：AuraViewBuilder、DynamicComponent 的 view_template
+//
+// 这两个 Ref 结构体是 AuraWidget 的零拷贝引用视图，让依赖关系在代码上显式化。
+// 详见 docs/design/dialect-extension-diagnosis.md §6.2/§7.1。
+
+/// AuraWidget 逻辑部分的引用视图。
+///
+/// 包含 VM 合成和状态初始化所需的全部字段。
+/// 对应 WidgetDecl 的 model/on/messages/lifecycle 部分。
+#[derive(Debug, Clone, Copy)]
+pub struct WidgetLogicRef<'a> {
+    pub name: &'a str,
+    pub state_vars: &'a [AuraStateDef],
+    pub messages: &'a [AuraMessage],
+    pub handlers: &'a HashMap<String, LogicPayload>,
+    pub handler_params: &'a HashMap<String, Vec<String>>,
+    pub lifecycle: &'a [AuraLifecycle],
+    pub computed: &'a [AuraComputed],
+    pub props: &'a [AuraProp],
+    pub api_imports: &'a [String],
+}
+
+/// AuraWidget 视图部分的引用视图。
+///
+/// 包含渲染器和 DynamicComponent 视图模板所需的全部字段。
+/// 对应 WidgetDecl 的 view/bind 部分 + 提取时生成的元数据。
+#[derive(Debug)]
+pub struct WidgetViewRef<'a> {
+    pub view_tree: &'a AuraNode,
+    pub span_map: &'a HashMap<AuraNodeId, SpanInfo>,
+    pub key_bindings: &'a HashMap<String, String>,
+    pub tick_interval: Option<u32>,
+    pub routes: &'a Option<AuraRoutes>,
+}
+
+impl AuraWidget {
+    /// 返回逻辑部分的引用视图（零拷贝）。
+    /// 供 VM 合成（synthesize_widget_module）和状态初始化使用。
+    pub fn logic(&self) -> WidgetLogicRef<'_> {
+        WidgetLogicRef {
+            name: &self.name,
+            state_vars: &self.state_vars,
+            messages: &self.messages,
+            handlers: &self.handlers,
+            handler_params: &self.handler_params,
+            lifecycle: &self.lifecycle,
+            computed: &self.computed,
+            props: &self.props,
+            api_imports: &self.api_imports,
+        }
+    }
+
+    /// 返回视图部分的引用视图（零拷贝）。
+    /// 供渲染器（AuraViewBuilder）和 DynamicComponent 的视图模板使用。
+    pub fn view_data(&self) -> WidgetViewRef<'_> {
+        WidgetViewRef {
+            view_tree: &self.view_tree,
+            span_map: &self.span_map,
+            key_bindings: &self.key_bindings,
+            tick_interval: self.tick_interval,
+            routes: &self.routes,
+        }
+    }
+}
+
 
 // ============================================================================
 // Router Types (Plan 105)
@@ -560,10 +631,9 @@ impl AuraNode {
 /// - Executed by AutoVM (GPUI dynamic)
 #[derive(Debug, Clone)]
 pub enum LogicPayload {
-    /// AURA IR block (simplified statement types for handlers)
-    AstBlock(Vec<AuraStmt>),
-
-    /// Original AutoLang AST statements for a2ts delegation
+    /// Original AutoLang AST statements for handler bodies.
+    /// This is the only payload variant produced by extract_on_block.
+    /// Consumed by: Vue (ts_adapter), Rust (ast_stmt_to_rust), Jet/Ark (TODO stubs).
     AstStmts(Vec<crate::ast::Stmt>),
 
     /// Bytecode for AutoVM dynamic execution (GPUI)
@@ -718,52 +788,8 @@ pub enum AuraUnaryOp {
 // Statements
 // ============================================================================
 
-/// AURA statement: simplified statement types for handlers
-#[derive(Debug, Clone)]
-pub enum AuraStmt {
-    /// Assignment: target = value
-    Assign {
-        target: String,
-        value: AuraExpr,
-    },
-
-    /// Update with operator: target op= value (e.g., count += 1)
-    Update {
-        target: String,
-        op: AuraUpdateOp,
-        value: AuraExpr,
-    },
-
-    /// Method call statement: object.method(args)
-    MethodCall {
-        /// Object being called on
-        object: String,
-        /// Method name
-        method: String,
-        /// Arguments
-        args: Vec<AuraExpr>,
-    },
-}
-
-/// Update operators
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AuraUpdateOp {
-    AddAssign,  // +=
-    SubAssign, // -=
-    MulAssign, // *=
-    DivAssign, // /=
-}
-
-impl fmt::Display for AuraUpdateOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AuraUpdateOp::AddAssign => write!(f, "+="),
-            AuraUpdateOp::SubAssign => write!(f, "-="),
-            AuraUpdateOp::MulAssign => write!(f, "*="),
-            AuraUpdateOp::DivAssign => write!(f, "/="),
-        }
-    }
-}
+// PR-5: AuraStmt / AuraUpdateOp removed — handlers now use LogicPayload::AstStmts
+// (base crate::ast::Stmt) exclusively. See docs/design/dialect-extension-diagnosis.md §6.4.
 
 // ============================================================================
 // AURA Module
@@ -899,27 +925,6 @@ mod tests {
     }
 
     #[test]
-    fn test_aura_stmt_update() {
-        let stmt = AuraStmt::Update {
-            target: "count".to_string(),
-            op: AuraUpdateOp::AddAssign,
-            value: AuraExpr::Int(1),
-        };
-
-        match stmt {
-            AuraStmt::Update { target, op, value } => {
-                assert_eq!(target, "count");
-                assert_eq!(op, AuraUpdateOp::AddAssign);
-                match value {
-                    AuraExpr::Int(v) => assert_eq!(v, 1),
-                    _ => panic!("Expected Int"),
-                }
-            }
-            _ => panic!("Expected Update"),
-        }
-    }
-
-    #[test]
     fn test_aura_widget() {
         let widget = AuraWidget {
             name: "Counter".to_string(),
@@ -949,10 +954,11 @@ mod tests {
 
     #[test]
     fn test_logic_payload() {
-        let ast_payload = LogicPayload::AstBlock(vec![]);
+        // PR-5: AstBlock removed; LogicPayload now has AstStmts + Bytecode.
+        let ast_payload = LogicPayload::AstStmts(vec![]);
         let bytecode_payload = LogicPayload::Bytecode(vec![0x01, 0x02, 0x03]);
 
-        assert!(matches!(ast_payload, LogicPayload::AstBlock(_)));
+        assert!(matches!(ast_payload, LogicPayload::AstStmts(_)));
         assert!(matches!(bytecode_payload, LogicPayload::Bytecode(_)));
     }
 
@@ -1039,5 +1045,45 @@ mod tests {
             }
             _ => panic!("Expected NavCall"),
         }
+    }
+
+    #[test]
+    fn test_widget_logic_and_view_split() {
+        // PR-3: 验证 logic()/view_data() 引用视图正确拆分 AuraWidget 的逻辑/视图两部分。
+        let widget = AuraWidget {
+            name: "Counter".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+                decorators: vec![],
+            }],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: Some(16),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+        };
+
+        // logic 视图
+        let logic = widget.logic();
+        assert_eq!(logic.name, "Counter");
+        assert_eq!(logic.state_vars.len(), 1);
+        assert_eq!(logic.state_vars[0].name, "count");
+
+        // view_data 视图
+        let view = widget.view_data();
+        assert!(matches!(view.view_tree, AuraNode::Element { .. }));
+        assert_eq!(view.tick_interval, Some(16));
+
+        // logic 视图不含视图字段；view_data 视图不含逻辑字段
+        // （编译期已由类型保证，这里只验证可访问性）
     }
 }

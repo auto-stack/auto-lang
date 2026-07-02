@@ -2,7 +2,7 @@
 //!
 //! Generates @State declarations and dispatch functions.
 
-use crate::aura::{AuraBinOp, AuraExpr, AuraStmt, AuraUnaryOp, AuraUpdateOp, AuraWidget, LogicPayload};
+use crate::aura::{AuraBinOp, AuraExpr, AuraUnaryOp, AuraWidget, LogicPayload};
 use crate::ast::Type;
 use std::collections::HashMap;
 
@@ -441,49 +441,12 @@ fn generate_default_value(ty: &Type) -> String {
 /// Generate handler body from logic payload
 pub fn generate_handler_body(payload: &LogicPayload) -> String {
     match payload {
-        LogicPayload::AstBlock(stmts) => {
-            // Convert AST statements to ArkTS code
-            let mut lines = Vec::new();
-            for stmt in stmts {
-                let stmt_code = stmt_to_arkts(stmt);
-                lines.push(stmt_code);
-            }
-            lines.join("\n")
-        }
         LogicPayload::AstStmts(_) => {
             "// TODO: a2ts delegation not yet supported for ArkTS backend".to_string()
         }
         LogicPayload::Bytecode(_) => {
             // Bytecode execution not supported in static generation
             "// Bytecode execution not supported".to_string()
-        }
-    }
-}
-
-/// Convert AURA statement to ArkTS code
-fn stmt_to_arkts(stmt: &AuraStmt) -> String {
-    match stmt {
-        AuraStmt::Assign { target, value } => {
-            let value_code = expr_to_arkts(value);
-            format!("this.{} = {}", target, value_code)
-        }
-        AuraStmt::Update { target, op, value } => {
-            let op_str = match op {
-                AuraUpdateOp::AddAssign => "+=",
-                AuraUpdateOp::SubAssign => "-=",
-                AuraUpdateOp::MulAssign => "*=",
-                AuraUpdateOp::DivAssign => "/=",
-            };
-            let value_code = expr_to_arkts(value);
-            format!("this.{} {} {}", target, op_str, value_code)
-        }
-        AuraStmt::MethodCall {
-            object,
-            method,
-            args,
-        } => {
-            let args_code: Vec<String> = args.iter().map(|a| expr_to_arkts(a)).collect();
-            format!("this.{}.{}({})", object, method, args_code.join(", "))
         }
     }
 }

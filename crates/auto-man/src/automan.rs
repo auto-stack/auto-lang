@@ -27,6 +27,8 @@ pub struct Automan {
     render_override: Option<String>, // --render CLI override
     root_dir: PathBuf, // Project root directory (from pac.at location)
     vm_server_mode: bool, // Plan 327: --server=vm → AutoVM HTTP backend
+    /// PR-6: --scene CLI override ("core"/"ui"/"shell"). None = use pac.at scene field.
+    scene_override: Option<String>,
 }
 
 // Static API
@@ -220,6 +222,7 @@ impl Automan {
             render_override: None,
             root_dir,
             vm_server_mode: false,
+            scene_override: None,
         })
     }
 
@@ -297,6 +300,36 @@ impl Automan {
     /// Plan 327: Enable AutoVM HTTP server backend (--server=vm).
     pub fn set_vm_server_mode(&mut self, enabled: bool) {
         self.vm_server_mode = enabled;
+    }
+
+    /// PR-6: Set parser scenario override (--scene CLI flag).
+    /// Accepts "core", "ui", or "shell". Overrides pac.at scene field.
+    pub fn set_scene(&mut self, scene: String) {
+        self.scene_override = Some(scene);
+    }
+
+    /// PR-6: Resolve the effective parser scenario as a CompilerSession.
+    /// Priority: --scene CLI override > pac.at scene field > Core default.
+    pub fn effective_scenario(&self) -> auto_lang::session::CompilerSession {
+        use auto_lang::session::{CompilerSession, Scenario};
+        // 1. CLI --scene override
+        if let Some(ref scene_str) = self.scene_override {
+            let scenario = Scenario::from_str(scene_str).unwrap_or_default();
+            return CompilerSession::new(scenario);
+        }
+        // 2. pac.at scene field → bridge pac::Scene → session::Scenario
+        match self.pac.scene {
+            crate::pac::Scene::Ui => CompilerSession::ui(),
+            // Default / Workspace → Core
+            _ => CompilerSession::core(),
+        }
+    }
+
+    /// PR-6: Return the effective scenario as an Option for APIs that take
+    /// override (collect_module_imports etc.). Always Some since we resolve
+    /// from CLI override or pac.at.
+    pub fn scenario_override(&self) -> Option<auto_lang::session::CompilerSession> {
+        Some(self.effective_scenario())
     }
 
     /// Resolve which backend to use:

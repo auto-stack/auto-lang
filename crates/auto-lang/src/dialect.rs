@@ -10,6 +10,7 @@ use crate::ast::Stmt;
 use crate::error::AutoResult;
 use crate::parser::Parser;
 use crate::session::CompilerSession;
+use crate::token::TokenKind;
 
 /// 一个方言：在某个场景下生效的一组关键字与语句解析器。
 ///
@@ -21,12 +22,28 @@ pub trait Dialect: Send + Sync {
 
     /// 该方言接管的语句起始关键字（仅作为语句起始、且在语句位置时被查询）。
     /// 返回的关键字在所属场景下应被视为"上下文关键字"而非普通标识符。
+    ///
+    /// 注意：这里只列 `TokenKind::Ident` 路径的关键字（如 widget/msg/model）。
+    /// 若方言需接管真实 TokenKind（如 view/on），实现 `try_parse_token_stmt`。
     fn keywords(&self) -> &'static [&'static str];
 
-    /// 命中某个关键字时调用。
+    /// 命中某个 Ident 关键字时调用。
     /// - 返回 `Ok(Some(stmt))`：本方言已处理，产出 stmt。
     /// - 返回 `Ok(None)`：关键字虽在列表里但本次不归我管（让下一个方言/默认路径处理）。
     /// - 返回 `Err(_)`：报错。
     fn try_parse_stmt(&self, parser: &mut Parser, keyword: &str)
         -> AutoResult<Option<Stmt>>;
+
+    /// 命中真实 TokenKind 时调用（view/on 等非 Ident 的 UI token）。
+    /// 默认不接管（返回 `Ok(None)`）；需要接管的方言覆写此方法。
+    /// `kind` 为当前 token 的 TokenKind，供方言判断是否归自己管。
+    fn try_parse_token_stmt(
+        &self,
+        _parser: &mut Parser,
+        _kind: TokenKind,
+    ) -> AutoResult<Option<Stmt>> {
+        Ok(None)
+    }
 }
+
+pub mod ui;

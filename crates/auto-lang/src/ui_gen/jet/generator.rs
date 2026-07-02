@@ -37,7 +37,7 @@ use super::list::ListGenerator;
 use super::modifier::ModifierDsl;
 use super::navigation::NavigationGenerator;
 use super::state::StateConverter;
-use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStmt, AuraTextContent, AuraUnaryOp, AuraUpdateOp, AuraWidget, LogicPayload};
+use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraUnaryOp, AuraWidget, LogicPayload};
 use crate::ui_gen::shared::ComponentRegistry;
 use crate::ui_gen::{BackendGenerator, GenError, GenResult, WidgetRegistry};
 use std::collections::{HashMap, HashSet};
@@ -361,13 +361,6 @@ fun {}Preview() {{
 
             // Generate the handler body
             let body = match payload {
-                LogicPayload::AstBlock(stmts) => {
-                    let mut body_parts = Vec::new();
-                    for stmt in stmts {
-                        body_parts.push(self.stmt_to_kotlin(stmt)?);
-                    }
-                    body_parts.join("\n            ")
-                }
                 _ => "// TODO: Unsupported payload type".to_string(),
             };
 
@@ -724,13 +717,6 @@ fun {}Preview() {{
     /// Convert LogicPayload to Kotlin code
     fn payload_to_kotlin(&self, payload: &LogicPayload) -> GenResult<String> {
         match payload {
-            LogicPayload::AstBlock(stmts) => {
-                let mut parts = Vec::new();
-                for stmt in stmts {
-                    parts.push(self.stmt_to_kotlin(stmt)?);
-                }
-                Ok(parts.join("\n"))
-            }
             LogicPayload::AstStmts(_) => {
                 // AstStmts (raw AST) not directly supported in Jet generator
                 Ok("// TODO: lifecycle with raw AST stmts".to_string())
@@ -738,35 +724,6 @@ fun {}Preview() {{
             _ => Ok("// TODO: Unsupported payload type".to_string()),
         }
     }
-
-    /// Convert AuraStmt to Kotlin code
-    fn stmt_to_kotlin(&self, stmt: &AuraStmt) -> GenResult<String> {
-        match stmt {
-                AuraStmt::Assign { target, value } => {
-                    let target_clean = target.trim_start_matches('.');
-                    let value_kotlin = self.expr_to_kotlin(value);
-                    Ok(format!("{} = {}", target_clean, value_kotlin))
-                }
-                AuraStmt::Update { target, op, value } => {
-                    let target_clean = target.trim_start_matches('.');
-                    let value_kotlin = self.expr_to_kotlin(value);
-                    let op_str = match op {
-                        AuraUpdateOp::AddAssign => "+=",
-                        AuraUpdateOp::SubAssign => "-=",
-                        AuraUpdateOp::MulAssign => "*=",
-                        AuraUpdateOp::DivAssign => "/=",
-                    };
-                    Ok(format!("{} {} {}", target_clean, op_str, value_kotlin))
-                }
-                AuraStmt::MethodCall { object, method, args } => {
-                    let object_clean = object.trim_start_matches('.');
-                    let args_kotlin: Vec<String> = args.iter()
-                        .map(|a| self.expr_to_kotlin(a))
-                        .collect();
-                    Ok(format!("{}.{}({})", object_clean, method, args_kotlin.join(", ")))
-                }
-            }
-        }
 
     /// Convert AuraEvent to Kotlin lambda
     fn event_to_lambda(&self, event: &AuraEvent) -> String {
