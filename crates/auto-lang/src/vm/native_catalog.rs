@@ -1059,6 +1059,10 @@ macro_rules! for_each_bigvm_native {
             ("RequestBuilder.timeout", 2262, Void),
             ("RequestBuilder.json", 2263, Void),
             ("RequestBuilder.send", 2264, Void),
+            // Plan 350: TLS configuration
+            ("RequestBuilder.tls_ca_cert", 2265, Void),
+            ("RequestBuilder.tls_skip_verify", 2266, Void),
+            ("RequestBuilder.tls_client_cert", 2267, Void),
 
             // === Task/Msg (2300-2311) ===
             ("auto.task.spawn", 2300, Void),
@@ -1676,6 +1680,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("RequestBuilder.timeout", 2262),
     ("RequestBuilder.json", 2263),
     ("RequestBuilder.send", 2264),
+    ("RequestBuilder.tls_ca_cert", 2265),
+    ("RequestBuilder.tls_skip_verify", 2266),
+    ("RequestBuilder.tls_client_cert", 2267),
     ("auto.task.spawn", 2300),
     ("auto.task.send", 2301),
     ("auto.task.handle_is_null", 2302),
