@@ -1973,6 +1973,7 @@ fn collect_module_imports(
     out: &mut Vec<crate::ast::Stmt>,
     seen: &mut std::collections::HashSet<String>,
     session: &mut crate::compile::CompileSession,
+    override_scenario: Option<&crate::session::CompilerSession>,
 ) {
     let canon = module_path
         .canonicalize()
@@ -2002,14 +2003,17 @@ fn collect_module_imports(
     // attempt the parse below with whatever types did resolve.
     let _ = session.resolve_uses(&code);
 
-    // Choose session scenario by module location: front/ modules are UI
-    // components (need the UI session to parse `widget`/`view`/`model`), while
-    // back/ modules are plain Auto scripts parsed under Core. The shared
-    // type_store is carried via `new_with_type_store` regardless of scenario.
-    // (Note: with_session takes a crate::session::CompilerSession — the parser's
-    // scenario carrier — which is distinct from the crate::compile::CompileSession
-    // that owns the type_store. The type_store is shared via new_with_type_store.)
-    let parser_session = if module_path
+    // Choose parser scenario. Priority (PR-6):
+    //   1. override_scenario (from CLI --scene / pac.at scene field)
+    //   2. .au extension → UI scenario (弱提示推断)
+    //   3. path heuristic: back/ → Core, else UI
+    //   4. default: Core
+    let parser_session = if let Some(s) = override_scenario {
+        s.clone()
+    } else if module_path.extension().map_or(false, |e| e == "au") {
+        // PR-6: .au files default to UI scenario (weak hint, overridable by --scene).
+        crate::session::CompilerSession::ui()
+    } else if module_path
         .components()
         .any(|c| c.as_os_str() == "back")
     {
@@ -2089,7 +2093,7 @@ fn collect_module_imports(
             continue;
         }
         if let Some(dep_path) = resolve_module_path(module_dir, &dep.module) {
-            collect_module_imports(&dep_path, visited, out, seen, session);
+            collect_module_imports(&dep_path, visited, out, seen, session, override_scenario);
         }
     }
 }
@@ -2098,13 +2102,36 @@ fn collect_module_imports(
 /// MUST be called from the OS main thread (iced requirement).
 #[cfg(feature = "ui-iced")]
 pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String> {
+    // PR-6: 默认 UI 场景（向后兼容）。调用方可通过 run_file_dynamic_ui_with_scenario 覆写。
+    run_file_dynamic_ui_inner(code, path, None)
+}
+
+/// PR-6: 带场景覆写的 run_file_dynamic_ui。
+/// override_scenario 为 None 时默认 UI（向后兼容）。
+#[cfg(feature = "ui-iced")]
+pub fn run_file_dynamic_ui_with_scenario(
+    code: &str,
+    path: Option<&str>,
+    override_scenario: Option<&crate::session::CompilerSession>,
+) -> AutoResult<String> {
+    run_file_dynamic_ui_inner(code, path, override_scenario)
+}
+
+#[cfg(feature = "ui-iced")]
+fn run_file_dynamic_ui_inner(
+    code: &str,
+    path: Option<&str>,
+    override_scenario: Option<&crate::session::CompilerSession>,
+) -> AutoResult<String> {
     use crate::session::CompilerSession;
     use crate::ui::dynamic::DynamicComponent;
     use crate::ui::iced::run_dynamic_iced;
     use crate::ui::widget_registry::WidgetRegistry;
 
-    // 1. Parse with UI scenario
-    let session = CompilerSession::ui();
+    // 1. Parse with UI scenario (or override if provided — PR-6)
+    let session = override_scenario
+        .cloned()
+        .unwrap_or_else(CompilerSession::ui);
     let mut parser = Parser::from(code).with_session(session);
     let ast = parser.parse()?;
 
@@ -2186,6 +2213,7 @@ pub fn run_file_dynamic_ui(code: &str, path: Option<&str>) -> AutoResult<String>
                 &mut import_stmts,
                 &mut seen_symbols,
                 &mut import_session,
+                override_scenario,
             );
 
             // Plan 339 Phase 4: populate import_scope aliases directly from the

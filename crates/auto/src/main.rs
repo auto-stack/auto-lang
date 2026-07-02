@@ -311,6 +311,8 @@ enum Commands {
         front_port: Option<String>,
         #[arg(short, long, help = "Render target to use (vue, rust, vm, jet, arkts, tauri)")]
         render: Option<String>,
+        #[arg(long, help = "Parser scenario: core, ui, or shell (overrides pac.at scene)")]
+        scene: Option<String>,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
@@ -329,6 +331,8 @@ enum Commands {
         #[arg(long, help = "Plan 340: merge frontend+backend VM in-process (default true). --no-merge uses HTTP between VMs")]
         #[arg(long = "no-merge", action = clap::ArgAction::SetTrue, help = "Plan 340: use HTTP between VMs (split mode)")]
         no_merge: bool,
+        #[arg(long, help = "Parser scenario: core, ui, or shell (overrides pac.at scene)")]
+        scene: Option<String>,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -394,6 +398,8 @@ enum Commands {
         output: Option<String>,
         #[arg(short, long, help = "Generate full project structure")]
         project: bool,
+        #[arg(long, help = "Parser scenario: core, ui, or shell (overrides pac.at scene)")]
+        scene: Option<String>,
     },
 
     // ========== AutoUI Widget Library (Plan 331) ==========
@@ -634,7 +640,7 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== Build & Run ==========
-        Some(Commands::Build { dir, port, back_port, front_port, render }) => {
+        Some(Commands::Build { dir, port, back_port, front_port, render, scene }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -659,6 +665,9 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             if let Some(ref b) = render {
                 am.set_render(b.clone());
+            }
+            if let Some(ref s) = scene {
+                am.set_scene(s.clone());
             }
             // Plan 330: bake ports into generated artifacts the same way `run`
             // does, for symmetry (so `build` then manual run matches).
@@ -698,7 +707,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, args }) => {
+        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -723,6 +732,9 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             if let Some(ref b) = render {
                 am.set_render(b.clone());
+            }
+            if let Some(ref s) = scene {
+                am.set_scene(s.clone());
             }
             // Plan 327: --server=vm uses AutoVM HTTP server (with module
             // flattening for use db), --server=rust (default) uses a2r.
@@ -809,7 +821,7 @@ fn real_main(cli: Cli) -> Result<()> {
                             let p = entry.path();
                             if p.is_dir() {
                                 collect_at_files(&p, out);
-                            } else if p.extension().map_or(false, |e| e == "at") {
+                            } else if p.extension().map_or(false, |e| e == "at" || e == "au") {
                                 out.push(p.to_string_lossy().to_string());
                             }
                         }
@@ -1219,19 +1231,22 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== Code Generation ==========
-        Some(Commands::Gen { output, project }) => {
+        Some(Commands::Gen { output, project, scene }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
             }
             let config = load_am_config().unwrap_or_default();
-            let am = auto_man::Automan::new(".", config).map_err(|e| {
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
                 }
                 miette::miette!("{}", e)
             })?;
+            if let Some(ref s) = scene {
+                am.set_scene(s.clone());
+            }
             am.gen(output, project).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));

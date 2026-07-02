@@ -222,7 +222,7 @@ impl DynamicComponent {
 
         // 2. Extract view template
         let view_template = view.view_tree.clone();
-        let widget_name = _logic.name.clone();
+        let widget_name = _logic.name.to_string();
 
         // 3. Extract input-to-state mapping for text input handling
         let input_state_map = extract_input_state_map(view.view_tree);

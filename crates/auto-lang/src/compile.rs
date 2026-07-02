@@ -1136,7 +1136,7 @@ impl CompileSession {
 
 
 
-        let extensions = [".at", ".auto"];
+        let extensions = [".at", ".au", ".auto"];
 
         let mut found_path: Option<std::path::PathBuf> = None;
 

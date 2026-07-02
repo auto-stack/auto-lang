@@ -601,7 +601,7 @@ pub fn validate_handler_stmt(stmt: &Stmt) -> Result<(), UnsupportedKind> {
 | **PR-3 AuraWidget 拆分** | B/VM | 新增 `WidgetLogicRef`/`WidgetViewRef` 零拷贝视图；显式化逻辑/视图依赖边界。为 VM 去中转铺路。 | 低 | ✅ |
 | **PR-4 trans 审计** | B/转译 | 审计四生成器 handler 体翻译路径；修正"trans/ 已统一"假设（实际只 Vue 走 trans/）；文档化合并可行性 + 后续路线。 | 低 | ✅ |
 | **PR-5 消除 AuraStmt** | C | 删除 `AuraStmt`/`AuraUpdateOp` + `extract_stmt`；handler 槽改持基础 `Stmt`；4 个生成器 `stmt_to_*` 迁移到基础 `Stmt`；新增 `aura/validate.rs`。`AuraExpr` 暂留（第二档，独立议题）。 | 高 | 🔲 |
-| **PR-6 场景配置** | A | `--scene` CLI flag（CLI > pac.at > 默认）+ `.au` 后缀（弱提示推断）+ 模块解析扩展名列表更新。 | 中 | 🔲 |
+| **PR-6 场景配置** | A | `--scene` CLI flag（CLI > pac.at > 默认）+ `.au` 后缀（弱提示推断）+ 模块解析扩展名列表更新。 | 中 | ✅ |
 
 **后续 PR（依赖 PR-5）**：
 
@@ -707,6 +707,16 @@ CLI 显式指定时覆盖 `pac.at` 配置，否则沿用 `pac.at`（现状：`sc
 
 #### 落地建议
 决策 6 作为独立 PR-6，与 PR-1~5 解耦。建议在 PR-2（`UiDialect` 就位）之后实施，这样 `.au` 的场景推断可直接走方言体系，而非临时硬编码。
+
+#### PR-6 实施记录（已完成）
+
+跨 3 个 crate 实现：
+
+- **auto-lang**：`compile.rs` 扩展名列表加 `.au`（`[".at", ".au", ".auto"]`）；`lib.rs` 的 `collect_module_imports` 加 `override_scenario` 参数（优先级：override > .au 推断 > back/ 启发式）；`run_file_dynamic_ui` 拆出 `_inner` + `_with_scenario` 接受场景覆写。
+- **auto-man**：`Automan` 加 `scene_override` 字段 + `set_scene()` + `effective_scenario()`（桥接 pac.at `Scene` → `session::Scenario`：`Ui→UI`，`Default/Workspace→Core`）。
+- **auto**：`Build`/`Run`/`Gen` 三个子命令各加 `--scene` flag；测试文件发现加 `.au` 后缀。
+
+优先级链实测：`CLI --scene` > `pac.at scene 字段` > `.au 后缀推断 UI` > `back/ 路径→Core` > 默认 Core。
 
 ---
 
