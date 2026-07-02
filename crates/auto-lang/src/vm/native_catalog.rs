@@ -1066,6 +1066,10 @@ macro_rules! for_each_bigvm_native {
             // Plan 349: Multipart file upload
             ("RequestBuilder.multipart_file", 2268, Void),
             ("RequestBuilder.multipart_text", 2269, Void),
+            // Plan 349 step 8: Cookie / retry / compression
+            ("RequestBuilder.cookie_store", 2272, Void),
+            ("RequestBuilder.retry", 2273, Void),
+            ("RequestBuilder.gzip", 2274, Void),
             ("auto.http.upload", 2270, Void),
             ("http.upload", 2270, Void),
             // Plan 349: File download + resume + progress
@@ -1706,6 +1710,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("RequestBuilder.tls_client_cert", 2267),
     ("RequestBuilder.multipart_file", 2268),
     ("RequestBuilder.multipart_text", 2269),
+    ("RequestBuilder.cookie_store", 2272),
+    ("RequestBuilder.retry", 2273),
+    ("RequestBuilder.gzip", 2274),
     ("auto.http.upload", 2270),
     ("http.upload", 2270),
     ("auto.http.download", 2271),

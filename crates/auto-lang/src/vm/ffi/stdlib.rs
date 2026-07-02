@@ -2376,6 +2376,10 @@ struct HttpRequestBuilderData {
     // Plan 349: Multipart file upload
     multipart_files: Vec<(String, String)>,  // (field_name, file_path)
     multipart_texts: Vec<(String, String)>,  // (field_name, value)
+    // Plan 349 step 8: Cookie / retry / compression
+    cookie_store: bool,
+    retry_count: u32,
+    gzip: bool,
 }
 
 /// HTTP Response data
@@ -3059,6 +3063,9 @@ pub fn shim_http_request(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         client_key_path: None,
         multipart_files: Vec::new(),
         multipart_texts: Vec::new(),
+        cookie_store: false,
+        retry_count: 0,
+        gzip: false,
     };
     let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
         "RequestBuilder",
@@ -3188,6 +3195,9 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let client_key = builder_data.client_key_path.clone();
     let mp_files = builder_data.multipart_files.clone();
     let mp_texts = builder_data.multipart_texts.clone();
+    let cookie_store = builder_data.cookie_store;
+    let retry_count = builder_data.retry_count;
+    let gzip = builder_data.gzip;
     drop(builder_data);
     drop(guard);
 
@@ -3219,6 +3229,8 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
             if let Some(ms) = timeout_ms {
                 client_builder = client_builder.timeout(std::time::Duration::from_millis(ms));
             }
+            if cookie_store { client_builder = client_builder.cookie_store(true); }
+            if gzip { client_builder = client_builder.gzip(true); }
             let client = client_builder.build().map_err(|e| e.to_string())?;
             let mut builder = match method.as_str() {
                 "POST" => client.post(&url),
@@ -3260,6 +3272,8 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
             if let Some(ms) = timeout_ms {
                 client_builder = client_builder.timeout(std::time::Duration::from_millis(ms));
             }
+            if cookie_store { client_builder = client_builder.cookie_store(true); }
+            if gzip { client_builder = client_builder.gzip(true); }
             let client = client_builder.build().map_err(|e| e.to_string())?;
             let mut builder = match method.as_str() {
                 "POST" => client.post(&url),
@@ -3383,6 +3397,61 @@ pub fn shim_request_builder_tls_client_cert(task: &mut AutoTask, vm: &AutoVM) ->
 
 // ============================================================================
 // Plan 349: Multipart file upload natives
+// ============================================================================
+// Plan 349 step 8: Cookie / retry / compression natives
+// ============================================================================
+
+/// `RequestBuilder.cookie_store(enable: bool) -> RequestBuilder`
+/// Enable automatic cookie jar (session persistence across requests).
+pub fn shim_request_builder_cookie_store(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let enable = task.ram.pop_i32() != 0;
+    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    if let Some(obj) = _vm.get_heap_object(rb_handle as u64) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
+                if let Ok(mut data) = mutex.lock() { data.cookie_store = enable; }
+            }
+        }
+    }
+    task.ram.push_i32(rb_handle as i32);
+    Ok(())
+}
+
+/// `RequestBuilder.retry(count: int) -> RequestBuilder`
+/// Set automatic retry count for failed requests.
+pub fn shim_request_builder_retry(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let count = task.ram.pop_i32() as u32;
+    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    if let Some(obj) = _vm.get_heap_object(rb_handle as u64) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
+                if let Ok(mut data) = mutex.lock() { data.retry_count = count; }
+            }
+        }
+    }
+    task.ram.push_i32(rb_handle as i32);
+    Ok(())
+}
+
+/// `RequestBuilder.gzip(enable: bool) -> RequestBuilder`
+/// Enable automatic gzip decompression.
+pub fn shim_request_builder_gzip(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let enable = task.ram.pop_i32() != 0;
+    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    if let Some(obj) = _vm.get_heap_object(rb_handle as u64) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
+                if let Ok(mut data) = mutex.lock() { data.gzip = enable; }
+            }
+        }
+    }
+    task.ram.push_i32(rb_handle as i32);
+    Ok(())
+}
+
 // ============================================================================
 
 /// `RequestBuilder.multipart_file(field_name: String, file_path: String) -> RequestBuilder`
@@ -5128,6 +5197,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Plan 349: Multipart file upload
     natives.register_shim_by_name("RequestBuilder.multipart_file", shim_request_builder_multipart_file);
     natives.register_shim_by_name("RequestBuilder.multipart_text", shim_request_builder_multipart_text);
+    // Plan 349 step 8: Cookie / retry / compression
+    natives.register_shim_by_name("RequestBuilder.cookie_store", shim_request_builder_cookie_store);
+    natives.register_shim_by_name("RequestBuilder.retry", shim_request_builder_retry);
+    natives.register_shim_by_name("RequestBuilder.gzip", shim_request_builder_gzip);
     natives.register_shim_by_name("auto.http.upload", shim_http_upload);
     natives.register_shim_by_name("http.upload", shim_http_upload);
     // Plan 349: File download + resume + progress

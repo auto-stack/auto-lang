@@ -75,7 +75,7 @@ urlencoding = { workspace = true }
 colored = { workspace = true }
 
 # Plan 154/341: HTTP client — blocking (Plan 154) + async + stream (Plan 341 异步客户端/SSE)
-reqwest = { version = "0.12", features = ["blocking", "json", "stream", "multipart"] }
+reqwest = { version = "0.12", features = ["blocking", "json", "stream", "multipart", "cookies", "gzip"] }
 # Plan 350: WebSocket client (sync, runs on dedicated thread)
 tungstenite = { version = "0.24", features = ["native-tls"] }
 # Plan 159: Directory walking for AutoCode agent
