@@ -196,37 +196,60 @@ pub fn run_script(script: &str, extra_args: &[&str], cwd: &Path) -> Result<(), S
 /// Unlike `run_command_live`, this does NOT set CI=true and DOES inherit
 /// stdin, so interactive tools like Vite's dev server work properly
 /// (press `q` + Enter to quit).
+/// Plan 348: Wrapper that kills the child process when dropped, ensuring
+/// Vite and other dev servers are cleaned up even if auto exits unexpectedly.
+struct ChildGuard(Option<std::process::Child>);
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        if let Some(ref mut child) = self.0 {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 pub fn run_script_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
     #[cfg(windows)]
-    let status = {
+    {
         let mut full_args = vec!["/C", cmd];
         full_args.extend(args);
-        Command::new("cmd")
+        let child = Command::new("cmd")
             .args(&full_args)
             .current_dir(cwd)
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .stdin(Stdio::inherit())
-            .status()
-            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?
-    };
+            .spawn()
+            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?;
+
+        let mut guard = ChildGuard(Some(child));
+        let status = guard.0.as_mut().unwrap().wait()
+            .map_err(|e| format!("Failed to wait: {}", e))?;
+        guard.0 = None; // Child exited normally, don't kill on drop
+
+        if status.success() { Ok(()) }
+        else { Err(format!("{} exited with code {:?}", cmd, status.code())) }
+    }
 
     #[cfg(not(windows))]
-    let status = {
-        Command::new(cmd)
+    {
+        let child = Command::new(cmd)
             .args(args)
             .current_dir(cwd)
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .stdin(Stdio::inherit())
-            .status()
-            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?
-    };
+            .spawn()
+            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?;
 
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("{} exited with code {:?}", cmd, status.code()))
+        let mut guard = ChildGuard(Some(child));
+        let status = guard.0.as_mut().unwrap().wait()
+            .map_err(|e| format!("Failed to wait: {}", e))?;
+        guard.0 = None;
+
+        if status.success() { Ok(()) }
+        else { Err(format!("{} exited with code {:?}", cmd, status.code())) }
     }
 }
 
