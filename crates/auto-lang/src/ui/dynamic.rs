@@ -204,19 +204,28 @@ impl DynamicComponent {
         import_aliases: &std::collections::HashMap<String, String>,
         api_over_http: bool,
     ) -> Result<Self, String> {
+        // PR-3: 显式拆分 AuraWidget 的逻辑/视图两部分，让依赖关系清晰。
+        // ── 逻辑部分（VM 合成 + 状态初始化）──
+        // VmBridge 内部调用 synthesize_widget_module，只读取 logic 部分。
+        let _logic = widget.logic();
+
         // 1. Create VmBridge from widget + imports + ALL child widgets.
         //    Plan 337: single VM — child widgets' handlers compiled into the
         //    same module so they can be called when events fire.
         let child_widgets: Vec<crate::aura::AuraWidget> = registry.all().collect();
         let bridge = VmBridge::new_with_children(widget, &child_widgets, import_stmts.clone(), import_aliases, api_over_http)
-            .map_err(|e| format!("VmBridge init failed for '{}': {}", widget.name, e))?;
+            .map_err(|e| format!("VmBridge init failed for '{}': {}", _logic.name, e))?;
+
+        // ── 视图部分（渲染模板 + 元数据）──
+        // AuraViewBuilder 和 DynamicComponent 只需要 view_data 部分。
+        let view = widget.view_data();
 
         // 2. Extract view template
-        let view_template = widget.view_tree.clone();
-        let widget_name = widget.name.clone();
+        let view_template = view.view_tree.clone();
+        let widget_name = _logic.name.clone();
 
         // 3. Extract input-to-state mapping for text input handling
-        let input_state_map = extract_input_state_map(&widget.view_tree);
+        let input_state_map = extract_input_state_map(view.view_tree);
 
         Ok(Self {
             bridge,
@@ -227,9 +236,9 @@ impl DynamicComponent {
             source_path: None,
             last_modified: None,
             input_state_map,
-            tick_interval: widget.tick_interval,
-            span_map: widget.span_map.clone(),
-            key_bindings: widget.key_bindings.clone(),
+            tick_interval: view.tick_interval,
+            span_map: view.span_map.clone(),
+            key_bindings: view.key_bindings.clone(),
             widget_registry: registry,
         })
     }
