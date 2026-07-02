@@ -450,7 +450,7 @@ impl<'a> Parser<'a> {
         if !self.is_ui_scenario() {
             return false;
         }
-        matches!(ident, "widget" | "view" | "model" | "msg" | "on")
+        matches!(ident, "widget" | "store" | "view" | "model" | "msg" | "on")
     }
 
     /// Create a new parser with an external type_store (Plan 085)
@@ -3832,6 +3832,7 @@ impl<'a> Parser<'a> {
                         // Plan 096: UI contextual keywords
                         match ident {
                             "widget" => self.parse_widget_decl()?,
+                            "store" => self.parse_store_decl()?,
                             "msg" => self.parse_msg_decl()?,
                             "model" => self.parse_model_block()?,
                             "view" => self.parse_view_block()?,
@@ -10100,6 +10101,59 @@ impl<'a> Parser<'a> {
             props,
             routes,
             lifecycle: vec![],
+        }))
+    }
+
+    /// Parse a `store` declaration (Plan 351 / Design 18).
+    /// A store is a view-less widget: `store Name { model{} msg{} on{} }`.
+    pub fn parse_store_decl(&mut self) -> AutoResult<Stmt> {
+        self.expect_ident("store")?;
+        let name = self.cur.text.clone();
+        self.next();
+
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut messages = Vec::new();
+        let mut model = None;
+        let mut on = None;
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            let ident = self.cur.text.as_str();
+            match ident {
+                "msg" => {
+                    messages.push(self.parse_msg_decl_inner()?);
+                }
+                "model" => {
+                    model = Some(self.parse_model_block_inner()?);
+                }
+                "on" => {
+                    on = Some(self.parse_on_block()?);
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected 'model', 'msg', or 'on' in store, got '{}'",
+                            ident
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Stmt::StoreDecl(StoreDecl {
+            name,
+            messages,
+            model,
+            on,
         }))
     }
 

@@ -56,6 +56,27 @@ pub struct WidgetDecl {
 }
 
 // ============================================================================
+// Store Declaration (Plan 351 / Design 18 — Rung 4 shared store)
+// ============================================================================
+
+/// A module-level shared store: a view-less widget (`model` + `msg` + `on`)
+/// whose state is shared across widgets/routes via `use store:`.
+#[derive(Debug, Clone)]
+pub struct StoreDecl {
+    /// Store name (e.g., "CounterStore")
+    pub name: Name,
+
+    /// Message type declarations
+    pub messages: Vec<MsgDecl>,
+
+    /// State/model declaration
+    pub model: Option<ModelBlock>,
+
+    /// Event handlers
+    pub on: Option<OnBlock>,
+}
+
+// ============================================================================
 // Lifecycle Method
 // ============================================================================
 
