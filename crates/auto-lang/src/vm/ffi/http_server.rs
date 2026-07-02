@@ -1107,6 +1107,7 @@ pub async fn serve_async(vm: &crate::vm::engine::AutoVM, addr: &str) {
         }
     };
     eprintln!("[HTTP] Async server listening on {} (concurrent, single-worker)", addr);
+    eprintln!("[HTTP] Press Ctrl+C to shut down gracefully");
 
     let routes = get_routes();
 
@@ -1177,6 +1178,14 @@ async fn handle_connection_async(
             let lower = line.to_lowercase();
             if lower.starts_with("content-length:") {
                 content_length = lower[15..].trim().parse().unwrap_or(0);
+            }
+            // Plan 351 stage 5: Request body size limit (default 10MB).
+            const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
+            if content_length > MAX_BODY_SIZE {
+                let resp = "HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: 27\r\nConnection: close\r\n\r\n{\"error\":\"body too large\"}";
+                let _ = stream.write_all(resp.as_bytes()).await;
+                eprintln!("[HTTP] {} {} → 413 (body {} > {})", req_method, req_path, content_length, MAX_BODY_SIZE);
+                return;
             }
             if lower.starts_with("upgrade:") && lower.contains("websocket") {
                 is_websocket = true;
