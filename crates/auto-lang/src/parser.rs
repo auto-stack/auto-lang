@@ -399,21 +399,20 @@ impl<'a> Parser<'a> {
     }
 
     /// 按 session 装配方言表。集中所有方言注册，便于一眼看清"当前有哪些方言"。
-    /// PR-1 阶段返回空 Vec（无方言）；PR-2 起在此注册 UiDialect。
     fn build_dialects(
-        _session: &crate::session::CompilerSession,
+        session: &crate::session::CompilerSession,
     ) -> Vec<Box<dyn crate::dialect::Dialect>> {
-        // PR-2 将在此插入：
-        //   if session.scenario == crate::session::Scenario::UI {
-        //       v.push(Box::new(crate::dialect::ui::UiDialect));
-        //   }
-        Vec::new()
+        let mut v: Vec<Box<dyn crate::dialect::Dialect>> = Vec::new();
+        if session.scenario == crate::session::Scenario::UI {
+            v.push(Box::new(crate::dialect::ui::UiDialect));
+        }
+        // 未来方言（Shell 等）在此注册
+        v
     }
 
     /// 尝试用已注册的方言解析当前语句起始标识符。
     /// 在 parse_stmt_inner 的 TokenKind::Ident 分支首位置调用。
     /// 返回 Ok(Some(stmt)) 表示某方言已处理；Ok(None) 表示无方言接管。
-    /// PR-1 阶段 dialects 恒空，此方法永远返回 Ok(None)，不影响现有派发。
     ///
     /// 注意：不能用 `for d in &self.dialects` 直接遍历——方言的 try_parse_stmt
     /// 需要 `&mut Parser`，而迭代器持有 `&self` 的不可变借用会产生冲突。
@@ -437,20 +436,24 @@ impl<'a> Parser<'a> {
         result
     }
 
+    /// 尝试用已注册的方言解析当前真实 TokenKind（view/on 等非 Ident 的 UI token）。
+    /// 在 parse_stmt_inner 的 TokenKind::View / TokenKind::On arm 里调用。
+    fn try_token_dialect_stmt(&mut self, kind: TokenKind) -> AutoResult<Option<Stmt>> {
+        let mut dialects = std::mem::take(&mut self.dialects);
+        let mut result = Ok(None);
+        for d in &dialects {
+            if let Some(stmt) = d.try_parse_token_stmt(self, kind)? {
+                result = Ok(Some(stmt));
+                break;
+            }
+        }
+        self.dialects = dialects;
+        result
+    }
+
     /// Check if current scenario is UI (Plan 096)
     pub fn is_ui_scenario(&self) -> bool {
         self.session.scenario == crate::session::Scenario::UI
-    }
-
-    /// Check if identifier is a contextual keyword in current scenario (Plan 096)
-    ///
-    /// In UI scenario, these are keywords:
-    /// - widget, view, model, msg, on
-    fn is_contextual_keyword(&self, ident: &str) -> bool {
-        if !self.is_ui_scenario() {
-            return false;
-        }
-        matches!(ident, "widget" | "view" | "model" | "msg" | "on")
     }
 
     /// Create a new parser with an external type_store (Plan 085)
@@ -3820,6 +3823,15 @@ impl<'a> Parser<'a> {
             TokenKind::Tag => self.enum_stmt()?,  // DEPRECATED: tag redirects to enum
             TokenKind::Spec => self.spec_decl_stmt()?,
             TokenKind::LBrace => Stmt::Block(self.body()?),
+            // UI 场景：view 块（如 `view { Column { ... } }`）。
+            // 非 UI 场景：view 是参数模式关键字，不应出现在语句位置，回退到表达式。
+            TokenKind::View => {
+                if let Some(stmt) = self.try_token_dialect_stmt(TokenKind::View)? {
+                    stmt
+                } else {
+                    self.expr_stmt()?
+                }
+            }
             // Node Instance or UI contextual keywords
             TokenKind::Ident => {
                 // Plan 306: Godot scene declaration (recognized in any scenario).
@@ -3827,17 +3839,11 @@ impl<'a> Parser<'a> {
                 if self.looks_like_scene_decl() {
                     self.parse_scene_decl()?
                 } else {
-                    let ident = self.cur.text.as_str();
-                    if self.is_contextual_keyword(ident) {
-                        // Plan 096: UI contextual keywords
-                        match ident {
-                            "widget" => self.parse_widget_decl()?,
-                            "msg" => self.parse_msg_decl()?,
-                            "model" => self.parse_model_block()?,
-                            "view" => self.parse_view_block()?,
-                            "on" => Stmt::OnEvents(self.parse_on_events()?),
-                            _ => self.parse_node_or_call_stmt()?,
-                        }
+                    let ident = self.cur.text.to_string();
+                    // 先问方言表（取代原 is_contextual_keyword 硬编码）。
+                    // widget/msg/model 经此路径；view/on 是真实 TokenKind，见下方 arm。
+                    if let Some(stmt) = self.try_dialect_stmt(&ident)? {
+                        stmt
                     } else {
                         self.parse_node_or_call_stmt()?
                     }
@@ -3847,8 +3853,14 @@ impl<'a> Parser<'a> {
             TokenKind::Enum => self.enum_stmt()?,
             // Plan 121: Task Definition
             TokenKind::Task => self.parse_task()?,
-            // On Events Switch
-            TokenKind::On => Stmt::OnEvents(self.parse_on_events()?),
+            // On Events Switch —— 委托方言（UI 场景由 UiDialect 接管，非 UI 回退原行为）
+            TokenKind::On => {
+                if let Some(stmt) = self.try_token_dialect_stmt(TokenKind::On)? {
+                    stmt
+                } else {
+                    Stmt::OnEvents(self.parse_on_events()?)
+                }
+            }
             // Alias stmt
             TokenKind::Alias => self.parse_alias_stmt()?,
             // Ext statement (Plan 035)
@@ -11819,11 +11831,48 @@ mod tests {
     }
 
     #[test]
-    fn test_with_session_builds_empty_dialects_in_pr1() {
-        // PR-1: with_session 后方言表存在但为空（build_dialects 返回空 Vec）。
-        // PR-2 起 UiDialect 注册后此断言会变为非空。
-        let parser = Parser::from("x = 1").with_session(crate::session::CompilerSession::ui());
-        assert!(parser.dialects.is_empty());
+    fn test_with_session_registers_ui_dialect() {
+        // PR-2: UI session 注册 UiDialect；Core session 方言表为空。
+        let ui_parser = Parser::from("x = 1").with_session(crate::session::CompilerSession::ui());
+        assert_eq!(ui_parser.dialects.len(), 1); // UiDialect
+
+        let core_parser = Parser::from("x = 1");
+        assert!(core_parser.dialects.is_empty());
+    }
+
+    #[test]
+    fn test_top_level_view_block_now_parses_in_ui_scenario() {
+        // PR-2 修复：UI 场景下顶层 `view { }` 块现在可正确解析（原先落到 expr_stmt）。
+        // view 树用小写标签语法（col/text 等），与现有 widget view 测试一致。
+        let mut parser = Parser::from("view {\n  col {\n    text \"hello\"\n  }\n}")
+            .with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let last = ast.stmts.last().unwrap();
+        assert!(
+            matches!(last, Stmt::ViewBlock(_)),
+            "expected ViewBlock, got {:?}",
+            last
+        );
+    }
+
+    #[test]
+    fn test_widget_parses_via_dialect_in_ui_scenario() {
+        // PR-2: widget 经 UiDialect 派发，UI 场景下解析为 WidgetDecl。
+        let code = "widget App {\n  model { count int = 0 }\n  view { text \"hello\" }\n}";
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let last = ast.stmts.last().unwrap();
+        assert!(matches!(last, Stmt::WidgetDecl(_)));
+    }
+
+    #[test]
+    fn test_view_param_mode_unaffected_in_core_scenario() {
+        // PR-2 回归保护：Core 场景下 view 仍可作为参数模式关键字出现在 fn 签名里。
+        let code = "fn foo(view x int) int { return x }";
+        let mut parser = Parser::from(code);
+        let ast = parser.parse().unwrap();
+        assert!(!ast.stmts.is_empty());
     }
 
     #[test]
