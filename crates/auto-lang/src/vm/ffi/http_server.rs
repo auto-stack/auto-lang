@@ -1306,13 +1306,22 @@ async fn handle_connection_async(
     }
 
     // Dispatch to handler via call_fn_by_name (synchronous VM execution).
+    // Plan 351 stage 2: Request logging + error handling.
+    let request_start = std::time::Instant::now();
     let handler_task_id = vm.spawn_task(0, 65536);
     let n_args = build_handler_args(vm, handler_task_id, &route_match, &body, &content_type);
 
     let result_json = if let Some(_task_arc) = vm.tasks.get(&handler_task_id) {
         let mut ht = match _task_arc.try_lock() {
             Ok(t) => t,
-            Err(_) => { vm.tasks.remove(&handler_task_id); return; }
+            Err(_) => {
+                eprintln!("[HTTP] {} {} → 500 (task lock failed, {}ms)",
+                    req_method, req_path, request_start.elapsed().as_millis());
+                vm.tasks.remove(&handler_task_id);
+                let resp = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 27\r\nConnection: close\r\n\r\n{\"error\":\"internal error\"}";
+                let _ = stream.write_all(resp.as_bytes()).await;
+                return;
+            }
         };
         match vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args) {
             Ok(()) => {
@@ -1321,6 +1330,8 @@ async fn handle_connection_async(
                 if auto_val::is_i32(nv) {
                     let iter_id = auto_val::decode_i32(nv) as u32;
                     if vm.iterators.contains_key(&iter_id) {
+                        eprintln!("[HTTP] {} {} → 200 SSE ({}ms)",
+                            req_method, req_path, request_start.elapsed().as_millis());
                         drop(ht);
                         let sse_header = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n";
                         let _ = stream.write_all(sse_header.as_bytes()).await;
@@ -1354,8 +1365,15 @@ async fn handle_connection_async(
                 }
             }
             Err(e) => {
-                eprintln!("[HTTP] Handler '{}' error: {:?}", route_match.fn_name, e);
-                None
+                eprintln!("[HTTP] {} {} → 500 (handler '{}' error: {:?}, {}ms)",
+                    req_method, req_path, route_match.fn_name, e, request_start.elapsed().as_millis());
+                // Plan 351 stage 2: Return a proper 500 JSON error response
+                // instead of silently dropping the connection.
+                let error_json = format!(
+                    r#"{{"error":"internal server error","detail":"{}"}}"#,
+                    format!("{:?}", e).replace('"', "\\\"").replace('\n', " ")
+                );
+                Some(error_json)
             }
         }
     } else {
@@ -1366,9 +1384,17 @@ async fn handle_connection_async(
 
     // Non-SSE: write JSON response.
     if let Some(result_json) = result_json {
+        // Plan 351 stage 2: Determine status code from response content.
+        let is_error = result_json.starts_with("{\"error\":");
+        let status = if is_error { "500 Internal Server Error" } else { "200 OK" };
+        // Log successful request (non-SSE, non-error already logged above).
+        if !is_error {
+            eprintln!("[HTTP] {} {} → 200 ({}ms)",
+                req_method, req_path, request_start.elapsed().as_millis());
+        }
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            result_json.len(), result_json
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            status, result_json.len(), result_json
         );
         let _ = stream.write_all(response.as_bytes()).await;
     }
