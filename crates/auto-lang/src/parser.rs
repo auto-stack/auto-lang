@@ -11468,7 +11468,23 @@ impl<'a> Parser<'a> {
                 self.next();
                 parts.push(s);
             } else {
-                break;
+                // Plan 345 (OOM fix): handle binary operators so an event arg
+                // like .Bump(.n + 1) doesn't fall out here. Previously the
+                // caller's arg loop (which only handles ,/;/) would spin on the
+                // leftover operator token, pushing empty args forever -> 48 GiB
+                // OOM. Consume the operator as part of this arg expression.
+                let op_text = self.cur.text.to_string();
+                if matches!(op_text.as_str(),
+                    "+" | "-" | "*" | "/" | "%"
+                    | "==" | "!=" | "<" | ">" | "<=" | ">="
+                    | "&&" | "||"
+                ) {
+                    parts.push(format!(" {} ", op_text));
+                    self.next();
+                    prev_was_ident = false;
+                } else {
+                    break;
+                }
             }
         }
 

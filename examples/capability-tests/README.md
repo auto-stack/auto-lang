@@ -11,6 +11,7 @@ Tracked by [Plan 345](../../docs/plans/345-gap-canary-tests.md).
 | `k2-child-handler-binding/` | K2/N4 | 🟢 GREEN | parent↔child handler wiring (callback prop) |
 | `n2-routing-codegen-paths/` | N2 | 🟢 GREEN | route page-module paths exist |
 | `n3-handler-local-vars/` | N3 | 🟢 GREEN | local mutable vars in handler blocks |
+| `oom-event-binop-arg/` | OOM | 🟢 GREEN | binop in msg-call event arg (parser OOM fix) |
 
 Each canary's `src/front/app.at` documents the desired behavior and the
 specific codegen/parser change needed ("What's needed" header comment).

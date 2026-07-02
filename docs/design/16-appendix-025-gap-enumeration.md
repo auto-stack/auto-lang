@@ -47,3 +47,11 @@ N2 经 canary 复核:**路由 codegen 本身正确**。原探针把 page widget 
 ## N3 复核(2026-07-02):已在 master 实现
 
 N3(handler 内局部可变变量)经 canary 复核:**已工作**。codegen 正确发射 `let i = 0`、裸局部赋值 `i = i + 1`(无 `.value`),state 赋值仍用 `.value`。原 gap 枚举基于较旧 base;master 后续提交已补此能力。canary 作回归测试钉住。非缺口。
+
+## OOM 根因与修复(2026-07-02)
+
+**根因**:`parser.rs::parse_event_handler` 的实参收集循环只处理 `,`/`;` 分隔;而 `parse_event_arg` 只消费 Dot/Ident/Int/Str,遇运算符(`+` 等)即 break。故事件实参里的二元表达式(如 `.Bump(.n + 1)`、`.Bump(1 + 1)`)只消费第一个操作数,留下运算符 token;caller 循环无法处理该 token,无限 push 空串 → ~48GiB OOM。
+
+**修复**:`parse_event_arg` 的循环里增加对二元运算符(`+ - * / % == != < > <= >= && ||`)的消费(push `" op "` 并 continue)。`examples/capability-tests/oom-event-binop-arg/` 作回归(原 RED,现 GREEN)。
+
+**遗留(独立)**:state-ref 事件实参(`.n`)codegen 为 `this.n`(Vue 下应为 `n`)—— `.Bump(.n)` 不带 binop 也有此问题,与 OOM 无关,另列。

@@ -1,0 +1,12 @@
+// Canary — OOM regression: a binary expression in a msg-call event arg
+// (`onclick: .Bump(1 + 1)`) used to infinite-loop the parser's event-arg
+// collector (the caller only handled ,/;/, so a leftover operator span the
+// loop, pushing empty args until a 48 GiB OOM). Fixed in the parser by
+// consuming binary operators within parse_event_arg. GREEN.
+
+widget App {
+    msg Msg { Bump(int) }
+    model { var n int = 0 }
+    view { col { button "c" { onclick: .Bump(1 + 1) } } }
+    on { .Bump(x) -> { .n = x } }
+}

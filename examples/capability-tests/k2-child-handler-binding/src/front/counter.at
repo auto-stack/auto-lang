@@ -1,7 +1,8 @@
 // Canary K2/N4 — the child widget that receives a callback prop.
-// (Uses a literal arg .Bump(1); a computed arg .Bump(.n+1) hits a separate
-//  codegen OOM — callback + computed-msg-arg + Plan 339 — tracked as a
-//  follow-up, see README.)
+// (Uses a literal arg .Bump(1). A computed arg .Bump(.n+1) previously hit a
+//  codegen OOM — now fixed by the binop-in-event-arg parser fix; see the
+//  oom-event-binop-arg canary. A separate pre-existing issue: state-ref args
+//  like .n render as `this.n` (wrong for Vue) — tracked separately.)
 
 widget Counter(on_select: msg) {
     msg Msg { Bump(int) }

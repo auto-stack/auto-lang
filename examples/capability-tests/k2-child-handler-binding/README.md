@@ -8,10 +8,12 @@ This canary is the executable spec for the gap; it flips to GREEN when the
 feature in [Plan 345](../../../docs/plans/345-gap-canary-tests.md) is
 implemented.
 
-## Known follow-up (not blocking the callback feature)
+## Note on computed args
 
-A computed msg arg in the child (`onclick: .Bump(.n + 1)`) combined with a
-callback prop triggers a codegen OOM (51 GB alloc) — an interaction between
-the callback codegen and Plan 339 (`AuraExpr::If`). The canary uses a literal
-arg (`.Bump(1)`) to demonstrate the callback wiring green; the computed-arg
-case is tracked as a separate codegen bug.
+The OOM that previously blocked computed msg args (`onclick: .Bump(.n + 1)`)
+is **fixed** (root cause: `parse_event_arg` didn't consume binary operators,
+so the caller's arg loop spun forever → ~48 GiB OOM; fixed in the parser, see
+the `oom-event-binop-arg` canary). A *separate* pre-existing issue remains:
+state-ref event args (`.n`) render as `this.n` (wrong for Vue; should be `n`)
+— tracked separately. This canary uses a literal arg (`.Bump(1)`) to keep
+vue-tsc green regardless.

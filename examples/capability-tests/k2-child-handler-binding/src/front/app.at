@@ -1,29 +1,7 @@
-// Canary K2/N4 — child→parent handler binding via callback prop.  GREEN.
-//
-// Parent App passes `on_select: .Selected` to child Counter; child calls
-// `on_select(i)` in a handler; parent's `.Selected(i)` runs and mutates
-// parent state. Demonstrates app↔block event wiring (the gap from Plan 345).
-//
-// Convention: a widget param named `on_*` is a callback. The parent passes a
-// msg ref (`on_select: .MsgName`); the child invokes it (`on_select(args)`).
-// Codegen emits the parent binding and `props.on_select(args)` in the child.
-//
-// Note: each widget lives in its own .at file (the 015-notes pattern) so the
-// generator emits separate component files.
-
 use counter: Counter
-
 widget App {
     msg Msg { Selected(int) }
     model { var active int = 0 }
-    view {
-        col {
-            Counter(on_select: .Selected)
-            text .active { }
-            style: "p-4 gap-2"
-        }
-    }
-    on {
-        .Selected(i) -> { .active = i }
-    }
+    view { col { Counter(on_select: .Selected) text .active { } style: "p-4 gap-2" } }
+    on { .Selected(i) -> { .active = i } }
 }
