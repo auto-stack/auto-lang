@@ -370,6 +370,8 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
         let mut code = String::new();
         // Plan 349 step 1: Generate a TLS-aware HTTP client helper.
         code.push_str(&generate_http_client_helper());
+        // Plan 349 step 2-3: Generate upload/download utility functions.
+        code.push_str(&generate_http_utility_functions());
 
         for endpoint in &module.endpoints {
             code.push_str(&generate_endpoint_fn(endpoint, &base_url));
@@ -761,6 +763,86 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule) -> String {
     code
 }
 
+/// Plan 349 step 2: Generate multipart upload + download functions for a2r.
+fn generate_http_utility_functions() -> String {
+    r#"// Plan 349: File upload (multipart) + download utilities (a2r)
+
+fn upload_file(url: &str, file_path: &str) -> serde_json::Value {
+    std::thread::spawn(move || {
+        let form = reqwest::blocking::multipart::Form::new()
+            .file("file", file_path)
+            .map_err(|e| e.to_string())?;
+        let resp = reqwest::blocking::Client::new()
+            .post(url)
+            .multipart(form)
+            .send()
+            .map_err(|e| e.to_string())?;
+        let text = resp.text().map_err(|e| e.to_string())?;
+        serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
+    }).join().unwrap_or(serde_json::Value::Null)
+}
+
+fn upload_file_with_fields(url: &str, file_path: &str, fields: &serde_json::Value) -> serde_json::Value {
+    let url = url.to_string();
+    let file_path = file_path.to_string();
+    let fields = fields.clone();
+    std::thread::spawn(move || {
+        let mut form = reqwest::blocking::multipart::Form::new();
+        if let Some(obj) = fields.as_object() {
+            for (k, v) in obj {
+                if let Some(s) = v.as_str() {
+                    form = form.text(k.clone(), s.to_string());
+                }
+            }
+        }
+        if let Ok(part) = reqwest::blocking::multipart::Part::file(&file_path) {
+            form = form.part("file", part);
+        }
+        let resp = reqwest::blocking::Client::new()
+            .post(&url)
+            .multipart(form)
+            .send()
+            .map_err(|e| e.to_string())?;
+        let text = resp.text().map_err(|e| e.to_string())?;
+        serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
+    }).join().unwrap_or(serde_json::Value::Null)
+}
+
+fn download_file(url: &str, file_path: &str) -> bool {
+    let url = url.to_string();
+    let file_path = file_path.to_string();
+    std::thread::spawn(move || {
+        let resp = match reqwest::blocking::get(&url) { Ok(r) => r, Err(_) => return false };
+        use std::io::Write;
+        let mut file = match std::fs::File::create(&file_path) { Ok(f) => f, Err(_) => return false };
+        match resp.bytes() {
+            Ok(b) => file.write_all(&b).is_ok(),
+            Err(_) => false,
+        }
+    }).join().unwrap_or(false)
+}
+
+fn download_file_resume(url: &str, file_path: &str, offset: u64) -> bool {
+    let url = url.to_string();
+    let file_path = file_path.to_string();
+    std::thread::spawn(move || {
+        let range = format!("bytes={}-", offset);
+        let resp = match reqwest::blocking::Client::new()
+            .get(&url).header("Range", &range).send() { Ok(r) => r, Err(_) => return false };
+        use std::io::Write;
+        let mut file = match std::fs::OpenOptions::new().append(true).open(&file_path) {
+            Ok(f) => f, Err(_) => return false
+        };
+        match resp.bytes() {
+            Ok(b) => file.write_all(&b).is_ok(),
+            Err(_) => false,
+        }
+    }).join().unwrap_or(false)
+}
+
+"#.to_string()
+}
+
 /// Wrap generated components in a main() function with ICED/GPUI backend selection.
 fn wrap_example(project_name: &str, components: &str) -> String {
     let main_widget = extract_main_widget(components);
@@ -974,6 +1056,7 @@ default = ["ui-iced", "auto-lang/default"]
 auto-lang.workspace = true
 serde_json.workspace = true
 ureq.workspace = true
+reqwest = {{ version = "0.12", features = ["blocking", "multipart"] }}
 tokio.workspace = true
 iced.workspace = true
 "#
