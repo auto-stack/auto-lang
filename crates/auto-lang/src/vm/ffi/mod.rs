@@ -36,6 +36,7 @@ mod error;
 pub mod stdlib;
 pub mod rust_stdlib;
 pub mod http_server;  // Plan 321/322: AutoHttpServer unified shim
+pub mod websocket;   // Plan 350: WebSocket client
 // Plan 216 Phase 2: C FFI runtime
 pub mod c_ffi;
 

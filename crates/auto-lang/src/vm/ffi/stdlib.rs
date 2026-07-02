@@ -2254,7 +2254,7 @@ lazy_static::lazy_static! {
 }
 
 /// Plan 341: 分配一个新的异步流 id。
-fn alloc_async_id() -> u64 {
+pub fn alloc_async_id() -> u64 {
     NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst)
 }
 
@@ -5049,6 +5049,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("http.download_resume", shim_http_download_resume);
     natives.register_shim_by_name("auto.http.download_with_progress", shim_http_download_with_progress);
     natives.register_shim_by_name("http.download_with_progress", shim_http_download_with_progress);
+
+    // Plan 350: WebSocket client
+    crate::vm::ffi::websocket::register_ws_natives(natives);
 
     // Plan 340: JSON ↔ VM value conversion (for VM+VM split mode HTTP API).
     // These replace the placeholder Json.parse (returns string as-is) with real
