@@ -1,10 +1,9 @@
 # HTTP 库扩展 Roadmap
 
-> **状态**：规划文档
-> **基于**：v0.4.1 HTTP 能力盘点
-> **关联计划**：Plan 344（统一通讯架构）、Plan 350-353（具体扩展）
+> **状态**：规划文档（持续更新）
+> **关联计划**：Plan 344（统一通讯架构）、Plan 353（WebSocket）
 
-## 当前能力矩阵（v0.4.1）
+## 当前能力矩阵（v0.4.1 + Plan 350）
 
 ### Client
 
@@ -21,7 +20,9 @@
 | Response 读取 | ✅ | `Response.body/status_code/header_get` |
 | TCP 原始套接字 | ✅ | `net.tcp_*` |
 | HTTPS（基础） | ✅ | reqwest 默认支持 `https://` URL |
-| HTTPS（自定义 CA/客户端证书） | ❌ | — |
+| HTTPS 自定义 CA 证书 | ✅ | `RequestBuilder.tls_ca_cert` (Plan 350) |
+| HTTPS 跳过证书验证 | ✅ | `RequestBuilder.tls_skip_verify` (Plan 350) |
+| HTTPS 客户端证书 (mTLS) | ⚠️ | `RequestBuilder.tls_client_cert` (API 已注册，PKCS12 实现待 feature) |
 | 文件上传（multipart） | ❌ | — |
 | 大文件下载 + 断点续传 | ❌ | — |
 | 上传/下载进度回调 | ❌ | — |
@@ -48,55 +49,62 @@
 | WebSocket | ❌ | — |
 | 中间件链 | ❌ | — |
 
-### 普通 HTTP 请求异步化
+## 已实现扩展
 
-| 状态 | 说明 |
-|------|------|
-| ❌ 未实现 | Plan 344 路径 B（AWAIT_FUTURE 真挂起）未实现。普通 GET/POST 仍用 `std::thread::spawn + join` 阻塞 |
+### Plan 350: HTTPS 证书配置（已合并到此 roadmap）
 
-## 扩展计划索引
+**新增 3 个 TLS native**（`RequestBuilder` 链式 API）：
+- `RequestBuilder.tls_ca_cert(path)` — 加载 PEM 格式自定义 CA 证书
+- `RequestBuilder.tls_skip_verify(bool)` — 跳过证书验证
+- `RequestBuilder.tls_client_cert(cert, key)` — 客户端证书（mTLS，API 已注册，PKCS12 实现待 reqwest `rustls-tls` feature）
 
-| 计划 | 方向 | 难度 | 优先级 | 状态 |
-|------|------|------|--------|------|
-| **Plan 350** | HTTPS 证书配置 | 低 | 🔴 高 | 设计文档 |
-| **Plan 351** | 文件上传 multipart | 中 | 🟡 中 | 设计文档 |
-| **Plan 352** | 大文件下载 + 断点续传 + 进度 | 中 | 🟡 中 | 设计文档 |
-| **Plan 353** | WebSocket 双向通讯 | 高 | 🟡 中 | 设计文档 |
+同时重写了 `shim_request_builder_send`：完整使用 RequestBuilder 的所有配置项（headers + body + timeout + TLS），通过 `reqwest::blocking::ClientBuilder` 构建 TLS-aware client。
 
-## 实施路线
+## 待实现扩展
 
-### 阶段 1：安全与信任（Plan 350）
-HTTPS 证书配置是生产环境的基础需求。自签名证书、企业内网 CA、客户端证书认证等场景都需要。
-- 自定义 CA 证书
-- 跳过证书验证（开发环境）
-- 客户端证书（mTLS）
+### 1. 文件上传（multipart/form-data）
 
-### 阶段 2：文件传输（Plan 351 + 352）
-文件上传和下载是 Web 应用的核心场景。
-- multipart/form-data 上传（文件 + 表单字段）
-- 大文件分块下载 + Range header 断点续传
-- 上传/下载进度回调（用于 UI 进度条）
+reqwest 已有 `.multipart()` 支持，只需暴露为 native。
 
-### 阶段 3：实时通讯（Plan 353）
-WebSocket 补全了 HTTP 请求-响应模型之外的实时双向通讯能力。
-- `ws.connect(url)` 建立连接
-- `ws.send(text/binary)` 发送消息
-- `for msg in ws.on_message()` 消费消息（复用 Plan 348 的非阻塞 yield 机制）
-- 自动重连、心跳
+**API 设计**：
+- `http.upload(url, file_path) -> Response` — 单文件上传
+- `http.upload_with_fields(url, file_path, fields_json) -> Response` — 文件 + 表单字段
+- `RequestBuilder.multipart_file(field_name, file_path)` — 链式 API
+- `RequestBuilder.multipart_text(field_name, value)` — 链式 API
 
-### 阶段 4：异步化补全（Plan 344 路径 B）
+**实现**：HttpRequestBuilderData 增加 `multipart_files` / `multipart_texts` 字段。send 时如有 multipart 数据，构造 `reqwest::blocking::multipart::Form`。
+
+### 2. 大文件下载 + 断点续传 + 进度回调
+
+**API 设计**：
+- `http.download(url, file_path) -> bool` — 下载到文件
+- `http.download_resume(url, file_path, offset) -> bool` — 断点续传（Range header）
+- `http.download_with_progress(url, file_path) -> iterator` — 带进度的下载
+
+**实现**：
+- 断点续传用 HTTP `Range: bytes={offset}-` header
+- 进度迭代器复用 Plan 348 的非阻塞 yield 机制（独立线程 + channel + AsyncHttpStream）
+- 文件用 `std::fs::File` 逐 chunk 写入
+
+### 3. WebSocket 双向通讯（独立计划 Plan 353）
+
+见 `353-websocket.md`。复杂度高，需引入 tungstenite 依赖 + 新模块。
+
+### 4. 普通 HTTP 请求异步化（Plan 344 路径 B）
+
 让普通 GET/POST 也支持真异步（AWAIT_FUTURE 外部 future 挂起），消除 UI 冻结。
 
-### 阶段 5：易用性增强
+### 5. 易用性增强
+
 - Cookie 管理（`http.cookie_store(true)`）
 - 请求重试（`request.retry(count, delay)`）
 - 压缩支持（自动 gzip/brotli）
-- 连接池配置
+- CORS（AutoVM server 端）
 
 ## 设计原则
 
 1. **平台无关**：每个 native 在 VM 和 a2r 两个平台都要实现
 2. **正交特性**：同步/异步 × 流式/非流式 × 安全/非安全 是正交的
 3. **渐进式**：新 native 不破坏现有 API
-4. **对称设计**：Client 和 Server 能力尽量对称（如 WebSocket client + server）
+4. **对称设计**：Client 和 Server 能力尽量对称
 5. **复用现有基础设施**：Plan 348 的非阻塞 yield、Plan 344 的统一架构
