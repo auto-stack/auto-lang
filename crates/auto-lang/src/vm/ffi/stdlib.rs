@@ -2373,6 +2373,9 @@ struct HttpRequestBuilderData {
     skip_verify: bool,
     client_cert_path: Option<String>,
     client_key_path: Option<String>,
+    // Plan 349: Multipart file upload
+    multipart_files: Vec<(String, String)>,  // (field_name, file_path)
+    multipart_texts: Vec<(String, String)>,  // (field_name, value)
 }
 
 /// HTTP Response data
@@ -3054,6 +3057,8 @@ pub fn shim_http_request(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         skip_verify: false,
         client_cert_path: None,
         client_key_path: None,
+        multipart_files: Vec::new(),
+        multipart_texts: Vec::new(),
     };
     let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
         "RequestBuilder",
@@ -3181,6 +3186,8 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let skip_verify = builder_data.skip_verify;
     let client_cert = builder_data.client_cert_path.clone();
     let client_key = builder_data.client_key_path.clone();
+    let mp_files = builder_data.multipart_files.clone();
+    let mp_texts = builder_data.multipart_texts.clone();
     drop(builder_data);
     drop(guard);
 
@@ -3222,7 +3229,19 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
             for (k, v) in &headers {
                 builder = builder.header(k.as_str(), v.as_str());
             }
-            if let Some(ref b) = body {
+            // Plan 349: Multipart file upload takes priority over JSON body.
+            if !mp_files.is_empty() || !mp_texts.is_empty() {
+                let mut form = reqwest::blocking::multipart::Form::new();
+                for (name, value) in &mp_texts {
+                    form = form.text(name.clone(), value.clone());
+                }
+                for (name, path) in &mp_files {
+                    if let Ok(file_part) = reqwest::blocking::multipart::Part::file(path) {
+                        form = form.part(name.clone(), file_part);
+                    }
+                }
+                builder = builder.multipart(form);
+            } else if let Some(ref b) = body {
                 builder = builder.header("Content-Type", "application/json").body(b.clone());
             }
             let response = builder.send().map_err(|e| e.to_string())?;
@@ -3251,7 +3270,19 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
             for (k, v) in &headers {
                 builder = builder.header(k.as_str(), v.as_str());
             }
-            if let Some(ref b) = body {
+            // Plan 349: Multipart file upload takes priority over JSON body.
+            if !mp_files.is_empty() || !mp_texts.is_empty() {
+                let mut form = reqwest::blocking::multipart::Form::new();
+                for (name, value) in &mp_texts {
+                    form = form.text(name.clone(), value.clone());
+                }
+                for (name, path) in &mp_files {
+                    if let Ok(file_part) = reqwest::blocking::multipart::Part::file(path) {
+                        form = form.part(name.clone(), file_part);
+                    }
+                }
+                builder = builder.multipart(form);
+            } else if let Some(ref b) = body {
                 builder = builder.header("Content-Type", "application/json").body(b.clone());
             }
             let response = builder.send().map_err(|e| e.to_string())?;
@@ -3348,6 +3379,261 @@ pub fn shim_request_builder_tls_client_cert(task: &mut AutoTask, vm: &AutoVM) ->
     }
     task.ram.push_i32(rb_handle as i32);
     Ok(())
+}
+
+// ============================================================================
+// Plan 349: Multipart file upload natives
+// ============================================================================
+
+/// `RequestBuilder.multipart_file(field_name: String, file_path: String) -> RequestBuilder`
+/// Attach a file to a multipart form upload.
+pub fn shim_request_builder_multipart_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let field_name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let rb_handle: i64 = task.ram.pop_i32() as i64;
+
+    if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
+                if let Ok(mut data) = mutex.lock() {
+                    data.multipart_files.push((field_name, file_path));
+                }
+            }
+        }
+    }
+    task.ram.push_i32(rb_handle as i32);
+    Ok(())
+}
+
+/// `RequestBuilder.multipart_text(field_name: String, value: String) -> RequestBuilder`
+/// Attach a text field to a multipart form upload.
+pub fn shim_request_builder_multipart_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let value: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let field_name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let rb_handle: i64 = task.ram.pop_i32() as i64;
+
+    if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
+                if let Ok(mut data) = mutex.lock() {
+                    data.multipart_texts.push((field_name, value));
+                }
+            }
+        }
+    }
+    task.ram.push_i32(rb_handle as i32);
+    Ok(())
+}
+
+/// `http.upload(url: String, file_path: String) -> response_handle`
+/// Simple single-file upload using multipart/form-data.
+pub fn shim_http_upload(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let result = std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::new();
+        let form = reqwest::blocking::multipart::Form::new()
+            .file("file", &file_path)
+            .map_err(|e| e.to_string())?;
+        let response = client.post(&url).multipart(form).send().map_err(|e| e.to_string())?;
+        Ok::<(u16, Vec<(String, String)>, Vec<u8>), String>((
+            response.status().as_u16(),
+            response.headers().iter()
+                .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
+                .collect(),
+            response.bytes().unwrap_or_default().to_vec(),
+        ))
+    }).join();
+
+    match result {
+        Ok(Ok((status, headers, body_bytes))) => {
+            let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+            HTTP_RESPONSES.with(|r| {
+                r.borrow_mut().insert(handle, HttpResponseData { status, headers, body: body_bytes });
+            });
+            task.ram.push_i32(handle as i32);
+        }
+        _ => {
+            task.ram.push_i32(shim_http_internal_error("upload failed".to_string()) as i32);
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Plan 349: File download + resume + progress natives
+// ============================================================================
+
+/// `http.download(url: String, file_path: String) -> bool`
+/// Download a file to disk (blocking, writes directly to file).
+pub fn shim_http_download(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let success = std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::new();
+        let response = client.get(&url).send();
+        let response = match response { Ok(r) => r, Err(_) => return false };
+        use std::io::Write;
+        let mut file = match std::fs::File::create(&file_path) { Ok(f) => f, Err(_) => return false };
+        let bytes = response.bytes();
+        match bytes {
+            Ok(b) => { file.write_all(&b).is_ok() }
+            Err(_) => false,
+        }
+    }).join().unwrap_or(false);
+
+    task.ram.push_i32(if success { 1 } else { 0 });
+    Ok(())
+}
+
+/// `http.download_resume(url: String, file_path: String, offset: i64) -> bool`
+/// Resume download from a given byte offset (HTTP Range header).
+pub fn shim_http_download_resume(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let offset: i64 = task.ram.pop_i32() as i64;
+    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let success = std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::new();
+        let range = format!("bytes={}-", offset);
+        let response = client.get(&url).header("Range", &range).send();
+        let response = match response { Ok(r) => r, Err(_) => return false };
+        use std::io::Write;
+        let mut file = match std::fs::OpenOptions::new().append(true).open(&file_path) {
+            Ok(f) => f, Err(_) => return false
+        };
+        let bytes = response.bytes();
+        match bytes {
+            Ok(b) => { file.write_all(&b).is_ok() }
+            Err(_) => false,
+        }
+    }).join().unwrap_or(false);
+
+    task.ram.push_i32(if success { 1 } else { 0 });
+    Ok(())
+}
+
+/// `http.download_with_progress(url: String, file_path: String) -> iterator_id`
+/// Download with progress events via an async iterator (reuses Plan 348
+/// non-blocking yield mechanism). Each event is a JSON string:
+/// {"downloaded": N, "total": M, "percent": P}
+pub fn shim_http_download_with_progress(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let stream_id = alloc_async_id();
+    let handle = spawn_download_with_progress(url, file_path, stream_id);
+
+    if let Ok(mut map) = ASYNC_HTTP_STREAMS.lock() {
+        map.insert(stream_id, handle);
+    }
+
+    let async_iter = crate::vm::engine::AsyncStreamIterator {
+        stream_id,
+        done: false,
+    };
+    let iter_id = {
+        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        vm.iterators.insert(
+            next_id,
+            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
+        );
+        next_id
+    };
+    task.ram.push_i32(iter_id as i32);
+    Ok(())
+}
+
+/// Plan 349: Spawn a download with progress reporting on a dedicated thread.
+/// Pushes progress events + Done via mpsc channel (same pattern as SSE).
+fn spawn_download_with_progress(url: String, file_path: String, _stream_id: u64) -> Arc<AsyncStreamHandle> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
+    let handle = Arc::new(AsyncStreamHandle {
+        rx: std::sync::Mutex::new(rx),
+        done: std::sync::atomic::AtomicBool::new(false),
+    });
+    let handle_clone = handle.clone();
+    std::thread::Builder::new()
+        .name("auto-download".into())
+        .spawn(move || {
+            // Use an independent tokio runtime for async reqwest (bytes_stream).
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all().build()
+            {
+                Ok(rt) => rt,
+                Err(_) => {
+                    handle_clone.done.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
+            rt.block_on(async move {
+                let client = reqwest::Client::new();
+                let response = match client.get(&url).send().await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        let _ = tx.send(AsyncStreamEvent::Error(e.to_string())).await;
+                        let _ = tx.send(AsyncStreamEvent::Done).await;
+                        handle_clone.done.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                };
+                let total = response.content_length().unwrap_or(0);
+                use std::io::Write;
+                let mut file = match std::fs::File::create(&file_path) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        let _ = tx.send(AsyncStreamEvent::Error(e.to_string())).await;
+                        let _ = tx.send(AsyncStreamEvent::Done).await;
+                        handle_clone.done.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                };
+                let mut downloaded: u64 = 0;
+                use futures::StreamExt;
+                let mut stream = response.bytes_stream();
+                while let Some(chunk_result) = stream.next().await {
+                    match chunk_result {
+                        Ok(bytes) => {
+                            if file.write_all(&bytes).is_err() {
+                                let _ = tx.send(AsyncStreamEvent::Error("write failed".into())).await;
+                                break;
+                            }
+                            downloaded += bytes.len() as u64;
+                            let percent = if total > 0 { downloaded * 100 / total } else { 0 };
+                            let json = format!(
+                                r#"{{"downloaded":{},"total":{},"percent":{}}}"#,
+                                downloaded, total, percent
+                            );
+                            let _ = tx.send(AsyncStreamEvent::Data(json)).await;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(AsyncStreamEvent::Error(e.to_string())).await;
+                            break;
+                        }
+                    }
+                }
+                let _ = tx.send(AsyncStreamEvent::Done).await;
+                handle_clone.done.store(true, Ordering::SeqCst);
+            });
+        })
+        .expect("spawn download thread");
+    handle
 }
 
 // ============================================================================
@@ -4751,6 +5037,18 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("RequestBuilder.tls_ca_cert", shim_request_builder_tls_ca_cert);
     natives.register_shim_by_name("RequestBuilder.tls_skip_verify", shim_request_builder_tls_skip_verify);
     natives.register_shim_by_name("RequestBuilder.tls_client_cert", shim_request_builder_tls_client_cert);
+    // Plan 349: Multipart file upload
+    natives.register_shim_by_name("RequestBuilder.multipart_file", shim_request_builder_multipart_file);
+    natives.register_shim_by_name("RequestBuilder.multipart_text", shim_request_builder_multipart_text);
+    natives.register_shim_by_name("auto.http.upload", shim_http_upload);
+    natives.register_shim_by_name("http.upload", shim_http_upload);
+    // Plan 349: File download + resume + progress
+    natives.register_shim_by_name("auto.http.download", shim_http_download);
+    natives.register_shim_by_name("http.download", shim_http_download);
+    natives.register_shim_by_name("auto.http.download_resume", shim_http_download_resume);
+    natives.register_shim_by_name("http.download_resume", shim_http_download_resume);
+    natives.register_shim_by_name("auto.http.download_with_progress", shim_http_download_with_progress);
+    natives.register_shim_by_name("http.download_with_progress", shim_http_download_with_progress);
 
     // Plan 340: JSON ↔ VM value conversion (for VM+VM split mode HTTP API).
     // These replace the placeholder Json.parse (returns string as-is) with real
