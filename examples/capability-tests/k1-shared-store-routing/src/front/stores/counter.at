@@ -1,0 +1,13 @@
+// A module-level shared store: state + msg + on (a view-less widget).
+// Both route pages `use store: CounterStore` and share `count` across routes.
+
+store CounterStore {
+    model {
+        var count int = 0
+    }
+    msg Msg { Inc, Dec }
+    on {
+        .Inc -> { .count = .count + 1 }
+        .Dec -> { .count = .count - 1 }
+    }
+}

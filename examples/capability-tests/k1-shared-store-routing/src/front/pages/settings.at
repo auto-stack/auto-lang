@@ -1,0 +1,11 @@
+widget settings {
+    use store: CounterStore
+    view {
+        col {
+            text "settings (same count)"
+            text .store.count { }
+            button "inc" { onclick: .store.Inc }
+            style: "p-4 gap-2"
+        }
+    }
+}
