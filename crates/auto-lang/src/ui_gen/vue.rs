@@ -7505,7 +7505,13 @@ impl VueGenerator {
         } else {
             // Replace double quotes with single quotes in params to avoid HTML attr quoting issues
             let safe_params: Vec<String> = params.iter()
-                .map(|p| p.replace('"', "'"))
+                .map(|p| {
+                    // Plan 345: event-arg parser emits standalone `.field` as
+                    // `this.field` (correct for ArkTS). Vue <script setup> uses
+                    // bare state refs, so strip a leading `this.` here.
+                    let stripped = p.strip_prefix("this.").unwrap_or(p);
+                    stripped.replace('"', "'")
+                })
                 .collect();
             format!("{}({})", func_name, safe_params.join(", "))
         }

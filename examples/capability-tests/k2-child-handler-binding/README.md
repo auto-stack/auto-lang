@@ -1,19 +1,17 @@
-# k2-child-handler-binding (canary, RED)
+# k2-child-handler-binding (canary, GREEN)
 
-Status: **RED** — the gap feature is not yet implemented; `auto build` is
-expected to fail until it lands. See `src/front/app.at` for the desired
-behavior and the "What's needed" note at its top.
+Status: **GREEN** — `auto build` + `vue-tsc` pass. Parent↔child handler wiring
+via a callback prop (`on_select: .Selected`), with the child invoking it from a
+handler that receives a **computed** msg arg (`onclick: .Bump(.n + 1)`).
 
-This canary is the executable spec for the gap; it flips to GREEN when the
-feature in [Plan 345](../../../docs/plans/345-gap-canary-tests.md) is
-implemented.
+Two earlier blockers for the computed arg are now both fixed:
 
-## Note on computed args
+- **OOM** — `parse_event_arg` didn't consume binary operators, so the caller's
+  arg loop spun forever → ~48 GiB OOM. Fixed in the parser (see the
+  `oom-event-binop-arg` canary).
+- **`this.n`** — the event-arg parser emits standalone `.field` as `this.field`
+  (correct for ArkTS). Vue `<script setup>` uses bare state refs, so
+  `handler_to_function_call_with_params` now strips a leading `this.` for Vue.
+  Generated `@click` is `Bump(n + 1)`, not `Bump(this.n + 1)`.
 
-The OOM that previously blocked computed msg args (`onclick: .Bump(.n + 1)`)
-is **fixed** (root cause: `parse_event_arg` didn't consume binary operators,
-so the caller's arg loop spun forever → ~48 GiB OOM; fixed in the parser, see
-the `oom-event-binop-arg` canary). A *separate* pre-existing issue remains:
-state-ref event args (`.n`) render as `this.n` (wrong for Vue; should be `n`)
-— tracked separately. This canary uses a literal arg (`.Bump(1)`) to keep
-vue-tsc green regardless.
+See [Plan 345](../../../docs/plans/345-gap-canary-tests.md).
