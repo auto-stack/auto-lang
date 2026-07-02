@@ -7822,6 +7822,68 @@ export function cn(...inputs: ClassValue[]) {
 "#.to_string()
     }
 
+    /// Generate a composable singleton `.ts` file for a shared store
+    /// (Plan 351 / Design 18). Produces module-level `ref`s + an exported
+    /// `useXxxStore()` function returning state refs and action functions.
+    pub fn generate_store_composable(store: &crate::aura::AuraStore) -> String {
+        use crate::ui_gen::ts_adapter::{transpile_handler_body, AuraTsContext};
+
+        let mut code = String::new();
+        code.push_str("import { ref } from 'vue'\n\n");
+
+        // Module-level ref declarations (singleton state).
+        for sv in &store.state_vars {
+            let init = Self::store_init_to_js(&sv.initial);
+            code.push_str(&format!("const {} = ref({})\n", sv.name, init));
+        }
+        code.push('\n');
+
+        // Build ctx for handler transpilation (state_names → .value emission).
+        let state_names: std::collections::HashSet<String> =
+            store.state_vars.iter().map(|s| s.name.clone()).collect();
+        let ctx = AuraTsContext::new(state_names)
+            .with_props(std::collections::HashSet::new());
+
+        // Export function.
+        let fn_name = format!("use{}Store", store.name);
+        code.push_str(&format!("export function {}() {{\n", fn_name));
+        code.push_str("    return {\n");
+
+        // Expose state refs by name.
+        for sv in &store.state_vars {
+            code.push_str(&format!("        {},\n", sv.name));
+        }
+
+        // Expose handlers as action functions.
+        for (pattern, payload) in &store.handlers {
+            let action_name = pattern.trim_start_matches('.');
+            let body = match payload {
+                crate::aura::LogicPayload::AstStmts(stmts) => transpile_handler_body(stmts, &ctx),
+                _ => String::new(),
+            };
+            code.push_str(&format!(
+                "        {}: () => {{ {} }},\n",
+                action_name, body
+            ));
+        }
+
+        code.push_str("    }\n");
+        code.push_str("}\n");
+        code
+    }
+
+    /// Convert an initial-value AuraExpr to a JS literal (v1: simple cases).
+    fn store_init_to_js(expr: &crate::aura::AuraExpr) -> String {
+        use crate::aura::AuraExpr;
+        match expr {
+            AuraExpr::Int(n) => n.to_string(),
+            AuraExpr::Literal(s) => format!("'{}'", s.replace('\'', "\\'")),
+            AuraExpr::Bool(b) => b.to_string(),
+            AuraExpr::Array(_) => "[]".to_string(),
+            _ => "null".to_string(),
+        }
+    }
+
     /// Generate Vue Router configuration file (Plan 105)
     ///
     /// Creates a `router/index.ts` file with route definitions.
