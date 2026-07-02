@@ -39,17 +39,36 @@ pub struct HttpRoute {
 pub struct RouteMatch {
     pub fn_name: String,
     pub path_params: Vec<(String, String)>,
+    pub query_params: Vec<(String, String)>,
 }
 
 /// Match a request (method, path) against a list of routes.
 /// Supports `:param` path parameter extraction (e.g. /api/notes/:id).
 pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<RouteMatch> {
+    // Plan 351: Split path and query string (e.g. /api/notes?page=1&size=10).
+    let (path_only, query_string) = match path.split_once('?') {
+        Some((p, q)) => (p, q),
+        None => (path, ""),
+    };
+
+    // Parse query parameters.
+    let query_params: Vec<(String, String)> = if query_string.is_empty() {
+        Vec::new()
+    } else {
+        query_string.split('&')
+            .filter_map(|pair| {
+                let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                Some((url_decode(k), url_decode(v)))
+            })
+            .collect()
+    };
+
     for route in routes {
         if route.method.to_uppercase() != method.to_uppercase() {
             continue;
         }
         let route_segments: Vec<&str> = route.path.split('/').collect();
-        let path_segments: Vec<&str> = path.split('/').collect();
+        let path_segments: Vec<&str> = path_only.split('/').collect();
         if route_segments.len() != path_segments.len() {
             continue;
         }
@@ -58,6 +77,9 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
         for (rs, ps) in route_segments.iter().zip(path_segments.iter()) {
             if let Some(param_name) = rs.strip_prefix(':') {
                 params.push((param_name.to_string(), ps.to_string()));
+            } else if *rs == "*" || rs.starts_with('*') {
+                // Plan 351: Wildcard route — matches any remaining segments.
+                continue;
             } else if rs != ps {
                 matched = false;
                 break;
@@ -67,10 +89,30 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
             return Some(RouteMatch {
                 fn_name: route.fn_name.clone(),
                 path_params: params,
+                query_params,
             });
         }
     }
     None
+}
+
+/// Plan 351: Simple URL-decode (percent-encoding).
+fn url_decode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            let hex: String = chars.by_ref().take(2).collect();
+            if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                result.push(byte as char);
+            }
+        } else if c == '+' {
+            result.push(' ');
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 /// Get the global HTTP routes (populated by VM startup from #[api] annotations).
@@ -1123,6 +1165,7 @@ async fn handle_connection_async(
     let mut body = String::new();
     let mut header_done = false;
     let mut is_websocket = false;
+    let mut content_type = String::new();
     for line in lines {
         if !header_done {
             if line.is_empty() {
@@ -1135,6 +1178,9 @@ async fn handle_connection_async(
             }
             if lower.starts_with("upgrade:") && lower.contains("websocket") {
                 is_websocket = true;
+            }
+            if lower.starts_with("content-type:") {
+                content_type = lower[13..].trim().to_string();
             }
         } else if body.len() < content_length {
             body.push_str(line);
@@ -1261,7 +1307,7 @@ async fn handle_connection_async(
 
     // Dispatch to handler via call_fn_by_name (synchronous VM execution).
     let handler_task_id = vm.spawn_task(0, 65536);
-    let n_args = build_handler_args(vm, handler_task_id, &route_match, &body);
+    let n_args = build_handler_args(vm, handler_task_id, &route_match, &body, &content_type);
 
     let result_json = if let Some(_task_arc) = vm.tasks.get(&handler_task_id) {
         let mut ht = match _task_arc.try_lock() {
@@ -1356,10 +1402,12 @@ fn build_handler_args(
     task_id: u64,
     route_match: &RouteMatch,
     body: &str,
+    content_type: &str,
 ) -> usize {
     let mut n_args = 0;
     if let Some(_task_arc) = vm.tasks.get(&task_id) {
         if let Ok(mut task) = _task_arc.try_lock() {
+            // Push path params (existing behavior).
             for (_param_name, param_val) in &route_match.path_params {
                 if let Ok(i) = param_val.parse::<i32>() {
                     task.ram.push_i32(i);
@@ -1374,11 +1422,47 @@ fn build_handler_args(
                 }
                 n_args += 1;
             }
-            if !body.is_empty() {
+
+            // Plan 351: Push query params as a JSON object string.
+            // The handler can parse it, or we can auto-map to named params.
+            // For now, push each query param value that matches a declared
+            // param name — but since we don't have the fn signature here,
+            // we push query params as a JSON string if body is empty.
+            if !route_match.query_params.is_empty() && body.is_empty() {
+                // Push query params as a JSON object string.
+                let json_parts: Vec<String> = route_match.query_params.iter()
+                    .map(|(k, v)| format!("\"{}\":\"{}\"", k.replace('"', "\\\""), v.replace('"', "\\\"")))
+                    .collect();
+                let json_str = format!("{{{}}}", json_parts.join(","));
                 let idx = {
                     let mut strings = vm.strings.write().unwrap();
                     let i = strings.len();
-                    strings.push(body.as_bytes().to_vec());
+                    strings.push(json_str.into_bytes());
+                    i
+                };
+                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                n_args += 1;
+            }
+
+            // Plan 351: Push body. If Content-Type is JSON, push as-is (string).
+            // If urlencoded, parse and convert to JSON object.
+            if !body.is_empty() {
+                let body_to_push = if content_type.contains("application/x-www-form-urlencoded") {
+                    // Parse urlencoded body → JSON object.
+                    let pairs: Vec<String> = body.split('&')
+                        .filter_map(|pair| {
+                            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                            Some(format!("\"{}\":\"{}\"", url_decode(k).replace('"', "\\\""), url_decode(v).replace('"', "\\\"")))
+                        })
+                        .collect();
+                    format!("{{{}}}", pairs.join(","))
+                } else {
+                    body.to_string()
+                };
+                let idx = {
+                    let mut strings = vm.strings.write().unwrap();
+                    let i = strings.len();
+                    strings.push(body_to_push.into_bytes());
                     i
                 };
                 task.ram.push_nv(auto_val::encode_string(idx as u32));

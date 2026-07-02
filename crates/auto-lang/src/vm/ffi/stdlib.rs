@@ -2889,6 +2889,25 @@ pub fn shim_http_response_html(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
+/// Plan 351: `http.response.redirect(url: String, status: int) -> response_handle`
+/// Create a redirect response (302 or 301).
+pub fn shim_http_response_redirect(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let status: i32 = task.ram.pop_i32();
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    HTTP_RESPONSES.with(|r| {
+        r.borrow_mut().insert(handle, HttpResponseData {
+            status: if status == 301 { 301 } else { 302 },
+            headers: vec![("Location".to_string(), url)],
+            body: Vec::new(),
+        });
+    });
+    task.ram.push_i32(handle as i32);
+    Ok(())
+}
+
 /// Set response bytes body
 pub fn shim_http_response_bytes(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let data: Vec<i32> = super::convert::VMConvertible::pop_from_stack(task, _vm)
@@ -5170,6 +5189,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.response_text", shim_http_response_text);
     natives.register_shim_by_name("auto.http.response_html", shim_http_response_html);
     natives.register_shim_by_name("auto.http.response_bytes", shim_http_response_bytes);
+    // Plan 351: Redirect
+    natives.register_shim_by_name("auto.http.response.redirect", shim_http_response_redirect);
+    natives.register_shim_by_name("http.response.redirect", shim_http_response_redirect);
 
     // HTTP client functions (manual shims — heap objects for request/response)
     natives.register_shim_by_name("auto.http.get", shim_http_get);

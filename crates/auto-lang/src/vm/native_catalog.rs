@@ -1015,6 +1015,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.http.response_text", 2213, Void),
             ("auto.http.response_html", 2214, Void),
             ("auto.http.response_bytes", 2215, Void),
+            // Plan 351: Redirect
+            ("auto.http.response.redirect", 2219, Void),
+            ("http.response.redirect", 2219, Void),
 
             // === HTTP response access (2216-2218) ===
             ("auto.http.response.status_code", 2216, Void),
@@ -1671,6 +1674,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http.response_text", 2213),
     ("auto.http.response_html", 2214),
     ("auto.http.response_bytes", 2215),
+    ("auto.http.response.redirect", 2219),
+    ("http.response.redirect", 2219),
     ("auto.http.response.status_code", 2216),
     ("auto.http.response.header_get", 2217),
     ("auto.http.response.body", 2218),
