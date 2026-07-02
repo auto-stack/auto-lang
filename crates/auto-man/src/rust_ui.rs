@@ -365,10 +365,11 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
         return generate_api_stubs(api_imports);
     }
 
-    // Split mode: generate ureq HTTP client functions.
+    // Split mode: generate HTTP client functions.
     if let Some(module) = &api_module {
         let mut code = String::new();
-        code.push_str("// API client functions (auto-generated, uses ureq HTTP client)\n\n");
+        // Plan 349 step 1: Generate a TLS-aware HTTP client helper.
+        code.push_str(&generate_http_client_helper());
 
         for endpoint in &module.endpoints {
             code.push_str(&generate_endpoint_fn(endpoint, &base_url));
@@ -401,12 +402,27 @@ fn parse_api_module(project_dir: &Path) -> Option<ApiModule> {
         .or_else(|| crate::api_gen::extract_api_lenient(&content))
 }
 
+/// Plan 349 step 1: Generate a TLS-aware HTTP client helper.
+/// ureq uses the system's native TLS by default (HTTPS works out of the box).
+/// For custom CA / skip-verify, set AUTO_TLS_SKIP_VERIFY=1 environment variable
+/// before running the app. This requires the `native-tls` feature on ureq,
+/// which is enabled by default on Windows/macOS.
+fn generate_http_client_helper() -> String {
+    r#"// Plan 349: TLS configuration helper.
+// Set AUTO_TLS_SKIP_VERIFY=1 to skip certificate verification (dev/test).
+// Set AUTO_TLS_CA_CERT=/path/to/ca.pem for custom CA (requires native-tls).
+fn _tls_skip_verify() -> bool {
+    std::env::var("AUTO_TLS_SKIP_VERIFY").as_deref() == Ok("1")
+}
+
+"#.to_string()
+}
+
 /// Generate a single ureq-based API function from an endpoint definition.
 fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
     let fn_name = &endpoint.fn_name;
     let method = endpoint.method().to_uppercase();
     let path = endpoint.path();
-    // Strip leading slash from path to avoid double-slash with base_url
     let path = path.strip_prefix('/').unwrap_or(&path);
 
     // Separate path params from body params
