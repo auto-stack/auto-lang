@@ -59,10 +59,11 @@ examples/capability-tests/
 - **修**:parser/AST 支持 handler 块内 `var` 局部声明 + 赋值(不进 state)。
 - **Commit**:`feat(lang): local mutable vars in handler blocks (gap N3)`。
 
-### Phase 6 — K3:markdown / JS-interop bridge(最大,最后)⏸ DEFERRED(独立子计划)
-- **金丝雀** `k3-markdown-interop/`:`markdown .body` 渲染 marked 输出。
-- **修**:最小 JS-interop bridge(`extern`/FFI 到 JS fn,如 `marked`);codegen 发射对应调用。
-- **本计划不实施**:需新的 JS-interop/FFI 基建(范围最大),按本计划原始排序"最大,最后"独立成子计划。当前 pass 完成 N1/K2/N4/N2/N3;K3 + 已跟踪的 OOM(callback+计算型实参)单列后续。
+### Phase 6 — K3:markdown / JS-interop bridge ❌ DROPPED(非 auto-lang 职责;归 AutoDown)
+- **原设想**:`markdown .body` 在 auto-lang Vue codegen 里渲染(`marked()` / JS-FFI)。
+- **架构纠偏(2026-07-02)**:rich-text(markdown 超集的渲染与编辑)**不是 auto-lang 的活**,而是独立工程 `../auto-down` 的职责 —— 它提供 `@autodown/vue`(Vue renderer)+ `@autodown/editor`(Tiptap editor)+ `core` 三个包。AutoUI 应用经**手写 wrapper 组件**消费它们(jade-garden 已验证:`src/components/EditorTab.vue` 里 `import { AutoDownEditor } from '@autodown/editor'`)。在 auto-lang codegen 里再发明一份 markdown 渲染 = 重复造轮子。
+- **结论**:K3 从本计划**移除**。AutoUI 应用要富文本,走"消费 @autodown 包"的跨工程集成(025/具体 app 层面决策),非 auto-lang codegen 缺口。
+- **当前 pass**:N1 / K2·N4 / N2 / N3 / OOM / this.n 全部闭环;K3 移除。**Plan 345 完成。**
 
 ---
 
