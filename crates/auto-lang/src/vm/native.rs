@@ -2079,53 +2079,36 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 return Ok(());
             }
             crate::vm::engine::Iterator::AsyncHttpStream(async_iter) => {
-                // Plan 341: pull next SSE/stream event from the async channel.
+                // Plan 348: Non-blocking SSE event pull. Instead of busy-wait
+                // with sleep(2ms) (which freezes the VM), we do a single
+                // try_recv. If no event is available, yield the task (set
+                // Waiting("sse") + back up IP) so run_task_loop can schedule
+                // other tasks and re-check the channel on the next round.
                 if async_iter.done {
                     return Ok(());
                 }
-                // The SSE future runs on a dedicated OS thread (see
-                // spawn_async_sse_stream), so it is safe to block-wait here
-                // without deadlocking the VM's single-worker runtime. We poll
-                // with a short sleep until an event arrives or the future ends.
-                let event = loop {
-                    let ev = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
-                        .lock()
-                        .ok()
-                        .and_then(|map| {
-                            map.get(&async_iter.stream_id).and_then(|handle| {
-                                handle.rx.lock().ok().and_then(|mut rx| rx.try_recv().ok())
-                            })
-                        });
-                    if let Some(e) = ev {
-                        break Some(e);
-                    }
-                    // No event yet. Check if the producing future is done.
-                    let future_done = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
-                        .lock()
-                        .ok()
-                        .and_then(|map| {
-                            map.get(&async_iter.stream_id).map(|handle| {
-                                handle.done.load(std::sync::atomic::Ordering::SeqCst)
-                            })
+
+                // Single non-blocking poll of the channel.
+                let event = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
+                    .lock()
+                    .ok()
+                    .and_then(|map| {
+                        map.get(&async_iter.stream_id).and_then(|handle| {
+                            handle.rx.lock().ok().and_then(|mut rx| rx.try_recv().ok())
                         })
-                        .unwrap_or(true);
-                    if future_done {
-                        // Future finished and channel drained — end of stream.
-                        // Double-check the channel one last time (race window).
-                        let last = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
-                            .lock()
-                            .ok()
-                            .and_then(|map| {
-                                map.get(&async_iter.stream_id).and_then(|handle| {
-                                    handle.rx.lock().ok().and_then(|mut rx| rx.try_recv().ok())
-                                })
-                            });
-                        break last;
-                    }
-                    // Still waiting — short sleep (HTTP future is on another
-                    // thread, so this won't deadlock).
-                    std::thread::sleep(std::time::Duration::from_millis(2));
-                };
+                    });
+
+                // Check if the producing future is done (for end-of-stream detection).
+                let future_done = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
+                    .lock()
+                    .ok()
+                    .and_then(|map| {
+                        map.get(&async_iter.stream_id).map(|handle| {
+                            handle.done.load(std::sync::atomic::Ordering::SeqCst)
+                        })
+                    })
+                    .unwrap_or(true);
+
                 match event {
                     Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(s)) => {
                         let idx = {
@@ -2137,14 +2120,28 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                         task.ram.push_nv(auto_val::encode_string(idx as u32));
                     }
                     Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Done)
-                    | Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Error(_))
-                    | None => {
-                        // End of stream — push -1 sentinel so the for-loop
-                        // (which compares the result against -1) terminates.
+                    | Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Error(_)) => {
                         async_iter.done = true;
                         task.ram.push_i32(-1);
                     }
+                    None => {
+                        // No event available right now.
+                        if future_done {
+                            // Future finished and channel drained — end of stream.
+                            async_iter.done = true;
+                            task.ram.push_i32(-1);
+                        } else {
+                            // Still waiting for data — yield without blocking.
+                            // run_task_loop will re-check on the next scheduling round
+                            // (≤10ms), and other tasks (UI rendering etc.) get to run.
+                            task.waiting_sse_stream_id = Some(async_iter.stream_id);
+                            task.status = crate::vm::task::TaskStatus::Waiting("sse".into());
+                            return Ok(());
+                        }
+                    }
                 }
+                // Clear the waiting flag if we got data or finished.
+                task.waiting_sse_stream_id = None;
                 return Ok(());
             }
         }
