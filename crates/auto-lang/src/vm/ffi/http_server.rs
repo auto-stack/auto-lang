@@ -1122,14 +1122,19 @@ async fn handle_connection_async(
     let mut content_length = 0usize;
     let mut body = String::new();
     let mut header_done = false;
+    let mut is_websocket = false;
     for line in lines {
         if !header_done {
             if line.is_empty() {
                 header_done = true;
                 continue;
             }
-            if line.to_lowercase().starts_with("content-length:") {
-                content_length = line[15..].trim().parse().unwrap_or(0);
+            let lower = line.to_lowercase();
+            if lower.starts_with("content-length:") {
+                content_length = lower[15..].trim().parse().unwrap_or(0);
+            }
+            if lower.starts_with("upgrade:") && lower.contains("websocket") {
+                is_websocket = true;
             }
         } else if body.len() < content_length {
             body.push_str(line);
@@ -1145,6 +1150,114 @@ async fn handle_connection_async(
             return;
         }
     };
+
+    // Plan 350: WebSocket upgrade handling.
+    if is_websocket {
+        // We need to do the WebSocket handshake using tungstenite. Since we've
+        // already read the HTTP request into `raw`, we need to convert the
+        // tokio TcpStream into a tungstenite WebSocket. The simplest approach:
+        // write the raw request back into the stream (tungstenite reads it),
+        // but actually tungstenite's server::accept expects a stream where the
+        // client's upgrade request hasn't been consumed yet. Since we already
+        // consumed it, we need to manually do the handshake.
+        //
+        // Alternative: use tungstenite's handshake manually. We extract the
+        // Sec-WebSocket-Key from the raw request, compute the accept value,
+        // write the response, then wrap the stream.
+        let ws_key = raw.lines()
+            .find(|l| l.to_lowercase().starts_with("sec-websocket-key:"))
+            .and_then(|l| l.split(':').nth(1))
+            .map(|s| s.trim().to_string());
+
+        if let Some(key) = ws_key {
+            // Compute Sec-WebSocket-Accept: base64(sha1(key + magic_guid))
+            // Compute Sec-WebSocket-Accept: base64(sha1(key + magic_guid))
+            use sha1::Digest;
+            let mut hasher = sha1::Sha1::new();
+            hasher.update(key.as_bytes());
+            hasher.update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+            let hash = hasher.finalize();
+            use base64::Engine;
+            let accept = base64::engine::general_purpose::STANDARD.encode(&hash);
+
+            let response = format!(
+                "HTTP/1.1 101 Switching Protocols\r\n\
+                 Upgrade: websocket\r\n\
+                 Connection: Upgrade\r\n\
+                 Sec-WebSocket-Accept: {}\r\n\r\n",
+                accept
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+            let _ = stream.flush().await;
+
+            // Now the TCP stream is a raw WebSocket. We use tokio's AsyncRead
+            // to read raw WebSocket frames and echo text messages back.
+            // This avoids the ownership issue of converting &mut TcpStream.
+            loop {
+                // Read a WebSocket frame (simplified: text frames only).
+                let mut header = [0u8; 2];
+                if stream.read_exact(&mut header).await.is_err() {
+                    break;
+                }
+                let opcode = header[0] & 0x0F;
+                let masked = (header[1] & 0x80) != 0;
+                let payload_len = (header[1] & 0x7F) as usize;
+
+                // Extended payload length (16/64 bit).
+                let actual_len = if payload_len == 126 {
+                    let mut ext = [0u8; 2];
+                    if stream.read_exact(&mut ext).await.is_err() { break; }
+                    u16::from_be_bytes(ext) as usize
+                } else if payload_len == 127 {
+                    let mut ext = [0u8; 8];
+                    if stream.read_exact(&mut ext).await.is_err() { break; }
+                    u64::from_be_bytes(ext) as usize
+                } else {
+                    payload_len
+                };
+
+                // Masking key (4 bytes if masked).
+                let mut mask_key = [0u8; 4];
+                if masked {
+                    if stream.read_exact(&mut mask_key).await.is_err() { break; }
+                }
+
+                // Payload.
+                let mut payload = vec![0u8; actual_len];
+                if stream.read_exact(&mut payload).await.is_err() { break; }
+                if masked {
+                    for (i, b) in payload.iter_mut().enumerate() {
+                        *b ^= mask_key[i % 4];
+                    }
+                }
+
+                // Handle by opcode.
+                match opcode {
+                    0x1 => {
+                        // Text frame — echo back (unmasked, server→client).
+                        let text = String::from_utf8_lossy(&payload).to_string();
+                        let resp = encode_ws_text_frame(&text);
+                        let _ = stream.write_all(&resp).await;
+                        let _ = stream.flush().await;
+                    }
+                    0x8 => {
+                        // Close frame.
+                        break;
+                    }
+                    0x9 => {
+                        // Ping → Pong.
+                        let pong = [0x8Au8, payload.len() as u8];
+                        let _ = stream.write_all(&pong).await;
+                        let _ = stream.write_all(&payload).await;
+                    }
+                    _ => {}
+                }
+                // Cooperative yield for other connections.
+                tokio::task::yield_now().await;
+            }
+        }
+        return;
+    }
 
     // Dispatch to handler via call_fn_by_name (synchronous VM execution).
     let handler_task_id = vm.spawn_task(0, 65536);
@@ -1213,6 +1326,27 @@ async fn handle_connection_async(
         );
         let _ = stream.write_all(response.as_bytes()).await;
     }
+}
+
+/// Encode a text message as a WebSocket frame (server→client, unmasked).
+fn encode_ws_text_frame(text: &str) -> Vec<u8> {
+    let payload = text.as_bytes();
+    let len = payload.len();
+    let mut frame = Vec::new();
+    // FIN + text opcode (0x81).
+    frame.push(0x81);
+    // Payload length (server→client frames are NOT masked).
+    if len <= 125 {
+        frame.push(len as u8);
+    } else if len <= 65535 {
+        frame.push(126);
+        frame.extend_from_slice(&(len as u16).to_be_bytes());
+    } else {
+        frame.push(127);
+        frame.extend_from_slice(&(len as u64).to_be_bytes());
+    }
+    frame.extend_from_slice(payload);
+    frame
 }
 
 /// Build handler arguments on the task's stack (path params + body).
