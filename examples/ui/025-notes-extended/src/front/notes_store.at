@@ -1,0 +1,46 @@
+// notes_store.at — shared store for notes (Plan 351 / Design 18).
+// Holds all notes state + CRUD actions as a module-level composable singleton.
+// Consumed by App via `use store: NotesStore`.
+
+use types: Note
+
+store NotesStore {
+    model {
+        var notes []Note = []
+        var next_id int = 0
+        var active_id int = 0
+        var active_tag str = ""
+        var search str = ""
+    }
+
+    msg Msg { Init, NewNote, SelectNote(int), SetTag(str), DeleteActive }
+
+    on {
+        .Init -> {
+            .notes.push({ id: 0, title: "Welcome", body: "Extended notes demo. Frontend-only (in-memory, via SharedStore).", time: "2026-07-03", tags: ["intro"] })
+            .notes.push({ id: 1, title: "Shopping", body: "Milk, eggs, bread.", time: "2026-07-03", tags: ["home"] })
+            .notes.push({ id: 2, title: "Sprint plan", body: "Block tier + app generation.", time: "2026-07-03", tags: ["work"] })
+            .notes.push({ id: 3, title: "Ideas", body: "Tag filtering + shared store.", time: "2026-07-03", tags: ["work", "intro"] })
+            .next_id = 4
+        }
+        .NewNote -> {
+            let n = { id: .next_id, title: "Untitled", body: "", time: "2026-07-03", tags: [] }
+            .next_id = .next_id + 1
+            .notes.push(n)
+            .active_id = .notes.len() - 1
+            .search = ""
+        }
+        .SelectNote(id) -> {
+            .active_id = id
+        }
+        .SetTag(tg) -> {
+            .active_tag = tg
+        }
+        .DeleteActive -> {
+            .notes.remove(.active_id)
+            if .active_id >= .notes.len() && .notes.len() > 0 {
+                .active_id = .notes.len() - 1
+            }
+        }
+    }
+}
