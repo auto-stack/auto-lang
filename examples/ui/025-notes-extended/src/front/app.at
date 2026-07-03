@@ -1,81 +1,31 @@
-// app.at — Notes (extended) root widget.
-// Now uses a SharedStore (Plan 351 / Design 18) for cross-component state.
-// The store holds notes + CRUD; App reads/writes via the store.
+// app.at — Multi-page App shell (Plan 351 routing + shared store).
+// Routes: "/" → notes list, "/editor" → editor.
+// State shared via NotesStore (module-level composable singleton).
 
 use store: NotesStore
-use types: Note
-use note_editor: NoteEditor
 
 widget App {
-    msg Msg { Init, NewNote, SelectNote(int), SetTag(str), SearchChanged, DeleteActive }
+    msg Msg { Init, NewNote }
 
-    model {
-        var search str = ""
+    routes {
+        "/" -> use notes_list
+        "/editor" -> use editor_page
     }
 
     view {
         col {
-            // header
             row {
                 h2 "Notes" { style: "text-xl font-bold text-gray-800" }
                 button "+ New" { onclick: .NewNote, style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600" }
                 style: "w-full items-center p-4 border-b border-gray-200"
             }
-
-            // tag filter bar
-            row {
-                button "All" { onclick: .SetTag(""), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
-                button "intro" { onclick: .SetTag("intro"), style: "text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200" }
-                button "home" { onclick: .SetTag("home"), style: "text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200" }
-                button "work" { onclick: .SetTag("work"), style: "text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200" }
-                style: "gap-2 px-4 py-2 border-b border-gray-200"
-            }
-
-            // body: list + editor
-            row {
-                col {
-                    input { placeholder: "Search…", value: .search, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg mb-2" }
-                    for note in .store.notes {
-                        if .store.active_tag == "" || note.tags.contains(.store.active_tag) {
-                            if .search == "" || note.title.contains(.search) {
-                                button note.title {
-                                    onclick: .SelectNote(note.id)
-                                    style: "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
-                                }
-                            }
-                        }
-                    }
-                    style: "w-64 border-r border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
-                }
-                col {
-                    if .store.notes.len() > 0 {
-                        NoteEditor(note: .store.notes[.store.active_id])
-                    }
-                    button "Delete note" { onclick: .DeleteActive, style: "ml-auto mr-4 mb-4 px-3 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600" }
-                    style: "flex-1 flex-col"
-                }
-                style: "flex-1"
-            }
+            outlet
             style: "w-full h-screen bg-white flex-col"
         }
     }
 
     on {
-        .Init -> {
-            store.Init()
-        }
-        .NewNote -> {
-            store.NewNote()
-        }
-        .SelectNote(id) -> {
-            store.SelectNote(id)
-        }
-        .SetTag(tg) -> {
-            store.SetTag(tg)
-        }
-        .SearchChanged -> { }
-        .DeleteActive -> {
-            store.DeleteActive()
-        }
+        .Init -> { store.Init() }
+        .NewNote -> { store.NewNote() }
     }
 }

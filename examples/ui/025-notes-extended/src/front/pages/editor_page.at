@@ -1,0 +1,21 @@
+use store: NotesStore
+use types: Note
+use note_editor: NoteEditor
+
+widget editor_page {
+    msg Msg { DeleteActive }
+
+    view {
+        col {
+            if .store.notes.len() > 0 {
+                NoteEditor(note: .store.notes[.store.active_id])
+            }
+            button "Delete note" { onclick: .DeleteActive, style: "ml-auto mr-4 mb-4 px-3 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600" }
+            style: "flex-1 flex-col"
+        }
+    }
+
+    on {
+        .DeleteActive -> { store.DeleteActive() }
+    }
+}
