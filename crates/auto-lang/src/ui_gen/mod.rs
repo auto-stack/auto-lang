@@ -19,6 +19,7 @@ pub mod rust;
 pub mod style;
 pub mod jet;
 pub mod ark;
+pub mod ark_adapter;
 pub mod widget;
 pub mod api;
 

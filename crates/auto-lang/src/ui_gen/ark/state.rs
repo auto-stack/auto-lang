@@ -438,11 +438,20 @@ fn generate_default_value(ty: &Type) -> String {
     }
 }
 
-/// Generate handler body from logic payload
+/// Generate handler body from logic payload.
+///
+/// PR-4a: delegates `AstStmts` to `ark_adapter::transpile_handler_body` for
+/// real ArkTS translation. State field names are not available here (this is a
+/// free function); an empty set is passed — the adapter still detects state
+/// refs via `Expr::Dot(self/., field)` patterns (which is how they are parsed
+/// in handler bodies). The state-field set is a secondary heuristic for bare
+/// identifiers, and can be threaded through from callers that have access to
+/// `widget.state_vars` if finer-grained detection is needed later.
 pub fn generate_handler_body(payload: &LogicPayload) -> String {
     match payload {
-        LogicPayload::AstStmts(_) => {
-            "// TODO: a2ts delegation not yet supported for ArkTS backend".to_string()
+        LogicPayload::AstStmts(stmts) => {
+            let ctx = crate::ui_gen::ark_adapter::ArkAdapterCtx::empty();
+            crate::ui_gen::ark_adapter::transpile_handler_body(stmts, &ctx)
         }
         LogicPayload::Bytecode(_) => {
             // Bytecode execution not supported in static generation
