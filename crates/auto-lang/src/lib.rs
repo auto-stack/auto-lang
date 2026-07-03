@@ -2151,10 +2151,12 @@ fn run_file_dynamic_ui_inner(
     let mut parser = Parser::from(code).with_session(session);
     let ast = parser.parse()?;
 
-    // 2. Extract first AuraWidget
+    // 2. Extract first AuraWidget (and keep its WidgetDecl — PR-3b Step 4).
+    let mut root_decl: Option<crate::ast::WidgetDecl> = None;
     let mut widget = None;
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+            root_decl = Some(decl.clone());
             widget = Some(
                 crate::aura::extract_widget_from_decl(decl)
                     .map_err(|e| e.to_string())?
@@ -2164,9 +2166,13 @@ fn run_file_dynamic_ui_inner(
     }
 
     let widget = widget.ok_or("No widget declaration found")?;
+    let root_decl = root_decl.ok_or("No widget declaration found")?;
 
     // 2b. Load child widgets + imported functions/types from `use` imports
     let mut registry = WidgetRegistry::new();
+    // PR-3b Step 4: collect child WidgetDecls alongside child AuraWidgets so the
+    // decl-based synthesis path can compile child handlers into the single VM.
+    let mut child_decls: Vec<crate::ast::WidgetDecl> = Vec::new();
     let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
     // Visited-module / seen-symbol sets span ALL top-level use stmts so shared
     // transitive deps load once.
@@ -2211,6 +2217,10 @@ fn run_file_dynamic_ui_inner(
                                     || use_stmt.items.is_empty()
                                     || use_stmt.items.iter().any(|s| s == &child_widget.name)
                                 {
+                                    // PR-3b Step 4: collect the child WidgetDecl
+                                    // alongside the AuraWidget so the decl-based
+                                    // synthesis path can compile child handlers.
+                                    child_decls.push(decl.clone());
                                     registry.register(child_widget);
                                 }
                             }
@@ -2251,7 +2261,7 @@ fn run_file_dynamic_ui_inner(
     // requests instead of in-process direct calls. Default (merge) keeps the
     // existing in-process behavior.
     let api_over_http = std::env::var("AUTO_VM_MERGE").as_deref() == Ok("0");
-    let mut comp = DynamicComponent::with_registry_and_imports(&widget, registry, import_stmts, &import_aliases, api_over_http)
+    let mut comp = DynamicComponent::with_registry_and_imports_from_decls(&root_decl, &child_decls, &widget, registry, import_stmts, &import_aliases, api_over_http)
         .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
 
     // 3b. Set source path for hot-reload tracking

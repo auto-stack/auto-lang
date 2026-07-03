@@ -589,6 +589,373 @@ pub fn synthesize_widget_module(
     Ok((codegen.finish(widget.name.clone()), registry))
 }
 
+// ============================================================================
+// PR-3b Step 1: Decl-based synthesis (reads &WidgetDecl, bypasses AuraWidget)
+// ============================================================================
+
+/// Detect a `.Tick` handler and extract its `interval` (in ms) from the model.
+///
+/// Mirrors `extract_widget_from_decl` (extract.rs:763-781): if a `.Tick` handler
+/// exists, look for a model field named "interval" with an integer initial value.
+/// Defaults to 1000ms when the field is absent or not an int. Returns `None`
+/// when there is no `.Tick` handler.
+pub fn extract_tick_interval_from_decl(decl: &crate::ast::WidgetDecl) -> Option<u32> {
+    let has_tick = decl
+        .on
+        .as_ref()
+        .map(|on| on.handlers.iter().any(|h| h.pattern == ".Tick"))
+        .unwrap_or(false);
+    if !has_tick {
+        return None;
+    }
+    let interval_val = decl
+        .model
+        .as_ref()
+        .and_then(|m| m.fields.iter().find(|f| f.name.as_str() == "interval"))
+        .and_then(|f| {
+            if let Expr::Int(n) = &f.init {
+                Some(*n as u32)
+            } else {
+                None
+            }
+        })
+        .or(Some(1000));
+    interval_val
+}
+
+/// Synthesize the widget state `type <WidgetName>_State { ... }` from a WidgetDecl.
+///
+/// PR-3b: reads `decl.model.fields` directly instead of going through
+/// `AuraWidget.state_vars`. When `tick_interval` is `Some`, the "interval"
+/// field is skipped (it's consumed by the tick scheduler, not a ref() state).
+fn synthesize_state_type_from_decl(
+    decl: &crate::ast::WidgetDecl,
+    tick_interval: Option<u32>,
+) -> TypeDecl {
+    let members: Vec<Member> = decl
+        .model
+        .as_ref()
+        .map(|m| {
+            m.fields
+                .iter()
+                .filter(|f| {
+                    // Skip "interval" when tick scheduling is active for this widget.
+                    !(tick_interval.is_some() && f.name.as_str() == "interval")
+                })
+                .map(|f| {
+                    // `var days = []` has no declared type (Type::Unknown); default
+                    // to a dynamic array so `for cell in __state.days` iterates.
+                    let ty = if matches!(f.ty, Type::Unknown) {
+                        Type::List(Box::new(Type::Unknown))
+                    } else {
+                        f.ty.clone()
+                    };
+                    Member {
+                        name: f.name.clone(),
+                        ty,
+                        value: None,
+                        attrs: Vec::new(),
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    TypeDecl {
+        name: Name::from(state_type_name(decl.name.as_str()).as_str()),
+        kind: TypeDeclKind::UserType,
+        parent: None,
+        has: Vec::new(),
+        specs: Vec::new(),
+        spec_impls: Vec::new(),
+        generic_params: Vec::new(),
+        members,
+        delegations: Vec::new(),
+        methods: Vec::new(),
+        attrs: Vec::new(),
+        doc: None,
+        is_pub: false,
+    }
+}
+
+/// Look up a handler's parameter type from a WidgetDecl's message definitions.
+///
+/// PR-3b: reads `decl.messages` directly. Returns `Type::StrSlice` as a
+/// permissive default when the payload type is absent/unresolvable (same
+/// behavior as the AuraWidget `handler_param_type`).
+fn handler_param_type_from_decl(decl: &crate::ast::WidgetDecl, handler_bare: &str) -> Type {
+    for msg in &decl.messages {
+        if let Some(v) = msg.variants.iter().find(|v| v.name.as_str() == handler_bare) {
+            if let Some(ty) = &v.payload {
+                return ty.clone();
+            }
+        }
+    }
+    Type::StrSlice
+}
+
+/// Synthesize a single widget handler as a real VM function statement (decl-based).
+///
+/// PR-3b: reads handler params from `decl.on` and the param type from
+/// `handler_param_type_from_decl`. Otherwise identical to `synthesize_handler_fn`.
+fn synthesize_handler_fn_from_decl(
+    decl: &crate::ast::WidgetDecl,
+    widget_name: &str,
+    state_type: &TypeDecl,
+    state_fields: &HashSet<String>,
+    event_pattern: &str,
+    body_stmts: &[Stmt],
+) -> Stmt {
+    let bare = handler_fn_name(event_pattern)
+        .strip_prefix("handler_")
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    // First param is always the state receiver.
+    let mut params: Vec<Param> = vec![Param::new(
+        Name::from(STATE_PARAM),
+        Type::User(state_type.clone()),
+        None,
+    )];
+    // Remaining params come from the matching on handler's params list.
+    if let Some(pnames) = decl
+        .on
+        .as_ref()
+        .and_then(|on| on.handlers.iter().find(|h| h.pattern == event_pattern))
+        .map(|h| h.params.clone())
+    {
+        for pn in pnames {
+            params.push(Param::new(
+                Name::from(pn.as_str()),
+                handler_param_type_from_decl(decl, &bare),
+                None,
+            ));
+        }
+    }
+
+    // Clone + rewrite the body.
+    let mut stmts: Vec<Stmt> = body_stmts.to_vec();
+    rewrite_state_refs_stmts(&mut stmts, state_fields);
+
+    let body = Body {
+        stmts,
+        has_new_line: false,
+        source_lines: Vec::new(),
+    };
+
+    Stmt::Fn(Fn::new(
+        FnKind::Function,
+        Name::from(namespaced_handler_fn_name(widget_name, event_pattern).as_str()),
+        None,
+        params,
+        body,
+        Type::Void,
+    ))
+}
+
+/// Compile a WidgetDecl (root + children) into a single VM `Module` WITHOUT
+/// going through the AuraWidget intermediate representation.
+///
+/// PR-3b Step 1: the VM-bypass entry point. The import/setup half is identical
+/// to `synthesize_widget_module` (the code is AuraWidget-agnostic); the
+/// per-widget loop reads the `WidgetDecl` directly via the `_from_decl`
+/// helpers. The lifecycle merge (`.Init`/`.Destroy` pulled out of the `on`
+/// handlers map) and the `interval` filtering for `.Tick` are replicated
+/// here so the synthesized module matches the AuraWidget path exactly.
+pub fn synthesize_from_decl(
+    decl: &crate::ast::WidgetDecl,
+    child_decls: &[crate::ast::WidgetDecl],
+    import_stmts: Vec<Stmt>,
+    import_aliases: &std::collections::HashMap<String, String>,
+    api_over_http: bool,
+) -> SynthResult<(Module, crate::vm::generic_registry::GenericRegistry)> {
+    let mut codegen = Codegen::new();
+    codegen.api_over_http = api_over_http;
+
+    // Plan 339 Phase 4: populate import_scope directly from use_scanner data.
+    for (bare, qualified) in import_aliases {
+        codegen.import_scope.insert(bare.clone(), qualified.clone());
+    }
+
+    // Plan 340: build api_funcs metadata from imported Fn declarations that
+    // carry #[api(method,path)] attrs.
+    if api_over_http {
+        for stmt in &import_stmts {
+            if let Stmt::Fn(f) = stmt {
+                if let Some(api) = &f.api_attrs {
+                    let bare = f.name.to_string().split('.').last()
+                        .unwrap_or(&f.name.to_string()).to_string();
+                    let params: Vec<String> = f.params.iter()
+                        .map(|p| p.name.to_string()).collect();
+                    codegen.api_funcs.insert(bare, crate::vm::codegen::ApiCallInfo {
+                        method: api.method.clone(),
+                        path: api.path.clone(),
+                        params,
+                        ret_type: f.ret.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Plan 339 Phase 6b: pre-register unique bare-name → qualified aliases for
+    // intra-module forward references.
+    {
+        let mut bare_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for stmt in &import_stmts {
+            if let Stmt::Fn(f) = stmt {
+                if let Some(bare) = f.name.to_string().split('.').last() {
+                    *bare_counts.entry(bare.to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+        for stmt in &import_stmts {
+            if let Stmt::Fn(f) = stmt {
+                let qualified = f.name.to_string();
+                if let Some(bare) = qualified.split('.').last() {
+                    if bare_counts.get(bare) == Some(&1) {
+                        codegen
+                            .import_scope
+                            .entry(bare.to_string())
+                            .or_insert(qualified);
+                    }
+                }
+            }
+        }
+    }
+
+    // 0. Pre-register every imported fn's return type for forward references.
+    for stmt in &import_stmts {
+        if let Stmt::Fn(f) = stmt {
+            codegen
+                .fn_return_types
+                .insert(f.name.to_string(), f.ret.clone());
+        }
+    }
+
+    // 1. Imports — same ordering as synthesize_widget_module.
+    for stmt in &import_stmts {
+        if let crate::ast::Stmt::Use(_) = stmt {
+            if let Err(e) = codegen.compile_stmt(stmt) {
+                log::warn!("handler_codegen: import use stmt failed to compile: {}", e);
+            }
+        }
+    }
+    for stmt in &import_stmts {
+        if matches!(stmt, Stmt::TypeDecl(_) | Stmt::EnumDecl(_)) {
+            if let Err(e) = codegen.compile_stmt(stmt) {
+                log::warn!("handler_codegen: import type/enum decl failed to compile: {}", e);
+            }
+        }
+    }
+    for stmt in &import_stmts {
+        if let crate::ast::Stmt::Store(s) = stmt {
+            if matches!(s.kind, crate::ast::StoreKind::Var) {
+                codegen.global_vars.insert(s.name.to_string());
+            }
+        }
+    }
+    let store_inits: Vec<Stmt> = import_stmts.iter()
+        .filter_map(|s| {
+            if let crate::ast::Stmt::Store(st) = s {
+                Some(Stmt::Store(st.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if !store_inits.is_empty() {
+        codegen.force_global_store = true;
+        let init_fn = Stmt::Fn(Fn::new(
+            FnKind::Function,
+            Name::from(MODULE_INIT_FN),
+            None,
+            Vec::new(),
+            Body { stmts: store_inits, has_new_line: false, source_lines: Vec::new() },
+            Type::Void,
+        ));
+        if let Err(e) = codegen.compile_stmt(&init_fn) {
+            log::warn!("handler_codegen: __module_init failed to compile: {}", e);
+        }
+        codegen.force_global_store = false;
+    }
+    for stmt in &import_stmts {
+        if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
+            if let Err(e) = codegen.compile_stmt(stmt) {
+                log::warn!("handler_codegen: import stmt failed to compile: {}", e);
+            }
+        }
+    }
+
+    // 2. Compile state types + handlers for ALL widgets (root + children),
+    //    reading directly from WidgetDecl.
+    let all_decls: Vec<&crate::ast::WidgetDecl> = std::iter::once(decl)
+        .chain(child_decls.iter())
+        .collect();
+
+    for d in &all_decls {
+        let d_tick = extract_tick_interval_from_decl(d);
+        let d_state_fields: HashSet<String> = {
+            let mut s: HashSet<String> = d
+                .model
+                .as_ref()
+                .map(|m| m.fields.iter().map(|f| f.name.to_string()).collect())
+                .unwrap_or_default();
+            // Filter out "interval" when tick scheduling is active.
+            if d_tick.is_some() {
+                s.retain(|n| n != "interval");
+            }
+            s
+        };
+        let d_state_type = synthesize_state_type_from_decl(d, d_tick);
+
+        if let Err(e) = codegen.compile_stmt(&Stmt::TypeDecl(d_state_type.clone())) {
+            log::warn!("handler_codegen: {} state type failed: {}", d.name, e);
+        }
+
+        // Build the combined handlers + lifecycle list, mirroring the merge
+        // extract_widget_from_decl performs: `.Init`/`.Destroy` handlers in the
+        // `on` block are treated as lifecycle (moved out of the handlers map in
+        // the AuraWidget path), and the separate `lifecycle {}` block methods
+        // are appended. Here both sources compile to the same handler-fn shape,
+        // so we collect them into one sorted list. Note: in a well-formed
+        // WidgetDecl, `.Init`/`.Destroy` live in `decl.on` while named lifecycle
+        // methods (e.g. aboutToAppear) live in `decl.lifecycle` — they are
+        // disjoint sources, so no dedup is needed.
+        let mut d_handlers: Vec<(String, Vec<Stmt>)> = Vec::new();
+        if let Some(on) = &d.on {
+            for h in &on.handlers {
+                d_handlers.push((h.pattern.clone(), h.body.stmts.clone()));
+            }
+        }
+        for lc in &d.lifecycle {
+            d_handlers.push((lc.name.clone(), lc.body.clone()));
+        }
+        d_handlers.sort_by(|a, b| handler_fn_name(&a.0).cmp(&handler_fn_name(&b.0)));
+
+        for (event_pattern, body_stmts) in &d_handlers {
+            let handler_fn = synthesize_handler_fn_from_decl(
+                d,
+                &d.name.to_string(),
+                &d_state_type,
+                &d_state_fields,
+                event_pattern,
+                body_stmts,
+            );
+            if let Err(e) = codegen.compile_stmt(&handler_fn) {
+                log::warn!(
+                    "handler_codegen: {}.{} failed: {}",
+                    d.name, event_pattern, e
+                );
+            }
+        }
+    }
+
+    let registry = std::mem::take(&mut codegen.generic_registry);
+    Ok((codegen.finish(decl.name.to_string()), registry))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

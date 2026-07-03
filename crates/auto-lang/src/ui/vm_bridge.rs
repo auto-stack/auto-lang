@@ -221,6 +221,104 @@ impl VmBridge {
         })
     }
 
+    /// PR-3b Step 2: create a VmBridge directly from a `WidgetDecl` (and child
+    /// `WidgetDecl`s), bypassing the AuraWidget intermediate representation for
+    /// the logic/handler-synthesis half. Parallel to [`VmBridge::new_with_children`].
+    ///
+    /// State initialization reads `decl.model.fields` instead of
+    /// `widget.state_vars`, converting each field's `init` (base `Expr`) to a
+    /// runtime `Value` via `extract_expr` + `eval_aura_expr_to_value`. When the
+    /// widget has a `.Tick` handler, the synthesized "interval" field is filtered
+    /// out of the state object (it is consumed by the tick scheduler, not a
+    /// `ref()` state field).
+    pub fn new_from_decls(
+        decl: &crate::ast::WidgetDecl,
+        child_decls: &[crate::ast::WidgetDecl],
+        import_stmts: Vec<Stmt>,
+        import_aliases: &std::collections::HashMap<String, String>,
+        api_over_http: bool,
+    ) -> Result<Self> {
+        // Ensure BIGVM_NATIVES is populated before AutoVM::new().
+        crate::vm::native_registry::register_builtin_natives();
+
+        let widget_name = decl.name.to_string();
+
+        // 1. Synthesize imports + ALL widgets' state types + handlers into ONE
+        //    Module via the genuine VM Codegen, reading directly from WidgetDecl.
+        let (module, registry) = crate::ui::handler_codegen::synthesize_from_decl(
+            decl,
+            child_decls,
+            import_stmts,
+            import_aliases,
+            api_over_http,
+        )
+        .map_err(|e| VmBridgeError::InvalidState(format!(
+            "handler synthesis failed for '{}': {}", widget_name, e
+        )))?;
+
+        // Metadata we still need after handing the module to the linker.
+        let object_keys = module.object_keys.clone();
+        let object_types = module.object_types.clone();
+        let strings = module.strings.clone();
+
+        // 2. Link (single module → no cross-module relocation).
+        let mut linker = Linker::new();
+        linker.add_module(module);
+        let (code, exports) = linker.link().map_err(|e| VmBridgeError::InvalidState(
+            format!("link failed for '{}': {}", widget_name, e)
+        ))?;
+
+        // 3. Build flash + VM with unified metadata tables.
+        let flash = VirtualFlash::from_vec_with_metadata(code, exports, object_keys, object_types);
+        let mut vm = AutoVM::new(flash, 4096);
+        vm.load_generic_registry(registry);
+        vm.load_strings(strings);
+
+        // 4. Build state fields and default values from the decl's model fields.
+        //    PR-3b: if the widget has a `.Tick` handler, skip the "interval"
+        //    field (it is consumed by the tick scheduler, not a ref() state).
+        let tick_interval = crate::ui::handler_codegen::extract_tick_interval_from_decl(decl);
+
+        let model_fields: Vec<&crate::ast::ModelField> = decl
+            .model
+            .as_ref()
+            .map(|m| {
+                m.fields
+                    .iter()
+                    .filter(|f| !(tick_interval.is_some() && f.name.as_str() == "interval"))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut field_names = Vec::with_capacity(model_fields.len());
+        let mut field_values = Vec::with_capacity(model_fields.len());
+        for field in model_fields {
+            field_names.push(field.name.to_string());
+            // Convert the base Expr init to an AuraExpr, then to a Value. Fall
+            // back to a "0" literal when extraction fails (keeps arg counts in
+            // sync with the synthesized state type).
+            let aura_expr = crate::aura::extract_expr(&field.init)
+                .unwrap_or(AuraExpr::Literal("0".to_string()));
+            field_values.push(eval_aura_expr_to_value(&aura_expr));
+        }
+
+        let mono_name = format!("{}_State", widget_name);
+        let instance = GenericInstanceData::new_with_names(
+            mono_name,
+            field_values,
+            field_names.clone(),
+        );
+        let state_obj_id = vm.insert_heap_object(instance);
+
+        Ok(Self {
+            vm,
+            state_obj_id,
+            state_field_names: field_names,
+            widget_name,
+            child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
+        })
+    }
+
     /// Create a new VmBridge with a pre-configured AutoVM instance (legacy path).
     ///
     /// Plan 323: the VM is always rebuilt from the synthesized module, so the

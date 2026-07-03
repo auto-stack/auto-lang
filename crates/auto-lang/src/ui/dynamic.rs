@@ -243,6 +243,59 @@ impl DynamicComponent {
         })
     }
 
+    /// PR-3b Step 3: create a DynamicComponent whose VM/handler-synthesis half
+    /// is built directly from `WidgetDecl`s (root + children), bypassing the
+    /// AuraWidget intermediate representation for the logic part.
+    ///
+    /// The view tree still comes from an `AuraWidget` (`view_widget`) because the
+    /// view/render path (AuraViewBuilder, span_map, key_bindings, input_state_map,
+    /// tick_interval) has not yet been migrated to read from `WidgetDecl`.
+    ///
+    /// `child_decls` are the child widgets' `WidgetDecl`s, collected alongside
+    /// the child `AuraWidget`s in `run_file_dynamic_ui_inner`. The registry
+    /// only stores `AuraWidget`s, so the decls must be passed separately so the
+    /// root widget's handlers can reference child handlers in the single VM.
+    pub fn with_registry_and_imports_from_decls(
+        root_decl: &crate::ast::WidgetDecl,
+        child_decls: &[crate::ast::WidgetDecl],
+        view_widget: &crate::aura::AuraWidget,
+        registry: crate::ui::widget_registry::WidgetRegistry,
+        import_stmts: Vec<crate::ast::Stmt>,
+        import_aliases: &std::collections::HashMap<String, String>,
+        api_over_http: bool,
+    ) -> Result<Self, String> {
+        // ── 逻辑部分（VM 合成 + 状态初始化），直读 WidgetDecl ──
+        let bridge = VmBridge::new_from_decls(
+            root_decl,
+            child_decls,
+            import_stmts.clone(),
+            import_aliases,
+            api_over_http,
+        )
+        .map_err(|e| format!("VmBridge init failed for '{}': {}", root_decl.name, e))?;
+
+        // ── 视图部分（渲染模板 + 元数据），仍来自 AuraWidget ──
+        let view = view_widget.view_data();
+        let view_template = view.view_tree.clone();
+        let widget_name = view_widget.name.clone();
+        let input_state_map = extract_input_state_map(view.view_tree);
+
+        Ok(Self {
+            bridge,
+            view_template,
+            widget_name,
+            import_stmts,
+            dirty: true,
+            source_path: None,
+            last_modified: None,
+            input_state_map,
+            tick_interval: view.tick_interval,
+            span_map: view.span_map.clone(),
+            key_bindings: view.key_bindings.clone(),
+            widget_registry: registry,
+        })
+    }
+
     /// Create a new DynamicComponent with a pre-configured AutoVM instance.
     ///
     /// Use this when the VM already has bytecode loaded (e.g., from a compiled module).
