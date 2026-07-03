@@ -68,6 +68,9 @@ pub struct AuraWidget {
     /// Event handlers: mapped by event pattern (e.g., "Msg::Inc")
     pub handlers: HashMap<String, LogicPayload>,
 
+    /// Handler parameter names (pattern → param names) for action fn signatures
+    pub handler_params: HashMap<String, Vec<String>>,
+
     /// Props for reusable components
     pub props: Vec<AuraProp>,
 
@@ -82,7 +85,6 @@ pub struct AuraWidget {
 
     /// Handler parameter names: maps handler pattern to parameter list
     /// e.g., ".AddItem" -> ["text"] for .AddItem(text) -> { ... }
-    pub handler_params: HashMap<String, Vec<String>>,
 
     /// Span map: AuraNodeId → source info for DevTools (Plan 273)
     pub span_map: HashMap<AuraNodeId, SpanInfo>,
@@ -187,6 +189,9 @@ pub struct AuraStore {
 
     /// Event handlers: pattern → logic (→ action function bodies)
     pub handlers: HashMap<String, LogicPayload>,
+
+    /// Handler parameter names (pattern → param names) for action fn signatures
+    pub handler_params: HashMap<String, Vec<String>>,
 }
 
 

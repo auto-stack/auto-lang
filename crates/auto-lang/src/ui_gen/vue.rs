@@ -7730,7 +7730,7 @@ export function cn(...inputs: ClassValue[]) {
         // Module-level ref declarations (singleton state).
         for sv in &store.state_vars {
             let init = Self::store_init_to_js(&sv.initial);
-            code.push_str(&format!("const {} = ref({})\n", sv.name, init));
+            code.push_str(&format!("const {} = ref<any>({})\n", sv.name, init));
         }
         code.push('\n');
 
@@ -7742,7 +7742,7 @@ export function cn(...inputs: ClassValue[]) {
 
         // Export function.
         let fn_name = format!("use{}Store", store.name);
-        code.push_str(&format!("export function {}() {{\n", fn_name));
+        code.push_str(&format!("export function {}(): any {{\n", fn_name));
         code.push_str("    return {\n");
 
         // Expose state refs by name.
@@ -7757,9 +7757,13 @@ export function cn(...inputs: ClassValue[]) {
                 crate::aura::LogicPayload::AstStmts(stmts) => transpile_handler_body(stmts, &ctx),
                 _ => String::new(),
             };
+            // Look up handler params for the action signature (Plan 351).
+            let params = store.handler_params.get(pattern)
+                .map(|p| p.iter().map(|n| format!("{}: any", n)).collect::<Vec<_>>().join(", "))
+                .unwrap_or_default();
             code.push_str(&format!(
-                "        {}: () => {{ {} }},\n",
-                action_name, body
+                "        {}: ({}) => {{ {} }},\n",
+                action_name, params, body
             ));
         }
 
