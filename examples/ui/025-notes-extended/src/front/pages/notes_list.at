@@ -1,0 +1,46 @@
+use store: NotesStore
+use types: Note
+
+widget notes_list {
+    msg Msg { SetTag(str), SearchChanged, SelectNote(int) }
+
+    model { var search str = "" }
+
+    view {
+        col {
+            // tag filter bar
+            row {
+                button "All" { onclick: .SetTag(""), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
+                button "intro" { onclick: .SetTag("intro"), style: "text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200" }
+                button "home" { onclick: .SetTag("home"), style: "text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200" }
+                button "work" { onclick: .SetTag("work"), style: "text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200" }
+                style: "gap-2 px-4 py-2 border-b border-gray-200"
+            }
+
+            row {
+                col {
+                    input { placeholder: "Search…", value: .search, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg mb-2" }
+                    for note in .store.notes {
+                        if .store.active_tag == "" || note.tags.contains(.store.active_tag) {
+                            if .search == "" || note.title.contains(.search) {
+                                button note.title {
+                                    onclick: .SelectNote(note.id)
+                                    style: "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                                }
+                            }
+                        }
+                    }
+                    style: "w-full p-3 gap-1 overflow-y-auto"
+                }
+                style: "flex-1"
+            }
+            style: "flex-col flex-1"
+        }
+    }
+
+    on {
+        .SetTag(tg) -> { store.SetTag(tg) }
+        .SearchChanged -> { }
+        .SelectNote(id) -> { store.SelectNote(id) }
+    }
+}
