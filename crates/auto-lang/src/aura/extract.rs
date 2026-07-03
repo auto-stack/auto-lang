@@ -719,7 +719,7 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
     let messages: Vec<AuraMessage> = decl.messages.iter()
         .map(|m| extract_msg_decl(m))
         .collect();
-    let (handlers, _handler_params) = if let Some(on) = &decl.on {
+    let (handlers, handler_params) = if let Some(on) = &decl.on {
         extract_on_block(on)?
     } else {
         (HashMap::new(), HashMap::new())
@@ -729,6 +729,7 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
         state_vars,
         messages,
         handlers,
+        handler_params,
     })
 }
 
@@ -832,11 +833,11 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         messages,
         view_tree,
         handlers,
+        handler_params,
         props,
         routes,
         lifecycle: lifecycle_events,
         tick_interval,
-        handler_params,
         span_map,
         key_bindings: extract_key_bindings(&decl.bind),
         api_imports: Vec::new(),

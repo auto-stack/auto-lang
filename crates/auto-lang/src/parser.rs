@@ -179,6 +179,10 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     pub cur: Token,
     prev: Token, // Track previous token for validation
+    /// Plan 351: true when parsing inside an on-block handler body.
+    /// Prevents `store` (contextual keyword) from being misinterpreted as a
+    /// store declaration when it's actually a variable reference (store.action()).
+    in_on_body: bool,
     /// 方言表：按 session 装配，语句派发时按优先级查询。
     /// PR-1 阶段初始为空（无方言注册），行为与现状一致。
     /// PR-2 将把 UI 关键字迁入 UiDialect 并在 build_dialects 中注册。
@@ -249,6 +253,7 @@ impl<'a> Parser<'a> {
                 },
                 text: "".into(),
             }, // Initialize with EOF token
+            in_on_body: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -312,6 +317,7 @@ impl<'a> Parser<'a> {
                 },
                 text: "".into(),
             }, // Initialize with EOF token
+            in_on_body: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -358,6 +364,7 @@ impl<'a> Parser<'a> {
                 },
                 text: "".into(),
             }, // Initialize with EOF token
+            in_on_body: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -3841,7 +3848,7 @@ impl<'a> Parser<'a> {
                 } else {
                     let ident = self.cur.text.to_string();
                     // Plan 351: store decl handled directly (not yet in dialect table)
-                    if ident == "store" && self.is_ui_scenario() {
+                    if ident == "store" && self.is_ui_scenario() && !self.in_on_body {
                         self.parse_store_decl()?
                     } else if let Some(stmt) = self.try_dialect_stmt(&ident)? {
                         stmt
@@ -11676,7 +11683,9 @@ impl<'a> Parser<'a> {
                 self.define(param.as_str(), meta);
             }
             // Parse body
+            self.in_on_body = true;
             let body = self.body()?;
+            self.in_on_body = false;
             self.exit_scope();
 
             handlers.push(OnHandler { pattern, params, body });
