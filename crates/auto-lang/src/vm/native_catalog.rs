@@ -1018,6 +1018,15 @@ macro_rules! for_each_bigvm_native {
             // Plan 351: Redirect
             ("auto.http.response.redirect", 2219, Void),
             ("http.response.redirect", 2219, Void),
+            // Plan 352: Session management
+            ("auto.session.create", 2284, Void),
+            ("session.create", 2284, Void),
+            ("auto.session.get", 2285, Void),
+            ("session.get", 2285, Void),
+            ("auto.session.set", 2286, Void),
+            ("session.set", 2286, Void),
+            ("auto.session.destroy", 2287, Void),
+            ("session.destroy", 2287, Void),
 
             // === HTTP response access (2216-2218) ===
             ("auto.http.response.status_code", 2216, Void),
@@ -1676,6 +1685,14 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http.response_bytes", 2215),
     ("auto.http.response.redirect", 2219),
     ("http.response.redirect", 2219),
+    ("auto.session.create", 2284),
+    ("session.create", 2284),
+    ("auto.session.get", 2285),
+    ("session.get", 2285),
+    ("auto.session.set", 2286),
+    ("session.set", 2286),
+    ("auto.session.destroy", 2287),
+    ("session.destroy", 2287),
     ("auto.http.response.status_code", 2216),
     ("auto.http.response.header_get", 2217),
     ("auto.http.response.body", 2218),

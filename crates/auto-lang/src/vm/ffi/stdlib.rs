@@ -2251,6 +2251,9 @@ lazy_static::lazy_static! {
         std::sync::Mutex::new(std::collections::HashMap::new());
     pub(crate) static ref ASYNC_HTTP_RESULTS: std::sync::Mutex<std::collections::HashMap<u64, Option<Result<String, String>>>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
+    // Plan 352: Session storage (in-memory, process-lifetime).
+    pub(crate) static ref SESSIONS: std::sync::Mutex<std::collections::HashMap<String, String>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
 }
 
 /// Plan 341: 分配一个新的异步流 id。
@@ -2905,6 +2908,93 @@ pub fn shim_http_response_redirect(task: &mut AutoTask, _vm: &AutoVM) -> Result<
         });
     });
     task.ram.push_i32(handle as i32);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 352: Session management natives
+// ============================================================================
+
+/// `session.create(data_json: String) -> String`
+/// Create a new session with the given JSON data. Returns a random session ID.
+pub fn shim_session_create(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let data: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    // Generate a simple session ID (timestamp + counter).
+    let session_id = format!("sess_{}", NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst));
+
+    if let Ok(mut sessions) = SESSIONS.lock() {
+        sessions.insert(session_id.clone(), data);
+    }
+
+    let idx = {
+        let mut strings = _vm.strings.write().unwrap();
+        let i = strings.len();
+        strings.push(session_id.into_bytes());
+        i
+    };
+    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    Ok(())
+}
+
+/// `session.get(id: String) -> String`
+/// Get session data by ID. Returns the JSON data string, or "null" if not found.
+pub fn shim_session_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let id: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let data = SESSIONS.lock()
+        .ok()
+        .and_then(|sessions| sessions.get(&id).cloned())
+        .unwrap_or_else(|| "null".to_string());
+
+    let idx = {
+        let mut strings = _vm.strings.write().unwrap();
+        let i = strings.len();
+        strings.push(data.into_bytes());
+        i
+    };
+    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    Ok(())
+}
+
+/// `session.set(id: String, data_json: String) -> bool`
+/// Update session data. Returns true if session existed.
+pub fn shim_session_set(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let data: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let id: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let exists = SESSIONS.lock()
+        .ok()
+        .map(|mut sessions| {
+            if sessions.contains_key(&id) {
+                sessions.insert(id, data);
+                true
+            } else {
+                false
+            }
+        })
+        .unwrap_or(false);
+
+    task.ram.push_i32(if exists { 1 } else { 0 });
+    Ok(())
+}
+
+/// `session.destroy(id: String) -> bool`
+/// Destroy a session. Returns true if session existed.
+pub fn shim_session_destroy(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let id: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let existed = SESSIONS.lock()
+        .ok()
+        .map(|mut sessions| sessions.remove(&id).is_some())
+        .unwrap_or(false);
+
+    task.ram.push_i32(if existed { 1 } else { 0 });
     Ok(())
 }
 
@@ -5192,6 +5282,15 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Plan 351: Redirect
     natives.register_shim_by_name("auto.http.response.redirect", shim_http_response_redirect);
     natives.register_shim_by_name("http.response.redirect", shim_http_response_redirect);
+    // Plan 352: Session management
+    natives.register_shim_by_name("auto.session.create", shim_session_create);
+    natives.register_shim_by_name("session.create", shim_session_create);
+    natives.register_shim_by_name("auto.session.get", shim_session_get);
+    natives.register_shim_by_name("session.get", shim_session_get);
+    natives.register_shim_by_name("auto.session.set", shim_session_set);
+    natives.register_shim_by_name("session.set", shim_session_set);
+    natives.register_shim_by_name("auto.session.destroy", shim_session_destroy);
+    natives.register_shim_by_name("session.destroy", shim_session_destroy);
 
     // HTTP client functions (manual shims — heap objects for request/response)
     natives.register_shim_by_name("auto.http.get", shim_http_get);
