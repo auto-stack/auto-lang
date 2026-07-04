@@ -1030,6 +1030,11 @@ macro_rules! for_each_bigvm_native {
             // Plan 352: Middleware chain
             ("auto.http.server_use", 2288, Void),
             ("http.server.use", 2288, Void),
+            // Plan 352: Template engine (SSR)
+            ("auto.template.compile", 2289, Void),
+            ("template.compile", 2289, Void),
+            ("auto.template.render", 2290, Void),
+            ("template.render", 2290, Void),
 
             // === HTTP response access (2216-2218) ===
             ("auto.http.response.status_code", 2216, Void),
@@ -1698,6 +1703,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("session.destroy", 2287),
     ("auto.http.server_use", 2288),
     ("http.server.use", 2288),
+    ("auto.template.compile", 2289),
+    ("template.compile", 2289),
+    ("auto.template.render", 2290),
+    ("template.render", 2290),
     ("auto.http.response.status_code", 2216),
     ("auto.http.response.header_get", 2217),
     ("auto.http.response.body", 2218),

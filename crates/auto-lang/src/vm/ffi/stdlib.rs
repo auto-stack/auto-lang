@@ -2257,6 +2257,9 @@ lazy_static::lazy_static! {
     // Plan 352: Middleware chain — list of VM fn addresses to execute before handler.
     pub(crate) static ref MIDDLEWARE_CHAIN: std::sync::Mutex<Vec<String>> =
         std::sync::Mutex::new(Vec::new());
+    // Plan 352: Template engine — compiled templates (name → template string).
+    pub(crate) static ref TEMPLATES: std::sync::Mutex<std::collections::HashMap<String, String>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
 }
 
 /// Plan 341: 分配一个新的异步流 id。
@@ -2999,6 +3002,154 @@ pub fn shim_session_destroy(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 
     task.ram.push_i32(if existed { 1 } else { 0 });
     Ok(())
+}
+
+// ============================================================================
+// Plan 352: Template engine (SSR) natives
+// ============================================================================
+
+/// `template.compile(name: String, template_str: String)`
+/// Compile and store a template by name. Templates support:
+/// {{var}} — variable interpolation from JSON data
+/// {{#if key}}...{{/if}} — conditional block (key truthy)
+/// {{#each key}}...{{/each}} — loop over array
+pub fn shim_template_compile(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let template_str: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let name: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    if let Ok(mut templates) = TEMPLATES.lock() {
+        templates.insert(name, template_str);
+    }
+    Ok(())
+}
+
+/// `template.render(name: String, data_json: String) -> String`
+/// Render a compiled template with JSON data. Returns HTML string.
+pub fn shim_template_render(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let data_json: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let name: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let template_str = TEMPLATES.lock()
+        .ok()
+        .and_then(|t| t.get(&name).cloned())
+        .unwrap_or_default();
+
+    let data: serde_json::Value = serde_json::from_str(&data_json).unwrap_or(serde_json::Value::Null);
+    let rendered = render_template(&template_str, &data);
+
+    let idx = {
+        let mut strings = _vm.strings.write().unwrap();
+        let i = strings.len();
+        strings.push(rendered.into_bytes());
+        i
+    };
+    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    Ok(())
+}
+
+/// Simple template renderer: {{var}}, {{#if key}}...{{/if}}, {{#each key}}...{{/each}}.
+fn render_template(template: &str, data: &serde_json::Value) -> String {
+    let mut result = String::new();
+    let mut remaining = template;
+
+    while !remaining.is_empty() {
+        if let Some(end) = remaining.find("{{") {
+            result.push_str(&remaining[..end]);
+            remaining = &remaining[end + 2..];
+
+            if remaining.starts_with('#') {
+                // Block tag: #if or #each
+                if let Some(close) = remaining.find("}}") {
+                    let tag = &remaining[1..close]; // e.g. "if key" or "each key"
+                    remaining = &remaining[close + 2..];
+
+                    if let Some(key) = tag.strip_prefix("if ") {
+                        // Find matching {{/if}}
+                        let close_tag = "{{/if}}";
+                        if let Some(block_end) = remaining.find(close_tag) {
+                            let block_content = &remaining[..block_end];
+                            remaining = &remaining[block_end + close_tag.len()..];
+                            // Check condition
+                            let cond = get_json_value(data, key.trim());
+                            if is_truthy(&cond) {
+                                result.push_str(&render_template(block_content, data));
+                            }
+                        }
+                    } else if let Some(key) = tag.strip_prefix("each ") {
+                        let close_tag = "{{/each}}";
+                        if let Some(block_end) = remaining.find(close_tag) {
+                            let block_content = &remaining[..block_end];
+                            remaining = &remaining[block_end + close_tag.len()..];
+                            // Iterate array
+                            let arr = get_json_value(data, key.trim());
+                            if let Some(items) = arr.as_array() {
+                                for item in items {
+                                    let mut item_data = data.clone();
+                                    if let Some(obj) = item_data.as_object_mut() {
+                                        obj.insert("this".to_string(), item.clone());
+                                    } else {
+                                        item_data = serde_json::json!({"this": item});
+                                    }
+                                    result.push_str(&render_template(block_content, &item_data));
+                                }
+                            }
+                        }
+                    } else {
+                        // Unknown block — skip to }}
+                        if let Some(skip) = remaining.find("}}") {
+                            remaining = &remaining[skip + 2..];
+                        }
+                    }
+                }
+            } else if let Some(close) = remaining.find("}}") {
+                // Variable: {{var}}
+                let var = &remaining[..close];
+                remaining = &remaining[close + 2..];
+                let val = get_json_value(data, var.trim());
+                match &val {
+                    serde_json::Value::String(s) => result.push_str(s),
+                    serde_json::Value::Number(n) => result.push_str(&n.to_string()),
+                    serde_json::Value::Bool(b) => result.push_str(&b.to_string()),
+                    _ => {}
+                }
+            } else {
+                result.push_str("{{");
+                result.push_str(remaining);
+                break;
+            }
+        } else {
+            result.push_str(remaining);
+            break;
+        }
+    }
+    result
+}
+
+/// Get a nested JSON value by dotted key (e.g. "user.name" or "this.title").
+fn get_json_value(data: &serde_json::Value, key: &str) -> serde_json::Value {
+    let mut current = data;
+    for part in key.split('.') {
+        if part == "this" { continue; }
+        current = current.get(part).unwrap_or(&serde_json::Value::Null);
+    }
+    current.clone()
+}
+
+/// Check if a JSON value is truthy (non-null, non-false, non-empty, non-zero).
+fn is_truthy(val: &serde_json::Value) -> bool {
+    match val {
+        serde_json::Value::Null => false,
+        serde_json::Value::Bool(b) => *b,
+        serde_json::Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
+        serde_json::Value::String(s) => !s.is_empty(),
+        serde_json::Value::Array(a) => !a.is_empty(),
+        serde_json::Value::Object(o) => !o.is_empty(),
+        _ => true,
+    }
 }
 
 /// Plan 352: `http.server.use(middleware_fn_name: String)`
@@ -5312,6 +5463,11 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Plan 352: Middleware chain
     natives.register_shim_by_name("auto.http.server_use", shim_http_server_use);
     natives.register_shim_by_name("http.server.use", shim_http_server_use);
+    // Plan 352: Template engine (SSR)
+    natives.register_shim_by_name("auto.template.compile", shim_template_compile);
+    natives.register_shim_by_name("template.compile", shim_template_compile);
+    natives.register_shim_by_name("auto.template.render", shim_template_render);
+    natives.register_shim_by_name("template.render", shim_template_render);
 
     // HTTP client functions (manual shims — heap objects for request/response)
     natives.register_shim_by_name("auto.http.get", shim_http_get);
