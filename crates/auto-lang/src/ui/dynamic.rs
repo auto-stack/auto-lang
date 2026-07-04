@@ -884,13 +884,14 @@ fn extract_input_state_map(view_tree: &crate::aura::AuraNode) -> HashMap<String,
 }
 
 fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, String>) {
-    use crate::aura::{AuraNode, AuraPropValue, AuraExpr};
+    use crate::ast::Expr;
+    use crate::aura::{AuraNode, AuraPropValue};
     match node {
         AuraNode::Element { tag, props, events, children, .. } => {
             if tag == "input" || tag == "textarea" {
                 // Find value prop that is a StateRef
                 let state_field = props.get("value").and_then(|v| match v {
-                    AuraPropValue::Expr(AuraExpr::StateRef(name)) => Some(name.clone()),
+                    AuraPropValue::Expr(Expr::Ident(name)) => Some(name.to_string()),
                     _ => None,
                 });
                 // Find oninput/onchange event
@@ -995,7 +996,8 @@ fn find_span_dfs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aura::{AuraNode, AuraStateDef, AuraExpr, AuraEvent, AuraPropValue, AuraTextContent};
+    use crate::ast::Expr;
+    use crate::aura::{AuraNode, AuraStateDef, AuraEvent, AuraPropValue, AuraTextContent};
     use crate::ast::Type;
     use std::collections::HashMap;
 
@@ -1057,7 +1059,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1085,7 +1087,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(42),
+                initial: Expr::Int(42),
                 decorators: vec![],
             },
         ]);
@@ -1102,7 +1104,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1151,7 +1153,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(7),
+                initial: Expr::Int(7),
                 decorators: vec![],
             }],
             computed: vec![],
@@ -1160,7 +1162,7 @@ mod tests {
                 tag: "text".to_string(),
                 props: HashMap::from([
                     ("text".to_string(), crate::aura::AuraPropValue::Expr(
-                        AuraExpr::StateRef("count".to_string()),
+                        Expr::Ident("count".into()),
                     )),
                 ]),
                 events: HashMap::new(),
@@ -1196,7 +1198,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1216,7 +1218,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1250,7 +1252,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1284,19 +1286,19 @@ mod tests {
             AuraStateDef {
                 name: "x".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(1),
+                initial: Expr::Int(1),
                 decorators: vec![],
             },
             AuraStateDef {
                 name: "y".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(2),
+                initial: Expr::Int(2),
                 decorators: vec![],
             },
             AuraStateDef {
                 name: "label".to_string(),
                 type_info: Type::StrFixed(0),
-                initial: AuraExpr::Literal("hello".to_string()),
+                initial: Expr::Str("hello".into()),
                 decorators: vec![],
             },
         ]);
@@ -1325,7 +1327,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             }],
             computed: vec![],
@@ -1343,7 +1345,7 @@ mod tests {
                         tag: "button".to_string(),
                         props: HashMap::from([
                             ("text".to_string(), crate::aura::AuraPropValue::Expr(
-                                AuraExpr::Literal("Increment".to_string()),
+                                Expr::Str("Increment".into()),
                             )),
                         ]),
                         events: HashMap::from([
@@ -1413,7 +1415,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             }],
             computed: vec![],
@@ -1422,7 +1424,7 @@ mod tests {
                 tag: "text".to_string(),
                 props: HashMap::from([
                     ("text".to_string(), crate::aura::AuraPropValue::Expr(
-                        AuraExpr::StateRef("count".to_string()),
+                        Expr::Ident("count".into()),
                     )),
                 ]),
                 events: HashMap::new(),
@@ -1471,7 +1473,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1487,7 +1489,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1507,7 +1509,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1520,13 +1522,13 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
             AuraStateDef {
                 name: "enabled".to_string(),
                 type_info: Type::Bool,
-                initial: AuraExpr::Bool(true),
+                initial: Expr::Bool(true),
                 decorators: vec![],
             },
         ]);
@@ -1546,13 +1548,13 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(5),
+                initial: Expr::Int(5),
                 decorators: vec![],
             },
             AuraStateDef {
                 name: "legacy".to_string(),
                 type_info: Type::StrFixed(0),
-                initial: AuraExpr::Literal("old".to_string()),
+                initial: Expr::Str("old".into()),
                 decorators: vec![],
             },
         ]);
@@ -1565,7 +1567,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1585,7 +1587,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1602,7 +1604,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             }],
             computed: vec![],
@@ -1611,7 +1613,7 @@ mod tests {
                 tag: "text".to_string(),
                 props: HashMap::from([
                     ("text".to_string(), crate::aura::AuraPropValue::Expr(
-                        AuraExpr::StateRef("count".to_string()),
+                        Expr::Ident("count".into()),
                     )),
                 ]),
                 events: HashMap::new(),
@@ -1648,7 +1650,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1685,13 +1687,13 @@ mod tests {
             AuraStateDef {
                 name: "x".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(1),
+                initial: Expr::Int(1),
                 decorators: vec![],
             },
             AuraStateDef {
                 name: "y".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(2),
+                initial: Expr::Int(2),
                 decorators: vec![],
             },
         ]);

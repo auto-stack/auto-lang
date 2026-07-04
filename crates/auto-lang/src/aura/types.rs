@@ -385,7 +385,7 @@ pub struct AuraStateDef {
     pub type_info: Type,
 
     /// Initial value expression
-    pub initial: AuraExpr,
+    pub initial: crate::ast::Expr,
 
     /// Decorators for state management (e.g., @Consume, @Provide)
     pub decorators: Vec<AuraDecorator>,
@@ -401,7 +401,7 @@ pub struct AuraProp {
     pub type_info: Type,
 
     /// Default value (if any)
-    pub default: Option<AuraExpr>,
+    pub default: Option<crate::ast::Expr>,
 }
 
 // ============================================================================
@@ -415,7 +415,7 @@ pub struct AuraComputed {
     pub name: String,
 
     /// Computation expression
-    pub expr: AuraExpr,
+    pub expr: crate::ast::Expr,
 }
 
 // ============================================================================
@@ -460,7 +460,7 @@ pub struct AuraEvent {
 #[derive(Debug, Clone)]
 pub enum AuraPropValue {
     /// Regular expression value
-    Expr(AuraExpr),
+    Expr(crate::ast::Expr),
 
     /// Style binding: { completed: todo.done }
     StyleBinding(Vec<AuraStyleBinding>),
@@ -473,7 +473,7 @@ pub struct AuraStyleBinding {
     pub style_name: String,
 
     /// Condition expression
-    pub condition: AuraExpr,
+    pub condition: crate::ast::Expr,
 }
 
 /// View node: element or text
@@ -548,7 +548,7 @@ pub enum AuraNode {
         name: String,
 
         /// Properties passed to component
-        props: HashMap<String, AuraExpr>,
+        props: HashMap<String, crate::ast::Expr>,
 
         /// Event handlers
         events: HashMap<String, AuraEvent>,
@@ -621,7 +621,7 @@ impl AuraNode {
     }
 
     /// Add a prop
-    pub fn with_prop(mut self, key: impl Into<String>, value: AuraExpr) -> Self {
+    pub fn with_prop(mut self, key: impl Into<String>, value: crate::ast::Expr) -> Self {
         if let AuraNode::Element { props, .. } = &mut self {
             props.insert(key.into(), AuraPropValue::Expr(value));
         }
@@ -667,149 +667,6 @@ pub enum LogicPayload {
     /// Bytecode for AutoVM dynamic execution (GPUI)
     /// Pre-compiled bytecode that can be executed at runtime
     Bytecode(Vec<u8>),
-}
-
-// ============================================================================
-// Expressions
-// ============================================================================
-
-/// AURA expression: simplified expression types for UI
-#[derive(Debug, Clone)]
-pub enum AuraExpr {
-    /// Literal string
-    Literal(String),
-
-    /// Integer literal
-    Int(i64),
-
-    /// Float literal
-    Float(f64),
-
-    /// Boolean literal
-    Bool(bool),
-
-    /// State reference (e.g., "count" from "${.count}")
-    /// The "." prefix indicates it's a state variable reference
-    StateRef(String),
-
-    /// Message variant reference (e.g., "Msg::Inc")
-    MsgVariant {
-        /// Message type name
-        msg_type: String,
-        /// Variant name
-        variant: String,
-    },
-
-    /// Binary operation
-    Binary {
-        left: Box<AuraExpr>,
-        op: AuraBinOp,
-        right: Box<AuraExpr>,
-    },
-
-    /// Unary operation
-    Unary {
-        op: AuraUnaryOp,
-        operand: Box<AuraExpr>,
-    },
-
-    /// Method call: object.method(args)
-    MethodCall {
-        /// Object being called on (e.g., "todos")
-        object: Box<AuraExpr>,
-        /// Method name (e.g., "push", "filter")
-        method: String,
-        /// Arguments
-        args: Vec<AuraExpr>,
-    },
-
-    /// Array literal
-    Array(Vec<AuraExpr>),
-
-    /// Object literal: { key: value, ... }
-    Object(HashMap<String, AuraExpr>),
-
-    /// Conditional expression: if cond { then } else { else }
-    /// Used for conditional values like `style: if x {"a"} else {"b"}`
-    If {
-        cond: Box<AuraExpr>,
-        then_branch: Box<AuraExpr>,
-        else_branch: Option<Box<AuraExpr>>,
-    },
-
-    /// Lambda expression: |params| body
-    Lambda {
-        /// Parameter names
-        params: Vec<String>,
-        /// Body expression
-        body: Box<AuraExpr>,
-    },
-
-    /// Field access: object.field
-    FieldAccess {
-        /// Object
-        object: Box<AuraExpr>,
-        /// Field name
-        field: String,
-    },
-
-    /// Programmatic navigation (Plan 105): Nav.to("/path", { param: value })
-    NavCall {
-        /// Target path
-        path: String,
-
-        /// Navigation parameters
-        params: HashMap<String, AuraExpr>,
-    },
-
-    /// Constructor call: TypeName(args)
-    /// For example: NavPathStack() -> new NavPathStack()
-    Constructor {
-        /// Type name
-        type_name: String,
-
-        /// Arguments
-        args: Vec<AuraExpr>,
-    },
-
-    /// Index access: target[index]
-    /// For example: notes[active_id]
-    Index {
-        /// Target collection (array, object)
-        target: Box<AuraExpr>,
-        /// Index expression
-        index: Box<AuraExpr>,
-    },
-}
-
-/// Binary operators
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AuraBinOp {
-    // Arithmetic
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-
-    // Comparison
-    Eq,
-    Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
-
-    // Logical
-    And,
-    Or,
-}
-
-/// Unary operators
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AuraUnaryOp {
-    Neg,
-    Not,
 }
 
 // ============================================================================
@@ -886,7 +743,7 @@ mod tests {
     #[test]
     fn test_aura_node_element() {
         let node = AuraNode::element("col")
-            .with_prop("gap", AuraExpr::Int(16))
+            .with_prop("gap", crate::ast::Expr::Int(16))
             .with_child(AuraNode::text("Hello"));
 
         match node {
@@ -916,7 +773,7 @@ mod tests {
         let state = AuraStateDef {
             name: "count".to_string(),
             type_info: Type::Int,
-            initial: AuraExpr::Int(0),
+            initial: crate::ast::Expr::Int(0),
             decorators: vec![],
         };
 
@@ -944,22 +801,13 @@ mod tests {
     }
 
     #[test]
-    fn test_aura_expr_state_ref() {
-        let expr = AuraExpr::StateRef("count".to_string());
-        match expr {
-            AuraExpr::StateRef(name) => assert_eq!(name, "count"),
-            _ => panic!("Expected StateRef"),
-        }
-    }
-
-    #[test]
     fn test_aura_widget() {
         let widget = AuraWidget {
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: crate::ast::Expr::Int(0),
                 decorators: vec![],
             }],
             computed: vec![],
@@ -1050,32 +898,6 @@ mod tests {
     }
 
     #[test]
-    fn test_aura_expr_nav_call() {
-        let mut params = HashMap::new();
-        params.insert("id".to_string(), AuraExpr::Int(42));
-
-        let nav_call = AuraExpr::NavCall {
-            path: "/user".to_string(),
-            params,
-        };
-
-        match nav_call {
-            AuraExpr::NavCall { path, params } => {
-                assert_eq!(path, "/user");
-                assert_eq!(params.len(), 1);
-                // Check that the params contain "id" key with an Int value
-                let id_param = params.get("id");
-                assert!(id_param.is_some());
-                match id_param.unwrap() {
-                    AuraExpr::Int(n) => assert_eq!(*n, 42),
-                    _ => panic!("Expected Int"),
-                }
-            }
-            _ => panic!("Expected NavCall"),
-        }
-    }
-
-    #[test]
     fn test_widget_logic_and_view_split() {
         // PR-3: 验证 logic()/view_data() 引用视图正确拆分 AuraWidget 的逻辑/视图两部分。
         let widget = AuraWidget {
@@ -1083,7 +905,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: crate::ast::Expr::Int(0),
                 decorators: vec![],
             }],
             computed: vec![],

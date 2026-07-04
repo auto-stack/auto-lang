@@ -10,8 +10,7 @@
 //! - **Separation**: Handlers are extracted as LogicPayload
 
 use super::types::*;
-use crate::ast::{Expr, Stmt, Type, Key, ViewPropValue};
-use auto_val::Op;
+use crate::ast::{Expr, Type, Key, ViewPropValue};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -89,298 +88,6 @@ impl std::error::Error for ExtractError {}
 pub type ExtractResult<T> = Result<T, ExtractError>;
 
 // ============================================================================
-// Expression Extractor
-// ============================================================================
-
-/// Extract AURA expression from AST expression
-pub fn extract_expr(expr: &Expr) -> ExtractResult<AuraExpr> {
-    match expr {
-        Expr::Int(n) => Ok(AuraExpr::Int(*n as i64)),
-        Expr::I64(n) => Ok(AuraExpr::Int(*n)),
-        Expr::Uint(n) => Ok(AuraExpr::Int(*n as i64)),
-        Expr::U64(n) => Ok(AuraExpr::Int(*n as i64)),
-        Expr::Byte(n) => Ok(AuraExpr::Int(*n as i64)),
-        Expr::I8(n) => Ok(AuraExpr::Int(*n as i64)),
-        Expr::U8(n) => Ok(AuraExpr::Int(*n as i64)),
-        Expr::Float(n, _) => Ok(AuraExpr::Float(*n)),
-        Expr::Double(n, _) => Ok(AuraExpr::Float(*n)),
-        Expr::Bool(b) => Ok(AuraExpr::Bool(*b)),
-        Expr::Char(c) => Ok(AuraExpr::Int(*c as i64)),
-        Expr::Str(s) => Ok(AuraExpr::Literal(s.to_string())),
-        Expr::CStr(s) => Ok(AuraExpr::Literal(s.to_string())),
-
-        // Identifier could be a state reference
-        Expr::Ident(name) => {
-            let name_str = name.as_str();
-            // Check if it's a state reference (starts with ".")
-            if name_str.starts_with('.') {
-                Ok(AuraExpr::StateRef(name_str[1..].to_string()))
-            } else {
-                // Regular identifier - treat as state reference
-                Ok(AuraExpr::StateRef(name_str.to_string()))
-            }
-        }
-
-        // Binary operation (Bina in AST)
-        Expr::Bina(left, op, right) => {
-            let left_expr = extract_expr(left)?;
-            let right_expr = extract_expr(right)?;
-            let aura_op = extract_bin_op(op);
-            Ok(AuraExpr::Binary {
-                left: Box::new(left_expr),
-                op: aura_op,
-                right: Box::new(right_expr),
-            })
-        }
-
-        // Unary operation
-        Expr::Unary(op, operand) => {
-            let operand_expr = extract_expr(operand)?;
-            let aura_op = extract_unary_op(op);
-            Ok(AuraExpr::Unary {
-                op: aura_op,
-                operand: Box::new(operand_expr),
-            })
-        }
-
-        // Dot expression: object.field
-        // If the object is "self" or ".", treat as state reference
-        Expr::Dot(object, field) => {
-            match object.as_ref() {
-                Expr::Ident(name) if name.as_str() == "self" || name.as_str() == "." => {
-                    Ok(AuraExpr::StateRef(field.as_str().to_string()))
-                }
-                _ => {
-                    // Field access on an object (e.g., todo.done)
-                    let object_expr = extract_expr(object)?;
-                    Ok(AuraExpr::FieldAccess {
-                        object: Box::new(object_expr),
-                        field: field.as_str().to_string(),
-                    })
-                }
-            }
-        }
-
-        // Call expression: could be method call like todos.push(todo)
-        Expr::Call(call) => {
-            // Check if it's a method call (Dot expression as the name)
-            match call.name.as_ref() {
-                Expr::Dot(object, method) => {
-                    // Method call: object.method(args)
-                    let object_expr = extract_expr(object)?;
-                    let args: Vec<AuraExpr> = call.args.args.iter()
-                        .map(|arg| extract_expr(&arg.get_expr()))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    Ok(AuraExpr::MethodCall {
-                        object: Box::new(object_expr),
-                        method: method.as_str().to_string(),
-                        args,
-                    })
-                }
-                Expr::Ident(name) => {
-                    let name_str = name.as_str();
-                    let args: Vec<AuraExpr> = call.args.args.iter()
-                        .map(|arg| extract_expr(&arg.get_expr()))
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    // Check if this is a constructor call (starts with uppercase)
-                    if name_str.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                        Ok(AuraExpr::Constructor {
-                            type_name: name_str.to_string(),
-                            args,
-                        })
-                    } else {
-                        // Regular function call - treat as method call on implicit self
-                        Ok(AuraExpr::MethodCall {
-                            object: Box::new(AuraExpr::StateRef("self".to_string())),
-                            method: name_str.to_string(),
-                            args,
-                        })
-                    }
-                }
-                _ => Err(ExtractError::UnsupportedExpr(format!("Call with complex name: {:?}", call.name)))
-            }
-        }
-
-        // Array literal
-        Expr::Array(elems) => {
-            let elements: Vec<AuraExpr> = elems.iter()
-                .map(|e| extract_expr(e))
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(AuraExpr::Array(elements))
-        }
-
-        // Object literal: { key: value, ... }
-        Expr::Object(pairs) => {
-            let mut fields = HashMap::new();
-            for pair in pairs {
-                let key = key_to_string(&pair.key);
-                let value = extract_expr(&pair.value)?;
-                fields.insert(key, value);
-            }
-            Ok(AuraExpr::Object(fields))
-        }
-
-        // Closure (lambda): |params| body
-        Expr::Closure(closure) => {
-            let params: Vec<String> = closure.params.iter()
-                .map(|p| p.name.as_str().to_string())
-                .collect();
-            let body = extract_expr(&closure.body)?;
-            Ok(AuraExpr::Lambda {
-                params,
-                body: Box::new(body),
-            })
-        }
-
-        // F-string: treat as literal string with template markers
-        // The template will be converted to Kotlin/Compose string interpolation by the generator
-        Expr::FStr(fstr) => {
-            // Build template string from parts
-            let mut template = String::new();
-            let mut bindings = Vec::new();
-
-            for part in &fstr.parts {
-                match part {
-                    Expr::Str(s) => {
-                        template.push_str(s.as_str());
-                    }
-                    Expr::Dot(obj, field) => {
-                        // .field → state reference
-                        if let Expr::Ident(name) = obj.as_ref() {
-                            if name.as_str() == "." || name.as_str() == "self" {
-                                let field_name = field.as_str();
-                                template.push_str(&format!("${{.{}}}", field_name));
-                                bindings.push(field_name.to_string());
-                                continue;
-                            }
-                        }
-                        // Other dot expressions
-                        template.push_str(&format!("${{{}}}", part));
-                    }
-                    Expr::Ident(name) => {
-                        // Variable reference
-                        let name_str = name.as_str();
-                        if name_str.starts_with('.') {
-                            // State reference
-                            let field_name = &name_str[1..];
-                            template.push_str(&format!("${{.{}}}", field_name));
-                            bindings.push(field_name.to_string());
-                        } else {
-                            template.push_str(&format!("${{{}}}", name_str));
-                            bindings.push(name_str.to_string());
-                        }
-                    }
-                    _ => {
-                        // Complex expression - just stringify it
-                        template.push_str(&format!("${{{}}}", part));
-                    }
-                }
-            }
-
-            // For now, return as literal with bindings info encoded
-            // The generator will handle the conversion to Kotlin
-            Ok(AuraExpr::Literal(template))
-        }
-
-        // Nil/Null/None - no initial value (e.g., @Consume variables)
-        // Return a special marker that generators can handle
-        // Note: null keyword should be preserved for nullable types
-        Expr::Null => Ok(AuraExpr::Literal("null".to_string())),
-        Expr::Nil | Expr::None => Ok(AuraExpr::Literal("".to_string())),
-
-        // Index access: target[index]
-        Expr::Index(target, index) => {
-            let target_expr = extract_expr(target)?;
-            let index_expr = extract_expr(index)?;
-            Ok(AuraExpr::Index {
-                target: Box::new(target_expr),
-                index: Box::new(index_expr),
-            })
-        }
-
-        // Plan 339: if-expression for conditional values (e.g., style values)
-        Expr::If(if_expr) => {
-            let branches = &if_expr.branches;
-            if branches.is_empty() {
-                Err(ExtractError::UnsupportedExpr("if with no branches".into()))
-            } else {
-                let cond = extract_expr(&branches[0].cond)?;
-                let then_body = &branches[0].body;
-                // Only single-expression bodies are supported
-                let then_val = if then_body.stmts.len() == 1 {
-                    if let Stmt::Expr(e) = &then_body.stmts[0] {
-                        extract_expr(e)?
-                    } else {
-                        return Err(ExtractError::UnsupportedExpr(
-                            "if branch body must be a single expression".into()
-                        ));
-                    }
-                } else {
-                    return Err(ExtractError::UnsupportedExpr(
-                        "if branch body must be a single expression".into()
-                    ));
-                };
-                let else_val = if let Some(ref else_body) = if_expr.else_ {
-                    if else_body.stmts.len() == 1 {
-                        if let Stmt::Expr(e) = &else_body.stmts[0] {
-                            Some(Box::new(extract_expr(e)?))
-                        } else {
-                            return Err(ExtractError::UnsupportedExpr(
-                                "else branch body must be a single expression".into()
-                            ));
-                        }
-                    } else {
-                        return Err(ExtractError::UnsupportedExpr(
-                            "else branch body must be a single expression".into()
-                        ));
-                    }
-                } else {
-                    None
-                };
-                Ok(AuraExpr::If {
-                    cond: Box::new(cond),
-                    then_branch: Box::new(then_val),
-                    else_branch: else_val,
-                })
-            }
-        }
-
-        // Other expressions not yet supported in view
-        _ => Err(ExtractError::UnsupportedExpr(format!("{:?}", expr))),
-    }
-}
-
-/// Extract binary operator from AST Op
-fn extract_bin_op(op: &Op) -> AuraBinOp {
-    match op {
-        Op::Add => AuraBinOp::Add,
-        Op::Sub => AuraBinOp::Sub,
-        Op::Mul => AuraBinOp::Mul,
-        Op::Div => AuraBinOp::Div,
-        Op::Mod => AuraBinOp::Mod,
-        Op::Eq => AuraBinOp::Eq,
-        Op::Neq => AuraBinOp::Ne,
-        Op::Lt => AuraBinOp::Lt,
-        Op::Le => AuraBinOp::Le,
-        Op::Gt => AuraBinOp::Gt,
-        Op::Ge => AuraBinOp::Ge,
-        Op::And => AuraBinOp::And,
-        Op::Or => AuraBinOp::Or,
-        _ => AuraBinOp::Eq, // Default fallback
-    }
-}
-
-/// Extract unary operator from AST Op
-fn extract_unary_op(op: &Op) -> AuraUnaryOp {
-    match op {
-        Op::Sub => AuraUnaryOp::Neg,
-        Op::Not => AuraUnaryOp::Not,
-        _ => AuraUnaryOp::Not, // Default fallback
-    }
-}
-
-// ============================================================================
 // Statement Extractor
 // ============================================================================
 
@@ -426,7 +133,7 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                     }
                     // Regular props
                     _ => {
-                        let value = extract_expr(&pair.value)?;
+                        let value = pair.value.as_ref().clone();
                         props.insert(key, AuraPropValue::Expr(value));
                     }
                 }
@@ -471,7 +178,7 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                                     let handler = extract_event_handler(&pair.value)?;
                                     events.insert(key, handler);
                                 } else {
-                                    let value = extract_expr(&pair.value)?;
+                                    let value = pair.value.as_ref().clone();
                                     props.insert(key, AuraPropValue::Expr(value));
                                 }
                             }
@@ -767,7 +474,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         let interval_val = state_vars.iter()
             .find(|v| v.name == "interval")
             .and_then(|v| {
-                if let AuraExpr::Int(n) = &v.initial {
+                if let Expr::Int(n) = &v.initial {
                     Some(*n as u32)
                 } else {
                     None
@@ -807,7 +514,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
             .map(|p| {
                 Ok(AuraComputed {
                     name: p.name.as_str().to_string(),
-                    expr: extract_expr(&p.expr)?,
+                    expr: p.expr.clone(),
                 })
             })
             .collect::<ExtractResult<Vec<_>>>()?
@@ -862,7 +569,7 @@ fn extract_model_fields(model: &ModelBlock) -> ExtractResult<Vec<AuraStateDef>> 
             Ok(AuraStateDef {
                 name: field.name.as_str().to_string(),
                 type_info: field.ty.clone(),
-                initial: extract_expr(&field.init)?,
+                initial: field.init.clone(),
                 decorators: field.decorators.iter()
                     .map(|d| AuraDecorator {
                         name: d.name.as_str().to_string(),
@@ -900,14 +607,14 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 .map(|p| {
                     let value = match &p.value {
                         ViewPropValue::Expr(expr) => {
-                            AuraPropValue::Expr(extract_expr(expr)?)
+                            AuraPropValue::Expr(expr.clone())
                         }
                         ViewPropValue::StyleBinding(bindings) => {
                             let aura_bindings: Vec<AuraStyleBinding> = bindings.iter()
                                 .map(|b| {
                                     Ok(AuraStyleBinding {
                                         style_name: b.style_name.clone(),
-                                        condition: extract_expr(&b.condition)?,
+                                        condition: b.condition.clone(),
                                     })
                                 })
                                 .collect::<ExtractResult<_>>()?;
@@ -992,11 +699,11 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             })
         }
         ViewNode::Component { name, props, events, span } => {
-            let aura_props: HashMap<String, AuraExpr> = props.iter()
+            let aura_props: HashMap<String, Expr> = props.iter()
                 .filter_map(|p| {
                     match &p.value {
                         ViewPropValue::Expr(expr) => {
-                            Some(extract_expr(expr).map(|v| (p.name.clone(), v)))
+                            Some(Ok((p.name.clone(), expr.clone())))
                         }
                         ViewPropValue::StyleBinding(_) => {
                             // Class bindings not supported for component props
@@ -1065,7 +772,7 @@ fn assign_node_ids_recursive(
             *debug_id = Some(id);
             // Extract user_id from props if present
             let user_id = props.get("id").and_then(|v| match v {
-                crate::aura::types::AuraPropValue::Expr(crate::aura::types::AuraExpr::Literal(s)) => Some(s.clone()),
+                crate::aura::types::AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.as_str().to_string()),
                 _ => None,
             });
             span_map.insert(id, SpanInfo {
@@ -1155,7 +862,7 @@ fn extract_prop_decl(prop: &PropDecl) -> AuraProp {
     AuraProp {
         name: prop.name.as_str().to_string(),
         type_info: prop.ty.clone(),
-        default: prop.default.as_ref().and_then(|e| extract_expr(e).ok()),
+        default: prop.default.clone(),
     }
 }
 
@@ -1167,37 +874,6 @@ fn extract_prop_decl(prop: &PropDecl) -> AuraProp {
 mod tests {
     use super::*;
     use auto_val::AutoStr;
-
-    #[test]
-    fn test_extract_int_expr() {
-        let expr = Expr::Int(42);
-        let aura = extract_expr(&expr).unwrap();
-        assert!(matches!(aura, AuraExpr::Int(n) if n == 42));
-    }
-
-    #[test]
-    fn test_extract_state_ref() {
-        // Test identifier as state reference
-        let expr = Expr::Ident(AutoStr::from("count"));
-        let aura = extract_expr(&expr).unwrap();
-        match aura {
-            AuraExpr::StateRef(name) => assert_eq!(name, "count"),
-            _ => panic!("Expected StateRef"),
-        }
-    }
-
-    #[test]
-    fn test_extract_binary_expr() {
-        let left = Expr::Int(1);
-        let right = Expr::Int(2);
-        let expr = Expr::Bina(Box::new(left), Op::Add, Box::new(right));
-
-        let aura = extract_expr(&expr).unwrap();
-        match aura {
-            AuraExpr::Binary { op, .. } => assert_eq!(op, AuraBinOp::Add),
-            _ => panic!("Expected Binary"),
-        }
-    }
 
     #[test]
     fn test_extract_fstr_bindings() {
@@ -1218,19 +894,5 @@ mod tests {
             AuraNode::Text(AuraTextContent::Literal(s)) => assert_eq!(s, "Hello"),
             _ => panic!("Expected Text node"),
         }
-    }
-
-    #[test]
-    fn test_extract_bin_op() {
-        assert_eq!(extract_bin_op(&Op::Add), AuraBinOp::Add);
-        assert_eq!(extract_bin_op(&Op::Sub), AuraBinOp::Sub);
-        assert_eq!(extract_bin_op(&Op::Eq), AuraBinOp::Eq);
-        assert_eq!(extract_bin_op(&Op::Lt), AuraBinOp::Lt);
-    }
-
-    #[test]
-    fn test_extract_unary_op() {
-        assert_eq!(extract_unary_op(&Op::Sub), AuraUnaryOp::Neg);
-        assert_eq!(extract_unary_op(&Op::Not), AuraUnaryOp::Not);
     }
 }

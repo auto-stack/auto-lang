@@ -9,7 +9,7 @@
 //! - `flow-row` → `FlowRow`
 //! - `flow-col` → `FlowColumn`
 
-use crate::aura::{AuraExpr, AuraPropValue};
+use crate::aura::AuraPropValue;
 use crate::ui_gen::GenResult;
 use std::collections::HashMap;
 
@@ -59,8 +59,8 @@ impl ListGenerator {
     /// Extract string value from prop
     fn extract_string(props: &HashMap<String, AuraPropValue>, key: &str) -> Option<String> {
         props.get(key).and_then(|p| match p {
-            AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
-            AuraPropValue::Expr(AuraExpr::StateRef(s)) => Some(s.clone()),
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+            AuraPropValue::Expr(crate::ast::Expr::Ident(s)) => Some(s.to_string()),
             _ => None,
         })
     }
@@ -68,7 +68,7 @@ impl ListGenerator {
     /// Extract int value from prop
     fn extract_int(props: &HashMap<String, AuraPropValue>, key: &str) -> Option<i64> {
         props.get(key).and_then(|p| match p {
-            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n),
+            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as i64),
             _ => None,
         })
     }
@@ -596,7 +596,7 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("items".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("users".to_string())));
+        props.insert("items".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("users".into())));
 
         let result = gen.generate_lazy_column(&props, "UserItem(user = item)");
         assert!(result.is_ok());
@@ -609,8 +609,8 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("items".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("todos".to_string())));
-        props.insert("key".to_string(), AuraPropValue::Expr(AuraExpr::Literal("item.id".to_string())));
+        props.insert("items".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("todos".into())));
+        props.insert("key".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("item.id".into())));
 
         let result = gen.generate_lazy_column(&props, "TodoItem(todo = item)");
         assert!(result.is_ok());
@@ -623,7 +623,7 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("gap".to_string(), AuraPropValue::Expr(AuraExpr::Int(4)));
+        props.insert("gap".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(4)));
 
         let result = gen.generate_lazy_column(&props, "Text(\"Item\")");
         assert!(result.is_ok());
@@ -647,7 +647,7 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("gap".to_string(), AuraPropValue::Expr(AuraExpr::Int(2)));
+        props.insert("gap".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(2)));
 
         let result = gen.generate_lazy_row(&props, "Chip(text = item)");
         assert!(result.is_ok());
@@ -661,7 +661,7 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("columns".to_string(), AuraPropValue::Expr(AuraExpr::Int(3)));
+        props.insert("columns".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(3)));
 
         let result = gen.generate_lazy_grid(&props, "PhotoItem(photo = item)");
         assert!(result.is_ok());
@@ -675,8 +675,8 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("columns".to_string(), AuraPropValue::Expr(AuraExpr::Int(2)));
-        props.insert("gap".to_string(), AuraPropValue::Expr(AuraExpr::Int(4)));
+        props.insert("columns".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(2)));
+        props.insert("gap".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(4)));
 
         let result = gen.generate_lazy_grid(&props, "Card { item }");
         assert!(result.is_ok());
@@ -713,7 +713,7 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("itemVar".to_string(), AuraPropValue::Expr(AuraExpr::Literal("user".to_string())));
+        props.insert("itemVar".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("user".into())));
 
         let result = gen.generate_lazy_column(&props, "UserItem(u = user)");
         assert!(result.is_ok());
@@ -726,7 +726,7 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("contentType".to_string(), AuraPropValue::Expr(AuraExpr::Literal("todo-item".to_string())));
+        props.insert("contentType".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("todo-item".into())));
 
         let result = gen.generate_lazy_column(&props, "Text(item.title)");
         assert!(result.is_ok());

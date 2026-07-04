@@ -6,8 +6,9 @@ use super::{
     A2UIAction, A2UIComponent, A2UIComponentBody, A2UIContextBinding, A2UIMessage, A2UISurfaceUpdate,
     A2UIValue, A2UIError,
 };
+use crate::ast::Expr;
 use crate::aura::{
-    AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraWidget,
+    AuraEvent, AuraNode, AuraPropValue, AuraTextContent, AuraWidget,
 };
 use std::collections::HashMap;
 
@@ -374,7 +375,7 @@ fn export_element(
 
 fn export_component(
     _name: &str,
-    _props: &HashMap<String, AuraExpr>,
+    _props: &HashMap<String, Expr>,
     _events: &HashMap<String, AuraEvent>,
 ) -> Result<A2UIComponentBody, A2UIError> {
     // Component instances are not directly representable in A2UI v0.8.
@@ -386,16 +387,15 @@ fn export_component(
 // Expression Export
 // ============================================================================
 
-fn export_expr(expr: &AuraExpr) -> Result<A2UIValue, A2UIError> {
+fn export_expr(expr: &Expr) -> Result<A2UIValue, A2UIError> {
     match expr {
-        AuraExpr::Literal(s) => Ok(A2UIValue::string(s.clone())),
-        AuraExpr::Int(n) => Ok(A2UIValue::number(*n as f64)),
-        AuraExpr::Float(f) => Ok(A2UIValue::number(*f)),
-        AuraExpr::Bool(b) => Ok(A2UIValue::bool(*b)),
-        AuraExpr::StateRef(name) => Ok(A2UIValue::path(format!("/ {}", name))),
-        AuraExpr::MsgVariant { msg_type, variant } => {
-            Ok(A2UIValue::string(format!("{}::{}", msg_type, variant)))
-        }
+        Expr::Str(s) => Ok(A2UIValue::string(s.to_string())),
+        Expr::Int(n) => Ok(A2UIValue::number(*n as f64)),
+        Expr::I64(n) => Ok(A2UIValue::number(*n as f64)),
+        Expr::Double(f, _) => Ok(A2UIValue::number(*f)),
+        Expr::Float(f, _) => Ok(A2UIValue::number(*f)),
+        Expr::Bool(b) => Ok(A2UIValue::bool(*b)),
+        Expr::Ident(name) => Ok(A2UIValue::path(format!("/ {}", name))),
         _ => Err(A2UIError::UnsupportedExpression(format!("{:?}", expr))),
     }
 }
@@ -433,7 +433,8 @@ fn parse_options(_value: &A2UIValue) -> Option<Vec<super::A2UISelectOption>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraStateDef, Type};
+    use crate::ast::Expr;
+    use crate::aura::{AuraNode, AuraPropValue, AuraStateDef, Type};
     use std::collections::HashMap;
 
     fn make_counter_widget() -> AuraWidget {
@@ -446,7 +447,7 @@ mod tests {
                     tag: "text".to_string(),
                     props: {
                         let mut m = HashMap::new();
-                        m.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Counter".to_string())));
+                        m.insert("text".to_string(), AuraPropValue::Expr(Expr::Str("Counter".into())));
                         m
                     },
                     events: HashMap::new(),
@@ -458,7 +459,7 @@ mod tests {
                     tag: "button".to_string(),
                     props: {
                         let mut m = HashMap::new();
-                        m.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Increment".to_string())));
+                        m.insert("text".to_string(), AuraPropValue::Expr(Expr::Str("Increment".into())));
                         m
                     },
                     events: {
@@ -480,7 +481,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             }],
             computed: vec![],
