@@ -1027,6 +1027,9 @@ macro_rules! for_each_bigvm_native {
             ("session.set", 2286, Void),
             ("auto.session.destroy", 2287, Void),
             ("session.destroy", 2287, Void),
+            // Plan 352: Middleware chain
+            ("auto.http.server_use", 2288, Void),
+            ("http.server.use", 2288, Void),
 
             // === HTTP response access (2216-2218) ===
             ("auto.http.response.status_code", 2216, Void),
@@ -1693,6 +1696,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("session.set", 2286),
     ("auto.session.destroy", 2287),
     ("session.destroy", 2287),
+    ("auto.http.server_use", 2288),
+    ("http.server.use", 2288),
     ("auto.http.response.status_code", 2216),
     ("auto.http.response.header_get", 2217),
     ("auto.http.response.body", 2218),

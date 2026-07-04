@@ -1323,6 +1323,61 @@ async fn handle_connection_async(
         return;
     }
 
+    // Plan 352: Execute middleware chain before handler.
+    // Each middleware is a VM fn that receives a request-info JSON string.
+    // If it returns a non-empty/non-null value, that becomes the response
+    // (short-circuit). If it returns nil/empty, the handler runs normally.
+    let request_info = format!(
+        r#"{{"method":"{}","path":"{}","content_type":"{}","has_body":{}}}"#,
+        req_method, req_path, content_type, !body.is_empty()
+    );
+    let middleware_names: Vec<String> = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
+        .lock().map(|c| c.clone()).unwrap_or_default();
+    let mut middleware_response: Option<String> = None;
+    for mw_fn in &middleware_names {
+        let mw_task_id = vm.spawn_task(0, 65536);
+        // Push request info as arg.
+        if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
+            if let Ok(mut t) = t_arc.try_lock() {
+                let idx = {
+                    let mut strings = vm.strings.write().unwrap();
+                    let i = strings.len();
+                    strings.push(request_info.as_bytes().to_vec());
+                    i
+                };
+                t.ram.push_nv(auto_val::encode_string(idx as u32));
+            }
+        }
+        let mw_result = if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
+            let mut t = match t_arc.try_lock() { Ok(t) => t, Err(_) => break };
+            match vm.call_fn_by_name(&mut t, mw_fn, 1) {
+                Ok(()) => {
+                    let nv = t.ram.pop_nv();
+                    if auto_val::is_null(nv) { None }
+                    else { nv_to_json(vm, nv, 0) }
+                }
+                Err(_) => None,
+            }
+        } else { None };
+        vm.tasks.remove(&mw_task_id);
+        if let Some(ref resp) = mw_result {
+            if !resp.is_empty() && resp != "null" {
+                middleware_response = Some(resp.clone());
+                break;
+            }
+        }
+    }
+    if let Some(ref mw_resp) = middleware_response {
+        // Middleware short-circuited — return its response directly.
+        eprintln!("[HTTP] {} {} → MW ({}ms)", req_method, req_path, 0);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            mw_resp.len(), mw_resp
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
     // Dispatch to handler via call_fn_by_name (synchronous VM execution).
     // Plan 351 stage 2: Request logging + error handling.
     let request_start = std::time::Instant::now();

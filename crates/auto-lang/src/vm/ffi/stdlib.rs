@@ -2254,6 +2254,9 @@ lazy_static::lazy_static! {
     // Plan 352: Session storage (in-memory, process-lifetime).
     pub(crate) static ref SESSIONS: std::sync::Mutex<std::collections::HashMap<String, String>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
+    // Plan 352: Middleware chain — list of VM fn addresses to execute before handler.
+    pub(crate) static ref MIDDLEWARE_CHAIN: std::sync::Mutex<Vec<String>> =
+        std::sync::Mutex::new(Vec::new());
 }
 
 /// Plan 341: 分配一个新的异步流 id。
@@ -2995,6 +2998,21 @@ pub fn shim_session_destroy(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
         .unwrap_or(false);
 
     task.ram.push_i32(if existed { 1 } else { 0 });
+    Ok(())
+}
+
+/// Plan 352: `http.server.use(middleware_fn_name: String)`
+/// Register a middleware function to run before every handler.
+/// Middleware receives the request path + method as a JSON string argument.
+/// If it returns a non-empty string, that string is used as the response
+/// (short-circuit). If it returns empty/nil, the handler runs normally.
+pub fn shim_http_server_use(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let fn_name: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    if let Ok(mut chain) = MIDDLEWARE_CHAIN.lock() {
+        chain.push(fn_name);
+    }
     Ok(())
 }
 
@@ -5291,6 +5309,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("session.set", shim_session_set);
     natives.register_shim_by_name("auto.session.destroy", shim_session_destroy);
     natives.register_shim_by_name("session.destroy", shim_session_destroy);
+    // Plan 352: Middleware chain
+    natives.register_shim_by_name("auto.http.server_use", shim_http_server_use);
+    natives.register_shim_by_name("http.server.use", shim_http_server_use);
 
     // HTTP client functions (manual shims — heap objects for request/response)
     natives.register_shim_by_name("auto.http.get", shim_http_get);
