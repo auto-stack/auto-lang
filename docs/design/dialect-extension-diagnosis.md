@@ -480,9 +480,22 @@ pub fn synthesize_from_decl(
 #### PR-4 的实际产出
 
 PR-4 降级为**纯审计 + 文档化**（原"巩固 trans 统一"假设不成立）。实际合并工作拆为三个后续 PR，均依赖 PR-5：
-- **PR-4a**：Ark 合并到 TypeScript 路径（复用 `ts_adapter` + Ark 语义适配）
-- **PR-4b**：建 `trans/kotlin.rs`，Jet 接入
-- **PR-4c**：Rust 两套合并分析（需设计方法体模式，最复杂）
+- **PR-4a**（✅ 已完成）：Ark 合并到 TypeScript 路径——新建 `ark_adapter.rs`，handler body 从 TODO 空壳变为真实 ArkTS 翻译
+- **PR-4b**（✅ 已完成）：Jet handler body 翻译——新建 `kotlin_adapter.rs`（完全独立，不委托 trans::typescript）
+- **PR-4c**（✅ 已完成）：Rust 两套合并分析——结论：**不合并**（详见下方）
+
+#### PR-4c 结论：Rust `ui_gen/rust.rs` 与 `trans/rust.rs` 不合并
+
+深度对比后确认分歧是根本性的，可复用代码 **<3%**。四条不兼容轴：
+
+1. **状态模型**：`ui_gen/rust.rs` 用 `self.field` + `state_types`/`prop_names` 查找（`:2474,2746,2789`）；`RustTrans` 发射裸标识符，无状态概念（`trans/rust.rs:1196-1206`）。
+2. **类型系统**：`ui_gen` 全程 `serde_json::Value`（`json!` 宏 + `as_i64`/`as_bool`/`as_str` 启发式访问器，`:2578-2586,2831,2846,2857`）；`RustTrans` 发射原生 Rust 类型（i32/String/Vec&lt;T&gt;），body 中零 serde_json。
+3. **输出契约**：`ui_gen` 返回 `String` 片段（单行、`;`-连接、嵌入已有 fn 体）；`RustTrans` 流式写入 `Sink`（多行缩进、含 `fn main()` 头部、源码行追踪，`:10944` 入口）。
+4. **方法派发**：`ui_gen` 按重建的调用名字符串后缀匹配（`.push`/`.remove`/`.len as i32`/`.findIndex`，`:3001-3045`）；`RustTrans::call()` 做宏逆向 + 模块限定解析（`:2715+`）。
+
+合并需在 `RustTrans` 上加"方法体模式"，复制 `ui_gen` 整个 serde_json/`self.` 状态模型——等于重写，非重构。唯一可提取的共享代码是 ~15-20 行字面量格式化（浮点 `.0` 后缀、`as usize` 转换、Op→符号表），属微清理，不构成合并。
+
+**结论：保持两套独立。`ui_gen/rust.rs` 的 handler body 翻译（`ast_stmt_to_rust`/`ast_expr_to_rust`）是 Rust UI 后端的正当专属实现，不向 `trans/` 收口。**
 
 #### 不变的事实
 
@@ -605,14 +618,14 @@ pub fn validate_handler_stmt(stmt: &Stmt) -> Result<(), UnsupportedKind> {
 
 **后续 PR（依赖 PR-5）**：
 
-| 阶段 | 内容 | 难度 | 前置 |
+| 阶段 | 内容 | 难度 | 状态 |
 |---|---|---|---|
-| **PR-3b VM 完全去中转** | synthesize 直读 WidgetDecl + state 初始化改用基础 Expr + view 树独立提取 + registry 去 AuraWidget | 高 | PR-5 |
-| **PR-4a Ark 合并到 TS** | Ark 复用 `ts_adapter` + Ark 语义适配（`this.count`），消除 `state.rs` 手写并行 | 难 | PR-5 |
-| **PR-4b 建 trans/kotlin.rs** | 新建 `trans/kotlin.rs`（~500-800 行），Jet 接入，消除 `generator.rs` 手写并行 | 中 | PR-5 |
-| **PR-4c Rust 合并分析** | 设计"方法体模式"Rust 翻译，评估 `ui_gen/rust.rs` 与 `trans/rust.rs` 合并可行性 | 难 | PR-5 |
+| **PR-3b VM 完全去中转** | synthesize 直读 WidgetDecl + state 初始化改用基础 Expr | 高 | ✅ 已完成 |
+| **PR-4a Ark handler body** | 新建 `ark_adapter.rs`（委托 trans::typescript），消除 state.rs TODO 空壳 | 中 | ✅ 已完成 |
+| **PR-4b Jet handler body** | 新建 `kotlin_adapter.rs`（完全独立），消除 generator.rs TODO 空壳 | 中 | ✅ 已完成 |
+| **PR-4c Rust 合并分析** | 评估 `ui_gen/rust.rs` 与 `trans/rust.rs` 合并可行性 | — | ✅ 结论：不合并 |
 
-**依赖关系**：PR-5（消除 AuraStmt）是统一 trans 层和 VM 去中转的**共同前置条件**——因为 AuraStmt 是载荷分歧的根因。建议 PR-5 优先于 PR-3b/4a/4b/4c。
+**后续 PR 均已完成。** 四个 UI 生成器的 handler body 翻译现已全部就位：Vue→ts_adapter、Rust→ast_stmt_to_rust（保持独立）、Ark→ark_adapter、Jet→kotlin_adapter。
 
 ---
 
