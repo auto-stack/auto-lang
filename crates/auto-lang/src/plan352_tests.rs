@@ -254,4 +254,85 @@ print(conn)
             Err(e) => eprintln!("plan352 ws error (expected): {:?}", e),
         }
     }
+
+    // ── Template advanced ────────────────────────────────────────────
+
+    #[test]
+    fn test_template_combined() {
+        // Test all three features together: variable + if + each.
+        let code = r#"
+template.compile("page", "<h1>{{title}}</h1>{{#if user}}<p>{{user.name}}</p>{{/if}}<ul>{{#each items}}<li>{{this}}</li>{{/each}}</ul>")
+let html = template.render("page", "{\"title\":\"My Page\",\"user\":{\"name\":\"Alice\"},\"items\":[\"a\",\"b\",\"c\"]}")
+print(html)
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("My Page"), "expected title: [{}]", stdout);
+        assert!(stdout.contains("Alice"), "expected user name: [{}]", stdout);
+        assert!(stdout.contains("<li>a</li>"), "expected list item a: [{}]", stdout);
+        assert!(stdout.contains("<li>c</li>"), "expected list item c: [{}]", stdout);
+    }
+
+    #[test]
+    fn test_template_overwrite() {
+        // Compiling same name twice should use latest version.
+        let code = r#"
+template.compile("t", "version1")
+template.compile("t", "version2")
+let html = template.render("t", "{}")
+print(html)
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("version2"), "expected latest template: [{}]", stdout);
+    }
+
+    // ── Session advanced ─────────────────────────────────────────────
+
+    #[test]
+    fn test_session_multiple() {
+        // Multiple sessions coexist independently.
+        let code = r#"
+let s1 = session.create("{\"id\":1}")
+let s2 = session.create("{\"id\":2}")
+let d1 = session.get(s1)
+let d2 = session.get(s2)
+print(d1)
+print(d2)
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("\"id\":1"), "expected session 1: [{}]", stdout);
+        assert!(stdout.contains("\"id\":2"), "expected session 2: [{}]", stdout);
+    }
+
+    #[test]
+    fn test_session_set_nonexistent() {
+        let code = r#"
+let ok = session.set("fake_id", "{\"x\":1}")
+print(ok)
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("0"), "set nonexistent should fail: [{}]", stdout);
+    }
+
+    // ── tls_client_cert native ───────────────────────────────────────
+
+    #[test]
+    fn test_tls_client_cert_native_exists() {
+        let code = r#"
+let builder = http.request("GET", "https://127.0.0.1:1/test")
+builder.tls_client_cert("/nonexistent/cert.p12", "/nonexistent/key.pem")
+print("ok")
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("ok"), "expected ok: [{}]", stdout);
+    }
 }

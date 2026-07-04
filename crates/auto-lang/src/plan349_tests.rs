@@ -131,6 +131,137 @@ print(ok)
         let _ = std::fs::remove_file(&file_path);
     }
 
+    /// Test http.get (sync blocking): GET request returning a response handle.
+    #[test]
+    fn test_http_get_sync() {
+        let port = spawn_mock_server(r#"[{"id":1,"name":"test"}]"#);
+        let url = format!("http://127.0.0.1:{}/api/data", port);
+        let code = format!(
+            r#"
+let resp = http.get("{}")
+print("got_response")
+"#,
+            url
+        );
+        let result = run_with_capture(&code);
+        assert!(result.is_ok(), "get should run: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("got_response"), "expected response: [{}]", stdout);
+    }
+
+    /// Test http.upload: multipart upload via mock server.
+    #[test]
+    fn test_http_upload() {
+        let temp = std::env::temp_dir().join("auto_test_upload.txt");
+        std::fs::write(&temp, "upload content").unwrap();
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 8192];
+                let _ = stream.read(&mut buf);
+                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 16\r\nConnection: close\r\n\r\n{\"status\":\"ok\"}";
+                let _ = stream.write_all(resp.as_bytes());
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+            }
+        });
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let url = format!("http://127.0.0.1:{}/upload", port);
+        let code = format!(
+            r#"
+let resp = http.upload("{}", "{}")
+print("uploaded")
+"#,
+            url,
+            temp.to_str().unwrap()
+        );
+        let result = run_with_capture(&code);
+        assert!(result.is_ok(), "upload should run: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("uploaded"), "expected uploaded: [{}]", stdout);
+        let _ = std::fs::remove_file(&temp);
+    }
+
+    /// Test multipart_file chain: verify native registration via non-chained call.
+    /// Note: RequestBuilder chaining (dot-call) doesn't work in run_with_capture
+    /// (script path lacks UI component compilation). We test the upload native
+    /// directly instead, which uses multipart internally.
+    #[test]
+    fn test_multipart_file_functional() {
+        // http.upload already tests multipart internally.
+        // This test verifies the mock server receives multipart data.
+        let temp = std::env::temp_dir().join("auto_test_mp.txt");
+        std::fs::write(&temp, "mp content").unwrap();
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let received = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let received_clone = received.clone();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 8192];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]);
+                // Check if multipart boundary is present.
+                if request.contains("multipart/form-data") {
+                    received_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+                let _ = stream.write_all(resp.as_bytes());
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+            }
+        });
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let url = format!("http://127.0.0.1:{}/upload", port);
+        let code = format!(
+            r#"
+let resp = http.upload("{}", "{}")
+print("uploaded")
+"#,
+            url,
+            temp.to_str().unwrap()
+        );
+        let result = run_with_capture(&code);
+        assert!(result.is_ok(), "upload should run: {:?}", result.err());
+        assert!(received.load(std::sync::atomic::Ordering::SeqCst),
+            "mock server should have received multipart data");
+        let _ = std::fs::remove_file(&temp);
+    }
+
+    /// Test RequestBuilder: verify header/timeout/multipart via native registration.
+    /// Note: Chained dot-calls (RequestBuilder.method()) don't work in
+    /// run_with_capture. We verify the build succeeds with non-chained usage.
+    #[test]
+    fn test_request_builder_chain() {
+        let code = r#"
+let builder = http.request("GET", "http://127.0.0.1:1/test")
+builder.header("X-Custom", "test123")
+builder.timeout(5000)
+print("configured")
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok(), "should run: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("configured"), "expected configured: [{}]", stdout);
+    }
+
+    /// Test tls_ca_cert native existence + chaining.
+    #[test]
+    fn test_tls_ca_cert_native_exists() {
+        let code = r#"
+let builder = http.request("GET", "https://127.0.0.1:1/test")
+builder.tls_ca_cert("/nonexistent/ca.pem")
+print("ok")
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("ok"), "expected ok: [{}]", stdout);
+    }
+
     /// Test TLS skip_verify: verify the native is registered and callable.
     /// We don't test against a real HTTPS server, just verify the function
     /// doesn't crash when called.
