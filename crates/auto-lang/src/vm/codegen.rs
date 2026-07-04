@@ -4403,7 +4403,7 @@ impl Codegen {
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else if self.known_module_prefixes.contains(&name_str)
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml")
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi")
                         {
                             // Module prefix from module-level import or built-in stdlib module
                             self.emit(OpCode::CONST_I32);
@@ -5804,7 +5804,7 @@ impl Codegen {
                                 // BUT: if the name is a known local variable (e.g. `json str` parameter),
                                 // treat as instance method call instead of module call
                                 let is_local_var = self.var_types.contains_key(obj_name.as_ref());
-                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex");
+                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi");
                                 if is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions

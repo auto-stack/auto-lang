@@ -16,7 +16,8 @@ thread_local! {
 
 /// Drain and return stashed store composable files (filename, content).
 pub fn drain_store_extra_files() -> Vec<(String, String)> {
-    STORE_EXTRA_FILES.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
+    let result = STORE_EXTRA_FILES.with(|cell| std::mem::take(&mut *cell.borrow_mut()));
+    result
 }
 
 pub fn get_global_runtime() -> Arc<tokio::runtime::Runtime> {
@@ -2706,9 +2707,10 @@ pub fn create_vm_from_abt(abt_text: &str) -> AutoResult<(
     // 6. Load string pool
     vm.load_strings(pkg.string_pool);
 
-    // 7. Register standard native shims
+    // 7. Register standard native shims + all stdlib FFI
     let mut ni = NativeInterface::new();
     ni.register_std_shims();
+    crate::vm::ffi::stdlib::register_stdlib_ffi(&mut ni);
     vm.merge_native_interface(&ni);
 
     // 8. Determine entry point (main export, or start of bytecode)
@@ -4134,6 +4136,9 @@ mod plan341_tests;
 
 #[cfg(test)]
 mod plan349_tests;
+
+#[cfg(test)]
+mod plan352_tests;
 
 // =============================================================================
 // Plan 015: AutoUI Core (feature-gated)

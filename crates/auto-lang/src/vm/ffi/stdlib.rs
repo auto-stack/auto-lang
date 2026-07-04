@@ -3229,7 +3229,6 @@ fn render_template(template: &str, data: &serde_json::Value) -> String {
 fn get_json_value(data: &serde_json::Value, key: &str) -> serde_json::Value {
     let mut current = data;
     for part in key.split('.') {
-        if part == "this" { continue; }
         current = current.get(part).unwrap_or(&serde_json::Value::Null);
     }
     current.clone()
@@ -5559,6 +5558,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Plan 352: Middleware chain
     natives.register_shim_by_name("auto.http.server_use", shim_http_server_use);
     natives.register_shim_by_name("http.server.use", shim_http_server_use);
+    // 'use' is a keyword in Auto, so provide 'middleware' alias.
+    natives.register_shim_by_name("auto.http.server_middleware", shim_http_server_use);
+    natives.register_shim_by_name("http.server.middleware", shim_http_server_use);
     // Plan 352: Template engine (SSR)
     natives.register_shim_by_name("auto.template.compile", shim_template_compile);
     natives.register_shim_by_name("template.compile", shim_template_compile);
