@@ -222,6 +222,7 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
         | OpCode::TYPE_TO_STR | OpCode::TYPE_TO_I32 | OpCode::TYPE_TO_F64
         | OpCode::TYPE_F64_TO_STR | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR
         | OpCode::TYPE_BOOL_TO_STR | OpCode::TYPE_F32_TO_STR
+        | OpCode::POP_HANDLER
             => 0,
 
         OpCode::CONST_U8 | OpCode::POP_N | OpCode::RESERVE_STACK | OpCode::RET
@@ -248,7 +249,7 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
 
         OpCode::LOAD_STR | OpCode::CALL_NAT | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
         | OpCode::STORE_CAPTURED | OpCode::GET_FIELD | OpCode::JMP | OpCode::JMP_IF_Z
-        | OpCode::JMP_IF_NZ | OpCode::IS_VARIANT
+        | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER | OpCode::IS_VARIANT
             => 2,
 
         OpCode::JMP_L | OpCode::JMP_FAR | OpCode::CALL_SPEC => 4,
@@ -325,6 +326,7 @@ fn decode_operands(
         | OpCode::LIST_POP_INT | OpCode::LIST_GET_INT | OpCode::LIST_SET_INT
         | OpCode::GET_ELEM | OpCode::SET_ELEM | OpCode::SET_FIELD | OpCode::SLICE
         | OpCode::PUSH_NIL
+        | OpCode::POP_HANDLER
             => (vec![], 0),
 
         OpCode::CONST_U8 => {
@@ -417,6 +419,12 @@ fn decode_operands(
         }
 
         OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ => {
+            let rel = i16::from_le_bytes([flash.read_u8(ip), flash.read_u8(ip + 1)]);
+            let target = (ip + 2).wrapping_add(rel as usize);
+            (vec![label(target)], 2)
+        }
+        OpCode::PUSH_HANDLER => {
+            // handler_pc: u16 (relative offset to catch handler)
             let rel = i16::from_le_bytes([flash.read_u8(ip), flash.read_u8(ip + 1)]);
             let target = (ip + 2).wrapping_add(rel as usize);
             (vec![label(target)], 2)

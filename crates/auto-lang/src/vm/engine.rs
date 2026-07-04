@@ -908,7 +908,20 @@ impl AutoVM {
         // 6. Execute until closure returns (BP restored to saved_bp)
         let budget = 1_000_000;
         for _ in 0..budget {
-            match self.run_one_instruction(task)? {
+            let step = match self.run_one_instruction(task) {
+                Ok(s) => s,
+                Err(e) => {
+                    // Plan 010 (MS3-A): try/catch interception.
+                    if self.intercept_error(task, &e) {
+                        continue;
+                    }
+                    // Restore state even on error
+                    task.current_closure_id = saved_closure_id;
+                    task.current_fn_n_args = saved_fn_n_args;
+                    return Err(e);
+                }
+            };
+            match step {
                 StepResult::Continue => {
                     if task.bp == saved_bp {
                         break;
@@ -1014,7 +1027,18 @@ impl AutoVM {
         let mut steps = 0u64;
         for _ in 0..budget {
             steps += 1;
-            match self.run_one_instruction(task)? {
+            let step = match self.run_one_instruction(task) {
+                Ok(s) => s,
+                Err(e) => {
+                    // Plan 010 (MS3-A): try/catch interception.
+                    if self.intercept_error(task, &e) {
+                        continue;
+                    }
+                    task.current_fn_n_args = saved_fn_n_args;
+                    return Err(e);
+                }
+            };
+            match step {
                 StepResult::Continue => {
                     if task.bp == saved_bp {
                         break;
@@ -2209,6 +2233,23 @@ impl AutoVM {
                     let b = self.flash.read_u8(task.ip);
                     task.ip += 1;
                     task.ram.push_nv(auto_val::encode_bool(b != 0));
+                }
+                // Plan 010 (MS3-A): push a try/catch handler frame.
+                // Operand: i16 relative offset from the end of this instruction
+                // to the catch handler. Resolved to an absolute IP and recorded.
+                OpCode::PUSH_HANDLER => {
+                    let rel = i16::from_le_bytes([self.flash.read_u8(task.ip), self.flash.read_u8(task.ip + 1)]);
+                    task.ip += 2;
+                    let catch_pc = task.ip.wrapping_add(rel as usize);
+                    task.handler_stack.push(crate::vm::task::HandlerFrame {
+                        catch_pc,
+                        bp: task.bp,
+                        sp: task.ram.sp,
+                    });
+                }
+                // Plan 010 (MS3-A): pop the handler frame on normal try-exit.
+                OpCode::POP_HANDLER => {
+                    task.handler_stack.pop();
                 }
                 OpCode::TYPE_CAST_F64 => {
                     // Always pop i32 and push f32 (1 slot → 1 slot)
@@ -6435,10 +6476,47 @@ impl AutoVM {
                 Ok(StepResult::AwaitFuture { future_id, body_offset }) => {
                     return FrameResult::AwaitFuture { future_id, body_offset };
                 }
-                Err(e) => return FrameResult::Error(e),
+                Err(e) => {
+                    // Plan 010 (MS3-A): try/catch interception.
+                    if self.intercept_error(task, &e) {
+                        continue;
+                    }
+                    return FrameResult::Error(e);
+                }
             }
         }
         FrameResult::BudgetExhausted
+    }
+
+    /// Plan 010 (MS3-A): try/catch interception.
+    ///
+    /// If the task has a handler frame on its stack, the error is caught:
+    /// unwind to the recorded bp/sp, push the error message as a value, and
+    /// jump to the catch handler. Returns `true` if caught (caller continues
+    /// execution), `false` if the error should propagate (caller returns Err).
+    fn intercept_error(&self, task: &mut AutoTask, e: &VMError) -> bool {
+        let Some(handler) = task.handler_stack.pop() else {
+            return false;
+        };
+        let msg = match e {
+            VMError::RuntimeError(m) => m.clone(),
+            other => format!("{:?}", other),
+        };
+        // Unwind the operand stack to the try-entry point. bp is left
+        // unchanged because the try/catch runs in the same frame — restoring
+        // bp here would fool the function-call loop into thinking the
+        // function has returned.
+        task.ram.sp = handler.sp;
+        // Push the error message as a string value for the catch handler to
+        // bind to its parameter. The string is added to the pool at runtime
+        // and its index pushed as a tag.
+        let idx = self.add_string(msg.clone().into_bytes());
+        crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+        task.ip = handler.catch_pc;
+        // Note: do NOT set task.last_error here — the error was caught and is
+        // being handled. extract_autovm_result treats last_error as a fatal
+        // failure, which would wrongly fail an otherwise-successful catch.
+        true
     }
 
     /// Plan 224: Handle AWAIT_FUTURE for a pending future.

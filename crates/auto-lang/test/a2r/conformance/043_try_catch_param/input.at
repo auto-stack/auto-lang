@@ -1,0 +1,13 @@
+// Conformance 043: try catches a runtime error, binds it to param
+fn main() {
+    var a = 10
+    var b = 0
+    try {
+        // division by zero triggers a runtime error
+        var c = a / b
+        print("should not reach")
+    } catch (e) {
+        print("caught")
+    }
+    print("after")
+}

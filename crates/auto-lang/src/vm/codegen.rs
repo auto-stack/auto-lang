@@ -806,6 +806,54 @@ impl Codegen {
                     self.patch_jump(jump);
                 }
             }
+            Stmt::Try(try_stmt) => {
+                // Plan 010 (MS3-A): try/catch codegen.
+                //
+                //   PUSH_HANDLER <catch_pc>   ; install catch frame
+                //   <try body>
+                //   POP_HANDLER               ; normal exit — disarm
+                //   JMP <after>
+                // catch_pc:
+                //   <STORE_LOCAL param | POP> ; bind/ignore the error value
+                //   <catch body>
+                // after:
+                //
+                // On a runtime error mid-body, execute_single_frame pops the
+                // handler frame, restores bp/sp, pushes the error message, and
+                // jumps to catch_pc — so the catch handler's first instruction
+                // must consume that pushed value.
+                self.emit(OpCode::PUSH_HANDLER);
+                let handler_placeholder = self.emit_placeholder_i16();
+
+                // Try body.
+                self.compile_stmt(&Stmt::Block(try_stmt.body.clone()))?;
+
+                // Normal exit: disarm handler and skip catch.
+                self.emit(OpCode::POP_HANDLER);
+                self.emit(OpCode::JMP);
+                let jmp_after = self.emit_placeholder_i16();
+
+                // catch handler entry — patch PUSH_HANDLER to land here.
+                self.patch_jump(handler_placeholder);
+
+                // The error message was pushed onto the stack by the engine.
+                // Bind it to the catch parameter (if any) or pop it.
+                self.push_scope();
+                if let Some(param) = &try_stmt.catch_param {
+                    let idx = self.add_var(param);
+                    self.var_mutability.insert(param.clone(), true);
+                    self.emit_store_loc(idx);
+                } else {
+                    self.emit(OpCode::POP);
+                }
+
+                // Catch body.
+                self.compile_stmt(&Stmt::Block(try_stmt.catch_body.clone()))?;
+                self.pop_scope();
+
+                // after: patch the JMP-over-catch to land here.
+                self.patch_jump(jmp_after);
+            }
             Stmt::Fn(fn_decl) => {
                 // Reset last_expr_type for each function to avoid stale type from previous compilation
                 self.last_expr_type = ObjectType::Void;

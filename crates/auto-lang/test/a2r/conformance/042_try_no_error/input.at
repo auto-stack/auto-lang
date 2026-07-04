@@ -1,0 +1,9 @@
+// Conformance 042: try with no error runs body, skips catch
+fn main() {
+    try {
+        print("in try")
+    } catch {
+        print("in catch")
+    }
+    print("after")
+}

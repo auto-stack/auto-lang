@@ -279,6 +279,11 @@ pub enum OpCode {
     // === Debug ===
     SOURCE_LINE = 0xFE, // line: u16 -> void (Plan 199: record current source line)
     PRINT = 0xF0,
+    // Plan 010 (MS3-A): try/catch exception-table opcodes.
+    // PUSH_HANDLER pushes a catch frame (handler_pc: u16) onto the task's
+    // handler stack. POP_HANDLER pops it on normal try-block exit.
+    PUSH_HANDLER = 0xFD, // handler_pc: u16 -> void
+    POP_HANDLER = 0x8F,  // -> void (pop the most-recent catch frame)
     PUSH_NIL = 0xFB,    // -> nil marker (TAG_NULL in nanbox, i32::MIN+1 otherwise)
     PUSH_BOOL = 0xFC,   // byte: 0|1 -> bool (Plan 336: true bool encoding, not Int)
     HALT = 0xFF,
@@ -348,6 +353,9 @@ impl OpCode {
         0xFC, // PUSH_BOOL
         // Debug/Misc
         0xF0, 0xF1, 0xF2, 0xFE, 0xFF,
+        // Plan 010 (MS3-A): try/catch exception-table opcodes
+        0xFD, // PUSH_HANDLER
+        0x8F, // POP_HANDLER
     ];
 
     pub fn is_valid(v: u8) -> bool {
@@ -529,6 +537,8 @@ impl OpCode {
             Self::STORE_GLOBAL => "store.global",
             Self::SOURCE_LINE => ".line",
             Self::PRINT => "print",
+            Self::PUSH_HANDLER => "push.handler",
+            Self::POP_HANDLER => "pop.handler",
             Self::PUSH_NIL => "push.nil",
             Self::PUSH_BOOL => "push.bool",
             Self::HALT => "halt",
@@ -710,6 +720,8 @@ impl OpCode {
             "store.global" => Some(Self::STORE_GLOBAL),
             ".line" => Some(Self::SOURCE_LINE),
             "print" => Some(Self::PRINT),
+            "push.handler" => Some(Self::PUSH_HANDLER),
+            "pop.handler" => Some(Self::POP_HANDLER),
             "push.nil" => Some(Self::PUSH_NIL),
             "push.bool" => Some(Self::PUSH_BOOL),
             "halt" => Some(Self::HALT),

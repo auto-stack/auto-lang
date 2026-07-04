@@ -96,6 +96,9 @@ pub enum TokenKind {
     Continue,
     Return, // ADDED: return keyword for early returns
     Yield,  // Plan 321: yield keyword for generators
+    Try,    // Plan 010 (MS3-A): try { } catch { }
+    Catch,  // Plan 010 (MS3-A): catch handler
+    While,  // Plan 010 (MS3-A): while (cond) { }
     Is,
     Var,
     In,
@@ -353,6 +356,9 @@ impl Token {
             "else" => Some(TokenKind::Else),
             "for" => Some(TokenKind::For),
             "loop" => Some(TokenKind::Loop), // Plan 200 Task 1.1
+            "while" => Some(TokenKind::While), // Plan 010 (MS3-A)
+            "try" => Some(TokenKind::Try),     // Plan 010 (MS3-A)
+            "catch" => Some(TokenKind::Catch), // Plan 010 (MS3-A)
             "is" => Some(TokenKind::Is),
             "var" => Some(TokenKind::Var),
             "in" => Some(TokenKind::In),

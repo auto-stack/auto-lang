@@ -208,7 +208,7 @@ impl<'a> Disassembler<'a> {
             }
 
             // Jump: i16 offset
-            OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ => {
+            OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER => {
                 let v = i16::from_le_bytes([self.flash.read_u8(ip), self.flash.read_u8(ip + 1)]);
                 let target = (ip + 2) as isize + v as isize;
                 (format!("-> 0x{:04x}", target), 2)
@@ -298,7 +298,8 @@ impl<'a> Disassembler<'a> {
             | OpCode::TYPE_CAST_U64 | OpCode::TYPE_CAST_F64 | OpCode::TYPE_TO_STR
             | OpCode::TYPE_TO_I32 | OpCode::TYPE_TO_F64 | OpCode::TYPE_F64_TO_STR
             | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR | OpCode::TYPE_BOOL_TO_STR
-            | OpCode::TYPE_F32_TO_STR => (String::new(), 0),
+            | OpCode::TYPE_F32_TO_STR
+            | OpCode::POP_HANDLER => (String::new(), 0),
 
             // Closures
             OpCode::CLOSURE => {

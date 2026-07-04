@@ -1003,6 +1003,79 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Plan 010 (MS3-A): `while (cond) { body }` — desugars to a conditional
+    /// `for` (Iter::Cond), identical semantics to `for cond { body }`.
+    fn while_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `while`
+        // Optional parentheses around the condition: `while (cond)` or `while cond`.
+        let had_paren = if self.is_kind(TokenKind::LParen) {
+            self.next();
+            true
+        } else {
+            false
+        };
+        // Skip newlines after `while`/`(` to allow condition on the next line.
+        while self.is_kind(TokenKind::Newline) {
+            self.next();
+        }
+        let condition = self.parse_expr()?;
+        if had_paren {
+            self.expect(TokenKind::RParen)?;
+        }
+        let body = self.body()?;
+        let has_new_line = body.has_new_line;
+        Ok(Stmt::For(For {
+            iter: Iter::Cond,
+            range: condition,
+            body,
+            new_line: has_new_line,
+            init: None,
+        }))
+    }
+
+    /// Plan 010 (MS3-A): `try { body } catch (e) { handler }`.
+    /// `catch` is required; the binding `(e)` is optional.
+    fn try_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `try`
+        let body = self.body()?;
+        let body_new_line = body.has_new_line;
+
+        // `catch` is required.
+        // Skip newlines/semicolons between body and catch.
+        while self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
+            self.next();
+        }
+        self.expect(TokenKind::Catch)?;
+
+        // Optional binding: catch (e) or catch e. None for bare `catch { }`.
+        let mut catch_param: Option<String> = None;
+        let had_paren = if self.is_kind(TokenKind::LParen) {
+            self.next();
+            true
+        } else {
+            false
+        };
+        // If the next token is an identifier, parse the binding name.
+        if had_paren {
+            let name = self.parse_name()?;
+            self.expect(TokenKind::RParen)?;
+            catch_param = Some(name.to_string());
+        } else if self.is_kind(TokenKind::Ident) {
+            let name = self.parse_name()?;
+            catch_param = Some(name.to_string());
+        }
+
+        let catch_body = self.body()?;
+        let catch_new_line = catch_body.has_new_line;
+
+        Ok(Stmt::Try(crate::ast::Try {
+            body,
+            catch_param,
+            catch_body,
+            new_line: body_new_line || catch_new_line,
+        }))
+    }
+
     fn return_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip return keyword
         // Skip newlines after 'return' to allow expression on next line
@@ -3666,6 +3739,8 @@ impl<'a> Parser<'a> {
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
             TokenKind::Loop => self.loop_stmt()?, // Plan 200 Task 1.1
+            TokenKind::While => self.while_stmt()?, // Plan 010 (MS3-A)
+            TokenKind::Try => self.try_stmt()?,    // Plan 010 (MS3-A)
             TokenKind::Is => self.is_stmt()?,
             // Plan 095: Compile-time execution statements
             TokenKind::HashIf => self.hash_if_stmt()?,

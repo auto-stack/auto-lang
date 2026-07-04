@@ -1,0 +1,9 @@
+// Conformance 040: while loop basic
+fn main() {
+    var i = 0
+    while (i < 3) {
+        print(i)
+        i += 1
+    }
+    print("done")
+}

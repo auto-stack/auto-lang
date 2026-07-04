@@ -72,6 +72,21 @@ pub struct AutoTask {
     pub waiting_sse_stream_id: Option<u64>,
     // Plan 349 step 7: HTTP request this task is waiting on (None = not waiting).
     pub waiting_http_request_id: Option<u64>,
+    // Plan 010 (MS3-A): try/catch exception handler stack. Each frame records
+    // the catch handler's absolute instruction pointer; when a runtime error
+    // is raised, the top frame is popped and execution jumps to its pc.
+    pub handler_stack: Vec<HandlerFrame>,
+}
+
+/// Plan 010 (MS3-A): An entry on the task's try/catch handler stack.
+#[derive(Debug, Clone, Copy)]
+pub struct HandlerFrame {
+    /// Absolute IP of the catch handler block.
+    pub catch_pc: usize,
+    /// Base pointer at try-entry, used to restore the stack frame on unwind.
+    pub bp: usize,
+    /// Stack pointer at try-entry, used to truncate any pushed values.
+    pub sp: usize,
 }
 
 impl AutoTask {
@@ -101,6 +116,7 @@ impl AutoTask {
             call_stack: Vec::new(),
             waiting_sse_stream_id: None,
             waiting_http_request_id: None,
+            handler_stack: Vec::new(),
         }
     }
 }

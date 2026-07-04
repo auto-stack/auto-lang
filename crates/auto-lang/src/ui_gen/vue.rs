@@ -2217,9 +2217,11 @@ impl VueGenerator {
                                 value_state_ref = Some(name.clone());
                             }
                             attrs.push(format!(":{}=\"{}\"", key, name));
-                        } else if let AuraPropValue::Expr(AuraExpr::FieldAccess { .. }) = value {
-                            let value_str = self.prop_to_attr_value(value)?;
-                            attrs.push(format!(":{}={}", key, value_str));
+                        } else if let AuraPropValue::Expr(expr) = value {
+                            // Plan 351: ALL expression prop values (FieldAccess,
+                            // Index, etc.) use v-bind with bound JS value (no {{ }}).
+                            let value_str = self.expr_to_vue_bound_value(expr)?;
+                            attrs.push(format!(":{}=\"{}\"", key, value_str));
                         } else {
                             let value_str = self.prop_to_attr_value(value)?;
                             attrs.push(format!("{}={}", key, value_str));
@@ -3010,6 +3012,8 @@ impl VueGenerator {
         // Handle spaced-out .len ( ) from parse_condition_expr
         result = result.replace(" .len ( )", ".length");
         result = result.replace(" len ( )", ".length");
+        // Plan 345 (gap N1): .contains → .includes (JS uses .includes, not .contains)
+        result = result.replace(".contains(", ".includes(");
 
         // Remove leading dot from state references (.count -> count)
         // Pattern: .identifier (at word boundary)
@@ -4090,6 +4094,7 @@ impl VueGenerator {
                 match method.as_str() {
                     "to_string" => Ok(obj_str.clone()),
                     "len" => Ok(format!("{}.length", obj_str)),
+                    "contains" => Ok(format!("{}.includes({})", obj_str, args.iter().map(|a| self.expr_to_vue_bound_value(a)).collect::<Result<Vec<_>, _>>()?.join(", "))),
                     _ => {
                         let args_str: Vec<String> = args.iter()
                             .map(|a| self.expr_to_vue_bound_value(a))

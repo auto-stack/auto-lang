@@ -134,6 +134,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         | OpCode::TYPE_TO_STR | OpCode::TYPE_TO_I32 | OpCode::TYPE_TO_F64
         | OpCode::TYPE_F64_TO_STR | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR
         | OpCode::TYPE_BOOL_TO_STR | OpCode::TYPE_F32_TO_STR
+        | OpCode::POP_HANDLER
             => 0,
 
         OpCode::CONST_U8 | OpCode::POP_N | OpCode::RESERVE_STACK | OpCode::RET
@@ -160,6 +161,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         OpCode::LOAD_STR | OpCode::CALL_NAT | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
         | OpCode::STORE_CAPTURED | OpCode::GET_FIELD | OpCode::JMP | OpCode::JMP_IF_Z
         | OpCode::JMP_IF_NZ
+        | OpCode::PUSH_HANDLER
             => 2,
 
         OpCode::IS_VARIANT => {
@@ -252,6 +254,7 @@ fn emit_operands(
         | OpCode::TYPE_TO_STR | OpCode::TYPE_TO_I32 | OpCode::TYPE_TO_F64
         | OpCode::TYPE_F64_TO_STR | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR
         | OpCode::TYPE_BOOL_TO_STR | OpCode::TYPE_F32_TO_STR
+        | OpCode::POP_HANDLER
             => Ok(()),
 
         OpCode::CONST_U8 | OpCode::POP_N | OpCode::RESERVE_STACK | OpCode::RET
@@ -323,7 +326,8 @@ fn emit_operands(
                 Ok(())
             }
 
-        OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ => {
+        OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ
+        | OpCode::PUSH_HANDLER => {
             let target = operand_label_or_u32(&instr.operands, 0, label_offsets, ResolveType::Rel16)?;
             // Relative offset = target - (current_offset + opcode_size + operand_size)
             let rel = (target as isize) - (offset as isize + 1 + 2);

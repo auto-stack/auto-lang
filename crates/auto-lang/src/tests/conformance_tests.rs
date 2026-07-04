@@ -284,3 +284,20 @@ fn conformance_differential_reproducibility() {
         }
     }
 }
+
+// === Plan 010 (MS3-A): while + try/catch ===
+
+#[test]
+fn conformance_040_while_basic() {
+    run_conformance_test("040_while_basic").unwrap();
+}
+
+#[test]
+fn conformance_042_try_no_error() {
+    run_conformance_test("042_try_no_error").unwrap();
+}
+
+#[test]
+fn conformance_043_try_catch_param() {
+    run_conformance_test("043_try_catch_param").unwrap();
+}
