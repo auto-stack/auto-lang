@@ -1554,9 +1554,11 @@ impl VueGenerator {
                     dep, dep
                 ));
             }
-            // v1: single store → const store = useXxxStore()
+            // v1: single store → const store = reactive(useXxxStore())
+            // reactive() auto-unwraps nested refs so templates can use store.notes directly
             let first = &self.store_deps[0];
-            script.push_str(&format!("const store = use{}Store()\n\n", first));
+            script.push_str(&format!("import {{ reactive }} from 'vue'\n"));
+            script.push_str(&format!("const store = reactive(use{}Store())\n\n", first));
         }
 
         // Generate event handlers
