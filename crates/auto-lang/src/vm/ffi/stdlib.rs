@@ -3005,6 +3005,102 @@ pub fn shim_session_destroy(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 }
 
 // ============================================================================
+// Plan 352: OpenAPI auto-generation
+// ============================================================================
+
+/// Plan 352: `openapi.generate() -> String`
+/// Generate OpenAPI 3.0 JSON spec from registered #[api] routes.
+pub fn shim_openapi_generate(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let routes = get_http_routes();
+    let mut paths = serde_json::Map::new();
+
+    for (method, path, fn_name) in &routes {
+        let method_lower = method.to_lowercase();
+        let openapi_path = convert_path_to_openapi(path);
+
+        let path_entry = paths.entry(openapi_path)
+            .or_insert_with(|| serde_json::json!({}));
+
+        let summary = fn_name.replace('_', " ");
+
+        let mut operation = serde_json::json!({
+            "summary": summary,
+            "operationId": fn_name,
+            "responses": {
+                "200": {"description": "OK"}
+            }
+        });
+
+        // Extract path parameters.
+        let mut params = Vec::new();
+        for segment in path.split('/') {
+            if let Some(param_name) = segment.strip_prefix(':') {
+                params.push(serde_json::json!({
+                    "name": param_name,
+                    "in": "path",
+                    "required": true,
+                    "schema": {"type": "integer"}
+                }));
+            }
+        }
+        if !params.is_empty() {
+            operation["parameters"] = serde_json::Value::Array(params);
+        }
+
+        if method_lower == "post" || method_lower == "put" {
+            operation["requestBody"] = serde_json::json!({
+                "content": {
+                    "application/json": {"schema": {"type": "object"}}
+                }
+            });
+        }
+
+        if let Some(obj) = path_entry.as_object_mut() {
+            obj.insert(method_lower, operation);
+        }
+    }
+
+    let spec = serde_json::json!({
+        "openapi": "3.0.0",
+        "info": {"title": "Auto API", "version": "1.0.0"},
+        "paths": serde_json::Value::Object(paths)
+    });
+
+    let json_str = serde_json::to_string_pretty(&spec).unwrap_or_default();
+    let idx = {
+        let mut strings = _vm.strings.write().unwrap();
+        let i = strings.len();
+        strings.push(json_str.into_bytes());
+        i
+    };
+    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    Ok(())
+}
+
+/// Convert `/api/notes/:id` → `/api/notes/{id}` for OpenAPI.
+fn convert_path_to_openapi(path: &str) -> String {
+    let mut result = String::new();
+    let mut chars = path.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == ':' {
+            let param: String = chars.by_ref()
+                .take_while(|ch| ch.is_alphanumeric() || *ch == '_')
+                .collect();
+            if !param.is_empty() {
+                result.push('{');
+                result.push_str(&param);
+                result.push('}');
+            } else {
+                result.push(':');
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+// ============================================================================
 // Plan 352: Template engine (SSR) natives
 // ============================================================================
 
@@ -5468,6 +5564,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("template.compile", shim_template_compile);
     natives.register_shim_by_name("auto.template.render", shim_template_render);
     natives.register_shim_by_name("template.render", shim_template_render);
+    // Plan 352: OpenAPI auto-generation
+    natives.register_shim_by_name("auto.openapi.generate", shim_openapi_generate);
+    natives.register_shim_by_name("openapi.generate", shim_openapi_generate);
 
     // HTTP client functions (manual shims — heap objects for request/response)
     natives.register_shim_by_name("auto.http.get", shim_http_get);
