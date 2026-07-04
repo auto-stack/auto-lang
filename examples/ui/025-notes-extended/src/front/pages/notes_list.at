@@ -1,5 +1,6 @@
 use store: NotesStore
 use types: Note
+use note_editor: NoteEditor
 
 widget notes_list {
     msg Msg { SetTag(str), SearchChanged, SelectNote(int) }
@@ -18,6 +19,7 @@ widget notes_list {
             }
 
             row {
+                // sidebar list
                 col {
                     input { placeholder: "Search…", value: .search, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg mb-2" }
                     for note in .store.notes {
@@ -30,7 +32,14 @@ widget notes_list {
                             }
                         }
                     }
-                    style: "w-full p-3 gap-1 overflow-y-auto"
+                    style: "w-64 border-r border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
+                }
+                // editor area
+                col {
+                    if .store.notes.len() > 0 {
+                        NoteEditor(note: .store.notes[.store.active_id])
+                    }
+                    style: "flex-1 flex-col"
                 }
                 style: "flex-1"
             }
