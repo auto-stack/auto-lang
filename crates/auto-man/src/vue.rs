@@ -1980,6 +1980,16 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         println!("{}", "No changes detected, using cached files".bright_green());
     }
 
+    // Plan 351: drain stashed store composable files and write them
+    for (filename, content) in auto_lang::drain_store_extra_files() {
+        let stores_dir = output_dir.join("src").join("stores");
+        fs::create_dir_all(&stores_dir).ok();
+        let clean_name = filename.strip_prefix("stores/").unwrap_or(&filename);
+        let path = stores_dir.join(clean_name);
+        fs::write(&path, &content).ok();
+        println!("  ✓ Store composable: {}", path.display());
+    }
+
     // Load project context
     let project = VueProject::from_workspace(root_dir)?;
 
@@ -2141,6 +2151,7 @@ fn compile_at_to_vue(_at_path: &Path, content: &str, root_dir: &Path) -> Result<
     use auto_lang::session::CompilerSession;
     use auto_lang::ui_gen::BackendGenerator;
     use auto_lang::aura::extract_widget_from_decl;
+    use auto_lang::aura::extract_store_from_decl;
 
     let session = CompilerSession::ui().with_backend("vue");
     let mut parser = Parser::from(content);
@@ -2150,10 +2161,28 @@ fn compile_at_to_vue(_at_path: &Path, content: &str, root_dir: &Path) -> Result<
 
     // Extract API imports from `use back.api: ...` statements
     let mut api_imports: Vec<String> = Vec::new();
+    let mut store_deps: Vec<String> = Vec::new();
     for stmt in &ast.stmts {
         if let auto_lang::ast::Stmt::Use(use_stmt) = stmt {
             if is_api_use(use_stmt) {
                 api_imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+            // Plan 351: detect use store: Name
+            if use_stmt.paths.len() == 1 && use_stmt.paths[0].as_str() == "store" {
+                store_deps.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+
+    // Plan 351: extract stores + generate composables
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::StoreDecl(store_decl) = stmt {
+            if let Ok(store) = extract_store_from_decl(store_decl) {
+                let composable = auto_lang::ui_gen::VueGenerator::generate_store_composable(&store);
+                let filename = format!("stores/use{}Store.ts", store.name);
+                auto_lang::STORE_EXTRA_FILES.with(|cell| {
+                    cell.borrow_mut().push((filename, composable));
+                });
             }
         }
     }
@@ -2168,7 +2197,7 @@ fn compile_at_to_vue(_at_path: &Path, content: &str, root_dir: &Path) -> Result<
         }
     }
 
-    if widgets.is_empty() {
+    if widgets.is_empty() && store_deps.is_empty() {
         return Err("No widgets found".to_string());
     }
 
@@ -2181,6 +2210,9 @@ fn compile_at_to_vue(_at_path: &Path, content: &str, root_dir: &Path) -> Result<
     let mut generator = VueGenerator::new().with_mode(auto_lang::ui_gen::VueMode::Shadcn);
     if !api_imports.is_empty() {
         generator = generator.with_project_api_functions(api_imports);
+    }
+    if !store_deps.is_empty() {
+        generator = generator.with_store_deps(store_deps.clone());
     }
     let vue_code = generator.generate(&widgets[0])
         .map_err(|e| e.to_string())?;
@@ -2195,6 +2227,7 @@ fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget
     use auto_lang::session::CompilerSession;
     use auto_lang::ui_gen::BackendGenerator;
     use auto_lang::aura::extract_widget_from_decl;
+    use auto_lang::aura::extract_store_from_decl;
 
     let session = CompilerSession::ui().with_backend("vue");
     let mut parser = Parser::from(content);
@@ -2202,12 +2235,29 @@ fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget
 
     let ast = parser.parse().map_err(|e| format!("Parse error: {:?}", e))?;
 
-    // Extract API imports from `use back.api: ...` statements
+    // Extract API imports + store deps from `use` statements
     let mut api_imports: Vec<String> = Vec::new();
+    let mut store_deps: Vec<String> = Vec::new();
     for stmt in &ast.stmts {
         if let auto_lang::ast::Stmt::Use(use_stmt) = stmt {
             if is_api_use(use_stmt) {
                 api_imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+            if use_stmt.paths.len() == 1 && use_stmt.paths[0].as_str() == "store" {
+                store_deps.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+
+    // Plan 351: extract stores + generate composables
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::StoreDecl(store_decl) = stmt {
+            if let Ok(store) = extract_store_from_decl(store_decl) {
+                let composable = auto_lang::ui_gen::VueGenerator::generate_store_composable(&store);
+                let filename = format!("stores/use{}Store.ts", store.name);
+                auto_lang::STORE_EXTRA_FILES.with(|cell| {
+                    cell.borrow_mut().push((filename, composable));
+                });
             }
         }
     }
@@ -2222,7 +2272,7 @@ fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget
         }
     }
 
-    if widgets.is_empty() {
+    if widgets.is_empty() && store_deps.is_empty() {
         return Err("No widgets found".to_string());
     }
 
@@ -2237,6 +2287,9 @@ fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget
         .with_sub_widgets(sub_widget_names);
     if !api_imports.is_empty() {
         generator = generator.with_project_api_functions(api_imports);
+    }
+    if !store_deps.is_empty() {
+        generator = generator.with_store_deps(store_deps.clone());
     }
     let vue_code = generator.generate(&widgets[0])
         .map_err(|e| e.to_string())?;
