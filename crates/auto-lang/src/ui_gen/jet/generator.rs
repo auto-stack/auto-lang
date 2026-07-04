@@ -361,7 +361,11 @@ fun {}Preview() {{
 
             // Generate the handler body
             let body = match payload {
-                _ => "// TODO: Unsupported payload type".to_string(),
+                LogicPayload::AstStmts(stmts) => {
+                    let ctx = crate::ui_gen::kotlin_adapter::KotlinAdapterCtx::empty();
+                    crate::ui_gen::kotlin_adapter::transpile_handler_body(stmts, &ctx)
+                }
+                LogicPayload::Bytecode(_) => "// Bytecode execution not supported".to_string(),
             };
 
             cases.push(format!("            is Msg.{} -> {{\n                {}\n            }}", variant_name, body));
@@ -717,11 +721,15 @@ fun {}Preview() {{
     /// Convert LogicPayload to Kotlin code
     fn payload_to_kotlin(&self, payload: &LogicPayload) -> GenResult<String> {
         match payload {
-            LogicPayload::AstStmts(_) => {
-                // AstStmts (raw AST) not directly supported in Jet generator
-                Ok("// TODO: lifecycle with raw AST stmts".to_string())
+            LogicPayload::AstStmts(stmts) => {
+                let ctx = crate::ui_gen::kotlin_adapter::KotlinAdapterCtx::empty();
+                Ok(crate::ui_gen::kotlin_adapter::transpile_handler_body(
+                    stmts, &ctx,
+                ))
             }
-            _ => Ok("// TODO: Unsupported payload type".to_string()),
+            LogicPayload::Bytecode(_) => {
+                Ok("// Bytecode execution not supported".to_string())
+            }
         }
     }
 
