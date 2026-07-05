@@ -593,12 +593,14 @@ pub fn shim_shell_export(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 }
 
 /// `exit(code: Int)` — request the script to stop with `code`.
+/// Raises `VMError::ExitRequested` so the current run unwinds immediately;
+/// the host records the code for the process-exit propagation.
 pub fn shim_shell_exit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let code = auto_val::decode_i32(task.ram.pop_nv());
     if let Some(host) = &vm.host {
         host.exit(code);
     }
-    Ok(())
+    Err(VMError::ExitRequested(code))
 }
 
 /// Generic print that handles any value type.

@@ -189,6 +189,10 @@ pub enum VMError {
     RuntimeError(String),
     /// Plan 092: FFI-related errors (library loading, ABI incompatibility, etc.)
     FFI(String),
+    /// Plan 011 (MS3-B): `exit(code)` was called from AutoLang. Carries the
+    /// requested exit code. The embedding shell's run loop treats this as a
+    /// cooperative stop, not a failure.
+    ExitRequested(i32),
 }
 
 /// Result of executing a single VM instruction (used by `run_one_instruction`)
@@ -1450,7 +1454,10 @@ impl AutoVM {
                         };
                         task.last_error = Some(error_msg.clone());
                         // Plan 260: Suppress error output when running in test mode (output_buffer set)
-                        if self.output_buffer.is_none() {
+                        // Plan 011: ExitRequested is a cooperative stop, not a failure — don't log it.
+                        if self.output_buffer.is_none()
+                            && !matches!(e, VMError::ExitRequested(_))
+                        {
                             eprintln!("Task {} Error: {}", task.id, error_msg);
                         }
                         // Plan 199: Print call stack trace on error
@@ -6525,6 +6532,11 @@ impl AutoVM {
     /// jump to the catch handler. Returns `true` if caught (caller continues
     /// execution), `false` if the error should propagate (caller returns Err).
     fn intercept_error(&self, task: &mut AutoTask, e: &VMError) -> bool {
+        // Plan 011: ExitRequested is a cooperative stop, not a catchable
+        // runtime error — it must propagate past try/catch boundaries.
+        if matches!(e, VMError::ExitRequested(_) | VMError::Halt) {
+            return false;
+        }
         let Some(handler) = task.handler_stack.pop() else {
             return false;
         };
