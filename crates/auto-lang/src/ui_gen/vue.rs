@@ -2057,7 +2057,7 @@ impl VueGenerator {
                 // If user provides a class prop on form elements, force native HTML
                 // (e.g., TodoMVC needs <input type="checkbox" class="toggle"> not <Checkbox>)
                 let has_user_class = props.contains_key("class") || props.contains_key("style");
-                let force_native_elements = ["checkbox", "input", "button"];
+                let force_native_elements = ["checkbox", "input", "button", "textarea"];
                 let force_native = has_user_class && force_native_elements.contains(&tag_lower.as_str());
 
                 // Determine HTML tag: when force_native, use plain HTML; otherwise map_tag handles shadcn
@@ -3478,22 +3478,27 @@ impl VueGenerator {
                 }
                 AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
                     // Plan 346: conditional style → Vue :class ternary.
-                    // style: if i == .active_index { "hl" } else { "normal" }
-                    // → :class="i === active_index ? 'hl' : 'normal'"
                     if let Some(branch) = if_stmt.branches.first() {
                         let cond_str = self.expr_to_vue_bound_value(&branch.cond).unwrap_or_else(|_| "false".to_string());
-                        // Extract the string literal from the body's first statement if present
-                        let then_str = branch.body.stmts.iter().find_map(|st| {
-                            if let crate::ast::Stmt::Return(e) = st {
-                                if let crate::ast::Expr::Str(s) = e.as_ref() { Some(s.to_string()) } else { None }
-                            } else { None }
-                        }).unwrap_or_default();
+                        // Extract string from body: check Stmt::Return(Expr::Str),
+                        // Stmt::Expr(Expr::Str), or bare Expr::Str
+                        let extract_str = |stmts: &[crate::ast::Stmt]| -> String {
+                            for st in stmts {
+                                match st {
+                                    crate::ast::Stmt::Return(e) => {
+                                        if let crate::ast::Expr::Str(s) = e.as_ref() { return s.to_string(); }
+                                    }
+                                    crate::ast::Stmt::Expr(e) => {
+                                        if let crate::ast::Expr::Str(s) = e { return s.to_string(); }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            String::new()
+                        };
+                        let then_str = extract_str(&branch.body.stmts);
                         let else_str = if_stmt.else_.as_ref()
-                            .and_then(|body| body.stmts.iter().find_map(|st| {
-                                if let crate::ast::Stmt::Return(e) = st {
-                                    if let crate::ast::Expr::Str(s) = e.as_ref() { Some(s.to_string()) } else { None }
-                                } else { None }
-                            }))
+                            .map(|body| extract_str(&body.stmts))
                             .unwrap_or_default();
                         dynamic_binding = Some(format!("{} ? '{}' : '{}'", cond_str, then_str, else_str));
                     }
