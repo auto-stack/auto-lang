@@ -733,6 +733,392 @@ pub fn shim_eprintln(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+// ============================================================================
+// Plan 353 stages 3-8: fs.entries, buffered writer/reader, seek, async IO,
+// Path object, Scanner
+// ============================================================================
+
+/// `fs.entries(path: String) -> iterator_id`
+/// Stream directory entries (name, is_dir, size). Non-blocking.
+pub fn shim_fs_entries(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let stream_id = alloc_async_id();
+    let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
+    let handle = Arc::new(AsyncStreamHandle {
+        rx: std::sync::Mutex::new(rx),
+        done: std::sync::atomic::AtomicBool::new(false),
+    });
+    let handle_clone = handle.clone();
+
+    std::thread::Builder::new()
+        .name("auto-fs-entries".into())
+        .spawn(move || {
+            let entries = match std::fs::read_dir(&path) {
+                Ok(e) => e,
+                Err(e) => {
+                    let _ = tx.blocking_send(AsyncStreamEvent::Error(e.to_string()));
+                    let _ = tx.blocking_send(AsyncStreamEvent::Done);
+                    handle_clone.done.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
+            for entry_result in entries {
+                match entry_result {
+                    Ok(entry) => {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        let json = format!(
+                            r#"{{"name":"{}","is_dir":{},"size":{}}}"#,
+                            name.replace('"', "\\\""), is_dir, size
+                        );
+                        let _ = tx.blocking_send(AsyncStreamEvent::Data(json));
+                    }
+                    Err(e) => {
+                        let _ = tx.blocking_send(AsyncStreamEvent::Error(e.to_string()));
+                        break;
+                    }
+                }
+            }
+            let _ = tx.blocking_send(AsyncStreamEvent::Done);
+            handle_clone.done.store(true, Ordering::SeqCst);
+        })
+        .expect("spawn fs-entries thread");
+
+    if let Ok(mut map) = IO_STREAMS.lock() {
+        map.insert(stream_id, handle);
+    }
+
+    let async_iter = crate::vm::engine::AsyncStreamIterator { stream_id, done: false };
+    let iter_id = {
+        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        vm.iterators.insert(next_id, crate::vm::engine::Iterator::AsyncHttpStream(async_iter));
+        next_id
+    };
+    task.ram.push_i32(iter_id as i32);
+    Ok(())
+}
+
+/// `io.buffered_writer(path: String) -> handle (i32)`
+/// Create a buffered file writer (BufWriter<File>).
+pub fn shim_io_buffered_writer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let file = std::fs::File::create(&path)
+        .map_err(|e| VMError::RuntimeError(format!("Failed to create {}: {}", path, e)))?;
+    let writer = std::io::BufWriter::new(file);
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+        "BufWriter",
+        std::sync::Mutex::new(writer),
+    );
+    let handle = vm.insert_heap_object(obj) as u32;
+    task.ram.push_nv(auto_val::encode_object(handle));
+    Ok(())
+}
+
+/// `io.buffered_reader(path: String) -> handle (i32)`
+/// Create a buffered file reader (BufReader<File>).
+pub fn shim_io_buffered_reader(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let file = std::fs::File::open(&path)
+        .map_err(|e| VMError::RuntimeError(format!("Failed to open {}: {}", path, e)))?;
+    let reader = std::io::BufReader::new(file);
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+        "BufReader",
+        std::sync::Mutex::new(reader),
+    );
+    let handle = vm.insert_heap_object(obj) as u32;
+    task.ram.push_nv(auto_val::encode_object(handle));
+    Ok(())
+}
+
+/// `BufWriter.write_line(handle: i32, text: String) -> handle`
+/// Write a line to a buffered writer.
+pub fn shim_bufwriter_write_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle: i32 = task.ram.pop_i32();
+
+    use std::io::Write;
+    if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::io::BufWriter<std::fs::File>>>() {
+                if let Ok(mut w) = mutex.lock() {
+                    let _ = writeln!(w, "{}", text);
+                }
+            }
+        }
+    }
+    task.ram.push_i32(handle);
+    Ok(())
+}
+
+/// `BufWriter.flush(handle: i32) -> handle`
+pub fn shim_bufwriter_flush(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i32 = task.ram.pop_i32();
+    use std::io::Write;
+    if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::io::BufWriter<std::fs::File>>>() {
+                if let Ok(mut w) = mutex.lock() {
+                    let _ = w.flush();
+                }
+            }
+        }
+    }
+    task.ram.push_i32(handle);
+    Ok(())
+}
+
+/// `BufReader.read_line(handle: i32) -> String`
+/// Read one line from a buffered reader. Returns "" at EOF.
+pub fn shim_bufreader_read_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i32 = task.ram.pop_i32();
+    use std::io::BufRead;
+    let line = if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::io::BufReader<std::fs::File>>>() {
+                if let Ok(mut r) = mutex.lock() {
+                    let mut s = String::new();
+                    let _ = r.read_line(&mut s);
+                    // Trim trailing newline.
+                    if s.ends_with('\n') { s.pop(); if s.ends_with('\r') { s.pop(); } }
+                    s
+                } else { String::new() }
+            } else { String::new() }
+        } else { String::new() }
+    } else { String::new() };
+
+    let idx = {
+        let mut strings = vm.strings.write().unwrap();
+        let i = strings.len();
+        strings.push(line.into_bytes());
+        i
+    };
+    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    Ok(())
+}
+
+/// `io.open(path: String) -> handle (i32)`
+/// Open a file for random access (seek + read/write).
+pub fn shim_io_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let file = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&path)
+        .map_err(|e| VMError::RuntimeError(format!("Failed to open {}: {}", path, e)))?;
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+        "File",
+        std::sync::Mutex::new(file),
+    );
+    let handle = vm.insert_heap_object(obj) as u32;
+    task.ram.push_nv(auto_val::encode_object(handle));
+    Ok(())
+}
+
+/// `File.seek(handle: i32, offset: i64) -> i64`
+/// Seek to absolute offset. Returns new position.
+pub fn shim_file_seek(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let offset: i64 = task.ram.pop_i32() as i64;
+    let handle: i32 = task.ram.pop_i32();
+    use std::io::{Seek, SeekFrom};
+    let pos = if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::fs::File>>() {
+                if let Ok(mut f) = mutex.lock() {
+                    f.seek(SeekFrom::Start(offset as u64)).unwrap_or(0) as i64
+                } else { 0 }
+            } else { 0 }
+        } else { 0 }
+    } else { 0 };
+    task.ram.push_i32(pos as i32);
+    Ok(())
+}
+
+/// `File.read(handle: i32, count: int) -> String`
+/// Read `count` bytes from file at current position.
+pub fn shim_file_read(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let count: i32 = task.ram.pop_i32();
+    let handle: i32 = task.ram.pop_i32();
+    use std::io::Read;
+    let data = if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::fs::File>>() {
+                if let Ok(mut f) = mutex.lock() {
+                    let mut buf = vec![0u8; count.max(0) as usize];
+                    let n = f.read(&mut buf).unwrap_or(0);
+                    String::from_utf8_lossy(&buf[..n]).to_string()
+                } else { String::new() }
+            } else { String::new() }
+        } else { String::new() }
+    } else { String::new() };
+    let idx = {
+        let mut strings = vm.strings.write().unwrap();
+        let i = strings.len();
+        strings.push(data.into_bytes());
+        i
+    };
+    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    Ok(())
+}
+
+/// `File.position(handle: i32) -> i64`
+/// Get current file position.
+pub fn shim_file_position(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i32 = task.ram.pop_i32();
+    use std::io::Seek;
+    let pos = if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::fs::File>>() {
+                if let Ok(mut f) = mutex.lock() {
+                    f.stream_position().unwrap_or(0) as i64
+                } else { 0 }
+            } else { 0 }
+        } else { 0 }
+    } else { 0 };
+    task.ram.push_i32(pos as i32);
+    Ok(())
+}
+
+/// `Path.new(path: String) -> handle`
+/// Create a Path object for chainable path operations.
+pub fn shim_path_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+        "Path",
+        std::sync::Mutex::new(path),
+    );
+    let handle = vm.insert_heap_object(obj) as u32;
+    task.ram.push_nv(auto_val::encode_object(handle));
+    Ok(())
+}
+
+/// `Path.join(handle: i32, other: String) -> handle`
+/// Join a path component. Returns new Path handle.
+pub fn shim_path_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let other: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle: i32 = task.ram.pop_i32();
+    let new_path = if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<String>>() {
+                if let Ok(p) = mutex.lock() {
+                    std::path::Path::new(&*p).join(&other).to_string_lossy().to_string()
+                } else { other.clone() }
+            } else { other.clone() }
+        } else { other.clone() }
+    } else { other };
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+        "Path", std::sync::Mutex::new(new_path),
+    );
+    let new_handle = vm.insert_heap_object(obj) as u32;
+    task.ram.push_nv(auto_val::encode_object(new_handle));
+    Ok(())
+}
+
+/// `Path.exists(handle: i32) -> bool`
+pub fn shim_path_exists(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i32 = task.ram.pop_i32();
+    let exists = if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<String>>() {
+                if let Ok(p) = mutex.lock() {
+                    std::path::Path::new(&*p).exists()
+                } else { false }
+            } else { false }
+        } else { false }
+    } else { false };
+    task.ram.push_i32(if exists { 1 } else { 0 });
+    Ok(())
+}
+
+/// `Path.to_string(handle: i32) -> String`
+pub fn shim_path_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i32 = task.ram.pop_i32();
+    let path_str = if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<String>>() {
+                if let Ok(p) = mutex.lock() { p.clone() } else { String::new() }
+            } else { String::new() }
+        } else { String::new() }
+    } else { String::new() };
+    let idx = {
+        let mut strings = vm.strings.write().unwrap();
+        let i = strings.len();
+        strings.push(path_str.into_bytes());
+        i
+    };
+    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    Ok(())
+}
+
+/// `io.scanner(path: String, delimiter: String) -> iterator_id`
+/// Stream tokens split by delimiter from a file. Non-blocking.
+pub fn shim_io_scanner(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let delimiter: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let stream_id = alloc_async_id();
+    let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
+    let handle = Arc::new(AsyncStreamHandle {
+        rx: std::sync::Mutex::new(rx),
+        done: std::sync::atomic::AtomicBool::new(false),
+    });
+    let handle_clone = handle.clone();
+
+    std::thread::Builder::new()
+        .name("auto-io-scanner".into())
+        .spawn(move || {
+            use std::io::Read;
+            let mut file = match std::fs::File::open(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    let _ = tx.blocking_send(AsyncStreamEvent::Error(e.to_string()));
+                    let _ = tx.blocking_send(AsyncStreamEvent::Done);
+                    handle_clone.done.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
+            let mut content = String::new();
+            let _ = file.read_to_string(&mut content);
+            for token in content.split(delimiter.as_str()) {
+                let _ = tx.blocking_send(AsyncStreamEvent::Data(token.to_string()));
+            }
+            let _ = tx.blocking_send(AsyncStreamEvent::Done);
+            handle_clone.done.store(true, Ordering::SeqCst);
+        })
+        .expect("spawn io-scanner thread");
+
+    if let Ok(mut map) = IO_STREAMS.lock() {
+        map.insert(stream_id, handle);
+    }
+
+    let async_iter = crate::vm::engine::AsyncStreamIterator { stream_id, done: false };
+    let iter_id = {
+        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        vm.iterators.insert(next_id, crate::vm::engine::Iterator::AsyncHttpStream(async_iter));
+        next_id
+    };
+    task.ram.push_i32(iter_id as i32);
+    Ok(())
+}
+
 /// Spawn an external process and wait for it to complete
 #[auto_macros::rust_fn("Process.spawn")]
 pub fn shim_process_spawn(args: Vec<String>) -> Result<i32, String> {
@@ -5835,6 +6221,32 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("eprint", shim_eprint);
     natives.register_shim_by_name("auto.io.eprintln", shim_eprintln);
     natives.register_shim_by_name("eprintln", shim_eprintln);
+    // Plan 353 stage 3: fs.entries iterator
+    natives.register_shim_by_name("auto.fs.entries", shim_fs_entries);
+    natives.register_shim_by_name("fs.entries", shim_fs_entries);
+    // Plan 353 stage 4: buffered writer/reader
+    natives.register_shim_by_name("auto.io.buffered_writer", shim_io_buffered_writer);
+    natives.register_shim_by_name("io.buffered_writer", shim_io_buffered_writer);
+    natives.register_shim_by_name("auto.io.buffered_reader", shim_io_buffered_reader);
+    natives.register_shim_by_name("io.buffered_reader", shim_io_buffered_reader);
+    natives.register_shim_by_name("BufWriter.write_line", shim_bufwriter_write_line);
+    natives.register_shim_by_name("BufWriter.flush", shim_bufwriter_flush);
+    natives.register_shim_by_name("BufReader.read_line", shim_bufreader_read_line);
+    // Plan 353 stage 5: Seek/random access
+    natives.register_shim_by_name("auto.io.open", shim_io_open);
+    natives.register_shim_by_name("io.open", shim_io_open);
+    natives.register_shim_by_name("File.seek", shim_file_seek);
+    natives.register_shim_by_name("File.read", shim_file_read);
+    natives.register_shim_by_name("File.position", shim_file_position);
+    // Plan 353 stage 7: Path object
+    natives.register_shim_by_name("auto.path.new", shim_path_new);
+    natives.register_shim_by_name("Path.new", shim_path_new);
+    natives.register_shim_by_name("Path.join", shim_path_join);
+    natives.register_shim_by_name("Path.exists", shim_path_exists);
+    natives.register_shim_by_name("Path.to_string", shim_path_to_string);
+    // Plan 353 stage 8: Scanner
+    natives.register_shim_by_name("auto.io.scanner", shim_io_scanner);
+    natives.register_shim_by_name("io.scanner", shim_io_scanner);
 }
 
 // ============================================================================
