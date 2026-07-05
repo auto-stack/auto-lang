@@ -2337,6 +2337,11 @@ impl VueGenerator {
                                 &format!("{{{{ {} }}}}", binding)
                             );
                         }
+                        // Plan 351: strip `self.` prefix from Vue interpolations.
+                        // The view parser emits `self.xxx` for implicit-dot field access,
+                        // but Vue <script setup> has no `self` — props/state are bare names.
+                        vue_text = vue_text.replace("{{ self.", "{{ ");
+                        vue_text = vue_text.replace(".self.", ".");
                         Ok(format!("{}{}\n", ind, vue_text))
                     }
                 }
@@ -4123,6 +4128,13 @@ impl VueGenerator {
                 Ok(resolved.to_string())
             }
             Expr::Dot(object, field) => {
+                // Skip `self.` prefix — the view parser turns `.field` into
+                // `self.field`, but Vue <script setup> has no `self`.
+                if let Expr::Ident(name) = object.as_ref() {
+                    if name == "self" {
+                        return Ok(field.to_string());
+                    }
+                }
                 let object_str = self.expr_to_vue_text_raw(object)?;
                 Ok(format!("{}.{}", object_str, field))
             }
