@@ -1206,6 +1206,16 @@ macro_rules! for_each_bigvm_native {
             ("auto.test.run_vm_dir", 2827, Int),
             ("auto.test.run_a2c_dir", 2828, Int),
             ("auto.test.run_a2ts_dir", 2829, Int),
+            // Plan 353: IO stream natives
+            ("auto.io.lines", 2830, Void),
+            ("io.lines", 2830, Void),
+            ("auto.io.chunks", 2831, Void),
+            ("io.chunks", 2831, Void),
+            // Plan 353: eprint/eprintln
+            ("auto.io.eprint", 2832, Void),
+            ("eprint", 2832, Void),
+            ("auto.io.eprintln", 2833, Void),
+            ("eprintln", 2833, Void),
 
             // === Rust stdlib dispatch (3000) ===
             ("auto.rust_stdlib.dispatch", 3000, Void),
@@ -1843,6 +1853,14 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.test.run_vm_dir", 2827),
     ("auto.test.run_a2c_dir", 2828),
     ("auto.test.run_a2ts_dir", 2829),
+    ("auto.io.lines", 2830),
+    ("io.lines", 2830),
+    ("auto.io.chunks", 2831),
+    ("io.chunks", 2831),
+    ("auto.io.eprint", 2832),
+    ("eprint", 2832),
+    ("auto.io.eprintln", 2833),
+    ("eprintln", 2833),
     ("auto.rust_stdlib.dispatch", 3000),
     ("sleep", 1202),
     ("parse_sse", 2250),

@@ -580,6 +580,159 @@ pub fn shim_io_read_line() -> String {
     line
 }
 
+// ============================================================================
+// Plan 353: IO stream natives (lines/chunks) + eprint/eprintln
+// ============================================================================
+
+/// `io.lines(path: String) -> iterator_id`
+/// Stream lines from a file using BufReader. Non-blocking (Plan 348 yield).
+pub fn shim_io_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let stream_id = alloc_async_id();
+    let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
+    let handle = Arc::new(AsyncStreamHandle {
+        rx: std::sync::Mutex::new(rx),
+        done: std::sync::atomic::AtomicBool::new(false),
+    });
+    let handle_clone = handle.clone();
+
+    std::thread::Builder::new()
+        .name("auto-io-lines".into())
+        .spawn(move || {
+            use std::io::BufRead;
+            let file = match std::fs::File::open(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    let _ = tx.blocking_send(AsyncStreamEvent::Error(e.to_string()));
+                    let _ = tx.blocking_send(AsyncStreamEvent::Done);
+                    handle_clone.done.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
+            let reader = std::io::BufReader::new(file);
+            for line_result in reader.lines() {
+                match line_result {
+                    Ok(line) => {
+                        let _ = tx.blocking_send(AsyncStreamEvent::Data(line));
+                    }
+                    Err(e) => {
+                        let _ = tx.blocking_send(AsyncStreamEvent::Error(e.to_string()));
+                        break;
+                    }
+                }
+            }
+            let _ = tx.blocking_send(AsyncStreamEvent::Done);
+            handle_clone.done.store(true, Ordering::SeqCst);
+        })
+        .expect("spawn io-lines thread");
+
+    if let Ok(mut map) = IO_STREAMS.lock() {
+        map.insert(stream_id, handle);
+    }
+
+    let async_iter = crate::vm::engine::AsyncStreamIterator {
+        stream_id,
+        done: false,
+    };
+    let iter_id = {
+        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        vm.iterators.insert(
+            next_id,
+            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
+        );
+        next_id
+    };
+    task.ram.push_i32(iter_id as i32);
+    Ok(())
+}
+
+/// `io.chunks(path: String, chunk_size: int) -> iterator_id`
+/// Stream fixed-size chunks from a binary file. Non-blocking.
+pub fn shim_io_chunks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let chunk_size: i32 = task.ram.pop_i32();
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let chunk_size = chunk_size.max(1) as usize;
+
+    let stream_id = alloc_async_id();
+    let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
+    let handle = Arc::new(AsyncStreamHandle {
+        rx: std::sync::Mutex::new(rx),
+        done: std::sync::atomic::AtomicBool::new(false),
+    });
+    let handle_clone = handle.clone();
+
+    std::thread::Builder::new()
+        .name("auto-io-chunks".into())
+        .spawn(move || {
+            use std::io::Read;
+            let mut file = match std::fs::File::open(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    let _ = tx.blocking_send(AsyncStreamEvent::Error(e.to_string()));
+                    let _ = tx.blocking_send(AsyncStreamEvent::Done);
+                    handle_clone.done.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
+            let mut buf = vec![0u8; chunk_size];
+            loop {
+                match file.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let chunk_str = String::from_utf8_lossy(&buf[..n]).to_string();
+                        let _ = tx.blocking_send(AsyncStreamEvent::Data(chunk_str));
+                    }
+                    Err(e) => {
+                        let _ = tx.blocking_send(AsyncStreamEvent::Error(e.to_string()));
+                        break;
+                    }
+                }
+            }
+            let _ = tx.blocking_send(AsyncStreamEvent::Done);
+            handle_clone.done.store(true, Ordering::SeqCst);
+        })
+        .expect("spawn io-chunks thread");
+
+    if let Ok(mut map) = IO_STREAMS.lock() {
+        map.insert(stream_id, handle);
+    }
+
+    let async_iter = crate::vm::engine::AsyncStreamIterator {
+        stream_id,
+        done: false,
+    };
+    let iter_id = {
+        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        vm.iterators.insert(
+            next_id,
+            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
+        );
+        next_id
+    };
+    task.ram.push_i32(iter_id as i32);
+    Ok(())
+}
+
+/// `eprint(text: String)` — Write to stderr (no newline).
+pub fn shim_eprint(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    use std::io::Write;
+    let _ = std::io::stderr().write_all(text.as_bytes());
+    Ok(())
+}
+
+/// `eprintln(text: String)` — Write to stderr with newline.
+pub fn shim_eprintln(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    eprintln!("{}", text);
+    Ok(())
+}
+
 /// Spawn an external process and wait for it to complete
 #[auto_macros::rust_fn("Process.spawn")]
 pub fn shim_process_spawn(args: Vec<String>) -> Result<i32, String> {
@@ -2259,6 +2412,9 @@ lazy_static::lazy_static! {
         std::sync::Mutex::new(Vec::new());
     // Plan 352: Template engine — compiled templates (name → template string).
     pub(crate) static ref TEMPLATES: std::sync::Mutex<std::collections::HashMap<String, String>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+    // Plan 353: IO stream channel registry (for io.lines / io.chunks).
+    pub(crate) static ref IO_STREAMS: std::sync::Mutex<std::collections::HashMap<u64, Arc<AsyncStreamHandle>>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
 }
 
@@ -5668,6 +5824,17 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.test.run_vm_dir", shim_test_run_vm_dir);
     natives.register_shim_by_name("auto.test.run_a2c_dir", shim_test_run_a2c_dir);
     natives.register_shim_by_name("auto.test.run_a2ts_dir", shim_test_run_a2ts_dir);
+
+    // Plan 353: IO stream natives
+    natives.register_shim_by_name("auto.io.lines", shim_io_lines);
+    natives.register_shim_by_name("io.lines", shim_io_lines);
+    natives.register_shim_by_name("auto.io.chunks", shim_io_chunks);
+    natives.register_shim_by_name("io.chunks", shim_io_chunks);
+    // Plan 353: eprint/eprintln
+    natives.register_shim_by_name("auto.io.eprint", shim_eprint);
+    natives.register_shim_by_name("eprint", shim_eprint);
+    natives.register_shim_by_name("auto.io.eprintln", shim_eprintln);
+    natives.register_shim_by_name("eprintln", shim_eprintln);
 }
 
 // ============================================================================
