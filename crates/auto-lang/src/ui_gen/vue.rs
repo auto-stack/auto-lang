@@ -1668,12 +1668,15 @@ impl VueGenerator {
         // This handles the case where a sub-widget emits 'Delete' and the parent
         // needs to remove the item from its array (e.g., notes list)
         if self.needs_child_delete_handler {
+            // Find the active index variable name (active_id, active_index, or active_idx)
+            let active_var = self.state_names.iter()
+                .find(|n| n.starts_with("active"))
+                .cloned()
+                .unwrap_or_else(|| "active_id".to_string());
             script.push_str("function handleChildDelete() {\n");
-            // Find the deleted note by matching active_id, then remove from array
-            script.push_str("  const idx = notes.value.findIndex((n: any) => n.id === notes.value[active_id.value]?.id)\n");
-            script.push_str("  if (idx !== -1) notes.value.splice(idx, 1)\n");
-            script.push_str("  if (notes.value.length > 0) {\n");
-            script.push_str("    active_id.value = 0\n");
+            script.push_str(&format!("  if ({}.value < notes.value.length) notes.value.splice({}.value, 1)\n", active_var, active_var));
+            script.push_str(&format!("  if (notes.value.length > 0) {{\n"));
+            script.push_str(&format!("    {}.value = 0\n", active_var));
             script.push_str("  }\n");
             if self.state_names.iter().any(|n| n == "editing") {
                 script.push_str("  editing.value = false\n");
