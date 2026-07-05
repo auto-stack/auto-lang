@@ -3,7 +3,7 @@ use types: Note
 use note_editor: NoteEditor
 
 widget notes_list {
-    msg Msg { SetTag(str), SearchChanged, SelectNote(int) }
+    msg Msg { SetTag(str), SearchChanged, SelectNote(int), DeleteActive }
 
     model { var search str = "" }
 
@@ -39,6 +39,10 @@ widget notes_list {
                     if .store.notes.len() > 0 {
                         NoteEditor(note: .store.notes[.store.active_id])
                     }
+                    button "Delete note" {
+                        onclick: .DeleteActive
+                        style: "ml-auto mr-4 mb-4 px-3 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600"
+                    }
                     style: "flex-1 flex-col"
                 }
                 style: "flex-1"
@@ -51,5 +55,6 @@ widget notes_list {
         .SetTag(tg) -> { store.SetTag(tg) }
         .SearchChanged -> { }
         .SelectNote(id) -> { store.SelectNote(id) }
+        .DeleteActive -> { store.DeleteActive() }
     }
 }

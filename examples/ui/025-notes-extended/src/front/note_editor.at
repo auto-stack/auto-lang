@@ -4,7 +4,7 @@
 use types: Note
 
 widget NoteEditor(note: Note) {
-    msg Msg { Edit, Save, Cancel, EditBody, EditTitle, Delete }
+    msg Msg { Init, Edit, Save, Cancel, EditBody, EditTitle, Delete }
 
     model {
         var editing bool = false
@@ -59,6 +59,13 @@ widget NoteEditor(note: Note) {
     }
 
     on {
+        .Init -> {
+            if .note.title == "" {
+                .edit_title = ""
+                .edit_body = ""
+                .editing = true
+            }
+        }
         .Edit -> {
             .edit_title = .note.title
             .edit_body = .note.body
