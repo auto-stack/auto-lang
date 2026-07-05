@@ -50,6 +50,7 @@ pub mod dep_scanner;
 // Plan 085 Phase 5: Module cache for incremental compilation
 pub mod atom_error;
 pub mod module_cache;
+pub mod host; // Plan 011 (MS3-B): ShellHost bridge for system()/exit()/export()
 pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub mod mcp; // Plan 265: MCP server for AI agent interaction
 pub mod autovm_daemon; // Plan 269: AutoVM daemon (serve/req)

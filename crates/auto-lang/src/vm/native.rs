@@ -508,6 +508,15 @@ pub const NATIVE_MATH_MIN_F: u16 = 1714;
 pub const NATIVE_MATH_MAX_F: u16 = 1715;
 pub const NATIVE_MATH_CLAMP: u16 = 1725;
 
+// Plan 011 (MS3-B): Shell-host bridge natives.
+// system(cmd) -> String, system_status() -> Int, export(k,v), exit(code).
+// These forward to `vm.host` (an Option<SharedHost>). When host is None
+// (pure AutoLang), system returns "" and exit/export are no-ops.
+pub const NATIVE_SHELL_SYSTEM: u16 = 1800;
+pub const NATIVE_SHELL_SYSTEM_STATUS: u16 = 1801;
+pub const NATIVE_SHELL_EXPORT: u16 = 1802;
+pub const NATIVE_SHELL_EXIT: u16 = 1803;
+
 // === Standard Shims ===
 
 /// Plan 177: Helper to print output, captures to buffer if present
@@ -529,6 +538,67 @@ fn vm_write(vm: &AutoVM, s: &str) {
     } else {
         print!("{}", s);
     }
+}
+
+// ============================================================================
+// Plan 011 (MS3-B): Shell-host bridge natives
+// ============================================================================
+
+/// Read a string argument from the stack (tagged string index → text).
+fn pop_string_arg(task: &mut AutoTask, vm: &AutoVM) -> String {
+    let nv = task.ram.pop_nv();
+    if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv) as u16;
+        vm.get_string(idx)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    }
+}
+
+/// `system(cmd: String) -> String` — run a shell command, return its stdout.
+pub fn shim_shell_system(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cmd = pop_string_arg(task, vm);
+    let out = if let Some(host) = &vm.host {
+        host.system(&cmd)
+    } else {
+        String::new()
+    };
+    // Push the result string into the pool and tag-push its index.
+    let idx = vm.add_string(out.into_bytes());
+    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    Ok(())
+}
+
+/// `system_status() -> Int` — exit code of the last `system()` call.
+pub fn shim_shell_system_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let code = if let Some(host) = &vm.host {
+        host.system_status()
+    } else {
+        0
+    };
+    task.ram.push_i32(code);
+    Ok(())
+}
+
+/// `export(key: String, val: String)` — set an environment variable.
+pub fn shim_shell_export(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = pop_string_arg(task, vm);
+    let key = pop_string_arg(task, vm);
+    if let Some(host) = &vm.host {
+        host.export(&key, &val);
+    }
+    Ok(())
+}
+
+/// `exit(code: Int)` — request the script to stop with `code`.
+pub fn shim_shell_exit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let code = auto_val::decode_i32(task.ram.pop_nv());
+    if let Some(host) = &vm.host {
+        host.exit(code);
+    }
+    Ok(())
 }
 
 /// Generic print that handles any value type.

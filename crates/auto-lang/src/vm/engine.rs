@@ -300,6 +300,11 @@ pub struct AutoVM {
 
     // Plan 199: Execution trace collector (None = tracing disabled)
     pub trace: Arc<std::sync::Mutex<Option<crate::vm::trace::TraceCollector>>>,
+
+    // Plan 011 (MS3-B): optional shell host bridge. When set, the
+    // system()/system_status()/export()/exit() natives forward to it.
+    // None for pure-AutoLang use (backward compatible).
+    pub host: Option<crate::host::SharedHost>,
 }
 
 // Plan 124: Future value for async operations
@@ -349,6 +354,14 @@ impl AutoVM {
             native_interface.register(crate::vm::native::NATIVE_STR_STARTS_WITH, crate::vm::native::shim_str_starts_with);
             native_interface.register(crate::vm::native::NATIVE_STR_ENDS_WITH, crate::vm::native::shim_str_ends_with);
             native_interface.register(crate::vm::native::NATIVE_STR_TO_INT, crate::vm::native::shim_str_to_int_nv);
+        }
+
+        // Plan 011 (MS3-B): shell-host bridge natives.
+        {
+            native_interface.register(crate::vm::native::NATIVE_SHELL_SYSTEM, crate::vm::native::shim_shell_system);
+            native_interface.register(crate::vm::native::NATIVE_SHELL_SYSTEM_STATUS, crate::vm::native::shim_shell_system_status);
+            native_interface.register(crate::vm::native::NATIVE_SHELL_EXPORT, crate::vm::native::shim_shell_export);
+            native_interface.register(crate::vm::native::NATIVE_SHELL_EXIT, crate::vm::native::shim_shell_exit);
         }
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
@@ -405,7 +418,19 @@ impl AutoVM {
                 Box::new(crate::vm::debugger::NoOpController)
             )),
             trace: Arc::new(std::sync::Mutex::new(None)),
+            host: None,
         }
+    }
+
+    /// Plan 011 (MS3-B): Install a shell host so that `system()` /
+    /// `system_status()` / `export()` / `exit()` natives forward to it.
+    pub fn set_host(&mut self, host: crate::host::SharedHost) {
+        self.host = Some(host);
+    }
+
+    /// Plan 011: Remove the shell host (pure-AutoLang mode).
+    pub fn clear_host(&mut self) {
+        self.host = None;
     }
 
     /// Decode a tagged value from the VM stack.

@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 
@@ -374,6 +374,11 @@ impl Codegen {
         intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
         intrinsics.insert("panic".to_string(), NATIVE_RUNTIME_PANIC);
+        // Plan 011 (MS3-B): shell-host bridge functions.
+        intrinsics.insert("system".to_string(), NATIVE_SHELL_SYSTEM);
+        intrinsics.insert("system_status".to_string(), NATIVE_SHELL_SYSTEM_STATUS);
+        intrinsics.insert("export".to_string(), NATIVE_SHELL_EXPORT);
+        intrinsics.insert("exit".to_string(), NATIVE_SHELL_EXIT);
 
         // Register return types for native functions (used for type inference in let bindings)
         let _fn_return_types = Self::build_fn_return_types();
@@ -536,6 +541,11 @@ impl Codegen {
         intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
         intrinsics.insert("panic".to_string(), NATIVE_RUNTIME_PANIC);
+        // Plan 011 (MS3-B): shell-host bridge functions.
+        intrinsics.insert("system".to_string(), NATIVE_SHELL_SYSTEM);
+        intrinsics.insert("system_status".to_string(), NATIVE_SHELL_SYSTEM_STATUS);
+        intrinsics.insert("export".to_string(), NATIVE_SHELL_EXPORT);
+        intrinsics.insert("exit".to_string(), NATIVE_SHELL_EXIT);
 
         // Register return types for native functions (used for type inference in let bindings)
         let mut fn_return_types = Self::build_fn_return_types();
@@ -6836,6 +6846,16 @@ impl Codegen {
                     // Track return type for type-aware dispatch (e.g., print choosing STR vs I32)
                     if let Some(ref name) = func_name {
                         if name.starts_with("print") || name == "write" || name == "say" || name.starts_with("assert") {
+                            self.last_expr_type = ObjectType::Void;
+                            self.last_was_native_void = true;
+                        } else if name == "system" {
+                            // Plan 011: system(cmd) -> String
+                            self.last_expr_type = ObjectType::String;
+                        } else if name == "system_status" {
+                            // Plan 011: system_status() -> Int
+                            self.last_expr_type = ObjectType::Int;
+                        } else if name == "exit" || name == "export" {
+                            // Plan 011: void
                             self.last_expr_type = ObjectType::Void;
                             self.last_was_native_void = true;
                         } else if name.ends_with(".to_hex") || name.ends_with(".to_str")
