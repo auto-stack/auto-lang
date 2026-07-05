@@ -1337,18 +1337,14 @@ impl AutoVM {
                     continue;
                 }
 
-                // Plan 348: Wake source 4 — SSE stream data available.
+                // Plan 348: Wake source 4 — SSE/IO stream data available.
                 // Task yielded with Waiting("sse") because the async channel
                 // had no data. Check if data has arrived since then.
+                // Plan 353: Also check IO_STREAMS for io.lines/io.chunks.
                 if let Some(stream_id) = task.waiting_sse_stream_id {
-                    let has_data = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
-                        .lock()
-                        .ok()
-                        .and_then(|map| {
-                            map.get(&stream_id).map(|handle| {
-                                // Channel has data OR future is done (end of stream).
-                                // IMPORTANT: do NOT try_recv here — that would consume
-                                // the data. Use is_empty() to peek without consuming.
+                    let check_stream = |map: &std::sync::Mutex<std::collections::HashMap<u64, Arc<crate::vm::ffi::stdlib::AsyncStreamHandle>>>| -> Option<bool> {
+                        map.lock().ok().and_then(|m| {
+                            m.get(&stream_id).map(|handle| {
                                 let done = handle.done.load(std::sync::atomic::Ordering::SeqCst);
                                 let has_recv = handle.rx.lock()
                                     .map(|rx| !rx.is_empty())
@@ -1356,7 +1352,16 @@ impl AutoVM {
                                 has_recv || done
                             })
                         })
-                        .unwrap_or(true); // Stream gone → wake up (will push -1)
+                    };
+                    // Check HTTP streams first, then IO streams. If neither has
+                    // the stream_id, the stream is gone → wake up (push -1 sentinel).
+                    let has_data = match check_stream(&crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS) {
+                        Some(found) => found,
+                        None => match check_stream(&crate::vm::ffi::stdlib::IO_STREAMS) {
+                            Some(found) => found,
+                            None => true, // Stream gone → wake up
+                        }
+                    };
                     if has_data {
                         task.waiting_sse_stream_id = None;
                         task.status = TaskStatus::Ready;

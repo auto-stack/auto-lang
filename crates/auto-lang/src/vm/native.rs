@@ -2089,6 +2089,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 }
 
                 // Single non-blocking poll of the channel.
+                // Plan 353: Also check IO_STREAMS for io.lines/io.chunks.
                 let event = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
                     .lock()
                     .ok()
@@ -2096,9 +2097,20 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                         map.get(&async_iter.stream_id).and_then(|handle| {
                             handle.rx.lock().ok().and_then(|mut rx| rx.try_recv().ok())
                         })
+                    })
+                    .or_else(|| {
+                        crate::vm::ffi::stdlib::IO_STREAMS
+                            .lock()
+                            .ok()
+                            .and_then(|map| {
+                                map.get(&async_iter.stream_id).and_then(|handle| {
+                                    handle.rx.lock().ok().and_then(|mut rx| rx.try_recv().ok())
+                                })
+                            })
                     });
 
                 // Check if the producing future is done (for end-of-stream detection).
+                // Plan 353: Also check IO_STREAMS.
                 let future_done = crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS
                     .lock()
                     .ok()
@@ -2106,6 +2118,16 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                         map.get(&async_iter.stream_id).map(|handle| {
                             handle.done.load(std::sync::atomic::Ordering::SeqCst)
                         })
+                    })
+                    .or_else(|| {
+                        crate::vm::ffi::stdlib::IO_STREAMS
+                            .lock()
+                            .ok()
+                            .and_then(|map| {
+                                map.get(&async_iter.stream_id).map(|handle| {
+                                    handle.done.load(std::sync::atomic::Ordering::SeqCst)
+                                })
+                            })
                     })
                     .unwrap_or(true);
 
