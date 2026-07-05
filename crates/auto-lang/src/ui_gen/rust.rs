@@ -55,7 +55,7 @@
 //! Based on auto-ui/trans/rust_gen.rs, adapted for AuraWidget input.
 
 use super::{BackendGenerator, GenResult};
-use crate::aura::{AuraEvent, AuraExpr, AuraMsgVariant, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraMsgVariant, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 
 /// Rust/GPUI code generator
 pub struct RustGenerator {
@@ -266,24 +266,32 @@ impl RustGenerator {
     }
 
     /// Check if an expression accesses a field on the given prop name
-    fn expr_accesses_field(&self, expr: &AuraExpr, prop_name: &str) -> bool {
+    fn expr_accesses_field(&self, expr: &crate::ast::Expr, prop_name: &str) -> bool {
+        use crate::ast::Expr;
         match expr {
-            AuraExpr::FieldAccess { object, field: _ } => {
-                if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if name == prop_name {
+            Expr::Dot(object, _field) => {
+                if let Expr::Ident(name) = object.as_ref() {
+                    let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                    if resolved == prop_name {
                         return true;
                     }
                 }
                 self.expr_accesses_field(object, prop_name)
             }
-            AuraExpr::Binary { left, right, .. } => {
+            Expr::Bina(left, _op, right) => {
                 self.expr_accesses_field(left, prop_name) || self.expr_accesses_field(right, prop_name)
             }
-            AuraExpr::MethodCall { object, args, .. } => {
-                self.expr_accesses_field(object, prop_name)
-                    || args.iter().any(|a| self.expr_accesses_field(a, prop_name))
+            Expr::Call(call) => {
+                self.expr_accesses_field(&call.name, prop_name)
+                    || call.args.args.iter().any(|a| {
+                        if let crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) = a {
+                            self.expr_accesses_field(e, prop_name)
+                        } else {
+                            false
+                        }
+                    })
             }
-            AuraExpr::Index { target, index } => {
+            Expr::Index(target, index) => {
                 self.expr_accesses_field(target, prop_name)
                     || self.expr_accesses_field(index, prop_name)
             }
@@ -356,12 +364,12 @@ impl RustGenerator {
             let ty = if matches!(state.type_info, crate::ast::Type::Unknown) {
                 // Infer type from initial expression for untyped state vars
                 match &state.initial {
-                    AuraExpr::Array(_) => "Vec<serde_json::Value>".to_string(),
-                    AuraExpr::Object(_) => "serde_json::Value".to_string(),
-                    AuraExpr::Literal(_) => "String".to_string(),
-                    AuraExpr::Int(_) => "i32".to_string(),
-                    AuraExpr::Float(_) => "f64".to_string(),
-                    AuraExpr::Bool(_) => "bool".to_string(),
+                    crate::ast::Expr::Array(_) => "Vec<serde_json::Value>".to_string(),
+                    crate::ast::Expr::Object(_) => "serde_json::Value".to_string(),
+                    crate::ast::Expr::Str(_) => "String".to_string(),
+                    crate::ast::Expr::Int(_) => "i32".to_string(),
+                    crate::ast::Expr::Float(_, _) | crate::ast::Expr::Double(_, _) => "f64".to_string(),
+                    crate::ast::Expr::Bool(_) => "bool".to_string(),
                     _ => self.auto_type_to_rust(&state.type_info),
                 }
             } else {
@@ -656,7 +664,7 @@ impl RustGenerator {
 
         // Initialize state vars from their defaults
         for state in &widget.state_vars {
-            let init = self.expr_to_rust(&state.initial);
+            let init = self.ast_expr_to_rust(&state.initial);
             code.push_str(&format!("            {}: {},\n", state.name, init));
         }
 
@@ -980,7 +988,7 @@ impl RustGenerator {
 
         for computed_prop in &widget.computed {
             let method_name = &computed_prop.name;
-            let expr_rust = self.expr_to_rust(&computed_prop.expr);
+            let expr_rust = self.ast_expr_to_rust(&computed_prop.expr);
 
             // Generate getter method
             code.push_str(&format!("    pub fn {}(&self) -> impl std::fmt::Display {{\n", method_name));
@@ -1155,11 +1163,11 @@ impl RustGenerator {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
                 if tag == "input" || tag == "textarea" {
-                    if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
                         for (event, handler) in events {
                             if matches!(event.as_str(), "oninput" | "onInput" | "onchange" | "onChange") {
                                 let variant = self.extract_variant_name(&handler.handler);
-                                self.input_fields.entry(variant).or_default().push(name.clone());
+                                self.input_fields.entry(variant).or_default().push(name.to_string());
                             }
                         }
                     }
@@ -1272,22 +1280,22 @@ impl RustGenerator {
                 if tag == "grid" {
                     let cols = props.get("cols").or_else(|| props.get("columns"))
                         .and_then(|v| match v {
-                            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n as usize),
-                            AuraPropValue::Expr(AuraExpr::Literal(s)) => s.trim().parse::<usize>().ok(),
+                            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as usize),
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.trim().parse::<usize>().ok(),
                             _ => None,
                         })
                         .map(|c| c.max(1))
                         .unwrap_or(1);
                     let gap = props.get("gap")
                         .and_then(|v| match v {
-                            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n as u16),
-                            AuraPropValue::Expr(AuraExpr::Literal(s)) => s.trim().parse::<u16>().ok(),
+                            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as u16),
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.trim().parse::<u16>().ok(),
                             _ => None,
                         })
                         .unwrap_or(0);
                     let style_str = props.get("style").or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v {
-                            Some(s.clone())
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                            Some(s.to_string())
                         } else { None })
                         .unwrap_or_default();
 
@@ -1312,25 +1320,25 @@ impl RustGenerator {
                         .filter(|k| *k != "text")
                         .count();
                     if style_count == 0 {
-                        if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("text") {
+                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("text") {
                             if s.contains("${") {
                                 return format!("View::text({})", self.interpolate_str(s));
                             }
                             return format!("View::text(\"{}\".to_string())", s);
                         }
-                        if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("text") {
+                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("text") {
                             return format!("View::text(format!(\"{{}}\", self.{}))", name);
                         }
                     } else {
                         // Text with styling — collect classes and use View::text_styled
                         let class_str = props.get("style")
                             .or_else(|| props.get("class"))
-                            .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                            .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                             .unwrap_or_default();
-                        if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("text") {
+                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("text") {
                             return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, class_str);
                         }
-                        if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("text") {
+                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("text") {
                             if s.contains("${") {
                                 return format!("View::text_styled({}, \"{}\")", self.interpolate_str(s), class_str);
                             }
@@ -1342,20 +1350,20 @@ impl RustGenerator {
                 // Special handling for input elements — View::input(placeholder).value(...).on_change(...)
                 if tag == "input" {
                     let placeholder = props.get("placeholder")
-                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                         .unwrap_or_default();
 
                     let mut builder = format!("View::input(\"{}\")", placeholder);
 
                     // Value binding: value: .field → .value(format!("{}", self.field))
-                    if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
                         builder = format!("{}.value(format!(\"{{}}\", self.{}))", builder, name);
-                    } else if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("value") {
+                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("value") {
                         builder = format!("{}.value(\"{}\".to_string())", builder, s);
                     }
 
                     // Password mode: type: "password"
-                    if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("type") {
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("type") {
                         if s == "password" {
                             builder = format!("{}.password()", builder);
                         }
@@ -1376,8 +1384,8 @@ impl RustGenerator {
                                 let msg_name = self.current_msg_name();
                                 builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 // Record event→field mapping for handler generation
-                                if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
-                                    self.input_fields.entry(variant).or_default().push(name.clone());
+                                if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
+                                    self.input_fields.entry(variant).or_default().push(name.to_string());
                                 }
                             }
                             "onenter" | "onEnter" | "onsubmit" | "onSubmit" => {
@@ -1395,13 +1403,13 @@ impl RustGenerator {
                 // Special handling for textarea elements — View::textarea(placeholder).value(...).on_change(...)
                 if tag == "textarea" {
                     let placeholder = props.get("placeholder")
-                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                         .unwrap_or_default();
 
                     let mut builder = format!("View::textarea(\"{}\")", placeholder);
 
                     // Value binding: value: .field → .value(format!("{}", self.field))
-                    if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
                         builder = format!("{}.value(format!(\"{{}}\", self.{}))", builder, name);
                     }
 
@@ -1418,8 +1426,8 @@ impl RustGenerator {
                                 let variant = self.extract_variant_name(&handler.handler);
                                 let msg_name = self.current_msg_name();
                                 builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
-                                if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
-                                    self.input_fields.entry(variant).or_default().push(name.clone());
+                                if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
+                                    self.input_fields.entry(variant).or_default().push(name.to_string());
                                 }
                             }
                             _ => {}
@@ -1444,7 +1452,7 @@ impl RustGenerator {
                 };
 
                 let text_prop = props.get("text")
-                    .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                    .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                     .or_else(|| {
                         // Fallback: extract literal text from child Text node
                         match &child_text_content {
@@ -1456,7 +1464,7 @@ impl RustGenerator {
 
                 // Check if text prop is a state reference (text .name)
                 let text_state_ref = props.get("text")
-                    .and_then(|v| if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = v { Some(name.clone()) } else { None });
+                    .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = v { Some(name.clone()) } else { None });
 
                 // Generate a Rust expression string for the text prop, handling ALL AuraExpr types.
                 // This catches FieldAccess (note.title), Index, and other dynamic expressions
@@ -1466,7 +1474,7 @@ impl RustGenerator {
                 } else {
                     props.get("text").and_then(|v| {
                         if let AuraPropValue::Expr(expr) = v {
-                            Some(self.expr_to_rust(expr))
+                            Some(self.ast_expr_to_rust(expr))
                         } else {
                             None
                         }
@@ -1476,16 +1484,16 @@ impl RustGenerator {
                 // Handle image element — generate View::image() or View::image_styled()
                 if tag == "image" {
                     let src = props.get("src")
-                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = v {
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = v {
                             Some(format!("format!(\"{{}}\", self.{})", name))
-                        } else if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v {
+                        } else if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
                             Some(format!("\"{}\"", s))
                         } else {
                             None
                         }).unwrap_or_else(|| "\"\"".to_string());
                     let style_str = props.get("style")
                         .or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                         .unwrap_or_default();
                     if style_str.is_empty() {
                         return format!("View::image({})", src);
@@ -1506,21 +1514,21 @@ impl RustGenerator {
 
                 // Handle progress — View::progress_bar(value / max)
                 if tag == "progress" {
-                    let value_expr = if let Some(AuraPropValue::Expr(AuraExpr::StateRef(name))) = props.get("value") {
+                    let value_expr = if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
                         format!("self.{}", name)
-                    } else if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("value") {
-                        s.clone()
+                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("value") {
+                        s.to_string()
                     } else {
                         "0".to_string()
                     };
-                    let max_val = if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("max") {
-                        s.clone()
+                    let max_val = if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("max") {
+                        s.to_string()
                     } else {
                         "100".to_string()
                     };
                     let style_str = props.get("style")
                         .or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                         .unwrap_or_default();
                     if style_str.is_empty() {
                         return format!("View::progress_bar({} as f32 / {} as f32)", value_expr, max_val);
@@ -1536,33 +1544,35 @@ impl RustGenerator {
                     let is_checked = props.get("checked")
                         .or_else(|| props.get("is_checked"))
                         .map(|v| match v {
-                            AuraPropValue::Expr(AuraExpr::Bool(b)) => b.to_string(),
-                            AuraPropValue::Expr(AuraExpr::StateRef(name)) => format!("self.{}", name),
-                            AuraPropValue::Expr(AuraExpr::FieldAccess { object, field }) => {
+                            AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => b.to_string(),
+                            AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => format!("self.{}", name),
+                            AuraPropValue::Expr(crate::ast::Expr::Dot(object, field)) => {
+                                let field = field.clone();
                                 let obj_str = match object.as_ref() {
-                                    AuraExpr::StateRef(name) => {
-                                        if self.is_loop_var(name) && self.value_loop_vars.contains(name) {
-                                            name.clone()
+                                    crate::ast::Expr::Ident(name) => {
+                                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                                        if self.is_loop_var(resolved) && self.value_loop_vars.contains(resolved) {
+                                            resolved.to_string()
                                         } else {
-                                            format!("self.{}", name)
+                                            format!("self.{}", resolved)
                                         }
                                     }
                                     _ => format!("{:?}", object),
                                 };
-                                self.value_field_access(&obj_str, field)
+                                self.value_field_access(&obj_str, field.as_str())
                             }
                             _ => "false".to_string(),
                         })
                         .unwrap_or_else(|| "false".to_string());
                     let label = props.get("label")
                         .or_else(|| props.get("text"))
-                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                         .unwrap_or_default();
 
                     // Parse class/style into Style
                     let class_str = props.get("class")
                         .or_else(|| props.get("style"))
-                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                         .unwrap_or_default();
                     let style_expr = if class_str.is_empty() {
                         "None".to_string()
@@ -1632,7 +1642,7 @@ impl RustGenerator {
                 if self.is_leaf_tag(tag.as_str()) && tag != "button" && (children.is_empty() || child_text_content.is_some()) && has_styling {
                     let user_style = props.get("style")
                         .or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                         .unwrap_or_default();
 
                     // Prepend heading default styles (h1→text-4xl font-bold, etc.)
@@ -1698,7 +1708,7 @@ impl RustGenerator {
                 if tag == "center" {
                     let style_str = props.get("style")
                         .or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(AuraExpr::Literal(s)) = v { Some(s.clone()) } else { None })
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                         .unwrap_or_default();
 
                     // Build children into a col
@@ -1897,7 +1907,7 @@ impl RustGenerator {
                 let msg_name = self.current_msg_name();
                 let mut constructor_args: Vec<String> = Vec::new();
                 for (_key, value) in props {
-                    let rust_expr = self.expr_to_rust(value);
+                    let rust_expr = self.ast_expr_to_rust(value);
                     constructor_args.push(rust_expr);
                 }
                 let args_str = constructor_args.join(", ");
@@ -1951,7 +1961,7 @@ impl RustGenerator {
         for (key, value) in props {
             if key == "style" || key == "class" { continue; }
             if let crate::aura::AuraPropValue::Expr(expr) = value {
-                let rust_expr = self.expr_to_rust(expr);
+                let rust_expr = self.ast_expr_to_rust(expr);
                 constructor_args.push(rust_expr);
             }
         }
@@ -2017,7 +2027,7 @@ impl RustGenerator {
                     for (key, value) in props {
                         if key == "style" || key == "class" { continue; }
                         if let crate::aura::AuraPropValue::Expr(expr) = value {
-                            let rust_expr = self.expr_to_rust(expr);
+                            let rust_expr = self.ast_expr_to_rust(expr);
                             constructor_args.push(rust_expr);
                         }
                     }
@@ -2232,13 +2242,13 @@ impl RustGenerator {
     fn add_prop_to_builder(&self, builder: &str, key: &str, value: &AuraPropValue) -> String {
         match value {
             AuraPropValue::Expr(expr) => {
-                let value_str = self.expr_to_rust(expr);
+                let value_str = self.ast_expr_to_rust(expr);
                 match key {
                     "class" | "className" => {
                         // Plan 346: for Literal strings, use .style("literal");
                         // for dynamic expressions (If/Binary/StateRef), use
                         // .style(expr) without quotes (expr already produces String).
-                        if matches!(expr, AuraExpr::Literal(_)) {
+                        if matches!(expr, crate::ast::Expr::Str(_)) {
                             let class_str = value_str.trim_matches('"')
                                 .trim_end_matches(".to_string()")
                                 .trim_matches('"');
@@ -2254,7 +2264,7 @@ impl RustGenerator {
                     "style" => {
                         // Plan 346: same as class — Literal uses quoted string,
                         // dynamic expressions use unquoted Rust expression.
-                        if matches!(expr, AuraExpr::Literal(_)) {
+                        if matches!(expr, crate::ast::Expr::Str(_)) {
                             let style_str = value_str.trim_matches('"')
                                 .trim_end_matches(".to_string()")
                                 .trim_matches('"');
@@ -2278,7 +2288,7 @@ impl RustGenerator {
                 // Uses .with_style() with Style::parse() for safe string construction.
                 let class_conditions: Vec<String> = bindings.iter()
                     .map(|b| {
-                        let cond = self.expr_to_rust(&b.condition);
+                        let cond = self.ast_expr_to_rust(&b.condition);
                         format!("if {} {{ \"{}\" }} else {{ \"\" }}", cond, b.style_name)
                     })
                     .collect();
@@ -3175,24 +3185,6 @@ impl RustGenerator {
         }
     }
 
-    /// Generate a json!()-compatible value from AuraExpr (strings without .to_string())
-    fn expr_to_json_value(&self, expr: &AuraExpr) -> String {
-        match expr {
-            AuraExpr::Literal(s) => format!("\"{}\"", s),
-            AuraExpr::Int(n) => n.to_string(),
-            AuraExpr::Float(n) => n.to_string(),
-            AuraExpr::Bool(b) => b.to_string(),
-            AuraExpr::StateRef(name) => format!("self.{}", name),
-            AuraExpr::Object(fields) => {
-                let pairs: Vec<String> = fields.iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k, self.expr_to_json_value(v)))
-                    .collect();
-                format!("serde_json::json!({{{}}})", pairs.join(", "))
-            }
-            _ => self.expr_to_rust(expr),
-        }
-    }
-
     /// Convert a dotted target path to Rust, using index access for Value-type vars
     /// e.g., "note.title" → "self.note[\"title\"]" when note is a Value prop
     fn convert_target_to_rust(&self, target: &str) -> String {
@@ -3205,198 +3197,6 @@ impl RustGenerator {
             }
         }
         format!("self.{}", target)
-    }
-
-    /// Convert AuraExpr to Rust
-    fn expr_to_rust(&self, expr: &AuraExpr) -> String {
-        match expr {
-        AuraExpr::If { cond, then_branch, else_branch } => {
-                let cond_str = self.expr_to_rust(cond);
-                let then_str = self.expr_to_rust(then_branch);
-                match else_branch {
-                    Some(else_expr) => {
-                        let else_str = self.expr_to_rust(else_expr);
-                        format!("if {} {{ {} }} else {{ {} }}", cond_str, then_str, else_str)
-                    }
-                    None => format!("if {} {{ {} }} else {{ \"\".to_string() }}", cond_str, then_str),
-                }
-            }
-            AuraExpr::Literal(s) => format!("\"{}\".to_string()", s),
-            AuraExpr::Int(n) => n.to_string(),
-            AuraExpr::Float(n) => {
-                let s = n.to_string();
-                if s.contains('.') { s } else { format!("{}.0", n) }
-            }
-            AuraExpr::Bool(b) => b.to_string(),
-            AuraExpr::StateRef(name) => {
-                // Plan 346: loop variables (for i, note in ...) are locals,
-                // not state fields — don't prefix with self.
-                if self.loop_vars.contains(&name.to_string()) {
-                    name.to_string()
-                } else {
-                    format!("self.{}", name)
-                }
-            }
-            AuraExpr::Binary { left, op, right } => {
-                // Detect string concatenation: use format! instead of +
-                // because Rust's + only works with String + &str, not String + String
-                let is_string_concat = matches!(op, crate::aura::AuraBinOp::Add) && (
-                    matches!(left.as_ref(), AuraExpr::Literal(_))
-                    || matches!(right.as_ref(), AuraExpr::Literal(_))
-                    || self.expr_is_string(left)
-                    || self.expr_is_string(right)
-                );
-                if is_string_concat {
-                    let left_str = self.expr_to_rust_no_to_string(left);
-                    let right_str = self.expr_to_rust_no_to_string(right);
-                    return format!("format!(\"{{}}{{}}\", {}, {})", left_str, right_str);
-                }
-                let left_str = self.expr_to_rust(left);
-                let right_str = self.expr_to_rust(right);
-                let op_str = self.bin_op_to_rust(op);
-                format!("{} {} {}", left_str, op_str, right_str)
-            }
-            AuraExpr::Unary { op, operand } => {
-                let operand_str = self.expr_to_rust(operand);
-                let op_str = match op {
-                    crate::aura::AuraUnaryOp::Neg => "-",
-                    crate::aura::AuraUnaryOp::Not => "!",
-                };
-                format!("{}{}", op_str, operand_str)
-            }
-            AuraExpr::MsgVariant { msg_type, variant } => {
-                format!("{}::{}", msg_type, variant)
-            }
-            AuraExpr::MethodCall { object, method, args } => {
-                let object_str = self.expr_to_rust(object);
-                let args_str: Vec<String> = args.iter()
-                    .map(|a| self.expr_to_rust(a))
-                    .collect();
-                // Convert .len to .len() as i32 for Rust (AURA uses i32 for lengths)
-                if method == "len" && args.is_empty() {
-                    format!("{}.len() as i32", object_str)
-                } else if method == "remove" {
-                    // .remove() takes usize — cast args
-                    let casted_args: Vec<String> = args_str.iter()
-                        .map(|a| format!("{} as usize", a))
-                        .collect();
-                    format!("{}.{}({})", object_str, method, casted_args.join(", "))
-                } else if method == "filter" {
-                    // filter takes a closure
-                    format!("{}.{}({})", object_str, method, args_str.join(", "))
-                } else {
-                    format!("{}.{}({})", object_str, method, args_str.join(", "))
-                }
-            }
-            AuraExpr::Array(elems) => {
-                let elems_str: Vec<String> = elems.iter()
-                    .map(|e| self.expr_to_rust(e))
-                    .collect();
-                format!("vec![{}]", elems_str.join(", "))
-            }
-            AuraExpr::Object(fields) => {
-                let pairs: Vec<String> = fields.iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k, self.expr_to_json_value(v)))
-                    .collect();
-                format!("serde_json::json!({{{}}})", pairs.join(", "))
-            }
-            AuraExpr::Lambda { params, body } => {
-                let body_str = self.expr_to_rust(body);
-                format!("|{}| {}", params.join(", "), body_str)
-            }
-            AuraExpr::FieldAccess { object, field } => {
-                // Check if object is a loop variable FIRST (before computing object_str)
-                // to avoid generating self.note when it should be just note
-                if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if self.value_loop_vars.contains(name) {
-                        // Loop variable is &serde_json::Value — use index access
-                        // Use just the name (not self.name) since it's a closure param
-                        return self.value_field_access(name, field);
-                    }
-                }
-                let object_str = self.expr_to_rust(object);
-                // Check if object is a Value-type state variable needing index access
-                if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if self.needs_index_access(name) {
-                        // Reading from serde_json::Value: use index + type conversion
-                        return self.value_field_access(&object_str, field);
-                    }
-                }
-                format!("{}.{}", object_str, field)
-            }
-            AuraExpr::NavCall { path, params } => {
-                let params_str: Vec<String> = params.iter()
-                    .map(|(k, v)| format!("{}: {}", k, self.expr_to_rust(v)))
-                    .collect();
-                format!("nav_to(\"{}\", {{ {} }})", path, params_str.join(", "))
-            }
-            AuraExpr::Constructor { type_name, args } => {
-                let args_str: Vec<String> = args.iter()
-                    .map(|a| self.expr_to_rust(a))
-                    .collect();
-                format!("{}::new({})", type_name, args_str.join(", "))
-            }
-            AuraExpr::Index { target, index } => {
-                let target_str = self.expr_to_rust(target);
-                let index_str = self.expr_to_rust(index);
-                // Vec indexing requires usize — add cast if index is an i32 expression
-                let index_cast = if index_str.starts_with("self.") {
-                    // Likely an i32 state var, cast to usize
-                    format!("{} as usize", index_str)
-                } else {
-                    index_str
-                };
-                format!("{}[{}].clone()", target_str, index_cast)
-            }
-        }
-    }
-
-    /// Check if an AuraExpr produces a String type (for detecting string concatenation)
-    fn expr_is_string(&self, expr: &AuraExpr) -> bool {
-        match expr {
-            AuraExpr::Literal(_) => true,
-            AuraExpr::StateRef(name) => {
-                self.state_types.get(name).map_or(false, |ty| ty == "String")
-            }
-            AuraExpr::Binary { left, op, right } => {
-                // If this is an Add chain that produced a string, it's still string
-                matches!(op, crate::aura::AuraBinOp::Add)
-                    && (self.expr_is_string(left) || self.expr_is_string(right))
-            }
-            AuraExpr::MethodCall { method, .. } => {
-                matches!(method.as_str(), "to_string" | "trim" | "replace" | "to_lowercase" | "to_uppercase")
-            }
-            _ => false,
-        }
-    }
-
-    /// Same as expr_to_rust but without appending .to_string() to Literal values
-    /// Used inside format!() where &str is fine
-    fn expr_to_rust_no_to_string(&self, expr: &AuraExpr) -> String {
-        match expr {
-            AuraExpr::Literal(s) => format!("\"{}\"", s),
-            // For everything else, delegate to expr_to_rust
-            _ => self.expr_to_rust(expr),
-        }
-    }
-
-    /// Convert binary operator to Rust
-    fn bin_op_to_rust(&self, op: &crate::aura::AuraBinOp) -> &'static str {
-        match op {
-            crate::aura::AuraBinOp::Add => "+",
-            crate::aura::AuraBinOp::Sub => "-",
-            crate::aura::AuraBinOp::Mul => "*",
-            crate::aura::AuraBinOp::Div => "/",
-            crate::aura::AuraBinOp::Mod => "%",
-            crate::aura::AuraBinOp::Eq => "==",
-            crate::aura::AuraBinOp::Ne => "!=",
-            crate::aura::AuraBinOp::Lt => "<",
-            crate::aura::AuraBinOp::Le => "<=",
-            crate::aura::AuraBinOp::Gt => ">",
-            crate::aura::AuraBinOp::Ge => ">=",
-            crate::aura::AuraBinOp::And => "&&",
-            crate::aura::AuraBinOp::Or => "||",
-        }
     }
 
     /// Convert Auto type to Rust type
@@ -3670,7 +3470,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: crate::ast::Expr::Int(0),
                 decorators: vec![],
             }],
             messages: vec![AuraMessage {
@@ -3717,12 +3517,11 @@ mod tests {
     }
 
     #[test]
-    fn test_expr_to_rust() {
+    fn test_ast_expr_to_rust() {
         let gen = RustGenerator::new();
 
-        assert_eq!(gen.expr_to_rust(&AuraExpr::Int(42)), "42");
-        assert_eq!(gen.expr_to_rust(&AuraExpr::Bool(true)), "true");
-        assert_eq!(gen.expr_to_rust(&AuraExpr::StateRef("count".to_string())), "self.count");
+        assert_eq!(gen.ast_expr_to_rust(&crate::ast::Expr::Int(42)), "42");
+        assert_eq!(gen.ast_expr_to_rust(&crate::ast::Expr::Bool(true)), "true");
     }
 
     #[test]
@@ -3855,7 +3654,7 @@ mod tests {
     fn test_text_element_with_text_prop() {
         // text "Hello, World!" parsed as Element { tag: "text", props: { text: "Hello, World!" } }
         let node = AuraNode::element("text")
-            .with_prop("text", AuraExpr::Literal("Hello, World!".to_string()));
+            .with_prop("text", crate::ast::Expr::Str("Hello, World!".into()));
 
         let mut gen = RustGenerator::new();
         let code = gen.generate_view_tree(&node);

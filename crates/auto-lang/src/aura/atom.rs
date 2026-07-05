@@ -301,39 +301,60 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
 }
 
 /// Serialize an expression
-fn serialize_expr(expr: &AuraExpr, output: &mut String) {
+fn serialize_expr(expr: &crate::ast::Expr, output: &mut String) {
+    use crate::ast::Expr;
     match expr {
-        AuraExpr::Literal(s) => output.push_str(&format!("\"{}\"", escape_string(s))),
-        AuraExpr::Int(n) => output.push_str(&n.to_string()),
-        AuraExpr::Float(n) => output.push_str(&n.to_string()),
-        AuraExpr::Bool(b) => output.push_str(&b.to_string()),
-        AuraExpr::StateRef(name) => output.push_str(&format!("State(\"{}\")", name)),
-        AuraExpr::MsgVariant { msg_type, variant } => {
-            output.push_str(&format!("Msg(\"{}::{}\")", msg_type, variant));
-        }
-        AuraExpr::Binary { left, op, right } => {
+        Expr::Str(s) | Expr::CStr(s) => output.push_str(&format!("\"{}\"", escape_string(s.as_str()))),
+        Expr::Int(n) => output.push_str(&n.to_string()),
+        Expr::Float(n, _) | Expr::Double(n, _) => output.push_str(&n.to_string()),
+        Expr::Bool(b) => output.push_str(&b.to_string()),
+        Expr::Ident(name) => output.push_str(&format!("State(\"{}\")", name)),
+        Expr::Bina(left, op, right) => {
             output.push_str("Binary(");
             serialize_expr(left, output);
             output.push_str(&format!(", {:?}, ", op));
             serialize_expr(right, output);
             output.push_str(")");
         }
-        AuraExpr::Unary { op, operand } => {
+        Expr::Unary(op, operand) => {
             output.push_str(&format!("Unary({:?}, ", op));
             serialize_expr(operand, output);
             output.push_str(")");
         }
-        AuraExpr::MethodCall { object, method, args } => {
-            output.push_str("MethodCall(");
-            serialize_expr(object, output);
-            output.push_str(&format!(", \"{}\", [", method));
-            for (i, arg) in args.iter().enumerate() {
-                if i > 0 { output.push_str(", "); }
-                serialize_expr(arg, output);
+        Expr::Call(call) => {
+            if let Expr::Dot(object, method) = call.name.as_ref() {
+                output.push_str("MethodCall(");
+                serialize_expr(object, output);
+                output.push_str(&format!(", \"{}\", [", method));
+                let args: Vec<&crate::ast::Expr> = call.args.args.iter()
+                    .filter_map(|a| match a {
+                        crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e),
+                        _ => None,
+                    })
+                    .collect();
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 { output.push_str(", "); }
+                    serialize_expr(arg, output);
+                }
+                output.push_str("])");
+            } else {
+                output.push_str("Call(");
+                serialize_expr(&call.name, output);
+                output.push_str(", [");
+                let args: Vec<&crate::ast::Expr> = call.args.args.iter()
+                    .filter_map(|a| match a {
+                        crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e),
+                        _ => None,
+                    })
+                    .collect();
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 { output.push_str(", "); }
+                    serialize_expr(arg, output);
+                }
+                output.push_str("])");
             }
-            output.push_str("])");
         }
-        AuraExpr::Array(elems) => {
+        Expr::Array(elems) => {
             output.push_str("Array([");
             for (i, elem) in elems.iter().enumerate() {
                 if i > 0 { output.push_str(", "); }
@@ -341,59 +362,63 @@ fn serialize_expr(expr: &AuraExpr, output: &mut String) {
             }
             output.push_str("])");
         }
-        AuraExpr::Object(fields) => {
+        Expr::Object(pairs) => {
             output.push_str("Object({");
-            for (i, (key, value)) in fields.iter().enumerate() {
+            for (i, p) in pairs.iter().enumerate() {
                 if i > 0 { output.push_str(", "); }
-                output.push_str(&format!("\"{}\": ", key));
-                serialize_expr(value, output);
+                output.push_str(&format!("\"{}\": ", p.key));
+                serialize_expr(&p.value, output);
             }
             output.push_str("})");
         }
-        AuraExpr::Lambda { params, body } => {
+        Expr::Closure(closure) => {
+            let params: Vec<String> = closure.params.iter().map(|p| p.name.to_string()).collect();
             output.push_str(&format!("Lambda({:?}, ", params));
-            serialize_expr(body, output);
+            serialize_expr(&closure.body, output);
             output.push_str(")");
         }
-        AuraExpr::FieldAccess { object, field } => {
+        Expr::Dot(object, field) => {
             output.push_str("FieldAccess(");
             serialize_expr(object, output);
             output.push_str(&format!(", \"{}\")", field));
         }
-        AuraExpr::NavCall { path, params } => {
-            output.push_str(&format!("NavCall(\"{}\", {{", path));
-            for (i, (key, value)) in params.iter().enumerate() {
+        Expr::NavCall { path, params } => {
+            output.push_str("NavCall(");
+            serialize_expr(path, output);
+            output.push_str(", {");
+            for (i, p) in params.iter().enumerate() {
                 if i > 0 { output.push_str(", "); }
-                output.push_str(&format!("\"{}\": ", key));
-                serialize_expr(value, output);
+                output.push_str(&format!("\"{}\": ", p.key));
+                serialize_expr(&p.value, output);
             }
             output.push_str("})");
         }
-        AuraExpr::Constructor { type_name, args } => {
-            output.push_str(&format!("Constructor(\"{}\", [", type_name));
-            for (i, arg) in args.iter().enumerate() {
-                if i > 0 { output.push_str(", "); }
-                serialize_expr(arg, output);
-            }
-            output.push_str("])");
-        }
-        AuraExpr::Index { target, index } => {
+        Expr::Index(target, index) => {
             output.push_str("Index(");
             serialize_expr(target, output);
             output.push_str(", ");
             serialize_expr(index, output);
             output.push_str(")");
         }
-        AuraExpr::If { cond, then_branch, else_branch } => {
-            output.push_str("If(");
-            serialize_expr(cond, output);
-            output.push_str(", ");
-            serialize_expr(then_branch, output);
-            if let Some(eb) = else_branch {
+        Expr::If(if_stmt) => {
+            if let Some(branch) = if_stmt.branches.first() {
+                output.push_str("If(");
+                serialize_expr(&branch.cond, output);
                 output.push_str(", ");
-                serialize_expr(eb, output);
+                // Body - serialize first return statement's expr if present
+                if let Some(crate::ast::Stmt::Return(e)) = branch.body.stmts.first() {
+                    serialize_expr(e, output);
+                }
+                if let Some(else_body) = &if_stmt.else_ {
+                    if let Some(crate::ast::Stmt::Return(e)) = else_body.stmts.first() {
+                        output.push_str(", ");
+                        serialize_expr(e, output);
+                    }
+                }
+                output.push_str(")");
+            } else {
+                output.push_str("Unknown");
             }
-            output.push_str(")");
         }
         _ => output.push_str("Unknown"),
     }
@@ -458,7 +483,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: crate::ast::Expr::Int(0),
                 decorators: vec![],
             }],
             computed: vec![],

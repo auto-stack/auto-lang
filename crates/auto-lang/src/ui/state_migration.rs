@@ -14,10 +14,10 @@
 
 use std::collections::HashMap;
 
-use crate::aura::AuraExpr;
+use crate::ast::Expr;
 use crate::aura::AuraStateDef;
 use crate::ast::Type;
-use auto_val::Value;
+use auto_val::{Op, Value};
 
 /// Result of a state migration operation.
 ///
@@ -152,28 +152,39 @@ fn types_compatible(a: &Type, b: &Type) -> bool {
     }
 }
 
-/// Evaluate an `AuraExpr` to a default `Value`.
+/// Evaluate a base `crate::ast::Expr` to a default `Value`.
 ///
-/// This mirrors the `eval_aura_expr_to_value` function in `vm_bridge.rs`.
-/// It is duplicated here to keep the state migration module self-contained
-/// and avoid coupling to the VmBridge internals.
-fn eval_default(expr: &AuraExpr) -> Value {
+/// Phase 3: this mirrors the `eval_expr_to_value` function in `vm_bridge.rs`,
+/// but operates on the base AST `Expr` (the old `AuraExpr` was eliminated).
+/// Duplicated here to keep the state migration module self-contained and avoid
+/// coupling to the VmBridge internals.
+fn eval_default(expr: &Expr) -> Value {
     match expr {
-        AuraExpr::Int(i) => Value::Int(*i as i32),
-        AuraExpr::Float(f) => Value::Float(*f as f64),
-        AuraExpr::Bool(b) => Value::Bool(*b),
-        AuraExpr::Literal(s) => Value::str(s),
-        AuraExpr::StateRef(_) => Value::Int(0),
-        AuraExpr::Binary { .. } => Value::Int(0),
-        AuraExpr::Unary { .. } => Value::Int(0),
-        AuraExpr::Array(elements) => {
-            let values: Vec<Value> = elements.iter().map(|e| eval_default(e)).collect();
+        Expr::Int(i) => Value::Int(*i),
+        Expr::I64(i) => Value::Int(*i as i32),
+        Expr::Uint(u) => Value::Uint(*u),
+        Expr::U64(u) => Value::Uint(*u as u32),
+        Expr::Byte(b) => Value::Int(*b as i32),
+        Expr::I8(i) => Value::Int(*i as i32),
+        Expr::U8(u) => Value::Int(*u as i32),
+        Expr::Float(f, _) => Value::Double(*f),
+        Expr::Double(f, _) => Value::Double(*f),
+        Expr::Bool(b) => Value::Bool(*b),
+        Expr::Char(c) => Value::Int(*c as i32),
+        Expr::Str(s) => Value::Str(s.clone()),
+        Expr::CStr(s) => Value::Str(s.clone()),
+        Expr::Ident(_) => Value::Int(0),
+        Expr::Bina(_, Op::Add, _) => Value::Int(0),
+        Expr::Bina(_, _, _) => Value::Int(0),
+        Expr::Unary(_, _) => Value::Int(0),
+        Expr::Array(elements) => {
+            let values: Vec<Value> = elements.iter().map(eval_default).collect();
             Value::Array(auto_val::Array::from(values))
         }
-        AuraExpr::Object(fields) => {
+        Expr::Object(pairs) => {
             let mut obj = auto_val::Obj::new();
-            for (key, val_expr) in fields {
-                obj.set(key.clone(), eval_default(val_expr));
+            for pair in pairs {
+                obj.set(pair.key.to_astr(), eval_default(&pair.value));
             }
             Value::Obj(obj)
         }
@@ -191,7 +202,7 @@ mod tests {
     use super::*;
 
     /// Helper: create an AuraStateDef with the given name, type, and initial value.
-    fn field(name: &str, type_info: Type, initial: AuraExpr) -> AuraStateDef {
+    fn field(name: &str, type_info: Type, initial: Expr) -> AuraStateDef {
         AuraStateDef {
             name: name.to_string(),
             type_info,
@@ -207,12 +218,12 @@ mod tests {
             ("label".to_string(), Value::str("hello")),
         ]);
         let old_fields = vec![
-            field("count", Type::Int, AuraExpr::Int(0)),
-            field("label", Type::StrFixed(0), AuraExpr::Literal("".to_string())),
+            field("count", Type::Int, Expr::Int(0)),
+            field("label", Type::StrFixed(0), Expr::Str("".to_string(.into()))),
         ];
         let new_fields = vec![
-            field("count", Type::Int, AuraExpr::Int(0)),
-            field("label", Type::StrFixed(0), AuraExpr::Literal("".to_string())),
+            field("count", Type::Int, Expr::Int(0)),
+            field("label", Type::StrFixed(0), Expr::Str("".to_string(.into()))),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -230,11 +241,11 @@ mod tests {
             ("count".to_string(), Value::Int(5)),
         ]);
         let old_fields = vec![
-            field("count", Type::Int, AuraExpr::Int(0)),
+            field("count", Type::Int, Expr::Int(0)),
         ];
         let new_fields = vec![
-            field("count", Type::Int, AuraExpr::Int(0)),
-            field("enabled", Type::Bool, AuraExpr::Bool(true)),
+            field("count", Type::Int, Expr::Int(0)),
+            field("enabled", Type::Bool, Expr::Bool(true)),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -253,11 +264,11 @@ mod tests {
             ("legacy".to_string(), Value::str("old")),
         ]);
         let old_fields = vec![
-            field("count", Type::Int, AuraExpr::Int(0)),
-            field("legacy", Type::StrFixed(0), AuraExpr::Literal("".to_string())),
+            field("count", Type::Int, Expr::Int(0)),
+            field("legacy", Type::StrFixed(0), Expr::Str("".to_string(.into()))),
         ];
         let new_fields = vec![
-            field("count", Type::Int, AuraExpr::Int(0)),
+            field("count", Type::Int, Expr::Int(0)),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -276,11 +287,11 @@ mod tests {
             ("value".to_string(), Value::Int(42)),
         ]);
         let old_fields = vec![
-            field("value", Type::Int, AuraExpr::Int(0)),
+            field("value", Type::Int, Expr::Int(0)),
         ];
         let new_fields = vec![
             // Type changed from Int to Str
-            field("value", Type::StrFixed(0), AuraExpr::Literal("default".to_string())),
+            field("value", Type::StrFixed(0), Expr::Str("default".to_string(.into()))),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -296,8 +307,8 @@ mod tests {
         let old_state = HashMap::new();
         let old_fields: Vec<AuraStateDef> = vec![];
         let new_fields = vec![
-            field("count", Type::Int, AuraExpr::Int(10)),
-            field("name", Type::StrFixed(0), AuraExpr::Literal("test".to_string())),
+            field("count", Type::Int, Expr::Int(10)),
+            field("name", Type::StrFixed(0), Expr::Str("test".to_string(.into()))),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -315,7 +326,7 @@ mod tests {
             ("count".to_string(), Value::Int(5)),
         ]);
         let old_fields = vec![
-            field("count", Type::Int, AuraExpr::Int(0)),
+            field("count", Type::Int, Expr::Int(0)),
         ];
         let new_fields: Vec<AuraStateDef> = vec![];
 
@@ -335,12 +346,12 @@ mod tests {
             ("b".to_string(), Value::Int(2)),
         ]);
         let old_fields = vec![
-            field("a", Type::Int, AuraExpr::Int(0)),
-            field("b", Type::Int, AuraExpr::Int(0)),
+            field("a", Type::Int, Expr::Int(0)),
+            field("b", Type::Int, Expr::Int(0)),
         ];
         let new_fields = vec![
-            field("x", Type::StrFixed(0), AuraExpr::Literal("new".to_string())),
-            field("y", Type::Bool, AuraExpr::Bool(false)),
+            field("x", Type::StrFixed(0), Expr::Str("new".to_string(.into()))),
+            field("y", Type::Bool, Expr::Bool(false)),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -362,12 +373,12 @@ mod tests {
             ("c".to_string(), Value::Int(3)),
         ]);
         let old_fields = vec![
-            field("a", Type::Int, AuraExpr::Int(0)),
-            field("b", Type::Int, AuraExpr::Int(0)),
-            field("c", Type::Int, AuraExpr::Int(0)),
+            field("a", Type::Int, Expr::Int(0)),
+            field("b", Type::Int, Expr::Int(0)),
+            field("c", Type::Int, Expr::Int(0)),
         ];
         let new_fields = vec![
-            field("a", Type::Int, AuraExpr::Int(0)),
+            field("a", Type::Int, Expr::Int(0)),
         ];
 
         let (_, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -382,19 +393,19 @@ mod tests {
     #[test]
     fn test_eval_default_complex_expr() {
         // Complex expressions should default to Int(0) for binary
-        let val = eval_default(&AuraExpr::Binary {
-            left: Box::new(AuraExpr::Int(1)),
-            op: crate::aura::AuraBinOp::Add,
-            right: Box::new(AuraExpr::Int(2)),
-        });
+        let val = eval_default(&Expr::Bina(
+            Box::new(Expr::Int(1)),
+            Op::Add,
+            Box::new(Expr::Int(2)),
+        ));
         assert_eq!(val, Value::Int(0)); // Binary defaults to Int(0)
     }
 
     #[test]
     fn test_eval_default_array() {
-        let val = eval_default(&AuraExpr::Array(vec![
-            AuraExpr::Int(1),
-            AuraExpr::Int(2),
+        let val = eval_default(&Expr::Array(vec![
+            Expr::Int(1),
+            Expr::Int(2),
         ]));
         match val {
             Value::Array(arr) => {

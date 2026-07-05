@@ -40,8 +40,9 @@ use crate::vm::generic_registry::GenericInstanceData;
 use crate::vm::loader::Linker;
 use crate::vm::task::AutoTask;
 use crate::vm::virt_memory::VirtualFlash;
-use crate::aura::{AuraExpr, AuraWidget, AuraStateDef, AuraNode, AuraUnaryOp};
-use auto_val::Value;
+use crate::aura::{AuraWidget, AuraStateDef, AuraNode};
+use crate::ast::Expr;
+use auto_val::{Op, Value};
 
 // ============================================================================
 // Error Types
@@ -201,7 +202,7 @@ impl VmBridge {
         let mut field_values = Vec::with_capacity(widget.state_vars.len());
         for state_var in &widget.state_vars {
             field_names.push(state_var.name.clone());
-            field_values.push(eval_aura_expr_to_value(&state_var.initial));
+            field_values.push(eval_expr_to_value(&state_var.initial));
         }
 
         let mono_name = format!("{}_State", widget_name);
@@ -227,7 +228,7 @@ impl VmBridge {
     ///
     /// State initialization reads `decl.model.fields` instead of
     /// `widget.state_vars`, converting each field's `init` (base `Expr`) to a
-    /// runtime `Value` via `extract_expr` + `eval_aura_expr_to_value`. When the
+    /// runtime `Value` via `eval_expr_to_value`. When the
     /// widget has a `.Tick` handler, the synthesized "interval" field is filtered
     /// out of the state object (it is consumed by the tick scheduler, not a
     /// `ref()` state field).
@@ -294,12 +295,10 @@ impl VmBridge {
         let mut field_values = Vec::with_capacity(model_fields.len());
         for field in model_fields {
             field_names.push(field.name.to_string());
-            // Convert the base Expr init to an AuraExpr, then to a Value. Fall
-            // back to a "0" literal when extraction fails (keeps arg counts in
-            // sync with the synthesized state type).
-            let aura_expr = crate::aura::extract_expr(&field.init)
-                .unwrap_or(AuraExpr::Literal("0".to_string()));
-            field_values.push(eval_aura_expr_to_value(&aura_expr));
+            // PR-3b/Phase 3: field.init is now a base crate::ast::Expr (Phase 1-2
+            // changed the AuraStateDef field type). Evaluate it directly to a
+            // runtime Value.
+            field_values.push(eval_expr_to_value(&field.init));
         }
 
         let mono_name = format!("{}_State", widget_name);
@@ -844,52 +843,64 @@ fn push_value(ram: &mut crate::vm::virt_memory::VirtualRAM, value: &Value) {
     }
 }
 
-/// Convert an AuraExpr initial value to a runtime Value.
+/// Convert a base `crate::ast::Expr` initial value to a runtime `Value`.
 ///
-/// Handles the common literal types. Complex expressions default to Nil.
-fn eval_aura_expr_to_value(expr: &AuraExpr) -> Value {
+/// Phase 3: replaces the old `eval_aura_expr_to_value` (which consumed the now-
+/// eliminated `AuraExpr`). Handles the common literal types; complex
+/// expressions default to Nil.
+fn eval_expr_to_value(expr: &Expr) -> Value {
     match expr {
-        AuraExpr::Int(i) => Value::Int(*i as i32),
-        AuraExpr::Float(f) => Value::Double(*f as f64),
-        AuraExpr::Bool(b) => Value::Bool(*b),
-        AuraExpr::Literal(s) => Value::str(s),
-        AuraExpr::StateRef(name) => {
-            // State references in initial values default to zero/null.
-            // This is a placeholder - the actual value should be resolved
-            // from the state after all fields are initialized.
+        Expr::Int(i) => Value::Int(*i),
+        Expr::I64(i) => Value::Int(*i as i32),
+        Expr::Uint(u) => Value::Uint(*u),
+        Expr::U64(u) => Value::Uint(*u as u32),
+        Expr::Byte(b) => Value::Int(*b as i32),
+        Expr::I8(i) => Value::Int(*i as i32),
+        Expr::U8(u) => Value::Int(*u as i32),
+        Expr::Float(f, _) => Value::Double(*f),
+        Expr::Double(f, _) => Value::Double(*f),
+        Expr::Bool(b) => Value::Bool(*b),
+        Expr::Char(c) => Value::Int(*c as i32),
+        Expr::Str(s) => Value::Str(s.clone()),
+        Expr::CStr(s) => Value::Str(s.clone()),
+        Expr::Ident(name) => {
+            // State reference: an identifier whose name starts with "." is a
+            // state-ref; otherwise treat as an unresolved state reference.
+            // Initial values default to zero/null placeholder.
+            let _ = name;
             Value::Int(0)
         }
-        AuraExpr::Binary { .. } => {
-            // Binary expressions in initial values: evaluate simple cases
-            Value::Int(0)
-        }
-        AuraExpr::Unary { op, operand } => {
-            let val = eval_aura_expr_to_value(operand);
+        // Binary expressions in initial values: simple cases only.
+        Expr::Bina(_, _, _) => Value::Int(0),
+        Expr::Unary(op, operand) => {
+            let val = eval_expr_to_value(operand);
             match op {
-                AuraUnaryOp::Neg => match val {
+                Op::Sub => match val {
                     Value::Int(i) => Value::Int(-i),
                     Value::Double(f) => Value::Double(-f),
                     Value::Float(f) => Value::Float(-f),
                     _ => Value::Int(0),
                 },
-                AuraUnaryOp::Not => match val {
+                Op::Not => match val {
                     Value::Bool(b) => Value::Bool(!b),
                     _ => Value::Bool(true),
                 },
+                _ => Value::Int(0),
             }
         }
-        AuraExpr::Array(elements) => {
+        Expr::Array(elements) => {
             // Array literals: evaluate each element
             let values: Vec<Value> = elements.iter()
-                .map(|e| eval_aura_expr_to_value(e))
+                .map(eval_expr_to_value)
                 .collect();
             Value::Array(auto_val::Array::from(values))
         }
-        AuraExpr::Object(fields) => {
-            // Object literals: evaluate each field
+        Expr::Object(pairs) => {
+            // Object literals: evaluate each field (key from Pair.key)
             let mut obj = auto_val::Obj::new();
-            for (key, val_expr) in fields {
-                obj.set(key.clone(), eval_aura_expr_to_value(val_expr));
+            for pair in pairs {
+                let key = pair.key.to_astr();
+                obj.set(key, eval_expr_to_value(&pair.value));
             }
             Value::Obj(obj)
         }
@@ -988,13 +999,13 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
             AuraStateDef {
                 name: "label".to_string(),
                 type_info: Type::StrFixed(0),
-                initial: AuraExpr::Literal("Hello".to_string()),
+                initial: Expr::Str("Hello".into()),
                 decorators: vec![],
             },
         ]);
@@ -1013,7 +1024,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(42),
+                initial: Expr::Int(42),
                 decorators: vec![],
             },
         ]);
@@ -1030,7 +1041,7 @@ mod tests {
             AuraStateDef {
                 name: "greeting".to_string(),
                 type_info: Type::StrFixed(0),
-                initial: AuraExpr::Literal("Hello World".to_string()),
+                initial: Expr::Str("Hello World".into()),
                 decorators: vec![],
             },
         ]);
@@ -1047,7 +1058,7 @@ mod tests {
             AuraStateDef {
                 name: "active".to_string(),
                 type_info: Type::Bool,
-                initial: AuraExpr::Bool(true),
+                initial: Expr::Bool(true),
                 decorators: vec![],
             },
         ]);
@@ -1061,16 +1072,13 @@ mod tests {
     #[test]
     fn test_read_state_unary_neg() {
         // This mirrors how `var editing_id int = -1` is parsed:
-        // Expr::Unary(Sub, Int(1)) → AuraExpr::Unary { Neg, Int(1) }
-        // eval_aura_expr_to_value should produce Value::Int(-1), NOT Value::Int(0)
+        // Expr::Unary(Sub, Int(1)). eval_expr_to_value should produce
+        // Value::Int(-1), NOT Value::Int(0)
         let widget = make_test_widget("Todo", vec![
             AuraStateDef {
                 name: "editing_id".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Unary {
-                    op: AuraUnaryOp::Neg,
-                    operand: Box::new(AuraExpr::Int(1)),
-                },
+                initial: Expr::Unary(Op::Sub, Box::new(Expr::Int(1))),
                 decorators: vec![],
             },
         ]);
@@ -1086,7 +1094,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1107,7 +1115,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1137,19 +1145,19 @@ mod tests {
             AuraStateDef {
                 name: "x".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(1),
+                initial: Expr::Int(1),
                 decorators: vec![],
             },
             AuraStateDef {
                 name: "y".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(2),
+                initial: Expr::Int(2),
                 decorators: vec![],
             },
             AuraStateDef {
                 name: "name".to_string(),
                 type_info: Type::StrFixed(0),
-                initial: AuraExpr::Literal("test".to_string()),
+                initial: Expr::Str("test".into()),
                 decorators: vec![],
             },
         ]);
@@ -1169,7 +1177,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1234,17 +1242,17 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_aura_expr() {
-        assert_eq!(eval_aura_expr_to_value(&AuraExpr::Int(42)), Value::Int(42));
-        assert_eq!(eval_aura_expr_to_value(&AuraExpr::Float(3.14)), Value::Float(3.14f64));
-        assert_eq!(eval_aura_expr_to_value(&AuraExpr::Bool(true)), Value::Bool(true));
-        assert_eq!(eval_aura_expr_to_value(&AuraExpr::Literal("hi".into())), Value::str("hi"));
+    fn test_eval_expr() {
+        assert_eq!(eval_expr_to_value(&Expr::Int(42)), Value::Int(42));
+        assert_eq!(eval_expr_to_value(&Expr::Double(3.14, "".into())), Value::Double(3.14f64));
+        assert_eq!(eval_expr_to_value(&Expr::Bool(true)), Value::Bool(true));
+        assert_eq!(eval_expr_to_value(&Expr::Str("hi".into())), Value::str("hi"));
     }
 
     #[test]
-    fn test_eval_aura_expr_array() {
-        let expr = AuraExpr::Array(vec![AuraExpr::Int(1), AuraExpr::Int(2)]);
-        let val = eval_aura_expr_to_value(&expr);
+    fn test_eval_expr_array() {
+        let expr = Expr::Array(vec![Expr::Int(1), Expr::Int(2)]);
+        let val = eval_expr_to_value(&expr);
         match val {
             Value::Array(arr) => {
                 assert_eq!(arr.len(), 2);
@@ -1261,7 +1269,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
         ]);
@@ -1290,7 +1298,7 @@ mod tests {
         let mut widget = make_test_widget("Counter", vec![AuraStateDef {
             name: "count".to_string(),
             type_info: Type::Int,
-            initial: AuraExpr::Int(0),
+            initial: Expr::Int(0),
             decorators: vec![],
         }]);
 
@@ -1447,13 +1455,13 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: Expr::Int(0),
                 decorators: vec![],
             },
             AuraStateDef {
                 name: "label".to_string(),
                 type_info: Type::StrOwned,
-                initial: AuraExpr::Literal("".to_string()),
+                initial: Expr::Str(String::new().into()),
                 decorators: vec![],
             },
         ]);

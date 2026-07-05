@@ -28,7 +28,7 @@ use super::state::{
     generate_interfaces_with_prefix, generate_msg_enum, generate_state_declarations_with_prefix,
 };
 use crate::ast::Type;
-use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 use crate::ui_gen::widget::WidgetRegistry;
 use crate::ui_gen::{BackendGenerator, GenResult};
 use std::collections::{HashMap, HashSet};
@@ -317,7 +317,7 @@ pub struct TabItem {
 /// Extract string from AuraPropValue (handles Expr(Literal) pattern)
 fn extract_string_from_prop(value: &AuraPropValue) -> String {
     match value {
-        AuraPropValue::Expr(AuraExpr::Literal(s)) => s.clone(),
+        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.to_string(),
         _ => String::new(),
     }
 }
@@ -325,7 +325,7 @@ fn extract_string_from_prop(value: &AuraPropValue) -> String {
 /// Extract optional string from AuraPropValue
 fn extract_optional_string_from_prop(value: &AuraPropValue) -> Option<String> {
     match value {
-        AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
+        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
         _ => None,
     }
 }
@@ -1180,7 +1180,7 @@ impl ArkGenerator {
             let mut merged_props = props.clone();
             for (key, value) in &widget.default_props {
                 if !merged_props.contains_key(key) {
-                    merged_props.insert(key.clone(), AuraPropValue::Expr(AuraExpr::Literal(value.clone())));
+                    merged_props.insert(key.clone(), AuraPropValue::Expr(crate::ast::Expr::Str(value.as_str().into())));
                 }
             }
 
@@ -1429,7 +1429,7 @@ impl ArkGenerator {
     /// Extract style string from AuraPropValue
     fn extract_style_string(&self, value: &AuraPropValue) -> Option<String> {
         match value {
-            AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
             AuraPropValue::StyleBinding(bindings) => {
                 // Combine all style names
                 Some(bindings.iter().map(|b| b.style_name.as_str()).collect::<Vec<_>>().join(" "))
@@ -1446,16 +1446,18 @@ impl ArkGenerator {
         }
     }
 
-    /// Convert AuraExpr to modifier
-    fn expr_to_modifier(&self, key: &str, expr: &AuraExpr) -> Option<String> {
+    /// Convert Expr to modifier
+    fn expr_to_modifier(&self, key: &str, expr: &crate::ast::Expr) -> Option<String> {
+        use crate::ast::Expr;
         match expr {
-            AuraExpr::Literal(s) => prop_to_modifier(key, s, None),
-            AuraExpr::Int(n) => prop_to_modifier(key, &n.to_string(), None),
-            AuraExpr::Float(n) => prop_to_modifier(key, &n.to_string(), None),
-            AuraExpr::Bool(b) => prop_to_modifier(key, &b.to_string(), None),
-            AuraExpr::StateRef(name) => {
+            Expr::Str(s) | Expr::CStr(s) => prop_to_modifier(key, s.as_str(), None),
+            Expr::Int(n) => prop_to_modifier(key, &n.to_string(), None),
+            Expr::Float(n, _) | Expr::Double(n, _) => prop_to_modifier(key, &n.to_string(), None),
+            Expr::Bool(b) => prop_to_modifier(key, &b.to_string(), None),
+            Expr::Ident(name) => {
+                let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
                 // Generate binding to state
-                Some(format!(".{}(this.{})", key, name))
+                Some(format!(".{}(this.{})", key, resolved))
             }
             _ => None,
         }
@@ -1765,29 +1767,33 @@ impl ArkGenerator {
         }
     }
 
-    /// Convert AuraExpr to ArkTS code string
-    fn expr_to_ark_string(&self, expr: &AuraExpr) -> String {
+    /// Convert Expr to ArkTS code string
+    fn expr_to_ark_string(&self, expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
         match expr {
-            AuraExpr::Literal(value) => {
+            Expr::Str(value) | Expr::CStr(value) => {
                 // Check if it's a resource reference like $r('app.media.xxx')
                 if value.starts_with("$r(") {
-                    value.clone()
+                    value.to_string()
                 } else {
                     format!("'{}'", value)
                 }
             }
-            AuraExpr::StateRef(field) => {
+            Expr::Ident(field) => {
+                let resolved = if field.starts_with('.') { &field[1..] } else { field.as_str() };
                 // Check if this is a loop variable (should not be prefixed with `this.`)
-                if self.loop_vars.contains(field.as_str()) {
-                    field.clone()
+                if self.loop_vars.contains(resolved) {
+                    resolved.to_string()
                 } else {
-                    format!("this.{}", field)
+                    format!("this.{}", resolved)
                 }
             }
-            AuraExpr::FieldAccess { object, field } => {
+            Expr::Dot(object, field) => {
+                let field = field.clone();
                 // Check if object is a nullable state variable - use optional chaining
-                let is_nullable = if let AuraExpr::StateRef(obj_name) = object.as_ref() {
-                    self.nullable_state_vars.contains(obj_name)
+                let is_nullable = if let Expr::Ident(obj_name) = object.as_ref() {
+                    let resolved = if obj_name.starts_with('.') { &obj_name[1..] } else { obj_name.as_str() };
+                    self.nullable_state_vars.contains(resolved)
                 } else {
                     false
                 };
@@ -1799,20 +1805,20 @@ impl ArkGenerator {
                     format!("{}.{}", obj_str, field)
                 }
             }
-            AuraExpr::Int(n) => n.to_string(),
-            AuraExpr::Float(f) => f.to_string(),
-            AuraExpr::Bool(b) => b.to_string(),
-            AuraExpr::Array(elems) => {
+            Expr::Int(n) => n.to_string(),
+            Expr::Float(f, _) | Expr::Double(f, _) => f.to_string(),
+            Expr::Bool(b) => b.to_string(),
+            Expr::Array(elems) => {
                 let items: Vec<String> = elems.iter()
                     .map(|e| self.expr_to_ark_string(e))
                     .collect();
                 format!("[{}]", items.join(", "))
             }
-            AuraExpr::Object(fields) => {
-                let pairs: Vec<String> = fields.iter()
-                    .map(|(k, v)| {
-                        let val = self.expr_to_ark_string(v);
-                        format!("{}: {}", k, val)
+            Expr::Object(pairs) => {
+                let pairs: Vec<String> = pairs.iter()
+                    .map(|p| {
+                        let val = self.expr_to_ark_string(&p.value);
+                        format!("{}: {}", p.key, val)
                     })
                     .collect();
                 format!("{{{}}}", pairs.join(", "))
@@ -1925,7 +1931,7 @@ impl ArkGenerator {
     fn generate_component(
         &mut self,
         name: &str,
-        props: &HashMap<String, AuraExpr>,
+        props: &HashMap<String, crate::ast::Expr>,
         events: &HashMap<String, crate::aura::AuraEvent>,
     ) -> GenResult<String> {
         let mut lines = Vec::new();
@@ -2083,7 +2089,8 @@ impl BackendGenerator for ArkGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aura::{AuraExpr, AuraMessage, AuraMsgVariant, AuraNode, AuraStateDef, Type};
+    use crate::aura::{AuraMessage, AuraMsgVariant, AuraNode, AuraStateDef, Type};
+    use crate::ast::Expr;
     use std::collections::HashMap;
 
     #[test]
@@ -2142,7 +2149,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: crate::ast::Expr::Int(0),
                 decorators: vec![],
             }],
             computed: vec![],
@@ -2487,7 +2494,7 @@ mod tests {
     fn test_image_with_url_source() {
         // Test that Image component with URL source generates correct code
         let mut props = HashMap::new();
-        props.insert("src".to_string(), AuraPropValue::Expr(AuraExpr::Literal("https://example.com/logo.png".to_string())));
+        props.insert("src".to_string(), AuraPropValue::Expr(Expr::Str("https://example.com/logo.png".into())));
 
         let widget = AuraWidget {
             name: "TestApp".to_string(),
@@ -2535,7 +2542,7 @@ mod tests {
     fn test_image_with_resource_reference() {
         // Test that Image component with $r() resource reference generates correct code
         let mut props = HashMap::new();
-        props.insert("src".to_string(), AuraPropValue::Expr(AuraExpr::Literal("$r('app.media.icon')".to_string())));
+        props.insert("src".to_string(), AuraPropValue::Expr(Expr::Str("$r('app.media.icon')".into())));
 
         let widget = AuraWidget {
             name: "TestApp".to_string(),

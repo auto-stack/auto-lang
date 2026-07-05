@@ -14,7 +14,7 @@
 //! - `badge` → `Badge`
 //! - `radio` / `radiobutton` → `RadioButton`
 
-use crate::aura::{AuraPropValue, AuraExpr};
+use crate::aura::AuraPropValue;
 use crate::ui_gen::GenResult;
 use std::collections::HashMap;
 
@@ -52,8 +52,8 @@ impl FormGenerator {
     /// Extract string value from prop
     fn extract_string(props: &HashMap<String, AuraPropValue>, key: &str) -> Option<String> {
         props.get(key).and_then(|p| match p {
-            AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
-            AuraPropValue::Expr(AuraExpr::StateRef(s)) => Some(s.clone()),
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+            AuraPropValue::Expr(crate::ast::Expr::Ident(s)) => Some(s.to_string()),
             _ => None,
         })
     }
@@ -61,7 +61,7 @@ impl FormGenerator {
     /// Extract bool value from prop
     fn extract_bool(props: &HashMap<String, AuraPropValue>, key: &str) -> bool {
         props.get(key).and_then(|p| match p {
-            AuraPropValue::Expr(AuraExpr::Bool(b)) => Some(*b),
+            AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
             _ => None,
         }).unwrap_or(false)
     }
@@ -69,7 +69,7 @@ impl FormGenerator {
     /// Extract int value from prop
     fn extract_int(props: &HashMap<String, AuraPropValue>, key: &str) -> Option<i64> {
         props.get(key).and_then(|p| match p {
-            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n),
+            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as i64),
             _ => None,
         })
     }
@@ -77,7 +77,7 @@ impl FormGenerator {
     /// Extract state reference from prop
     fn extract_state_ref(props: &HashMap<String, AuraPropValue>, key: &str) -> Option<String> {
         props.get(key).and_then(|p| match p {
-            AuraPropValue::Expr(AuraExpr::StateRef(s)) => Some(s.clone()),
+            AuraPropValue::Expr(crate::ast::Expr::Ident(s)) => Some(s.to_string()),
             _ => None,
         })
     }
@@ -372,8 +372,8 @@ r#"Row(
     /// Extract float value from prop
     fn extract_float(props: &HashMap<String, AuraPropValue>, key: &str) -> Option<f64> {
         props.get(key).and_then(|p| match p {
-            AuraPropValue::Expr(AuraExpr::Float(n)) => Some(*n),
-            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n as f64),
+            AuraPropValue::Expr(crate::ast::Expr::Float(n, _)) => Some(*n),
+            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as f64),
             _ => None,
         })
     }
@@ -845,7 +845,7 @@ impl Default for FormGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aura::{AuraPropValue, AuraExpr};
+    use crate::aura::AuraPropValue;
     use std::collections::HashMap;
 
     #[test]
@@ -853,7 +853,7 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("text".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -868,8 +868,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("email".to_string())));
-        props.insert("placeholder".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enter email".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("email".into())));
+        props.insert("placeholder".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enter email".into())));
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -882,8 +882,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("name".to_string())));
-        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Name".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("name".into())));
+        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Name".into())));
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -896,8 +896,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("password".to_string())));
-        props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("password".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("password".into())));
+        props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("password".into())));
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -910,8 +910,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("text".to_string())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -924,8 +924,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("content".to_string())));
-        props.insert("rows".to_string(), AuraPropValue::Expr(AuraExpr::Int(5)));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("content".into())));
+        props.insert("rows".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(5)));
 
         let result = gen.generate_textarea(&props);
         assert!(result.is_ok());
@@ -938,7 +938,7 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("done".to_string())));
+        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("done".into())));
 
         let result = gen.generate_checkbox(&props);
         assert!(result.is_ok());
@@ -953,8 +953,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("agree".to_string())));
-        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("I agree".to_string())));
+        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("agree".into())));
+        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("I agree".into())));
 
         let result = gen.generate_checkbox(&props);
         assert!(result.is_ok());
@@ -969,7 +969,7 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("enabled".to_string())));
+        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("enabled".into())));
 
         let result = gen.generate_switch(&props);
         assert!(result.is_ok());
@@ -984,8 +984,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("notifications".to_string())));
-        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enable notifications".to_string())));
+        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("notifications".into())));
+        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enable notifications".into())));
 
         let result = gen.generate_switch(&props);
         assert!(result.is_ok());
@@ -1000,7 +1000,7 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("volume".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("volume".into())));
 
         let result = gen.generate_slider(&props);
         assert!(result.is_ok());
@@ -1015,9 +1015,9 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("progress".to_string())));
-        props.insert("min".to_string(), AuraPropValue::Expr(AuraExpr::Int(0)));
-        props.insert("max".to_string(), AuraPropValue::Expr(AuraExpr::Int(100)));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("progress".into())));
+        props.insert("min".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(0)));
+        props.insert("max".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(100)));
 
         let result = gen.generate_slider(&props);
         assert!(result.is_ok());
@@ -1030,10 +1030,10 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("rating".to_string())));
-        props.insert("min".to_string(), AuraPropValue::Expr(AuraExpr::Int(0)));
-        props.insert("max".to_string(), AuraPropValue::Expr(AuraExpr::Int(10)));
-        props.insert("step".to_string(), AuraPropValue::Expr(AuraExpr::Int(1)));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("rating".into())));
+        props.insert("min".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(0)));
+        props.insert("max".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(10)));
+        props.insert("step".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(1)));
 
         let result = gen.generate_slider(&props);
         assert!(result.is_ok());
@@ -1064,8 +1064,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("done".to_string())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("done".into())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
 
         let result = gen.generate_checkbox(&props);
         assert!(result.is_ok());
@@ -1078,8 +1078,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("enabled".to_string())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("enabled".into())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
 
         let result = gen.generate_switch(&props);
         assert!(result.is_ok());
@@ -1093,7 +1093,7 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("value".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("value".into())));
 
         let result = gen.generate_slider(&props);
         assert!(result.is_ok());
@@ -1106,8 +1106,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("text".to_string())));
-        props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("password".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
+        props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("password".into())));
 
         let _ = gen.generate_input(&props);
 
@@ -1169,8 +1169,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("email".to_string())));
-        props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("email".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("email".into())));
+        props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("email".into())));
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -1187,8 +1187,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("age".to_string())));
-        props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("number".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("age".into())));
+        props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("number".into())));
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -1205,8 +1205,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("content".to_string())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("content".into())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
 
         let result = gen.generate_textarea(&props);
         assert!(result.is_ok());
@@ -1219,7 +1219,7 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("text".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
 
         // Generate multiple inputs
         let _ = gen.generate_input(&props);
@@ -1236,7 +1236,7 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("text".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
 
         let _ = gen.generate_input(&props);
         assert!(!gen.get_imports().is_empty());
@@ -1254,8 +1254,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("assist".to_string())));
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Add Item".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Add Item".into())));
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1270,9 +1270,9 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("assist".to_string())));
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Add".to_string())));
-        props.insert("icon".to_string(), AuraPropValue::Expr(AuraExpr::Literal("add".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Add".into())));
+        props.insert("icon".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("add".into())));
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1290,9 +1290,9 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("filter".to_string())));
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Filter".to_string())));
-        props.insert("selected".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("filter".into())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Filter".into())));
+        props.insert("selected".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1307,8 +1307,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("filter".to_string())));
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Option".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("filter".into())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Option".into())));
         // No selected prop - defaults to false
 
         let result = gen.generate_chip(&props);
@@ -1322,9 +1322,9 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("input".to_string())));
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Tag".to_string())));
-        props.insert("onDismiss".to_string(), AuraPropValue::Expr(AuraExpr::Literal("RemoveChip".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("input".into())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Tag".into())));
+        props.insert("onDismiss".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("RemoveChip".into())));
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1339,8 +1339,8 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("suggestion".to_string())));
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Suggestion".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("suggestion".into())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Suggestion".into())));
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1356,7 +1356,7 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Default".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Default".into())));
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1369,9 +1369,9 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("assist".to_string())));
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Disabled".to_string())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Disabled".into())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1385,9 +1385,9 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("assist".to_string())));
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Settings".to_string())));
-        props.insert("icon".to_string(), AuraPropValue::Expr(AuraExpr::Literal("settings".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Settings".into())));
+        props.insert("icon".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("settings".into())));
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());

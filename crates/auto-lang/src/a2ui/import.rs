@@ -3,8 +3,9 @@
 //! Converts Google's A2UI v0.8 JSON into AutoUI's AURA intermediate representation.
 
 use super::{A2UIComponent, A2UIComponentBody, A2UIMessage, A2UIValue, A2UIError};
+use crate::ast::Expr;
 use crate::aura::{
-    AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStateDef,
+    AuraEvent, AuraNode, AuraPropValue, AuraStateDef,
     AuraTextContent, AuraWidget, LogicPayload, Type,
 };
 use std::collections::HashMap;
@@ -175,10 +176,10 @@ fn import_component_body(
             let (value, mut sv) = import_value(text);
             state_vars.append(&mut sv);
             let text_content = match value {
-                AuraExpr::Literal(s) => AuraTextContent::Literal(s),
-                AuraExpr::StateRef(name) => AuraTextContent::Interpolated {
+                Expr::Str(s) => AuraTextContent::Literal(s.to_string()),
+                Expr::Ident(name) => AuraTextContent::Interpolated {
                     template: format!("${{{}}}", name),
-                    bindings: vec![name],
+                    bindings: vec![name.to_string()],
                 },
                 _ => AuraTextContent::Literal(format!("{:?}", value)),
             };
@@ -189,10 +190,10 @@ fn import_component_body(
             state_vars.append(&mut sv);
 
             let mut props = HashMap::new();
-            if let AuraExpr::Literal(s) = &child_expr {
+            if let Expr::Str(s) = &child_expr {
                 props.insert(
                     "text".to_string(),
-                    AuraPropValue::Expr(AuraExpr::Literal(s.clone())),
+                    AuraPropValue::Expr(Expr::Str(s.clone())),
                 );
             }
 
@@ -251,13 +252,13 @@ fn import_component_body(
             if let Some(m) = min {
                 props.insert(
                     "min".to_string(),
-                    AuraPropValue::Expr(AuraExpr::Float(*m)),
+                    AuraPropValue::Expr(Expr::Double(*m, "".into())),
                 );
             }
             if let Some(m) = max {
                 props.insert(
                     "max".to_string(),
-                    AuraPropValue::Expr(AuraExpr::Float(*m)),
+                    AuraPropValue::Expr(Expr::Double(*m, "".into())),
                 );
             }
 
@@ -355,19 +356,19 @@ fn import_component_body(
             if let Some(m) = min {
                 props.insert(
                     "min".to_string(),
-                    AuraPropValue::Expr(AuraExpr::Float(*m)),
+                    AuraPropValue::Expr(Expr::Double(*m, "".into())),
                 );
             }
             if let Some(m) = max {
                 props.insert(
                     "max".to_string(),
-                    AuraPropValue::Expr(AuraExpr::Float(*m)),
+                    AuraPropValue::Expr(Expr::Double(*m, "".into())),
                 );
             }
             if let Some(s) = step {
                 props.insert(
                     "step".to_string(),
-                    AuraPropValue::Expr(AuraExpr::Float(*s)),
+                    AuraPropValue::Expr(Expr::Double(*s, "".into())),
                 );
             }
 
@@ -514,7 +515,7 @@ fn import_component_body(
                         m.insert("label".to_string(), AuraPropValue::Expr(label_expr));
                         m.insert(
                             "path".to_string(),
-                            AuraPropValue::Expr(AuraExpr::Literal(item.path.clone())),
+                            AuraPropValue::Expr(Expr::Str(item.path.clone().into())),
                         );
                         m
                     },
@@ -562,8 +563,8 @@ fn import_components(
     Ok((nodes, state_vars, handlers))
 }
 
-/// Convert an A2UIValue to an AuraExpr and collect inferred state variables.
-fn import_value(value: &A2UIValue) -> (AuraExpr, Vec<AuraStateDef>) {
+/// Convert an A2UIValue to an Expr and collect inferred state variables.
+fn import_value(value: &A2UIValue) -> (Expr, Vec<AuraStateDef>) {
     let mut state_vars = Vec::new();
 
     let expr = match value {
@@ -573,21 +574,21 @@ fn import_value(value: &A2UIValue) -> (AuraExpr, Vec<AuraStateDef>) {
                 state_vars.push(AuraStateDef {
                     name: var_name.clone(),
                     type_info: Type::StrOwned,
-                    initial: AuraExpr::Literal("".to_string()),
+                    initial: Expr::Str("".into()),
                     decorators: vec![],
                 });
             }
-            AuraExpr::StateRef(var_name)
+            Expr::Ident(var_name.into())
         }
-        A2UIValue::LiteralString { literal_string } => AuraExpr::Literal(literal_string.clone()),
+        A2UIValue::LiteralString { literal_string } => Expr::Str(literal_string.clone().into()),
         A2UIValue::LiteralNumber { literal_number } => {
             if literal_number.fract() == 0.0 {
-                AuraExpr::Int(*literal_number as i64)
+                Expr::Int(*literal_number as i32)
             } else {
-                AuraExpr::Float(*literal_number)
+                Expr::Double(*literal_number, "".into())
             }
         }
-        A2UIValue::LiteralBool { literal_bool } => AuraExpr::Bool(*literal_bool),
+        A2UIValue::LiteralBool { literal_bool } => Expr::Bool(*literal_bool),
     };
 
     (expr, state_vars)

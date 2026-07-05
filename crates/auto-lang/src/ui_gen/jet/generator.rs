@@ -37,7 +37,7 @@ use super::list::ListGenerator;
 use super::modifier::ModifierDsl;
 use super::navigation::NavigationGenerator;
 use super::state::StateConverter;
-use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraUnaryOp, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 use crate::ui_gen::shared::ComponentRegistry;
 use crate::ui_gen::{BackendGenerator, GenError, GenResult, WidgetRegistry};
 use std::collections::{HashMap, HashSet};
@@ -277,12 +277,12 @@ fun {}Preview() {{
         }
     }
 
-    /// Convert AuraExpr to default value string
-    fn expr_to_default(expr: &crate::aura::AuraExpr) -> String {
-        use crate::aura::AuraExpr;
+    /// Convert Expr to default value string
+    fn expr_to_default(expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
         match expr {
-            AuraExpr::Int(n) => n.to_string(),
-            AuraExpr::Float(n) => {
+            Expr::Int(n) => n.to_string(),
+            Expr::Float(n, _) | Expr::Double(n, _) => {
                 let s = n.to_string();
                 if s.contains('.') {
                     s
@@ -290,8 +290,8 @@ fun {}Preview() {{
                     format!("{}.0", s)
                 }
             }
-            AuraExpr::Literal(s) => format!("\"{}\"", s),
-            AuraExpr::Bool(b) => b.to_string(),
+            Expr::Str(s) | Expr::CStr(s) => format!("\"{}\"", s),
+            Expr::Bool(b) => b.to_string(),
             _ => "null".to_string(),
         }
     }
@@ -584,10 +584,10 @@ fun {}Preview() {{
                 // Center is syntax sugar for Column with center alignment
                 let mut merged_props = props.clone();
                 if !merged_props.contains_key("align") {
-                    merged_props.insert("align".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
+                    merged_props.insert("align".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
                 }
                 if !merged_props.contains_key("arrange") {
-                    merged_props.insert("arrange".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
+                    merged_props.insert("arrange".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
                 }
                 self.layout_generator.generate_column(&merged_props, &children_content)
             }
@@ -751,8 +751,8 @@ fun {}Preview() {{
     /// Extract string value from AuraPropValue
     fn extract_string_value(&self, value: &AuraPropValue) -> Option<String> {
         match value {
-            AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
-            AuraPropValue::Expr(AuraExpr::StateRef(s)) => Some(s.clone()),
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => Some(s.to_string()),
+            AuraPropValue::Expr(crate::ast::Expr::Ident(s)) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -897,59 +897,68 @@ fun {}Preview() {{
         }
     }
 
-    /// Convert AuraExpr to Kotlin expression string
-    fn expr_to_kotlin(&self, expr: &AuraExpr) -> String {
+    /// Convert Expr to Kotlin expression string
+    fn expr_to_kotlin(&self, expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
+        use auto_val::Op;
         match expr {
-            AuraExpr::Literal(s) => format!("\"{}\"", s),
-            AuraExpr::Int(n) => n.to_string(),
-            AuraExpr::Float(f) => f.to_string(),
-            AuraExpr::Bool(b) => b.to_string(),
-            AuraExpr::StateRef(s) => s.clone(),
-            AuraExpr::Binary { left, op, right } => {
+            Expr::Str(s) | Expr::CStr(s) => format!("\"{}\"", s),
+            Expr::Int(n) => n.to_string(),
+            Expr::Float(f, _) | Expr::Double(f, _) => f.to_string(),
+            Expr::Bool(b) => b.to_string(),
+            Expr::Ident(s) => {
+                if s.starts_with('.') { s[1..].to_string() } else { s.to_string() }
+            }
+            Expr::Bina(left, op, right) => {
                 let left_str = self.expr_to_kotlin(left);
                 let right_str = self.expr_to_kotlin(right);
-                let op_str = self.binop_to_kotlin(*op);
+                let op_str = match op {
+                    Op::Add => "+",
+                    Op::Sub => "-",
+                    Op::Mul => "*",
+                    Op::Div => "/",
+                    Op::Mod => "%",
+                    Op::Eq => "==",
+                    Op::Neq => "!=",
+                    Op::Lt => "<",
+                    Op::Le => "<=",
+                    Op::Gt => ">",
+                    Op::Ge => ">=",
+                    Op::And => "&&",
+                    Op::Or => "||",
+                    _ => "+",
+                };
                 format!("{} {} {}", left_str, op_str, right_str)
             }
-            AuraExpr::Unary { op, operand } => {
+            Expr::Unary(op, operand) => {
                 let operand_str = self.expr_to_kotlin(operand);
                 match op {
-                    AuraUnaryOp::Neg => format!("-{}", operand_str),
-                    AuraUnaryOp::Not => format!("!{}", operand_str),
+                    Op::Sub => format!("-{}", operand_str),
+                    _ => format!("!{}", operand_str),
                 }
             }
-            AuraExpr::FieldAccess { object, field } => {
+            Expr::Dot(object, field) => {
                 let obj_str = self.expr_to_kotlin(object);
                 format!("{}.{}", obj_str, field)
             }
-            AuraExpr::MethodCall { object, method, args } => {
-                let obj_str = self.expr_to_kotlin(object);
-                let args_str = args.iter()
-                    .map(|a| self.expr_to_kotlin(a))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("{}.{}({})", obj_str, method, args_str)
+            Expr::Call(call) => {
+                if let Expr::Dot(object, method) = call.name.as_ref() {
+                    let obj_str = self.expr_to_kotlin(object);
+                    let args_str = call.args.args.iter()
+                        .map(|a| self.expr_to_kotlin(&a.get_expr()))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{}.{}({})", obj_str, method, args_str)
+                } else {
+                    let name_str = self.expr_to_kotlin(&call.name);
+                    let args_str = call.args.args.iter()
+                        .map(|a| self.expr_to_kotlin(&a.get_expr()))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{}({})", name_str, args_str)
+                }
             }
             _ => "/* unsupported expr */".to_string(),
-        }
-    }
-
-    /// Convert binary operator to Kotlin
-    fn binop_to_kotlin(&self, op: AuraBinOp) -> &'static str {
-        match op {
-            AuraBinOp::Add => "+",
-            AuraBinOp::Sub => "-",
-            AuraBinOp::Mul => "*",
-            AuraBinOp::Div => "/",
-            AuraBinOp::Mod => "%",
-            AuraBinOp::Eq => "==",
-            AuraBinOp::Ne => "!=",
-            AuraBinOp::Lt => "<",
-            AuraBinOp::Le => "<=",
-            AuraBinOp::Gt => ">",
-            AuraBinOp::Ge => ">=",
-            AuraBinOp::And => "&&",
-            AuraBinOp::Or => "||",
         }
     }
 
@@ -998,7 +1007,7 @@ fun {}Preview() {{
     fn component_to_compose(
         &mut self,
         name: &str,
-        props: &HashMap<String, AuraExpr>,
+        props: &HashMap<String, crate::ast::Expr>,
         events: &HashMap<String, AuraEvent>,
         indent: usize,
     ) -> GenResult<String> {
@@ -1657,10 +1666,10 @@ fun {}Preview() {{
                 // Center is syntax sugar for Column with center alignment
                 let mut merged_props = props.clone();
                 if !merged_props.contains_key("align") {
-                    merged_props.insert("align".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
+                    merged_props.insert("align".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
                 }
                 if !merged_props.contains_key("arrange") {
-                    merged_props.insert("arrange".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
+                    merged_props.insert("arrange".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
                 }
                 self.layout_generator.generate_column(&merged_props, children)
             }
@@ -2168,7 +2177,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: crate::aura::AuraExpr::Int(0),
+                initial: crate::ast::Expr::Int(0),
                 decorators: vec![],
             }],
             computed: vec![],
@@ -2211,19 +2220,19 @@ mod tests {
                 AuraStateDef {
                     name: "name".to_string(),
                     type_info: Type::StrFixed(0),
-                    initial: crate::aura::AuraExpr::Literal("Guest".to_string()),
+                    initial: crate::ast::Expr::Str("Guest".into()),
                     decorators: vec![],
                 },
                 AuraStateDef {
                     name: "age".to_string(),
                     type_info: Type::Int,
-                    initial: crate::aura::AuraExpr::Int(25),
+                    initial: crate::ast::Expr::Int(25),
                     decorators: vec![],
                 },
                 AuraStateDef {
                     name: "enabled".to_string(),
                     type_info: Type::Bool,
-                    initial: crate::aura::AuraExpr::Bool(true),
+                    initial: crate::ast::Expr::Bool(true),
                     decorators: vec![],
                 },
             ],
@@ -2411,15 +2420,14 @@ mod tests {
 
     #[test]
     fn test_expr_to_default_conversion() {
-        use crate::aura::AuraExpr;
 
         // Test expression conversion
-        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Int(42)), "42");
-        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Bool(true)), "true");
-        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Bool(false)), "false");
-        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Literal("hello".to_string())), "\"hello\"");
-        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Float(3.14)), "3.14");
-        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Float(5.0)), "5.0");
+        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Int(42)), "42");
+        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Bool(true)), "true");
+        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Bool(false)), "false");
+        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Str("hello".into())), "\"hello\"");
+        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Float(3.14, "".into())), "3.14");
+        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Float(5.0, "".into())), "5.0");
     }
 
     #[test]
@@ -2456,14 +2464,14 @@ mod tests {
 
     #[test]
     fn test_jet_generator_form_integration() {
-        use crate::aura::{AuraExpr, AuraPropValue};
+        use crate::aura::AuraPropValue;
 
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("email".to_string())));
-        props.insert("placeholder".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enter email".to_string())));
-        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Email".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("email".into())));
+        props.insert("placeholder".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enter email".into())));
+        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Email".into())));
 
         let result = gen.generate_form_element("input", &props);
         assert!(result.is_ok());
@@ -2481,13 +2489,13 @@ mod tests {
 
     #[test]
     fn test_jet_generator_checkbox_integration() {
-        use crate::aura::{AuraExpr, AuraPropValue};
+        use crate::aura::AuraPropValue;
 
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("agree".to_string())));
-        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("I agree".to_string())));
+        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("agree".into())));
+        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("I agree".into())));
 
         let result = gen.generate_form_element("checkbox", &props);
         assert!(result.is_ok());
@@ -2499,13 +2507,13 @@ mod tests {
 
     #[test]
     fn test_jet_generator_switch_integration() {
-        use crate::aura::{AuraExpr, AuraPropValue};
+        use crate::aura::AuraPropValue;
 
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("enabled".to_string())));
-        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enable feature".to_string())));
+        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("enabled".into())));
+        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enable feature".into())));
 
         let result = gen.generate_form_element("switch", &props);
         assert!(result.is_ok());
@@ -2517,14 +2525,14 @@ mod tests {
 
     #[test]
     fn test_jet_generator_slider_integration() {
-        use crate::aura::{AuraExpr, AuraPropValue};
+        use crate::aura::AuraPropValue;
 
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("volume".to_string())));
-        props.insert("min".to_string(), AuraPropValue::Expr(AuraExpr::Int(0)));
-        props.insert("max".to_string(), AuraPropValue::Expr(AuraExpr::Int(100)));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("volume".into())));
+        props.insert("min".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(0)));
+        props.insert("max".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(100)));
 
         let result = gen.generate_form_element("slider", &props);
         assert!(result.is_ok());
@@ -2535,12 +2543,12 @@ mod tests {
 
     #[test]
     fn test_jet_generator_toggle_alias() {
-        use crate::aura::{AuraExpr, AuraPropValue};
+        use crate::aura::AuraPropValue;
 
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("toggle".to_string())));
+        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("toggle".into())));
 
         // Test that "toggle" is an alias for "switch"
         let result = gen.generate_form_element("toggle", &props);
@@ -2707,17 +2715,17 @@ mod tests {
 
     #[test]
     fn test_all_form_elements_with_all_properties() {
-        use crate::aura::{AuraExpr, AuraPropValue};
+        use crate::aura::AuraPropValue;
 
         let mut gen = JetGenerator::new();
 
         // Test input with all properties
         let mut input_props = HashMap::new();
-        input_props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("text".to_string())));
-        input_props.insert("placeholder".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enter text".to_string())));
-        input_props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Text Field".to_string())));
-        input_props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("email".to_string())));
-        input_props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        input_props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
+        input_props.insert("placeholder".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enter text".into())));
+        input_props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Text Field".into())));
+        input_props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("email".into())));
+        input_props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
 
         let result = gen.generate_form_element("input", &input_props);
         assert!(result.is_ok());
@@ -2752,15 +2760,15 @@ mod tests {
 
     #[test]
     fn test_layout_with_modifier_chain() {
-        use crate::aura::{AuraExpr, AuraPropValue};
+        use crate::aura::AuraPropValue;
 
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
         // gap: 4 means 4 Tailwind units = 16dp (4 * 4 = 16)
-        props.insert("gap".to_string(), AuraPropValue::Expr(AuraExpr::Int(4)));
-        props.insert("align".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
-        props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("px-4 py-2 bg-white rounded-lg".to_string())));
+        props.insert("gap".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(4)));
+        props.insert("align".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
+        props.insert("class".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("px-4 py-2 bg-white rounded-lg".into())));
 
         let result = gen.generate_layout_element("col", &props, "// children here");
         assert!(result.is_ok());
@@ -2773,14 +2781,14 @@ mod tests {
 
     #[test]
     fn test_list_with_data_binding() {
-        use crate::aura::{AuraExpr, AuraPropValue};
+        use crate::aura::AuraPropValue;
 
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("items".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("users".to_string())));
-        props.insert("key".to_string(), AuraPropValue::Expr(AuraExpr::Literal("{item.id}".to_string())));
-        props.insert("columns".to_string(), AuraPropValue::Expr(AuraExpr::Int(2)));
+        props.insert("items".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("users".into())));
+        props.insert("key".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("{item.id}".into())));
+        props.insert("columns".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(2)));
 
         let result = gen.generate_list_element("grid", &props, "UserCard(user = item)");
         assert!(result.is_ok());
@@ -2852,12 +2860,12 @@ mod tests {
 
     #[test]
     fn test_card_variant_e2e_elevated() {
-        use crate::aura::{AuraWidget, AuraNode, AuraExpr, AuraPropValue, AuraTextContent};
+        use crate::aura::{AuraWidget, AuraNode, AuraPropValue, AuraTextContent};
 
         // Create a widget with Card (variant: "elevated")
         let mut card_props: HashMap<String, AuraPropValue> = HashMap::new();
-        card_props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("elevated".to_string())));
-        card_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4".to_string())));
+        card_props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())));
+        card_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4".into())));
 
         let card_node = AuraNode::Element {
             tag: "Card".to_string(),
@@ -2899,12 +2907,12 @@ mod tests {
 
     #[test]
     fn test_card_variant_e2e_outlined() {
-        use crate::aura::{AuraWidget, AuraNode, AuraExpr, AuraPropValue, AuraTextContent};
+        use crate::aura::{AuraWidget, AuraNode, AuraPropValue, AuraTextContent};
 
         // Create a widget with Card (variant: "outlined")
         let mut card_props: HashMap<String, AuraPropValue> = HashMap::new();
-        card_props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("outlined".to_string())));
-        card_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4".to_string())));
+        card_props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("outlined".into())));
+        card_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4".into())));
 
         let card_node = AuraNode::Element {
             tag: "Card".to_string(),
@@ -2943,11 +2951,11 @@ mod tests {
 
     #[test]
     fn test_card_variant_e2e_default() {
-        use crate::aura::{AuraWidget, AuraNode, AuraExpr, AuraPropValue, AuraTextContent};
+        use crate::aura::{AuraWidget, AuraNode, AuraPropValue, AuraTextContent};
 
         // Create a widget with Card (no variant - should default to Card)
         let mut card_props: HashMap<String, AuraPropValue> = HashMap::new();
-        card_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4".to_string())));
+        card_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4".into())));
 
         let card_node = AuraNode::Element {
             tag: "Card".to_string(),
@@ -3056,24 +3064,24 @@ widget TestCardVariant {
     #[test]
     fn test_nested_card_variant_e2e() {
         // Test nested Card with variant - matching the actual card.at structure
-        use crate::aura::{AuraWidget, AuraNode, AuraExpr, AuraPropValue, AuraTextContent};
+        use crate::aura::{AuraWidget, AuraNode, AuraPropValue, AuraTextContent};
 
         // Outer Card with elevated variant
         let mut outer_card_props: HashMap<String, AuraPropValue> = HashMap::new();
-        outer_card_props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("elevated".to_string())));
-        outer_card_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("rounded-2xl w-full p-5".to_string())));
+        outer_card_props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())));
+        outer_card_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("rounded-2xl w-full p-5".into())));
 
         // Inner Card (default)
         let inner_card_props: HashMap<String, AuraPropValue> = {
             let mut props = HashMap::new();
-            props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4 rounded-lg".to_string())));
+            props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4 rounded-lg".into())));
             props
         };
 
         // Inner Card with outlined variant
         let mut outlined_card_props: HashMap<String, AuraPropValue> = HashMap::new();
-        outlined_card_props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("outlined".to_string())));
-        outlined_card_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4 rounded-lg".to_string())));
+        outlined_card_props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("outlined".into())));
+        outlined_card_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4 rounded-lg".into())));
 
         // Build nested structure: Outer Card > Col > [Inner Cards]
         let inner_card1 = AuraNode::Element {
@@ -3160,11 +3168,11 @@ fn test_image_tag_normalization() {
 
 #[test]
 fn test_text_with_flex_style() {
-    use crate::aura::{AuraWidget, AuraNode, AuraExpr, AuraPropValue, AuraTextContent};
+    use crate::aura::{AuraWidget, AuraNode, AuraPropValue, AuraTextContent};
 
     // Create a widget with Text that has style: "flex-1"
     let mut text_props: HashMap<String, AuraPropValue> = HashMap::new();
-    text_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("flex-1".to_string())));
+    text_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("flex-1".into())));
 
     let text_node = AuraNode::Element {
         tag: "Text".to_string(),

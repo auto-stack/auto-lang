@@ -9,7 +9,8 @@
 
 use std::collections::HashMap;
 
-use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent};
+use crate::ast::Expr;
+use crate::aura::{AuraNode, AuraPropValue, AuraTextContent};
 use crate::ui::render_support::{self, SupportLevel};
 use crate::ui::style::BoxLayout;
 
@@ -105,7 +106,7 @@ impl<'a> AuraSnapshotBuilder<'a> {
             } => {
                 // Reverse-map: col + "w-full h-full justify-center items-center" → center
                 let display_tag = if tag == "col" {
-                    if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("style") {
+                    if let Some(AuraPropValue::Expr(Expr::Str(s))) = props.get("style") {
                         if s == "w-full h-full justify-center items-center" {
                             "center"
                         } else {
@@ -341,20 +342,25 @@ impl<'a> AuraSnapshotBuilder<'a> {
         }
     }
 
-    /// Evaluate an AuraExpr to a string.
-    fn eval_expr(&self, expr: &AuraExpr) -> String {
+    /// Evaluate a base AST `Expr` to a string.
+    fn eval_expr(&self, expr: &Expr) -> String {
         match expr {
-            AuraExpr::Literal(s) => s.clone(),
-            AuraExpr::Int(i) => i.to_string(),
-            AuraExpr::Float(f) => f.to_string(),
-            AuraExpr::Bool(b) => b.to_string(),
-            AuraExpr::StateRef(name) => {
+            Expr::Str(s) => s.to_string(),
+            Expr::Int(i) => i.to_string(),
+            Expr::Float(f, _) => f.to_string(),
+            Expr::Double(f, _) => f.to_string(),
+            Expr::Bool(b) => b.to_string(),
+            // State reference: an identifier whose name starts with "." is a
+            // state-ref (e.g. ".count"). Other identifiers are also treated as
+            // state references (mirroring the old AuraExpr extraction).
+            Expr::Ident(name) => {
+                let trimmed = name.as_str().trim_start_matches('.');
                 self.state
-                    .get(name.trim_start_matches('.'))
+                    .get(trimmed)
                     .map(|v| Self::format_eval_value(v))
-                    .unwrap_or_else(|| format!(".{}", name))
+                    .unwrap_or_else(|| format!("{}", name))
             }
-            AuraExpr::Array(items) => {
+            Expr::Array(items) => {
                 let vals: Vec<String> = items.iter().map(|e| self.eval_expr(e)).collect();
                 format!("[{}]", vals.join(", "))
             }
@@ -362,15 +368,17 @@ impl<'a> AuraSnapshotBuilder<'a> {
         }
     }
 
-    /// Evaluate an AuraExpr as boolean (for style bindings and conditionals).
-    fn eval_expr_bool(&self, expr: &AuraExpr) -> bool {
+    /// Evaluate a base AST `Expr` as boolean (for style bindings and conditionals).
+    fn eval_expr_bool(&self, expr: &Expr) -> bool {
         match expr {
-            AuraExpr::Bool(b) => *b,
-            AuraExpr::StateRef(name) => self
-                .state
-                .get(name.trim_start_matches('.'))
-                .map(|v| v.as_bool())
-                .unwrap_or(false),
+            Expr::Bool(b) => *b,
+            Expr::Ident(name) => {
+                let trimmed = name.as_str().trim_start_matches('.');
+                self.state
+                    .get(trimmed)
+                    .map(|v| v.as_bool())
+                    .unwrap_or(false)
+            }
             _ => false,
         }
     }
@@ -512,8 +520,8 @@ impl<'a> AuraSnapshotBuilder<'a> {
             .get("text")
             .or_else(|| props.get("label"))
             .and_then(|pv| match pv {
-                AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
-                AuraPropValue::Expr(AuraExpr::StateRef(name)) => Some(format!(".{}", name)),
+                AuraPropValue::Expr(Expr::Str(s)) => Some(s.to_string()),
+                AuraPropValue::Expr(Expr::Ident(name)) => Some(name.to_string()),
                 _ => None,
             })
     }
@@ -574,7 +582,7 @@ impl<'a> AuraSnapshotBuilder<'a> {
         let style_str = props.get("class")
             .or_else(|| props.get("style"))
             .and_then(|pv| match pv {
-                AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
+                AuraPropValue::Expr(Expr::Str(s)) => Some(s.to_string()),
                 _ => None,
             })?;
 

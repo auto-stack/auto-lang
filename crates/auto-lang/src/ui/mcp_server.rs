@@ -121,6 +121,21 @@ impl StyledNodeSnapshot {
 // Shared State — Bridge between iced and MCP threads
 // ============================================================================
 
+/// Wrapper around `AuraNode` that is `Send` so it can live in the cross-thread
+/// `SharedState` (axum state requires `Send + Sync`).
+///
+/// # Safety
+/// `AuraNode` is not automatically `Send` because `ast::Expr` may contain
+/// `ast::Node` whose type info uses `Rc<RefCell<_>>`. In practice the view
+/// template stored here is built once by the parser, only ever **read** (to
+/// render a text snapshot) while the `Mutex` is held, and replaced/dropped
+/// exclusively from the iced thread via `SharedState::update`. The `Rc` handles
+/// are never cloned or mutated across threads, so moving the owning value
+/// between threads is sound.
+struct SendViewTemplate(AuraNode);
+unsafe impl Send for SendViewTemplate {}
+unsafe impl Sync for SendViewTemplate {}
+
 /// Shared state that the iced main thread updates and the MCP thread reads.
 ///
 /// The iced thread holds `SharedState` and updates the snapshot after each
@@ -141,7 +156,7 @@ pub struct SharedState {
     action_tx: Option<mpsc::Sender<ActionMessage>>,
     /// Original AuraNode view template (Plan 279).
     /// Used for AURA source-style snapshots with full original info.
-    view_template: Option<AuraNode>,
+    view_template: Option<SendViewTemplate>,
     /// Window size (width, height) in logical pixels (Plan 281).
     window_size: Option<(f32, f32)>,
     /// Actual layout bounds from iced renderer (Plan 282).
@@ -265,7 +280,7 @@ impl SharedState {
         self.state = state;
         self.input_state_map = input_state_map;
         if view_template.is_some() {
-            self.view_template = view_template;
+            self.view_template = view_template.map(SendViewTemplate);
         }
     }
 }
@@ -702,7 +717,8 @@ fn tool_snapshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
     let shared = shared.lock().unwrap();
 
     match &shared.view_template {
-        Some(template) => {
+        Some(t) => {
+            let template = &t.0;
             use crate::ui::aura_snapshot_builder::AuraSnapshotBuilder;
             let mut builder = AuraSnapshotBuilder::new(&shared.state).with_status(include_status);
             if let Some((w, h)) = shared.window_size {
@@ -734,7 +750,8 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
     let shared = shared.lock().unwrap();
 
     match &shared.view_template {
-        Some(template) => {
+        Some(t) => {
+            let template = &t.0;
             match find_aura_node(template, element_id) {
                 Some((tag, props, events)) => {
                     use crate::ui::aura_snapshot_builder::AuraSnapshotBuilder;
@@ -837,7 +854,7 @@ fn tool_check(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_jso
     let shared = shared.lock().unwrap();
 
     let template = match &shared.view_template {
-        Some(t) => t,
+        Some(t) => &t.0,
         None => return error_result("No UI available yet — the application may not have rendered"),
     };
 
@@ -1080,7 +1097,7 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
             // Find the first input element with a handler
             let shared = shared_handle.lock().unwrap();
             match &shared.view_template {
-                Some(template) => match find_first_input(template) {
+                Some(t) => match find_first_input(&t.0) {
                     Some(id) => id,
                     None => return error_result("No input element found — specify element_id"),
                 },

@@ -10,7 +10,7 @@
 //! - `card` → `Card` (with variant: elevated/outlined/filled)
 //! - `scroll` → `Column + verticalScroll`
 
-use crate::aura::{AuraExpr, AuraPropValue};
+use crate::aura::AuraPropValue;
 use crate::ui_gen::jet::modifier::ModifierDsl;
 use crate::ui_gen::shared::ComputedStyle as Style;
 use crate::ui_gen::GenResult;
@@ -97,8 +97,8 @@ impl LayoutGenerator {
     /// Extract string value from prop
     fn extract_string(props: &HashMap<String, AuraPropValue>, key: &str) -> Option<String> {
         props.get(key).and_then(|p| match p {
-            AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
-            AuraPropValue::Expr(AuraExpr::StateRef(s)) => Some(s.clone()),
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+            AuraPropValue::Expr(crate::ast::Expr::Ident(s)) => Some(s.to_string()),
             _ => None,
         })
     }
@@ -106,9 +106,9 @@ impl LayoutGenerator {
     /// Extract int value from prop (handles Int, Float, and String forms)
     fn extract_int(props: &HashMap<String, AuraPropValue>, key: &str) -> Option<i64> {
         props.get(key).and_then(|p| match p {
-            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n),
-            AuraPropValue::Expr(AuraExpr::Float(n)) => Some(*n as i64),
-            AuraPropValue::Expr(AuraExpr::Literal(s)) => s.parse::<i64>().ok(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as i64),
+            AuraPropValue::Expr(crate::ast::Expr::Float(n, _)) => Some(*n as i64),
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.parse::<i64>().ok(),
             _ => None,
         })
     }
@@ -653,7 +653,7 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("gap".to_string(), AuraPropValue::Expr(AuraExpr::Int(4)));
+        props.insert("gap".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(4)));
 
         let result = gen.generate_column(&props, "Text(\"Hello\")");
         assert!(result.is_ok());
@@ -666,7 +666,7 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("align".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
+        props.insert("align".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
 
         let result = gen.generate_column(&props, "Text(\"Hello\")");
         assert!(result.is_ok());
@@ -690,7 +690,7 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("justify".to_string(), AuraPropValue::Expr(AuraExpr::Literal("between".to_string())));
+        props.insert("justify".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("between".into())));
 
         let result = gen.generate_row(&props, "Text(\"A\")\n        Text(\"B\")");
         assert!(result.is_ok());
@@ -725,7 +725,7 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4 rounded-lg".to_string())));
+        props.insert("class".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4 rounded-lg".into())));
 
         let result = gen.generate_card(&props, "Text(\"Card\")");
         assert!(result.is_ok());
@@ -802,7 +802,7 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("elevated".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())));
 
         let result = gen.generate_card(&props, "Text(\"Content\")");
         assert!(result.is_ok());
@@ -817,7 +817,7 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("outlined".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("outlined".into())));
 
         let result = gen.generate_card(&props, "Text(\"Content\")");
         assert!(result.is_ok());
@@ -846,7 +846,7 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("filled".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("filled".into())));
 
         let result = gen.generate_card(&props, "Text(\"Content\")");
         assert!(result.is_ok());
@@ -861,8 +861,8 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("elevated".to_string())));
-        props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("rounded-2xl".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())));
+        props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("rounded-2xl".into())));
 
         let result = gen.generate_card(&props, "Text(\"Content\")");
         assert!(result.is_ok());
@@ -894,7 +894,7 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("gap-2".to_string())));
+        props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("gap-2".into())));
 
         let result = gen.generate_flow_row(&props, "Text(\"Item\")");
         assert!(result.is_ok());
@@ -934,7 +934,7 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4 gap-2".to_string())));
+        props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4 gap-2".into())));
 
         let result = gen.generate_flow_row(&props, "Text(\"Item\")");
         assert!(result.is_ok());

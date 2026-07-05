@@ -104,7 +104,7 @@
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
-use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraUnaryOp, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
 // ============================================================================
@@ -2199,7 +2199,7 @@ impl VueGenerator {
                         if key.starts_with("bind:") {
                             let bind_target = key.strip_prefix("bind:").unwrap();
                             let model_value = match value {
-                                AuraPropValue::Expr(AuraExpr::StateRef(name)) => name.clone(),
+                                AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => name.to_string(),
                                 _ => "value".to_string(),
                             };
                             if tag == "input" && bind_target == "checked" {
@@ -2213,10 +2213,10 @@ impl VueGenerator {
                         }
 
                         // Use v-bind (:attr) for dynamic values, static quotes for literals
-                        if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                        if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
                             // Track value state ref for v-model optimization on input elements
                             if key == "value" && (tag == "input" || tag == "textarea") {
-                                value_state_ref = Some(name.clone());
+                                value_state_ref = Some(name.to_string());
                             }
                             attrs.push(format!(":{}=\"{}\"", key, name));
                         } else if let AuraPropValue::Expr(expr) = value {
@@ -2924,80 +2924,88 @@ impl VueGenerator {
     }
 
     /// Convert AuraExpr to Auto source code string
-    fn expr_to_auto_string(&self, expr: &AuraExpr) -> String {
+    fn expr_to_auto_string(&self, expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
+        use auto_val::Op;
         match expr {
-            AuraExpr::Int(n) => n.to_string(),
-            AuraExpr::Float(n) => n.to_string(),
-            AuraExpr::Bool(b) => b.to_string(),
-            AuraExpr::Literal(s) => format!("\"{}\"", s),
-            AuraExpr::StateRef(name) => format!(".{}", name),
-            AuraExpr::MsgVariant { msg_type, variant } => {
-                format!("{}::{}", msg_type, variant)
-            }
-            AuraExpr::Binary { left, op, right } => {
+            Expr::Int(n) => n.to_string(),
+            Expr::I64(n) => n.to_string(),
+            Expr::Float(n, _) | Expr::Double(n, _) => n.to_string(),
+            Expr::Bool(b) => b.to_string(),
+            Expr::Str(s) | Expr::CStr(s) => format!("\"{}\"", s),
+            Expr::Ident(name) => format!(".{}", name),
+            Expr::Bina(left, op, right) => {
                 let op_str = match op {
-                    AuraBinOp::Add => "+",
-                    AuraBinOp::Sub => "-",
-                    AuraBinOp::Mul => "*",
-                    AuraBinOp::Div => "/",
-                    AuraBinOp::Mod => "%",
-                    AuraBinOp::Eq => "==",
-                    AuraBinOp::Ne => "!=",
-                    AuraBinOp::Lt => "<",
-                    AuraBinOp::Le => "<=",
-                    AuraBinOp::Gt => ">",
-                    AuraBinOp::Ge => ">=",
-                    AuraBinOp::And => "&&",
-                    AuraBinOp::Or => "||",
+                    Op::Add => "+",
+                    Op::Sub => "-",
+                    Op::Mul => "*",
+                    Op::Div => "/",
+                    Op::Mod => "%",
+                    Op::Eq => "==",
+                    Op::Neq => "!=",
+                    Op::Lt => "<",
+                    Op::Le => "<=",
+                    Op::Gt => ">",
+                    Op::Ge => ">=",
+                    Op::And => "&&",
+                    Op::Or => "||",
+                    _ => "+",
                 };
                 format!("{} {} {}", self.expr_to_auto_string(left), op_str, self.expr_to_auto_string(right))
             }
-            AuraExpr::Unary { op, operand } => {
+            Expr::Unary(op, operand) => {
                 let op_str = match op {
-                    AuraUnaryOp::Neg => "-",
-                    AuraUnaryOp::Not => "!",
+                    Op::Sub => "-",
+                    _ => "!",
                 };
                 format!("{}{}", op_str, self.expr_to_auto_string(operand))
             }
-            AuraExpr::MethodCall { object, method, args } => {
-                let args_str: Vec<String> = args.iter().map(|a| self.expr_to_auto_string(a)).collect();
-                format!("{}.{}({})", self.expr_to_auto_string(object), method, args_str.join(", "))
+            Expr::Call(call) => {
+                if let Expr::Dot(object, method) = call.name.as_ref() {
+                    let args_str: Vec<String> = call.args.args.iter()
+                        .filter_map(|a| match a {
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            _ => None,
+                        })
+                        .map(|a| self.expr_to_auto_string(&a))
+                        .collect();
+                    format!("{}.{}({})", self.expr_to_auto_string(object), method, args_str.join(", "))
+                } else {
+                    let args_str: Vec<String> = call.args.args.iter()
+                        .filter_map(|a| match a {
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            _ => None,
+                        })
+                        .map(|a| self.expr_to_auto_string(&a))
+                        .collect();
+                    format!("{}({})", self.expr_to_auto_string(&call.name), args_str.join(", "))
+                }
             }
-            AuraExpr::Array(elements) => {
+            Expr::Array(elements) => {
                 let elements_str: Vec<String> = elements.iter().map(|e| self.expr_to_auto_string(e)).collect();
                 format!("[{}]", elements_str.join(", "))
             }
-            AuraExpr::Object(fields) => {
-                let pairs: Vec<String> = fields.iter()
-                    .map(|(k, v)| format!("{}: {}", k, self.expr_to_auto_string(v)))
+            Expr::Object(pairs) => {
+                let pairs: Vec<String> = pairs.iter()
+                    .map(|p| format!("{}: {}", p.key.to_astr(), self.expr_to_auto_string(&p.value)))
                     .collect();
                 format!("{{{}}}", pairs.join(", "))
             }
-            AuraExpr::Lambda { params, body } => {
-                let params_str = params.join(", ");
-                format!("|{}| {}", params_str, self.expr_to_auto_string(body))
+            Expr::Closure(closure) => {
+                let params_str: Vec<String> = closure.params.iter().map(|p| p.name.to_string()).collect();
+                format!("|{}| {}", params_str.join(", "), self.expr_to_auto_string(&closure.body))
             }
-            AuraExpr::FieldAccess { object, field } => {
+            Expr::Dot(object, field) => {
                 format!("{}.{}", self.expr_to_auto_string(object), field)
             }
-            AuraExpr::NavCall { path, params } => {
+            Expr::NavCall { path, params } => {
                 let params_str: Vec<String> = params.iter()
-                    .map(|(k, v)| format!("{}: {}", k, self.expr_to_auto_string(v)))
+                    .map(|p| format!("{}: {}", p.key.to_astr(), self.expr_to_auto_string(&p.value)))
                     .collect();
-                format!("Nav.to(\"{}\", {{ {} }})", path, params_str.join(", "))
+                format!("Nav.to(\"{}\", {{ {} }})", self.expr_to_auto_string(path), params_str.join(", "))
             }
-            AuraExpr::Constructor { type_name, args } => {
-                let args_str: Vec<String> = args.iter().map(|a| self.expr_to_auto_string(a)).collect();
-                format!("{}({})", type_name, args_str.join(", "))
-            }
-            AuraExpr::Index { target, index } => {
+            Expr::Index(target, index) => {
                 format!("{}[{}]", self.expr_to_auto_string(target), self.expr_to_auto_string(index))
-            }
-            AuraExpr::If { cond, then_branch, else_branch } => {
-                let else_str = else_branch.as_ref()
-                    .map(|e| format!(" else {{ {} }}", self.expr_to_auto_string(e)))
-                    .unwrap_or_default();
-                format!("if {} {{ {} }}{}", self.expr_to_auto_string(cond), self.expr_to_auto_string(then_branch), else_str)
             }
             _ => "/* unsupported expr */".to_string(),
         }
@@ -3311,7 +3319,7 @@ impl VueGenerator {
         // Extract gap prop for layout elements
         let gap_class = if let Some(value) = props.get("gap") {
             match value {
-                AuraPropValue::Expr(AuraExpr::Literal(s)) => format!("gap-{}", s),
+                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => format!("gap-{}", s),
                 _ => "gap-4".to_string(),
             }
         } else {
@@ -3429,7 +3437,7 @@ impl VueGenerator {
                         .collect();
                     dynamic_binding = Some(format!("{{ {} }}", binding_strs.join(", ")));
                 }
-                AuraPropValue::Expr(AuraExpr::Literal(s)) => {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
                     // Dedup: for layout primitives, split user classes and skip any already present
                     if is_layout_primitive {
                         for c in s.split_whitespace() {
@@ -3439,25 +3447,30 @@ impl VueGenerator {
                             }
                         }
                     } else {
-                        classes.push(s.clone());
+                        classes.push(s.to_string());
                     }
                 }
-                AuraPropValue::Expr(AuraExpr::If { cond, then_branch, else_branch }) => {
+                AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
                     // Plan 346: conditional style → Vue :class ternary.
                     // style: if i == .active_index { "hl" } else { "normal" }
                     // → :class="i === active_index ? 'hl' : 'normal'"
-                    let cond_str = self.expr_to_vue_bound_value(cond).unwrap_or_else(|_| "false".to_string());
-                    let then_str = match then_branch.as_ref() {
-                        AuraExpr::Literal(s) => s.clone(),
-                        _ => String::new(),
-                    };
-                    let else_str = else_branch.as_ref()
-                        .and_then(|e| match e.as_ref() {
-                            AuraExpr::Literal(s) => Some(s.clone()),
-                            _ => None,
-                        })
-                        .unwrap_or_default();
-                    dynamic_binding = Some(format!("{} ? '{}' : '{}'", cond_str, then_str, else_str));
+                    if let Some(branch) = if_stmt.branches.first() {
+                        let cond_str = self.expr_to_vue_bound_value(&branch.cond).unwrap_or_else(|_| "false".to_string());
+                        // Extract the string literal from the body's first statement if present
+                        let then_str = branch.body.stmts.iter().find_map(|st| {
+                            if let crate::ast::Stmt::Return(e) = st {
+                                if let crate::ast::Expr::Str(s) = e.as_ref() { Some(s.to_string()) } else { None }
+                            } else { None }
+                        }).unwrap_or_default();
+                        let else_str = if_stmt.else_.as_ref()
+                            .and_then(|body| body.stmts.iter().find_map(|st| {
+                                if let crate::ast::Stmt::Return(e) = st {
+                                    if let crate::ast::Expr::Str(s) = e.as_ref() { Some(s.to_string()) } else { None }
+                                } else { None }
+                            }))
+                            .unwrap_or_default();
+                        dynamic_binding = Some(format!("{} ? '{}' : '{}'", cond_str, then_str, else_str));
+                    }
                 }
                 _ => {}
             }
@@ -3465,7 +3478,7 @@ impl VueGenerator {
         // Process 'class' prop (static Tailwind classes)
         if let Some(value) = props.get("class") {
             match value {
-                AuraPropValue::Expr(AuraExpr::Literal(s)) => {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
                     if is_layout_primitive {
                         for c in s.split_whitespace() {
                             let existing: Vec<&str> = classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
@@ -3474,7 +3487,7 @@ impl VueGenerator {
                             }
                         }
                     } else {
-                        classes.push(s.clone());
+                        classes.push(s.to_string());
                     }
                 }
                 _ => {}
@@ -3485,31 +3498,26 @@ impl VueGenerator {
     }
 
     /// Plan 100: Infer TypeScript type from AuraExpr
-    fn expr_to_ts_type(&self, expr: &AuraExpr) -> String {
+    fn expr_to_ts_type(&self, expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
         match expr {
-            AuraExpr::Int(_) => "number".to_string(),
-            AuraExpr::Float(_) => "number".to_string(),
-            AuraExpr::Bool(_) => "boolean".to_string(),
-            AuraExpr::Literal(_) => "string".to_string(),
-            AuraExpr::StateRef(name) => {
+            Expr::Int(_) | Expr::I64(_) | Expr::Uint(_) | Expr::U64(_)
+            | Expr::I8(_) | Expr::U8(_) | Expr::Byte(_)
+            | Expr::Float(_, _) | Expr::Double(_, _) => "number".to_string(),
+            Expr::Bool(_) => "boolean".to_string(),
+            Expr::Str(_) | Expr::CStr(_) => "string".to_string(),
+            Expr::Ident(name) => {
                 // Try to infer type from state variable name
-                // This is a simple heuristic - in a more complete implementation,
-                // we'd look up the actual type from the state definition
                 if name.starts_with("is_") || name.starts_with("has_") {
                     "boolean".to_string()
                 } else {
                     "number".to_string()  // Default to number for state refs
                 }
             }
-            AuraExpr::Binary { .. } => {
-                // Binary operations on numbers typically produce numbers
-                // Comparison operations produce booleans
+            Expr::Bina(_, _, _) | Expr::Unary(_, _) => {
                 "number".to_string()
             }
-            AuraExpr::Unary { .. } => {
-                "number".to_string()
-            }
-            AuraExpr::Array(_) => "any[]".to_string(),
+            Expr::Array(_) => "any[]".to_string(),
             _ => "any".to_string(),  // Default fallback
         }
     }
@@ -3532,19 +3540,23 @@ impl VueGenerator {
     }
 
     /// Check if an expression contains NavCall (Plan 105)
-    fn expr_has_nav_call(expr: &AuraExpr) -> bool {
+    fn expr_has_nav_call(expr: &crate::ast::Expr) -> bool {
+        use crate::ast::Expr;
         match expr {
-            AuraExpr::NavCall { .. } => true,
-            AuraExpr::Binary { left, right, .. } => {
+            Expr::NavCall { .. } => true,
+            Expr::Bina(left, _, right) => {
                 Self::expr_has_nav_call(left) || Self::expr_has_nav_call(right)
             }
-            AuraExpr::Unary { operand, .. } => Self::expr_has_nav_call(operand),
-            AuraExpr::MethodCall { object, args, .. } => {
-                Self::expr_has_nav_call(object) || args.iter().any(Self::expr_has_nav_call)
+            Expr::Unary(_, operand) => Self::expr_has_nav_call(operand),
+            Expr::Call(call) => {
+                Self::expr_has_nav_call(&call.name) || call.args.args.iter().any(|a| {
+                    matches!(a, crate::ast::Arg::Pos(_) | crate::ast::Arg::Pair(..))
+                        && Self::expr_has_nav_call(&a.get_expr())
+                })
             }
-            AuraExpr::Array(elems) => elems.iter().any(Self::expr_has_nav_call),
-            AuraExpr::Lambda { body, .. } => Self::expr_has_nav_call(body),
-            AuraExpr::FieldAccess { object, .. } => Self::expr_has_nav_call(object),
+            Expr::Array(elems) => elems.iter().any(Self::expr_has_nav_call),
+            Expr::Closure(closure) => Self::expr_has_nav_call(&closure.body),
+            Expr::Dot(object, _) => Self::expr_has_nav_call(object),
             _ => false,
         }
     }
@@ -3569,31 +3581,37 @@ impl VueGenerator {
     }
 
     /// Check if an AURA expression accesses router (Plan 235)
-    fn expr_has_route_access(expr: &AuraExpr) -> bool {
+    fn expr_has_route_access(expr: &crate::ast::Expr) -> bool {
+        use crate::ast::Expr;
         match expr {
-            AuraExpr::MethodCall { object, .. } => {
-                if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if name == "router" {
+            Expr::Call(call) => {
+                if let Expr::Dot(object, _) = call.name.as_ref() {
+                    if let Expr::Ident(name) = object.as_ref() {
+                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                        if resolved == "router" {
+                            return true;
+                        }
+                    }
+                    if Self::expr_has_route_access(object) { return true; }
+                }
+                call.args.args.iter().any(|a| Self::expr_has_route_access(&a.get_expr()))
+            }
+            Expr::Dot(object, _) => {
+                if let Expr::Ident(name) = object.as_ref() {
+                    let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                    if resolved == "router" {
                         return true;
                     }
                 }
                 Self::expr_has_route_access(object)
             }
-            AuraExpr::FieldAccess { object, .. } => {
-                if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if name == "router" {
-                        return true;
-                    }
-                }
-                Self::expr_has_route_access(object)
-            }
-            AuraExpr::Binary { left, right, .. } => {
+            Expr::Bina(left, _, right) => {
                 Self::expr_has_route_access(left) || Self::expr_has_route_access(right)
             }
-            AuraExpr::Unary { operand, .. } => Self::expr_has_route_access(operand),
-            AuraExpr::Array(elems) => elems.iter().any(Self::expr_has_route_access),
-            AuraExpr::Object(fields) => fields.values().any(Self::expr_has_route_access),
-            AuraExpr::Lambda { body, .. } => Self::expr_has_route_access(body),
+            Expr::Unary(_, operand) => Self::expr_has_route_access(operand),
+            Expr::Array(elems) => elems.iter().any(Self::expr_has_route_access),
+            Expr::Object(pairs) => pairs.iter().any(|p| Self::expr_has_route_access(&p.value)),
+            Expr::Closure(closure) => Self::expr_has_route_access(&closure.body),
             _ => false,
         }
     }
@@ -3628,167 +3646,185 @@ impl VueGenerator {
     }
 
     /// Convert AuraExpr to JS value string
-    fn expr_to_js(&self, expr: &AuraExpr) -> GenResult<String> {
+    fn expr_to_js(&self, expr: &crate::ast::Expr) -> GenResult<String> {
+        use crate::ast::Expr;
+        use auto_val::Op;
         match expr {
-            AuraExpr::Literal(s) => Ok(format!("'{}'", Self::escape_js_string(s))),
-            AuraExpr::Int(n) => Ok(n.to_string()),
-            AuraExpr::Float(n) => Ok(n.to_string()),
-            AuraExpr::Bool(b) => Ok(b.to_string()),
-            AuraExpr::StateRef(name) => {
-                if self.prop_names.contains(&name.to_string()) {
+            Expr::Str(s) | Expr::CStr(s) => Ok(format!("'{}'", Self::escape_js_string(s.as_str()))),
+            Expr::Int(n) => Ok(n.to_string()),
+            Expr::I8(n) => Ok((*n as i32).to_string()),
+            Expr::U8(n) => Ok((*n as i32).to_string()),
+            Expr::Byte(n) => Ok((*n as i32).to_string()),
+            Expr::Uint(n) => Ok((*n as i32).to_string()),
+            Expr::Char(c) => Ok((*c as i32).to_string()),
+            Expr::I64(n) => Ok(n.to_string()),
+            Expr::U64(n) => Ok((*n as i64).to_string()),
+            Expr::Float(n, _) | Expr::Double(n, _) => Ok(n.to_string()),
+            Expr::Bool(b) => Ok(b.to_string()),
+            Expr::Ident(name) => {
+                let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                if self.prop_names.contains(&resolved.to_string()) {
                     // Props: access via props.xxx (no .value, but need props. prefix in script)
-                    Ok(format!("props.{}", name))
-                } else if self.state_names.contains(&name.to_string()) {
-                    Ok(format!("{}.value", name))
+                    Ok(format!("props.{}", resolved))
+                } else if self.state_names.contains(&resolved.to_string()) {
+                    Ok(format!("{}.value", resolved))
                 } else {
-                    Ok(name.clone())
+                    Ok(resolved.to_string())
                 }
             }
-            AuraExpr::Binary { left, op, right } => {
+            Expr::Bina(left, op, right) => {
                 let left_js = self.expr_to_js(left)?;
                 let right_js = self.expr_to_js(right)?;
-                let op_js = self.bin_op_to_js(op);
+                let op_js = Self::op_to_js(op);
                 Ok(format!("{} {} {}", left_js, op_js, right_js))
             }
-            AuraExpr::Unary { op, operand } => {
+            Expr::Unary(op, operand) => {
                 let operand_js = self.expr_to_js(operand)?;
                 let op_js = match op {
-                    crate::aura::AuraUnaryOp::Neg => "-",
-                    crate::aura::AuraUnaryOp::Not => "!",
+                    Op::Not => "!",
+                    Op::Sub => "-",
+                    _ => "!",
                 };
                 Ok(format!("{}{}", op_js, operand_js))
             }
-            AuraExpr::MsgVariant { msg_type, variant } => {
-                Ok(format!("{}.{}", msg_type, variant))
+            Expr::Dot(object, field) => {
+                // Method call pattern: object.method(args) is parsed as
+                // Call(Dot(object, method), args).
+                // This branch handles plain field access.
+                let object_js = self.expr_to_js(object)?;
+                Ok(format!("{}.{}", object_js, field))
             }
-            AuraExpr::MethodCall { object, method, args } => {
-                // Plan 132: Check if this is an API function call
-                // Case 1: Direct API call like listusers() - object is API name, method might be empty
-                if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if self.is_api_function(&name) {
-                        let args_js: Vec<String> = args.iter()
-                            .map(|a| self.expr_to_js(a))
-                            .collect::<Result<Vec<_>, _>>()?;
-                        return Ok(format!("await {}({})", name, args_js.join(", ")));
+            Expr::Call(call) => {
+                // The call's name may be a Dot(object, method) — a method call.
+                if let Expr::Dot(object, method) = call.name.as_ref() {
+                    let method = method.clone();
+                    let args: Vec<crate::ast::Expr> = call.args.args.iter()
+                        .filter_map(|a| match a {
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            _ => None,
+                        })
+                        .collect();
+
+                    // Plan 132: Check if this is an API function call
+                    // Case 1: Direct API call like listusers() - object is API name
+                    if let Expr::Ident(name) = object.as_ref() {
+                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                        if self.is_api_function(resolved) {
+                            let args_js: Vec<String> = args.iter()
+                                .map(|a| self.expr_to_js(a))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            return Ok(format!("await {}({})", resolved, args_js.join(", ")));
+                        }
                     }
-                }
-                // Case 2: self.<api_function>() - treat as direct API call
-                // When AURA parser sees `listusers()` in handler, it converts to `self.listusers()`
-                if let AuraExpr::StateRef(obj_name) = object.as_ref() {
-                    if obj_name == "self" && self.is_api_function(&method) {
+                    // Case 2: self.<api_function>() - treat as direct API call
+                    if let Expr::Ident(obj_name) = object.as_ref() {
+                        if obj_name.as_str() == "self" && self.is_api_function(method.as_str()) {
+                            let args_js: Vec<String> = args.iter()
+                                .map(|a| self.expr_to_js(a))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            return Ok(format!("await {}({})", method, args_js.join(", ")));
+                        }
+                    }
+                    // Case 3: Any method call where method name is an API function
+                    if self.is_api_function(method.as_str()) {
                         let args_js: Vec<String> = args.iter()
                             .map(|a| self.expr_to_js(a))
                             .collect::<Result<Vec<_>, _>>()?;
                         return Ok(format!("await {}({})", method, args_js.join(", ")));
                     }
-                }
-                // Case 3: Any method call where method name is an API function
-                if self.is_api_function(&method) {
+
+                    let object_js = self.expr_to_js(object)?;
                     let args_js: Vec<String> = args.iter()
                         .map(|a| self.expr_to_js(a))
                         .collect::<Result<Vec<_>, _>>()?;
-                    return Ok(format!("await {}({})", method, args_js.join(", ")));
-                }
-
-                let object_js = self.expr_to_js(object)?;
-                let args_js: Vec<String> = args.iter()
-                    .map(|a| self.expr_to_js(a))
-                    .collect::<Result<Vec<_>, _>>()?;
-                match method.as_str() {
-                    "len" => Ok(format!("{}.length", object_js)),
-                    // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
-                    // for both strings and arrays (JS has no `.contains`).
-                    "contains" => Ok(format!("{}.includes({})", object_js, args_js.join(", "))),
-                    "to_string" => Ok(format!("{}.toString()", object_js)),
-                    "to_int" => {
-                        if args_js.is_empty() {
-                            Ok(format!("parseInt({})", object_js))
-                        } else {
-                            Ok(format!("parseInt({}, {})", object_js, args_js.join(", ")))
+                    match method.as_str() {
+                        "len" => Ok(format!("{}.length", object_js)),
+                        // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
+                        "contains" => Ok(format!("{}.includes({})", object_js, args_js.join(", "))),
+                        "to_string" => Ok(format!("{}.toString()", object_js)),
+                        "to_int" => {
+                            if args_js.is_empty() {
+                                Ok(format!("parseInt({})", object_js))
+                            } else {
+                                Ok(format!("parseInt({}, {})", object_js, args_js.join(", ")))
+                            }
                         }
+                        _ => Ok(format!("{}.{}({})", object_js, method, args_js.join(", "))),
                     }
-                    _ => Ok(format!("{}.{}({})", object_js, method, args_js.join(", "))),
+                } else {
+                    // Plain function call: func(args)
+                    let name_js = self.expr_to_js(&call.name)?;
+                    let args_js: Vec<String> = call.args.args.iter()
+                        .filter_map(|a| match a {
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            _ => None,
+                        })
+                        .map(|a| self.expr_to_js(&a))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(format!("{}({})", name_js, args_js.join(", ")))
                 }
             }
-            AuraExpr::Array(elems) => {
+            Expr::Array(elems) => {
                 let elems_js: Vec<String> = elems.iter()
                     .map(|e| self.expr_to_js(e))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("[{}]", elems_js.join(", ")))
             }
-            AuraExpr::Object(fields) => {
-                let pairs_js: Vec<String> = fields.iter()
-                    .map(|(k, v)| {
-                        let v_js = self.expr_to_js(v)?;
-                        Ok(format!("{}: {}", k, v_js))
+            Expr::Object(pairs) => {
+                let pairs_js: Vec<String> = pairs.iter()
+                    .map(|p| {
+                        let v_js = self.expr_to_js(&p.value)?;
+                        Ok(format!("{}: {}", p.key.to_astr(), v_js))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{{{}}}", pairs_js.join(", ")))
             }
-            AuraExpr::Lambda { params, body } => {
-                let body_js = self.expr_to_js(body)?;
+            Expr::Closure(closure) => {
+                let params: Vec<String> = closure.params.iter()
+                    .map(|p| p.name.to_string())
+                    .collect();
+                let body_js = self.expr_to_js(&closure.body)?;
                 Ok(format!("({}) => {}", params.join(", "), body_js))
             }
-            AuraExpr::FieldAccess { object, field } => {
-                let object_js = self.expr_to_js(object)?;
-                Ok(format!("{}.{}", object_js, field))
-            }
-            AuraExpr::NavCall { path, params } => {
-                if params.is_empty() {
-                    // Simple path navigation: router.push('/path')
-                    Ok(format!("router.push('{}')", path))
-                } else {
-                    // Navigation with query params: router.push({ path: '/path', query: { ... } })
-                    let params_js: Vec<String> = params.iter()
-                        .map(|(k, v)| {
-                            self.expr_to_js(v).map(|v_js| format!("{}: {}", k, v_js))
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-                    Ok(format!("router.push({{ path: '{}', query: {{ {} }} }})", path, params_js.join(", ")))
-                }
-            }
-            AuraExpr::Constructor { type_name, args } => {
-                let args_js: Vec<String> = args.iter()
-                    .map(|a| self.expr_to_js(a))
-                    .collect::<Result<Vec<_>, _>>()?;
-                // In JavaScript, constructors use 'new' keyword
-                Ok(format!("new {}({})", type_name, args_js.join(", ")))
-            }
-            AuraExpr::Index { target, index } => {
+            Expr::Index(target, index) => {
                 let target_js = self.expr_to_js(target)?;
                 let index_js = self.expr_to_js(index)?;
                 Ok(format!("{}[{}]", target_js, index_js))
             }
-            AuraExpr::If { cond, then_branch, else_branch } => {
-                let cond_js = self.expr_to_js(cond)?;
-                let then_js = self.expr_to_js(then_branch)?;
-                let else_js = else_branch.as_ref()
-                    .map(|e| self.expr_to_js(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "undefined".to_string());
-                Ok(format!("({} ? {} : {})", cond_js, then_js, else_js))
+            Expr::NavCall { path, params } => {
+                let path_js = self.expr_to_js(path)?;
+                if params.is_empty() {
+                    Ok(format!("router.push({})", path_js))
+                } else {
+                    let params_js: Vec<String> = params.iter()
+                        .map(|p| {
+                            self.expr_to_js(&p.value).map(|v_js| format!("{}: {}", p.key.to_astr(), v_js))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(format!("router.push({{ path: {}, query: {{ {} }} }})", path_js, params_js.join(", ")))
+                }
             }
-            AuraExpr::If { .. } => Ok("undefined".to_string()),
             _ => Ok("undefined".to_string()),
         }
     }
 
-    /// Convert binary operator to JS
-    fn bin_op_to_js(&self, op: &crate::aura::AuraBinOp) -> &'static str {
+    /// Convert binary operator (auto_val::Op) to JS
+    fn op_to_js(op: &auto_val::Op) -> &'static str {
         match op {
-            crate::aura::AuraBinOp::Add => "+",
-            crate::aura::AuraBinOp::Sub => "-",
-            crate::aura::AuraBinOp::Mul => "*",
-            crate::aura::AuraBinOp::Div => "/",
-            crate::aura::AuraBinOp::Mod => "%",
-            crate::aura::AuraBinOp::Eq => "===",
-            crate::aura::AuraBinOp::Ne => "!==",
-            crate::aura::AuraBinOp::Lt => "<",
-            crate::aura::AuraBinOp::Le => "<=",
-            crate::aura::AuraBinOp::Gt => ">",
-            crate::aura::AuraBinOp::Ge => ">=",
-            crate::aura::AuraBinOp::And => "&&",
-            crate::aura::AuraBinOp::Or => "||",
+            auto_val::Op::Add => "+",
+            auto_val::Op::Sub => "-",
+            auto_val::Op::Mul => "*",
+            auto_val::Op::Div => "/",
+            auto_val::Op::Mod => "%",
+            auto_val::Op::Eq => "===",
+            auto_val::Op::Neq => "!==",
+            auto_val::Op::Lt => "<",
+            auto_val::Op::Le => "<=",
+            auto_val::Op::Gt => ">",
+            auto_val::Op::Ge => ">=",
+            auto_val::Op::And => "&&",
+            auto_val::Op::Or => "||",
+            _ => "+",
         }
     }
 
@@ -3894,70 +3930,71 @@ impl VueGenerator {
     }
 
     /// Extract API function calls from an expression (recursive)
-    fn extract_api_calls_from_expr(&mut self, expr: &AuraExpr) {
+    fn extract_api_calls_from_expr(&mut self, expr: &crate::ast::Expr) {
+        use crate::ast::Expr;
         match expr {
-        AuraExpr::If { .. } => unreachable!(),
-            AuraExpr::MethodCall { object, method, args } => {
-                // Check if this is a direct API function call (e.g., listusers())
-                if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if self.is_api_function(&name) {
-                        self.api_functions_used.insert(name.clone());
+            Expr::Call(call) => {
+                if let Expr::Dot(object, method) = call.name.as_ref() {
+                    // Check if this is a direct API function call (e.g., listusers())
+                    if let Expr::Ident(name) = object.as_ref() {
+                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                        if self.is_api_function(resolved) {
+                            self.api_functions_used.insert(resolved.to_string());
+                        }
                     }
+                    // Also check if method name matches API function
+                    if self.is_api_function(method.as_str()) {
+                        self.api_functions_used.insert(method.to_string());
+                    }
+                    self.extract_api_calls_from_expr(object);
+                } else {
+                    let name = &call.name;
+                    if let Expr::Ident(n) = name.as_ref() {
+                        let resolved = if n.starts_with('.') { &n[1..] } else { n.as_str() };
+                        if self.is_api_function(resolved) {
+                            self.api_functions_used.insert(resolved.to_string());
+                        }
+                    }
+                    self.extract_api_calls_from_expr(name);
                 }
-                // Also check if method name matches API function
-                if self.is_api_function(&method) {
-                    self.api_functions_used.insert(method.clone());
-                }
-                // Recurse into object and args
-                self.extract_api_calls_from_expr(object);
-                for arg in args {
-                    self.extract_api_calls_from_expr(arg);
+                for arg in &call.args.args {
+                    self.extract_api_calls_from_expr(&arg.get_expr());
                 }
             }
-            AuraExpr::Binary { left, right, .. } => {
+            Expr::Bina(left, _, right) => {
                 self.extract_api_calls_from_expr(left);
                 self.extract_api_calls_from_expr(right);
             }
-            AuraExpr::Unary { operand, .. } => {
+            Expr::Unary(_, operand) => {
                 self.extract_api_calls_from_expr(operand);
             }
-            AuraExpr::FieldAccess { object, .. } => {
+            Expr::Dot(object, _) => {
                 self.extract_api_calls_from_expr(object);
             }
-            AuraExpr::Array(elems) => {
+            Expr::Array(elems) => {
                 for elem in elems {
                     self.extract_api_calls_from_expr(elem);
                 }
             }
-            AuraExpr::Object(fields) => {
-                for (_, v) in fields {
-                    self.extract_api_calls_from_expr(v);
+            Expr::Object(pairs) => {
+                for p in pairs {
+                    self.extract_api_calls_from_expr(&p.value);
                 }
             }
-            AuraExpr::Lambda { body, .. } => {
-                self.extract_api_calls_from_expr(body);
+            Expr::Closure(closure) => {
+                self.extract_api_calls_from_expr(&closure.body);
             }
-            AuraExpr::NavCall { params, .. } => {
-                for (_, v) in params {
-                    self.extract_api_calls_from_expr(v);
+            Expr::NavCall { params, .. } => {
+                for p in params {
+                    self.extract_api_calls_from_expr(&p.value);
                 }
             }
-            AuraExpr::Constructor { args, .. } => {
-                for arg in args {
-                    self.extract_api_calls_from_expr(arg);
-                }
-            }
-            AuraExpr::Index { target, index } => {
+            Expr::Index(target, index) => {
                 self.extract_api_calls_from_expr(target);
                 self.extract_api_calls_from_expr(index);
             }
             // These don't contain nested expressions
-            AuraExpr::Literal(_)
-            | AuraExpr::Int(_)
-            | AuraExpr::Float(_)
-            | AuraExpr::Bool(_)
-            | AuraExpr::StateRef(_)
-            | AuraExpr::MsgVariant { .. } => {}
+            _ => {}
         }
     }
 
@@ -3976,46 +4013,46 @@ impl VueGenerator {
     }
 
     /// Check if an expression contains API calls (non-mutating version)
-    fn expr_has_api_calls(&self, expr: &AuraExpr) -> bool {
+    fn expr_has_api_calls(&self, expr: &crate::ast::Expr) -> bool {
+        use crate::ast::Expr;
         match expr {
-        AuraExpr::If { .. } => unreachable!(),
-            AuraExpr::MethodCall { object, method, args } => {
+            Expr::Call(call) => {
                 // Check if method name is an API function
-                if self.is_api_function(&method) {
-                    return true;
-                }
-                // Check if object is an API function reference
-                if let AuraExpr::StateRef(name) = object.as_ref() {
-                    if self.is_api_function(&name) {
+                if let Expr::Dot(object, method) = call.name.as_ref() {
+                    if self.is_api_function(method.as_str()) {
                         return true;
                     }
+                    // Check if object is an API function reference
+                    if let Expr::Ident(name) = object.as_ref() {
+                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                        if self.is_api_function(resolved) {
+                            return true;
+                        }
+                    }
+                    if self.expr_has_api_calls(object) { return true; }
+                } else {
+                    if self.is_api_function(&call.name.repr().to_string()) {
+                        return true;
+                    }
+                    if self.expr_has_api_calls(&call.name) { return true; }
                 }
-                // Recurse
-                self.expr_has_api_calls(object) || args.iter().any(|a| self.expr_has_api_calls(a))
+                call.args.args.iter().any(|a| self.expr_has_api_calls(&a.get_expr()))
             }
-            AuraExpr::Binary { left, right, .. } => {
+            Expr::Bina(left, _, right) => {
                 self.expr_has_api_calls(left) || self.expr_has_api_calls(right)
             }
-            AuraExpr::Unary { operand, .. } => self.expr_has_api_calls(operand),
-            AuraExpr::FieldAccess { object, .. } => self.expr_has_api_calls(object),
-            AuraExpr::Array(elems) => elems.iter().any(|e| self.expr_has_api_calls(e)),
-            AuraExpr::Object(fields) => fields.values().any(|v| self.expr_has_api_calls(v)),
-            AuraExpr::Lambda { body, .. } => self.expr_has_api_calls(body),
-            AuraExpr::NavCall { params, .. } => {
-                params.values().any(|v| self.expr_has_api_calls(v))
+            Expr::Unary(_, operand) => self.expr_has_api_calls(operand),
+            Expr::Dot(object, _) => self.expr_has_api_calls(object),
+            Expr::Array(elems) => elems.iter().any(|e| self.expr_has_api_calls(e)),
+            Expr::Object(pairs) => pairs.iter().any(|p| self.expr_has_api_calls(&p.value)),
+            Expr::Closure(closure) => self.expr_has_api_calls(&closure.body),
+            Expr::NavCall { params, .. } => {
+                params.iter().any(|p| self.expr_has_api_calls(&p.value))
             }
-            AuraExpr::Constructor { args, .. } => {
-                args.iter().any(|a| self.expr_has_api_calls(a))
-            }
-            AuraExpr::Index { target, index } => {
+            Expr::Index(target, index) => {
                 self.expr_has_api_calls(target) || self.expr_has_api_calls(index)
             }
-            AuraExpr::Literal(_)
-            | AuraExpr::Int(_)
-            | AuraExpr::Float(_)
-            | AuraExpr::Bool(_)
-            | AuraExpr::StateRef(_)
-            | AuraExpr::MsgVariant { .. } => false,
+            _ => false,
         }
     }
 
@@ -4023,11 +4060,15 @@ impl VueGenerator {
     /// For static values: produces `"value"`
     /// For dynamic values (StateRef, FieldAccess): produces `"name"` (caller must prefix with `:`)
     fn prop_to_attr_value(&self, value: &AuraPropValue) -> GenResult<String> {
+        use crate::ast::Expr;
         match value {
             AuraPropValue::Expr(expr) => {
                 match expr {
-                    AuraExpr::StateRef(name) => Ok(format!("\"{}\"", name)),
-                    AuraExpr::FieldAccess { object, field } => {
+                    Expr::Ident(name) => {
+                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                        Ok(format!("\"{}\"", resolved))
+                    }
+                    Expr::Dot(object, field) => {
                         let obj_str = self.expr_to_vue_text(object)?;
                         Ok(format!("\"{}.{}\"", obj_str.trim_matches(|c| c == '{' || c == '}'), field))
                     }
@@ -4056,65 +4097,89 @@ impl VueGenerator {
     /// Convert AuraExpr to Vue template text (handles interpolation)
     /// Convert AuraExpr to raw Vue text (no {{ }} wrapping).
     /// Used internally by expr_to_vue_text for composing nested expressions.
-    fn expr_to_vue_text_raw(&self, expr: &AuraExpr) -> GenResult<String> {
+    fn expr_to_vue_text_raw(&self, expr: &crate::ast::Expr) -> GenResult<String> {
+        use crate::ast::Expr;
         match expr {
-            AuraExpr::Literal(s) => {
-                // Check if this is a template string with ${...} placeholders
-                // Strip outer {{ }} if present, since caller will wrap
-                let vue = self.convert_template_to_vue(s);
-                // Only strip {{ }} if the ENTIRE string is wrapped in them.
-                // Using trim_end_matches('}') is too aggressive — it would strip
-                // the closing }} from embedded Vue interpolations like "Counter: {{ count }}"
+            Expr::Str(s) | Expr::CStr(s) => {
+                let vue = self.convert_template_to_vue(s.as_str());
                 let vue = vue.strip_prefix("{{ ")
                     .and_then(|v| v.strip_suffix(" }}"))
                     .map(|v| v.to_string())
                     .unwrap_or(vue);
                 Ok(vue)
             }
-            AuraExpr::Int(n) => Ok(n.to_string()),
-            AuraExpr::Float(f) => Ok(f.to_string()),
-            AuraExpr::Bool(b) => Ok(b.to_string()),
-            AuraExpr::StateRef(name) => Ok(name.clone()),
-            AuraExpr::FieldAccess { object, field } => {
-                // Handle user.name -> user.name
+            Expr::Int(n) => Ok(n.to_string()),
+            Expr::I8(n) => Ok((*n as i32).to_string()),
+            Expr::U8(n) => Ok((*n as i32).to_string()),
+            Expr::Byte(n) => Ok((*n as i32).to_string()),
+            Expr::Uint(n) => Ok((*n as i32).to_string()),
+            Expr::Char(c) => Ok((*c as i32).to_string()),
+            Expr::I64(n) => Ok(n.to_string()),
+            Expr::U64(n) => Ok((*n as i64).to_string()),
+            Expr::Float(f, _) | Expr::Double(f, _) => Ok(f.to_string()),
+            Expr::Bool(b) => Ok(b.to_string()),
+            Expr::Ident(name) => {
+                let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                Ok(resolved.to_string())
+            }
+            Expr::Dot(object, field) => {
                 let object_str = self.expr_to_vue_text_raw(object)?;
                 Ok(format!("{}.{}", object_str, field))
             }
-            AuraExpr::Index { target, index } => {
+            Expr::Index(target, index) => {
                 let target_str = self.expr_to_vue_text_raw(target)?;
                 let index_str = self.expr_to_vue_text_raw(index)?;
                 Ok(format!("{}[{}]", target_str, index_str))
             }
-            AuraExpr::Binary { left, op: _, right } => {
+            Expr::Bina(left, _, right) => {
                 let left_str = self.expr_to_vue_text_raw(left)?;
                 let right_str = self.expr_to_vue_text_raw(right)?;
                 Ok(format!("{}{}", left_str, right_str))
             }
-            AuraExpr::MethodCall { object, method, args } => {
-                let obj_str = self.expr_to_vue_text_raw(object)?;
-                let is_self = obj_str == "self";
-                match method.as_str() {
-                    "to_string" => Ok(obj_str.clone()),
-                    "len" => Ok(format!("{}.length", obj_str)),
-                    "contains" => Ok(format!("{}.includes({})", obj_str, args.iter().map(|a| self.expr_to_vue_bound_value(a)).collect::<Result<Vec<_>, _>>()?.join(", "))),
-                    _ => {
-                        let args_str: Vec<String> = args.iter()
-                            .map(|a| self.expr_to_vue_bound_value(a))
-                            .collect::<Result<Vec<_>, _>>()?;
-                        if is_self {
-                            if args_str.is_empty() {
-                                Ok(format!("{}()", method))
+            Expr::Call(call) => {
+                if let Expr::Dot(object, method) = call.name.as_ref() {
+                    let method = method.clone();
+                    let obj_str = self.expr_to_vue_text_raw(object)?;
+                    let is_self = obj_str == "self";
+                    let args: Vec<crate::ast::Expr> = call.args.args.iter()
+                        .filter_map(|a| match a {
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            _ => None,
+                        })
+                        .collect();
+                    match method.as_str() {
+                        "to_string" => Ok(obj_str.clone()),
+                        "len" => Ok(format!("{}.length", obj_str)),
+                        "contains" => Ok(format!("{}.includes({})", obj_str, args.iter().map(|a| self.expr_to_vue_bound_value(a)).collect::<Result<Vec<_>, _>>()?.join(", "))),
+                        _ => {
+                            let args_str: Vec<String> = args.iter()
+                                .map(|a| self.expr_to_vue_bound_value(a))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            if is_self {
+                                if args_str.is_empty() {
+                                    Ok(format!("{}()", method))
+                                } else {
+                                    Ok(format!("{}({})", method, args_str.join(", ")))
+                                }
                             } else {
-                                Ok(format!("{}({})", method, args_str.join(", ")))
-                            }
-                        } else {
-                            if args_str.is_empty() {
-                                Ok(format!("{}.{}()", obj_str, method))
-                            } else {
-                                Ok(format!("{}.{}({})", obj_str, method, args_str.join(", ")))
+                                if args_str.is_empty() {
+                                    Ok(format!("{}.{}()", obj_str, method))
+                                } else {
+                                    Ok(format!("{}.{}({})", obj_str, method, args_str.join(", ")))
+                                }
                             }
                         }
                     }
+                } else {
+                    let name_str = self.expr_to_vue_text_raw(&call.name)?;
+                    let args_str: Vec<String> = call.args.args.iter()
+                        .filter_map(|a| match a {
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            _ => None,
+                        })
+                        .map(|a| self.expr_to_vue_bound_value(&a))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(format!("{}({})", name_str, args_str.join(", ")))
                 }
             }
             _ => Ok("value".to_string()),
@@ -4123,14 +4188,15 @@ impl VueGenerator {
 
     /// Convert AuraExpr to Vue template text with {{ }} wrapping for display.
     /// Uses expr_to_vue_text_raw internally and wraps the final result.
-    fn expr_to_vue_text(&self, expr: &AuraExpr) -> GenResult<String> {
+    fn expr_to_vue_text(&self, expr: &crate::ast::Expr) -> GenResult<String> {
+        use crate::ast::Expr;
         // For compound expressions that produce their own {{ }},
         // use the raw version and wrap at the end.
         let raw = self.expr_to_vue_text_raw(expr)?;
         // If the raw result already contains {{ (e.g., from convert_template_to_vue),
         // or is a plain literal string, return as-is.
         // Otherwise wrap in {{ }}.
-        if raw.starts_with("{{") || matches!(expr, AuraExpr::Literal(_)) {
+        if raw.starts_with("{{") || matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
             Ok(raw)
         } else {
             Ok(format!("{{{{ {} }}}}", raw))
@@ -4140,62 +4206,75 @@ impl VueGenerator {
     /// Convert AuraExpr to Vue bound attribute value (for :prop="..." bindings).
     /// Used for chart props and other complex bindings where we need JavaScript
     /// expressions in Vue templates (state refs are kept bare, no .value).
-    fn expr_to_vue_bound_value(&self, expr: &AuraExpr) -> GenResult<String> {
+    fn expr_to_vue_bound_value(&self, expr: &crate::ast::Expr) -> GenResult<String> {
+        use crate::ast::Expr;
+        use auto_val::Op;
         match expr {
-            AuraExpr::Literal(s) => Ok(format!("'{}'", Self::escape_js_string(s))),
-            AuraExpr::Int(n) => Ok(n.to_string()),
-            AuraExpr::Float(n) => Ok(n.to_string()),
-            AuraExpr::Bool(b) => Ok(b.to_string()),
-            AuraExpr::StateRef(name) => Ok(name.clone()),
-            AuraExpr::FieldAccess { object, field } => {
+            Expr::Str(s) | Expr::CStr(s) => Ok(format!("'{}'", Self::escape_js_string(s.as_str()))),
+            Expr::Int(n) => Ok(n.to_string()),
+            Expr::Float(n, _) | Expr::Double(n, _) => Ok(n.to_string()),
+            Expr::Bool(b) => Ok(b.to_string()),
+            Expr::Ident(name) => {
+                let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                Ok(resolved.to_string())
+            }
+            Expr::Dot(object, field) => {
+                // State reference: .field or self.field → just the field name
+                if let Expr::Ident(name) = object.as_ref() {
+                    if name.as_str() == "." || name.as_str() == "self" {
+                        return Ok(field.to_string());
+                    }
+                }
                 let obj_str = self.expr_to_vue_bound_value(object)?;
                 Ok(format!("{}.{}", obj_str, field))
             }
-            AuraExpr::Index { target, index } => {
+            Expr::Index(target, index) => {
                 let target_str = self.expr_to_vue_bound_value(target)?;
                 let index_str = self.expr_to_vue_bound_value(index)?;
                 Ok(format!("{}[{}]", target_str, index_str))
             }
-            AuraExpr::Array(elems) => {
+            Expr::Array(elems) => {
                 let elems_vue: Vec<String> = elems.iter()
                     .map(|e| self.expr_to_vue_bound_value(e))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("[{}]", elems_vue.join(", ")))
             }
-            AuraExpr::Object(fields) => {
-                let pairs_vue: Vec<String> = fields.iter()
-                    .map(|(k, v)| {
-                        let v_vue = self.expr_to_vue_bound_value(v)?;
-                        Ok(format!("{}: {}", k, v_vue))
+            Expr::Object(pairs) => {
+                let pairs_vue: Vec<String> = pairs.iter()
+                    .map(|p| {
+                        let v_vue = self.expr_to_vue_bound_value(&p.value)?;
+                        Ok(format!("{}: {}", p.key.to_astr(), v_vue))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{{{}}}", pairs_vue.join(", ")))
             }
-            AuraExpr::Binary { left, op, right } => {
+            Expr::Bina(left, op, right) => {
                 let left_str = self.expr_to_vue_bound_value(left)?;
                 let right_str = self.expr_to_vue_bound_value(right)?;
                 let op_str = match op {
-                    AuraBinOp::Eq => "==",
-                    AuraBinOp::Ne => "!=",
-                    AuraBinOp::Lt => "<",
-                    AuraBinOp::Gt => ">",
-                    AuraBinOp::Le => "<=",
-                    AuraBinOp::Ge => ">=",
-                    AuraBinOp::And => "&&",
-                    AuraBinOp::Or => "||",
-                    AuraBinOp::Add => "+",
-                    AuraBinOp::Sub => "-",
-                    AuraBinOp::Mul => "*",
-                    AuraBinOp::Div => "/",
-                    AuraBinOp::Mod => "%",
+                    Op::Eq => "==",
+                    Op::Neq => "!=",
+                    Op::Lt => "<",
+                    Op::Gt => ">",
+                    Op::Le => "<=",
+                    Op::Ge => ">=",
+                    Op::And => "&&",
+                    Op::Or => "||",
+                    Op::Add => "+",
+                    Op::Sub => "-",
+                    Op::Mul => "*",
+                    Op::Div => "/",
+                    Op::Mod => "%",
+                    _ => "+",
                 };
                 Ok(format!("{} {} {}", left_str, op_str, right_str))
             }
-            AuraExpr::Unary { op, operand } => {
+            Expr::Unary(op, operand) => {
                 let expr_str = self.expr_to_vue_bound_value(operand)?;
                 match op {
-                    AuraUnaryOp::Not => Ok(format!("!{}", expr_str)),
-                    AuraUnaryOp::Neg => Ok(format!("-{}", expr_str)),
+                    Op::Not => Ok(format!("!{}", expr_str)),
+                    Op::Sub => Ok(format!("-{}", expr_str)),
+                    _ => Ok(format!("!{}", expr_str)),
                 }
             }
             _ => Ok("null".to_string()),
@@ -4207,7 +4286,7 @@ impl VueGenerator {
     fn emit_chart_prop(&mut self, attrs: &mut Vec<String>, props: &HashMap<String, AuraPropValue>, key: &str, vue_attr: &str) {
         if let Some(value) = props.get(key) {
             match value {
-                AuraPropValue::Expr(AuraExpr::Literal(s)) => {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s)) | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => {
                     attrs.push(format!("{}=\"{}\"", vue_attr, s));
                 }
                 AuraPropValue::Expr(expr) => {
@@ -4247,7 +4326,7 @@ impl VueGenerator {
                     _ => "CurveType.MonotoneX",
                 };
                 attrs.push(format!(":curve-type=\"{}\"", mapped));
-            } else if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+            } else if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
                 attrs.push(format!(":curve-type=\"{}\"", name));
             }
         }
@@ -7086,10 +7165,10 @@ impl VueGenerator {
                 for key in &["src", "alt"] {
                     if let Some(value) = props.get(*key) {
                         match value {
-                            AuraPropValue::Expr(AuraExpr::StateRef(name)) => {
+                            AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
                                 attrs.push(format!(":{}=\"{}\"", key, name));
                             }
-                            AuraPropValue::Expr(AuraExpr::FieldAccess { .. }) => {
+                            AuraPropValue::Expr(crate::ast::Expr::Dot(..)) => {
                                 if let Ok(val) = self.prop_to_attr_value(value) {
                                     attrs.push(format!(":{}={}", key, val));
                                 }
@@ -7137,7 +7216,7 @@ impl VueGenerator {
                 self.emit_chart_prop(&mut attrs, props, "show-gradient", "show-gradient");
                 self.emit_chart_prop(&mut attrs, props, "show_gradient", "show-gradient");
                 if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
-                    if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
                         attrs.push(format!(":custom-tooltip=\"{}\"", name));
                     } else if let Some(name) = self.extract_string_value(value) {
                         attrs.push(format!(":custom-tooltip=\"{}\"", name));
@@ -7177,7 +7256,7 @@ impl VueGenerator {
                 self.emit_chart_prop(&mut attrs, props, "rounded-corners", "rounded-corners");
                 self.emit_chart_prop(&mut attrs, props, "rounded_corners", "rounded-corners");
                 if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
-                    if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
                         attrs.push(format!(":custom-tooltip=\"{}\"", name));
                     } else if let Some(name) = self.extract_string_value(value) {
                         attrs.push(format!(":custom-tooltip=\"{}\"", name));
@@ -7215,7 +7294,7 @@ impl VueGenerator {
                 self.emit_chart_prop(&mut attrs, props, "y_formatter", "y-formatter");
                 self.emit_curve_type_prop(&mut attrs, props);
                 if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
-                    if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
                         attrs.push(format!(":custom-tooltip=\"{}\"", name));
                     } else if let Some(name) = self.extract_string_value(value) {
                         attrs.push(format!(":custom-tooltip=\"{}\"", name));
@@ -7247,7 +7326,7 @@ impl VueGenerator {
                 self.emit_chart_prop(&mut attrs, props, "sort-function", "sort-function");
                 self.emit_chart_prop(&mut attrs, props, "sort_function", "sort-function");
                 if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
-                    if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
                         attrs.push(format!(":custom-tooltip=\"{}\"", name));
                     } else if let Some(name) = self.extract_string_value(value) {
                         attrs.push(format!(":custom-tooltip=\"{}\"", name));
@@ -7307,7 +7386,7 @@ impl VueGenerator {
     /// Extract string value from AuraPropValue
     fn extract_string_value<'a>(&self, value: &'a AuraPropValue) -> Option<&'a str> {
         match value {
-            AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.as_str()),
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.as_str()),
             _ => None,
         }
     }
@@ -7315,8 +7394,8 @@ impl VueGenerator {
     /// Extract boolean value from AuraPropValue
     fn extract_bool_value(&self, value: &AuraPropValue) -> bool {
         match value {
-            AuraPropValue::Expr(AuraExpr::Bool(b)) => *b,
-            AuraPropValue::Expr(AuraExpr::Literal(s)) => s == "true",
+            AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => *b,
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s == "true",
             _ => false,
         }
     }
@@ -7324,8 +7403,8 @@ impl VueGenerator {
     /// Extract integer value from AuraPropValue
     fn extract_int_value(&self, value: &AuraPropValue) -> Option<i64> {
         match value {
-            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n),
-            AuraPropValue::Expr(AuraExpr::Literal(s)) => s.parse().ok(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as i64),
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.parse().ok(),
             _ => None,
         }
     }
@@ -7333,9 +7412,9 @@ impl VueGenerator {
     /// Extract float value from AuraPropValue
     fn extract_float_value(&self, value: &AuraPropValue) -> Option<f64> {
         match value {
-            AuraPropValue::Expr(AuraExpr::Float(n)) => Some(*n),
-            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n as f64),
-            AuraPropValue::Expr(AuraExpr::Literal(s)) => s.parse().ok(),
+            AuraPropValue::Expr(crate::ast::Expr::Float(n, _)) => Some(*n),
+            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as f64),
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.parse().ok(),
             _ => None,
         }
     }
@@ -7343,7 +7422,7 @@ impl VueGenerator {
     /// Extract state reference from AuraPropValue
     fn extract_state_ref(&self, value: &AuraPropValue) -> Option<String> {
         match value {
-            AuraPropValue::Expr(AuraExpr::StateRef(name)) => Some(name.clone()),
+            AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => Some(name.to_string()),
             _ => None,
         }
     }
@@ -7780,13 +7859,13 @@ export function cn(...inputs: ClassValue[]) {
     }
 
     /// Convert an initial-value AuraExpr to a JS literal (v1: simple cases).
-    fn store_init_to_js(expr: &crate::aura::AuraExpr) -> String {
-        use crate::aura::AuraExpr;
+    fn store_init_to_js(expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
         match expr {
-            AuraExpr::Int(n) => n.to_string(),
-            AuraExpr::Literal(s) => format!("'{}'", s.replace('\'', "\\'")),
-            AuraExpr::Bool(b) => b.to_string(),
-            AuraExpr::Array(_) => "[]".to_string(),
+            Expr::Int(n) => n.to_string(),
+            Expr::Str(s) | Expr::CStr(s) => format!("'{}'", s.as_str().replace('\'', "\\'")),
+            Expr::Bool(b) => b.to_string(),
+            Expr::Array(_) => "[]".to_string(),
             _ => "null".to_string(),
         }
     }
@@ -8313,7 +8392,7 @@ mod tests {
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: crate::ast::Type::Int,
-                initial: AuraExpr::Int(0),
+                initial: crate::ast::Expr::Int(0),
                 decorators: vec![],
             }],
             messages: vec![AuraMessage {
@@ -8353,9 +8432,9 @@ mod tests {
     fn test_expr_to_js() {
         let gen = VueGenerator::new();
 
-        assert_eq!(gen.expr_to_js(&AuraExpr::Int(42)).unwrap(), "42");
-        assert_eq!(gen.expr_to_js(&AuraExpr::Bool(true)).unwrap(), "true");
-        assert_eq!(gen.expr_to_js(&AuraExpr::Literal("hello".to_string())).unwrap(), "'hello'");
+        assert_eq!(gen.expr_to_js(&crate::ast::Expr::Int(42)).unwrap(), "42");
+        assert_eq!(gen.expr_to_js(&crate::ast::Expr::Bool(true)).unwrap(), "true");
+        assert_eq!(gen.expr_to_js(&crate::ast::Expr::Str("hello".into())).unwrap(), "'hello'");
     }
 
     #[test]
@@ -8592,13 +8671,13 @@ mod tests {
         let mut props = HashMap::new();
         let events = HashMap::new();
 
-        props.insert("data".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("monthlyRevenue".to_string())));
-        props.insert("categories".to_string(), AuraPropValue::Expr(AuraExpr::Array(vec![
-            AuraExpr::Literal("desktop".to_string()),
-            AuraExpr::Literal("mobile".to_string()),
+        props.insert("data".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("monthlyRevenue".into())));
+        props.insert("categories".to_string(), AuraPropValue::Expr(crate::ast::Expr::Array(vec![
+            crate::ast::Expr::Str("desktop".into()),
+            crate::ast::Expr::Str("mobile".into()),
         ])));
-        props.insert("index".to_string(), AuraPropValue::Expr(AuraExpr::Literal("month".to_string())));
-        props.insert("show-x-axis".to_string(), AuraPropValue::Expr(AuraExpr::Bool(false)));
+        props.insert("index".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("month".into())));
+        props.insert("show-x-axis".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(false)));
         let (attrs, _, _) = gen.generate_shadcn_attrs("area-chart", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains(":data=\"monthlyRevenue\"")));
@@ -8613,9 +8692,9 @@ mod tests {
         let mut props = HashMap::new();
         let events = HashMap::new();
 
-        props.insert("data".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("quarterlySales".to_string())));
-        props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("stacked".to_string())));
-        props.insert("rounded-corners".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        props.insert("data".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("quarterlySales".into())));
+        props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("stacked".into())));
+        props.insert("rounded-corners".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
         let (attrs, _, _) = gen.generate_shadcn_attrs("bar-chart", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains(":data=\"quarterlySales\"")));
@@ -8629,7 +8708,7 @@ mod tests {
         let mut props = HashMap::new();
         let events = HashMap::new();
 
-        props.insert("curve-type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("monotone".to_string())));
+        props.insert("curve-type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("monotone".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("line-chart", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains(":curve-type=\"CurveType.MonotoneX\"")));
@@ -8642,8 +8721,8 @@ mod tests {
         let mut props = HashMap::new();
         let events = HashMap::new();
 
-        props.insert("category".to_string(), AuraPropValue::Expr(AuraExpr::Literal("source".to_string())));
-        props.insert("value-formatter".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("formatValue".to_string())));
+        props.insert("category".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("source".into())));
+        props.insert("value-formatter".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("formatValue".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("donut-chart", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("category=\"source\"")));
@@ -8700,7 +8779,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test button with text
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Click me".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Click me".into())));
         let (attrs, _slot_content, slot_children) = gen.generate_shadcn_attrs("button", &props, &events);
 
         assert!(slot_children.is_some());
@@ -8714,8 +8793,8 @@ mod tests {
         let events = HashMap::new();
 
         // Test input with v-model
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("name".to_string())));
-        props.insert("placeholder".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enter name".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("name".into())));
+        props.insert("placeholder".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enter name".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("input", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("v-model=\"name\"")));
@@ -8729,7 +8808,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test checkbox with v-model (reka-ui uses modelValue, not checked)
-        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("done".to_string())));
+        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("done".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("checkbox", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("v-model=\"done\"")));
@@ -8772,7 +8851,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test scroll area with orientation
-        props.insert("orientation".to_string(), AuraPropValue::Expr(AuraExpr::Literal("vertical".to_string())));
+        props.insert("orientation".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("vertical".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("orientation=\"vertical\"")));
@@ -8785,7 +8864,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test tabs with default value
-        props.insert("default".to_string(), AuraPropValue::Expr(AuraExpr::Literal("tab1".to_string())));
+        props.insert("default".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("tab1".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("tabs", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("default-value=\"tab1\"")));
@@ -8798,7 +8877,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test tabs with v-model
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("activeTab".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("activeTab".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("tabs", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("v-model=\"activeTab\"")));
@@ -8811,8 +8890,8 @@ mod tests {
         let events = HashMap::new();
 
         // Test tab trigger with value and text
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::Literal("tab1".to_string())));
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("First Tab".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("tab1".into())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("First Tab".into())));
         let (attrs, slot_content, _) = gen.generate_shadcn_attrs("tab", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("value=\"tab1\"")));
@@ -8827,8 +8906,8 @@ mod tests {
         let events = HashMap::new();
 
         // Test card with variant and title
-        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("outline".to_string())));
-        props.insert("title".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Card Title".to_string())));
+        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())));
+        props.insert("title".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Card Title".into())));
         let (attrs, slot_content, _) = gen.generate_shadcn_attrs("card", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("variant=\"outline\"")));
@@ -8843,7 +8922,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test separator with orientation
-        props.insert("orientation".to_string(), AuraPropValue::Expr(AuraExpr::Literal("vertical".to_string())));
+        props.insert("orientation".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("vertical".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("divider", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("orientation=\"vertical\"")));
@@ -8856,7 +8935,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test decorative separator
-        props.insert("decorative".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        props.insert("decorative".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
         let (attrs, _, _) = gen.generate_shadcn_attrs("divider", &props, &events);
 
         assert!(attrs.iter().any(|a| a == "decorative"));
@@ -8904,8 +8983,8 @@ mod tests {
         let events = HashMap::new();
 
         // Test modal with v-model:open
-        props.insert("open".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("showDialog".to_string())));
-        props.insert("title".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Confirm Delete".to_string())));
+        props.insert("open".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("showDialog".into())));
+        props.insert("title".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Confirm Delete".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("modal", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("v-model:open=\"showDialog\"")));
@@ -8919,8 +8998,8 @@ mod tests {
         let events = HashMap::new();
 
         // Test tooltip with content and side
-        props.insert("content".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Help text".to_string())));
-        props.insert("side".to_string(), AuraPropValue::Expr(AuraExpr::Literal("right".to_string())));
+        props.insert("content".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Help text".into())));
+        props.insert("side".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("right".into())));
         let (attrs, slot_content, _) = gen.generate_shadcn_attrs("tooltip", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("side=\"right\"")));
@@ -8935,7 +9014,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test spinner/skeleton
-        props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("w-10 h-10".to_string())));
+        props.insert("class".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("w-10 h-10".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("spinner", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("class=\"w-10 h-10\"")));
@@ -8967,7 +9046,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test table
-        props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("w-full".to_string())));
+        props.insert("class".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("w-full".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("table", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("class=\"w-full\"")));
@@ -8980,7 +9059,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test th with colspan
-        props.insert("colspan".to_string(), AuraPropValue::Expr(AuraExpr::Int(2)));
+        props.insert("colspan".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(2)));
         let (attrs, _, _) = gen.generate_shadcn_attrs("th", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains(":colspan=\"2\"")));
@@ -8993,7 +9072,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test tree
-        props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("pl-4".to_string())));
+        props.insert("class".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("pl-4".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("tree", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("class=\"pl-4\"")));
@@ -9006,7 +9085,7 @@ mod tests {
         let events = HashMap::new();
 
         // Test tree_item with text
-        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Node 1".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Node 1".into())));
         let (attrs, slot_content, _) = gen.generate_shadcn_attrs("tree_item", &props, &events);
 
         assert!(slot_content.is_some());
@@ -9047,8 +9126,8 @@ mod tests {
         let events = HashMap::new();
 
         // Test radiogroup with v-model
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("selectedOption".to_string())));
-        props.insert("name".to_string(), AuraPropValue::Expr(AuraExpr::Literal("options".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("selectedOption".into())));
+        props.insert("name".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("options".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("radiogroup", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("v-model=\"selectedOption\"")));
@@ -9062,8 +9141,8 @@ mod tests {
         let events = HashMap::new();
 
         // Test radio with value and label
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::Literal("option1".to_string())));
-        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Option 1".to_string())));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("option1".into())));
+        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Option 1".into())));
         let (attrs, slot_content, _) = gen.generate_shadcn_attrs("radio", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("value=\"option1\"")));
@@ -9078,8 +9157,8 @@ mod tests {
         let events = HashMap::new();
 
         // Test disabled radio
-        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::Literal("option2".to_string())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("option2".into())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
         let (attrs, _, _) = gen.generate_shadcn_attrs("radio", &props, &events);
 
         assert!(attrs.iter().any(|a| a == "disabled"));
@@ -9169,7 +9248,6 @@ mod tests {
     fn test_button_with_text_full_widget() {
         use crate::aura::AuraWidget;
         use crate::aura::AuraNode;
-        use crate::aura::AuraExpr;
         use std::collections::HashMap;
 
         // Create a simple Button element node
@@ -9177,8 +9255,8 @@ mod tests {
             tag: "Button".to_string(),
             props: {
                 let mut map = HashMap::new();
-                map.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Click Me".to_string())));
-                map.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("px-4 py-2 bg-blue-500".to_string())));
+                map.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Click Me".into())));
+                map.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("px-4 py-2 bg-blue-500".into())));
                 map
             },
             events: HashMap::new(),

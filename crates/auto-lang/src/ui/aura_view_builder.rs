@@ -11,7 +11,7 @@
 //!    |
 //!    v
 //! AuraViewBuilder
-//!  - Resolves AuraExpr::StateRef via VmBridge::read_state()
+//!  - Resolves Expr::Ident state references via VmBridge::read_state()
 //!  - Resolves ${.field} interpolations in text content
 //!  - Maps AuraNode::Element tags to View variants
 //!  - Creates DynamicMessage for event handlers
@@ -30,9 +30,10 @@
 
 use std::collections::HashMap;
 
-use auto_val::Value;
+use auto_val::{Op, Value};
 
-use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraEvent, AuraBinOp};
+use crate::ast::Expr;
+use crate::aura::{AuraNode, AuraPropValue, AuraTextContent, AuraEvent};
 
 /// Loop variable bindings: variable name → current Value.
 /// Passed through the conversion call chain to resolve `FieldAccess`
@@ -1896,24 +1897,31 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
-    /// Resolve an AuraExpr to a display string (no bindings).
-    fn resolve_expr_to_string(&self, expr: &AuraExpr) -> String {
+    /// Resolve a base AST `Expr` to a display string (no bindings).
+    fn resolve_expr_to_string(&self, expr: &Expr) -> String {
         self.resolve_expr_to_string_with(expr, &Bindings::new())
     }
 
-    /// Resolve an AuraExpr to a display string with loop variable bindings.
-    fn resolve_expr_to_string_with(&self, expr: &AuraExpr, bindings: &Bindings) -> String {
+    /// Resolve a base AST `Expr` to a display string with loop variable bindings.
+    fn resolve_expr_to_string_with(&self, expr: &Expr, bindings: &Bindings) -> String {
         match expr {
-            AuraExpr::Literal(s) => self.resolve_literal_interpolation_with(s, bindings),
-            AuraExpr::Int(i) => i.to_string(),
-            AuraExpr::Float(f) => f.to_string(),
-            AuraExpr::Bool(b) => b.to_string(),
-            AuraExpr::StateRef(name) => self.read_state_as_string_with(name, bindings),
-            AuraExpr::FieldAccess { object, field } => {
+            Expr::Str(s) => self.resolve_literal_interpolation_with(s, bindings),
+            Expr::Int(i) => i.to_string(),
+            Expr::Float(f, _) => f.to_string(),
+            Expr::Double(f, _) => f.to_string(),
+            Expr::Bool(b) => b.to_string(),
+            // State reference: identifier whose name starts with "." (e.g. ".count").
+            Expr::Ident(name) => {
+                let field_name = name.as_str().trim_start_matches('.');
+                self.read_state_as_string_with(field_name, bindings)
+            }
+            // Field access: object.field → Dot(object, field)
+            Expr::Dot(object, field) => {
                 let obj_val = self.resolve_expr_to_value(object, bindings);
+                let field_str = field.as_str();
                 match obj_val {
                     Some(Value::Obj(map)) => {
-                        map.get(field.as_str())
+                        map.get(field_str)
                             .map(|v| value_to_display_string(&v))
                             .unwrap_or_default()
                     }
@@ -1921,7 +1929,7 @@ impl<'a> AuraViewBuilder<'a> {
                         let raw = Value::Int(id);
                         let materialized = self.bridge.materialize_obj_ref(&raw);
                         if let Value::Obj(map) = materialized {
-                            map.get(field.as_str())
+                            map.get(field_str)
                                 .map(|v| value_to_display_string(&v))
                                 .unwrap_or_default()
                         } else {
@@ -1931,7 +1939,7 @@ impl<'a> AuraViewBuilder<'a> {
                     Some(Value::VmRef(r)) => {
                         let materialized = self.bridge.materialize_obj_ref(&Value::VmRef(r));
                         if let Value::Obj(map) = materialized {
-                            map.get(field.as_str())
+                            map.get(field_str)
                                 .map(|v| value_to_display_string(&v))
                                 .unwrap_or_default()
                         } else {
@@ -1942,17 +1950,32 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             // Plan 339: if-expression for conditional string values (e.g. style)
-            AuraExpr::If { cond, then_branch, else_branch } => {
-                let cond_val = self.resolve_expr_to_value(cond, bindings);
-                let is_true = match cond_val {
-                    Some(Value::Bool(false)) | Some(Value::Nil) | None => false,
-                    Some(Value::Int(i)) if i == 0 => false,
-                    _ => true,
-                };
-                if is_true {
-                    self.resolve_expr_to_string_with(then_branch, bindings)
-                } else if let Some(eb) = else_branch {
-                    self.resolve_expr_to_string_with(eb, bindings)
+            Expr::If(if_expr) => {
+                if let Some(cond) = if_expr.branches.first() {
+                    let cond_val = self.resolve_expr_to_value(&cond.cond, bindings);
+                    let is_true = match cond_val {
+                        Some(Value::Bool(false)) | Some(Value::Nil) | None => false,
+                        Some(Value::Int(i)) if i == 0 => false,
+                        _ => true,
+                    };
+                    if is_true {
+                        // then body must be a single expression (Plan 339 contract)
+                        if cond.body.stmts.len() == 1 {
+                            if let crate::ast::Stmt::Expr(e) = &cond.body.stmts[0] {
+                                return self.resolve_expr_to_string_with(e, bindings);
+                            }
+                        }
+                        String::new()
+                    } else if let Some(else_body) = &if_expr.else_ {
+                        if else_body.stmts.len() == 1 {
+                            if let crate::ast::Stmt::Expr(e) = &else_body.stmts[0] {
+                                return self.resolve_expr_to_string_with(e, bindings);
+                            }
+                        }
+                        String::new()
+                    } else {
+                        String::new()
+                    }
                 } else {
                     String::new()
                 }
@@ -1961,24 +1984,29 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
-    /// Resolve an AuraExpr to a Value, checking loop bindings and VmBridge state.
-    fn resolve_expr_to_value(&self, expr: &AuraExpr, bindings: &Bindings) -> Option<Value> {
+    /// Resolve a base AST `Expr` to a Value, checking loop bindings and VmBridge state.
+    fn resolve_expr_to_value(&self, expr: &Expr, bindings: &Bindings) -> Option<Value> {
         match expr {
-            AuraExpr::StateRef(name) => {
-                bindings.get(name).cloned()
-                    .or_else(|| self.read_state(name).ok())
+            // State reference: identifier whose name starts with "." (e.g. ".count")
+            // or a plain identifier (loop var / state).
+            Expr::Ident(name) => {
+                let field_name = name.as_str().trim_start_matches('.');
+                bindings.get(field_name).cloned()
+                    .or_else(|| self.read_state(field_name).ok())
             }
-            AuraExpr::FieldAccess { object, field } => {
+            // Field access: object.field → Dot(object, field)
+            Expr::Dot(object, field) => {
                 let obj = self.resolve_expr_to_value(object, bindings)?;
+                let field_str = field.as_str();
                 match obj {
-                    Value::Obj(map) => map.get(field.as_str()),
+                    Value::Obj(map) => map.get(field_str),
                     // Plan 337: raw struct heap id from Index — materialize to Obj
                     // so FieldAccess can read fields.
                     Value::Int(id) if id >= 4_000_000 => {
                         let raw = Value::Int(id);
                         let materialized = self.bridge.materialize_obj_ref(&raw);
                         if let Value::Obj(map) = materialized {
-                            map.get(field.as_str())
+                            map.get(field_str)
                         } else {
                             None
                         }
@@ -1987,7 +2015,7 @@ impl<'a> AuraViewBuilder<'a> {
                     Value::VmRef(r) => {
                         let materialized = self.bridge.materialize_obj_ref(&Value::VmRef(r));
                         if let Value::Obj(map) = materialized {
-                            map.get(field.as_str())
+                            map.get(field_str)
                         } else {
                             None
                         }
@@ -1995,7 +2023,8 @@ impl<'a> AuraViewBuilder<'a> {
                     _ => None,
                 }
             }
-            AuraExpr::Index { target, index } => {
+            // Index access: target[index]
+            Expr::Index(target, index) => {
                 let target_val = self.resolve_expr_to_value(target, bindings)?;
                 let index_val = self.resolve_expr_to_value(index, bindings)?;
                 match (&target_val, &index_val) {
@@ -2023,33 +2052,49 @@ impl<'a> AuraViewBuilder<'a> {
                     _ => None,
                 }
             }
-            AuraExpr::Int(i) => Some(Value::Int(*i as i32)),
-            AuraExpr::Float(f) => Some(Value::Double(*f)),
-            AuraExpr::Bool(b) => Some(Value::Bool(*b)),
-            AuraExpr::Literal(s) => Some(Value::Str(s.as_str().into())),
+            Expr::Int(i) => Some(Value::Int(*i)),
+            Expr::Float(f, _) => Some(Value::Double(*f)),
+            Expr::Double(f, _) => Some(Value::Double(*f)),
+            Expr::Bool(b) => Some(Value::Bool(*b)),
+            Expr::Str(s) => Some(Value::Str(s.clone())),
             // Plan 339: binary comparison for if-expressions (e.g., i == .active_index)
-            AuraExpr::Binary { left, op: AuraBinOp::Eq, right } => {
+            Expr::Bina(left, Op::Eq, right) => {
                 let l = self.resolve_expr_to_value(left, bindings)?;
                 let r = self.resolve_expr_to_value(right, bindings)?;
                 Some(Value::Bool(l == r))
             }
-            AuraExpr::Binary { left, op: AuraBinOp::Ne, right } => {
+            Expr::Bina(left, Op::Neq, right) => {
                 let l = self.resolve_expr_to_value(left, bindings)?;
                 let r = self.resolve_expr_to_value(right, bindings)?;
                 Some(Value::Bool(l != r))
             }
             // Plan 339: conditional if-expression for style/attribute values
-            AuraExpr::If { cond, then_branch, else_branch } => {
-                let cond_val = self.resolve_expr_to_value(cond, bindings)?;
-                let is_true = match &cond_val {
-                    Value::Bool(false) | Value::Nil => false,
-                    Value::Int(i) if *i == 0 => false,
-                    _ => true,
-                };
-                if is_true {
-                    self.resolve_expr_to_value(then_branch, bindings)
-                } else if let Some(eb) = else_branch {
-                    self.resolve_expr_to_value(eb, bindings)
+            Expr::If(if_expr) => {
+                if let Some(branch) = if_expr.branches.first() {
+                    let cond_val = self.resolve_expr_to_value(&branch.cond, bindings)?;
+                    let is_true = match &cond_val {
+                        Value::Bool(false) | Value::Nil => false,
+                        Value::Int(i) if *i == 0 => false,
+                        _ => true,
+                    };
+                    if is_true {
+                        // then body must be a single expression (Plan 339 contract)
+                        if branch.body.stmts.len() == 1 {
+                            if let crate::ast::Stmt::Expr(e) = &branch.body.stmts[0] {
+                                return self.resolve_expr_to_value(e, bindings);
+                            }
+                        }
+                        None
+                    } else if let Some(else_body) = &if_expr.else_ {
+                        if else_body.stmts.len() == 1 {
+                            if let crate::ast::Stmt::Expr(e) = &else_body.stmts[0] {
+                                return self.resolve_expr_to_value(e, bindings);
+                            }
+                        }
+                        None
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -2261,7 +2306,7 @@ impl<'a> AuraViewBuilder<'a> {
 
     /// Resolve `${.field}` interpolation patterns in a literal string.
     ///
-    /// F-strings like `f"Count: ${.count}"` are extracted as `AuraExpr::Literal`
+    /// F-strings like `f"Count: ${.count}"` are extracted as `Expr::Str`
     /// with the template preserved. This method scans for `${.name}` patterns
     /// and substitutes current state values.
     /// Resolve `${.field}` interpolation patterns in a literal string (no bindings).
@@ -2421,14 +2466,14 @@ impl<'a> AuraViewBuilder<'a> {
     ) -> Option<u16> {
         match props.get(key)? {
             AuraPropValue::Expr(expr) => match expr {
-                AuraExpr::Int(i) => {
-                    if *i >= 0 && *i <= u16::MAX as i64 {
+                Expr::Int(i) => {
+                    if *i >= 0 && *i <= u16::MAX as i32 {
                         Some(*i as u16)
                     } else {
                         None
                     }
                 }
-                AuraExpr::Float(f) => {
+                Expr::Float(f, _) | Expr::Double(f, _) => {
                     if *f >= 0.0 && *f <= u16::MAX as f64 {
                         Some(*f as u16)
                     } else {
@@ -2448,7 +2493,7 @@ impl<'a> AuraViewBuilder<'a> {
         key: &str,
     ) -> Option<bool> {
         match props.get(key)? {
-            AuraPropValue::Expr(AuraExpr::Bool(b)) => Some(*b),
+            AuraPropValue::Expr(Expr::Bool(b)) => Some(*b),
             _ => None,
         }
     }
@@ -2461,10 +2506,11 @@ impl<'a> AuraViewBuilder<'a> {
     ) -> Option<f64> {
         match props.get(key)? {
             AuraPropValue::Expr(expr) => match expr {
-                AuraExpr::Int(i) => Some(*i as f64),
-                AuraExpr::Float(f) => Some(*f),
-                AuraExpr::StateRef(name) => {
-                    match self.read_state(name) {
+                Expr::Int(i) => Some(*i as f64),
+                Expr::Float(f, _) | Expr::Double(f, _) => Some(*f),
+                Expr::Ident(name) => {
+                    let field_name = name.as_str().trim_start_matches('.');
+                    match self.read_state(field_name) {
                         Ok(value) => match value {
                             Value::Int(i) => Some(i as f64),
                             Value::Float(f) => Some(f as f64),
@@ -2581,7 +2627,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(42),
+                initial: Expr::Int(42),
                 decorators: vec![],
             },
         ]);
@@ -2612,7 +2658,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(42),
+                initial: Expr::Int(42),
                 decorators: vec![],
             },
         ]);
@@ -2650,7 +2696,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(42),
+                initial: Expr::Int(42),
                 decorators: vec![],
             },
         ]);
@@ -2696,12 +2742,12 @@ mod tests {
     fn build_with_debug_captures_for_loop_context() {
         use crate::ui::debug::ForIter;
         // Widget declares an `items` state field (initial dummy, overwritten
-        // below). `AuraExpr` has no array literal, so we seed via write_state.
+        // below). State expr has no array literal, so we seed via write_state.
         let widget = make_test_widget("List", vec![
             AuraStateDef {
                 name: "items".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
-                initial: AuraExpr::Literal(String::new()),
+                initial: Expr::Str(String::new().into()),
                 decorators: vec![],
             },
         ]);
@@ -2758,7 +2804,7 @@ mod tests {
             AuraStateDef {
                 name: "items".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
-                initial: AuraExpr::Literal(String::new()),
+                initial: Expr::Str(String::new().into()),
                 decorators: vec![],
             },
         ]);
@@ -2809,7 +2855,7 @@ mod tests {
             AuraStateDef {
                 name: "items".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
-                initial: AuraExpr::Literal(String::new()),
+                initial: Expr::Str(String::new().into()),
                 decorators: vec![],
             },
         ]);
@@ -2865,7 +2911,7 @@ mod tests {
             debug_id: None,
         };
         AuraNode::element("grid")
-            .with_prop("cols", AuraExpr::Int(7))
+            .with_prop("cols", Expr::Int(7))
             .with_child(for_loop)
     }
 
@@ -2874,7 +2920,7 @@ mod tests {
             AuraStateDef {
                 name: "items".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
-                initial: AuraExpr::Literal(String::new()),
+                initial: Expr::Str(String::new().into()),
                 decorators: vec![],
             },
         ]);
@@ -2955,7 +3001,7 @@ mod tests {
             AuraStateDef {
                 name: "days".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
-                initial: AuraExpr::Literal(String::new()),
+                initial: Expr::Str(String::new().into()),
                 decorators: vec![],
             },
         ]);
@@ -2987,10 +3033,10 @@ mod tests {
                 tag: "button".to_string(),
                 props: HashMap::from([(
                     "label".to_string(),
-                    AuraPropValue::Expr(AuraExpr::FieldAccess {
-                        object: Box::new(AuraExpr::StateRef("cell".to_string())),
-                        field: "label".to_string(),
-                    }),
+                    AuraPropValue::Expr(Expr::Dot(
+                        Box::new(Expr::Ident(".cell".into())),
+                        "label".into(),
+                    )),
                 )]),
                 events: HashMap::new(),
                 children: vec![],
@@ -3001,7 +3047,7 @@ mod tests {
             debug_id: None,
         };
         let grid = AuraNode::element("grid")
-            .with_prop("cols", AuraExpr::Int(7))
+            .with_prop("cols", Expr::Int(7))
             .with_child(for_loop);
 
         let view = builder.build(&grid);
@@ -3034,7 +3080,7 @@ mod tests {
         let node = AuraNode::Element {
             tag: "button".to_string(),
             props: HashMap::from([
-                ("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Inc".to_string()))),
+                ("label".to_string(), AuraPropValue::Expr(Expr::Str("Inc".into()))),
             ]),
             events: HashMap::from([
                 ("onclick".to_string(), AuraEvent {
@@ -3109,8 +3155,8 @@ mod tests {
         let node = AuraNode::Element {
             tag: "col".to_string(),
             props: HashMap::from([
-                ("spacing".to_string(), AuraPropValue::Expr(AuraExpr::Int(10))),
-                ("padding".to_string(), AuraPropValue::Expr(AuraExpr::Int(5))),
+                ("spacing".to_string(), AuraPropValue::Expr(Expr::Int(10))),
+                ("padding".to_string(), AuraPropValue::Expr(Expr::Int(5))),
             ]),
             events: HashMap::new(),
             children: vec![
@@ -3141,7 +3187,7 @@ mod tests {
         let node = AuraNode::Element {
             tag: "row".to_string(),
             props: HashMap::from([
-                ("spacing".to_string(), AuraPropValue::Expr(AuraExpr::Int(8))),
+                ("spacing".to_string(), AuraPropValue::Expr(Expr::Int(8))),
             ]),
             events: HashMap::new(),
             children: vec![
@@ -3173,7 +3219,7 @@ mod tests {
             debug_id: None,
             tag: "button".to_string(),
             props: HashMap::from([
-                ("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Increment".to_string()))),
+                ("text".to_string(), AuraPropValue::Expr(Expr::Str("Increment".into()))),
             ]),
             events: HashMap::from([
                 ("onclick".to_string(), AuraEvent {
@@ -3285,7 +3331,7 @@ mod tests {
             AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
-                initial: AuraExpr::Int(7),
+                initial: Expr::Int(7),
                 decorators: vec![],
             },
         ]);
@@ -3295,7 +3341,7 @@ mod tests {
         let node = AuraNode::Element {
             tag: "text".to_string(),
             props: HashMap::from([
-                ("text".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("count".to_string()))),
+                ("text".to_string(), AuraPropValue::Expr(Expr::Ident(".count".into()))),
             ]),
             events: HashMap::new(),
             span: None,
@@ -3321,7 +3367,7 @@ mod tests {
         let node = AuraNode::Element {
             tag: "button".to_string(),
             props: HashMap::from([
-                ("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Reset".to_string()))),
+                ("label".to_string(), AuraPropValue::Expr(Expr::Str("Reset".into()))),
             ]),
             events: HashMap::from([
                 ("onclick".to_string(), AuraEvent {
@@ -3372,13 +3418,13 @@ mod tests {
             AuraStateDef {
                 name: "filter".to_string(),
                 type_info: Type::StrOwned,
-                initial: AuraExpr::Literal("active".to_string()),
+                initial: Expr::Str("active".into()),
                 decorators: vec![],
             },
             AuraStateDef {
                 name: "todos".to_string(),
                 type_info: Type::StrOwned,
-                initial: AuraExpr::Literal("[]".to_string()),
+                initial: Expr::Str("[]".into()),
                 decorators: vec![],
             },
         ]);
@@ -3425,7 +3471,7 @@ mod tests {
             AuraStateDef {
                 name: "filter".to_string(),
                 type_info: Type::StrOwned,
-                initial: AuraExpr::Literal("completed".to_string()),
+                initial: Expr::Str("completed".into()),
                 decorators: vec![],
             },
         ]);
@@ -3453,7 +3499,7 @@ mod tests {
             AuraStateDef {
                 name: "editing_id".to_string(),
                 type_info: Type::StrOwned,
-                initial: AuraExpr::Literal("-1".to_string()),
+                initial: Expr::Str("-1".into()),
                 decorators: vec![],
             },
         ]);
