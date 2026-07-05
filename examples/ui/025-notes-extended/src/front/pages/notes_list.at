@@ -37,11 +37,7 @@ widget notes_list {
                 // editor area
                 col {
                     if .store.notes.len() > 0 {
-                        NoteEditor(note: .store.notes[.store.active_id])
-                    }
-                    button "Delete note" {
-                        onclick: .DeleteActive
-                        style: "ml-auto mr-4 mb-4 px-3 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600"
+                        NoteEditor(note: .store.notes[.store.active_id], on_delete: .DeleteActive)
                     }
                     style: "flex-1 flex-col"
                 }

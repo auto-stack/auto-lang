@@ -1,10 +1,10 @@
-// note_editor.at — note editor (forked from 015's editor, in-memory: no back.api).
-// Emits Save/Delete up to the App, which mutates the in-memory notes list.
+// note_editor.at — note editor with callback prop for delete.
+// value + oninput triggers v-model optimization in codegen.
 
 use types: Note
 
-widget NoteEditor(note: Note) {
-    msg Msg { Init, Edit, Save, Cancel, EditBody, EditTitle, Delete }
+widget NoteEditor(note: Note, on_delete: msg) {
+    msg Msg { Edit, Save, Cancel, EditTitle, EditBody, Delete }
 
     model {
         var editing bool = false
@@ -23,7 +23,6 @@ widget NoteEditor(note: Note) {
                 }
                 text .note.time { style: "text-xs text-gray-400 mt-1" }
 
-                // tag chips (read-only display)
                 row {
                     for t in .note.tags {
                         text t { style: "text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded mr-1" }
@@ -31,7 +30,6 @@ widget NoteEditor(note: Note) {
                     style: "gap-1"
                 }
 
-                // ── EDIT: body (Markdown render deferred: needs JS/markdown stdlib) ──
                 if .editing == false {
                     text .note.body { style: "text-gray-700 flex-1 leading-relaxed whitespace-pre-wrap mt-2" }
                 }
@@ -59,13 +57,6 @@ widget NoteEditor(note: Note) {
     }
 
     on {
-        .Init -> {
-            if .note.title == "" {
-                .edit_title = ""
-                .edit_body = ""
-                .editing = true
-            }
-        }
         .Edit -> {
             .edit_title = .note.title
             .edit_body = .note.body
@@ -79,8 +70,10 @@ widget NoteEditor(note: Note) {
         .Cancel -> {
             .editing = false
         }
-        .EditBody -> { }
         .EditTitle -> { }
-        .Delete -> { }
+        .EditBody -> { }
+        .Delete -> {
+            on_delete()
+        }
     }
 }

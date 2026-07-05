@@ -2223,6 +2223,24 @@ impl VueGenerator {
                             // Plan 351: ALL expression prop values (FieldAccess,
                             // Index, etc.) use v-bind with bound JS value (no {{ }}).
                             let value_str = self.expr_to_vue_bound_value(expr)?;
+                            // Also track value ref for v-model optimization
+                            if key == "value" && (tag == "input" || tag == "textarea") {
+                                // Handle both Expr::Ident(".xxx") and Expr::Dot(Ident("self"), "xxx")
+                                match expr {
+                                    crate::ast::Expr::Ident(name) => {
+                                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                                        value_state_ref = Some(resolved.to_string());
+                                    }
+                                    crate::ast::Expr::Dot(obj, field) => {
+                                        if let crate::ast::Expr::Ident(obj_name) = obj.as_ref() {
+                                            if obj_name == "self" {
+                                                value_state_ref = Some(field.to_string());
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
                             attrs.push(format!(":{}=\"{}\"", key, value_str));
                         } else {
                             let value_str = self.prop_to_attr_value(value)?;
