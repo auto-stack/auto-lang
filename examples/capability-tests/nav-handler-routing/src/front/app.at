@@ -1,0 +1,7 @@
+widget App {
+    routes {
+        "/" -> use home
+        "/detail" -> use detail
+    }
+    view { col { outlet; style: "p-4" } }
+}

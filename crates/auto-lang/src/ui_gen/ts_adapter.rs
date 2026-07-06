@@ -118,7 +118,14 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 
         // Expression statements — AURA-aware (API calls, print, etc.)
         Stmt::Expr(expr) => {
-            transpile_expr(expr, ctx, out);
+            // Plan 354: NavCall in handler body → router.push(path)
+            if let Expr::NavCall { path, .. } = expr {
+                write!(out, "router.push(").ok();
+                transpile_expr(path, ctx, out);
+                write!(out, ")").ok();
+            } else {
+                transpile_expr(expr, ctx, out);
+            }
             writeln!(out, ";").ok();
         }
 
@@ -853,6 +860,7 @@ pub fn stmts_have_route_access(stmts: &[Stmt]) -> bool {
             Expr::Bina(l, _, r) => walk_expr(l) || walk_expr(r),
             Expr::Unary(_, e) => walk_expr(e),
             Expr::Array(items) => items.iter().any(walk_expr),
+            Expr::NavCall { .. } => true,
             _ => false,
         }
     }
@@ -890,6 +898,7 @@ pub fn stmts_have_router_nav(stmts: &[Stmt]) -> bool {
             Expr::Bina(l, _, r) => walk_expr(l) || walk_expr(r),
             Expr::Unary(_, e) => walk_expr(e),
             Expr::Array(items) => items.iter().any(walk_expr),
+            Expr::NavCall { .. } => true,
             _ => false,
         }
     }

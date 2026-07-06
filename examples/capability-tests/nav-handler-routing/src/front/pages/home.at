@@ -1,0 +1,13 @@
+widget home {
+    msg Msg { GoDetail }
+    view {
+        col {
+            text "Home page" { }
+            button "Go to Detail" { onclick: .GoDetail }
+            style: "p-4 gap-2"
+        }
+    }
+    on {
+        .GoDetail -> { nav("/detail") }
+    }
+}

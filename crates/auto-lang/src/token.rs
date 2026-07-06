@@ -402,7 +402,9 @@ impl Token {
             "outlet" => Some(TokenKind::Outlet),
             "link" => Some(TokenKind::Link),
             "route" => Some(TokenKind::Route),
-            "nav" => Some(TokenKind::Nav),
+            // Plan 354: 'nav' is no longer a keyword — lexed as Ident so it
+            // parses as a function call nav(...) in handler bodies and view DSL.
+            // The existing call() handler (parser.rs ~9926) routes it to parse_nav_call.
             // Plan 120: Option and Result type keywords (PascalCase like Rust)
             "None" => Some(TokenKind::NoneKW),
             "Some" => Some(TokenKind::SomeKW),

@@ -1,0 +1,8 @@
+widget detail {
+    view {
+        col {
+            text "Detail page" { }
+            style: "p-4"
+        }
+    }
+}
