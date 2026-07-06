@@ -1,5 +1,5 @@
 // source/back/api.at - Notes API Interface
-// CRUD endpoints for notes management
+// CRUD + sort + pin + tags + search endpoints
 
 // ═══════════════════════════════════════════════════════════
 // Types (shared between frontend and backend)
@@ -11,6 +11,8 @@ pub type Note = {
     title: str
     body: str
     time: str
+    pinned: bool
+    tags: []str
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -19,7 +21,7 @@ pub type Note = {
 
 use db
 
-/// List all notes
+/// List all notes (pinned first, then by time desc)
 /// GET /api/notes
 #[api(method = "GET", path = "/api/notes")]
 pub fn list_notes() []Note {
@@ -53,4 +55,25 @@ pub fn update_note(id int, title str, body str) ?Note {
 #[api(method = "DELETE", path = "/api/notes/:id")]
 pub fn delete_note(id int) bool {
     return db.delete_note(id)
+}
+
+/// Toggle pin status
+/// PATCH /api/notes/:id/pin
+#[api(method = "PATCH", path = "/api/notes/:id/pin")]
+pub fn toggle_pin(id int) ?Note {
+    return db.toggle_pin(id)
+}
+
+/// Update tags for a note
+/// PUT /api/notes/:id/tags
+#[api(method = "PUT", path = "/api/notes/:id/tags")]
+pub fn update_tags(id int, tags []str) ?Note {
+    return db.update_tags(id, tags)
+}
+
+/// Search notes by title + body
+/// GET /api/notes/search?q=...
+#[api(method = "GET", path = "/api/notes/search")]
+pub fn search_notes(query str) []Note {
+    return db.search_notes(query)
 }

@@ -3,18 +3,24 @@
     "id": 0,
     "title": "Welcome",
     "body": "This is your notes app. Click on any note to view it.",
-    "time": "Just now"
+    "time": "Just now",
+    "pinned": true,
+    "tags": ["intro"]
   },
   {
     "id": 1,
     "title": "Shopping List",
     "body": "Milk, Eggs, Bread, Cheese",
-    "time": "2 hours ago"
+    "time": "2 hours ago",
+    "pinned": false,
+    "tags": ["home"]
   },
   {
     "id": 2,
     "title": "Meeting Notes",
     "body": "Q3 roadmap discussion with the team",
-    "time": "Yesterday"
+    "time": "Yesterday",
+    "pinned": false,
+    "tags": ["work"]
   }
 ]

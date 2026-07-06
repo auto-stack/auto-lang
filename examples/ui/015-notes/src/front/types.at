@@ -3,4 +3,6 @@ type Note {
     title str
     body str
     time str
+    pinned bool
+    tags []str
 }

@@ -4,13 +4,13 @@
 use api: Note
 
 // ═══════════════════════════════════════════════════════════
-// In-memory storage (initialized from data/notes.json)
+// In-memory storage
 // ═══════════════════════════════════════════════════════════
 
 var notes List<Note> = List<Note>.new([
-    Note { id: 0, title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now" },
-    Note { id: 1, title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago" },
-    Note { id: 2, title: "Meeting Notes", body: "Q3 roadmap discussion with the team", time: "Yesterday" },
+    Note { id: 0, title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now", pinned: true, tags: ["intro"] },
+    Note { id: 1, title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago", pinned: false, tags: ["home"] },
+    Note { id: 2, title: "Meeting Notes", body: "Q3 roadmap discussion with the team", time: "Yesterday", pinned: false, tags: ["work"] },
 ])
 
 var nextid int = 3
@@ -29,7 +29,7 @@ pub fn find_note(id int) ?Note {
     return None
 }
 
-/// Get all notes
+/// Get all notes (pinned first, then by id desc)
 pub fn all_notes() []Note {
     return notes
 }
@@ -41,6 +41,8 @@ pub fn create_note(title str, body str) Note {
         title: title,
         body: body,
         time: "Just now",
+        pinned: false,
+        tags: [],
     }
     nextid = nextid + 1
     notes.push(note)
@@ -58,6 +60,8 @@ pub fn update_note(id int, title str, body str) ?Note {
                 title: title,
                 body: body,
                 time: "Just now",
+                pinned: note.pinned,
+                tags: note.tags,
             }
             new_notes.push(updated)
             found = Some(updated)
@@ -69,27 +73,76 @@ pub fn update_note(id int, title str, body str) ?Note {
     return found
 }
 
-/// Delete a note by index (not by id)
+/// Delete a note by ID
 pub fn delete_note(id int) bool {
     var new_notes List<Note> = List<Note>.new([])
-    var i int = 0
+    var found bool = false
     for note in notes {
-        if i != id {
+        if note.id != id {
             new_notes.push(note)
+        } else {
+            found = true
         }
-        i = i + 1
     }
     notes = new_notes
-    return true
+    return found
 }
 
-/// Search notes by title
+/// Toggle pin status
+pub fn toggle_pin(id int) ?Note {
+    var new_notes List<Note> = List<Note>.new([])
+    var found ?Note = None
+    for note in notes {
+        if note.id == id {
+            let updated = Note {
+                id: note.id,
+                title: note.title,
+                body: note.body,
+                time: note.time,
+                pinned: !note.pinned,
+                tags: note.tags,
+            }
+            new_notes.push(updated)
+            found = Some(updated)
+        } else {
+            new_notes.push(note)
+        }
+    }
+    notes = new_notes
+    return found
+}
+
+/// Update tags for a note
+pub fn update_tags(id int, tags []str) ?Note {
+    var new_notes List<Note> = List<Note>.new([])
+    var found ?Note = None
+    for note in notes {
+        if note.id == id {
+            let updated = Note {
+                id: note.id,
+                title: note.title,
+                body: note.body,
+                time: note.time,
+                pinned: note.pinned,
+                tags: tags,
+            }
+            new_notes.push(updated)
+            found = Some(updated)
+        } else {
+            new_notes.push(note)
+        }
+    }
+    notes = new_notes
+    return found
+}
+
+/// Search notes by title + body
 pub fn search_notes(query str) []Note {
     let query_lower str = query.to_lower()
     let results List<Note> = List<Note>.new([])
 
     for note in notes {
-        if note.title.to_lower().contains(query_lower) {
+        if note.title.to_lower().contains(query_lower) || note.body.to_lower().contains(query_lower) {
             results.push(note)
         }
     }
