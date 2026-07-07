@@ -192,6 +192,9 @@ pub struct AuraStore {
 
     /// Handler parameter names (pattern → param names) for action fn signatures
     pub handler_params: HashMap<String, Vec<String>>,
+
+    /// API function names imported via `use back.api` (→ import in composable)
+    pub api_imports: Vec<String>,
 }
 
 

@@ -437,6 +437,7 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
         messages,
         handlers,
         handler_params,
+        api_imports: Vec::new(),
     })
 }
 

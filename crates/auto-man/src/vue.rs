@@ -2177,7 +2177,8 @@ fn compile_at_to_vue(_at_path: &Path, content: &str, root_dir: &Path) -> Result<
     // Plan 351: extract stores + generate composables
     for stmt in &ast.stmts {
         if let auto_lang::ast::Stmt::StoreDecl(store_decl) = stmt {
-            if let Ok(store) = extract_store_from_decl(store_decl) {
+            if let Ok(mut store) = extract_store_from_decl(store_decl) {
+                store.api_imports = api_imports.clone();
                 let composable = auto_lang::ui_gen::VueGenerator::generate_store_composable(&store);
                 let filename = format!("stores/use{}Store.ts", store.name);
                 auto_lang::STORE_EXTRA_FILES.with(|cell| {
@@ -2252,7 +2253,8 @@ fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget
     // Plan 351: extract stores + generate composables
     for stmt in &ast.stmts {
         if let auto_lang::ast::Stmt::StoreDecl(store_decl) = stmt {
-            if let Ok(store) = extract_store_from_decl(store_decl) {
+            if let Ok(mut store) = extract_store_from_decl(store_decl) {
+                store.api_imports = api_imports.clone();
                 let composable = auto_lang::ui_gen::VueGenerator::generate_store_composable(&store);
                 let filename = format!("stores/use{}Store.ts", store.name);
                 auto_lang::STORE_EXTRA_FILES.with(|cell| {

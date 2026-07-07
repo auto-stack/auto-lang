@@ -1,0 +1,63 @@
+// notes_list.at — List page: search + sort + note list with pin indicators.
+
+use store: NotesStore
+
+widget notes_list {
+    msg Msg { SelectNote(int), SearchChanged, TogglePin(int), SetSort(str) }
+
+    model { var search str = "" }
+
+    view {
+        col {
+            // search + sort bar
+            row {
+                input { placeholder: "Search...", value: .search, oninput: .SearchChanged, style: "flex-1 px-3 py-2 text-sm border rounded-lg" }
+                button "Updated" { onclick: .SetSort("updated"), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
+                button "Title" { onclick: .SetSort("title"), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
+                style: "gap-2 px-4 py-3 border-b border-gray-200"
+            }
+
+            // notes list
+            col {
+                if .store.loading {
+                    text "Loading..." { style: "text-sm text-gray-400 p-4" }
+                }
+
+                if !.store.loading && .store.notes.len() == 0 {
+                    text "No notes yet. Click + New to create one." { style: "text-sm text-gray-400 p-4" }
+                }
+
+                for note in .store.notes {
+                    if .search == "" || note.title.contains(.search) || note.body.contains(.search) {
+                        row {
+                            button note.title {
+                                onclick: .SelectNote(note.id)
+                                style: "flex-1 text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                            }
+                            if note.pinned {
+                                text "📌" { style: "text-sm px-1" }
+                            }
+                            button "📌" {
+                                onclick: .TogglePin(note.id)
+                                style: "text-xs px-2 py-1 rounded hover:bg-gray-100"
+                            }
+                            style: "w-full items-center gap-1"
+                        }
+                    }
+                }
+                style: "flex-1 gap-1 overflow-y-auto p-2"
+            }
+            style: "flex-col flex-1"
+        }
+    }
+
+    on {
+        .SelectNote(id) -> {
+            store.SelectNote(id)
+            nav("/note/" + id)
+        }
+        .SearchChanged -> { .search = .search }
+        .TogglePin(id) -> { store.TogglePin(id) }
+        .SetSort(mode) -> { store.SetSort(mode) }
+    }
+}

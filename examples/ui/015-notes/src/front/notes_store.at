@@ -1,0 +1,60 @@
+// notes_store.at — SharedStore for notes (Plan 354 Tier 1).
+// Client-side cache + state; backend API is the data source.
+
+use back.api: list_notes, create_note, update_note, delete_note, toggle_pin
+
+store NotesStore {
+    model {
+        var notes []Note = []
+        var active_id int = 0
+        var sort_mode str = "updated"
+        var search str = ""
+        var loading bool = false
+    }
+
+    msg Msg { Init, Refresh, SelectNote(int), NewNote, DeleteNote(int),
+              TogglePin(int), SetSort(str), Search(str) }
+
+    on {
+        .Init -> {
+            .loading = true
+            .notes = list_notes()
+            .loading = false
+        }
+
+        .Refresh -> {
+            .notes = list_notes()
+        }
+
+        .SelectNote(id) -> {
+            .active_id = id
+        }
+
+        .NewNote -> {
+            create_note("Untitled", "")
+            .notes = list_notes()
+            .active_id = .notes.len() - 1
+        }
+
+        .DeleteNote(id) -> {
+            delete_note(id)
+            .notes = list_notes()
+            if .notes.len() > 0 {
+                .active_id = 0
+            }
+        }
+
+        .TogglePin(id) -> {
+            toggle_pin(id)
+            .notes = list_notes()
+        }
+
+        .SetSort(mode) -> {
+            .sort_mode = mode
+        }
+
+        .Search(q) -> {
+            .search = q
+        }
+    }
+}

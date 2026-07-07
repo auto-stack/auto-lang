@@ -3783,8 +3783,9 @@ pub fn ui_build_shadcn_with_widgets(
     let mut stores: Vec<crate::aura::AuraStore> = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
-            let store = crate::aura::extract_store_from_decl(store_decl)
+            let mut store = crate::aura::extract_store_from_decl(store_decl)
                 .map_err(|e| e.to_string())?;
+            store.api_imports = api_imports.clone();
             stores.push(store);
         }
     }

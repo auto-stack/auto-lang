@@ -1,18 +1,15 @@
-use editor: EditorPanel
-use sidebar: Sidebar
-use note_item: NoteItem
-use back.api: list_notes, create_note, update_note, delete_note
+// app.at — Router shell (Plan 354 Tier 1).
+// State managed by SharedStore; routing enables URL-backed navigation.
+
+use store: NotesStore
 
 widget App {
-    msg Msg { LoadNotes, SelectNote(int), NewNote, DeleteNote, SaveNote, SearchChanged }
+    msg Msg { Init, NewNote }
 
-    model {
-        var notes = []
-        var active_index int = 0
-        var search str = ""
-        var editing bool = false
-        var edit_title str = ""
-        var edit_body str = ""
+    routes {
+        "/" -> use notes_list
+        "/note/:id" -> use note_detail
+        "/settings" -> use settings
     }
 
     view {
@@ -22,75 +19,16 @@ widget App {
                 button "+ New" { onclick: .NewNote, style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600" }
                 style: "w-full items-center p-4 border-b border-gray-200"
             }
-            row {
-                col {
-                    input { placeholder: "Search...", value: .search, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg mb-2" }
-                    for i, note in .notes {
-                        button note.title {
-                            onclick: .SelectNote(i)
-                            variant: "ghost"
-                            style: if i == .active_index {
-                                "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50 bg-blue-50"
-                            } else {
-                                "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
-                            }
-                        }
-                    }
-                    style: "w-64 border border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
-                }
-                col {
-                    if .notes.len() > 0 {
-                        EditorPanel(note: .notes[.active_index])
-                    }
-                    style: "flex-1"
-                }
-                style: "flex-1"
-            }
+            outlet
             style: "w-full h-screen bg-white flex-col"
         }
     }
 
     on {
-        .Init -> {
-            .notes = list_notes()
-        }
-
-        .SelectNote(i) -> {
-            .active_index = i
-            .editing = false
-        }
-
-        .SearchChanged -> {
-        }
-
+        .Init -> { store.Init() }
         .NewNote -> {
-            create_note("New Note", "")
-            .notes = list_notes()
-            .active_index = .notes.len() - 1
-            .editing = true
-            .edit_title = "New Note"
-            .edit_body = ""
-            .search = ""
-        }
-
-        .DeleteNote -> {
-            delete_note(.active_index)
-            .notes = list_notes()
-            if .active_index >= .notes.len() {
-                .active_index = 0
-            }
-            .editing = false
-        }
-
-        .SaveNote -> {
-            update_note(.active_index, .edit_title, .edit_body)
-            .notes = list_notes()
-            .editing = false
-        }
-
-        .SearchChanged -> {
-            .notes = list_notes()
-            .active_index = 0
+            store.NewNote()
+            nav("/note/" + .store.active_id)
         }
     }
 }

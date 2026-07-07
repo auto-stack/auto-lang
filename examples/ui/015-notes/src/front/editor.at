@@ -1,7 +1,9 @@
-use back.api: update_note, delete_note
+// editor.at — EditorPanel with callback props for delete + pin.
 
-widget EditorPanel(note: str) {
-    msg Msg { Edit, Save, Cancel, EditBody, EditTitle, Delete }
+use back.api: update_note, delete_note, toggle_pin
+
+widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
+    msg Msg { Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin }
 
     model {
         var editing bool = false
@@ -13,14 +15,29 @@ widget EditorPanel(note: str) {
         col {
             col {
                 if .editing == false {
-                    text .note.title { style: "text-lg font-semibold text-gray-800" }
+                    row {
+                        text .note.title { style: "text-lg font-semibold text-gray-800" }
+                        if .note.pinned {
+                            text "📌" { style: "text-sm ml-2" }
+                        }
+                        style: "items-center"
+                    }
                 }
                 if .editing == true {
                     input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-gray-800 border-b border-gray-200 outline-none w-full focus:border-blue-500 p-1" }
                 }
                 text .note.time { style: "text-xs text-gray-400 mt-1" }
+
+                // tag chips (read-only display)
+                row {
+                    for t in .note.tags {
+                        text t { style: "text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded mr-1" }
+                    }
+                    style: "gap-1"
+                }
+
                 if .editing == false {
-                    text .note.body { style: "text-gray-700 flex-1 leading-relaxed" }
+                    text .note.body { style: "text-gray-700 flex-1 leading-relaxed whitespace-pre-wrap mt-2" }
                 }
                 if .editing == true {
                     textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing...", style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" }
@@ -30,6 +47,7 @@ widget EditorPanel(note: str) {
             row {
                 if .editing == false {
                     button "Edit" { onclick: .Edit, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
+                    button "Pin" { onclick: .TogglePin, style: "px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600" }
                 }
                 if .editing == true {
                     row {
@@ -60,12 +78,15 @@ widget EditorPanel(note: str) {
         .Cancel -> {
             .editing = false
         }
-        .EditBody -> {
-        }
-        .EditTitle -> {
-        }
+        .EditBody -> { }
+        .EditTitle -> { }
         .Delete -> {
             delete_note(.note.id)
+            on_delete()
+        }
+        .TogglePin -> {
+            toggle_pin(.note.id)
+            on_toggle_pin()
         }
     }
 }

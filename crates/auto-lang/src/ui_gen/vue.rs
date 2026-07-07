@@ -1230,10 +1230,10 @@ impl VueGenerator {
             self.prop_names.push(prop.name.clone());
         }
 
-        // Plan 351: register 'store' as a pseudo-prop when store deps exist
-        if !self.store_deps.is_empty() {
-            self.prop_names.push("store".to_string());
-        }
+        // Plan 351: 'store' is a local const (from `const store = reactive(useXxxStore())`).
+        // NOT a prop — must not be in prop_names, or ts_adapter rewrites .store.xxx
+        // to props.store.xxx (wrong). As a bare ident, it passes through correctly
+        // (not in state_names → no .value suffix; not in prop_names → no props. prefix).
 
         // Activate emit generation for sub-widgets that have messages
         if !widget.messages.is_empty() {
@@ -7849,7 +7849,13 @@ export function cn(...inputs: ClassValue[]) {
         use crate::ui_gen::ts_adapter::{transpile_handler_body, AuraTsContext};
 
         let mut code = String::new();
-        code.push_str("import { ref } from 'vue'\n\n");
+        code.push_str("import { ref } from 'vue'\n");
+        // API functions used in handler bodies (from `use back.api`)
+        if !store.api_imports.is_empty() {
+            let fns = store.api_imports.join(", ");
+            code.push_str(&format!("import {{ {} }} from '@/lib/api'\n", fns));
+        }
+        code.push('\n');
 
         // Module-level ref declarations (singleton state).
         for sv in &store.state_vars {
