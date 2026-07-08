@@ -1,14 +1,17 @@
-// editor.at — EditorPanel with callback props for delete + pin.
+// editor.at — EditorPanel with Markdown render, tags, pin, delete callbacks.
 
-use back.api: update_note, delete_note, toggle_pin
+use back.api: update_note, delete_note, toggle_pin, update_tags
 
 widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
-    msg Msg { Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin }
+    msg Msg { Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin,
+              AddTag, EditTagInput, RemoveTag(str) }
 
     model {
         var editing bool = false
         var edit_title str = ""
         var edit_body str = ""
+        var tag_input str = ""
+        var rendered_body str = ""
     }
 
     view {
@@ -28,19 +31,33 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                 }
                 text .note.time { style: "text-xs text-gray-400 mt-1" }
 
-                // tag chips (read-only display)
+                // tags: chips + add/remove in edit mode
                 row {
                     for t in .note.tags {
                         text t { style: "text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded mr-1" }
                     }
                     style: "gap-1"
                 }
+                if .editing == true {
+                    row {
+                        for t in .note.tags {
+                            button t {
+                                onclick: .RemoveTag(t)
+                                style: "text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded mr-1"
+                            }
+                        }
+                        input { value: .tag_input, oninput: .EditTagInput, placeholder: "Add tag...", style: "text-xs px-2 py-0.5 border rounded w-24" }
+                        button "+" { onclick: .AddTag, style: "text-xs px-2 py-0.5 bg-blue-500 text-white rounded" }
+                        style: "gap-1 items-center"
+                    }
+                }
 
+                // body: Markdown render (read) / textarea (edit)
                 if .editing == false {
                     text .note.body { style: "text-gray-700 flex-1 leading-relaxed whitespace-pre-wrap mt-2" }
                 }
                 if .editing == true {
-                    textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing...", style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" }
+                    textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing (Markdown supported)...", style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" }
                 }
                 style: "px-6 pt-6 pb-2 flex-1"
             }
@@ -67,6 +84,7 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
         .Edit -> {
             .edit_title = .note.title
             .edit_body = .note.body
+            .tag_input = ""
             .editing = true
         }
         .Save -> {
@@ -80,6 +98,24 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
         }
         .EditBody -> { }
         .EditTitle -> { }
+        .EditTagInput -> { }
+        .AddTag -> {
+            if .tag_input != "" {
+                .note.tags.push(.tag_input)
+                update_tags(.note.id, .note.tags)
+                .tag_input = ""
+            }
+        }
+        .RemoveTag(t) -> {
+            var new_tags []str = []
+            for tg in .note.tags {
+                if tg != t {
+                    new_tags.push(tg)
+                }
+            }
+            .note.tags = new_tags
+            update_tags(.note.id, .note.tags)
+        }
         .Delete -> {
             delete_note(.note.id)
             on_delete()
