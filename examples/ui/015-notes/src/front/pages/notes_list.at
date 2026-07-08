@@ -1,4 +1,4 @@
-// notes_list.at — List page: search + sort + note list with pin indicators.
+// notes_list.at — List page: search (title+body) + sort + pin + loading/empty states.
 
 use store: NotesStore
 
@@ -11,9 +11,10 @@ widget notes_list {
         col {
             // search + sort bar
             row {
-                input { placeholder: "Search...", value: .search, oninput: .SearchChanged, style: "flex-1 px-3 py-2 text-sm border rounded-lg" }
-                button "Updated" { onclick: .SetSort("updated"), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
-                button "Title" { onclick: .SetSort("title"), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
+                input { placeholder: "Search title or content...", value: .search, oninput: .SearchChanged, style: "flex-1 px-3 py-2 text-sm border rounded-lg" }
+                button "Recent" { onclick: .SetSort("updated"), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
+                button "A-Z" { onclick: .SetSort("title"), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
+                button "Settings" { onclick: .GoSettings, style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
                 style: "gap-2 px-4 py-3 border-b border-gray-200"
             }
 
@@ -24,7 +25,11 @@ widget notes_list {
                 }
 
                 if !.store.loading && .store.notes.len() == 0 {
-                    text "No notes yet. Click + New to create one." { style: "text-sm text-gray-400 p-4" }
+                    col {
+                        text "No notes yet." { style: "text-gray-400 text-lg p-4" }
+                        text "Click + New to create one." { style: "text-gray-400 text-sm" }
+                        style: "items-center justify-center flex-1 gap-2"
+                    }
                 }
 
                 for note in .store.notes {
@@ -59,5 +64,6 @@ widget notes_list {
         .SearchChanged -> { .search = .search }
         .TogglePin(id) -> { store.TogglePin(id) }
         .SetSort(mode) -> { store.SetSort(mode) }
+        .GoSettings -> { nav("/settings") }
     }
 }
