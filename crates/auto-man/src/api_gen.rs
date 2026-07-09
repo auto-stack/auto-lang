@@ -492,20 +492,47 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
         }
     }
 
-    // Generate UpdateInput struct for PUT endpoints with body fields
+    // Generate UpdateInput structs for PUT/PATCH endpoints with body fields.
+    // Each unique set of body params gets its own struct.
+    let mut seen_param_sets: Vec<String> = Vec::new();
     for endpoint in &api_module.endpoints {
-        if endpoint.method() == "PUT" {
+        let method = endpoint.method();
+        let ep_fn_name = &endpoint.fn_name;
+        if method == "PUT" || method == "PATCH" {
             let body_params = endpoint_body_params(endpoint);
             if !body_params.is_empty() {
+                // Create a signature for this param set
+                let param_sig: String = body_params.iter()
+                    .map(|p| format!("{}:{}", p.name, p.ty))
+                    .collect::<Vec<_>>().join(",");
+                if seen_param_sets.contains(&param_sig) {
+                    continue; // Skip duplicate
+                }
+                seen_param_sets.push(param_sig);
+
+                // Struct name: Update{Type}Input for first, Update{Type}{FnName}Input for others
+                let struct_name = if seen_param_sets.len() == 1 {
+                    format!("Update{}Input", primary_type)
+                } else {
+                    // PascalCase the fn_name suffix
+                    let suffix: String = ep_fn_name.split('_').map(|s| {
+                        let mut c = s.chars();
+                        match c.next() {
+                            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                            None => String::new(),
+                        }
+                    }).collect::<String>();
+                    format!("Update{}{}Input", primary_type, suffix)
+                };
+
                 lines.push("#[derive(serde::Deserialize)]".to_string());
-                lines.push(format!("pub struct Update{}Input {{", primary_type));
+                lines.push(format!("pub struct {} {{", struct_name));
                 for param in &body_params {
                     let rust_type = auto_type_to_rust(&param.ty);
                     lines.push(format!("    pub {}: {},", param.name, rust_type));
                 }
                 lines.push("}".to_string());
                 lines.push("".to_string());
-                break; // Only one UpdateInput per primary type
             }
         }
     }
@@ -544,10 +571,26 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
                     params.push(format!("Json(input): Json<{}>", primary_type));
                 }
             } else {
-                // PUT uses UpdateInput if body params exist, otherwise full type
+                // PUT/PATCH uses per-endpoint Input struct if body params exist
                 let body_params = endpoint_body_params(endpoint);
                 if !body_params.is_empty() {
-                    params.push(format!("Json(input): Json<Update{}Input>", primary_type));
+                    // Find the matching struct name for this endpoint's params
+                    let param_sig: String = body_params.iter()
+                        .map(|p| format!("{}:{}", p.name, p.ty))
+                        .collect::<Vec<_>>().join(",");
+                    let struct_name = if seen_param_sets.first().map(|s| s == &param_sig).unwrap_or(false) {
+                        format!("Update{}Input", primary_type)
+                    } else {
+                        let suffix: String = fn_name.split('_').map(|s| {
+                            let mut c = s.chars();
+                            match c.next() {
+                                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                                None => String::new(),
+                            }
+                        }).collect::<String>();
+                        format!("Update{}{}Input", primary_type, suffix)
+                    };
+                    params.push(format!("Json(input): Json<{}>", struct_name));
                 } else {
                     params.push(format!("Json(input): Json<{}>", primary_type));
                 }
@@ -627,6 +670,7 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
                     if has_time_field {
                         lines.push("        time: \"Just now\".to_string(),".to_string());
                     }
+                    lines.push("        ..Default::default()".to_string());
                     lines.push("    };".to_string());
                 }
                 lines.push("    items.push(item.clone());".to_string());
@@ -675,6 +719,46 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
                 } else {
                     lines.push("        Ok(StatusCode::OK)".to_string());
                 }
+                lines.push("    } else {".to_string());
+                lines.push("        Err(StatusCode::NOT_FOUND)".to_string());
+                lines.push("    }".to_string());
+            }
+            "PATCH" => {
+                // PATCH: toggle/update specific fields (e.g. toggle_pin)
+                let path_params = endpoint_path_params(endpoint);
+                let id_name = path_params.first().map(|p| p.name.as_str()).unwrap_or(id_field);
+                let body_params = endpoint_body_params(endpoint);
+                lines.push("    let mut items = db.lock().unwrap();".to_string());
+                lines.push(format!(
+                    "    if let Some(item) = items.iter_mut().find(|n| n.{} == {}) {{",
+                    id_name, id_name
+                ));
+                // Toggle boolean fields; set others from input
+                for param in &body_params {
+                    if param.ty.contains("bool") {
+                        lines.push(format!("        item.{} = !item.{};", param.name, param.name));
+                    } else {
+                        lines.push(format!("        item.{} = input.{}.clone();", param.name, param.name));
+                    }
+                }
+                // If no body params, infer toggle from fn name (e.g. toggle_pin → toggle pinned)
+                if body_params.is_empty() {
+                    // Try to infer field name from function name (toggle_X → X or toggle_Xed)
+                    if let Some(stripped) = fn_name.strip_prefix("toggle_") {
+                        // Try exact match first, then with "ned" / "d" suffix (pin → pinned)
+                        let field = if type_fields.contains(&stripped) {
+                            stripped.to_string()
+                        } else if type_fields.contains(&format!("{}ned", stripped).as_str()) {
+                            format!("{}ned", stripped)
+                        } else if type_fields.contains(&format!("{}d", stripped).as_str()) {
+                            format!("{}d", stripped)
+                        } else {
+                            stripped.to_string()
+                        };
+                        lines.push(format!("        item.{} = !item.{};", field, field));
+                    }
+                }
+                lines.push("        Ok(JsonResponse(item.clone()))".to_string());
                 lines.push("    } else {".to_string());
                 lines.push("        Err(StatusCode::NOT_FOUND)".to_string());
                 lines.push("    }".to_string());
