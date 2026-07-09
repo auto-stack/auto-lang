@@ -424,6 +424,7 @@ impl AutovmReplSession {
 
         // Plan 355: Clear jump_placeholders to prevent cross-call accumulation
         codegen.jump_placeholders.clear();
+        codegen.jump_targets.clear();
 
         // Plan 118 Phase 7: Emit FN_PROLOG and RESERVE_STACK for proper local variable support
         // Record the starting position of codegen.code (should be 0 after clear).
@@ -467,9 +468,14 @@ impl AutovmReplSession {
             reloc.offset += shift;
         }
 
-        // Adjust export addresses: shift by prologue length
-        for addr in codegen.exports.values_mut() {
-            *addr += shift;
+        // Adjust export addresses: shift by prologue length.
+        // Plan 355 follow-up: only shift exports defined IN THIS compilation
+        // (pre-existing exports were already shifted in a previous run and are
+        // already absolute — shifting them again corrupts function addresses).
+        for (name, addr) in codegen.exports.iter_mut() {
+            if !pre_existing_exports.contains(name) {
+                *addr += shift;
+            }
         }
 
         // Prepend prologue before compiled code
