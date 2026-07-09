@@ -1,34 +1,83 @@
-// app.at — Router shell (Plan 354 Tier 1).
-// State managed by SharedStore; routing enables URL-backed navigation.
+// app.at — Single-page layout: sidebar list + inline content.
+// SharedStore manages all state; no routing needed for the main view.
 
 use store: NotesStore
+use editor: EditorPanel
 
 widget App {
-    msg Msg { Init, NewNote }
+    msg Msg { Init, NewNote, SelectNote(int), SearchChanged, TogglePin(int), SetSort(str), DeleteActive }
 
-    routes {
-        "/" -> use notes_list
-        "/note/:id" -> use note_detail
-        "/settings" -> use settings
-    }
+    model { var search str = "" }
 
     view {
         col {
+            // header
             row {
                 h2 "Notes" { style: "text-xl font-bold text-gray-800" }
                 button "+ New" { onclick: .NewNote, style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600" }
                 style: "w-full items-center p-4 border-b border-gray-200"
             }
-            outlet
+
+            // body: sidebar list + content
+            row {
+                // sidebar: search + sort + note list
+                col {
+                    row {
+                        input { placeholder: "Search...", value: .search, oninput: .SearchChanged, style: "flex-1 px-3 py-2 text-sm border rounded-lg" }
+                        button "Recent" { onclick: .SetSort("updated"), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
+                        button "A-Z" { onclick: .SetSort("title"), style: "text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" }
+                        style: "gap-2 mb-2"
+                    }
+
+                    if .store.loading {
+                        text "Loading..." { style: "text-sm text-gray-400 p-4" }
+                    }
+
+                    if !.store.loading && .store.notes.len() == 0 {
+                        text "No notes yet." { style: "text-sm text-gray-400 p-4" }
+                    }
+
+                    for note in .store.notes {
+                        if .search == "" || note.title.contains(.search) || note.body.contains(.search) {
+                            button note.title {
+                                onclick: .SelectNote(note.id)
+                                style: if note.id == .store.active_id {
+                                    "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50 bg-blue-50"
+                                } else {
+                                    "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                                }
+                            }
+                        }
+                    }
+                    style: "w-64 border-r border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
+                }
+
+                // content: editor for active note
+                col {
+                    if .store.notes.len() > 0 {
+                        EditorPanel(note: .store.notes[.store.active_id], on_delete: .DeleteActive, on_toggle_pin: .TogglePin)
+                    }
+                    style: "flex-1 flex-col"
+                }
+                style: "flex-1"
+            }
             style: "w-full h-screen bg-white flex-col"
         }
     }
 
     on {
         .Init -> { store.Init() }
-        .NewNote -> {
-            store.NewNote()
-            nav("/note/" + .store.active_id)
-        }
+
+        .NewNote -> { store.NewNote() }
+
+        .SelectNote(id) -> { store.SelectNote(id) }
+
+        .SearchChanged -> { .search = .search }
+
+        .TogglePin -> { store.TogglePin(.store.active_id) }
+
+        .SetSort(mode) -> { store.SetSort(mode) }
+
+        .DeleteActive -> { store.DeleteNote(.store.active_id) }
     }
 }
