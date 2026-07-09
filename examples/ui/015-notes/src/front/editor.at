@@ -124,7 +124,6 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
             update_tags(.note.id, .note.tags)
         }
         .Delete -> {
-            delete_note(.note.id)
             on_delete()
         }
         .TogglePin -> {

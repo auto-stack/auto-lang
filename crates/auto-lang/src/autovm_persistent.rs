@@ -405,6 +405,12 @@ impl AutovmReplSession {
         // 2. Take Codegen (move out for efficient reuse)
         let mut codegen = self.codegen.take().unwrap();
 
+        // Plan 355 follow-up: snapshot export names that existed BEFORE this
+        // compilation. Their addresses are already absolute (adjusted in a
+        // previous run); only newly-defined exports need address adjustment.
+        let pre_existing_exports: std::collections::HashSet<String> =
+            codegen.exports.keys().cloned().collect();
+
         // Debug: Print scope_stack before compilation
         vm_debug!("DEBUG: Before compilation, scope_stack = {:?}",
             codegen.scope_stack
@@ -666,11 +672,14 @@ impl AutovmReplSession {
             0
         };
 
-        // Adjust export addresses: exports from this compilation have addresses < new_code.len()
-        // They need to be adjusted to be absolute in the accumulated bytecode
+        // Adjust export addresses: exports from THIS compilation have addresses
+        // < new_code.len() and need to be adjusted to be absolute in the
+        // accumulated bytecode. Pre-existing exports (from previous runs) are
+        // already absolute — skip them (Plan 355 follow-up: previously they
+        // were wrongly re-adjusted, corrupting function call addresses).
         let new_code_len = new_code.len() as u32;
-        for addr in codegen.exports.values_mut() {
-            if *addr < new_code_len {
+        for (name, addr) in codegen.exports.iter_mut() {
+            if !pre_existing_exports.contains(name) && *addr < new_code_len {
                 *addr += new_code_start as u32;
             }
         }
