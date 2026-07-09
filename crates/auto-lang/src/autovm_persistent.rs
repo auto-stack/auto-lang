@@ -337,6 +337,36 @@ impl AutovmReplSession {
     ///
     /// **Efficient**: Reuses Codegen and TypeRegistry to avoid allocations
     pub fn run(&mut self, code: &str) -> AutoResult<String> {
+        // Plan 355: Run on a dedicated thread with 8MB stack to prevent
+        // stack overflow when parsing fn bodies with compound statements
+        // (if/for/while) after previous session.run calls consumed stack
+        // via tokio::runtime::Runtime::new() + block_on().
+        //
+        // Root cause: each session.run creates a tokio runtime (line ~733)
+        // which consumes ~2MB of main thread stack for worker thread metadata.
+        // After a few calls, the remaining stack is insufficient for the
+        // recursive descent parser. Fix: run the entire parse+compile+execute
+        // cycle on a fresh thread with guaranteed 8MB stack.
+        let code_owned = code.to_string();
+        let self_ptr: usize = self as *mut Self as usize;
+        
+        let handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                // SAFETY: self is &mut, borrowed for the duration of this thread.
+                // The caller (run) blocks on join() so the borrow is valid.
+                let session: &mut Self = unsafe { &mut *(self_ptr as *mut Self) };
+                session.run_inner(&code_owned)
+            })
+            .map_err(|e| AutoError::Msg(format!("Failed to spawn session thread: {}", e)))?;
+
+        match handle.join() {
+            Ok(result) => result,
+            Err(e) => Err(AutoError::Msg(format!("Session thread panicked: {:?}", e))),
+        }
+    }
+
+    fn run_inner(&mut self, code: &str) -> AutoResult<String> {
         // 0. Plan 094: Resolve use statements first (loads modules, registers functions)
         self.resolve_use_statements(code)?;
 
@@ -354,6 +384,7 @@ impl AutovmReplSession {
         // This allows using undefined variables (e.g., "x" as a statement)
         // Variables will be checked at runtime by the VM
         parser = parser.skip_check();
+
 
         let ast = parser.parse()?;
 
@@ -384,6 +415,9 @@ impl AutovmReplSession {
 
         // Clear previous relocations (otherwise old relocations get applied to new code!)
         codegen.relocs.clear();
+
+        // Plan 355: Clear jump_placeholders to prevent cross-call accumulation
+        codegen.jump_placeholders.clear();
 
         // Plan 118 Phase 7: Emit FN_PROLOG and RESERVE_STACK for proper local variable support
         // Record the starting position of codegen.code (should be 0 after clear).
