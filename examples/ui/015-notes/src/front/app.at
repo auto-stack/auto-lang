@@ -3,6 +3,7 @@
 
 use store: NotesStore
 use editor: EditorPanel
+use back.api: delete_note, list_notes
 
 widget App {
     msg Msg { Init, NewNote, SelectNote(int), SearchChanged, TogglePin(int), SetSort(str), DeleteActive }
@@ -78,6 +79,12 @@ widget App {
 
         .SetSort(mode) -> { store.SetSort(mode) }
 
-        .DeleteActive -> { store.DeleteNote(.store.active_id) }
+        .DeleteActive -> {
+            delete_note(.store.notes[.store.active_id].id)
+            store.notes = list_notes()
+            if .store.notes.len() > 0 {
+                store.active_id = .store.notes[0].id
+            }
+        }
     }
 }
