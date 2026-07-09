@@ -3,7 +3,7 @@
 use back.api: update_note, delete_note, toggle_pin, update_tags
 
 widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
-    msg Msg { Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin,
+    msg Msg { Init, Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin,
               AddTag, EditTagInput, RemoveTag(str) }
 
     model {
@@ -81,6 +81,13 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
     }
 
     on {
+        .Init -> {
+            if .note.title == "" {
+                .edit_title = ""
+                .edit_body = ""
+                .editing = true
+            }
+        }
         .Edit -> {
             .edit_title = .note.title
             .edit_body = .note.body
