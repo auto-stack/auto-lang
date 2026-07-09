@@ -1,5 +1,5 @@
 // app.at — Single-page layout: sidebar list + inline content.
-// SharedStore manages all state; no routing needed for the main view.
+// active_id is an ARRAY INDEX (not the note's id field) — consistent everywhere.
 
 use store: NotesStore
 use editor: EditorPanel
@@ -38,11 +38,11 @@ widget App {
                         text "No notes yet." { style: "text-sm text-gray-400 p-4" }
                     }
 
-                    for note in .store.notes {
+                    for i, note in .store.notes {
                         if .search == "" || note.title.contains(.search) || note.body.contains(.search) {
                             button note.title {
-                                onclick: .SelectNote(note.id)
-                                style: if note.id == .store.active_id {
+                                onclick: .SelectNote(i)
+                                style: if i == .store.active_id {
                                     "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50 bg-blue-50"
                                 } else {
                                     "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
@@ -71,11 +71,13 @@ widget App {
 
         .NewNote -> { store.NewNote() }
 
-        .SelectNote(id) -> { store.SelectNote(id) }
+        .SelectNote(i) -> { store.active_id = i }
 
         .SearchChanged -> { .search = .search }
 
-        .TogglePin -> { store.TogglePin(.store.active_id) }
+        .TogglePin -> {
+            store.TogglePin(.store.notes[.store.active_id].id)
+        }
 
         .SetSort(mode) -> { store.SetSort(mode) }
 
@@ -83,7 +85,7 @@ widget App {
             delete_note(.store.notes[.store.active_id].id)
             store.notes = list_notes()
             if .store.notes.len() > 0 {
-                store.active_id = .store.notes[0].id
+                store.active_id = 0
             }
         }
     }
