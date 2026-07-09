@@ -7867,8 +7867,10 @@ export function cn(...inputs: ClassValue[]) {
         // Build ctx for handler transpilation (state_names → .value emission).
         let state_names: std::collections::HashSet<String> =
             store.state_vars.iter().map(|s| s.name.clone()).collect();
+        // Pass API imports so ts_adapter adds `await` to API calls.
         let ctx = AuraTsContext::new(state_names)
-            .with_props(std::collections::HashSet::new());
+            .with_props(std::collections::HashSet::new())
+            .with_api_functions(store.api_imports.clone());
 
         // Export function.
         let fn_name = format!("use{}Store", store.name);
@@ -7887,13 +7889,15 @@ export function cn(...inputs: ClassValue[]) {
                 crate::aura::LogicPayload::AstStmts(stmts) => transpile_handler_body(stmts, &ctx),
                 _ => String::new(),
             };
-            // Look up handler params for the action signature (Plan 351).
+            // Actions with API calls need to be async (ts_adapter added `await`).
+            let is_async = body.contains("await");
             let params = store.handler_params.get(pattern)
                 .map(|p| p.iter().map(|n| format!("{}: any", n)).collect::<Vec<_>>().join(", "))
                 .unwrap_or_default();
+            let async_kw = if is_async { "async " } else { "" };
             code.push_str(&format!(
-                "        {}: ({}) => {{ {} }},\n",
-                action_name, params, body
+                "        {}: {}({}) => {{ {} }},\n",
+                action_name, async_kw, params, body
             ));
         }
 
