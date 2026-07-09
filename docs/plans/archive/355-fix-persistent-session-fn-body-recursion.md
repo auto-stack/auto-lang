@@ -1,8 +1,8 @@
 # Plan 355: 修复持久 Session 解析"fn 内含复合语句"的无限递归栈溢出
 
-> **状态**：待实施
-> **优先级**：高
-> **影响**：ash（auto-shell）的 MS3 脚本能力严重受限——脚本里无法定义任何带控制流的函数
+> **状态**：✅ 已修复(commit `add04447`,2026-06-27,已合并 master)
+> **根因**：非无限递归——栈空间耗尽。每次 session.run 创建 tokio::runtime::Runtime::new() + block_on()，消耗调用线程 ~2MB 栈空间用于 worker 元数据。1-2 次调用后，剩余栈空间不足以支撑递归下降解析器解析 fn 体内的复合语句（if/for/while 的解析树较深）。
+> **修复**：将 session.run 的整个 parse+compile+execute 周期放到独立 OS 线程（8MB 栈），与 run_autovm(lib.rs:277) 使用相同方案。同时清理 codegen.jump_placeholders 跨调用累积。
 > **报告来源**：auto-shell v0.5（Plan 010/011 实施期间发现），已在 `auto-shell/plans/010-ms3a-trycatch-while.md` §8 记录
 
 ## 一句话描述
