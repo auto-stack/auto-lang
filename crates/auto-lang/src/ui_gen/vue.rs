@@ -2069,6 +2069,10 @@ impl VueGenerator {
                 } else {
                     self.map_tag(tag, children.is_empty())
                 };
+                eprintln!("DBG shadcn: tag={} is_sub={} force_nat={} is_shadcn={} reg_vue={} reg_vue_lower={}",
+            tag, is_known_sub_widget, force_native, self.is_shadcn(),
+            self.widget_registry.is_backend_supported("vue", tag),
+            self.widget_registry.is_backend_supported("vue", &tag_lower));
                 let is_shadcn_component = !is_known_sub_widget && !force_native && self.is_shadcn() &&
                     (self.widget_registry.is_backend_supported("vue", tag) ||
                      self.widget_registry.is_backend_supported("vue", &tag_lower));
@@ -2141,7 +2145,45 @@ impl VueGenerator {
                 // Build attributes
                 let (attrs, text_content, generated_children) = if is_shadcn_component {
                     // Use shadcn-specific attribute generation (includes event handling)
-                    let (shadcn_attrs, slot_content, slot_children) = self.generate_shadcn_attrs(tag, props, events);
+                    let (shadcn_attrs, mut slot_content, slot_children) = self.generate_shadcn_attrs(tag, props, events);
+                    // Plan 354: if no slot content from props, check primary positional text.
+                    // The view parser puts positional text (e.g. `badge t`) in props as "text"
+                    // OR as a text child node. Check both.
+                    if slot_content.is_none() {
+                        // Check if "text" prop exists (positional text stored as named prop)
+                        if let Some(value) = props.get("text") {
+                            slot_content = self.prop_to_text_content(value).ok();
+                        }
+                        // Also check children for a text node
+                        if slot_content.is_none() {
+                            for child in children {
+                                if let AuraNode::Text(content) = child {
+                                    match content {
+                                        AuraTextContent::Literal(s) => {
+                                            slot_content = Some(s.clone());
+                                            break;
+                                        }
+                                        AuraTextContent::Interpolated { template, bindings } => {
+                                            // Convert to Vue text
+                                            let mut vue_text = template.clone();
+                                            for binding in bindings {
+                                                vue_text = vue_text.replace(
+                                                    &format!("${{{}.{}}}", ".", binding),
+                                                    &format!("{{{{ {} }}}}", binding)
+                                                );
+                                                vue_text = vue_text.replace(
+                                                    &format!("${{{}}}", binding),
+                                                    &format!("{{{{ {} }}}}", binding)
+                                                );
+                                            }
+                                            slot_content = Some(vue_text);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     (shadcn_attrs, slot_content, slot_children)
                 } else {
                     // Use plain Tailwind attribute generation

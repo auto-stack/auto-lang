@@ -10981,6 +10981,17 @@ impl<'a> Parser<'a> {
                     value: ViewPropValue::Expr(expr),
                 });
             }
+        } else if self.is_kind(TokenKind::Ident) {
+            // Plan 354: bare identifier as primary prop (e.g., `badge t` where
+            // t is a loop variable). Only when tag has a known primary prop.
+            if let Some(primary_prop) = Self::get_primary_prop(&tag) {
+                let id = self.cur.text.clone();
+                self.next();
+                props.push(ViewProp {
+                    name: primary_prop.to_string(),
+                    value: ViewPropValue::Expr(Expr::Ident(id)),
+                });
+            }
         }
 
         // Parse props/events in parentheses: tag (props) { children }

@@ -31,19 +31,19 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                 }
                 text .note.time { style: "text-xs text-gray-400 mt-1" }
 
-                // tags: chips + add/remove in edit mode
+                // tags: display as badges
                 row {
                     for t in .note.tags {
-                        text t { style: "text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded mr-1" }
+                        badge t { variant: "secondary" }
                     }
                     style: "gap-1"
                 }
                 if .editing == true {
                     row {
                         for t in .note.tags {
-                            button t {
+                            badge t {
+                                variant: "destructive"
                                 onclick: .RemoveTag(t)
-                                style: "text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded mr-1"
                             }
                         }
                         input { value: .tag_input, oninput: .EditTagInput, placeholder: "Add tag...", style: "text-xs px-2 py-0.5 border rounded w-24" }
