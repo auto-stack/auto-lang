@@ -1343,6 +1343,12 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
     println!();
     println!("{}", "▶ Starting API backend server (Rust axum)...".bright_cyan());
 
+    // Plan 354: Kill any process occupying the backend port before starting.
+    let port = crate::util::http_port();
+    crate::util::kill_process_on_port(port);
+
+    let cargo_toml = api_backend_dir.join("Cargo.toml");
+
     let cargo_toml = api_backend_dir.join("Cargo.toml");
 
     // Plan 328: Sanitize Cargo package name — cargo rejects names starting

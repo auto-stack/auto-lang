@@ -172,6 +172,54 @@ pub fn http_port() -> u16 {
     }
 }
 
+/// Kill any process listening on the given port (Plan 354).
+/// Uses `netstat` + `taskkill` on Windows, `lsof`/`fuser` on Unix.
+pub fn kill_process_on_port(port: u16) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        // netstat -ano | findstr :PORT | findstr LISTENING
+        if let Ok(output) = Command::new("cmd")
+            .args(["/C", &format!(
+                "netstat -ano | findstr :{} | findstr LISTENING", port
+            )])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                // Last column is the PID
+                if let Some(pid_str) = line.split_whitespace().last() {
+                    if let Ok(pid) = pid_str.parse::<u32>() {
+                        let _ = Command::new("taskkill")
+                            .args(["/F", "/PID", &pid.to_string()])
+                            .output();
+                    }
+                }
+            }
+            if !stdout.is_empty() {
+                println!("  {} Killed stale process on port {}", "⚠".bright_yellow(), port);
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Unix: try lsof then fuser
+        let _ = std::process::Command::new("lsof")
+            .args(["-ti", &format!("tcp:{}", port)])
+            .output()
+            .and_then(|out| {
+                let pids = String::from_utf8_lossy(&out.stdout);
+                for pid in pids.split_whitespace() {
+                    let _ = std::process::Command::new("kill")
+                        .args(["-9", pid])
+                        .output();
+                }
+                Ok(())
+            });
+    }
+}
+
 /// The backend base URL (e.g. `http://127.0.0.1:8080`) for the resolved port.
 pub fn http_base_url() -> String {
     format!("http://127.0.0.1:{}", http_port())
