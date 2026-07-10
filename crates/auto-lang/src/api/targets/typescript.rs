@@ -318,9 +318,7 @@ export type { IApi };
                 .filter(|p| !path.contains(&format!(":{}", p.name)))
                 .map(|p| p.name.as_str())
                 .collect();
-            let body = if body_param_names.len() == 1 {
-                body_param_names[0].to_string()
-            } else if body_param_names.is_empty() {
+            let body = if body_param_names.is_empty() {
                 "{}".to_string()
             } else {
                 format!("{{ {} }}", body_param_names.join(", "))
