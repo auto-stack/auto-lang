@@ -5,7 +5,7 @@
 
 use store: NotesStore
 
-widget Sidebar(active_folder: str, active_tag: str) {
+widget NavSidebar(active_folder: str, active_tag: str) {
     msg Msg {
         SelectAll, SelectPinned, SelectRecent,
         SelectFolder(str), SelectTag(str)

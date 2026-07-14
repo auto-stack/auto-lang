@@ -8,7 +8,7 @@
 // active_id is an ARRAY INDEX (not the note's id field) — consistent everywhere.
 
 use store: NotesStore
-use sidebar: Sidebar
+use sidebar: NavSidebar
 use editor: EditorPanel
 use back.api: delete_note, list_notes
 
@@ -31,7 +31,7 @@ widget App {
             // body: 3 columns — sidebar + note list + editor
             row {
                 // Column 1: navigation (folders / shortcuts / tags)
-                Sidebar(active_folder: .store.active_folder, active_tag: .store.active_tag)
+                NavSidebar(active_folder: .store.active_folder, active_tag: .store.active_tag)
 
                 // Column 2: note list. Filters by active_folder / active_tag and
                 // then by the search box. Three nested ifs keep the predicate
