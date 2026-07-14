@@ -3,7 +3,7 @@
 // Phase D: added folder/tag filter state + folder/tag actions.
 
 use back.api: list_notes, create_note, update_note, delete_note, toggle_pin, update_tags
-use back.api: list_folders, move_note, list_tags
+use back.api: list_folders, move_note
 
 store NotesStore {
     model {
@@ -35,7 +35,6 @@ store NotesStore {
             .loading = true
             .notes = list_notes()
             .folders = list_folders()
-            .tags = list_tags()
             .loading = false
         }
 
@@ -75,7 +74,7 @@ store NotesStore {
         }
 
         .UpdateTags(id) -> {
-            .tags = list_tags()
+            .notes = list_notes()
         }
 
         .ToggleDarkMode -> {
@@ -100,7 +99,6 @@ store NotesStore {
 
         .RefreshFolders -> {
             .folders = list_folders()
-            .tags = list_tags()
         }
     }
 }

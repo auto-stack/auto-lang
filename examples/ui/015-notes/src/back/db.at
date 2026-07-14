@@ -1,7 +1,15 @@
 // source/back/db.at - Notes Database Service
 // In-memory storage with JSON file persistence
 
-use api: Note, Folder
+use api: Note
+
+// Folder type (also defined in api.at for frontend; duplicated here to
+// avoid circular import issues with collect_module_imports).
+type Folder {
+    id int
+    name str
+    icon str
+}
 
 // ═══════════════════════════════════════════════════════════
 // In-memory storage
@@ -27,8 +35,6 @@ var folders List<Folder> = List<Folder>.new([
 ])
 
 var next_folder_id int = 4
-
-var nextid int = 3
 
 // ═══════════════════════════════════════════════════════════
 // Database Operations
@@ -224,23 +230,4 @@ pub fn move_note(id int, folder str) ?Note {
     }
     notes = new_notes
     return found
-}
-
-/// Collect all unique tags across notes
-pub fn all_tags() []str {
-    let tags_set List<str> = List<str>.new([])
-    for note in notes {
-        for tag in note.tags {
-            var exists bool = false
-            for t in tags_set {
-                if t == tag {
-                    exists = true
-                }
-            }
-            if !exists {
-                tags_set.push(tag)
-            }
-        }
-    }
-    return tags_set
 }

@@ -117,10 +117,3 @@ pub fn list_notes_by_folder(folder str) []Note {
 pub fn move_note(id int, folder str) ?Note {
     return db.move_note(id, folder)
 }
-
-/// Get all unique tags across notes
-/// GET /api/tags
-#[api(method = "GET", path = "/api/tags")]
-pub fn list_tags() []str {
-    return db.all_tags()
-}
