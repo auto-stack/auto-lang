@@ -1119,6 +1119,115 @@ pub fn shim_io_scanner(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
     Ok(())
 }
 
+// ============================================================================
+// Plan 353 stage 6: Async file IO (non-blocking yield, same pattern as
+// Plan 349 step7's async HTTP)
+// ============================================================================
+
+lazy_static::lazy_static! {
+    /// Plan 353 stage 6: Async IO results (request_id → Option<Result<json_str>>).
+    pub(crate) static ref ASYNC_IO_RESULTS: std::sync::Mutex<std::collections::HashMap<u64, Option<Result<String, String>>>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
+/// `io.read_text_async(path: String) -> String`
+/// Async read file to string. Non-blocking (yield pattern from Plan 349 step7).
+pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    // Check if we have a pending request (re-entry after yield).
+    if let Some(req_id) = task.waiting_http_request_id {
+        let result = ASYNC_IO_RESULTS.lock()
+            .ok()
+            .and_then(|mut map| map.get_mut(&req_id).and_then(|opt| opt.take()));
+        if let Some(Ok(content)) = result {
+            task.waiting_http_request_id = None;
+            let idx = {
+                let mut strings = _vm.strings.write().unwrap();
+                let i = strings.len();
+                strings.push(content.into_bytes());
+                i
+            };
+            task.ram.push_nv(auto_val::encode_string(idx as u32));
+            return Ok(());
+        }
+        if let Some(Err(e)) = result {
+            task.waiting_http_request_id = None;
+            let idx = {
+                let mut strings = _vm.strings.write().unwrap();
+                let i = strings.len();
+                strings.push(e.into_bytes());
+                i
+            };
+            task.ram.push_nv(auto_val::encode_string(idx as u32));
+            return Ok(());
+        }
+        // Still pending — yield again.
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
+
+    // First call — spawn the read and yield.
+    let req_id = alloc_async_id();
+    let path_for_thread = path.clone();
+    std::thread::spawn(move || {
+        let result = std::fs::read_to_string(&path_for_thread)
+            .map(|s| s)
+            .map_err(|e| e.to_string());
+        if let Ok(mut map) = ASYNC_IO_RESULTS.lock() {
+            map.insert(req_id, Some(result));
+        }
+    });
+    if let Ok(mut map) = ASYNC_IO_RESULTS.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
+}
+
+/// `io.write_text_async(path: String, content: String) -> bool`
+/// Async write string to file. Non-blocking.
+pub fn shim_io_write_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let content: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    if let Some(req_id) = task.waiting_http_request_id {
+        let result = ASYNC_IO_RESULTS.lock()
+            .ok()
+            .and_then(|mut map| map.get_mut(&req_id).and_then(|opt| opt.take()));
+        if let Some(result) = result {
+            task.waiting_http_request_id = None;
+            let ok = result.is_ok();
+            task.ram.push_i32(if ok { 1 } else { 0 });
+            return Ok(());
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
+
+    let req_id = alloc_async_id();
+    let path_t = path.clone();
+    let content_t = content.clone();
+    std::thread::spawn(move || {
+        let result = std::fs::write(&path_t, &content_t)
+            .map(|_| "ok".to_string())
+            .map_err(|e| e.to_string());
+        if let Ok(mut map) = ASYNC_IO_RESULTS.lock() {
+            map.insert(req_id, Some(result));
+        }
+    });
+    if let Ok(mut map) = ASYNC_IO_RESULTS.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
+}
+
 /// Spawn an external process and wait for it to complete
 #[auto_macros::rust_fn("Process.spawn")]
 pub fn shim_process_spawn(args: Vec<String>) -> Result<i32, String> {
@@ -6220,6 +6329,11 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Plan 353 stage 8: Scanner
     natives.register_shim_by_name("auto.io.scanner", shim_io_scanner);
     natives.register_shim_by_name("io.scanner", shim_io_scanner);
+    // Plan 353 stage 6: Async file IO
+    natives.register_shim_by_name("auto.io.read_text_async", shim_io_read_text_async);
+    natives.register_shim_by_name("io.read_text_async", shim_io_read_text_async);
+    natives.register_shim_by_name("auto.io.write_text_async", shim_io_write_text_async);
+    natives.register_shim_by_name("io.write_text_async", shim_io_write_text_async);
 }
 
 // ============================================================================

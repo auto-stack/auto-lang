@@ -1400,13 +1400,21 @@ impl AutoVM {
                     }
                 }
 
-                // Plan 349 step 7: Wake source 5 — async HTTP request completed.
+                // Plan 349 step 7 / Plan 353 stage 6: Wake source 5 — async HTTP/IO completed.
                 if let Some(req_id) = task.waiting_http_request_id {
                     let ready = crate::vm::ffi::stdlib::ASYNC_HTTP_RESULTS
                         .lock()
                         .ok()
                         .and_then(|map| {
                             map.get(&req_id).map(|opt| opt.is_some())
+                        })
+                        .or_else(|| {
+                            crate::vm::ffi::stdlib::ASYNC_IO_RESULTS
+                                .lock()
+                                .ok()
+                                .and_then(|map| {
+                                    map.get(&req_id).map(|opt| opt.is_some())
+                                })
                         })
                         .unwrap_or(true); // Entry gone → wake (error fallback)
                     if ready {

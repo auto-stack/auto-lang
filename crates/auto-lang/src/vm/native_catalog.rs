@@ -1238,7 +1238,11 @@ macro_rules! for_each_bigvm_native {
             ("Path.to_string", 2847, Void),
             ("auto.io.scanner", 2848, Void),
             ("io.scanner", 2848, Void),
-
+            // Plan 353 stage 6: Async file IO
+            ("auto.io.read_text_async", 2849, Void),
+            ("io.read_text_async", 2849, Void),
+            ("auto.io.write_text_async", 2850, Void),
+            ("io.write_text_async", 2850, Void),
             // === Rust stdlib dispatch (3000) ===
             ("auto.rust_stdlib.dispatch", 3000, Void),
 
@@ -1904,6 +1908,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("Path.to_string", 2847),
     ("auto.io.scanner", 2848),
     ("io.scanner", 2848),
+    ("auto.io.read_text_async", 2849),
+    ("io.read_text_async", 2849),
+    ("auto.io.write_text_async", 2850),
+    ("io.write_text_async", 2850),
     ("auto.rust_stdlib.dispatch", 3000),
     ("sleep", 1202),
     ("parse_sse", 2250),
