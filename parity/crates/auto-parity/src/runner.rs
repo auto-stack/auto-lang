@@ -64,9 +64,15 @@ pub fn run_vm(config: &RunConfig) -> Result<Vec<TapResult>, String> {
             continue;
         }
 
-        // Run from the lib directory so `use <lib>` resolves against `./auto/`.
+        // Canonicalise the test path so it is valid regardless of the child
+        // process's working directory. The runner sets current_dir to the lib
+        // dir (so `use auto.<lib>` resolves against `./auto/`), which would
+        // invalidate a relative test path computed from the parity root.
+        let abs_path = path.canonicalize().unwrap_or_else(|_| path.clone());
+
+        // Run from the lib directory so `use auto.<lib>` resolves against `./auto/`.
         let output = Command::new(&config.auto_binary)
-            .arg(&path)
+            .arg(&abs_path)
             .current_dir(config.lib_dir())
             .output()
             .map_err(|e| format!("failed to run auto: {}", e))?;
@@ -130,14 +136,18 @@ pub fn run_a2r(config: &RunConfig) -> Result<Vec<TapResult>, String> {
             .to_string();
 
         // Step 1: Transpile the test .at -> Rust source string.
-        // NOTE: `auto trans --path <f> rust --output <p>` (without --merge)
-        // prints to stdout rather than writing the file, so we capture stdout
-        // for robustness in either auto version.
+        // `auto trans --path <f> rust` (without --output) writes the source to
+        // a sibling `<stem>.a2r.rs` file and returns only a status line on
+        // stdout. We canonicalise the test path so it resolves regardless of
+        // the child's working directory, then read back the generated file.
+        let abs_test_path = test_path
+            .canonicalize()
+            .unwrap_or_else(|_| test_path.clone());
         let trans_output = Command::new(&config.auto_binary)
             .args([
                 "trans",
                 "--path",
-                &test_path.to_string_lossy(),
+                &abs_test_path.to_string_lossy(),
                 "rust",
             ])
             .current_dir(config.lib_dir())
@@ -158,23 +168,64 @@ pub fn run_a2r(config: &RunConfig) -> Result<Vec<TapResult>, String> {
             continue;
         }
 
-        let test_rs = String::from_utf8_lossy(&trans_output.stdout).to_string();
+        // The transpiler writes `<stem>.a2r.rs` next to the source. Read it back.
+        let transpiled = abs_test_path.with_extension("a2r.rs");
+        let test_rs = match std::fs::read_to_string(&transpiled) {
+            Ok(s) => s,
+            Err(e) => {
+                // Some auto versions print source to stdout instead. Fall back
+                // to stdout if it looks like Rust source (contains "fn" or "}").
+                let stdout = String::from_utf8_lossy(&trans_output.stdout).to_string();
+                if stdout.contains("fn ") || stdout.contains('}') {
+                    stdout
+                } else {
+                    all_results.push(TapResult {
+                        passed: false,
+                        number: 0,
+                        name: test_stem.clone(),
+                        diagnostics: Some(format!(
+                            "a2r output not found at {}: {}",
+                            transpiled.display(),
+                            e
+                        )),
+                    });
+                    continue;
+                }
+            }
+        };
 
         // Step 2: Build a binary crate that depends on auto-lang + a2r-std.
         let bin_name = test_stem.replace('-', "_");
         let bin_dir = build_dir.join(&bin_name);
         std::fs::create_dir_all(bin_dir.join("src")).map_err(|e| e.to_string())?;
 
-        let auto_lang_path = config
-            .parity_root
-            .join("..")
-            .join("crates")
-            .join("auto-lang");
-        let a2r_std_path = config
-            .parity_root
-            .join("..")
-            .join("crates")
-            .join("a2r-std");
+        // Cargo path values are Rust string literals, so backslashes must be
+        // escaped. Convert to forward slashes for cross-platform safety.
+        // Canonicalise the dependency paths so they are absolute — the build
+        // runs with current_dir set to bin_dir, which would invalidate a
+        // relative dependency path.
+        let crate_path = |name: &str| -> std::path::PathBuf {
+            let raw = config
+                .parity_root
+                .join("..")
+                .join("crates")
+                .join(name);
+            match raw.canonicalize() {
+                // On Windows, canonicalize() returns a \\?\ extended-length
+                // path that Cargo rejects. Strip the verbatim prefix.
+                Ok(p) => {
+                    let s = p.to_string_lossy().into_owned();
+                    let stripped = s.strip_prefix(r"\\?\").unwrap_or(&s).to_string();
+                    std::path::PathBuf::from(stripped)
+                }
+                Err(_) => raw,
+            }
+        };
+        let auto_lang_path = crate_path("auto-lang");
+        let a2r_std_path = crate_path("a2r-std");
+        let to_fwd = |p: &std::path::Path| {
+            p.to_string_lossy().replace('\\', "/")
+        };
         let cargo_toml = format!(
             r#"[package]
 name = "{bin_name}"
@@ -188,20 +239,27 @@ a2r-std = {{ path = "{a2r_std}" }}
 [[bin]]
 name = "{bin_name}"
 path = "src/main.rs"
+
+# Keep this generated crate out of the parity workspace.
+[workspace]
 "#,
             bin_name = bin_name,
-            auto_lang = auto_lang_path.display(),
-            a2r_std = a2r_std_path.display(),
+            auto_lang = to_fwd(&auto_lang_path),
+            a2r_std = to_fwd(&a2r_std_path),
         );
         std::fs::write(bin_dir.join("Cargo.toml"), cargo_toml)
             .map_err(|e| e.to_string())?;
 
         // Prepend the library's transpiled source so the test code resolves
-        // the library's symbols at compile time.
+        // the library's symbols at compile time. The transpiled test imports
+        // symbols via `use crate::<lib>:{...}` (mirroring the Auto `use <lib>`
+        // clause), so the library source must be wrapped in a matching
+        // `pub mod <lib> { ... }` with public functions for the import to work.
         let main_rs = if lib_rs.is_empty() {
             test_rs
         } else {
-            format!("{}\n\n{}", lib_rs, test_rs)
+            let wrapped = wrap_as_module(&config.library, &lib_rs);
+            format!("{}\n\n{}", wrapped, test_rs)
         };
         std::fs::write(bin_dir.join("src").join("main.rs"), main_rs)
             .map_err(|e| e.to_string())?;
@@ -251,6 +309,33 @@ path = "src/main.rs"
     Ok(all_results)
 }
 
+/// Wrap transpiled library source in a `pub mod <name> { ... }` block so the
+/// test's generated `use crate::<name>:{...}` import resolves. Top-level
+/// function signatures are made `pub` (a no-op in Auto but required by Rust's
+/// visibility rules for cross-module imports).
+fn wrap_as_module(lib_name: &str, src: &str) -> String {
+    // Normalise lib names so they are valid Rust identifiers.
+    let mod_name = lib_name.replace('-', "_");
+    // Promote top-level (zero-indent) `fn ` declarations to `pub fn ` so the
+    // imported symbols are visible outside the module.
+    let promoted = src
+        .lines()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            let indent_len = line.len() - trimmed.len();
+            let indent = &line[..indent_len];
+            if indent.is_empty() {
+                if let Some(rest) = trimmed.strip_prefix("fn ") {
+                    return format!("pub fn {}", rest);
+                }
+            }
+            line.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("pub mod {} {{\n{}\n}}", mod_name, promoted)
+}
+
 /// Transpile all .at files in the library's `auto/` directory into a single
 /// Rust source string (concatenated). Returns an empty string if the
 /// directory does not exist.
@@ -271,11 +356,13 @@ fn transpile_library(config: &RunConfig, lib_auto_dir: &Path) -> Result<String, 
         if path.extension().and_then(|s| s.to_str()) != Some("at") {
             continue;
         }
+        // Canonicalise so the path resolves after the child changes CWD.
+        let abs_path = path.canonicalize().unwrap_or_else(|_| path.clone());
         let output = Command::new(&config.auto_binary)
             .args([
                 "trans",
                 "--path",
-                &path.to_string_lossy(),
+                &abs_path.to_string_lossy(),
                 "rust",
             ])
             .current_dir(config.lib_dir())
@@ -289,7 +376,20 @@ fn transpile_library(config: &RunConfig, lib_auto_dir: &Path) -> Result<String, 
                 stderr.trim()
             ));
         }
-        let rs = String::from_utf8_lossy(&output.stdout).to_string();
+        // `auto trans` writes `<stem>.a2r.rs` next to the source. Read it back;
+        // fall back to stdout for auto versions that print source directly.
+        let transpiled = abs_path.with_extension("a2r.rs");
+        let rs = match std::fs::read_to_string(&transpiled) {
+            Ok(s) => s,
+            Err(_) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                if stdout.contains("fn ") || stdout.contains('}') {
+                    stdout
+                } else {
+                    String::new()
+                }
+            }
+        };
         combined.push_str(&rs);
         combined.push('\n');
     }

@@ -1,0 +1,30 @@
+/// _dummy test suite — TAP output format.
+// The parity runner sets the working directory to the library root
+// (parity/libs/_dummy), so the library lives at ./auto/_dummy.at and is
+// imported as `auto._dummy`. The module path `auto/_dummy` resolves
+// relative to the lib dir.
+use auto._dummy: add, sub
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    check(1, "test_add_basic", add(2, 3), 5)
+    check(2, "test_add_zero", add(0, 0), 0)
+    check(3, "test_add_negative", add(-1, 1), 0)
+    check(4, "test_sub_basic", sub(5, 3), 2)
+    check(5, "test_sub_negative", sub(0, 1), -1)
+}
