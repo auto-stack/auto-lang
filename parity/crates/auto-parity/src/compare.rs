@@ -79,8 +79,9 @@ impl TestCaseComparison {
             (Some(true), Some(false), Some(true)) => BugSource::A2rBug,
             // VM is the odd one out.
             (Some(false), Some(true), Some(true)) => BugSource::VmBug,
-            // VM and a2r agree (both pass or both fail) but Rust differs.
-            (Some(a), Some(b), Some(false)) if a == b => BugSource::ReplicationBug,
+            // VM and a2r agree (both pass or both fail) but Rust differs from them.
+            // Per design spec §2.2.5: "VM 和 a2r 一致地错，但与原始库不一致" → ReplicationBug.
+            (Some(a), Some(b), Some(c)) if a == b && a != c => BugSource::ReplicationBug,
             // Everything else (missing backends, total disagreement) -> manual review.
             _ => BugSource::TestCaseIssue,
         }
@@ -196,18 +197,15 @@ mod tests {
     #[test]
     fn test_replication_bug_vm_a2r_both_fail() {
         // (vm=fail, a2r=fail, rust=pass): VM and a2r agree on the failure,
-        // but the spec's classify table only catches "vm+a2r agree AND rust
-        // differs via the `Some(false)` rust arm". Here rust is `Some(true)`,
-        // so none of the explicit arms match and this falls through to
-        // TestCaseIssue (manual review). This matches the plan's classify()
-        // implementation verbatim.
+        // but Rust disagrees. Per design spec §2.2.5, this is a ReplicationBug
+        // ("VM 和 a2r 一致地错，但与原始库不一致").
         let c = TestCaseComparison {
             name: "t5".to_string(),
             vm: Some(fail("t5")),
             a2r: Some(fail("t5")),
             rust: Some(pass("t5")),
         };
-        assert_eq!(c.classify(), BugSource::TestCaseIssue);
+        assert_eq!(c.classify(), BugSource::ReplicationBug);
     }
 
     #[test]
