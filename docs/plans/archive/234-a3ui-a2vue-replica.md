@@ -1,22 +1,20 @@
 # Plan 234: A3UI A2Vue Replica — Auto-Lang A2UI Composer Clone
 
-## Status
+## Status: COMPLETE (2026-07-14)
 
-**Phase 0-3: PARTIALLY COMPLETE** (2026-05-08)
+All 7 phases implemented across `examples/a3ui-replica/`. Pixel-perfect
+visual parity work was split out to the follow-up plan
+[plan-236-pixel-perfect-replica.md](../../examples/a3ui-replica/docs/plan-236-pixel-perfect-replica.md).
 
 ### 已完成
 - Phase 0: 项目脚手架 + A2UIRenderer 提取
 - Phase 1: 应用 shell + 导航 (routes + sidebar)
 - Phase 2: Create 页 + Gallery 页
-- Phase 3: Widget Editor shell (部分)
-- 24 个 shadcn-vue blocks 已从 a3ui 复制到 component-gallery
-
-### 未完成
-- Phase 3: Widget Editor 完整功能 (JSON 解析、debounce)
-- Phase 4: Catalog 页面完整实现
-- Phase 5: Theater & Icons 完整实现
-- Phase 6: State 管理 & 持久化
-- Phase 7: Polish & 功能对齐
+- Phase 3: Widget Editor 完整功能 (JSON 解析、line numbers、parse error、Data Model panel、Toast)
+- Phase 4: Catalog 页面完整实现 (Basic Catalog sidebar+usage+props，Custom Catalog tabs+JSON panel)
+- Phase 5: Theater & Icons 完整实现 (playback controls、scrubber、speed、pretty/wire toggle)
+- Phase 6: State 管理 & 持久化 (WidgetList / CreateForm / GalleryGrid 组件)
+- Phase 7: Polish & 功能对齐 (commit `66f89077 "complete Phase 4-7 polish"`)
 
 ## Goal
 

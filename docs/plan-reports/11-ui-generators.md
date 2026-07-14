@@ -34,15 +34,15 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 212a | LSP + VSCode Extension Modernization | Complete | TextMate grammar rewrite, LSP completion sync, Document Symbols, code snippets |
 | 217 | a2ui Composer Implementation | Complete | A2UI composer with three-panel layout, palette/canvas/inspector, builds and runs |
 | 227 | Dynamic UI Iced Backend | Complete | `run_file()` auto-detects widget/app mode, opens iced window for dynamic UI rendering |
-| 234 | A3UI A2Vue Replica | Partial Phase 3+ | A2UI Composer Vue replica — Phase 0-2 complete (7 pages created), Widget Editor full features/Catalog pages/Theater/Icons/State management remaining |
+| 234 | A3UI A2Vue Replica | Complete | A2UI Composer Vue replica — all 7 phases done (7 pages, Widget Editor, Basic/Custom Catalogs, Theater, Icons, state mgmt); pixel-perfect parity split to plan 236 |
 | 235-a2vue | a2vue Transpiler Gaps | Complete | ts_adapter fixes + storage/event/json/math/date/router builtins for comprehensive Vue generation |
 | 238 | Charts Replica | Complete | area/bar/line/donut chart registry with prop mapping for shadcn-vue charts |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 235-a2vue, 238 (13 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238 (14 plans fully complete)
 
-**Partial**: 099, 133, 144, 147, 234 (5 plans with significant progress)
+**Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
 **Planned**: 096, 098, 114, 140, 142, 143, 174, 175, 180, 181 (10 plans not yet started or early stage)
 
@@ -140,6 +140,6 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [212-lsp-vscode-modernization.md](../plans/212-lsp-vscode-modernization.md)
 - [217-a2ui-composer-implementation.md](../plans/old/217-a2ui-composer-implementation.md)
 - [227-dynamic-ui-iced.md](../plans/old/227-dynamic-ui-iced.md)
-- [234-a3ui-a2vue-replica.md](../plans/234-a3ui-a2vue-replica.md)
+- [234-a3ui-a2vue-replica.md](../plans/archive/234-a3ui-a2vue-replica.md)
 - [235-a2vue-transpiler-gaps.md](../plans/old/235-a2vue-transpiler-gaps.md)
 - [238-shadcn-vue-charts-replica.md](../plans/old/238-shadcn-vue-charts-replica.md)
