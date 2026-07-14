@@ -2,6 +2,8 @@
 
 ## Status
 
+> ⚠️ **2026-07-14 迁移**：本节后续引用的 ASH 计划（Plan 291/295/301 等）已迁至独立仓库 `../auto-shell/plans/` 并重编号（281..330 → 012..026，完整映射见 `../auto-shell/plans/` 各文件或 ash-design-summary.md 顶部）。下文旧号为历史称呼。AutoShell 代码亦已迁至 `../auto-shell` 仓库（`ash-core` / `ash` / `ash-gui`）。
+
 **Implemented:**
 - AutoShell (`crates/auto-shell/`) has a working REPL with command parsing, pipeline support, and structured data output.
 - Built-in commands: `ls`, `cd`, `pwd`, `echo`, `help`, `cp`, `mv`, `rm`, `mkdir`, `grep`, `wc`, `ps`, `sys`, `build`, `run`, `select`, `where`, `get`.
