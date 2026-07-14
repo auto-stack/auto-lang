@@ -1,6 +1,7 @@
 // sidebar.at — Sidebar navigation for the 3-column notes layout (Plan 354 Phase D).
 // Three sections: Quick shortcuts, Folders, Tags. Emits messages that App
 // forwards to the shared NotesStore to drive the filtered note list.
+// Folders are hardcoded (demo app; a2r can't generate Folder CRUD yet).
 
 use store: NotesStore
 
@@ -43,44 +44,63 @@ widget Sidebar(active_folder: str, active_tag: str) {
 
             separator { style: "my-2 border-t border-gray-200" }
 
-            // ── Section 2: Folders ──
+            // ── Section 2: Folders (hardcoded for demo) ──
             col {
                 text "Folders" { style: "px-3 text-xs font-semibold text-gray-400 uppercase mb-1" }
-                if .store.folders.len() == 0 {
-                    text "No folders" { style: "px-3 text-xs text-gray-300" }
-                }
-                for folder in .store.folders {
-                    button {
-                        onclick: .SelectFolder(folder.name)
-                        style: if .active_folder == folder.name {
-                            "w-full text-left px-3 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 font-medium"
-                        } else {
-                            "w-full text-left px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
-                        }
-                        row {
-                            text folder.icon { style: "mr-2" }
-                            text folder.name { style: "capitalize" }
-                        }
+
+                button {
+                    onclick: .SelectFolder("default")
+                    style: if .active_folder == "default" {
+                        "w-full text-left px-3 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 font-medium"
+                    } else {
+                        "w-full text-left px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
                     }
+                    text "📄 Default"
+                }
+                button {
+                    onclick: .SelectFolder("work")
+                    style: if .active_folder == "work" {
+                        "w-full text-left px-3 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 font-medium"
+                    } else {
+                        "w-full text-left px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
+                    }
+                    text "💼 Work"
+                }
+                button {
+                    onclick: .SelectFolder("personal")
+                    style: if .active_folder == "personal" {
+                        "w-full text-left px-3 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 font-medium"
+                    } else {
+                        "w-full text-left px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
+                    }
+                    text "🏠 Personal"
+                }
+                button {
+                    onclick: .SelectFolder("study")
+                    style: if .active_folder == "study" {
+                        "w-full text-left px-3 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 font-medium"
+                    } else {
+                        "w-full text-left px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
+                    }
+                    text "📚 Study"
                 }
                 style: "px-2 gap-0.5"
             }
 
             separator { style: "my-2 border-t border-gray-200" }
 
-            // ── Section 3: Tags ──
+            // ── Section 3: Tags (from store.notes, aggregated client-side) ──
             col {
                 text "Tags" { style: "px-3 text-xs font-semibold text-gray-400 uppercase mb-1" }
-                if .store.tags.len() == 0 {
-                    text "No tags" { style: "px-3 text-xs text-gray-300" }
-                }
                 row {
-                    for tag in .store.tags {
-                        badge {
-                            text: tag
-                            onclick: .SelectTag(tag)
-                            variant: if .active_tag == tag { "default" } else { "secondary" }
-                            style: "cursor-pointer text-xs"
+                    for note in .store.notes {
+                        for tag in note.tags {
+                            badge {
+                                text: tag
+                                onclick: .SelectTag(tag)
+                                variant: if .active_tag == tag { "default" } else { "secondary" }
+                                style: "cursor-pointer text-xs"
+                            }
                         }
                     }
                     style: "flex-wrap gap-1 px-2"

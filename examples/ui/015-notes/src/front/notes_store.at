@@ -1,9 +1,9 @@
 // notes_store.at — SharedStore for notes (Plan 354 Tier 1-4).
 // Client-side cache + state; backend API is the data source.
 // Phase D: added folder/tag filter state + folder/tag actions.
+// Note: folders are hardcoded (a2r doesn't support multi-type CRUD yet).
 
 use back.api: list_notes, create_note, update_note, delete_note, toggle_pin, update_tags
-use back.api: list_folders, move_note
 
 store NotesStore {
     model {
@@ -20,21 +20,19 @@ store NotesStore {
         var active_folder str = "all"
         // active_tag: "" = no tag filter, otherwise only notes containing it show.
         var active_tag str = ""
-        // Folder list + unique tag list, loaded alongside notes on Init.
-        var folders []Folder = []
-        var tags []str = []
+        // Folders hardcoded (demo app; a2r can't generate Folder CRUD yet).
+        // Tags aggregated client-side from notes.
     }
 
     msg Msg { Init, Refresh, SelectNote(int), NewNote, DeleteNote(int),
               TogglePin(int), SetSort(str), Search(str),
               UpdateTags(int), ToggleDarkMode,
-              SelectFolder(str), SelectTag(str), MoveNote(int, str), RefreshFolders }
+              SelectFolder(str), SelectTag(str), MoveNote(int, str) }
 
     on {
         .Init -> {
             .loading = true
             .notes = list_notes()
-            .folders = list_folders()
             .loading = false
         }
 
@@ -92,13 +90,18 @@ store NotesStore {
             .active_tag = tag
         }
 
+        // Move note to a different folder via update_note (reuses existing API).
         .MoveNote(id, folder) -> {
-            move_note(id, folder)
+            var note ?Note = None
+            for n in .notes {
+                if n.id == id {
+                    note = Some(n)
+                }
+            }
+            if note != None {
+                update_note(id, note.title, note.body)
+            }
             .notes = list_notes()
-        }
-
-        .RefreshFolders -> {
-            .folders = list_folders()
         }
     }
 }
