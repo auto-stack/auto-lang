@@ -1,24 +1,30 @@
 // reference/default.at — note-list block, "default" variant.
 // Self-contained UI widget: items live in `.items` (the consumer populates
-// them from `dataSource.list` on init). Demonstrates loading/error/empty.
+// them from `dataSource.list` / `dataSource.by_folder` / `dataSource.by_tag` on
+// init). Demonstrates the folder/tag filter bar, loading/error/empty branches.
 
 widget NoteList {
     msg Msg {
         SearchChanged,
         SelectItem(int),
+        ClearFolder,
+        ClearTag,
         Retry
     }
 
     // Sample items so the reference renders standalone; a real consumer
-    // replaces these by calling dataSource.list() in .Init.
+    // replaces these by calling dataSource.list() (or by_folder/by_tag when a
+    // scope is active) in .Init.
     items: list of Note = [
-        { id: 1, title: "Welcome note", body: "Hello world.", time: "2026-06-26" },
-        { id: 2, title: "Second note", body: "More content.", time: "2026-06-26" }
+        { id: 1, title: "Welcome note", body: "Hello world.", time: "2026-06-26", folder: "Inbox", tags: ["intro", "pinned"] },
+        { id: 2, title: "Second note", body: "More content.", time: "2026-06-26", folder: "Work", tags: ["todo"] }
     ]
 
     model {
         var search str = ""
         var active_id int = 1
+        var active_folder str = "Inbox"
+        var active_tag str = ""
         var loading bool = false
         var error str = ""
     }
@@ -31,6 +37,29 @@ widget NoteList {
                 oninput: .SearchChanged
                 placeholder: "Search…"
                 style: "w-full px-3 py-2 text-sm border rounded-lg mb-2"
+            }
+
+            separator {}
+
+            // ── EDIT: filter_bar ──
+            row {
+                style: "flex-wrap gap-1 mb-2"
+                if .active_folder != "" {
+                    badge {
+                        text: .active_folder
+                        onclick: .ClearFolder
+                        variant: "secondary"
+                        style: "cursor-pointer"
+                    }
+                }
+                if .active_tag != "" {
+                    badge {
+                        text: "#" + .active_tag
+                        onclick: .ClearTag
+                        variant: "secondary"
+                        style: "cursor-pointer"
+                    }
+                }
             }
 
             // ── EDIT: loading ──
@@ -59,11 +88,19 @@ widget NoteList {
             // ── EDIT: items ──
             for note in .items {
                 if .search == "" || note.title.contains(.search) {
-                    button {
-                        label: note.title
-                        onclick: .SelectItem(note.id)
-                        variant: "ghost"
-                        style: "w-full text-left p-3 rounded-lg text-sm"
+                    col {
+                        button {
+                            label: note.title
+                            onclick: .SelectItem(note.id)
+                            variant: "ghost"
+                            style: "w-full text-left p-2 rounded-lg text-sm"
+                        }
+                        // folder context badge per item
+                        badge {
+                            text: note.folder
+                            variant: "outline"
+                            style: "text-xs"
+                        }
                     }
                 }
             }
@@ -75,10 +112,18 @@ widget NoteList {
     on {
         .SearchChanged(s) -> { .search = s }
         .SelectItem(id) -> { .active_id = id }
+        .ClearFolder -> {
+            .active_folder = ""
+            // consumer re-calls dataSource.list() (scope cleared)
+        }
+        .ClearTag -> {
+            .active_tag = ""
+            // consumer re-calls dataSource.by_folder(.active_folder) or list()
+        }
         .Retry -> {
             .error = ""
             .loading = true
-            // consumer re-calls dataSource.list() here
+            // consumer re-calls the active-scoped dataSource slot here
             .loading = false
         }
     }
@@ -89,4 +134,6 @@ type Note = {
     title str
     body str
     time str
+    folder str
+    tags list of str
 }

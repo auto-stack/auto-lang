@@ -1,0 +1,77 @@
+// reference/compact.at — sidebar-nav block, "compact" variant.
+// Shortcuts + folders only (no tag cloud). Same data wiring as `default`;
+// the tag EDIT region is omitted entirely. Use this in narrow rails where a
+// tag cloud would crowd the list.
+
+widget SidebarNav {
+    msg Msg {
+        SelectShortcut(str),
+        SelectFolder(str),
+        SelectTag(str)
+    }
+
+    // Sample data so the reference renders standalone; a real consumer
+    // replaces these by calling dataSource.folders() in .Init.
+    folders: list of Folder = [
+        { name: "Inbox", count: 12 },
+        { name: "Work", count: 7 },
+        { name: "Personal", count: 3 }
+    ]
+    tags: list of str = []
+
+    model {
+        var active str = "all"
+    }
+
+    view {
+        col {
+            // ── EDIT: shortcuts ──
+            col {
+                style: "gap-1 pb-2"
+                for s in ["all", "pinned", "recent"] {
+                    button {
+                        label: s
+                        onclick: .SelectShortcut(s)
+                        variant: if .active == s { "secondary" } else { "ghost" }
+                        style: "w-full justify-start text-sm capitalize"
+                    }
+                }
+            }
+
+            separator {}
+
+            // ── EDIT: folders ──
+            col {
+                style: "gap-1 py-2"
+                text "Folders" { style: "text-xs uppercase text-gray-400 px-2 pb-1" }
+                if .folders.len() == 0 {
+                    text "No folders." { style: "text-xs text-gray-400 px-2" }
+                }
+                for f in .folders {
+                    button {
+                        label: f.name
+                        onclick: .SelectFolder(f.name)
+                        variant: if .active == f.name { "secondary" } else { "ghost" }
+                        style: "w-full justify-between text-sm"
+                    }
+                }
+            }
+
+            // ── EDIT: tags ── (omitted in compact variant)
+            // dataSource.tags() is unused here; the tag region renders nothing.
+
+            style: "w-48 border-r p-2 gap-2 h-full overflow-y-auto"
+        }
+    }
+
+    on {
+        .SelectShortcut(s) -> { .active = s }
+        .SelectFolder(f) -> { .active = f }
+        .SelectTag(t) -> { .active = t }
+    }
+}
+
+type Folder = {
+    name str
+    count int
+}

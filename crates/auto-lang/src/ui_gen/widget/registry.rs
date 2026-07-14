@@ -1006,6 +1006,38 @@ impl WidgetRegistry {
             extra_components: Vec::new(),
         });
         self.register(skeleton);
+
+        // AutoDownEditor — WYSIWYG editor bound to an AutoDown document body.
+        // The primary prop `content` carries the note body; @update/@save events
+        // bubble edited content back to the block's dataSource.save flow.
+        let mut autodown_editor = WidgetSpec::new("AutoDownEditor", WidgetCategory::Display)
+            .with_alias("autodown_editor");
+        autodown_editor.primary_prop = Some("content".to_string());
+        autodown_editor.backends.insert("ark".to_string(), BackendMapping {
+            component: "TextArea".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        autodown_editor.backends.insert("jet".to_string(), BackendMapping {
+            component: "OutlinedTextField".to_string(),
+            import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        autodown_editor.backends.insert("vue".to_string(), BackendMapping {
+            component: "AutoDownEditor".to_string(),
+            // Named export from the cross-project @autodown/editor package
+            // (Tiptap editor). Apps consume it via a hand-written wrapper.
+            // See Plan 345/354 architecture note.
+            import: Some("@autodown/editor".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(autodown_editor);
     }
 
     fn register_navigation_widgets(&mut self) {

@@ -4582,6 +4582,45 @@ impl VueGenerator {
                 let _ = title; // Suppress unused variable warning
             }
 
+            // === AutoDownEditor (Plan 354 Phase C) ===
+            // Rich AutoDown WYSIWYG editor (Tiptap) consumed from @autodown/editor.
+            // Maps snake_case AURA props to the wrapper's camelCase Vue props.
+            "autodown_editor" | "autodowneditor" => {
+                // content → :content (bound to the note body markdown).
+                // Supports state refs (content: .body → body) and field access
+                // (content: .note.body → note.body).
+                match props.get("content") {
+                    Some(AuraPropValue::Expr(expr)) => {
+                        if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
+                            attrs.push(format!(":content=\"{}\"", js_expr));
+                        }
+                    }
+                    Some(value) => {
+                        // Literal string content
+                        let content = self.extract_string_value(value).unwrap_or("");
+                        attrs.push(format!("content=\"{}\"", content));
+                    }
+                    None => {}
+                }
+
+                // can_edit → :canEdit (bool). Defaults to true when omitted so
+                // the editor is interactive by default.
+                attrs.push(self.bool_prop_binding(props, "can_edit", "canEdit", true));
+
+                // show_actions → :showActions (bool). Defaults to true.
+                attrs.push(self.bool_prop_binding(props, "show_actions", "showActions", true));
+
+                // style/class (editor chrome sizing).
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
+                }
+                // NOTE: events (onupdate/onsave/oncancel → @update/@save/@cancel)
+                // are attached by the generic event loop at the end of this fn.
+            }
+
             // === Input ===
             "input" => {
                 // v-model for value
@@ -7325,6 +7364,53 @@ impl VueGenerator {
         props.get("style").or_else(|| props.get("class"))
     }
 
+    /// Build a `:kebab-attr="value"` binding for a boolean-style prop that
+    /// also accepts an expression reference (e.g. `can_edit: .editable`).
+    ///
+    /// Looks up the prop under both `snake_key` (AURA convention, e.g.
+    /// `can_edit`) and `camel_key` (Vue convention, e.g. `canEdit`). When the
+    /// prop is present as a bool/bool-string literal, emits the literal value.
+    /// When present as another expression, emits the bound JS value. When
+    /// absent, emits `default_val` so the consumer always gets a defined prop.
+    /// (Plan 354 Phase C: used by AutoDownEditor's can_edit / show_actions.)
+    fn bool_prop_binding(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        snake_key: &str,
+        camel_key: &str,
+        default_val: bool,
+    ) -> String {
+        // Derive the kebab-case Vue attribute from the camelCase key
+        // (canEdit → can-edit, showActions → show-actions).
+        let kebab_attr: String = camel_key.chars().fold(String::new(), |acc, c| {
+            if c.is_ascii_uppercase() {
+                if acc.is_empty() {
+                    c.to_ascii_lowercase().to_string()
+                } else {
+                    format!("{}-{}", acc, c.to_ascii_lowercase())
+                }
+            } else {
+                format!("{}{}", acc, c)
+            }
+        });
+        match props.get(snake_key).or_else(|| props.get(camel_key)) {
+            Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => {
+                format!(":{}=\"{}\"", kebab_attr, b)
+            }
+            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                format!(":{}=\"{}\"", kebab_attr, s == "true")
+            }
+            Some(AuraPropValue::Expr(expr)) => {
+                // Dynamic expression (e.g. can_edit: .editable → editable).
+                match self.expr_to_vue_bound_value(expr) {
+                    Ok(js_expr) => format!(":{}=\"{}\"", kebab_attr, js_expr),
+                    Err(_) => format!(":{}=\"{}\"", kebab_attr, default_val),
+                }
+            }
+            _ => format!(":{}=\"{}\"", kebab_attr, default_val),
+        }
+    }
+
     /// Convert AutoUI event name to Vue event
     fn auto_event_to_vue(&self, event: &str) -> String {
         match event {
@@ -8328,6 +8414,125 @@ mod tests {
         assert!(sfc.contains("const count = ref<number>(0)"));
         assert!(sfc.contains("<template>"));
         assert!(sfc.contains("<style>"));
+    }
+
+    /// Plan 354 Phase C: AutoDownEditor renders as a Vue component with
+    /// camelCase prop bindings, @autodown/editor named import, and events
+    /// mapped to @update / @save / @cancel.
+    #[test]
+    fn test_autodown_editor_rendering() {
+        use crate::ast::Expr;
+        let widget = AuraWidget {
+            name: "NoteEditor".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "body".to_string(),
+                type_info: crate::ast::Type::StrSlice,
+                initial: Expr::Str("# Welcome".into()),
+                decorators: vec![],
+            }],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![AuraMsgVariant {
+                    name: "BodyChanged".to_string(),
+                    payload: None,
+                }],
+            }],
+            // autodown_editor { content: .body; onupdate: .BodyChanged; style: "..." }
+            view_tree: AuraNode::element("col").with_child(
+                AuraNode::element("autodown_editor")
+                    .with_prop("content", Expr::Ident(".body".into()))
+                    .with_event("onupdate", ".BodyChanged"),
+            ),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+        };
+
+        let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
+        let sfc = gen.generate(&widget).unwrap();
+
+        // Renders as PascalCase component, not <div> or <autodown_editor>.
+        assert!(sfc.contains("<AutoDownEditor"), "tag is AutoDownEditor:\n{}", sfc);
+        // content bound to the body state ref.
+        assert!(
+            sfc.contains(":content=\"body\""),
+            "content bound to body:\n{}",
+            sfc
+        );
+        // Defaults: can-edit and show-actions default to true.
+        assert!(sfc.contains(":can-edit=\"true\""), "can_edit defaults true:\n{}", sfc);
+        assert!(sfc.contains(":show-actions=\"true\""), "show_actions defaults true:\n{}", sfc);
+        // Event: onupdate → @update with the dot-handler name.
+        assert!(
+            sfc.contains("@update=\"BodyChanged\""),
+            "onupdate → @update:\n{}",
+            sfc
+        );
+        // Named import from @autodown/editor.
+        assert!(
+            sfc.contains("import { AutoDownEditor } from '@autodown/editor'"),
+            "named import from @autodown/editor:\n{}",
+            sfc
+        );
+    }
+
+    #[test]
+    fn test_autodown_editor_props_camelcase_and_events() {
+        use crate::ast::Expr;
+        // Verify bool literals map through and onsave/oncancel events resolve.
+        let widget = AuraWidget {
+            name: "NoteEditor".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "note_body".to_string(),
+                type_info: crate::ast::Type::StrSlice,
+                initial: Expr::Str("".into()),
+                decorators: vec![],
+            }],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![
+                    AuraMsgVariant { name: "Save".to_string(), payload: None },
+                    AuraMsgVariant { name: "Cancel".to_string(), payload: None },
+                ],
+            }],
+            view_tree: AuraNode::element("col").with_child(
+                AuraNode::element("autodown_editor")
+                    .with_prop("content", Expr::Ident(".note_body".into()))
+                    .with_prop("can_edit", Expr::Bool(false))
+                    .with_prop("show_actions", Expr::Bool(true))
+                    .with_event("onsave", ".Save")
+                    .with_event("oncancel", ".Cancel"),
+            ),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+        };
+
+        let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
+        let sfc = gen.generate(&widget).unwrap();
+
+        // Field-access content binding: .note_body → note_body.
+        assert!(sfc.contains(":content=\"note_body\""), "field access content:\n{}", sfc);
+        // Bool literals propagate.
+        assert!(sfc.contains(":can-edit=\"false\""), "can_edit false:\n{}", sfc);
+        assert!(sfc.contains(":show-actions=\"true\""), "show_actions true:\n{}", sfc);
+        // onsave/oncancel → @save/@cancel.
+        assert!(sfc.contains("@save=\"Save\""), "onsave → @save:\n{}", sfc);
+        assert!(sfc.contains("@cancel=\"Cancel\""), "oncancel → @cancel:\n{}", sfc);
     }
 
     #[test]

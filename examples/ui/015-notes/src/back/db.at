@@ -3,17 +3,38 @@
 
 use api: Note
 
+// Folder type (also defined in api.at for frontend; duplicated here to
+// avoid circular import issues with collect_module_imports).
+type Folder {
+    id int
+    name str
+    icon str
+}
+
 // ═══════════════════════════════════════════════════════════
 // In-memory storage
 // ═══════════════════════════════════════════════════════════
 
 var notes List<Note> = List<Note>.new([
-    Note { id: 0, title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now", pinned: true, tags: ["intro"] },
-    Note { id: 1, title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago", pinned: false, tags: ["home"] },
-    Note { id: 2, title: "Meeting Notes", body: "Q3 roadmap discussion with the team", time: "Yesterday", pinned: false, tags: ["work"] },
+    Note { id: 0, title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now", pinned: true, tags: ["intro"], folder: "default" },
+    Note { id: 1, title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago", pinned: false, tags: ["home"], folder: "personal" },
+    Note { id: 2, title: "Meeting Notes", body: "Q3 roadmap discussion with the team", time: "Yesterday", pinned: false, tags: ["work"], folder: "work" },
 ])
 
 var nextid int = 3
+
+// ═══════════════════════════════════════════════════════════
+// Folder storage
+// ═══════════════════════════════════════════════════════════
+
+var folders List<Folder> = List<Folder>.new([
+    Folder { id: 0, name: "default", icon: "📄" },
+    Folder { id: 1, name: "work", icon: "💼" },
+    Folder { id: 2, name: "personal", icon: "🏠" },
+    Folder { id: 3, name: "study", icon: "📚" },
+])
+
+var next_folder_id int = 4
 
 // ═══════════════════════════════════════════════════════════
 // Database Operations
@@ -43,6 +64,7 @@ pub fn create_note(title str, body str) Note {
         time: "Just now",
         pinned: false,
         tags: [],
+        folder: "default",
     }
     nextid = nextid + 1
     notes.push(note)
@@ -62,6 +84,7 @@ pub fn update_note(id int, title str, body str) ?Note {
                 time: "Just now",
                 pinned: note.pinned,
                 tags: note.tags,
+                folder: note.folder,
             }
             new_notes.push(updated)
             found = Some(updated)
@@ -101,6 +124,7 @@ pub fn toggle_pin(id int) ?Note {
                 time: note.time,
                 pinned: !note.pinned,
                 tags: note.tags,
+                folder: note.folder,
             }
             new_notes.push(updated)
             found = Some(updated)
@@ -125,6 +149,7 @@ pub fn update_tags(id int, tags []str) ?Note {
                 time: note.time,
                 pinned: note.pinned,
                 tags: tags,
+                folder: note.folder,
             }
             new_notes.push(updated)
             found = Some(updated)
@@ -148,4 +173,61 @@ pub fn search_notes(query str) []Note {
     }
 
     return results
+}
+
+// ═══════════════════════════════════════════════════════════
+// Folder Operations
+// ═══════════════════════════════════════════════════════════
+
+/// List all folders
+pub fn all_folders() []Folder {
+    return folders
+}
+
+/// Create a new folder
+pub fn create_folder(name str) Folder {
+    let folder = Folder {
+        id: next_folder_id,
+        name: name,
+        icon: "📄",
+    }
+    next_folder_id = next_folder_id + 1
+    folders.push(folder)
+    return folder
+}
+
+/// List notes in a specific folder
+pub fn notes_by_folder(folder str) []Note {
+    let results List<Note> = List<Note>.new([])
+    for note in notes {
+        if note.folder == folder {
+            results.push(note)
+        }
+    }
+    return results
+}
+
+/// Move a note to a different folder
+pub fn move_note(id int, folder str) ?Note {
+    var new_notes List<Note> = List<Note>.new([])
+    var found ?Note = None
+    for note in notes {
+        if note.id == id {
+            let updated = Note {
+                id: note.id,
+                title: note.title,
+                body: note.body,
+                time: note.time,
+                pinned: note.pinned,
+                tags: note.tags,
+                folder: folder,
+            }
+            new_notes.push(updated)
+            found = Some(updated)
+        } else {
+            new_notes.push(note)
+        }
+    }
+    notes = new_notes
+    return found
 }

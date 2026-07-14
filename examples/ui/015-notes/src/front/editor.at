@@ -1,10 +1,13 @@
-// editor.at — EditorPanel with Markdown render, tags, pin, delete callbacks.
+// editor.at — EditorPanel with AutoDown editor, tags, pin, folder, delete.
+// Phase D: textarea replaced by autodown_editor for both edit and read modes,
+// plus a folder selector that emits MoveNote via the on_move_to_folder callback.
 
-use back.api: update_note, delete_note, toggle_pin, update_tags
+use store: NotesStore
+use back.api: update_note, delete_note, toggle_pin, update_tags, list_tags
 
-widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
+widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_folder: msg) {
     msg Msg { Init, Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin,
-              AddTag, EditTagInput, RemoveTag(str) }
+              AddTag, EditTagInput, RemoveTag(str), MoveToFolder(str) }
 
     model {
         var editing bool = false
@@ -21,7 +24,7 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                     row {
                         text .note.title { style: "text-lg font-semibold text-gray-800" }
                         if .note.pinned {
-                            text "📌" { style: "text-sm ml-2" }
+                            text "Pin" { style: "text-sm ml-2" }
                         }
                         style: "items-center"
                     }
@@ -52,12 +55,45 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                     }
                 }
 
-                // body: Markdown render (read) / textarea (edit)
-                if .editing == false {
-                    text .note.body { style: "text-gray-700 flex-1 leading-relaxed whitespace-pre-wrap mt-2" }
+                // Phase D: folder selector. One button per folder; the active
+                // folder is highlighted. Buttons use the inline-arg pattern so
+                // the folder name reaches the MoveToFolder(str) payload.
+                row {
+                    text "Folder:" { style: "text-xs text-gray-400" }
+                    for f in .store.folders {
+                        button {
+                            onclick: .MoveToFolder(f.name)
+                            style: if .note.folder == f.name {
+                                "text-xs px-2 py-0.5 rounded bg-blue-500 text-white"
+                            } else {
+                                "text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            }
+                            text f.name
+                        }
+                    }
+                    style: "gap-1 items-center mt-1 flex-wrap"
                 }
+
+                // Phase D: body is now an AutoDown editor.
+                // Edit mode: interactive WYSIWYG bound to .edit_body.
+                // Read mode: same component with can_edit false renders the
+                // rendered AutoDown document without actions.
                 if .editing == true {
-                    textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing (Markdown supported)...", style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" }
+                    autodown_editor {
+                        content: .edit_body
+                        onupdate: .EditBody
+                        can_edit: true
+                        show_actions: false
+                        style: "flex-1 min-h-64 mt-2 border rounded-lg"
+                    }
+                }
+                if .editing == false {
+                    autodown_editor {
+                        content: .note.body
+                        can_edit: false
+                        show_actions: false
+                        style: "flex-1 min-h-64 mt-2"
+                    }
                 }
                 style: "px-6 pt-6 pb-2 flex-1"
             }
@@ -110,6 +146,7 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
             if .tag_input != "" {
                 .note.tags.push(.tag_input)
                 update_tags(.note.id, .note.tags)
+                store.tags = list_tags()
                 .tag_input = ""
             }
         }
@@ -122,6 +159,11 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
             }
             .note.tags = new_tags
             update_tags(.note.id, .note.tags)
+            store.tags = list_tags()
+        }
+        .MoveToFolder(folder) -> {
+            store.MoveNote(.note.id, folder)
+            .note.folder = folder
         }
         .Delete -> {
             on_delete()

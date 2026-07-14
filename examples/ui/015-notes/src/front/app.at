@@ -1,12 +1,20 @@
-// app.at — Single-page layout: sidebar list + inline content.
+// app.at — 3-column layout (Plan 354 Phase D).
+// col (h-screen)
+// ├── header (row: title "Notes" + new button + dark mode toggle)
+// └── body (row: flex-1)
+//     ├── Sidebar              (col w-56)  ← Column 1: Navigation
+//     ├── note list            (col w-72)  ← Column 2: Notes list
+//     └── EditorPanel          (col flex-1)← Column 3: Editor
 // active_id is an ARRAY INDEX (not the note's id field) — consistent everywhere.
 
 use store: NotesStore
+use sidebar: Sidebar
 use editor: EditorPanel
 use back.api: delete_note, list_notes
 
 widget App {
-    msg Msg { Init, NewNote, SelectNote(int), SearchChanged, TogglePin(int), SetSort(str), DeleteActive }
+    msg Msg { Init, NewNote, SelectNote(int), SearchChanged, TogglePin(int),
+              SetSort(str), DeleteActive, ToggleDarkMode, NoteMoved }
 
     model { var search str = "" }
 
@@ -16,12 +24,18 @@ widget App {
             row {
                 h2 "Notes" { style: "text-xl font-bold text-gray-800" }
                 button "+ New" { onclick: .NewNote, style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600" }
+                button "Dark" { onclick: .ToggleDarkMode, style: "ml-2 px-3 py-2 text-xs bg-gray-200 rounded-lg hover:bg-gray-300" }
                 style: "w-full items-center p-4 border-b border-gray-200"
             }
 
-            // body: sidebar list + content
+            // body: 3 columns — sidebar + note list + editor
             row {
-                // sidebar: search + sort + note list
+                // Column 1: navigation (folders / shortcuts / tags)
+                Sidebar(active_folder: .store.active_folder, active_tag: .store.active_tag)
+
+                // Column 2: note list. Filters by active_folder / active_tag and
+                // then by the search box. Three nested ifs keep the predicate
+                // readable: folder/tag filter, then search match.
                 col {
                     row {
                         input { placeholder: "Search...", value: .search, oninput: .SearchChanged, style: "flex-1 px-3 py-2 text-sm border rounded-lg" }
@@ -39,24 +53,77 @@ widget App {
                     }
 
                     for i, note in .store.notes {
-                        if .search == "" || note.title.contains(.search) || note.body.contains(.search) {
-                            button note.title {
-                                onclick: .SelectNote(i)
-                                style: if i == .store.active_id {
-                                    "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50 bg-blue-50"
-                                } else {
-                                    "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                        // Folder/shortcut filter: "all" passes everything,
+                        // "pinned" only pinned notes, "recent" everything,
+                        // otherwise a concrete folder name matches note.folder.
+                        if .store.active_folder == "all" {
+                            if .store.active_tag == "" || note.tags.contains(.store.active_tag) {
+                                if .search == "" || note.title.contains(.search) || note.body.contains(.search) {
+                                    button note.title {
+                                        onclick: .SelectNote(i)
+                                        style: if i == .store.active_id {
+                                            "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50 bg-blue-50"
+                                        } else {
+                                            "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if .store.active_folder == "pinned" {
+                            if note.pinned {
+                                if .store.active_tag == "" || note.tags.contains(.store.active_tag) {
+                                    if .search == "" || note.title.contains(.search) || note.body.contains(.search) {
+                                        button note.title {
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50 bg-blue-50"
+                                            } else {
+                                                "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if .store.active_folder == "recent" {
+                            if .store.active_tag == "" || note.tags.contains(.store.active_tag) {
+                                if .search == "" || note.title.contains(.search) || note.body.contains(.search) {
+                                    button note.title {
+                                        onclick: .SelectNote(i)
+                                        style: if i == .store.active_id {
+                                            "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50 bg-blue-50"
+                                        } else {
+                                            "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if .store.active_folder != "all" && .store.active_folder != "pinned" && .store.active_folder != "recent" {
+                            if note.folder == .store.active_folder {
+                                if .store.active_tag == "" || note.tags.contains(.store.active_tag) {
+                                    if .search == "" || note.title.contains(.search) || note.body.contains(.search) {
+                                        button note.title {
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50 bg-blue-50"
+                                            } else {
+                                                "w-full text-left p-3 rounded-lg text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                    style: "w-64 border-r border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
+                    style: "w-72 border-r border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
                 }
 
-                // content: editor for active note
+                // Column 3: editor for the active note
                 col {
                     if .store.notes.len() > 0 {
-                        EditorPanel(note: .store.notes[.store.active_id], on_delete: .DeleteActive, on_toggle_pin: .TogglePin)
+                        EditorPanel(note: .store.notes[.store.active_id], on_delete: .DeleteActive, on_toggle_pin: .TogglePin, on_move_to_folder: .NoteMoved)
                     }
                     style: "flex-1 flex-col"
                 }
@@ -80,6 +147,10 @@ widget App {
         }
 
         .SetSort(mode) -> { store.SetSort(mode) }
+
+        .ToggleDarkMode -> { store.ToggleDarkMode() }
+
+        .NoteMoved -> { store.notes = list_notes() }
 
         .DeleteActive -> {
             delete_note(.store.notes[.store.active_id].id)

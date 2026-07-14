@@ -1,0 +1,140 @@
+// reference/default.at — note-editor block, "default" variant.
+// Self-contained UI widget: the note body lives in `.note` (the consumer
+// populates it from their store on init). Wires title/tags/toolbar to a
+// `dataSource.save` fetcher the consumer binds to their API.
+
+widget NoteEditor {
+    msg Msg {
+        TitleChanged,
+        BodyChanged,
+        AddTag,
+        RemoveTag(str),
+        Save,
+        Delete,
+        Pin
+    }
+
+    // Sample note so the reference renders standalone; a real consumer
+    // replaces this by loading the selected note into .note.
+    note: Note = {
+        id: 1,
+        title: "Welcome note",
+        body: "# Welcome\n\nThis is your first note. Edit me!",
+        pinned: true
+    }
+
+    model {
+        var title str = .note.title
+        var body str = .note.body
+        var tags list of str = ["intro", "pinned"]
+        var new_tag str = ""
+        var dirty bool = false
+        var saving bool = false
+    }
+
+    view {
+        col {
+            // ── EDIT: toolbar ──
+            row {
+                style: "justify-between items-center pb-2"
+                button {
+                    label: "Save"
+                    onclick: .Save
+                    variant: "default"
+                }
+                row {
+                    style: "gap-2"
+                    button {
+                        label: if .note.pinned { "Unpin" } else { "Pin" }
+                        onclick: .Pin
+                        variant: "ghost"
+                    }
+                    button {
+                        label: "Delete"
+                        onclick: .Delete
+                        variant: "destructive"
+                    }
+                }
+            }
+
+            separator {}
+
+            // ── EDIT: title ──
+            input {
+                value: .title
+                oninput: .TitleChanged
+                placeholder: "Note title"
+                style: "w-full px-2 py-1 text-lg font-semibold border-0 outline-none"
+            }
+
+            // ── EDIT: editor ──
+            autodown_editor {
+                content: .body
+                onupdate: .BodyChanged
+                style: "w-full min-h-64 px-2 py-2"
+            }
+
+            separator {}
+
+            // ── EDIT: tags ──
+            row {
+                style: "flex-wrap items-center gap-1 pt-2"
+                for tag in .tags {
+                    badge {
+                        text: "#" + tag
+                        onclick: .RemoveTag(tag)
+                        variant: "secondary"
+                        style: "cursor-pointer"
+                    }
+                }
+                input {
+                    value: .new_tag
+                    oninput: .AddTag
+                    placeholder: "Add tag…"
+                    style: "px-2 py-1 text-xs border rounded w-24"
+                }
+            }
+
+            style: "w-full h-full p-3 gap-1"
+        }
+    }
+
+    on {
+        .TitleChanged(s) -> {
+            .title = s
+            .dirty = true
+        }
+        .BodyChanged(s) -> {
+            .body = s
+            .dirty = true
+        }
+        .AddTag(s) -> {
+            .new_tag = s
+            // consumer commits on Enter; placeholder for keystroke handling
+        }
+        .RemoveTag(t) -> {
+            .tags = .tags.filter(func(x str) bool { x != t })
+            .dirty = true
+        }
+        .Pin -> {
+            .note.pinned = !.note.pinned
+            .dirty = true
+        }
+        .Save -> {
+            .saving = true
+            // consumer calls dataSource.save(.note.id, .title, .body) here
+            .dirty = false
+            .saving = false
+        }
+        .Delete -> {
+            // consumer emits a delete request + navigates away
+        }
+    }
+}
+
+type Note = {
+    id int
+    title str
+    body str
+    pinned bool
+}

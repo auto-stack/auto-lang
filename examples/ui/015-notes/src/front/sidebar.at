@@ -1,21 +1,102 @@
-widget Sidebar(notes: List, active_id: int, search: str) {
-    msg Msg { SelectNote, SearchChanged }
+// sidebar.at — Sidebar navigation for the 3-column notes layout (Plan 354 Phase D).
+// Three sections: Quick shortcuts, Folders, Tags. Emits messages that App
+// forwards to the shared NotesStore to drive the filtered note list.
 
-    model {
-        var query str = ""
+use store: NotesStore
+
+widget Sidebar(active_folder: str, active_tag: str) {
+    msg Msg {
+        SelectAll, SelectPinned, SelectRecent,
+        SelectFolder(str), SelectTag(str)
     }
 
     view {
         col {
-            input { placeholder: "Search...", value: .query, oninput: .SearchChanged, style: "w-full px-3 py-2 text-sm border rounded-lg mb-2" }
-            style: "w-64 border border-gray-200 p-3 flex-shrink-0 gap-1 overflow-y-auto"
+            // ── Section 1: Quick shortcuts ──
+            row {
+                button "All" {
+                    onclick: .SelectAll
+                    style: if .active_folder == "all" && .active_tag == "" {
+                        "flex-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-100 text-blue-700"
+                    } else {
+                        "flex-1 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-600 hover:bg-gray-100"
+                    }
+                }
+                button "Pin" {
+                    onclick: .SelectPinned
+                    style: if .active_folder == "pinned" {
+                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-blue-100 text-blue-700"
+                    } else {
+                        "flex-1 px-3 py-1.5 text-xs rounded-lg text-gray-600 hover:bg-gray-100"
+                    }
+                }
+                button "Recent" {
+                    onclick: .SelectRecent
+                    style: if .active_folder == "recent" {
+                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-blue-100 text-blue-700"
+                    } else {
+                        "flex-1 px-3 py-1.5 text-xs rounded-lg text-gray-600 hover:bg-gray-100"
+                    }
+                }
+                style: "gap-1 px-3 pt-3"
+            }
+
+            separator { style: "my-2 border-t border-gray-200" }
+
+            // ── Section 2: Folders ──
+            col {
+                text "Folders" { style: "px-3 text-xs font-semibold text-gray-400 uppercase mb-1" }
+                if .store.folders.len() == 0 {
+                    text "No folders" { style: "px-3 text-xs text-gray-300" }
+                }
+                for folder in .store.folders {
+                    button {
+                        onclick: .SelectFolder(folder.name)
+                        style: if .active_folder == folder.name {
+                            "w-full text-left px-3 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 font-medium"
+                        } else {
+                            "w-full text-left px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
+                        }
+                        row {
+                            text folder.icon { style: "mr-2" }
+                            text folder.name { style: "capitalize" }
+                        }
+                    }
+                }
+                style: "px-2 gap-0.5"
+            }
+
+            separator { style: "my-2 border-t border-gray-200" }
+
+            // ── Section 3: Tags ──
+            col {
+                text "Tags" { style: "px-3 text-xs font-semibold text-gray-400 uppercase mb-1" }
+                if .store.tags.len() == 0 {
+                    text "No tags" { style: "px-3 text-xs text-gray-300" }
+                }
+                row {
+                    for tag in .store.tags {
+                        badge {
+                            text: tag
+                            onclick: .SelectTag(tag)
+                            variant: if .active_tag == tag { "default" } else { "secondary" }
+                            style: "cursor-pointer text-xs"
+                        }
+                    }
+                    style: "flex-wrap gap-1 px-2"
+                }
+                style: "gap-1"
+            }
+
+            style: "w-56 border-r border-gray-200 flex-col flex-shrink-0 overflow-y-auto"
         }
     }
 
     on {
-        .SelectNote -> {
-        }
-        .SearchChanged -> {
-        }
+        .SelectAll -> { store.active_folder = "all"; store.active_tag = "" }
+        .SelectPinned -> { store.active_folder = "pinned"; store.active_tag = "" }
+        .SelectRecent -> { store.active_folder = "recent"; store.active_tag = "" }
+        .SelectFolder(f) -> { store.SelectFolder(f) }
+        .SelectTag(t) -> { store.SelectTag(t) }
     }
 }

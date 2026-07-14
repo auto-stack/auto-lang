@@ -13,6 +13,14 @@ pub type Note = {
     time: str
     pinned: bool
     tags: []str
+    folder: str
+}
+
+/// Folder data model
+pub type Folder = {
+    id: int
+    name: str
+    icon: str
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -76,4 +84,36 @@ pub fn update_tags(id int, tags []str) ?Note {
 #[api(method = "GET", path = "/api/notes/search")]
 pub fn search_notes(query str) []Note {
     return db.search_notes(query)
+}
+
+// ═══════════════════════════════════════════════════════════
+// Folder Endpoints
+// ═══════════════════════════════════════════════════════════
+
+/// List all folders
+/// GET /api/folders
+#[api(method = "GET", path = "/api/folders")]
+pub fn list_folders() []Folder {
+    return db.all_folders()
+}
+
+/// Create a new folder
+/// POST /api/folders
+#[api(method = "POST", path = "/api/folders")]
+pub fn create_folder(name str) Folder {
+    return db.create_folder(name)
+}
+
+/// List notes in a specific folder
+/// GET /api/folders/:folder/notes
+#[api(method = "GET", path = "/api/folders/:folder/notes")]
+pub fn list_notes_by_folder(folder str) []Note {
+    return db.notes_by_folder(folder)
+}
+
+/// Move a note to a different folder
+/// PATCH /api/notes/:id/folder
+#[api(method = "PATCH", path = "/api/notes/:id/folder")]
+pub fn move_note(id int, folder str) ?Note {
+    return db.move_note(id, folder)
 }

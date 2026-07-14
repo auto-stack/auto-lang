@@ -1,0 +1,97 @@
+// reference/default.at — sidebar-nav block, "default" variant.
+// Self-contained UI widget: folders/tags live in `.folders` / `.tags` (the
+// consumer populates them from `dataSource.folders()` / `dataSource.tags()` on
+// init). Three sections separated by `separator`s: shortcuts, folders, tags.
+
+widget SidebarNav {
+    msg Msg {
+        SelectShortcut(str),
+        SelectFolder(str),
+        SelectTag(str)
+    }
+
+    // Sample data so the reference renders standalone; a real consumer
+    // replaces these by calling dataSource.folders() / dataSource.tags() in
+    // .Init.
+    folders: list of Folder = [
+        { name: "Inbox", count: 12 },
+        { name: "Work", count: 7 },
+        { name: "Personal", count: 3 }
+    ]
+    tags: list of str = ["intro", "pinned", "todo", "idea"]
+
+    model {
+        var active str = "all"
+    }
+
+    view {
+        col {
+            // ── EDIT: shortcuts ──
+            col {
+                style: "gap-1 pb-2"
+                for s in ["all", "pinned", "recent"] {
+                    button {
+                        label: s
+                        onclick: .SelectShortcut(s)
+                        variant: if .active == s { "secondary" } else { "ghost" }
+                        style: "w-full justify-start text-sm capitalize"
+                    }
+                }
+            }
+
+            separator {}
+
+            // ── EDIT: folders ──
+            col {
+                style: "gap-1 py-2"
+                text "Folders" { style: "text-xs uppercase text-gray-400 px-2 pb-1" }
+                if .folders.len() == 0 {
+                    text "No folders." { style: "text-xs text-gray-400 px-2" }
+                }
+                for f in .folders {
+                    button {
+                        label: f.name
+                        onclick: .SelectFolder(f.name)
+                        variant: if .active == f.name { "secondary" } else { "ghost" }
+                        style: "w-full justify-between text-sm"
+                    }
+                }
+            }
+
+            separator {}
+
+            // ── EDIT: tags ──
+            col {
+                style: "gap-1 pt-2"
+                text "Tags" { style: "text-xs uppercase text-gray-400 px-2 pb-1" }
+                if .tags.len() == 0 {
+                    text "No tags." { style: "text-xs text-gray-400 px-2" }
+                }
+                row {
+                    style: "flex-wrap gap-1 px-2"
+                    for t in .tags {
+                        badge {
+                            text: "#" + t
+                            onclick: .SelectTag(t)
+                            variant: if .active == t { "default" } else { "outline" }
+                            style: "cursor-pointer text-xs"
+                        }
+                    }
+                }
+            }
+
+            style: "w-60 border-r p-2 gap-2 h-full overflow-y-auto"
+        }
+    }
+
+    on {
+        .SelectShortcut(s) -> { .active = s }
+        .SelectFolder(f) -> { .active = f }
+        .SelectTag(t) -> { .active = t }
+    }
+}
+
+type Folder = {
+    name str
+    count int
+}
