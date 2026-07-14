@@ -1,7 +1,13 @@
 # Plan 240: Rust Cookbook a2r 测试集
 
-**日期**: 2026-05-08（更新于 2026-05-14 Phase 14 Step 1 完成）
-**状态**: Phase 1-9, 11 完成；Phase 10/12/13 暂停（需 VM 架构改动）；**Phase 14 Step 1 完成（A-tier assert + VM 修复）**；cookbook a2r 测试 **236/236** pass；VM A-tier 测试 **15/15** pass；**Phase 14 Step 2 进行中（B-tier REAL 文件添加 assert）** — 详见 §13-17
+**日期**: 2026-05-08（归档于 2026-07-14）
+**状态**: ✅ **核心交付完成并归档**。系统化 a2r 测试集已建立：163 个 `.at` 文件，Phase 14（全量 assert）、Phase 15（去桩）、Phase 16（FAIL 驱动修复）均完成（commit `fb08dc42`, 2026-05-16）。实测 124/124 cookbook a2r pass、236/236 transpiler pass。
+
+**移交给其它计划（基础设施阻塞，非本计划范围）**:
+- **Phase 10（database / `rusqlite`，6 文件）** → Plan 242 tracker #10（a2rs Redis/SQLite stdlib）
+- **Phase 12（async / tokio VM runtime，13 文件）** → Plan 355（a2r async/await 转译）+ Plan 242 tracker #12
+- **Phase 13（cc build-time codegen + `memmap2`，4 文件）** → Plan 242 tracker #17（新增）
+
 **目标**: 利用 Rust Cookbook 的真实示例建立系统化的 a2r 测试集，通过对比 a2r 输出与 Rust 原始代码来发现和修复 a2r 的问题；对 Tier C 模拟桩逐步去桩化。
 
 ## 1. 概述

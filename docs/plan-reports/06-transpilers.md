@@ -39,7 +39,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 220 | a2r Transpiler Improvement | Complete | Enhanced a2r output quality with improved type mapping and code generation |
 | 223 | a2r Step-00 Transpiler Fixes | Complete | Lexer pos drift fix (str/char/multi_str), multi-arg enum tuple variants, is as expression, return/break in match arms, env/fs/sleep_ms runtime mappings |
 | 232 | a2r Lexer Compilation | Complete | `.sub()`/`.slice()` string method handler + post_process() for type conversion fixes in self-hosting a2r |
-| 240 | Rust Cookbook a2r Tests | Planned | Systematic a2r test suite covering Rust Cookbook examples for comprehensive transpiler validation |
+| 240 | Rust Cookbook a2r Tests | Complete | Systematic a2r test suite — 163 `.at` files across all Cookbook chapters, all assert-based (Phase 14), de-stubbed for non-architecture-blocked files (Phase 15), FAIL-driven fix loop (Phase 16); 124/124 a2r + 236/236 transpiler pass. DB/async/cc stubs handed off to Plan 242 tracker #10/#12/#17 |
 | 241 | a2r String Type Cleanup | Complete | Fix get_or/insert .to_string() heuristics, return newline support, not-in-if, Add operator variable detection |
 | 264 | a2r Dot to Double Colon | Complete | module_types mapping, qualify_type_name(), expression path handling, use stmt `.` → `::` for cross-module types |
 
@@ -124,3 +124,4 @@ Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171,
 - [223-a2r-step00-transpiler-fixes.md](../plans/223-a2r-step00-transpiler-fixes.md)
 - [241-a2r-string-type-cleanup.md](../plans/old/241-a2r-string-type-cleanup.md)
 - [264-a2r-dot-to-double-colon.md](../plans/old/264-a2r-dot-to-double-colon.md)
+- [240-rust-cookbook-a2r-tests.md](../plans/archive/240-rust-cookbook-a2r-tests.md)
