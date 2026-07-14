@@ -11,7 +11,6 @@ use crate::vm::ffi::stdlib::{AsyncStreamEvent, AsyncStreamHandle, alloc_async_id
 use crate::vm::engine::AutoVM;
 use crate::vm::task::AutoTask;
 use crate::vm::engine::VMError;
-use crate::vm::native::NativeInterface;
 
 // ──────────────────────────────────────────────────────────────────────
 // WebSocket connection registry

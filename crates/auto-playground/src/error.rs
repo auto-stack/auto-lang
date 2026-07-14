@@ -7,6 +7,7 @@ pub enum AppError {
     VmError(String),
     CompileError(String),
     Internal(String),
+    #[allow(dead_code)]
     NotFound(String),
 }
 

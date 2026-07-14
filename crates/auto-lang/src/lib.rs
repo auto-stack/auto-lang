@@ -726,38 +726,11 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
     }
 }
 
-/// Plan 346: Remap CREATE_OBJ (0x2E) key_index by adding a base offset.
-/// CREATE_OBJ encodes: opcode(1 byte) + key_index(u16 LE) + field_count(u8).
-/// We add `base` to the key_index so it points into the merged pool.
-fn remap_create_obj_indices(code: &mut Vec<u8>, base: u16) {
-    if base == 0 {
-        return;
-    }
-    let mut i = 0;
-    while i < code.len() {
-        if code[i] == 0x2E {
-            // CREATE_OBJ: next 2 bytes are key_index (u16 LE)
-            if i + 2 < code.len() {
-                let old_idx = u16::from_le_bytes([code[i + 1], code[i + 2]]);
-                let new_idx = old_idx + base;
-                let bytes = new_idx.to_le_bytes();
-                code[i + 1] = bytes[0];
-                code[i + 2] = bytes[1];
-                i += 4; // skip opcode + key_index + field_count
-            } else {
-                i += 1;
-            }
-        } else {
-            i += 1;
-        }
-    }
-}
-
     // and remap string indices in their bytecode. Without this, LOAD_STR /
     // STORE_GLOBAL / LOAD_GLOBAL instructions in dep modules reference wrong
     // strings (the main pool's indices don't match), causing globals to be
     // stored under empty/wrong keys.
-    let main_string_count = strings.len() as u8;
+    let _main_string_count = strings.len() as u8;
     // Plan 346: object_keys/types declared here so the dep module merge loop
     // can append to them. Initialized from the main module's codegen.
     let mut object_keys = codegen.object_keys.clone();
@@ -787,19 +760,18 @@ fn remap_create_obj_indices(code: &mut Vec<u8>, base: u16) {
         // key_index (u16) in bytecode. Without this, Note { id: 0, ... } in
         // db.at references wrong field names from the main module's pool.
         if !module.object_keys.is_empty() {
-            let obj_keys_base = object_keys.len();
+            let _obj_keys_base = object_keys.len();
             for (i, keys) in module.object_keys.iter().enumerate() {
                 object_keys.push(keys.clone());
                 if let Some(ty) = module.object_types.get(i) {
                     object_types.push(ty.clone());
                 }
             }
-            // DISABLED: naive bytecode scan for CREATE_OBJ remap corrupts
-            // other instructions. Object creation works without remap because
-            // CREATE_OBJ uses absolute indices into the merged pool, and the
-            // dep module's indices start at 0 which maps correctly to the
-            // base offset after the main module's entries.
-            // remap_create_obj_indices(&mut module.code, obj_keys_base as u16);
+            // NOTE: CREATE_OBJ remap is intentionally not applied — naive
+            // bytecode scanning corrupts other instructions, and object creation
+            // works without it because CREATE_OBJ uses absolute indices into the
+            // merged pool (dep module indices start at 0, mapping to the base
+            // offset after the main module's entries).
         }
     }
 

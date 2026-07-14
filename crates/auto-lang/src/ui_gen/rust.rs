@@ -117,8 +117,6 @@ thread_local! {
 struct InitApiInfo {
     /// State variable being assigned (e.g., "notes")
     state_var: String,
-    /// API function being called (e.g., "list_notes")
-    func_name: String,
 }
 
 impl RustGenerator {
@@ -302,19 +300,6 @@ impl RustGenerator {
     /// Check if a name is a loop variable
     fn is_loop_var(&self, name: &str) -> bool {
         self.loop_vars.contains(&name.to_string())
-    }
-
-    /// Check if a variable has serde_json::Value type (exact match, not Vec<Value>)
-    fn is_value_type_var(&self, name: &str) -> bool {
-        // Check state vars
-        if let Some(ty) = self.state_types.get(name) {
-            return ty == "serde_json::Value";
-        }
-        // Check props
-        if let Some(ty) = self.prop_types.get(name) {
-            return ty == "serde_json::Value";
-        }
-        false
     }
 
     /// Check if a dot access target needs index syntax (target["field"] instead of target.field)
@@ -518,54 +503,6 @@ impl RustGenerator {
         Ok(code)
     }
 
-    /// Generate stub functions for API imports.
-    /// These are placeholder implementations that return dummy values so the code compiles.
-    /// In production, these would be replaced with actual HTTP client calls.
-    fn generate_api_stubs(&self, api_imports: &[String]) -> String {
-        let mut code = String::new();
-        code.push_str("// API function stubs (TODO: replace with real HTTP client calls)\n");
-        for fn_name in api_imports {
-            let lower = fn_name.to_lowercase();
-            if lower.starts_with("list_") || lower.starts_with("list") {
-                // Returns Vec<serde_json::Value>
-                code.push_str(&format!(
-                    "fn {}() -> Vec<serde_json::Value> {{\n    // TODO: HTTP GET request\n    vec![]\n}}\n\n",
-                    fn_name
-                ));
-            } else if lower.starts_with("create_") {
-                // Returns serde_json::Value
-                code.push_str(&format!(
-                    "fn {}(_title: String, _body: String) -> serde_json::Value {{\n    // TODO: HTTP POST request\n    serde_json::json!({{\"id\": 0, \"title\": _title, \"body\": _body, \"time\": \"now\"}})\n}}\n\n",
-                    fn_name
-                ));
-            } else if lower.starts_with("update_") {
-                // Returns nothing meaningful
-                code.push_str(&format!(
-                    "fn {}(_id: i32, _title: String, _body: String) {{\n    // TODO: HTTP PUT request\n}}\n\n",
-                    fn_name
-                ));
-            } else if lower.starts_with("delete_") {
-                // Returns nothing meaningful
-                code.push_str(&format!(
-                    "fn {}(_id: i32) {{\n    // TODO: HTTP DELETE request\n}}\n\n",
-                    fn_name
-                ));
-            } else if lower.starts_with("get_") {
-                // Returns Option<serde_json::Value>
-                code.push_str(&format!(
-                    "fn {}(_id: i32) -> Option<serde_json::Value> {{\n    // TODO: HTTP GET request\n    None\n}}\n\n",
-                    fn_name
-                ));
-            } else {
-                // Generic stub
-                code.push_str(&format!(
-                    "fn {}() {{\n    // TODO: implement API call\n    todo!(\"{}\");\n}}\n\n",
-                    fn_name, fn_name
-                ));
-            }
-        }
-        code
-    }
     fn generate_struct(&self, widget: &AuraWidget) -> String {
         let mut code = String::new();
 
@@ -651,7 +588,7 @@ impl RustGenerator {
         // Async Init (init_api_info is Some) is dispatched by the runtime boot task instead.
         let sync_init = self.has_init && self.init_api_info.is_none();
         if sync_init {
-            let msg_name = self.current_msg_name();
+            let _msg_name = self.current_msg_name();
             code.push_str("        let mut __self = Self {\n");
         } else {
             code.push_str("        Self {\n");
@@ -890,7 +827,7 @@ impl RustGenerator {
             // Strategy: create a temp child instance, sync parent state fields that match
             // child field names, call child.on(inner), then sync back.
             for child_name in &self.child_components {
-                let child_msg = format!("{}Msg", child_name);
+                let _child_msg = format!("{}Msg", child_name);
                 // Find parent state vars that likely correspond to child fields
                 // (same name in parent state as in child component)
                 let sync_fields = self.find_sync_fields_for_child(widget);
@@ -1149,7 +1086,6 @@ impl RustGenerator {
                         if api_imports.iter().any(|api| api == &func) {
                             self.init_api_info = Some(InitApiInfo {
                                 state_var: var,
-                                func_name: func,
                             });
                         }
                     }
@@ -2088,7 +2024,7 @@ impl RustGenerator {
                 if is_method_call {
                     // This is var.field — check if var is a Value-type loop variable
                     // Look backwards to find the identifier before the dot
-                    let mut ident_end = i;
+                    let ident_end = i;
                     let mut ident_start = i;
                     for j in (0..i).rev() {
                         if bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_' {
@@ -3183,20 +3119,6 @@ impl RustGenerator {
             }
             _ => self.ast_expr_to_rust(expr),
         }
-    }
-
-    /// Convert a dotted target path to Rust, using index access for Value-type vars
-    /// e.g., "note.title" → "self.note[\"title\"]" when note is a Value prop
-    fn convert_target_to_rust(&self, target: &str) -> String {
-        let parts: Vec<&str> = target.split('.').collect();
-        if parts.len() >= 2 {
-            let first = parts[0];
-            if self.needs_index_access(first) {
-                let field = parts[1..].join(".");
-                return format!("self.{}[\"{}\"]", first, field);
-            }
-        }
-        format!("self.{}", target)
     }
 
     /// Convert Auto type to Rust type

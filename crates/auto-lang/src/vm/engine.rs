@@ -1566,7 +1566,7 @@ impl AutoVM {
                     }
                 }
                 OpCode::DUP => {
-                    { if task.ram.sp > 0 { task.ram.push_nv(task.ram.raw_nv[task.ram.sp - 1]); } }
+                    if task.ram.sp > 0 { task.ram.push_nv(task.ram.raw_nv[task.ram.sp - 1]); } 
                 }
 
                 // === Constants ===
@@ -3734,7 +3734,7 @@ impl AutoVM {
                             )));
                         };
                         obj.set(key, {
-                            { self.decode_tagged_nv(value_nv) }
+                            self.decode_tagged_nv(value_nv) 
                         });
                     } else if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
                         // Heap objects (type instances, 4000000+): GenericInstanceData
@@ -3743,7 +3743,7 @@ impl AutoVM {
                             let field_idx = inst.field_names.iter().position(|n| n == &field_name);
                             if let Some(idx) = field_idx {
                                 inst.set_field(idx, {
-                                    { self.decode_tagged_nv(value_nv) }
+                                    self.decode_tagged_nv(value_nv) 
                                 }).map_err(|e| VMError::RuntimeError(e))?;
                             } else {
                                 return Err(VMError::RuntimeError(format!(
@@ -4918,7 +4918,7 @@ impl AutoVM {
                                     }
                                 }
                                 // Pop args, leave receiver on stack as return value
-                                { for _ in 0..arg_count { task.ram.pop_nv(); } }
+                                for _ in 0..arg_count { task.ram.pop_nv(); } 
                             }
                             "sort_by" | "sort_by_key" => {
                                 // In-place sort with comparator — pop closure arg, use default sort for now
@@ -4928,7 +4928,7 @@ impl AutoVM {
                                     auto_val::decode_i32(receiver_nv) as u64
                                 };
                                 // Pop args (closure)
-                                { for _ in 0..arg_count { task.ram.pop_nv(); } }
+                                for _ in 0..arg_count { task.ram.pop_nv(); } 
                                 if let Some(arr_ref) = self.arrays.get(&arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
                                     arr.sort_by(|a, b| {
@@ -4951,7 +4951,7 @@ impl AutoVM {
                                 // Identity operations: return receiver unchanged, only pop args
                                 if matches!(method_name.as_str(), "collect" | "rev" | "filter_map" | "flatten" | "into_iter" | "iter" | "iter_mut" | "par_iter" | "par_iter_mut" | "for_each" | "map" | "filter" | "find" | "any" | "all" | "reduce" | "fold" | "to_array") {
                                     // Pop args only (not receiver) — receiver stays as return value
-                                    { for _ in 0..arg_count { task.ram.pop_nv(); } }
+                                    for _ in 0..arg_count { task.ram.pop_nv(); } 
                                 } else {
                                     // Unknown List method — push nil, fall through
                                     task.ram.push_nv(auto_val::encode_null());

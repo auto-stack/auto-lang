@@ -16,12 +16,6 @@ fn decode_str_idx_nv(nv: auto_val::NanoValue) -> usize {
     auto_val::decode_string(nv) as usize
 }
 
-/// Encode as a NanoValue string tag.
-#[inline]
-fn encode_str_idx_nv(idx: u32) -> auto_val::NanoValue {
-    auto_val::encode_string(idx)
-}
-
 // Plan 094: ID ranges for hybrid FFI
 /// Maximum ID for static FFI bindings
 pub const STATIC_ID_MAX: u16 = 10000;

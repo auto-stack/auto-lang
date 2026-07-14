@@ -24,6 +24,7 @@ pub struct PythonTrans {
     py_wildcards: Vec<AutoStr>,
     /// Third-party Python package dependencies (for requirements.txt generation)
     /// Plan 283 Task 4.2
+    #[allow(dead_code)] // planned future-use (Plan 283); not yet emitted
     py_deps: Vec<PyDep>,
     /// Plan 283 Task 2.1: Local variable type tracking for ErrorPropagate and type-aware codegen.
     /// Populated from store.ty (explicit annotations) and basic expression inference.

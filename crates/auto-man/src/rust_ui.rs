@@ -1349,8 +1349,6 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
 
     let cargo_toml = api_backend_dir.join("Cargo.toml");
 
-    let cargo_toml = api_backend_dir.join("Cargo.toml");
-
     // Plan 328: Sanitize Cargo package name — cargo rejects names starting
     // with a digit (e.g. 015-notes-back). Fix in-place if stale Cargo.toml
     // has an unsanitized name.

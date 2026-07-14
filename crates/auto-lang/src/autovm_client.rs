@@ -246,13 +246,6 @@ impl AutovmClient {
         AutovmPipeClient::connect(pipe_name)
     }
 
-    fn next_id(&mut self) -> u64 {
-        match self {
-            AutovmClient::Pipe(c) => c.next_id(),
-            AutovmClient::Stdio(c) => c.next_id(),
-        }
-    }
-
     pub fn new_session(&mut self) -> Result<String, String> {
         match self {
             AutovmClient::Pipe(c) => c.new_session(),

@@ -3595,45 +3595,6 @@ impl VueGenerator {
         }
     }
 
-    /// Convert Auto Type to TypeScript type string for defineProps
-    fn type_to_ts_type(&self, ty: &crate::ast::Type) -> String {
-        match ty {
-            crate::ast::Type::Int | crate::ast::Type::Uint | crate::ast::Type::I64 | crate::ast::Type::U64 => "number".to_string(),
-            crate::ast::Type::Float | crate::ast::Type::Double => "number".to_string(),
-            crate::ast::Type::Bool => "boolean".to_string(),
-            crate::ast::Type::StrSlice | crate::ast::Type::StrOwned | crate::ast::Type::CStrLit => "string".to_string(),
-            crate::ast::Type::Array(_) | crate::ast::Type::RuntimeArray(_) | crate::ast::Type::List(_) => "any[]".to_string(),
-            crate::ast::Type::User(decl) => decl.name.to_string(),
-            crate::ast::Type::Enum(decl) => decl.borrow().name.to_string(),
-            crate::ast::Type::Void => "void".to_string(),
-            crate::ast::Type::Option(_) => "any".to_string(),
-            crate::ast::Type::Map(_, _) => "Record<string, any>".to_string(),
-            _ => "any".to_string(),
-        }
-    }
-
-    /// Check if an expression contains NavCall (Plan 105)
-    fn expr_has_nav_call(expr: &crate::ast::Expr) -> bool {
-        use crate::ast::Expr;
-        match expr {
-            Expr::NavCall { .. } => true,
-            Expr::Bina(left, _, right) => {
-                Self::expr_has_nav_call(left) || Self::expr_has_nav_call(right)
-            }
-            Expr::Unary(_, operand) => Self::expr_has_nav_call(operand),
-            Expr::Call(call) => {
-                Self::expr_has_nav_call(&call.name) || call.args.args.iter().any(|a| {
-                    matches!(a, crate::ast::Arg::Pos(_) | crate::ast::Arg::Pair(..))
-                        && Self::expr_has_nav_call(&a.get_expr())
-                })
-            }
-            Expr::Array(elems) => elems.iter().any(Self::expr_has_nav_call),
-            Expr::Closure(closure) => Self::expr_has_nav_call(&closure.body),
-            Expr::Dot(object, _) => Self::expr_has_nav_call(object),
-            _ => false,
-        }
-    }
-
     /// Check if LogicPayload contains NavCall (Plan 105)
     fn payload_has_nav_call(payload: &LogicPayload) -> bool {
         match payload {
@@ -3651,42 +3612,6 @@ impl VueGenerator {
             }
         }
         false
-    }
-
-    /// Check if an AURA expression accesses router (Plan 235)
-    fn expr_has_route_access(expr: &crate::ast::Expr) -> bool {
-        use crate::ast::Expr;
-        match expr {
-            Expr::Call(call) => {
-                if let Expr::Dot(object, _) = call.name.as_ref() {
-                    if let Expr::Ident(name) = object.as_ref() {
-                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
-                        if resolved == "router" {
-                            return true;
-                        }
-                    }
-                    if Self::expr_has_route_access(object) { return true; }
-                }
-                call.args.args.iter().any(|a| Self::expr_has_route_access(&a.get_expr()))
-            }
-            Expr::Dot(object, _) => {
-                if let Expr::Ident(name) = object.as_ref() {
-                    let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
-                    if resolved == "router" {
-                        return true;
-                    }
-                }
-                Self::expr_has_route_access(object)
-            }
-            Expr::Bina(left, _, right) => {
-                Self::expr_has_route_access(left) || Self::expr_has_route_access(right)
-            }
-            Expr::Unary(_, operand) => Self::expr_has_route_access(operand),
-            Expr::Array(elems) => elems.iter().any(Self::expr_has_route_access),
-            Expr::Object(pairs) => pairs.iter().any(|p| Self::expr_has_route_access(&p.value)),
-            Expr::Closure(closure) => Self::expr_has_route_access(&closure.body),
-            _ => false,
-        }
     }
 
     /// Check if LogicPayload contains route access (Plan 235)
@@ -4002,75 +3927,6 @@ impl VueGenerator {
         }
     }
 
-    /// Extract API function calls from an expression (recursive)
-    fn extract_api_calls_from_expr(&mut self, expr: &crate::ast::Expr) {
-        use crate::ast::Expr;
-        match expr {
-            Expr::Call(call) => {
-                if let Expr::Dot(object, method) = call.name.as_ref() {
-                    // Check if this is a direct API function call (e.g., listusers())
-                    if let Expr::Ident(name) = object.as_ref() {
-                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
-                        if self.is_api_function(resolved) {
-                            self.api_functions_used.insert(resolved.to_string());
-                        }
-                    }
-                    // Also check if method name matches API function
-                    if self.is_api_function(method.as_str()) {
-                        self.api_functions_used.insert(method.to_string());
-                    }
-                    self.extract_api_calls_from_expr(object);
-                } else {
-                    let name = &call.name;
-                    if let Expr::Ident(n) = name.as_ref() {
-                        let resolved = if n.starts_with('.') { &n[1..] } else { n.as_str() };
-                        if self.is_api_function(resolved) {
-                            self.api_functions_used.insert(resolved.to_string());
-                        }
-                    }
-                    self.extract_api_calls_from_expr(name);
-                }
-                for arg in &call.args.args {
-                    self.extract_api_calls_from_expr(&arg.get_expr());
-                }
-            }
-            Expr::Bina(left, _, right) => {
-                self.extract_api_calls_from_expr(left);
-                self.extract_api_calls_from_expr(right);
-            }
-            Expr::Unary(_, operand) => {
-                self.extract_api_calls_from_expr(operand);
-            }
-            Expr::Dot(object, _) => {
-                self.extract_api_calls_from_expr(object);
-            }
-            Expr::Array(elems) => {
-                for elem in elems {
-                    self.extract_api_calls_from_expr(elem);
-                }
-            }
-            Expr::Object(pairs) => {
-                for p in pairs {
-                    self.extract_api_calls_from_expr(&p.value);
-                }
-            }
-            Expr::Closure(closure) => {
-                self.extract_api_calls_from_expr(&closure.body);
-            }
-            Expr::NavCall { params, .. } => {
-                for p in params {
-                    self.extract_api_calls_from_expr(&p.value);
-                }
-            }
-            Expr::Index(target, index) => {
-                self.extract_api_calls_from_expr(target);
-                self.extract_api_calls_from_expr(index);
-            }
-            // These don't contain nested expressions
-            _ => {}
-        }
-    }
-
     /// Check if a handler payload contains API calls
     fn handler_has_api_calls(&self, payload: &LogicPayload) -> bool {
         match payload {
@@ -4082,50 +3938,6 @@ impl VueGenerator {
                 }
             }
             LogicPayload::Bytecode(_) => false,
-        }
-    }
-
-    /// Check if an expression contains API calls (non-mutating version)
-    fn expr_has_api_calls(&self, expr: &crate::ast::Expr) -> bool {
-        use crate::ast::Expr;
-        match expr {
-            Expr::Call(call) => {
-                // Check if method name is an API function
-                if let Expr::Dot(object, method) = call.name.as_ref() {
-                    if self.is_api_function(method.as_str()) {
-                        return true;
-                    }
-                    // Check if object is an API function reference
-                    if let Expr::Ident(name) = object.as_ref() {
-                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
-                        if self.is_api_function(resolved) {
-                            return true;
-                        }
-                    }
-                    if self.expr_has_api_calls(object) { return true; }
-                } else {
-                    if self.is_api_function(&call.name.repr().to_string()) {
-                        return true;
-                    }
-                    if self.expr_has_api_calls(&call.name) { return true; }
-                }
-                call.args.args.iter().any(|a| self.expr_has_api_calls(&a.get_expr()))
-            }
-            Expr::Bina(left, _, right) => {
-                self.expr_has_api_calls(left) || self.expr_has_api_calls(right)
-            }
-            Expr::Unary(_, operand) => self.expr_has_api_calls(operand),
-            Expr::Dot(object, _) => self.expr_has_api_calls(object),
-            Expr::Array(elems) => elems.iter().any(|e| self.expr_has_api_calls(e)),
-            Expr::Object(pairs) => pairs.iter().any(|p| self.expr_has_api_calls(&p.value)),
-            Expr::Closure(closure) => self.expr_has_api_calls(&closure.body),
-            Expr::NavCall { params, .. } => {
-                params.iter().any(|p| self.expr_has_api_calls(&p.value))
-            }
-            Expr::Index(target, index) => {
-                self.expr_has_api_calls(target) || self.expr_has_api_calls(index)
-            }
-            _ => false,
         }
     }
 

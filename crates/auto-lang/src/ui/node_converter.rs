@@ -4,7 +4,7 @@
 // to enable runtime interpretation mode without transpilation.
 
 use auto_val::{Value, Node};
-use super::view::{View, SelectCallback};
+use super::view::View;
 use super::style::Style;
 
 // 导出动态消息类型（当 interpreter feature 启用时）
@@ -523,6 +523,7 @@ fn extract_prop_bool(node: &Node, key: &str) -> Option<bool> {
 }
 
 /// Extract property as u32
+#[allow(dead_code)] // used by convert_*_dynamic under feature = "interpreter"
 fn extract_prop_u32(node: &Node, key: &str) -> Option<u32> {
     let value = node.get_prop(key);
     match value {
@@ -540,6 +541,7 @@ fn extract_prop_u32(node: &Node, key: &str) -> Option<u32> {
 }
 
 /// Extract property as usize
+#[allow(dead_code)] // used by convert_*_dynamic under feature = "interpreter"
 fn extract_prop_usize(node: &Node, key: &str) -> Option<usize> {
     let value = node.get_prop(key);
     match value {
@@ -551,6 +553,7 @@ fn extract_prop_usize(node: &Node, key: &str) -> Option<usize> {
 }
 
 /// Extract children as strings (for Select options)
+#[allow(dead_code)] // used by convert_*_dynamic under feature = "interpreter"
 fn extract_children_strings(node: &Node) -> ConversionResult<Vec<String>> {
     let mut strings = Vec::new();
 

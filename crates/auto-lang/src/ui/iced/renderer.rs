@@ -21,26 +21,26 @@ use crate::aura::{AuraNodeId, SpanInfo};
 use crate::session::CompilerSession;
 use crate::parser::Parser;
 
-/// Thread-local storage for the last input text value.
-/// Used by the static code path to pass input text from on_input callbacks
-/// to Component::on() handlers, since the generic message type M cannot carry String.
+// Thread-local storage for the last input text value.
+// Used by the static code path to pass input text from on_input callbacks
+// to Component::on() handlers, since the generic message type M cannot carry String.
 thread_local! {
     static INPUT_TEXT: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
 }
 
-/// Plan 309 续篇 II: when true, interactive widgets are built WITHOUT their
-/// event handlers so they don't capture presses/hovers — letting the
-/// `wrap_debug` mouse_area capture inspect hover/click over EVERY element
-/// (buttons, inputs, sliders, …). Set once per view build at `dynamic_view`
-/// entry from `debug_mode && inspect_mode && !alt_held`. Read in `into_iced`
-/// (to gate handlers) and `wrap_debug` (to gate the capturing mouse_area).
+// Plan 309 续篇 II: when true, interactive widgets are built WITHOUT their
+// event handlers so they don't capture presses/hovers — letting the
+// `wrap_debug` mouse_area capture inspect hover/click over EVERY element
+// (buttons, inputs, sliders, …). Set once per view build at `dynamic_view`
+// entry from `debug_mode && inspect_mode && !alt_held`. Read in `into_iced`
+// (to gate handlers) and `wrap_debug` (to gate the capturing mouse_area).
 thread_local! {
     static INSPECT_CAPTURE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Plan 309 续篇 II: latest keyboard modifiers, written from the window-level
-/// event subscription (which can't borrow `DynamicState`) and read at view
-/// entry to decide `INSPECT_CAPTURE`. `Modifiers` is `Copy`.
+// Plan 309 续篇 II: latest keyboard modifiers, written from the window-level
+// event subscription (which can't borrow `DynamicState`) and read at view
+// entry to decide `INSPECT_CAPTURE`. `Modifiers` is `Copy`.
 thread_local! {
     static LAST_MODIFIERS: std::cell::Cell<iced::keyboard::Modifiers> =
         const { std::cell::Cell::new(iced::keyboard::Modifiers::empty()) };
@@ -1687,15 +1687,6 @@ impl IcedMessage {
             },
         }
     }
-
-    /// Convert back into a `DynamicMessage` with empty args.
-    fn to_dynamic(&self) -> DynamicMessage {
-        DynamicMessage::Typed {
-            widget_name: self.widget.clone(),
-            event_name: self.event.clone(),
-            args: vec![],
-        }
-    }
 }
 
 // ============================================================================
@@ -2623,9 +2614,13 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 });
         }
 
-        // Track whether UI-only state changed (hover, select, tab, debug mode).
-        // These don't affect component state but change the rendered output.
-        let mut ui_changed = false;
+        // NOTE: A `ui_changed` flag once lived here to mark UI-only state changes
+        // (hover/select/debug) as needing a view rebuild. Every assignment sat on
+        // an early-return path, so the flag was always `false` by the time it was
+        // read below — i.e. dead. It has been removed; view rebuilds now hinge
+        // solely on `component.is_dirty()`. If a UI-only change ever needs to
+        // force a rebuild, set `*state.view_dirty.borrow_mut() = true;` directly
+        // (the field that flag used to feed) on the relevant path.
 
         // Handle debug mode messages
         if msg.event == DEBUG_TOGGLE_EVENT {
@@ -2645,7 +2640,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 *state.devtools_open.borrow_mut() = false;
                 state.pending_hovers.borrow_mut().clear();
             }
-            ui_changed = true;
             return iced::Task::none();
         }
         // Handle click-to-select: set selected element and open DevTools panel
@@ -2688,7 +2682,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     }
                 }
             }
-            ui_changed = true;
             return iced::Task::none();
         }
         // Handle VNode selection from the live VTree (Plan 307 Task 14).
@@ -2746,7 +2739,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     }
                 }
             }
-            ui_changed = true;
             return iced::Task::none();
         }
         // Switch the inspector right-panel inner sub-tab (Plan 307 Task 15).
@@ -2754,7 +2746,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             if let Some(sub) = InspectorSubTab::from_message_tail(tail) {
                 *state.inspector_subtab.borrow_mut() = sub;
             }
-            ui_changed = true;
             return iced::Task::none();
         }
         // Toggle a collapsible section inside the 检视 sub-tab (Plan 307 续篇 IV).
@@ -2768,7 +2759,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     _ => {}
                 }
             }
-            ui_changed = true;
             return iced::Task::none();
         }
         match msg.event.as_str() {
@@ -2781,7 +2771,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 } else {
                     DevToolsTab::Console
                 };
-                ui_changed = true;
                 return iced::Task::none();
             }
             "__close_devtools" => {
@@ -2789,7 +2778,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 // Plan 309 Phase 5: closing the panel also exits the picker so
                 // no always-on overlay renders behind a closed panel.
                 *state.inspect_mode.borrow_mut() = false;
-                ui_changed = true;
                 return iced::Task::none();
             }
             // Plan 309 Phase 5.1: Chrome-style inspect-element cursor toggle.
@@ -2802,14 +2790,12 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     state.debug_mode = true;
                     *state.devtools_open.borrow_mut() = true;
                 }
-                ui_changed = true;
                 return iced::Task::none();
             }
             // Plan 309 续篇: 内层 Tree|Inspector 分隔栏按下 → 进入拖拽。实际
             // 位移由窗口级 `__mouse_moved` 订阅用绝对坐标计算（同外层分隔栏）。
             "__inner_divider_press" => {
                 *state.dragging_inner_divider.borrow_mut() = true;
-                ui_changed = true;
                 return iced::Task::none();
             }
             // Source line click in Inspector: reverse-lookup AuraNodeId → debug element ID
@@ -2850,7 +2836,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         }
                     }
                 }
-                ui_changed = true;
                 return iced::Task::none();
             }
             // Window resize: track current window size for panel width clamping.
@@ -2871,7 +2856,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         }
                         // Only mark dirty when devtools panel is visible
                         if state.debug_mode {
-                            ui_changed = true;
                         }
                     }
                 }
@@ -2896,7 +2880,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         let win_w = state.window_size.borrow().width;
                         let new_width = (win_w - mx).max(200.0).min(win_w - 200.0);
                         *state.devtools_panel_width.borrow_mut() = new_width;
-                        ui_changed = true;
                     }
                     // Plan 309 续篇: inner Tree|Inspector divider. The panel's
                     // left edge sits at win_w - panel_width; the divider's share
@@ -2907,7 +2890,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                         let panel_left = win_w - panel_w;
                         let ratio = ((mx - panel_left) / panel_w).clamp(0.1, 0.9);
                         *state.inspector_split_ratio.borrow_mut() = ratio;
-                        ui_changed = true;
                     }
                 }
                 return iced::Task::none();
@@ -2916,11 +2898,9 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             "__mouse_released" => {
                 if *state.dragging_divider.borrow() {
                     *state.dragging_divider.borrow_mut() = false;
-                    ui_changed = true;
                 }
                 if *state.dragging_inner_divider.borrow() {
                     *state.dragging_inner_divider.borrow_mut() = false;
-                    ui_changed = true;
                 }
                 return iced::Task::none();
             }
@@ -2929,7 +2909,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             // subscription and copied into state at view build; this just forces
             // a rebuild so widgets flip interactive↔non-interactive.
             "__modifiers_changed" => {
-                ui_changed = true;
                 return iced::Task::none();
             }
             // --- Edit mode messages (E4) ---
@@ -2938,12 +2917,10 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 *state.edit_textarea_key.borrow_mut() = None;
                 *state.edit_span.borrow_mut() = None;
                 *state.edit_error.borrow_mut() = None;
-                ui_changed = true;
                 return iced::Task::none();
             }
             e if e == DEBUG_EDIT_APPLY => {
                 apply_edit(state);
-                ui_changed = true;
                 return iced::Task::none();
             }
             _ => {}
@@ -2969,7 +2946,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     }
                 }
             }
-            ui_changed = true;
             return iced::Task::none();
         }
         // Accumulate hover move messages — resolved in view() by picking smallest counter
@@ -2979,7 +2955,6 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     state.pending_hovers.borrow_mut().push((counter, id.to_string()));
                 }
             }
-            ui_changed = true; // hover highlight changes rendered output
             return iced::Task::none();
         }
         // Exit: no longer used for hover tracking (kept for compatibility)
@@ -3322,10 +3297,12 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             }
         }
 
-        // Mark view dirty if component state changed or UI-only state changed.
+        // Mark view dirty if component state changed.
         // Component dirty: set by on_with_input, write_state, reload.
-        // UI dirty: hover, select, tab, debug mode, edit mode.
-        if state.component.is_dirty() || ui_changed {
+        // (UI-only changes — hover, select, tab, debug — previously fed a
+        // `ui_changed` flag here, but that flag was always false; see the note
+        // above where it was declared. Set view_dirty directly if needed.)
+        if state.component.is_dirty() {
             *state.view_dirty.borrow_mut() = true;
         }
 
@@ -3463,10 +3440,9 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         mcp.update(view, id_map, state_vals, input_map, view_template);
         // Sync window size for layout annotations (Plan 281)
         let ws = state.window_size.borrow();
-        if let iced::Size { width, height } = *ws {
-            if width > 0.0 && height > 0.0 {
-                mcp.set_window_size(width, height);
-            }
+        let iced::Size { width, height } = *ws;
+        if width > 0.0 && height > 0.0 {
+            mcp.set_window_size(width, height);
         }
     }
 
@@ -3631,7 +3607,6 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             component_tree: std::cell::RefCell::new(None),
             debug_mode: state.debug_mode,
             capture_data: capture_debug,
-            inspect_mode: *state.inspect_mode.borrow(),
             inspector_cache: std::cell::RefCell::new(crate::ui::debug::InspectorCache::new()),
         })
     } else {
@@ -4060,53 +4035,6 @@ fn render_vtree_into(
         for child in children {
             render_vtree_into(tree, child, depth + 1, selected, hovered, rows);
         }
-    }
-}
-
-/// Recursively render tree nodes into a flat column of clickable rows.
-fn render_tree_into(
-    node: &DebugTreeNode, depth: usize, selected_id: &Option<String>,
-    rows: &mut Vec<iced::Element<'static, IcedMessage>>,
-) {
-    let indent = "  ".repeat(depth);
-    let is_selected = selected_id.as_deref() == Some(&node.id);
-
-    let has_children = !node.children.is_empty();
-    let prefix = if has_children { "▼ " } else { "  " };
-    let label = format!("{}{}{}", indent, prefix, node.kind);
-
-    let text_color = if is_selected {
-        iced::Color::from_rgb(0.85, 0.4, 0.1)
-    } else if has_children {
-        iced::Color::from_rgb(0.2, 0.4, 0.7)
-    } else {
-        iced::Color::from_rgb(0.4, 0.4, 0.4)
-    };
-
-    let click_area = mouse_area(
-        container(text(label).size(10).color(text_color))
-            .style(move |_: &iced::Theme| {
-                if is_selected {
-                    container::Style {
-                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.95, 0.85, 0.7, 0.6))),
-                        ..Default::default()
-                    }
-                } else {
-                    container::Style::default()
-                }
-            })
-            .padding(iced::Padding::new(2.0))
-    )
-        .on_press(IcedMessage {
-            widget: String::new(),
-            event: format!("{}{}", DEBUG_SELECT_PREFIX, node.id),
-            input_value: None,
-        });
-
-    rows.push(click_area.into());
-
-    for child in &node.children {
-        render_tree_into(child, depth + 1, selected_id, rows);
     }
 }
 
@@ -4633,17 +4561,6 @@ fn layout_pending_panel<M: Clone + 'static>() -> iced::Element<'static, M> {
         .size(11)
         .color(iced::Color::from_rgb(0.55, 0.55, 0.55))
         .into()
-}
-
-/// Resolve a byte offset → 0-based line number via `source_line_offsets`.
-///
-/// Mirrors the `partition_point` logic from the preserved
-/// `render_inspector_source_section` (Plan 307 Task 15) so the Source tab and
-/// any future span→line rendering stays consistent.
-fn offset_to_line(offset: usize, line_offsets: &[usize]) -> usize {
-    line_offsets
-        .partition_point(|&pos| pos <= offset)
-        .saturating_sub(1)
 }
 
 /// Lazily load the component source + derived indexes into `DynamicState`
@@ -5541,6 +5458,7 @@ fn render_console_tab(state: &DynamicState) -> iced::Element<'static, IcedMessag
 
 /// A node in the debug component tree (for DevTools Elements tab).
 #[derive(Clone)]
+#[allow(dead_code)] // legacy component_tree subsystem; pending removal (Task 19/20)
 struct DebugTreeNode {
     id: String,
     kind: String,
@@ -5575,10 +5493,6 @@ struct DebugRenderCtx {
     /// id map, computed_style, box_model) for this frame. `debug_mode || mcp_active`
     /// — MCP capture runs without F12. Visual overlays stay on `debug_mode`.
     capture_data: bool,
-    /// Inspect-element cursor mode (Plan 309 Phase 5): gates the always-on
-    /// hover overlay so highlighting only shows when the picker is engaged.
-    /// `debug_mode` alone is NOT sufficient — the overlay requires both.
-    inspect_mode: bool,
     /// Bidirectional `VNodeId <-> iced widget id` map (Plan 307 Task 12).
     /// Populated in `wrap_debug` only when `debug_mode` is true; mirrors the
     /// View-structural path scheme used by `view_to_vtree_with_paths` (Task 4)
@@ -6278,49 +6192,6 @@ fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &st
     }
 }
 
-/// Patch input values in an IcedMessage-typed view tree (cached view version).
-/// Same logic as patch_input_values but extracts event name from IcedMessage.event.
-fn patch_input_values_iced(view: &mut AbstractView<IcedMessage>, input_values: &std::collections::HashMap<String, String>) {
-    match view {
-        AbstractView::Input { value, on_change, .. } | AbstractView::Textarea { value, on_change, .. } => {
-            if let Some(msg) = on_change {
-                let clean_name = {
-                    let n = msg.event.trim_start_matches('.');
-                    if let Some(pos) = n.rfind("::") { n[pos + 2..].to_string() } else { n.to_string() }
-                };
-                if let Some(text) = input_values.get(&clean_name) {
-                    *value = text.clone();
-                }
-            }
-        }
-        AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => {
-            for child in children.iter_mut() {
-                patch_input_values_iced(child, input_values);
-            }
-        }
-        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
-            patch_input_values_iced(child, input_values);
-        }
-        AbstractView::Grid { cells, .. } => {
-            for cell in cells.iter_mut() {
-                patch_input_values_iced(cell, input_values);
-            }
-        }
-        AbstractView::List { items, .. } => {
-            for item in items.iter_mut() {
-                patch_input_values_iced(item, input_values);
-            }
-        }
-        AbstractView::Table { headers, rows, .. } => {
-            for h in headers.iter_mut() { patch_input_values_iced(h, input_values); }
-            for row in rows.iter_mut() {
-                for cell in row.iter_mut() { patch_input_values_iced(cell, input_values); }
-            }
-        }
-        _ => {}
-    }
-}
-
 /// Convert IcedSize to iced::Length
 fn iced_length(size: &IcedSize) -> iced::Length {
     match size {
@@ -6463,7 +6334,6 @@ struct DevToolsState {
     debug_mode: bool,
     devtools_open: std::cell::RefCell<bool>,
     selected_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
-    hovered_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
     inspector_subtab: std::cell::RefCell<InspectorSubTab>,
     inspector_sections: std::cell::RefCell<InspectorSections>,
     live_vtree: std::cell::RefCell<Option<crate::ui::vnode::VTree>>,
@@ -6480,7 +6350,6 @@ impl Default for DevToolsState {
             debug_mode: false,
             devtools_open: std::cell::RefCell::new(false),
             selected_vnode: std::cell::RefCell::new(None),
-            hovered_vnode: std::cell::RefCell::new(None),
             inspector_subtab: std::cell::RefCell::new(InspectorSubTab::default()),
             inspector_sections: std::cell::RefCell::new(InspectorSections::default()),
             live_vtree: std::cell::RefCell::new(None),

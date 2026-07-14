@@ -100,7 +100,12 @@ impl Backend {
 }
 
 impl LanguageServer for Backend {
-    /// Handle initialization request from client
+    /// Handle initialization request from client.
+    ///
+    /// `root_uri` is deprecated in favor of `workspace_folders`, but many LSP
+    /// clients still populate it, so we keep it as a fallback for workspace
+    /// root detection.
+    #[allow(deprecated)] // InitializeParams::root_uri
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         self.client
             .log_message(
@@ -113,7 +118,9 @@ impl LanguageServer for Backend {
             )
             .await;
 
-        // Detect workspace root and create resolver
+        // Detect workspace root and create resolver.
+        // `root_uri` is deprecated in favor of `workspace_folders`, but many
+        // LSP clients still populate it, so we keep it as a fallback.
         if let Some(root_uri) = params.root_uri {
             if let Some(root_path) = root_uri.to_file_path() {
                 let root_path = root_path.into_owned();
@@ -875,6 +882,7 @@ fn extract_document_symbols(content: &str) -> Vec<DocumentSymbol> {
                 detail: Some(format!("{:?}", meta.kind).to_lowercase()),
                 kind,
                 tags: None,
+                #[allow(deprecated)]
                 deprecated: None,
                 range: Range {
                     start: Position { line, character: 0 },

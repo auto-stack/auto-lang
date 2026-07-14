@@ -36,6 +36,7 @@ python = ["pyo3"]
 # Plan 015: UI Features (AutoUI Core)
 ui = []
 ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
+ui-headless = ["ui", "ui-interpreter"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
 ui-iced = ["ui", "dep:iced", "ui-interpreter", "dep:image"]
 

@@ -427,6 +427,7 @@ pub mod env {
 // =============================================================================
 
 /// Alias: File → fs (AutoLang uses File.xxx() for file operations)
+#[allow(non_snake_case)] // AutoLang API uses PascalCase `File`
 pub mod File {
     pub use super::fs::*;
 }

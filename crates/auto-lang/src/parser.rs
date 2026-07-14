@@ -425,7 +425,7 @@ impl<'a> Parser<'a> {
     /// 需要 `&mut Parser`，而迭代器持有 `&self` 的不可变借用会产生冲突。
     /// 用 `mem::take` 临时移出 dialects，遍历局部变量后再放回，规避自引用借用。
     fn try_dialect_stmt(&mut self, ident: &str) -> AutoResult<Option<Stmt>> {
-        let mut dialects = std::mem::take(&mut self.dialects);
+        let dialects = std::mem::take(&mut self.dialects);
         let mut result = Ok(None);
         for d in &dialects {
             if !d.keywords().contains(&ident) {
@@ -446,7 +446,7 @@ impl<'a> Parser<'a> {
     /// 尝试用已注册的方言解析当前真实 TokenKind（view/on 等非 Ident 的 UI token）。
     /// 在 parse_stmt_inner 的 TokenKind::View / TokenKind::On arm 里调用。
     fn try_token_dialect_stmt(&mut self, kind: TokenKind) -> AutoResult<Option<Stmt>> {
-        let mut dialects = std::mem::take(&mut self.dialects);
+        let dialects = std::mem::take(&mut self.dialects);
         let mut result = Ok(None);
         for d in &dialects {
             if let Some(stmt) = d.try_parse_token_stmt(self, kind)? {
@@ -4099,7 +4099,7 @@ impl<'a> Parser<'a> {
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[rs], #[c,vm] before function declarations
             // Note: pub is a keyword prefix, not an annotation (pub fn, pub static fn)
-            let mut ann = self.parse_fn_annotations()?;
+            let ann = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
@@ -6432,7 +6432,7 @@ impl<'a> Parser<'a> {
             // Emit as a single Store with the tuple expr; downstream handles the destructuring
             // Use the first name as primary, store the full tuple and names
             // For now, emit a special Expr::TupleDestruct that the transpiler can handle
-            let name = names.first().cloned().unwrap_or_else(|| Name::from("_"));
+            let _name = names.first().cloned().unwrap_or_else(|| Name::from("_"));
             return Ok(Stmt::Expr(Expr::TupleDestruct {
                 names,
                 expr: Box::new(expr),
@@ -7793,9 +7793,6 @@ impl<'a> Parser<'a> {
             let target = self.parse_type()?;
             self.expect(TokenKind::Semi)?;
 
-            let target = self.parse_type()?;
-            self.expect(TokenKind::Semi)?;
-
             // Extract just the names from GenericParam for TypeAlias
             let params: Vec<Name> = generic_params
                 .into_iter()
@@ -7995,7 +7992,7 @@ impl<'a> Parser<'a> {
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[rs], #[c,vm] before function declarations
             // Note: pub is a keyword prefix, not an annotation (pub fn, pub static fn)
-            let mut ann = self.parse_fn_annotations()?;
+            let ann = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 

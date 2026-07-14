@@ -219,11 +219,11 @@ mod tests {
         ]);
         let old_fields = vec![
             field("count", Type::Int, Expr::Int(0)),
-            field("label", Type::StrFixed(0), Expr::Str("".to_string(.into()))),
+            field("label", Type::StrFixed(0), Expr::Str("".to_string().into())),
         ];
         let new_fields = vec![
             field("count", Type::Int, Expr::Int(0)),
-            field("label", Type::StrFixed(0), Expr::Str("".to_string(.into()))),
+            field("label", Type::StrFixed(0), Expr::Str("".to_string().into())),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -265,7 +265,7 @@ mod tests {
         ]);
         let old_fields = vec![
             field("count", Type::Int, Expr::Int(0)),
-            field("legacy", Type::StrFixed(0), Expr::Str("".to_string(.into()))),
+            field("legacy", Type::StrFixed(0), Expr::Str("".to_string().into())),
         ];
         let new_fields = vec![
             field("count", Type::Int, Expr::Int(0)),
@@ -291,7 +291,7 @@ mod tests {
         ];
         let new_fields = vec![
             // Type changed from Int to Str
-            field("value", Type::StrFixed(0), Expr::Str("default".to_string(.into()))),
+            field("value", Type::StrFixed(0), Expr::Str("default".to_string().into())),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -308,7 +308,7 @@ mod tests {
         let old_fields: Vec<AuraStateDef> = vec![];
         let new_fields = vec![
             field("count", Type::Int, Expr::Int(10)),
-            field("name", Type::StrFixed(0), Expr::Str("test".to_string(.into()))),
+            field("name", Type::StrFixed(0), Expr::Str("test".to_string().into())),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -350,7 +350,7 @@ mod tests {
             field("b", Type::Int, Expr::Int(0)),
         ];
         let new_fields = vec![
-            field("x", Type::StrFixed(0), Expr::Str("new".to_string(.into()))),
+            field("x", Type::StrFixed(0), Expr::Str("new".to_string().into())),
             field("y", Type::Bool, Expr::Bool(false)),
         ];
 

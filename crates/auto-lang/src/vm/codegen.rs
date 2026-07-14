@@ -3506,7 +3506,7 @@ impl Codegen {
     /// (stringified via str concatenation). Remaining args form the JSON body
     /// via `json.from_value`.
     fn emit_api_http_call(&mut self, api: &ApiCallInfo, call: &crate::ast::Call) -> AutoResult<()> {
-        use crate::ast::Arg;
+        
 
         // Collect positional arg expressions in order.
         let arg_exprs: Vec<Expr> = call.args.args.iter().map(|a| a.get_expr()).collect();
@@ -5520,7 +5520,7 @@ impl Codegen {
                     false
                 };
                 // DEBUG: trace generic constructor decision for List.new
-                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                if let Expr::Dot(_obj, method) = call.name.as_ref() {
                     if method == "new" {
                     }
                 }

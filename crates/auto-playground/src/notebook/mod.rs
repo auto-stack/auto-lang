@@ -59,6 +59,7 @@ struct NotebookSession {
     vm: AutovmReplSession,
     cells: Vec<Cell>,
     cell_snapshots: HashMap<String, String>,
+    #[allow(dead_code)] // session metadata, reserved for diagnostics/reporting
     created_at: Instant,
     last_active: Instant,
 }

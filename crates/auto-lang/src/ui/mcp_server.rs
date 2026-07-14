@@ -1002,7 +1002,7 @@ fn tool_state(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
 
     let mut out = String::from("State:\n");
     let mut entries: Vec<_> = shared.state.iter().collect();
-    entries.sort_by_key(|(k, _)| k.clone());
+    entries.sort_by_key(|(k, _)| k.to_string());
 
     for (name, value) in &entries {
         if let Some(ref fields) = filter_fields {

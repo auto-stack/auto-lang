@@ -230,11 +230,6 @@ impl<'a> AuraViewBuilder<'a> {
     // Internal conversion
     // ========================================================================
 
-    /// Dispatch an AuraNode to the appropriate converter (no bindings).
-    fn convert_node(&self, node: &AuraNode) -> View<DynamicMessage> {
-        self.convert_node_with(node, &Bindings::new())
-    }
-
     /// Dispatch an AuraNode to the appropriate converter with loop variable bindings.
     fn convert_node_with(&self, node: &AuraNode, bindings: &Bindings) -> View<DynamicMessage> {
         match node {
@@ -250,7 +245,7 @@ impl<'a> AuraViewBuilder<'a> {
                 // Read the iterable array from VmBridge state
                 let array = match self.read_state(state_name) {
                     Ok(Value::Array(arr)) => arr,
-                    Ok(other) => {
+                    Ok(_other) => {
                         // Try read_state_as_vec for Value::Int(array_id) refs
                         match self.read_state_as_vec(state_name) {
                             Ok(vec) => {
@@ -1863,10 +1858,6 @@ impl<'a> AuraViewBuilder<'a> {
     // ========================================================================
 
     /// Resolve a string interpolation template containing `${.field}` references.
-    fn resolve_interpolation(&self, template: &str, bindings: &[String]) -> String {
-        self.resolve_interpolation_with(template, bindings, &Bindings::new())
-    }
-
     /// Resolve interpolation with loop variable bindings support.
     fn resolve_interpolation_with(&self, template: &str, tpl_bindings: &[String], loop_bindings: &Bindings) -> String {
         let mut result = template.to_string();
@@ -1880,11 +1871,6 @@ impl<'a> AuraViewBuilder<'a> {
         result
     }
 
-    /// Read a state field value as a display string.
-    fn read_state_as_string(&self, field_name: &str) -> String {
-        self.read_state_as_string_with(field_name, &Bindings::new())
-    }
-
     /// Read a state field value as a display string, checking loop bindings first.
     fn read_state_as_string_with(&self, field_name: &str, bindings: &Bindings) -> String {
         // Check loop bindings first (e.g., "note" in `for note in .notes`)
@@ -1895,11 +1881,6 @@ impl<'a> AuraViewBuilder<'a> {
             Ok(value) => value_to_display_string(&value),
             Err(_) => format!("${{{}}}", field_name),
         }
-    }
-
-    /// Resolve a base AST `Expr` to a display string (no bindings).
-    fn resolve_expr_to_string(&self, expr: &Expr) -> String {
-        self.resolve_expr_to_string_with(expr, &Bindings::new())
     }
 
     /// Resolve a base AST `Expr` to a display string with loop variable bindings.
@@ -2127,11 +2108,6 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
-    /// Evaluate a condition string against current state (no bindings).
-    fn eval_condition(&self, condition: &str) -> bool {
-        self.eval_condition_with(condition, &Bindings::new())
-    }
-
     /// Find an operator (e.g., " || " or " && ") at parenthesis depth 0 only.
     /// Returns the byte position of the operator start, or None if not found at top level.
     fn find_operator_at_depth0(cond: &str, op: &str) -> Option<usize> {
@@ -2309,11 +2285,6 @@ impl<'a> AuraViewBuilder<'a> {
     /// F-strings like `f"Count: ${.count}"` are extracted as `Expr::Str`
     /// with the template preserved. This method scans for `${.name}` patterns
     /// and substitutes current state values.
-    /// Resolve `${.field}` interpolation patterns in a literal string (no bindings).
-    fn resolve_literal_interpolation(&self, s: &str) -> String {
-        self.resolve_literal_interpolation_with(s, &Bindings::new())
-    }
-
     /// Resolve `${.field}` interpolation patterns with loop bindings support.
     fn resolve_literal_interpolation_with(&self, s: &str, bindings: &Bindings) -> String {
         if !s.contains("${.") {

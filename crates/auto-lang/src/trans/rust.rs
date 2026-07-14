@@ -5256,7 +5256,7 @@ impl RustTrans {
                         self.fn_str_param_indices.get(&type_qualified).cloned()
                             .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
                     }
-                } else if let Expr::Bina(inner, Op::Dot, rhs) = object.as_ref() {
+                } else if let Expr::Bina(_inner, Op::Dot, rhs) = object.as_ref() {
                     // module.Type.method() via Bina — try "Type.method"
                     let type_name = if let Expr::Ident(name) = rhs.as_ref() {
                         name.to_string()
@@ -10141,7 +10141,7 @@ impl RustTrans {
             let pattern = format!(r"\[{}\]", regex::escape(var));
             if let Ok(re) = regex::Regex::new(&pattern) {
                 let orig = content.clone();
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                     format!("[{} as usize]", var)
                 }).to_string();
                 if new != orig { *content = new; }
@@ -10195,7 +10195,7 @@ impl RustTrans {
             for var in &i32_vars {
                 let pat = format!(r"{}\({}\)", regex::escape(func), regex::escape(var));
                 if let Ok(re) = regex::Regex::new(&pat) {
-                    let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                         format!("{}({} as u32)", func, var)
                     }).to_string();
                     if new != *content { *content = new; }
@@ -10208,7 +10208,7 @@ impl RustTrans {
             let pattern = format!(r"\[self\.{}\]", regex::escape(var));
             if let Ok(re) = regex::Regex::new(&pattern) {
                 let orig = content.clone();
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                     format!("[self.{} as usize]", var)
                 }).to_string();
                 if new != orig { *content = new; }
@@ -10217,7 +10217,7 @@ impl RustTrans {
             let pattern = format!(r"\.insert\(self\.{},\s*", regex::escape(var));
             if let Ok(re) = regex::Regex::new(&pattern) {
                 let orig = content.clone();
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                     format!(".insert(self.{} as usize, ", var)
                 }).to_string();
                 if new != orig { *content = new; }
@@ -10769,7 +10769,7 @@ impl RustTrans {
         while i < lines.len() {
             let line = lines[i];
             // Check for push patterns: `something.push(varname)`
-            if let Some(rest) = line.trim().strip_suffix(")") {
+            if let Some(_rest) = line.trim().strip_suffix(")") {
                 // Match `something.push(varname)` or `something.push(varname.field)`
                 if let Ok(re) = regex::Regex::new(r"^(\s*\S+\.push\()(\w+)(\))$") {
                     if let Some(caps) = re.captures(line) {
@@ -10850,7 +10850,7 @@ impl RustTrans {
 
     /// Fix String passed where &_ is expected.
     /// Uses pattern-based matching instead of variable name tracking.
-    fn fix_string_to_ref(content: &mut String) {
+    fn fix_string_to_ref(_content: &mut String) {
         // DON'T blindly add & to all .get(var) — this causes E0277 when var is &str
         // Instead, only fix specific known patterns
         // For now, this is a no-op to avoid regressions
@@ -11449,7 +11449,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
             "is_empty", "iter", "keys", "values", "clone", "new",
             "update", "delete", "find", "index",
         ];
-        let process_fn = |fn_decl: &crate::ast::Fn, tname: &str, target_struct: &mut std::collections::HashMap<AutoStr, Vec<bool>>, target_int: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
+        let process_fn = |fn_decl: &crate::ast::Fn, _tname: &str, target_struct: &mut std::collections::HashMap<AutoStr, Vec<bool>>, target_int: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
             let struct_flags: Vec<bool> = fn_decl.params.iter()
                 .map(|p| !matches!(p.ty,
                     Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
@@ -12125,7 +12125,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     for (idx, (module, ast)) in parsed_modules.iter().enumerate() {
         let mut transpiler = RustTrans::new(AutoStr::from("merged"));
         transpiler.merge_mode = true;
-        transpiler.emit_allow_pragma = (idx == 0);
+        transpiler.emit_allow_pragma = idx == 0;
         transpiler.const_names = global_const_names.clone();
 
         transpiler.module_types = module_types.clone();

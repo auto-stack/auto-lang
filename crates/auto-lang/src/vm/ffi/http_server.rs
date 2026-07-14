@@ -23,7 +23,6 @@
 //! module's route table for unified route matching logic. Axum can be
 //! added later for a2r mode.
 
-use std::collections::HashMap;
 use std::io::{Read, Write, BufRead};
 use std::net::TcpListener;
 

@@ -1302,14 +1302,6 @@ impl Automan {
                     crate::rust_ui::run_vm_ui(&root_dir, args)
                 }
             }
-            auto_lang::config::BackendType::Tauri => {
-                // Plan 328 IPC: Tauri uses IPC commands (#[tauri::command]),
-                // not HTTP server. tauri.rs handles the full flow: Vue gen +
-                // generate_api("tauri") → commands.rs + TS IPC client +
-                // npm install + Vite dev.
-                println!("Running Tauri project (backend: ipc)");
-                crate::tauri::run_tauri_project(&root_dir, args)
-            }
             auto_lang::config::BackendType::Vscode => {
                 println!("Running VSCode extension (backend: vscode)");
                 crate::vscode::run_vscode_project(&root_dir, args)

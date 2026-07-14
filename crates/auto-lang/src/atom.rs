@@ -8,7 +8,6 @@
 // Re-export core Atom types from the lightweight auto-atom crate.
 pub use auto_atom::{Atom, AtomBuilder, AtomError, AtomResult, EMPTY};
 
-use auto_val::AutoStr;
 
 /// Reader for Atom data from Auto code
 ///

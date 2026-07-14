@@ -22,8 +22,10 @@ pub struct SessionManager {
 
 struct VmSession {
     session: AutovmReplSession,
+    #[allow(dead_code)] // session metadata, reserved for diagnostics/reporting
     created_at: Instant,
     last_active: Instant,
+    #[allow(dead_code)] // session metadata, reserved for sandbox policy enforcement
     sandbox: bool,
     /// Accumulated source code for auto_snapshot and auto_patch
     source_history: Vec<String>,

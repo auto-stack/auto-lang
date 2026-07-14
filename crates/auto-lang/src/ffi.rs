@@ -947,6 +947,7 @@ pub enum RustType {
 }
 
 /// Unified value container for FFI argument marshaling (Phase 3B)
+#[allow(dead_code)] // reserved type slots; only Long/Ptr payloads are consumed today
 enum RustValue {
     Void,
     Bool(bool),

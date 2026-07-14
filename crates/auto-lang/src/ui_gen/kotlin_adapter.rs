@@ -44,6 +44,7 @@ impl KotlinAdapterCtx {
     }
 
     /// Whether `name` is a known state field.
+    #[allow(dead_code)] // reserved adapter-API slot (siblings in ark/ts adapters are live)
     fn is_state(&self, name: &str) -> bool {
         self.state_fields.contains(name)
     }
@@ -604,7 +605,7 @@ fn try_transpile_builtin_call(
     object: &Expr,
     method: &str,
     args: &Args,
-    ctx: &KotlinAdapterCtx,
+    _ctx: &KotlinAdapterCtx,
     out: &mut Vec<u8>,
 ) -> bool {
     let module = match object {

@@ -202,7 +202,7 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
 
 fn generate_vite_config() -> String {
     // AUTO_HTTP_PORT lets multiple `auto run` instances coexist; default 8080.
-    let proxy_target = format!("http://127.0.0.1:{}", crate::util::http_port());
+    let _proxy_target = format!("http://127.0.0.1:{}", crate::util::http_port());
     r#"import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'

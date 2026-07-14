@@ -2476,7 +2476,7 @@ pub fn shim_net_tcp_listener_accept(task: &mut AutoTask, _vm: &AutoVM) -> Result
     });
 
     match stream {
-        Some(mut stream) => {
+        Some(stream) => {
             // Plan 313: Enable TCP_NODELAY by default for low-latency (SSE)
             stream.set_nodelay(true).ok();
             let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -2782,9 +2782,9 @@ pub struct AsyncStreamHandle {
     pub done: std::sync::atomic::AtomicBool,
 }
 
-/// Plan 341: 全局异步流注册表。key = stream_id（从 NET_HANDLE_COUNTER 分配）。
-/// 用 Mutex<HashMap> 而非 thread_local，因为 tokio::spawn 的 future 与 VM
-/// task 可能在不同异步上下文（虽同线程，但 Mutex 更稳妥）。
+// Plan 341: 全局异步流注册表。key = stream_id（从 NET_HANDLE_COUNTER 分配）。
+// 用 Mutex<HashMap> 而非 thread_local，因为 tokio::spawn 的 future 与 VM
+// task 可能在不同异步上下文（虽同线程，但 Mutex 更稳妥）。
 lazy_static::lazy_static! {
     pub(crate) static ref ASYNC_HTTP_STREAMS: std::sync::Mutex<std::collections::HashMap<u64, Arc<AsyncStreamHandle>>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
@@ -2807,32 +2807,6 @@ lazy_static::lazy_static! {
 /// Plan 341: 分配一个新的异步流 id。
 pub fn alloc_async_id() -> u64 {
     NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst)
-}
-
-/// Plan 341: 在 GLOBAL_RT 上 spawn 一个异步 HTTP 请求（普通 GET/POST 等）。
-/// 完成后把 body 字符串存入 ASYNC_HTTP_RESULTS[request_id]。
-fn spawn_async_request(method: String, url: String, body: Option<String>, request_id: u64) {
-    let rt = crate::get_global_runtime();
-    rt.spawn(async move {
-        let client = reqwest::Client::new();
-        let mut builder = match method.as_str() {
-            "POST" => client.post(&url),
-            "PUT" => client.put(&url),
-            "DELETE" => client.delete(&url),
-            _ => client.get(&url),
-        };
-        if let Some(b) = body {
-            builder = builder.header("Content-Type", "application/json").body(b);
-        }
-        let result = match builder.send().await {
-            Ok(resp) => Ok(resp.text().await.unwrap_or_default()),
-            Err(e) => Err(format!("HTTP {}: {}", method, e)),
-        };
-        // Store the result; the polling native will pick it up.
-        if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
-            map.insert(request_id, Some(result));
-        }
-    });
 }
 
 /// Plan 341: 在独立 OS 线程（自带 tokio runtime）上 spawn 一个 SSE 流式接收
@@ -3785,7 +3759,6 @@ fn is_truthy(val: &serde_json::Value) -> bool {
         serde_json::Value::String(s) => !s.is_empty(),
         serde_json::Value::Array(a) => !a.is_empty(),
         serde_json::Value::Object(o) => !o.is_empty(),
-        _ => true,
     }
 }
 
@@ -4092,7 +4065,7 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     // Extract builder data and remove from heap
     let obj = vm.remove_heap_object(heap_id)
         .ok_or_else(|| VMError::RuntimeError(format!("Invalid RequestBuilder handle: {}", rb_handle)))?;
-    let mut guard = obj.write().unwrap();
+    let guard = obj.write().unwrap();
     let rso = guard.as_any()
         .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
         .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
@@ -4111,7 +4084,7 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let mp_files = builder_data.multipart_files.clone();
     let mp_texts = builder_data.multipart_texts.clone();
     let cookie_store = builder_data.cookie_store;
-    let retry_count = builder_data.retry_count;
+    let _retry_count = builder_data.retry_count;
     let gzip = builder_data.gzip;
     drop(builder_data);
     drop(guard);

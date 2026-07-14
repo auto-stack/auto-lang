@@ -705,7 +705,7 @@ impl Target {
         use auto_lang::api::{ApiExtractor, ApiModule};
         use auto_lang::api::targets::AxumGenerator;
         use auto_lang::api::targets::TauriGenerator; // Plan 328 IPC
-        use auto_lang::api::TargetGenerator;
+        
 
         // Collect #[api] endpoints from all .at source files
         let mut combined_module = ApiModule::new("api".to_string());
@@ -824,7 +824,7 @@ impl Target {
         // that aren't listed in the hand-written lib.rs.
         let lib_rs_path = format!("{}/lib.rs", rs_dir);
         if Path::new(&lib_rs_path).exists() {
-            let mut lib_content = std::fs::read_to_string(&lib_rs_path)
+            let lib_content = std::fs::read_to_string(&lib_rs_path)
                 .map_err(|e| format!("Failed to read lib.rs: {}", e))?;
 
             // Find all subdirectories in rust/src/ that contain mod.rs

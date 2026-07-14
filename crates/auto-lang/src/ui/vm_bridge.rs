@@ -40,6 +40,7 @@ use crate::vm::generic_registry::GenericInstanceData;
 use crate::vm::loader::Linker;
 use crate::vm::task::AutoTask;
 use crate::vm::virt_memory::VirtualFlash;
+#[allow(unused_imports)] // AuraStateDef/AuraNode used in #[cfg(test)] below
 use crate::aura::{AuraWidget, AuraStateDef, AuraNode};
 use crate::ast::Expr;
 use auto_val::{Op, Value};
