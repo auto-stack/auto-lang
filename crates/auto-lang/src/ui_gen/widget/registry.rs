@@ -1029,7 +1029,10 @@ impl WidgetRegistry {
         });
         autodown_editor.backends.insert("vue".to_string(), BackendMapping {
             component: "AutoDownEditor".to_string(),
-            import: Some("@/components/autodown/AutoDownEditor".to_string()),
+            // Named export from the cross-project @autodown/editor package
+            // (Tiptap editor). Apps consume it via a hand-written wrapper.
+            // See Plan 345/354 architecture note.
+            import: Some("@autodown/editor".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
