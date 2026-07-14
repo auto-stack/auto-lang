@@ -1,7 +1,9 @@
-// notes_store.at — SharedStore for notes (Plan 354 Tier 1-3).
+// notes_store.at — SharedStore for notes (Plan 354 Tier 1-4).
 // Client-side cache + state; backend API is the data source.
+// Phase D: added folder/tag filter state + folder/tag actions.
 
 use back.api: list_notes, create_note, update_note, delete_note, toggle_pin, update_tags
+use back.api: list_folders, move_note, list_tags
 
 store NotesStore {
     model {
@@ -11,16 +13,29 @@ store NotesStore {
         var search str = ""
         var loading bool = false
         var dark_mode bool = false
+
+        // Phase D: folder/tag navigation state.
+        // active_folder: "all" = no filter, "pinned"/"recent" = shortcut,
+        // or a concrete folder name to filter by note.folder.
+        var active_folder str = "all"
+        // active_tag: "" = no tag filter, otherwise only notes containing it show.
+        var active_tag str = ""
+        // Folder list + unique tag list, loaded alongside notes on Init.
+        var folders []Folder = []
+        var tags []str = []
     }
 
     msg Msg { Init, Refresh, SelectNote(int), NewNote, DeleteNote(int),
               TogglePin(int), SetSort(str), Search(str),
-              UpdateTags(int), ToggleDarkMode }
+              UpdateTags(int), ToggleDarkMode,
+              SelectFolder(str), SelectTag(str), MoveNote(int, str), RefreshFolders }
 
     on {
         .Init -> {
             .loading = true
             .notes = list_notes()
+            .folders = list_folders()
+            .tags = list_tags()
             .loading = false
         }
 
@@ -59,10 +74,33 @@ store NotesStore {
             .search = q
         }
 
-        .UpdateTags(id) -> { }
+        .UpdateTags(id) -> {
+            .tags = list_tags()
+        }
 
         .ToggleDarkMode -> {
             .dark_mode = !.dark_mode
+        }
+
+        // Phase D: set folder filter and clear any active tag so the two
+        // filters don't compete for the same note list.
+        .SelectFolder(folder) -> {
+            .active_folder = folder
+            .active_tag = ""
+        }
+
+        .SelectTag(tag) -> {
+            .active_tag = tag
+        }
+
+        .MoveNote(id, folder) -> {
+            move_note(id, folder)
+            .notes = list_notes()
+        }
+
+        .RefreshFolders -> {
+            .folders = list_folders()
+            .tags = list_tags()
         }
     }
 }
