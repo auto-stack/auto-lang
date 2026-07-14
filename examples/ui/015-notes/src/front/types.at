@@ -5,4 +5,11 @@ type Note {
     time str
     pinned bool
     tags []str
+    folder str
+}
+
+type Folder {
+    id int
+    name str
+    icon str
 }
