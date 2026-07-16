@@ -16,12 +16,15 @@ type Folder {
 // ═══════════════════════════════════════════════════════════
 
 var notes List<Note> = List<Note>.new([
-    Note { id: 0, title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now", pinned: true, tags: ["intro"], folder: "default" },
-    Note { id: 1, title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago", pinned: false, tags: ["home"], folder: "personal" },
-    Note { id: 2, title: "Meeting Notes", body: "Q3 roadmap discussion with the team", time: "Yesterday", pinned: false, tags: ["work"], folder: "work" },
+    Note { id: 0, title: "Welcome", body: "This is your notes app. Click on any note to view it.", time: "Just now", pinned: true, tags: ["intro"], folder: "" },
+    Note { id: 1, title: "Quick Ideas", body: "Build a markdown editor with live preview.", time: "10 min ago", pinned: false, tags: ["ideas"], folder: "" },
+    Note { id: 2, title: "Shopping List", body: "Milk, Eggs, Bread, Cheese", time: "2 hours ago", pinned: false, tags: ["home"], folder: "personal" },
+    Note { id: 3, title: "Recipe: Pasta", body: "200g flour, 2 eggs, pinch of salt.", time: "Last week", pinned: false, tags: ["home"], folder: "personal" },
+    Note { id: 4, title: "Meeting Notes", body: "Q3 roadmap discussion.", time: "Yesterday", pinned: false, tags: ["work"], folder: "work" },
+    Note { id: 5, title: "Sprint Planning", body: "Sprint 12 planning notes.", time: "3 days ago", pinned: false, tags: ["work"], folder: "work" },
 ])
 
-var nextid int = 3
+var nextid int = 6
 
 // ═══════════════════════════════════════════════════════════
 // Folder storage

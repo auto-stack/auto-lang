@@ -85,19 +85,19 @@ widget App {
                     col {
                         style: "flex-1 overflow-y-auto px-1 gap-0.5"
 
-                        // ── All notes: grouped by folder ──
+                        // ── All notes: root-level (no folder or "default") + folder groups ──
                         if .store.active_folder == "all" {
-                            text "Default" { style: "px-3 py-1 text-xs font-bold text-gray-400 uppercase" }
+                            // Root-level notes (folder is empty or "default")
                             for i, note in .store.notes {
-                                if note.folder == "default" {
+                                if note.folder == "" {
                                     if .search == "" {
                                         button {
                                             text note.title
                                             onclick: .SelectNote(i)
                                             style: if i == .store.active_id {
-                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
                                             } else {
-                                                "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                             }
                                         }
                                     }
@@ -107,9 +107,9 @@ widget App {
                                                 text note.title
                                                 onclick: .SelectNote(i)
                                                 style: if i == .store.active_id {
-                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
                                                 } else {
-                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                                 }
                                             }
                                         }
@@ -117,6 +117,7 @@ widget App {
                                 }
                             }
 
+                            // Work folder
                             text "Work" { style: "px-3 py-1 text-xs font-bold text-gray-400 uppercase" }
                             for i, note in .store.notes {
                                 if note.folder == "work" {
@@ -147,6 +148,7 @@ widget App {
                                 }
                             }
 
+                            // Personal folder
                             text "Personal" { style: "px-3 py-1 text-xs font-bold text-gray-400 uppercase" }
                             for i, note in .store.notes {
                                 if note.folder == "personal" {
@@ -251,6 +253,14 @@ widget App {
                             button "intro" {
                                 onclick: .SelectTag("intro")
                                 style: if .store.active_tag == "intro" {
+                                    "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
+                                } else {
+                                    "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                }
+                            }
+                            button "ideas" {
+                                onclick: .SelectTag("ideas")
+                                style: if .store.active_tag == "ideas" {
                                     "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
                                 } else {
                                     "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
