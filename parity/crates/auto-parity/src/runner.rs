@@ -80,6 +80,22 @@ pub fn run_vm(config: &RunConfig) -> Result<Vec<TapResult>, String> {
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
+        // DBG355: dump raw child output to diagnose missing VM results.
+        eprintln!("DBG355 VM[{}] status={:?} stdout_len={} stdout_head={:?} stderr_head={:?}",
+            path.file_name().unwrap_or_default().to_string_lossy(),
+            output.status,
+            stdout.len(),
+            stdout.chars().take(120).collect::<String>(),
+            stderr.chars().take(200).collect::<String>());
+        {
+            use std::io::Write;
+            let _ = std::fs::File::create(format!("DBG355_{}.txt",
+                path.file_stem().unwrap_or_default().to_string_lossy()))
+                .and_then(|mut f| f.write_all(stdout.as_bytes()));
+            let parsed = config.parse(&stdout);
+            eprintln!("DBG355 VM[{}] parsed_n={}", path.file_name().unwrap_or_default().to_string_lossy(), parsed.len());
+        }
+
         // If auto crashes with no TAP output, capture as a single failure
         // keyed by the file stem so the comparison still surfaces it.
         if !output.status.success() && stdout.is_empty() {

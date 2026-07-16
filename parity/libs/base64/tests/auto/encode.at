@@ -1,0 +1,36 @@
+/// base64 encode tests — TAP output format.
+// The parity runner sets the working directory to the library root
+// (parity/libs/base64), so the library lives at ./auto/base64.at and is
+// imported as `auto.base64`.
+use auto.base64: encode
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+fn main() {
+    check(1, "test_encode_empty", encode(""), "")
+    check(2, "test_encode_f", encode("f"), "Zg==")
+    check(3, "test_encode_fo", encode("fo"), "Zm8=")
+    check(4, "test_encode_foo", encode("foo"), "Zm9v")
+    check(5, "test_encode_foob", encode("foob"), "Zm9vYg==")
+    check(6, "test_encode_fooba", encode("fooba"), "Zm9vYmE=")
+    check(7, "test_encode_foobar", encode("foobar"), "Zm9vYmFy")
+    check(8, "test_encode_hello_world", encode("hello world"), "aGVsbG8gd29ybGQ=")
+    check(9, "test_encode_a", encode("a"), "YQ==")
+    check(10, "test_encode_ab", encode("ab"), "YWI=")
+    check(11, "test_encode_abc", encode("abc"), "YWJj")
+    check(12, "test_encode_number", encode("123"), "MTIz")
+}

@@ -1,0 +1,60 @@
+/// base64 roundtrip / edge-case tests — TAP output format.
+use auto.base64: encode, decode
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+/// Extract the Ok payload as a string, or "<err>" if the Result is an Err.
+fn ok_value(r) str {
+    var out str = "<err>"
+    is r {
+        Ok(v) -> { out = v }
+        Err(e) -> { out = "<err>" }
+    }
+    return out
+}
+
+/// Roundtrip: decode(encode(s)) == s. Returns true if it matches.
+fn roundtrip(s str) bool {
+    let enc str = encode(s)
+    let dec str = ok_value(decode(enc))
+    return dec == s
+}
+
+fn check_roundtrip(n int, name str, s str) {
+    if roundtrip(s) {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "decode(encode(\"" + s + "\")) != \"" + s + "\"")
+    }
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+fn main() {
+    // roundtrip various inputs
+    check_roundtrip(1, "test_roundtrip_empty", "")
+    check_roundtrip(2, "test_roundtrip_a", "a")
+    check_roundtrip(3, "test_roundtrip_ab", "ab")
+    check_roundtrip(4, "test_roundtrip_abc", "abc")
+    check_roundtrip(5, "test_roundtrip_foobar", "foobar")
+    check_roundtrip(6, "test_roundtrip_hello_world", "hello world")
+    check_roundtrip(7, "test_roundtrip_123456", "123456")
+    check_roundtrip(8, "test_roundtrip_abcdefg", "abcdefg")
+
+    // encode consistency: known vectors
+    check_str(9, "test_known_zero_pad", encode("M"), "TQ==")
+    check_str(10, "test_known_two_pad", encode("Ma"), "TWE=")
+    check_str(11, "test_known_no_pad", encode("Man"), "TWFu")
+}

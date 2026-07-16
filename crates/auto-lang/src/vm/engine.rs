@@ -1121,10 +1121,26 @@ impl AutoVM {
 
     /// Plan 321: Check if a function body contains YIELD_VAL (0x8D) opcode.
     fn is_generator_fn(&self, addr: usize) -> bool {
+        // Plan 355: A generator function is one whose body contains a YIELD_VAL
+        // (0x8D) opcode before its terminating RET (0x71). The previous
+        // implementation scanned a fixed 4096-byte window, which produced false
+        // positives whenever another function's body (or operand bytes) within
+        // that window happened to contain 0x8D — causing ordinary multi-function
+        // modules to be misclassified as generators and return an iterator id
+        // instead of executing. Bounding the scan at the first RET keeps it
+        // within a single function's body and eliminates the cross-function
+        // false positives. (A generator always yields before returning, so a
+        // YIELD_VAL cannot legitimately appear after the first RET.)
+        const YIELD_VAL: u8 = 0x8D;
+        const RET: u8 = 0x71;
         let max_scan = std::cmp::min(addr + 4096, self.flash.memory.len());
         for i in addr..max_scan {
-            if self.flash.memory[i] == 0x8D {
+            let b = self.flash.memory[i];
+            if b == YIELD_VAL {
                 return true;
+            }
+            if b == RET {
+                return false;
             }
         }
         false

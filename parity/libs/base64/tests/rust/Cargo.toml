@@ -1,0 +1,11 @@
+[package]
+name = "base64-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+base64 = "=0.22.0"
+
+# Standalone crate: keep out of the parity workspace so `cargo test` works
+# from this directory without modifying the parent workspace manifest.
+[workspace]

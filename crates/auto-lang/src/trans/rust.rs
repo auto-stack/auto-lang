@@ -908,6 +908,16 @@ impl RustTrans {
             _ => {}
         }
 
+        // Plan 355: The Auto VM exposes `StringBuilder` as a built-in type.
+        // It has no Rust-native equivalent, so map it to the a2r-std runtime
+        // implementation (`a2r_std::StringBuilder`). Emit it fully-qualified so
+        // it resolves regardless of whether the glob `use a2r_std::*` import is
+        // present (e.g. in merge mode).
+        if name == "StringBuilder" {
+            self.a2r_std_used.set(true);
+            return "a2r_std::StringBuilder".to_string();
+        }
+
         // Merge mode: all types are in one file, skip crate:: prefix
         if self.merge_mode {
             if let Some(dot_pos) = name.rfind('.') {
@@ -1022,6 +1032,25 @@ impl RustTrans {
             Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit => "&str".to_string(),
             _ => self.rust_type_name(ty),
         }
+    }
+
+    /// Plan 355: Resolve the effective Rust type name for a function parameter,
+    /// applying inferred types for untyped params. Untyped params default to
+    /// `int` at parse time; if such a param is matched against `Ok`/`Err`
+    /// patterns in the body (i.e. it is in `result_idents`), emit it as
+    /// `Result<String, String>` instead.
+    fn effective_param_type_name(
+        &self,
+        param: &crate::ast::Param,
+        result_idents: &std::collections::HashSet<String>,
+    ) -> String {
+        if matches!(param.ty, Type::Int)
+            && result_idents.contains(param.name.as_str())
+        {
+            // Inferred Result type for an untyped param matched against Ok/Err.
+            return "Result<String, String>".to_string();
+        }
+        self.rust_param_type_name(&param.ty)
     }
 
     /// Emit a2r standard library import
@@ -1200,6 +1229,13 @@ impl RustTrans {
                     write!(out, "{}.lock().unwrap()", static_name)
                 } else if let Some(rust_name) = Self::auto_type_to_rust(name.as_str()) {
                     write!(out, "{}", rust_name)
+                } else if name.as_str() == "StringBuilder" {
+                    // Plan 355: Auto VM `StringBuilder` type -> a2r-std runtime
+                    // type. Emitted fully-qualified so it resolves with or
+                    // without the glob `use a2r_std::*` import (covers the
+                    // `StringBuilder.new(...)` constructor call site).
+                    self.a2r_std_used.set(true);
+                    write!(out, "a2r_std::StringBuilder")
                 } else {
                     write!(out, "{}", Self::rust_ident(name.as_str()))
                 }
@@ -3774,14 +3810,83 @@ impl RustTrans {
                             }
                             // Fall through — don't intercept, let later code handle it
                         }
-                        "char_at" => {
-                            // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0')
+                        // Plan 355: Auto VM exposes integer bitwise operations as
+                        // methods on int (`.and`, `.or`, `.xor`, `.shl`, `.shr`,
+                        // `.sar`, `.not`). Rust has no inherent methods with these
+                        // names on integers, so map them to the equivalent Rust
+                        // operator expressions. The VM uses wrapping/unsigned
+        // semantics (see vm/native.rs shims), which we mirror here.
+                        "and" | "or" | "xor" => {
+                            // val.and(mask) -> (val & mask), etc.
+                            let op = match method_name.as_str() {
+                                "and" => "&",
+                                "or" => "|",
+                                _ => "^", // xor
+                            };
+                            write!(out, "(")?;
                             self.expr(lhs, out)?;
-                            write!(out, ".chars().nth(")?;
+                            write!(out, " {} (", op)?;
                             if let Some(Arg::Pos(arg)) = call.args.args.first() {
                                 self.expr(arg, out)?;
                             }
-                            write!(out, " as usize).unwrap_or('\\0')")?;
+                            write!(out, ") as i32))")?;
+                            return Ok(());
+                        }
+                        "shl" => {
+                            // val.shl(n) -> val.wrapping_shl(n as u32) (wrapping)
+                            self.expr(lhs, out)?;
+                            write!(out, ".wrapping_shl((")?;
+                            if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                                self.expr(arg, out)?;
+                            }
+                            write!(out, ") as u32) as i32")?;
+                            return Ok(());
+                        }
+                        "shr" => {
+                            // val.shr(n) -> LOGICAL (unsigned) right shift:
+                            // ((val as u32) >> (n as u32)) as i32
+                            write!(out, "(((")?;
+                            self.expr(lhs, out)?;
+                            write!(out, ") as u32) >> (")?;
+                            if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                                self.expr(arg, out)?;
+                            }
+                            write!(out, ") as u32)) as i32")?;
+                            return Ok(());
+                        }
+                        "sar" => {
+                            // val.sar(n) -> ARITHMETIC right shift: (val >> n)
+                            write!(out, "(")?;
+                            self.expr(lhs, out)?;
+                            write!(out, ".wrapping_shr((")?;
+                            if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                                self.expr(arg, out)?;
+                            }
+                            write!(out, ") as u32)) as i32")?;
+                            return Ok(());
+                        }
+                        "not" => {
+                            // val.not() -> (!val), no arguments.
+                            write!(out, "(!")?;
+                            self.expr(lhs, out)?;
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        "char_at" => {
+                            // s.char_at(i) -> s.chars().nth((i) as usize).unwrap_or('\0') as i32
+                            // Plan 355: Auto's char_at returns the code point as
+                            // an i32 (not a char), so the Rust equivalent must
+                            // cast the char to i32. The index expression is also
+                            // wrapped in parens before `as usize` because `as`
+                            // binds tighter than `+`, so `i + 1 as usize` would
+                            // parse as `i + (1 as usize)` (type error) instead of
+                            // `(i + 1) as usize`.
+                            self.expr(lhs, out)?;
+                            write!(out, ".chars().nth((")?;
+                            if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                                self.expr(arg, out)?;
+                            }
+                            write!(out, ") as usize).unwrap_or('\\0') as i32")?;
                             return Ok(());
                         }
                         "sub" => {
@@ -4009,16 +4114,118 @@ impl RustTrans {
                         }
                     }
                 }
-                // Plan 204 Phase 5: Complex method translations requiring
-                // non-trivial Rust output (not just a name remap).
-                "char_at" => {
-                    // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0')
+                // Plan 355: Auto VM exposes integer bitwise operations as
+                // methods on int (`.and`, `.or`, `.xor`, `.shl`, `.shr`,
+                // `.sar`, `.not`). Rust has no inherent methods with these
+                // names on integers, so map them to the equivalent Rust
+                // operator expressions. The VM uses wrapping/unsigned
+                // semantics (see vm/native.rs shims), which we mirror here.
+                // NOTE: this `Expr::Dot` dispatch is the path the parser
+                // actually emits for method calls (the `Expr::Bina` match
+                // above is dead code kept for completeness).
+                "and" | "or" | "xor" => {
+                    // val.and(mask) -> ((val & mask) as i32), etc.
+                    // Cast to i32 mirrors Auto's int type after the bitwise op.
+                    let op = match method_name.as_str() {
+                        "and" => "&",
+                        "or" => "|",
+                        _ => "^", // xor
+                    };
+                    write!(out, " ((")?;
                     self.expr(object, out)?;
-                    write!(out, ".chars().nth(")?;
+                    write!(out, " {} ", op)?;
                     if let Some(Arg::Pos(arg)) = call.args.args.first() {
                         self.expr(arg, out)?;
                     }
-                    write!(out, " as usize).unwrap_or('\\0')")?;
+                    write!(out, ") as i32)")?;
+                    return Ok(());
+                }
+                "shl" => {
+                    // val.shl(n) -> (val.wrapping_shl(n as u32) as i32) (wrapping)
+                    write!(out, " (")?;
+                    self.expr(object, out)?;
+                    write!(out, ".wrapping_shl(")?;
+                    if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                        self.expr(arg, out)?;
+                    }
+                    write!(out, " as u32) as i32)")?;
+                    return Ok(());
+                }
+                "shr" => {
+                    // val.shr(n) -> LOGICAL (unsigned) right shift:
+                    // ((val as u32).wrapping_shr(n as u32) as i32)
+                    // Casting to u32 first makes wrapping_shr unsigned (logical),
+                    // matching Auto's `shr` semantics.
+                    write!(out, " ((")?;
+                    self.expr(object, out)?;
+                    write!(out, " as u32).wrapping_shr(")?;
+                    if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                        self.expr(arg, out)?;
+                    }
+                    write!(out, " as u32) as i32)")?;
+                    return Ok(());
+                }
+                "sar" => {
+                    // val.sar(n) -> ARITHMETIC (signed) right shift:
+                    // (val.wrapping_shr(n as u32) as i32)
+                    write!(out, " (")?;
+                    self.expr(object, out)?;
+                    write!(out, ".wrapping_shr(")?;
+                    if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                        self.expr(arg, out)?;
+                    }
+                    write!(out, " as u32) as i32)")?;
+                    return Ok(());
+                }
+                "not" => {
+                    // val.not() -> (!val), no arguments.
+                    write!(out, "(!")?;
+                    self.expr(object, out)?;
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+                // Plan 355: StringBuilder method dispatch. The a2r-std
+                // `StringBuilder` runtime type exposes methods with the same
+                // names as the Auto VM API (`append`, `append_char`, `build`),
+                // so we only need to bypass the generic name-remap table (which
+                // would otherwise rewrite `.append(s)` to `.push_str(s)`) for
+                // receivers whose type is StringBuilder. `append_char(code)`
+                // takes an i32 code point in Auto.
+                "append" | "append_char" | "build" | "clear" => {
+                    let is_sb = if let Expr::Ident(name) = object.as_ref() {
+                        self.local_var_types.get(name)
+                            .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "StringBuilder"))
+                            .unwrap_or(false)
+                    } else { false };
+                    if is_sb {
+                        self.a2r_std_used.set(true);
+                        self.expr(object, out)?;
+                        write!(out, ".{}(", method_name)?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            self.arg(arg, out)?;
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // Not a StringBuilder — fall through to the generic remap.
+                }
+                // Plan 204 Phase 5: Complex method translations requiring
+                // non-trivial Rust output (not just a name remap).
+                "char_at" => {
+                    // s.char_at(i) -> s.chars().nth((i) as usize).unwrap_or('\0') as i32
+                    // Plan 355: Auto's char_at returns the code point as an i32
+                    // (not a char), so the Rust equivalent must cast the char to
+                    // i32. The index expression is wrapped in parens before
+                    // `as usize` because `as` binds tighter than `+`, so
+                    // `i + 1 as usize` would parse as `i + (1 as usize)` (type
+                    // error) instead of `(i + 1) as usize`.
+                    self.expr(object, out)?;
+                    write!(out, ".chars().nth((")?;
+                    if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                        self.expr(arg, out)?;
+                    }
+                    write!(out, ") as usize).unwrap_or('\\0') as i32")?;
                     return Ok(());
                 }
                 "sub" => {
@@ -5729,6 +5936,30 @@ impl RustTrans {
             let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg)
                 && !self.is_str_slice_var(arg);
 
+            // Plan 355: Fallback auto-borrow for cross-module / imported
+            // function calls. When the callee's parameter types are not in the
+            // local cache (`str_flags` is None — typical for functions imported
+            // via `use crate::<mod>:<fn>`), and the argument is a `String`-
+            // typed local variable, assume the callee takes `&str` (the Auto
+            // `str` convention) and borrow the argument. This mirrors what the
+            // same-module str-param path does above. String literals and
+            // already-`&str` params are left untouched.
+            let needs_borrow_unknown_callee = str_flags.is_none()
+                && !Self::is_string_literal_arg(arg)
+                && !self.is_str_slice_var(arg)
+                && if let Arg::Pos(Expr::Ident(name)) = arg {
+                    // Only borrow owned String locals; never borrow params
+                    // (those are &str already) or non-string variables. A
+                    // local declared `str` is recorded as StrSlice but renders
+                    // as an owned `String` in Rust, so it still needs borrowing.
+                    !self.current_fn_str_params.contains(name)
+                        && self.local_var_types.get(name)
+                            .map(|ty| matches!(ty,
+                                Type::StrOwned | Type::StrFixed(_) | Type::CStrLit
+                                | Type::StrSlice))
+                            .unwrap_or(false)
+                } else { false };
+
             // Auto-cast enum→i32 when passing an enum variable to an Int param
             let is_int_param = int_flags.as_ref()
                 .and_then(|f| f.get(i))
@@ -5794,7 +6025,7 @@ impl RustTrans {
             }
 
             // After expression: add .as_str() for String→&str conversion
-            if needs_borrow {
+            if needs_borrow || needs_borrow_unknown_callee {
                 write!(out, ".as_str()")?;
             }
 
@@ -6820,6 +7051,11 @@ impl RustTrans {
         // Parameters
         write!(sink.body, "(")?;
 
+        // Plan 355: Collect identifiers that are matched against Ok/Err
+        // patterns inside this function body. Untyped params (which default to
+        // `int` at parse time) that appear in this set are really `Result`
+        // values, so emit them as `Result<String, String>`.
+        let result_idents = Self::result_pattern_idents(&fn_decl.body.stmts);
         // Add &self as first parameter for methods (except constructors)
         let skip_first_self = is_method && !fn_decl.is_static && fn_decl.name.as_str() != "new"
             && fn_decl.params.first().map_or(false, |p| p.name.as_str() == "self");
@@ -6844,7 +7080,7 @@ impl RustTrans {
                     sink.body,
                     "{}: {}",
                     param.name,
-                    self.rust_param_type_name(&param.ty)
+                    self.effective_param_type_name(param, &result_idents)
                 )?;
                 if i < params_to_emit.len() - 1 {
                     write!(sink.body, ", ")?;
@@ -6866,7 +7102,7 @@ impl RustTrans {
                         "{}{}: {}",
                         mut_prefix,
                         param.name,
-                        self.rust_param_type_name(&param.ty)
+                        self.effective_param_type_name(param, &result_idents)
                     )?;
                 }
                 if i < fn_decl.params.len() - 1 {
@@ -6922,9 +7158,14 @@ impl RustTrans {
             .collect();
         self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
 
-        // Cache which params are Int type (need enum→i32 cast at call sites)
+        // Cache which params are Int type (need enum→i32 cast at call sites).
+        // Plan 355: exclude params whose effective type was inferred as Result
+        // from Ok/Err pattern matching (they are not really Int).
         let int_param_flags: Vec<bool> = fn_decl.params.iter()
-            .map(|p| matches!(p.ty, Type::Int))
+            .map(|p| {
+                matches!(p.ty, Type::Int)
+                    && !result_idents.contains(p.name.as_str())
+            })
             .collect();
         self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
 
@@ -6932,6 +7173,13 @@ impl RustTrans {
         // auto-wrap return type as Result<(), Box<dyn std::error::Error>>
         let fn_body_has_try = matches!(fn_decl.ret, Type::Void)
             && Self::has_error_propagate(&fn_decl.body.stmts);
+        // Plan 355: If a void-declared function body returns explicit
+        // `Ok(...)` / `Err(...)` values, infer a `Result<String, String>`
+        // return type. This covers library functions written without an
+        // explicit return-type annotation (e.g. `fn decode(...) { ... return Ok(s) }`).
+        let fn_body_returns_result = matches!(fn_decl.ret, Type::Void)
+            && !fn_body_has_try
+            && Self::body_returns_result(&fn_decl.body.stmts);
 
         // Plan 232: Track str-type parameter names for .to_string() on return
         // (populated above at line 5274-5278)
@@ -6939,6 +7187,10 @@ impl RustTrans {
         // so that Ok("hello") -> Ok("hello".to_string()) works correctly
         let effective_ret_type = if fn_body_has_try {
             Type::Result(Box::new(Type::Void))
+        } else if fn_body_returns_result {
+            // Plan 355: inferred Result<String, String> for un-annotated
+            // Ok/Err-returning functions.
+            Type::Result(Box::new(Type::StrOwned))
         } else {
             fn_decl.ret.clone()
         };
@@ -6946,6 +7198,8 @@ impl RustTrans {
         // Plan 204 Phase 1B: Use rust_return_type_name for return positions (str -> String)
         if fn_body_has_try {
             write!(sink.body, " -> Result<(), Box<dyn std::error::Error>>")?;
+        } else if fn_body_returns_result {
+            write!(sink.body, " -> Result<String, String>")?;
         } else if is_generator_fn {
             // Plan 321: Generator functions return impl Iterator/Stream
             let inner = generator_inner_type.as_deref().unwrap_or("String");
@@ -9329,6 +9583,111 @@ impl RustTrans {
             }
         }
         false
+    }
+
+    /// Plan 355: Detect whether a function body returns an explicit
+    /// `Ok(...)` / `Err(...)` value. The Auto source for some library
+    /// functions (e.g. `fn decode(input str) { ... return Ok(...) }`) declares
+    /// no return type but actually produces a `Result`. The transpiler must
+    /// infer a `Result` return type in that case, otherwise Rust rejects the
+    /// `return Ok(...)` against the implicit `()` return type. Recurses into
+    /// nested blocks/if/for like `has_error_propagate`.
+    fn body_returns_result(stmts: &[Stmt]) -> bool {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Return(expr) => {
+                    if matches!(&**expr, Expr::Ok(_) | Expr::Err(_)) { return true; }
+                }
+                Stmt::Block(body) => {
+                    if Self::body_returns_result(&body.stmts) { return true; }
+                }
+                Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        if Self::body_returns_result(&branch.body.stmts) { return true; }
+                    }
+                    if let Some(else_body) = &if_stmt.else_ {
+                        if Self::body_returns_result(&else_body.stmts) { return true; }
+                    }
+                }
+                Stmt::For(for_stmt) => {
+                    if Self::body_returns_result(&for_stmt.body.stmts) { return true; }
+                }
+                Stmt::Is(is_stmt) => {
+                    for branch in &is_stmt.branches {
+                        let body = match branch {
+                            crate::ast::IsBranch::EqBranch(_, body) => body,
+                            crate::ast::IsBranch::IfBranch(_, body) => body,
+                            crate::ast::IsBranch::ElseBranch(body) => body,
+                        };
+                        if Self::body_returns_result(&body.stmts) { return true; }
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// Plan 355: Collect the names of identifiers that are used as the
+    /// scrutinee of an `is`/`match` expression whose branches pattern-match on
+    /// `Ok(...)` or `Err(...)`. Such identifiers must be `Result` values. This
+    /// lets the transpiler infer a `Result` type for untyped function
+    /// parameters (which otherwise default to `i32`) that are matched this way,
+    /// e.g. `fn ok_value(r) { is r { Ok(v) -> ... } }`.
+    fn result_pattern_idents(stmts: &[Stmt]) -> std::collections::HashSet<String> {
+        let mut out = std::collections::HashSet::new();
+        Self::collect_result_pattern_idents(stmts, &mut out);
+        out
+    }
+
+    fn collect_result_pattern_idents(
+        stmts: &[Stmt],
+        out: &mut std::collections::HashSet<String>,
+    ) {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Is(is_stmt) => {
+                    let has_ok_err = is_stmt.branches.iter().any(|branch| {
+                        if let crate::ast::IsBranch::EqBranch(patterns, _) = branch {
+                            patterns.iter().any(|p| {
+                                matches!(p, Expr::ResultPattern(_))
+                            })
+                        } else {
+                            false
+                        }
+                    });
+                    if has_ok_err {
+                        if let Expr::Ident(name) = &is_stmt.target {
+                            out.insert(name.to_string());
+                        }
+                    }
+                    // Recurse into branch bodies.
+                    for branch in &is_stmt.branches {
+                        let body = match branch {
+                            crate::ast::IsBranch::EqBranch(_, body) => body,
+                            crate::ast::IsBranch::IfBranch(_, body) => body,
+                            crate::ast::IsBranch::ElseBranch(body) => body,
+                        };
+                        Self::collect_result_pattern_idents(&body.stmts, out);
+                    }
+                }
+                Stmt::Block(body) => {
+                    Self::collect_result_pattern_idents(&body.stmts, out);
+                }
+                Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        Self::collect_result_pattern_idents(&branch.body.stmts, out);
+                    }
+                    if let Some(else_body) = &if_stmt.else_ {
+                        Self::collect_result_pattern_idents(&else_body.stmts, out);
+                    }
+                }
+                Stmt::For(for_stmt) => {
+                    Self::collect_result_pattern_idents(&for_stmt.body.stmts, out);
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Plan 240: Check if an expression contains ErrorPropagate (`.?` operator)
