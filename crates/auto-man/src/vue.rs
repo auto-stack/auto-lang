@@ -153,7 +153,7 @@ fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
 
 // Template generators
 
-fn generate_package_json(name: &str, has_routes: bool, extra_deps: &[String]) -> String {
+fn generate_package_json(name: &str, has_routes: bool, extra_deps: &[(String, String)]) -> String {
     let router_dep = if has_routes {
         r#"    "vue-router": "^4.2.0",
 "#
@@ -162,27 +162,10 @@ fn generate_package_json(name: &str, has_routes: bool, extra_deps: &[String]) ->
     };
 
     // Build extra deps lines from pac.at npm_deps.
-    // Each entry may be "package" or "package@version".
-    // Scoped packages (@scope/name) have @ in the name, so we split on the
-    // LAST @ that comes after the first character.
-    let extra_lines: String = extra_deps.iter().map(|dep| {
-        // Find version separator: last @ that's not at position 0
-        let (pkg, ver) = if dep.starts_with('@') {
-            // Scoped: @scope/name@version — split on second @
-            if let Some(pos) = dep[1..].find('@') {
-                (&dep[..pos + 1], Some(&dep[pos + 2..]))
-            } else {
-                (dep.as_str(), None)
-            }
-        } else if let Some(pos) = dep.find('@') {
-            (&dep[..pos], Some(&dep[pos + 1..]))
-        } else {
-            (dep.as_str(), None)
-        };
-        match ver {
-            Some(v) => format!("    \"{}\": \"{}\",\n", pkg, v),
-            None => format!("    \"{}\": \"latest\",\n", pkg),
-        }
+    // Each entry is (package_name, version_spec) where version_spec may be
+    // "^1.0.0", "latest", "link:/path", "file:../path", etc.
+    let extra_lines: String = extra_deps.iter().map(|(pkg, ver)| {
+        format!("    \"{}\": \"{}\",\n", pkg, ver)
     }).collect();
 
     format!(r#"{{
@@ -649,7 +632,7 @@ fn write_project_files(
     vue_code: &str,
     _components: &[String],
     has_routes: bool,
-    extra_deps: &[String],
+    extra_deps: &[(String, String)],
 ) -> Result<(), String> {
     // package.json
     let package_json = generate_package_json(name, has_routes, extra_deps);
@@ -793,18 +776,30 @@ fn parse_pac_name(content: &str) -> Option<String> {
 
 /// Parse npm_deps from pac.at content.
 ///
-/// Supports two syntaxes:
-/// - Array (multi-line): `npm_deps: ["@autodown/editor", "marked"]`
-/// - Array (one-per-line, Auto style):
-///   ```text
-///   npm_deps:
-///     "@autodown/editor"
-///     "marked"
-///   ```
-/// - Single string: `npm_deps: "@autodown/editor"`
+/// Returns a list of (package_name, version_spec) pairs where version_spec
+/// is the string written into package.json (e.g. "^1.0.0", "latest",
+/// "link:D:/path", "file:../path").
 ///
-/// Each entry may include a version: `"marked@^12.0.0"`.
-fn parse_npm_deps(content: &str) -> Vec<String> {
+/// Supports three syntaxes:
+///
+/// 1. **Array** (inline): `npm_deps: ["@autodown/editor", "marked@^12.0.0"]`
+/// 2. **Object** (link/file paths):
+///    ```text
+///    npm_deps: {
+///      "@autodown/editor": {
+///        link: "D:/autostack/auto-down/autodown/packages/editor"
+///      }
+///    }
+///    ```
+///    Also supports shorthand:
+///    ```text
+///    npm_deps: {
+///      "marked": "^12.0.0",
+///      "@autodown/editor": "link:D:/path/to/editor"
+///    }
+///    ```
+/// 3. **Single string**: `npm_deps: "@autodown/editor"`
+fn parse_npm_deps(content: &str) -> Vec<(String, String)> {
     let mut deps = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
@@ -812,33 +807,73 @@ fn parse_npm_deps(content: &str) -> Vec<String> {
         let line = lines[i].trim();
         if line.starts_with("npm_deps:") {
             let rest = line["npm_deps:".len()..].trim();
-            if rest.starts_with('[') {
-                // Inline array: ["a", "b"]
+            if rest.starts_with('{') {
+                // Object syntax — parse key/value pairs across multiple lines
+                let mut j = i + 1;
+                while j < lines.len() {
+                    let next = lines[j].trim();
+                    // End of object
+                    if next.starts_with('}') {
+                        break;
+                    }
+                    // Skip blank lines
+                    if next.is_empty() {
+                        j += 1;
+                        continue;
+                    }
+                    // Try to parse a key (quoted package name)
+                    if let Some(key_end) = find_quoted_string_end(next) {
+                        let pkg = next[..key_end].trim_matches('"').trim_matches('\'');
+                        let after_key = next[key_end..].trim();
+                        if after_key.starts_with(':') {
+                            let value_part = after_key[1..].trim();
+                            if value_part.starts_with('{') {
+                                // Nested object: { link: "path" } or { file: "path" }
+                                // Parse the inner key:value on this line or next lines
+                                let spec = parse_dep_object_spec(&lines, &mut j, value_part);
+                                if !pkg.is_empty() && !spec.is_empty() {
+                                    deps.push((pkg.to_string(), spec));
+                                }
+                            } else {
+                                // Shorthand string value: "pkg": "^1.0.0" or "pkg": "link:path"
+                                let ver = value_part.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+                                if !pkg.is_empty() && !ver.is_empty() {
+                                    deps.push((pkg.to_string(), ver.to_string()));
+                                }
+                            }
+                        }
+                    }
+                    j += 1;
+                }
+            } else if rest.starts_with('[') {
+                // Inline array: ["a", "b"] or ["pkg@^1.0.0"]
                 let value = rest.trim_start_matches('[').trim_end_matches(']');
                 for part in value.split(',') {
                     let dep = part.trim().trim_matches('"').trim_matches('\'').trim();
                     if !dep.is_empty() {
-                        deps.push(dep.to_string());
+                        let (pkg, ver) = split_pkg_version(dep);
+                        deps.push((pkg, ver));
                     }
                 }
             } else if rest.starts_with('"') || rest.starts_with('\'') {
                 // Single string: "package"
                 let dep = rest.trim_matches('"').trim_matches('\'').trim_end_matches(',');
                 if !dep.is_empty() {
-                    deps.push(dep.to_string());
+                    let (pkg, ver) = split_pkg_version(dep);
+                    deps.push((pkg, ver));
                 }
             } else {
                 // Multi-line Auto-style: each following indented line is a dep
                 let mut j = i + 1;
                 while j < lines.len() {
                     let next = lines[j];
-                    // Stop at blank line or non-indented line
                     if next.trim().is_empty() || (!next.starts_with(' ') && !next.starts_with('\t')) {
                         break;
                     }
                     let dep = next.trim().trim_matches('"').trim_matches('\'').trim_end_matches(',');
                     if !dep.is_empty() {
-                        deps.push(dep.to_string());
+                        let (pkg, ver) = split_pkg_version(dep);
+                        deps.push((pkg, ver));
                     }
                     j += 1;
                 }
@@ -849,6 +884,90 @@ fn parse_npm_deps(content: &str) -> Vec<String> {
     }
     deps
 }
+
+/// Split "package@version" into (package, version).
+/// Scoped packages (@scope/name) handled correctly.
+/// No version → "latest".
+fn split_pkg_version(dep: &str) -> (String, String) {
+    if dep.starts_with('@') {
+        // Scoped: @scope/name@version — split on second @
+        if let Some(pos) = dep[1..].find('@') {
+            (dep[..pos + 1].to_string(), dep[pos + 2..].to_string())
+        } else {
+            (dep.to_string(), "latest".to_string())
+        }
+    } else if let Some(pos) = dep.find('@') {
+        (dep[..pos].to_string(), dep[pos + 1..].to_string())
+    } else {
+        (dep.to_string(), "latest".to_string())
+    }
+}
+
+/// Find the end index of a quoted string at the start of `s`.
+fn find_quoted_string_end(s: &str) -> Option<usize> {
+        let bytes = s.as_bytes();
+        if bytes.is_empty() {
+            return None;
+        }
+        let quote = bytes[0];
+        if quote != b'"' && quote != b'\'' {
+            return None;
+        }
+        for i in 1..bytes.len() {
+            if bytes[i] == quote {
+                return Some(i + 1);
+            }
+        }
+        None
+    }
+
+    /// Parse a nested dep object like `{ link: "path" }` or `{ file: "path" }`.
+    /// Returns the version spec string (e.g. "link:path" or "file:path").
+/// Parse a nested dep object like `{ link: "path" }` or `{ file: "path" }`.
+/// Returns the version spec string (e.g. "link:path" or "file:path").
+fn parse_dep_object_spec(lines: &[&str], j: &mut usize, inline: &str) -> String {
+        // Check if the object closes on the same line
+        if inline.contains('}') {
+            // Single-line: { link: "path" }
+            for kind in &["link", "file"] {
+                if let Some(pos) = inline.find(kind) {
+                    let after = &inline[pos + kind.len()..];
+                    // Find the quoted value
+                    let val_start = after.find('"').or_else(|| after.find('\''));
+                    if let Some(start) = val_start {
+                        let q = &after[start..start + 1];
+                        let val = &after[start + 1..];
+                        let end = val.find(q).unwrap_or(val.len());
+                        let path = &val[..end];
+                        return format!("{}:{}", kind, path);
+                    }
+                }
+            }
+            return String::new();
+        }
+        // Multi-line: scan subsequent lines for link:/file: key
+        let mut k = *j + 1;
+        while k < lines.len() {
+            let next = lines[k].trim();
+            if next.starts_with('}') {
+                *j = k; // consume up to closing brace
+                break;
+            }
+            for kind in &["link", "file"] {
+                if next.starts_with(kind) {
+                    let after = &next[kind.len()..].trim();
+                    let val = after.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+                    if !val.is_empty() {
+                        *j = k;
+                        return format!("{}:{}", kind, val);
+                    }
+                }
+            }
+            k += 1;
+        }
+        String::new()
+    }
+
 
 /// Vue project generation context
 pub struct VueProject {
@@ -872,8 +991,8 @@ pub struct VueProject {
     pub components: Vec<(String, String, String, String)>,
     /// All routes
     pub routes: Vec<AuraRoute>,
-    /// Extra npm dependencies from pac.at (e.g. ["@autodown/editor"])
-    pub npm_deps: Vec<String>,
+    /// Extra npm dependencies from pac.at (package_name, version_spec)
+    pub npm_deps: Vec<(String, String)>,
 }
 
 impl VueProject {

@@ -3,4 +3,8 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 api: "rust"
-npm_deps: ["@autodown/editor"]
+npm_deps: {
+  "@autodown/editor": {
+    link: "D:/autostack/auto-down/autodown/packages/editor"
+  }
+}
