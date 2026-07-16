@@ -1,10 +1,43 @@
 # Plan 356: Vue 生成器 OOM / 递归爆炸修复
 
 > **类型**: Bug 修复 + 架构改进
-> **状态**: 待实施
+> **状态**: 已实施（真实根因见下方「实施结果」）
 > **日期**: 2026-07-16
 > **前置**: 015-notes 升级（Plan 354）过程中发现
 > **影响**: Vue 生成器在特定 view 树结构下消耗 1.7GB+ 内存导致 `auto gen` / `auto run` 卡死
+
+---
+
+## 0. 实施结果（2026-07-16，worktree `plan-356-vue-oom`）
+
+**原计划的前提（§1.3「不是 parser 的 `style: if` 解析问题」）在当前代码上是错的。**
+通过系统化诊断（最小复现 + 二分 + 插桩），真正的根因不在 Vue 生成器，而在 **解析器**：
+
+- **症状**：`for tag in .items { button { onclick: .SelectTag(tag) } }` 这类
+  「循环体内的事件处理器以循环变量为参数」的结构会让 `auto gen` 内存爆炸到 11GB+。
+- **根因**：标识符 `tag` 被词法分析器识别为保留关键字 `TokenKind::Tag`
+  （见 `token.rs:368`）。而 `parse_event_arg`（`parser.rs`）的参数循环只匹配
+  `TokenKind::Ident`，对 `Tag` 这类 token **没有任何分支处理** → 直接 `break`，
+  返回空字符串却**不消费该 token** → 调用方的 `while !RParen` 参数循环永远停在同一个
+  `tag` token 上 → 无限循环 → OOM。
+- **二分矩阵**（均为最小复现，见 `crates/auto-lang/tests/fixtures/plan356_v*.at`）：
+  - `for` 循环 + `onclick: .H(loopvar)` → ❌ OOM（`loopvar` 是 `tag` 等保留字标识符）
+  - 去掉循环（handler 不在 for 内） → ✅ 正常
+  - handler 不带参数 → ✅ 正常
+  - 把循环变量改名（非保留字） → ✅ 正常
+  - `style: if/else`、`msg`、`on` 均非触发条件（与原计划 §1.2 矩阵不同）。
+
+**修复**（`crates/auto-lang/src/parser.rs`）：
+1. 新增 `cur_is_soft_ident()`，在参数位置把 `Tag`/`Type`/`Union`/`Spec`/`Super`/
+   `Has`/`Copy`/`Move`/`Take`/`Hold`/`Alias`/`Ext`/`Impl`/`Mod`/`Enum` 等软关键字当作
+   普通标识符消费（Plan 356 主修复）。
+2. `parse_event_arg` / 新增 `parse_event_arg_list` 加防失控上限，任何未来「无分支消费」
+   的 token 都会产出清晰错误，而不是 OOM（防御性）。
+
+**遗留**：原 200 行 sidebar.at（commit `50307d51`）除上述 OOM 外，还有一个**独立的、
+预先存在的解析错误**（`for` 块后跟 `style:` 属性 → offset 9148 `Expected term, got
+RBrace`）。该错误一直被 OOM 掩盖，OOM 修复后才暴露。这不在 Plan 356 范围内，015-notes
+的完整 sidebar 恢复需先修这个解析问题。
 
 ---
 

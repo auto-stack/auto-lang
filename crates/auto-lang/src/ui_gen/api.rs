@@ -99,9 +99,81 @@ pub fn transpile_vue_aura(source: &str, output_path: Option<&str>) -> Result<Str
 
 #[cfg(test)]
 mod tests {
+    use super::transpile_vue_aura;
+
     #[test]
     fn test_transpile_placeholder() {
         // Active API smoke test — real tests require .at fixture files
         assert!(true);
+    }
+
+    /// Plan 356 regression: the minimal OOM trigger. A `for`-loop whose body
+    /// has an event handler taking the loop variable as an argument, where the
+    /// loop variable is a reserved-keyword identifier (`tag` → TokenKind::Tag).
+    ///
+    /// Before the fix this exhausted memory (parse_event_arg ignored the `Tag`
+    /// token and the handler arg loop spun forever). It must now parse +
+    /// generate a sane SFC inline (no thread, no timeout needed).
+    #[test]
+    fn test_plan356_oom_regression_loop_var_as_handler_arg() {
+        let src = include_str!("../../tests/fixtures/plan356_minimal_oom.at");
+        let out = transpile_vue_aura(src, None).expect("Plan 356 trigger must generate");
+        assert!(out.contains("v-for"), "expected v-for in:\n{out}");
+        assert!(out.contains("SelectTag"), "expected handler binding in:\n{out}");
+    }
+
+    /// Plan 356: the soft-keyword-as-identifier fix applies to any reserved
+    /// keyword, not just `tag`. Verify a few others (`type`, `move`) used as a
+    /// loop variable passed to a handler also generate cleanly.
+    #[test]
+    fn test_plan356_soft_keyword_loop_var() {
+        for kw in ["tag", "type", "move", "copy", "super"] {
+            let src = format!(
+                r#"
+widget W(active: bool) {{
+    msg Msg {{ Go(str) }}
+    view {{
+        col {{
+            for {kw} in .items {{
+                button {{
+                    text {kw}
+                    onclick: .Go({kw})
+                }}
+            }}
+        }}
+    }}
+    on {{ .Go(x) -> {{ }} }}
+}}
+"#,
+            );
+            let out =
+                transpile_vue_aura(&src, None).unwrap_or_else(|e| panic!("{kw}: {e}"));
+            assert!(out.contains("v-for"), "{kw}: missing v-for in:\n{out}");
+            assert!(out.contains("Go"), "{kw}: missing handler in:\n{out}");
+        }
+    }
+
+    /// Plan 356 control: a non-keyword loop variable name worked before and
+    /// must still work (guards against the fix over-reaching).
+    #[test]
+    fn test_plan356_normal_loop_var_still_works() {
+        let src = r#"
+widget W(active: bool) {
+    msg Msg { Go(str) }
+    view {
+        col {
+            for item in .items {
+                button {
+                    text item
+                    onclick: .Go(item)
+                }
+            }
+        }
+    }
+    on { .Go(x) -> { } }
+}
+"#;
+        let out = transpile_vue_aura(src, None).expect("normal loop var must generate");
+        assert!(out.contains("v-for"));
     }
 }

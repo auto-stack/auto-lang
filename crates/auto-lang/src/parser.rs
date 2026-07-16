@@ -489,6 +489,39 @@ impl<'a> Parser<'a> {
         self.peek().kind == kind
     }
 
+    /// Plan 356: is the current token a *soft keyword* that should be accepted
+    /// as an ordinary identifier in expression/argument position?
+    ///
+    /// Some words are lexed as reserved keyword tokens (e.g. `tag` →
+    /// `TokenKind::Tag`, `type` → `TokenKind::Type`) but users legitimately use
+    /// them as variable names (a `for tag in ...` loop variable, a struct field
+    /// named `type`). When such a name appears as a function-call argument —
+    /// e.g. `onclick: .Select(tag)` — the event-arg parser used to match only
+    /// `TokenKind::Ident`, so it consumed nothing and spun forever (OOM).
+    ///
+    /// This returns true for keyword tokens whose spelling is itself a valid
+    /// identifier and which carry no structural meaning in argument position.
+    fn cur_is_soft_ident(&self) -> bool {
+        matches!(
+            self.cur.kind,
+            TokenKind::Tag
+                | TokenKind::Type
+                | TokenKind::Union
+                | TokenKind::Spec
+                | TokenKind::Super
+                | TokenKind::Has
+                | TokenKind::Copy
+                | TokenKind::Move
+                | TokenKind::Take
+                | TokenKind::Hold
+                | TokenKind::Alias
+                | TokenKind::Ext
+                | TokenKind::Impl
+                | TokenKind::Mod
+                | TokenKind::Enum
+        )
+    }
+
     /// Check if the current position is a function annotation followed by fn
     /// This is used by the statement parser to distinguish between:
     /// - [c] fn foo() ...  (function declaration)
@@ -11519,17 +11552,7 @@ impl<'a> Parser<'a> {
             // Check for parameters: .Delete(todo.id)
             let params = if self.is_kind(TokenKind::LParen) {
                 self.next();
-                let mut args = Vec::new();
-                while !self.is_kind(TokenKind::RParen) {
-                    // Parse argument as string
-                    let arg = self.parse_event_arg()?;
-                    args.push(arg);
-                    // Support both comma and semicolon as separators
-                    if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Semi) {
-                        self.next();
-                    }
-                }
-                self.expect(TokenKind::RParen)?;
+                let args = self.parse_event_arg_list()?;
                 args
             } else {
                 Vec::new()
@@ -11544,17 +11567,7 @@ impl<'a> Parser<'a> {
             // Check for parameters: nav("route", data)
             let params = if self.is_kind(TokenKind::LParen) {
                 self.next();
-                let mut args = Vec::new();
-                while !self.is_kind(TokenKind::RParen) {
-                    // Parse argument as string
-                    let arg = self.parse_event_arg()?;
-                    args.push(arg);
-                    // Support both comma and semicolon as separators
-                    if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Semi) {
-                        self.next();
-                    }
-                }
-                self.expect(TokenKind::RParen)?;
+                let args = self.parse_event_arg_list()?;
                 args
             } else {
                 Vec::new()
@@ -11562,6 +11575,39 @@ impl<'a> Parser<'a> {
 
             Ok((handler, params))
         }
+    }
+
+    /// Parse a comma/semicolon-separated argument list terminated by `)`.
+    /// The opening `(` has already been consumed; this consumes the closing `)`.
+    ///
+    /// Plan 356: carries a runaway guard so an unhandled token (which would
+    /// leave the cursor stuck) produces a clean error instead of an infinite
+    /// loop / OOM. This is the structural fix for the `tag`-as-argument bug,
+    /// complementing the soft-identifier handling in `parse_event_arg`.
+    fn parse_event_arg_list(&mut self) -> AutoResult<Vec<String>> {
+        let mut args = Vec::new();
+        let mut iters = 0u32;
+        while !self.is_kind(TokenKind::RParen) {
+            iters += 1;
+            if iters > 64 {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "too many event-handler arguments (near `{}`)",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            let arg = self.parse_event_arg()?;
+            args.push(arg);
+            // Support both comma and semicolon as separators
+            if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Semi) {
+                self.next();
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+        Ok(args)
     }
 
     /// Parse a single event argument
@@ -11576,7 +11622,23 @@ impl<'a> Parser<'a> {
         // Handle expressions like: todo.id, .count, 123, "string"
         // Track if previous token was an identifier (for proper dot handling)
         let mut prev_was_ident = false;
+        // Plan 356: defensive runaway guard. A single event argument is a short
+        // expression; if this loop ever fails to make progress (a future token
+        // no branch consumes), bail with a clear error instead of spinning into
+        // OOM. 512 is far above any legitimate argument length.
+        let mut iters = 0u32;
         loop {
+            iters += 1;
+            if iters > 512 {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "event argument too complex or unterminated (near `{}`)",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
             if self.is_kind(TokenKind::Dot) {
                 self.next();
                 let name = self.cur.text.to_string();
@@ -11590,7 +11652,12 @@ impl<'a> Parser<'a> {
                     parts.push(format!("this.{}", name));
                 }
                 prev_was_ident = false;
-            } else if self.is_kind(TokenKind::Ident) {
+            } else if self.is_kind(TokenKind::Ident) || self.cur_is_soft_ident() {
+                // Plan 356: also accept soft keywords used as identifiers in
+                // argument position (e.g. a loop variable named `tag`, which
+                // lexes as TokenKind::Tag). Without this, such a token matched
+                // no branch here, so parse_event_arg returned "" *without
+                // consuming it*, and the caller's arg loop spun forever → OOM.
                 let text = self.cur.text.to_string();
                 self.next();
                 parts.push(text);
