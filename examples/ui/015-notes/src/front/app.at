@@ -21,11 +21,7 @@ widget App {
 
     view {
         col {
-            style: if .store.dark_mode {
-                "w-full h-screen bg-gray-900 flex-col text-gray-100"
-            } else {
-                "w-full h-screen bg-white flex-col text-gray-800"
-            }
+            style: "w-full h-screen bg-white flex-col text-gray-800"
 
             // header
             row {
