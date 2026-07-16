@@ -11278,9 +11278,22 @@ impl<'a> Parser<'a> {
             }
             result
         } else {
-            let name = self.cur.text.to_string();
+            // Plan 356 follow-up: accept `ident.field[.sub...]` iterables
+            // (e.g. `note.tags`, `store.items`). The `.field` branch above
+            // already handles chains starting with a dot; this branch handles
+            // chains starting with a bare identifier. Without it, `note.tags`
+            // was read as just `note`, leaving `.tags` to break the rest of
+            // the view ("Expected term, got RBrace").
+            let first = self.cur.text.to_string();
             self.next();
-            name
+            let mut result = first;
+            while self.is_kind(TokenKind::Dot) {
+                self.next(); // skip dot
+                let name = self.cur.text.to_string();
+                self.next();
+                result.push_str(&format!(".{}", name));
+            }
+            result
         };
 
         // Enter new scope for loop body

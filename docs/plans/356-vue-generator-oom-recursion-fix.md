@@ -34,10 +34,21 @@
 2. `parse_event_arg` / 新增 `parse_event_arg_list` 加防失控上限，任何未来「无分支消费」
    的 token 都会产出清晰错误，而不是 OOM（防御性）。
 
-**遗留**：原 200 行 sidebar.at（commit `50307d51`）除上述 OOM 外，还有一个**独立的、
-预先存在的解析错误**（`for` 块后跟 `style:` 属性 → offset 9148 `Expected term, got
-RBrace`）。该错误一直被 OOM 掩盖，OOM 修复后才暴露。这不在 Plan 356 范围内，015-notes
-的完整 sidebar 恢复需先修这个解析问题。
+**遗留 1（已修，2026-07-16，worktree `plan-356-for-identfield`）**：原 200 行
+sidebar.at（commit `50307d51`）除上述 OOM 外，还有一个**独立的解析错误**（OOM 修复后
+才暴露）：`for tag in note.tags` 的 iterable `note.tags` 是 `ident.field` 链，而
+`parse_view_for_loop` 只接受 `.field` / 数字范围 / 单 ident，不支持 `ident.field`，
+于是 `note` 被消费、`.tags` 残留 → 后续 `Expected term, got RBrace`。
+**修复**：`parse_view_for_loop` 的单 ident 分支对称地消费后续 `.field` 链
+（`crates/auto-lang/src/parser.rs`，Plan 356 §3.2 列出的改进点）。回归测试：
+`test_view_for_loop_ident_field_iterable` / `..._chain_iterable`。
+
+**遗留 2（未修，独立 bug）**：完整 sidebar 仍无法端到端生成。`for ident.field` 修复后
+解析推进到 offset ~8873，又碰到**第三个独立解析错误**：作为 view 属性的
+`style: if <复杂条件> { } else { }`（条件含 `==`，如
+`style: if .active_tag == tag { ... } else { ... }`）无法解析。这是 view-prop 位置
+`if` 表达式的解析问题，与 Plan 356 OOM 无关，需单独处理。
+`test_plan356_real_sidebar_generates`（`#[ignore]`）留作该 bug 修复后的回归守卫。
 
 ---
 
