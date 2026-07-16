@@ -27,7 +27,7 @@ store NotesStore {
     msg Msg { Init, Refresh, SelectNote(int), NewNote, DeleteNote(int),
               TogglePin(int), SetSort(str), Search(str),
               UpdateTags(int), ToggleDarkMode,
-              SelectFolder(str), SelectTag(str), MoveNote(int) }
+              SelectFolder(str), SelectTag(str) }
 
     on {
         .Init -> {
@@ -86,22 +86,8 @@ store NotesStore {
             .active_tag = ""
         }
 
-        .SelectTag(tag) -> {
-            .active_tag = tag
-        }
-
-        // Move note to a different folder via update_note (reuses existing API).
-        .MoveNote(id) -> {
-            var note ?Note = None
-            for n in .notes {
-                if n.id == id {
-                    note = Some(n)
-                }
-            }
-            if note != None {
-                update_note(id, note.title, note.body)
-            }
-            .notes = list_notes()
+        .SelectTag(t) -> {
+            .active_tag = t
         }
     }
 }

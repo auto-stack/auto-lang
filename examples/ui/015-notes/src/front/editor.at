@@ -4,9 +4,9 @@
 use store: NotesStore
 use back.api: update_note, delete_note, toggle_pin, update_tags
 
-widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_folder: msg) {
+widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
     msg Msg { Init, Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin,
-              AddTag, EditTagInput, RemoveTag(str), MoveToFolder(str) }
+              AddTag, EditTagInput, RemoveTag(str) }
 
     model {
         var editing bool = false
@@ -94,10 +94,6 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_fol
         .Delete -> { on_delete() }
         .TogglePin -> {
             on_toggle_pin()
-        }
-        .MoveToFolder(folder) -> {
-            .note.folder = folder
-            on_move_to_folder()
         }
     }
 }
