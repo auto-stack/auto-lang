@@ -885,12 +885,24 @@ fn parse_npm_deps(content: &str) -> Vec<(String, String)> {
     deps
 }
 
-/// Split "package@version" into (package, version).
-/// Scoped packages (@scope/name) handled correctly.
-/// No version → "latest".
+/// Split a dep spec into (package_name, version_spec).
+///
+/// Supports three formats:
+/// - `"package"` → ("package", "latest")
+/// - `"package@^1.0.0"` → ("package", "^1.0.0")  (scoped-aware)
+/// - `"package:link:/path/to/pkg"` → ("package", "link:/path/to/pkg")
+/// - `"package:file:../pkg"` → ("package", "file:../pkg")
 fn split_pkg_version(dep: &str) -> (String, String) {
+    // Check for :link: or :file: suffix first (local path deps)
+    for sep in &[":link:", ":file:"] {
+        if let Some(pos) = dep.find(sep) {
+            let pkg = dep[..pos].to_string();
+            let spec = format!("{}{}", &sep[1..], &dep[pos + 1..]); // "link:/path" or "file:../path"
+            return (pkg, spec);
+        }
+    }
+    // Version via @ separator
     if dep.starts_with('@') {
-        // Scoped: @scope/name@version — split on second @
         if let Some(pos) = dep[1..].find('@') {
             (dep[..pos + 1].to_string(), dep[pos + 2..].to_string())
         } else {
