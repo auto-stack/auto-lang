@@ -21,14 +21,13 @@ store NotesStore {
         // active_tag: "" = no tag filter, otherwise only notes containing it show.
         var active_tag str = ""
         // Folders hardcoded (demo app; a2r can't generate Folder CRUD yet).
-        // all_tags: flat list of all tags from all notes (avoids nested for in UI).
-        var all_tags []str = []
+        // Tags aggregated client-side from notes.
     }
 
     msg Msg { Init, Refresh, SelectNote(int), NewNote, DeleteNote(int),
               TogglePin(int), SetSort(str), Search(str),
               UpdateTags(int), ToggleDarkMode,
-              SelectFolder(str), SelectTag(str), MoveNote(int) }
+              SelectFolder(str), SelectTag(str), MoveNote(int, str) }
 
     on {
         .Init -> {
@@ -87,12 +86,12 @@ store NotesStore {
             .active_tag = ""
         }
 
-        .SelectTag(t) -> {
-            .active_tag = t
+        .SelectTag(tag) -> {
+            .active_tag = tag
         }
 
         // Move note to a different folder via update_note (reuses existing API).
-        .MoveNote(id) -> {
+        .MoveNote(id, folder) -> {
             var note ?Note = None
             for n in .notes {
                 if n.id == id {
