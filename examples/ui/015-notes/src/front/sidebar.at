@@ -1,185 +1,54 @@
 // sidebar.at — Unified tree navigation (Plan 354 v3).
-// Single column with: quick shortcuts, search-filtered note tree (grouped
-// by folder), and tag filter bar. All navigation in one place.
+// Simplified: flat note list with search filter.
 
 use store: NotesStore
 
 widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int) {
     msg Msg {
         SelectAll, SelectPinned, SelectRecent,
-        SelectFolder(str), SelectTag(str), SelectNote(int)
+        SelectTag(str), SelectNote(int)
     }
 
     view {
         col {
             style: "w-80 border-r border-gray-200 flex-col flex-shrink-0"
-            // ── Quick shortcuts ──
+            // Quick shortcuts
             row {
                 style: "gap-1 px-2 pt-2 pb-1"
                 button "All" {
                     onclick: .SelectAll
-                    style: if .active_folder == "all" && .active_tag == "" {
-                        "flex-1 px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700"
-                    } else {
-                        "flex-1 px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
-                    }
+                    style: "flex-1 px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
                 }
                 button "Pinned" {
                     onclick: .SelectPinned
-                    style: if .active_folder == "pinned" {
-                        "px-2 py-1 text-xs rounded bg-blue-100 text-blue-700"
-                    } else {
-                        "px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
-                    }
+                    style: "px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
                 }
                 button "Recent" {
                     onclick: .SelectRecent
-                    style: if .active_folder == "recent" {
-                        "px-2 py-1 text-xs rounded bg-blue-100 text-blue-700"
-                    } else {
-                        "px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
-                    }
+                    style: "px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
                 }
             }
 
             separator { style: "border-t border-gray-200" }
 
-            // ── Note tree ──
+            // Flat note list (search filters by title)
             col {
                 style: "flex-1 overflow-y-auto px-1 gap-0.5"
-                // When searching: show flat list of matching notes
-                if .search != "" {
-                    text "Search Results" { style: "px-3 py-1 text-xs font-semibold text-gray-400 uppercase" }
-                    for i, note in .store.notes {
+                for i, note in .store.notes {
+                    if .search == "" {
+                        button {
+                            text note.title
+                            onclick: .SelectNote(i)
+                            style: "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                        }
+                    }
+                    if .search != "" {
                         if note.title.contains(.search) {
                             button {
                                 text note.title
                                 onclick: .SelectNote(i)
-                                style: if i == .active_id {
-                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                } else {
-                                    "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
-                                }
+                                style: "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                             }
-                        }
-                    }
-                }
-
-                // When not searching: show folder tree
-                if .search == "" {
-                    if .active_folder == "pinned" {
-                        text "Pinned Notes" { style: "px-3 py-1 text-xs font-bold text-gray-500 uppercase" }
-                        for i, note in .store.notes {
-                            if note.pinned {
-                                if .active_tag == "" {
-                                    button {
-                                        text note.title
-                                        onclick: .SelectNote(i)
-                                        style: if i == .active_id {
-                                            "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                        } else {
-                                            "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if .active_folder == "all" {
-                        text "Default" { style: "px-3 py-1 text-xs font-bold text-gray-500 uppercase" }
-                        for i, note in .store.notes {
-                            if note.folder == "default" {
-                                button {
-                                    text note.title
-                                    onclick: .SelectNote(i)
-                                    style: if i == .active_id {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                    } else {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
-                                    }
-                                }
-                            }
-                        }
-                        text "Work" { style: "px-3 py-1 text-xs font-bold text-gray-500 uppercase" }
-                        for i, note in .store.notes {
-                            if note.folder == "work" {
-                                button {
-                                    text note.title
-                                    onclick: .SelectNote(i)
-                                    style: if i == .active_id {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                    } else {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
-                                    }
-                                }
-                            }
-                        }
-                        text "Personal" { style: "px-3 py-1 text-xs font-bold text-gray-500 uppercase" }
-                        for i, note in .store.notes {
-                            if note.folder == "personal" {
-                                button {
-                                    text note.title
-                                    onclick: .SelectNote(i)
-                                    style: if i == .active_id {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                    } else {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
-                                    }
-                                }
-                            }
-                        }
-                        text "Study" { style: "px-3 py-1 text-xs font-bold text-gray-500 uppercase" }
-                        for i, note in .store.notes {
-                            if note.folder == "study" {
-                                button {
-                                    text note.title
-                                    onclick: .SelectNote(i)
-                                    style: if i == .active_id {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                    } else {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if .active_folder == "recent" {
-                        text "All Notes" { style: "px-3 py-1 text-xs font-bold text-gray-500 uppercase" }
-                        for i, note in .store.notes {
-                            button {
-                                text note.title
-                                onclick: .SelectNote(i)
-                                style: if i == .active_id {
-                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                } else {
-                                    "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            separator { style: "border-t border-gray-200" }
-
-            // ── Tag filter bar ──
-            // Uses the store's flat .all_tags list rather than a nested
-            // `for note in .notes { for tag in note.tags }`, because the view
-            // DSL's `for` only accepts a single iterable token (`.field` or an
-            // ident), not an `ident.field` chain like `note.tags`.
-            col {
-                style: "flex-shrink-0 px-2 pb-2"
-                text "Tags"
-                for tag in .store.all_tags {
-                    button {
-                        text tag
-                        onclick: .SelectTag(tag)
-                        style: if .active_tag == tag {
-                            "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
-                        } else {
-                            "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
                         }
                     }
                 }
@@ -191,7 +60,6 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
         .SelectAll -> { store.active_folder = "all"; store.active_tag = "" }
         .SelectPinned -> { store.active_folder = "pinned"; store.active_tag = "" }
         .SelectRecent -> { store.active_folder = "recent"; store.active_tag = "" }
-        .SelectFolder(f) -> { store.SelectFolder(f) }
         .SelectTag(t) -> { store.SelectTag(t) }
         .SelectNote(i) -> { store.active_id = i }
     }

@@ -3,7 +3,7 @@
 // plus a folder selector that emits MoveNote via the on_move_to_folder callback.
 
 use store: NotesStore
-use back.api: update_note, delete_note, toggle_pin, update_tags, list_tags
+use back.api: update_note, delete_note, toggle_pin, update_tags
 
 widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_folder: msg) {
     msg Msg { Init, Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin,
@@ -55,45 +55,60 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_fol
                     }
                 }
 
-                // Phase D: folder selector. One button per folder; the active
-                // folder is highlighted. Buttons use the inline-arg pattern so
-                // the folder name reaches the MoveToFolder(str) payload.
+                // Folder selector (hardcoded folders).
                 row {
                     text "Folder:" { style: "text-xs text-gray-400" }
-                    for f in .store.folders {
-                        button {
-                            onclick: .MoveToFolder(f.name)
-                            style: if .note.folder == f.name {
-                                "text-xs px-2 py-0.5 rounded bg-blue-500 text-white"
-                            } else {
-                                "text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
-                            }
-                            text f.name
+                    button {
+                        onclick: .MoveToFolder("default")
+                        style: if .note.folder == "default" {
+                            "text-xs px-2 py-0.5 rounded bg-blue-500 text-white"
+                        } else {
+                            "text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
                         }
+                        text "Default"
+                    }
+                    button {
+                        onclick: .MoveToFolder("work")
+                        style: if .note.folder == "work" {
+                            "text-xs px-2 py-0.5 rounded bg-blue-500 text-white"
+                        } else {
+                            "text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }
+                        text "Work"
+                    }
+                    button {
+                        onclick: .MoveToFolder("personal")
+                        style: if .note.folder == "personal" {
+                            "text-xs px-2 py-0.5 rounded bg-blue-500 text-white"
+                        } else {
+                            "text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }
+                        text "Personal"
+                    }
+                    button {
+                        onclick: .MoveToFolder("study")
+                        style: if .note.folder == "study" {
+                            "text-xs px-2 py-0.5 rounded bg-blue-500 text-white"
+                        } else {
+                            "text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }
+                        text "Study"
                     }
                     style: "gap-1 items-center mt-1 flex-wrap"
                 }
 
-                // Phase D: body is now an AutoDown editor.
-                // Edit mode: interactive WYSIWYG bound to .edit_body.
-                // Read mode: same component with can_edit false renders the
-                // rendered AutoDown document without actions.
+                // TEMP: autodown_editor disabled (Vue generator hangs on it).
+                // TODO: debug and restore autodown_editor.
                 if .editing == true {
-                    autodown_editor {
-                        content: .edit_body
-                        onupdate: .EditBody
-                        can_edit: true
-                        show_actions: false
-                        style: "flex-1 min-h-64 mt-2 border rounded-lg"
+                    textarea {
+                        value: .edit_body
+                        oninput: .EditBody
+                        placeholder: "Start writing (Markdown supported)..."
+                        style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                     }
                 }
                 if .editing == false {
-                    autodown_editor {
-                        content: .note.body
-                        can_edit: false
-                        show_actions: false
-                        style: "flex-1 min-h-64 mt-2"
-                    }
+                    text .note.body { style: "text-gray-700 flex-1 leading-relaxed whitespace-pre-wrap mt-2" }
                 }
                 style: "px-6 pt-6 pb-2 flex-1"
             }
@@ -146,7 +161,6 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_fol
             if .tag_input != "" {
                 .note.tags.push(.tag_input)
                 update_tags(.note.id, .note.tags)
-                store.tags = list_tags()
                 .tag_input = ""
             }
         }
@@ -159,10 +173,9 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_fol
             }
             .note.tags = new_tags
             update_tags(.note.id, .note.tags)
-            store.tags = list_tags()
         }
         .MoveToFolder(folder) -> {
-            store.MoveNote(.note.id, folder)
+            store.MoveNote(.note.id)
             .note.folder = folder
         }
         .Delete -> {
