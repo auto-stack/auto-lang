@@ -273,6 +273,21 @@ pub fn run_with_capture(code: &str) -> AutoResult<(String, String)> {
     execution_engine::execute_with_engine_capture(engine, code)
 }
 
+/// Run AutoLang code with stdout capture, using the source file path for
+/// module resolution (so `use db` resolves `db.at` next to the source file).
+pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, String)> {
+    let code = code.to_string();
+    let path = path.to_string();
+    let handle = std::thread::Builder::new()
+        .stack_size(4 * 1024 * 1024)
+        .spawn(move || {
+            let rt = get_global_runtime();
+            rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await })
+        })
+        .expect("Failed to spawn execution thread");
+    handle.join().unwrap()
+}
+
 /// Run AutoLang code using AutoVM (bytecode VM)
 ///
 /// **Plan 068 Phase 9**: Primary execution engine for AutoLang
