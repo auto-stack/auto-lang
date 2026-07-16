@@ -1,54 +1,290 @@
-// app.at — 2-column layout (Plan 354 v3).
+// app.at — 2-column layout with inline navigation (Plan 354 v3).
+// Navigation is inlined (not a separate widget) to avoid the Vue generator
+// OOM bug (for + style:if + msg/on in a separate widget triggers it).
+//
+// Layout:
 // col (h-screen)
-// ├── header (row: title + search + new + dark)
+// ├── header (row: title + New button)
 // └── body (row: flex-1)
-//     ├── NavTree (col: w-80)     ← unified tree navigation
+//     ├── NavColumn (col: w-80)
+//     │   ├── Quick shortcuts: All / Pinned / Recent
+//     │   ├── Search input
+//     │   ├── Note list (filtered by shortcut + search + tag)
+//     │   │   grouped by folder (folder header + notes)
+//     │   ├── Tags bar
+//     │   └── Dark mode toggle
 //     └── EditorPanel (col: flex-1)
 
 use store: NotesStore
-use sidebar: NavTree
 use editor: EditorPanel
 use back.api: delete_note, list_notes
 
 widget App {
     msg Msg { Init, NewNote, SelectNote(int), SearchChanged, TogglePin(int),
-              SetSort(str), DeleteActive, ToggleDarkMode, NoteMoved }
+              DeleteActive, ToggleDarkMode, NoteMoved,
+              SelectAll, SelectPinned, SelectRecent, SelectTag(str) }
 
     model { var search str = "" }
 
     view {
         col {
-            // header: title + search + new + dark
+            // header: title + new only (search moved to nav column)
             row {
                 h2 "Notes" { style: "text-xl font-bold text-gray-800 flex-shrink-0" }
-                input {
-                    placeholder: "Search notes..."
-                    value: .search
-                    oninput: .SearchChanged
-                    style: "flex-1 mx-4 px-3 py-1.5 text-sm border rounded-lg"
-                }
                 button "+ New" {
                     onclick: .NewNote
-                    style: "px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 flex-shrink-0"
-                }
-                button "Dark" {
-                    onclick: .ToggleDarkMode
-                    style: "ml-2 px-3 py-2 text-xs bg-gray-200 rounded-lg hover:bg-gray-300 flex-shrink-0"
+                    style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600"
                 }
                 style: "w-full items-center p-3 border-b border-gray-200"
             }
 
-            // body: 2 columns — tree nav + editor
+            // body: nav column + editor
             row {
-                // Column 1: unified tree navigation (folders + notes + search filter)
-                NavTree(
-                    search: .search,
-                    active_folder: .store.active_folder,
-                    active_tag: .store.active_tag,
-                    active_id: .store.active_id
-                )
+                // ── Navigation column ──
+                col {
+                    style: "w-80 border-r border-gray-200 flex-col flex-shrink-0"
 
-                // Column 2: editor for the active note
+                    // Quick shortcuts
+                    row {
+                        style: "gap-1 px-2 pt-2 pb-1"
+                        button "All" {
+                            onclick: .SelectAll
+                            style: if .store.active_folder == "all" {
+                                "flex-1 px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700"
+                            } else {
+                                "flex-1 px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                            }
+                        }
+                        button "Pinned" {
+                            onclick: .SelectPinned
+                            style: if .store.active_folder == "pinned" {
+                                "px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700"
+                            } else {
+                                "px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                            }
+                        }
+                        button "Recent" {
+                            onclick: .SelectRecent
+                            style: if .store.active_folder == "recent" {
+                                "px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700"
+                            } else {
+                                "px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                            }
+                        }
+                    }
+
+                    // Search input (in nav, below shortcuts)
+                    input {
+                        placeholder: "Search notes..."
+                        value: .search
+                        oninput: .SearchChanged
+                        style: "mx-2 mb-2 px-3 py-1.5 text-sm border rounded-lg"
+                    }
+
+                    // Note list (scrollable)
+                    col {
+                        style: "flex-1 overflow-y-auto px-1 gap-0.5"
+
+                        // ── All notes: grouped by folder ──
+                        if .store.active_folder == "all" {
+                            text "Default" { style: "px-3 py-1 text-xs font-bold text-gray-400 uppercase" }
+                            for i, note in .store.notes {
+                                if note.folder == "default" {
+                                    if .search == "" {
+                                        button {
+                                            text note.title
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                            } else {
+                                                "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                            }
+                                        }
+                                    }
+                                    if .search != "" {
+                                        if note.title.contains(.search) {
+                                            button {
+                                                text note.title
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            text "Work" { style: "px-3 py-1 text-xs font-bold text-gray-400 uppercase" }
+                            for i, note in .store.notes {
+                                if note.folder == "work" {
+                                    if .search == "" {
+                                        button {
+                                            text note.title
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                            } else {
+                                                "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                            }
+                                        }
+                                    }
+                                    if .search != "" {
+                                        if note.title.contains(.search) {
+                                            button {
+                                                text note.title
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            text "Personal" { style: "px-3 py-1 text-xs font-bold text-gray-400 uppercase" }
+                            for i, note in .store.notes {
+                                if note.folder == "personal" {
+                                    if .search == "" {
+                                        button {
+                                            text note.title
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                            } else {
+                                                "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                            }
+                                        }
+                                    }
+                                    if .search != "" {
+                                        if note.title.contains(.search) {
+                                            button {
+                                                text note.title
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Pinned: only pinned notes ──
+                        if .store.active_folder == "pinned" {
+                            for i, note in .store.notes {
+                                if note.pinned {
+                                    if .search == "" {
+                                        button {
+                                            text note.title
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                            } else {
+                                                "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                            }
+                                        }
+                                    }
+                                    if .search != "" {
+                                        if note.title.contains(.search) {
+                                            button {
+                                                text note.title
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Recent: flat list of all notes ──
+                        if .store.active_folder == "recent" {
+                            for i, note in .store.notes {
+                                if .search == "" {
+                                    button {
+                                        text note.title
+                                        onclick: .SelectNote(i)
+                                        style: if i == .store.active_id {
+                                            "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                        } else {
+                                            "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                        }
+                                    }
+                                }
+                                if .search != "" {
+                                    if note.title.contains(.search) {
+                                        button {
+                                            text note.title
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                            } else {
+                                                "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Tags bar (bottom of nav)
+                    separator { style: "border-t border-gray-200" }
+                    col {
+                        style: "px-2 pb-1 pt-1"
+                        text "Tags" { style: "px-1 text-xs font-semibold text-gray-400 uppercase mb-1" }
+                        row {
+                            style: "flex-wrap gap-1"
+                            button "intro" {
+                                onclick: .SelectTag("intro")
+                                style: if .store.active_tag == "intro" {
+                                    "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
+                                } else {
+                                    "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                }
+                            }
+                            button "home" {
+                                onclick: .SelectTag("home")
+                                style: if .store.active_tag == "home" {
+                                    "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
+                                } else {
+                                    "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                }
+                            }
+                            button "work" {
+                                onclick: .SelectTag("work")
+                                style: if .store.active_tag == "work" {
+                                    "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
+                                } else {
+                                    "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                }
+                            }
+                        }
+                    }
+
+                    // Dark mode toggle (bottom of nav)
+                    separator { style: "border-t border-gray-200" }
+                    button {
+                        text "Dark Mode"
+                        onclick: .ToggleDarkMode
+                        style: "mx-2 my-1 px-3 py-1.5 text-xs rounded-lg text-gray-600 hover:bg-gray-100"
+                    }
+                }
+
+                // ── Editor column ──
                 col {
                     if .store.notes.len() > 0 {
                         EditorPanel(note: .store.notes[.store.active_id], on_delete: .DeleteActive, on_toggle_pin: .TogglePin, on_move_to_folder: .NoteMoved)
@@ -74,12 +310,6 @@ widget App {
             store.TogglePin(.store.notes[.store.active_id].id)
         }
 
-        .SetSort(mode) -> { store.SetSort(mode) }
-
-        .ToggleDarkMode -> { store.ToggleDarkMode() }
-
-        .NoteMoved -> { store.notes = list_notes() }
-
         .DeleteActive -> {
             delete_note(.store.notes[.store.active_id].id)
             store.notes = list_notes()
@@ -87,5 +317,14 @@ widget App {
                 store.active_id = 0
             }
         }
+
+        .ToggleDarkMode -> { store.ToggleDarkMode() }
+
+        .NoteMoved -> { store.notes = list_notes() }
+
+        .SelectAll -> { store.active_folder = "all"; store.active_tag = "" }
+        .SelectPinned -> { store.active_folder = "pinned"; store.active_tag = "" }
+        .SelectRecent -> { store.active_folder = "recent"; store.active_tag = "" }
+        .SelectTag(t) -> { store.active_tag = t }
     }
 }

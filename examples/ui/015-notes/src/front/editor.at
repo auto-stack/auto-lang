@@ -93,7 +93,6 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_fol
         }
         .Delete -> { on_delete() }
         .TogglePin -> {
-            toggle_pin(.note.id)
             on_toggle_pin()
         }
         .MoveToFolder(folder) -> {
