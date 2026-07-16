@@ -1,0 +1,125 @@
+/// serde_json parse + serialize tests — TAP output format.
+///
+/// Names mirror the Rust oracle in tests/rust/tests/serde_json.rs so the
+/// parity framework can compare three-way (AutoVM vs a2r vs native Rust).
+///
+/// IMPORTANT VM quirk: `.to(str)` on a bool always prints "true", and a bool
+/// returned from a function / passed as an arg is unreliable. So every check
+/// uses an `if cond { ok } else { not ok }` form and only ever prints strings
+/// — never a bool stringified. This matches the proven base64/url test shape.
+use auto.serde_json: parse, to_string
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+/// Extract the Ok payload, or "<err>" if the Result is an Err.
+fn ok_value(r) str {
+    var out str = "<err>"
+    is r {
+        Ok(v) -> { out = v }
+        Err(e) -> { out = "<err>" }
+    }
+    return out
+}
+
+/// Return true if `r` is Ok. Uses an `if` on the bool (the bool is reliable in
+/// `if` context; only its stringification is broken).
+fn is_ok(r) bool {
+    var out bool = false
+    is r {
+        Ok(v) -> { out = true }
+        Err(e) -> { out = false }
+    }
+    return out
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+/// Assert the result is Ok and its canonical text equals `expected`.
+fn check_parse_ok(n int, name str, input str, expected str) {
+    let actual str = ok_value(parse(input))
+    check_str(n, name, actual, expected)
+}
+
+/// Assert the result is Err (parse must fail).
+fn check_parse_err(n int, name str, input str) {
+    if is_ok(parse(input)) {
+        tap_not_ok(n, name, "expected Err but got Ok")
+    } else {
+        tap_ok(n, name)
+    }
+}
+
+/// Assert to_string(input) == expected (canonical re-serialization).
+fn check_to_string(n int, name str, input str, expected str) {
+    check_str(n, name, to_string(input), expected)
+}
+
+fn main() {
+    // ---- literals ----
+    check_parse_ok(1, "test_parse_null", "null", "null")
+    check_parse_ok(2, "test_parse_true", "true", "true")
+    check_parse_ok(3, "test_parse_false", "false", "false")
+
+    // ---- numbers ----
+    check_parse_ok(4, "test_parse_int_zero", "0", "0")
+    check_parse_ok(5, "test_parse_int_positive", "42", "42")
+    check_parse_ok(6, "test_parse_int_negative", "-7", "-7")
+    check_parse_ok(7, "test_parse_float", "3.14", "3.14")
+    check_parse_ok(8, "test_parse_float_negative", "-0.5", "-0.5")
+    check_parse_ok(9, "test_parse_float_frac", "10.25", "10.25")
+    check_parse_ok(10, "test_parse_big_int", "123456789", "123456789")
+
+    // ---- strings ----
+    check_parse_ok(11, "test_parse_string_empty", "\"\"", "\"\"")
+    check_parse_ok(12, "test_parse_string_simple", "\"hello\"", "\"hello\"")
+    check_parse_ok(13, "test_parse_string_spaces", "\"a b c\"", "\"a b c\"")
+
+    // ---- arrays ----
+    check_parse_ok(14, "test_parse_array_empty", "[]", "[]")
+    check_parse_ok(15, "test_parse_array_numbers", "[1,2,3]", "[1,2,3]")
+    check_parse_ok(16, "test_parse_array_mixed", "[1,true,null]", "[1,true,null]")
+    check_parse_ok(17, "test_parse_array_nested", "[[1,2],[3,4]]", "[[1,2],[3,4]]")
+
+    // ---- objects ----
+    check_parse_ok(18, "test_parse_object_empty", "{}", "{}")
+    check_parse_ok(19, "test_parse_object_simple", "{\"a\":1}", "{\"a\":1}")
+    check_parse_ok(20, "test_parse_object_multi", "{\"a\":1,\"b\":2}", "{\"a\":1,\"b\":2}")
+    check_parse_ok(21, "test_parse_object_string_val", "{\"k\":\"v\"}", "{\"k\":\"v\"}")
+    check_parse_ok(22, "test_parse_object_nested", "{\"a\":{\"b\":1}}", "{\"a\":{\"b\":1}}")
+    check_parse_ok(23, "test_parse_object_array_val", "{\"a\":[1,2]}", "{\"a\":[1,2]}")
+
+    // ---- whitespace handling (canonical = compact) ----
+    check_parse_ok(24, "test_parse_ws_array", "  [ 1 , 2 ]  ", "[1,2]")
+    check_parse_ok(25, "test_parse_ws_object", " { \"a\" : 1 } ", "{\"a\":1}")
+    check_to_string(26, "test_to_string_ws_nested", "  { \"a\" : [ 1 , 2 ] }  ", "{\"a\":[1,2]}")
+
+    // ---- to_string (canonical re-serialization) ----
+    check_to_string(27, "test_to_string_null", "null", "null")
+    check_to_string(28, "test_to_string_number", "42", "42")
+    check_to_string(29, "test_to_string_array", "[1, 2, 3]", "[1,2,3]")
+    check_to_string(30, "test_to_string_object", "{\"x\": 1}", "{\"x\":1}")
+
+    // ---- error cases (must be Err) ----
+    check_parse_err(31, "test_parse_err_empty", "")
+    check_parse_err(32, "test_parse_err_trailing_data", "1 2")
+    check_parse_err(33, "test_parse_err_unclosed_array", "[1,2")
+    check_parse_err(34, "test_parse_err_unclosed_object", "{\"a\":1")
+    check_parse_err(35, "test_parse_err_unclosed_string", "\"abc")
+    check_parse_err(36, "test_parse_err_bad_literal", "tru")
+    check_parse_err(37, "test_parse_err_double_comma", "[1,,2]")
+    check_parse_err(38, "test_parse_err_missing_colon", "{\"a\" 1}")
+    check_parse_err(39, "test_parse_err_leading_comma", "[,1]")
+    check_parse_err(40, "test_parse_err_garbage", "@#$")
+}

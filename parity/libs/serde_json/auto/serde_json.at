@@ -1,0 +1,236 @@
+/// serde_json library: a JSON parser + serializer subset.
+///
+/// Replicates the parsing and serialization behaviour of the Rust `serde_json`
+/// crate v1.0 for the JSON grammar: null, bool, number (int/float), string,
+/// array, object.
+///
+/// ## Representation: the parsed `Value` IS its canonical JSON text.
+///
+/// The upstream `serde_json::Value` is a recursive sum type. Auto's VM cannot
+/// express that: a recursive `enum` (`node(Tree, Tree)`) fails to parse, and
+/// `is` pattern arms do NOT bind payload variables for user-defined enums (the
+/// bound name comes back "undefined variable"). Only the built-in
+/// `Ok`/`Err`/`Option` destructuring works. So the "Value" is represented by
+/// its canonical (compact) JSON text — a `str`. `parse` is a real
+/// recursive-descent parser that validates and re-emits a canonical form;
+/// `to_string` does the same parse-and-re-emit. Only primitive `str`/`int`
+/// values cross the module boundary.
+///
+/// ## Output accumulator threaded as a parameter (critical VM workaround).
+///
+/// Returning a StringBuilder-built string back through recursive call frames
+/// corrupts the value, and a module-level StringBuilder mutated during
+/// recursion reads back as garbage. So the output `StringBuilder` is created
+/// LOCALLY by the public entry point and passed as a PARAMETER to every
+/// recursive helper, which only appends to it. The complex value never crosses
+/// a return frame and is never stored in a module global. The simple
+/// `int`/`bool` globals (`POS`, `N`, `ERR`) are unaffected.
+///
+/// ## Other VM codegen bugs worked around
+///   * `break` inside a `for` loop whose condition references a module global
+///     emits invalid bytecode. Early exits use `loop { if guard { ... return } }`
+///     instead of `for + break`.
+///
+/// ## API
+///   parse(input str)      -> Result[str, str]   Ok(canonical) | Err(msg)
+///   to_string(input str)  -> str                 canonical form ("" on err)
+///
+/// `str.char_at(i)` returns the code point as `int`.
+
+var POS int = 0
+var N int = 0
+var ERR bool = false
+
+fn skip_ws(s str) {
+    for POS < N {
+        let c int = s.char_at(POS)
+        if c == 32 || c == 9 || c == 10 || c == 13 { POS = POS + 1 } else { return }
+    }
+}
+
+fn peek(s str) int {
+    if POS < N { return s.char_at(POS) }
+    return -1
+}
+
+fn hex_value(c int) int {
+    if c >= 48 && c <= 57 { return c - 48 }
+    if c >= 65 && c <= 70 { return c - 55 }
+    if c >= 97 && c <= 102 { return c - 87 }
+    ERR = true
+    return 0
+}
+
+fn hex_nibble(n int) int {
+    if n <= 9 { return n + 48 }
+    return n - 10 + 97
+}
+
+fn emit_escaped(sb StringBuilder, c int) {
+    if c == 34 { sb.append("\\\"") }
+    else if c == 92 { sb.append("\\\\") }
+    else if c == 47 { sb.append("\\/") }
+    else if c == 8 { sb.append("\\b") }
+    else if c == 12 { sb.append("\\f") }
+    else if c == 10 { sb.append("\\n") }
+    else if c == 13 { sb.append("\\r") }
+    else if c == 9 { sb.append("\\t") }
+    else if c < 32 {
+        sb.append("\\u00")
+        sb.append_char(hex_nibble(c / 16))
+        sb.append_char(hex_nibble(c % 16))
+    } else { sb.append_char(c) }
+}
+
+fn expect_keyword(s str, sb StringBuilder, kw str) {
+    var kl int = kw.len()
+    if POS + kl > N { ERR = true; sb.append(kw); return }
+    var i int = 0
+    for i < kl {
+        if s.char_at(POS + i) != kw.char_at(i) { ERR = true; sb.append(kw); return }
+        i = i + 1
+    }
+    POS = POS + kl
+    sb.append(kw)
+}
+
+fn break_num(s str, sb StringBuilder, start int) {
+    if POS == start { ERR = true; sb.append("0"); return }
+    var end int = POS
+    var i int = start
+    for i < end { sb.append_char(s.char_at(i)); i = i + 1 }
+}
+
+fn parse_number(s str, sb StringBuilder) {
+    var start int = POS
+    loop {
+        if POS >= N { break_num(s, sb, start); return }
+        let c int = s.char_at(POS)
+        if (c >= 48 && c <= 57) || c == 45 || c == 43 || c == 46 || c == 101 || c == 69 {
+            POS = POS + 1
+        } else { break_num(s, sb, start); return }
+    }
+    break_num(s, sb, start)
+}
+
+fn parse_string(s str, sb StringBuilder) {
+    if peek(s) != 34 { ERR = true; sb.append("\"\""); return }
+    POS = POS + 1
+    sb.append_char(34)
+    loop {
+        if POS >= N { ERR = true; sb.append_char(34); return }
+        let c int = s.char_at(POS)
+        if c == 34 { POS = POS + 1; sb.append_char(34); return }
+        if c == 92 {
+            POS = POS + 1
+            if POS >= N { ERR = true; sb.append_char(34); return }
+            let e int = s.char_at(POS)
+            POS = POS + 1
+            if e == 34 { emit_escaped(sb, 34) }
+            else if e == 92 { emit_escaped(sb, 92) }
+            else if e == 47 { emit_escaped(sb, 47) }
+            else if e == 98 { emit_escaped(sb, 8) }
+            else if e == 102 { emit_escaped(sb, 12) }
+            else if e == 110 { emit_escaped(sb, 10) }
+            else if e == 114 { emit_escaped(sb, 13) }
+            else if e == 116 { emit_escaped(sb, 9) }
+            else if e == 117 {
+                if POS + 4 > N { ERR = true; return }
+                var code int = 0
+                var k int = 0
+                for k < 4 {
+                    let hc int = s.char_at(POS)
+                    POS = POS + 1
+                    code = code * 16 + hex_value(hc)
+                    k = k + 1
+                }
+                emit_escaped(sb, code)
+            } else { ERR = true; return }
+        } else {
+            if c < 32 { ERR = true; return }
+            emit_escaped(sb, c)
+            POS = POS + 1
+        }
+    }
+}
+
+fn parse_value(s str, sb StringBuilder) {
+    skip_ws(s)
+    let c int = s.char_at(POS)
+    if c == 123 { parse_object(s, sb) }
+    else if c == 91 { parse_array(s, sb) }
+    else if c == 34 { parse_string(s, sb) }
+    else if c == 116 { expect_keyword(s, sb, "true") }
+    else if c == 102 { expect_keyword(s, sb, "false") }
+    else if c == 110 { expect_keyword(s, sb, "null") }
+    else { parse_number(s, sb) }
+}
+
+fn parse_array(s str, sb StringBuilder) {
+    POS = POS + 1
+    sb.append_char(91)
+    var first bool = true
+    loop {
+        skip_ws(s)
+        if POS >= N { ERR = true; return }
+        if s.char_at(POS) == 93 { POS = POS + 1; sb.append_char(93); return }
+        if !first { sb.append_char(44) }
+        parse_value(s, sb)
+        first = false
+        skip_ws(s)
+        if POS >= N { ERR = true; return }
+        let nc int = s.char_at(POS)
+        if nc == 44 { POS = POS + 1 }
+        else if nc == 93 { POS = POS + 1; sb.append_char(93); return }
+        else { ERR = true; return }
+    }
+}
+
+fn parse_object(s str, sb StringBuilder) {
+    POS = POS + 1
+    sb.append_char(123)
+    var first bool = true
+    loop {
+        skip_ws(s)
+        if POS >= N { ERR = true; return }
+        if s.char_at(POS) == 125 { POS = POS + 1; sb.append_char(125); return }
+        if !first { sb.append_char(44) }
+        parse_string(s, sb)
+        skip_ws(s)
+        if POS >= N || s.char_at(POS) != 58 { ERR = true; return }
+        POS = POS + 1
+        sb.append_char(58)
+        parse_value(s, sb)
+        first = false
+        skip_ws(s)
+        if POS >= N { ERR = true; return }
+        let nc int = s.char_at(POS)
+        if nc == 44 { POS = POS + 1 }
+        else if nc == 125 { POS = POS + 1; sb.append_char(125); return }
+        else { ERR = true; return }
+    }
+}
+
+fn parse(input str) {
+    POS = 0
+    N = input.len()
+    ERR = false
+    if N == 0 { return Err("empty input") }
+    var sb StringBuilder = StringBuilder.new(N + 8)
+    parse_value(input, sb)
+    if ERR { return Err("invalid JSON") }
+    skip_ws(input)
+    if POS != N { return Err("trailing data") }
+    return Ok(sb.build())
+}
+
+fn to_string(input str) str {
+    POS = 0
+    N = input.len()
+    ERR = false
+    if N == 0 { return "" }
+    var sb StringBuilder = StringBuilder.new(N + 8)
+    parse_value(input, sb)
+    if ERR { return "" }
+    return sb.build()
+}
