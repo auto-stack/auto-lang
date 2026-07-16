@@ -897,7 +897,9 @@ fn split_pkg_version(dep: &str) -> (String, String) {
     for sep in &[":link:", ":file:"] {
         if let Some(pos) = dep.find(sep) {
             let pkg = dep[..pos].to_string();
-            let spec = format!("{}{}", &sep[1..], &dep[pos + 1..]); // "link:/path" or "file:../path"
+            // dep = "pkg:link:/path", pos points at ":link:"
+            // sep[1..] = "link:", dep[pos+sep.len()..] = "/path"
+            let spec = format!("{}{}", &sep[1..], &dep[pos + sep.len()..]);
             return (pkg, spec);
         }
     }
