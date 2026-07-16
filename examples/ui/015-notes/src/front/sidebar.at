@@ -1,5 +1,5 @@
-// sidebar.at — Unified tree navigation (Plan 354 v3).
-// Simplified: flat note list with search filter.
+// sidebar.at — Simplified flat navigation (Plan 354 v3).
+// TODO: restore folder tree + tag filter after Plan 356 (Vue generator OOM fix).
 
 use store: NotesStore
 
@@ -12,7 +12,6 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
     view {
         col {
             style: "w-80 border-r border-gray-200 flex-col flex-shrink-0"
-            // Quick shortcuts
             row {
                 style: "gap-1 px-2 pt-2 pb-1"
                 button "All" {
@@ -31,7 +30,6 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
 
             separator { style: "border-t border-gray-200" }
 
-            // Flat note list (search filters by title)
             col {
                 style: "flex-1 overflow-y-auto px-1 gap-0.5"
                 for i, note in .store.notes {

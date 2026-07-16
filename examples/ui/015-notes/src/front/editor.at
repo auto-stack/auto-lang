@@ -1,6 +1,5 @@
-// editor.at — EditorPanel with AutoDown editor, tags, pin, folder, delete.
-// Phase D: textarea replaced by autodown_editor for both edit and read modes,
-// plus a folder selector that emits MoveNote via the on_move_to_folder callback.
+// editor.at — EditorPanel with textarea (temp), tags, pin, folder, delete.
+// TODO: restore autodown_editor after Plan 356 (Vue generator OOM fix).
 
 use store: NotesStore
 use back.api: update_note, delete_note, toggle_pin, update_tags
@@ -14,98 +13,28 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_fol
         var edit_title str = ""
         var edit_body str = ""
         var tag_input str = ""
-        var rendered_body str = ""
     }
 
     view {
         col {
             col {
                 if .editing == false {
-                    row {
-                        text .note.title { style: "text-lg font-semibold text-gray-800" }
-                        if .note.pinned {
-                            text "Pin" { style: "text-sm ml-2" }
-                        }
-                        style: "items-center"
-                    }
+                    text .note.title { style: "text-lg font-semibold text-gray-800" }
                 }
                 if .editing == true {
                     input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-gray-800 border-b border-gray-200 outline-none w-full focus:border-blue-500 p-1" }
                 }
                 text .note.time { style: "text-xs text-gray-400 mt-1" }
 
-                // tags: display as badges
                 row {
+                    style: "gap-1"
                     for t in .note.tags {
                         badge t { variant: "secondary" }
                     }
-                    style: "gap-1"
-                }
-                if .editing == true {
-                    row {
-                        for t in .note.tags {
-                            badge t {
-                                variant: "destructive"
-                                onclick: .RemoveTag(t)
-                            }
-                        }
-                        input { value: .tag_input, oninput: .EditTagInput, placeholder: "Add tag...", style: "text-xs px-2 py-0.5 border rounded w-24" }
-                        button "+" { onclick: .AddTag, style: "text-xs px-2 py-0.5 bg-blue-500 text-white rounded" }
-                        style: "gap-1 items-center"
-                    }
                 }
 
-                // Folder selector (hardcoded folders).
-                row {
-                    text "Folder:" { style: "text-xs text-gray-400" }
-                    button {
-                        onclick: .MoveToFolder("default")
-                        style: if .note.folder == "default" {
-                            "text-xs px-2 py-0.5 rounded bg-blue-500 text-white"
-                        } else {
-                            "text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        }
-                        text "Default"
-                    }
-                    button {
-                        onclick: .MoveToFolder("work")
-                        style: if .note.folder == "work" {
-                            "text-xs px-2 py-0.5 rounded bg-blue-500 text-white"
-                        } else {
-                            "text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        }
-                        text "Work"
-                    }
-                    button {
-                        onclick: .MoveToFolder("personal")
-                        style: if .note.folder == "personal" {
-                            "text-xs px-2 py-0.5 rounded bg-blue-500 text-white"
-                        } else {
-                            "text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        }
-                        text "Personal"
-                    }
-                    button {
-                        onclick: .MoveToFolder("study")
-                        style: if .note.folder == "study" {
-                            "text-xs px-2 py-0.5 rounded bg-blue-500 text-white"
-                        } else {
-                            "text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        }
-                        text "Study"
-                    }
-                    style: "gap-1 items-center mt-1 flex-wrap"
-                }
-
-                // TEMP: autodown_editor disabled (Vue generator hangs on it).
-                // TODO: debug and restore autodown_editor.
                 if .editing == true {
-                    textarea {
-                        value: .edit_body
-                        oninput: .EditBody
-                        placeholder: "Start writing (Markdown supported)..."
-                        style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    }
+                    textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing...", style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" }
                 }
                 if .editing == false {
                     text .note.body { style: "text-gray-700 flex-1 leading-relaxed whitespace-pre-wrap mt-2" }
@@ -119,9 +48,9 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_fol
                 }
                 if .editing == true {
                     row {
+                        style: "gap-2"
                         button "Save" { onclick: .Save, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
                         button "Cancel" { onclick: .Cancel, style: "px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600" }
-                        style: "gap-2"
                     }
                 }
                 button "Delete" { onclick: .Delete, style: "ml-auto px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600" }
@@ -151,9 +80,7 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_fol
             update_note(.note.id, .edit_title, .edit_body)
             .editing = false
         }
-        .Cancel -> {
-            .editing = false
-        }
+        .Cancel -> { .editing = false }
         .EditBody -> { }
         .EditTitle -> { }
         .EditTagInput -> { }
@@ -164,26 +91,14 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_move_to_fol
                 .tag_input = ""
             }
         }
-        .RemoveTag(t) -> {
-            var new_tags []str = []
-            for tg in .note.tags {
-                if tg != t {
-                    new_tags.push(tg)
-                }
-            }
-            .note.tags = new_tags
-            update_tags(.note.id, .note.tags)
-        }
-        .MoveToFolder(folder) -> {
-            store.MoveNote(.note.id)
-            .note.folder = folder
-        }
-        .Delete -> {
-            on_delete()
-        }
+        .Delete -> { on_delete() }
         .TogglePin -> {
             toggle_pin(.note.id)
             on_toggle_pin()
+        }
+        .MoveToFolder(folder) -> {
+            .note.folder = folder
+            on_move_to_folder()
         }
     }
 }
