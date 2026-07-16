@@ -1,0 +1,22 @@
+// Plan 356 regression: the minimal OOM trigger.
+//
+// Root cause: the loop variable `tag` lexes as the reserved keyword
+// TokenKind::Tag. When used as an argument to an event handler inside a
+// for-loop (`onclick: .SelectTag(tag)`), parse_event_arg used to match only
+// TokenKind::Ident, consumed nothing, and the handler's arg loop spun forever
+// → OOM. This file must parse + generate cleanly after the fix.
+widget NavTree(active: bool) {
+    msg Msg { SelectTag(str) }
+    view {
+        col {
+            for tag in .items {
+                button {
+                    text tag
+                    onclick: .SelectTag(tag)
+                    style: if .active { "bg-blue-500" } else { "bg-gray-100" }
+                }
+            }
+        }
+    }
+    on { .SelectTag(t) -> { } }
+}
