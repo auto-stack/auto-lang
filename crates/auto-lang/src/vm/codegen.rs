@@ -3689,6 +3689,16 @@ impl Codegen {
         if !use_stmt.paths.is_empty() {
             self.auto_modules.insert(use_stmt.paths[0].to_string());
         }
+        // Plan 355: Also track the import qualifier (last path segment, e.g.
+        // "base64" from `use auto.base64`) so native-opaque-module routing can
+        // be suppressed when the user has loaded a same-named Auto library.
+        // Without this, `use auto.base64: decode` resolves `decode` to the
+        // built-in `auto.base64.decode` native instead of the user's library.
+        if !use_stmt.paths.is_empty() {
+            self.auto_modules.insert(
+                use_stmt.paths.last().unwrap().to_string()
+            );
+        }
 
         // Get the module path string
         let module_path = if let Some(ref mp) = use_stmt.module_path {
@@ -6537,7 +6547,23 @@ impl Codegen {
                         if let Some(id) = natives_id {
                             Some(id)
                         } else if let Some(qualified) = self.import_scope.get(name) {
-                            BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
+                            // Plan 355: a user-loaded Auto library must shadow a
+                            // same-named native opaque module (e.g. `base64.encode`
+                            // from `use auto.base64: encode`). If the qualified
+                            // alias's module prefix is a known user Auto module
+                            // (registered in `auto_modules`), do NOT route to the
+                            // native — let the CALL-with-reloc path below bind to
+                            // the user's library via the linker.
+                            let is_user_auto_module = qualified
+                                .split('.')
+                                .next()
+                                .map(|mod_name| self.auto_modules.contains(mod_name))
+                                .unwrap_or(false);
+                            if is_user_auto_module {
+                                None
+                            } else {
+                                BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
+                            }
                         } else if let Some(&id) = self.c_ffi_functions.get(name) {
                             Some(id)
                         } else {

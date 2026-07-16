@@ -1,0 +1,9 @@
+[package]
+name = "auto-parity"
+version = "0.1.0"
+edition = "2021"
+description = "Three-way parity checker: AutoVM vs a2r vs native Rust"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+walkdir = "2"

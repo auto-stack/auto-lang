@@ -1,0 +1,74 @@
+/// serde_json roundtrip tests — TAP output format.
+///
+/// For each JSON input: parse -> canonical -> to_string -> canonical again,
+/// asserting the two canonical forms are identical (idempotent roundtrip).
+/// Also asserts that the canonical form equals the input when the input is
+/// already compact. Names mirror the Rust oracle.
+///
+/// Same VM-quirk rules as parse.at: only strings are printed; booleans drive
+/// `if` branches directly and are never stringified.
+use auto.serde_json: parse, to_string
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn ok_value(r) str {
+    var out str = "<err>"
+    is r {
+        Ok(v) -> { out = v }
+        Err(e) -> { out = "<err>" }
+    }
+    return out
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+/// Roundtrip: parse(input) -> canonical -> to_string(canonical) -> canonical2.
+/// Asserts canonical == canonical2 (idempotent) and, when `compact` is the
+/// expected compact form, that the first canonical equals it.
+fn check_roundtrip(n int, name str, input str, compact str) {
+    let first str = ok_value(parse(input))
+    if first == "<err>" {
+        tap_not_ok(n, name, "parse failed")
+        return
+    }
+    let second str = to_string(first)
+    if first != second {
+        tap_not_ok(n, name, "not idempotent: \"" + first + "\" vs \"" + second + "\"")
+        return
+    }
+    check_str(n, name, first, compact)
+}
+
+fn main() {
+    // roundtrips: input -> compact canonical (idempotency checked internally)
+    check_roundtrip(1, "test_roundtrip_null", "null", "null")
+    check_roundtrip(2, "test_roundtrip_true", "true", "true")
+    check_roundtrip(3, "test_roundtrip_false", "false", "false")
+    check_roundtrip(4, "test_roundtrip_int", "42", "42")
+    check_roundtrip(5, "test_roundtrip_float", "3.14", "3.14")
+    check_roundtrip(6, "test_roundtrip_string", "\"hello\"", "\"hello\"")
+    check_roundtrip(7, "test_roundtrip_array", "[1,2,3]", "[1,2,3]")
+    check_roundtrip(8, "test_roundtrip_object", "{\"a\":1}", "{\"a\":1}")
+    check_roundtrip(9, "test_roundtrip_nested_array", "[[1],[2,3]]", "[[1],[2,3]]")
+    check_roundtrip(10, "test_roundtrip_nested_object", "{\"a\":{\"b\":1}}", "{\"a\":{\"b\":1}}")
+    check_roundtrip(11, "test_roundtrip_mixed", "{\"a\":[1,2],\"b\":true}", "{\"a\":[1,2],\"b\":true}")
+    check_roundtrip(12, "test_roundtrip_empty_array", "[]", "[]")
+    check_roundtrip(13, "test_roundtrip_empty_object", "{}", "{}")
+
+    // whitespace is canonicalized away
+    check_roundtrip(14, "test_roundtrip_ws_array", "  [ 1 , 2 ]  ", "[1,2]")
+    check_roundtrip(15, "test_roundtrip_ws_object", "{ \"a\" : 1 , \"b\" : 2 }", "{\"a\":1,\"b\":2}")
+    check_roundtrip(16, "test_roundtrip_ws_nested", "  { \"a\" : [ 1 , 2 ] }  ", "{\"a\":[1,2]}")
+}

@@ -1,0 +1,62 @@
+/// base64 decode tests — TAP output format.
+use auto.base64: decode
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+/// Extract the Ok payload as a string, or "<err>" if the Result is an Err.
+fn ok_value(r) str {
+    var out str = "<err>"
+    is r {
+        Ok(v) -> { out = v }
+        Err(e) -> { out = "<err>" }
+    }
+    return out
+}
+
+/// Return true if the Result is Ok.
+fn is_ok(r) bool {
+    var out bool = false
+    is r {
+        Ok(v) -> { out = true }
+        Err(e) -> { out = false }
+    }
+    return out
+}
+
+fn check_ok(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+fn check_err(n int, name str, ok bool) {
+    if ok {
+        tap_not_ok(n, name, "expected Err but got Ok")
+    } else {
+        tap_ok(n, name)
+    }
+}
+
+fn main() {
+    // valid decodes (reverse of encode)
+    check_ok(1, "test_decode_empty", ok_value(decode("")), "")
+    check_ok(2, "test_decode_Zg", ok_value(decode("Zg==")), "f")
+    check_ok(3, "test_decode_Zm8", ok_value(decode("Zm8=")), "fo")
+    check_ok(4, "test_decode_Zm9v", ok_value(decode("Zm9v")), "foo")
+    check_ok(5, "test_decode_Zm9vYg", ok_value(decode("Zm9vYg==")), "foob")
+    check_ok(6, "test_decode_Zm9vYmE", ok_value(decode("Zm9vYmE=")), "fooba")
+    check_ok(7, "test_decode_Zm9vYmFy", ok_value(decode("Zm9vYmFy")), "foobar")
+    check_ok(8, "test_decode_hello_world", ok_value(decode("aGVsbG8gd29ybGQ=")), "hello world")
+
+    // error cases: invalid input must yield Err
+    check_err(9, "test_decode_invalid_chars", is_ok(decode("!!!!")))
+    check_err(10, "test_decode_bad_length", is_ok(decode("abc")))
+}

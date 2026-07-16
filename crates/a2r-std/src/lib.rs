@@ -14,9 +14,11 @@ pub mod fs;
 pub mod list;
 pub mod hashmap;
 pub mod http;
+pub mod string_builder;
 
 // Re-export commonly used types
 pub use list::List;
+pub use string_builder::StringBuilder;
 
 /// May<T> - AutoLang's optional type (alias for Option<T>)
 pub type May<T> = Option<T>;

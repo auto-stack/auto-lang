@@ -1,0 +1,193 @@
+/// base64 library: standard-alphabet, padded encode/decode.
+///
+/// Replicates the input -> output mapping of the Rust `base64` crate v0.22.0
+/// (`engine::general_purpose::STANDARD`) for ASCII / byte-string inputs.
+///
+/// VM quirk workarounds used here:
+///   * Bitwise *operator* syntax (`<<`, `&`, ...) is not supported; the VM
+///     exposes them as int methods (`.shl`, `.and`, ...). Chaining two of those
+///     methods in one expression (`x.and(3).shl(4)`) currently miscomputes, so
+///     every native call is applied to a separately-named binding.
+///   * `int.as(char)` does not produce a single-char string, so single
+///     characters are built with `StringBuilder.new(n).append_char(code).build()`.
+///   * `str.char_at(i)` returns the code point as `int` (not a one-char str),
+///     which is exactly what the encoder needs.
+///   * Module-level `const` values are not reliably visible across the module
+///     boundary in the current VM, so the alphabet is defined as a local `let`
+///     inside each function that needs it.
+
+/// Look up the alphabet index for a base64 character code, or -1 if the
+/// character is not a valid standard-alphabet digit. `=` (padding) returns -2.
+fn char_to_index(code int) int {
+    let alphabet str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    var i int = 0
+    var found int = -1
+    for i < 64 {
+        if alphabet.char_at(i) == code {
+            found = i
+        }
+        i = i + 1
+    }
+    if found >= 0 {
+        return found
+    }
+    // padding '='
+    if code == 61 {
+        return -2
+    }
+    return -1
+}
+
+/// encode a string to base64 (standard alphabet, padded).
+fn encode(input str) str {
+    let alphabet str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    var sb StringBuilder = StringBuilder.new(64)
+    var n int = input.len()
+    var i int = 0
+    // process 3 bytes at a time -> 4 base64 chars
+    for i + 2 < n {
+        let b0 int = input.char_at(i)
+        let b1 int = input.char_at(i + 1)
+        let b2 int = input.char_at(i + 2)
+        // g0 = b0 >> 2
+        var g int = b0.shr(2)
+        sb.append_char(alphabet.char_at(g))
+        // g1 = ((b0 & 3) << 4) | (b1 >> 4)
+        let lo int = b0.and(3)
+        let lo4 int = lo.shl(4)
+        let hi4 int = b1.shr(4)
+        g = lo4.or(hi4)
+        sb.append_char(alphabet.char_at(g))
+        // g2 = ((b1 & 15) << 2) | (b2 >> 6)
+        let m1 int = b1.and(15)
+        let m1s int = m1.shl(2)
+        let h2 int = b2.shr(6)
+        g = m1s.or(h2)
+        sb.append_char(alphabet.char_at(g))
+        // g3 = b2 & 63
+        g = b2.and(63)
+        sb.append_char(alphabet.char_at(g))
+        i = i + 3
+    }
+
+    // handle the remaining 1 or 2 bytes
+    let rem int = n - i
+    if rem == 1 {
+        let b0 int = input.char_at(i)
+        var g int = b0.shr(2)
+        sb.append_char(alphabet.char_at(g))
+        let lo int = b0.and(3)
+        g = lo.shl(4)
+        sb.append_char(alphabet.char_at(g))
+        sb.append("==")
+    } else {
+        if rem == 2 {
+            let b0 int = input.char_at(i)
+            let b1 int = input.char_at(i + 1)
+            var g int = b0.shr(2)
+            sb.append_char(alphabet.char_at(g))
+            let lo int = b0.and(3)
+            let lo4 int = lo.shl(4)
+            let hi4 int = b1.shr(4)
+            g = lo4.or(hi4)
+            sb.append_char(alphabet.char_at(g))
+            let m1 int = b1.and(15)
+            g = m1.shl(2)
+            sb.append_char(alphabet.char_at(g))
+            sb.append("=")
+        }
+    }
+
+    return sb.build()
+}
+
+/// decode base64 (standard alphabet, padded) to a string.
+/// Returns Ok(str) on success or Err(msg) on invalid input.
+fn decode(input str) {
+    var n int = input.len()
+    // build a whitespace-stripped copy of the input
+    var stripped StringBuilder = StringBuilder.new(n)
+    var si int = 0
+    for si < n {
+        let c int = input.char_at(si)
+        if c == 32 {
+            // skip space
+        } else {
+            if c == 10 {
+                // skip newline
+            } else {
+                if c == 13 {
+                    // skip CR
+                } else {
+                    if c == 9 {
+                        // skip tab
+                    } else {
+                        stripped.append_char(c)
+                    }
+                }
+            }
+        }
+        si = si + 1
+    }
+    let clean str = stripped.build()
+
+    var m int = clean.len()
+    // base64 input (without whitespace) must be a multiple of 4
+    if m == 0 {
+        return Ok("")
+    }
+    if m % 4 != 0 {
+        return Err("invalid length")
+    }
+
+    var sb StringBuilder = StringBuilder.new(64)
+    var i int = 0
+    for i + 3 < m {
+        let c0 int = clean.char_at(i)
+        let c1 int = clean.char_at(i + 1)
+        let c2 int = clean.char_at(i + 2)
+        let c3 int = clean.char_at(i + 3)
+        let v0 int = char_to_index(c0)
+        let v1 int = char_to_index(c1)
+        let v2 int = char_to_index(c2)
+        let v3 int = char_to_index(c3)
+        if v0 < 0 {
+            return Err("invalid char")
+        }
+        if v1 < 0 {
+            return Err("invalid char")
+        }
+        // c2 / c3 may be padding ('=' -> -2); an out-of-alphabet char is -1
+        if v2 == -1 {
+            return Err("invalid char")
+        }
+        if v3 == -1 {
+            return Err("invalid char")
+        }
+
+        // b0 = (v0 << 2) | (v1 >> 4)
+        let s0 int = v0.shl(2)
+        let r1 int = v1.shr(4)
+        let b0 int = s0.or(r1)
+        sb.append_char(b0)
+
+        if v2 >= 0 {
+            // b1 = ((v1 & 15) << 4) | (v2 >> 2)
+            let lo1 int = v1.and(15)
+            let lo1s int = lo1.shl(4)
+            let r2 int = v2.shr(2)
+            let b1 int = lo1s.or(r2)
+            sb.append_char(b1)
+            if v3 >= 0 {
+                // b2 = ((v2 & 3) << 6) | v3
+                let lo2 int = v2.and(3)
+                let lo2s int = lo2.shl(6)
+                let b2 int = lo2s.or(v3)
+                sb.append_char(b2)
+            }
+        }
+        i = i + 4
+    }
+
+    return Ok(sb.build())
+}

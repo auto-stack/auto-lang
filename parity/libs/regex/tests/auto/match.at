@@ -1,0 +1,97 @@
+/// regex match tests — literals, '.', '*', '+', '?', character classes.
+/// TAP output format. Names mirror the Rust oracle in
+/// tests/rust/tests/regex.rs so the parity framework can compare three-way.
+///
+/// NOTE: `is_match` returns `int` (1 = matched, 0 = no match) rather than
+/// `bool`. A `bool` returned across the Auto module boundary is corrupted by
+/// the VM (it reads back as a wrong value and compares with garbage), so the
+/// library yields the integer sentinel pair {0, 1}. The Rust oracle uses
+/// integer assertions too, so both backends agree.
+use auto.regex: is_match, find
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+/// is_match returns int (1/0) — a bool crossing the module boundary is
+/// corrupted by the VM, so the library yields int.
+fn check_match(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+fn main() {
+    // ---- literal characters (is_match) ----
+    check_match(1, "test_literal_match_true", is_match("abc", "abc"), 1)
+    check_match(2, "test_literal_no_match_false", is_match("abc", "xyz"), 0)
+    check_match(3, "test_literal_substring_true", is_match("bc", "abcde"), 1)
+    check_match(4, "test_literal_full_substring_true", is_match("cde", "abcde"), 1)
+    check_match(5, "test_literal_at_end_true", is_match("de", "abcde"), 1)
+    check_match(6, "test_literal_single_char_true", is_match("a", "a"), 1)
+
+    // ---- dot wildcard (is_match) ----
+    check_match(7, "test_dot_any_char_true", is_match("a.c", "abc"), 1)
+    check_match(8, "test_dot_any_char_axc_true", is_match("a.c", "axc"), 1)
+    check_match(9, "test_dot_no_match_wrong_len_false", is_match("a.c", "ac"), 0)
+    check_match(10, "test_dot_matches_anywhere_true", is_match("x.y", "zxayz"), 1)
+
+    // ---- star (zero or more, is_match) ----
+    check_match(11, "test_star_zero_true", is_match("ab*c", "ac"), 1)
+    check_match(12, "test_star_one_true", is_match("ab*c", "abc"), 1)
+    check_match(13, "test_star_many_true", is_match("ab*c", "abbbbc"), 1)
+    check_match(14, "test_star_no_match_false", is_match("ab*c", "axc"), 0)
+    check_match(15, "test_star_only_true", is_match("a*", "bbba"), 1)
+    check_match(16, "test_star_empty_match_true", is_match("a*", "bbb"), 1)
+
+    // ---- plus (one or more, is_match) ----
+    check_match(17, "test_plus_one_true", is_match("ab+c", "abc"), 1)
+    check_match(18, "test_plus_many_true", is_match("ab+c", "abbbbc"), 1)
+    check_match(19, "test_plus_zero_false", is_match("ab+c", "ac"), 0)
+    check_match(20, "test_plus_no_match_false", is_match("ab+c", "axc"), 0)
+
+    // ---- question (zero or one, is_match) ----
+    check_match(21, "test_question_zero_true", is_match("colou?r", "color"), 1)
+    check_match(22, "test_question_one_true", is_match("colou?r", "colour"), 1)
+    check_match(23, "test_question_two_false", is_match("ab?c", "abbc"), 0)
+    check_match(24, "test_question_no_match_false", is_match("ab?c", "axc"), 0)
+
+    // ---- character classes (is_match) ----
+    check_match(25, "test_class_single_true", is_match("[abc]", "b"), 1)
+    check_match(26, "test_class_single_no_match_false", is_match("[abc]", "d"), 0)
+    check_match(27, "test_class_in_word_true", is_match("x[abc]y", "xby"), 1)
+    check_match(28, "test_class_in_word_no_match_false", is_match("x[abc]y", "xdy"), 0)
+    check_match(29, "test_class_range_digit_true", is_match("[0-9]", "5"), 1)
+    check_match(30, "test_class_range_digit_no_match_false", is_match("[0-9]", "a"), 0)
+    check_match(31, "test_class_range_alpha_true", is_match("[a-z][0-9]", "k7"), 1)
+    check_match(32, "test_class_range_alpha_no_match_false", is_match("[a-z][0-9]", "77"), 0)
+    check_match(33, "test_class_with_star_true", is_match("[0-9]*", "abc"), 1)
+    check_match(34, "test_class_with_plus_true", is_match("[0-9]+x", "12x"), 1)
+    check_match(35, "test_class_with_plus_no_match_false", is_match("[0-9]+x", "abx"), 0)
+
+    // ---- find (leftmost match as string) ----
+    check_str(36, "test_find_literal", find("cde", "abcde"), "cde")
+    check_str(37, "test_find_dot", find("a.c", "xxabcxx"), "abc")
+    check_str(38, "test_find_star_greedy", find("ab*c", "abbbc"), "abbbc")
+    check_str(39, "test_find_star_zero", find("ab*c", "ac"), "ac")
+    check_str(40, "test_find_plus", find("a+b", "aaaab"), "aaaab")
+    check_str(41, "test_find_class", find("[0-9]+", "ab123cd"), "123")
+    check_str(42, "test_find_question", find("colou?r", "colour"), "colour")
+    check_str(43, "test_find_no_match_empty", find("xyz", "abc"), "")
+    check_str(44, "test_find_partial_word", find("cat", "the cat sat"), "cat")
+    check_str(45, "test_find_dot_greedy", find("a.*e", "abcde"), "abcde")
+}

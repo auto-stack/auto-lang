@@ -1,0 +1,53 @@
+/// url component tests — port / query / fragment extraction.
+/// TAP output format. Names mirror the Rust oracle in
+/// tests/rust/tests/url.rs so the parity framework can compare three-way.
+use auto.url: port, query, fragment
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+fn check_int(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    // ---- port (explicit, non-default values only) ----
+    check_int(1, "test_port_explicit_8080", port("http://example.com:8080/path"), 8080)
+    check_int(2, "test_port_explicit_3000", port("http://localhost:3000/"), 3000)
+    check_int(3, "test_port_https_8443", port("https://example.com:8443/a"), 8443)
+    // absent -> -1 sentinel (url crate returns None; we test absence separately)
+    check_int(4, "test_port_absent_returns_neg1", port("http://example.com/path"), -1)
+
+    // ---- query ----
+    check_str(5, "test_query_simple", query("http://example.com/p?x=1"), "x=1")
+    check_str(6, "test_query_multi", query("http://example.com/p?a=1&b=2"), "a=1&b=2")
+    check_str(7, "test_query_with_fragment_present", query("http://example.com/p?x=1#frag"), "x=1")
+    check_str(8, "test_query_absent_empty", query("http://example.com/p"), "")
+
+    // ---- fragment ----
+    check_str(9, "test_fragment_simple", fragment("http://example.com/p#section"), "section")
+    check_str(10, "test_fragment_with_query_present", fragment("http://example.com/p?x=1#sec"), "sec")
+    check_str(11, "test_fragment_absent_empty", fragment("http://example.com/p"), "")
+
+    // ---- combined full url ----
+    check_int(12, "test_full_url_port", port("http://example.com:9090/a/b?x=1#f"), 9090)
+    check_str(13, "test_full_url_query", query("http://example.com:9090/a/b?x=1#f"), "x=1")
+    check_str(14, "test_full_url_fragment", fragment("http://example.com:9090/a/b?x=1#f"), "f")
+}

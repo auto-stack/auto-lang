@@ -1,0 +1,72 @@
+/// url parse tests — scheme / host / path extraction + error cases.
+/// TAP output format. Names mirror the Rust oracle in
+/// tests/rust/tests/url.rs so the parity framework can compare three-way.
+use auto.url: parse, scheme, host, path
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+/// Return true if `r` is an Ok result (parse succeeded).
+fn is_ok(r) bool {
+    var out bool = false
+    is r {
+        Ok(v) -> { out = true }
+        Err(e) -> { out = false }
+    }
+    return out
+}
+
+fn check_ok(n int, name str, ok bool) {
+    if ok {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "expected Ok but got Err")
+    }
+}
+
+fn check_err(n int, name str, ok bool) {
+    if ok {
+        tap_not_ok(n, name, "expected Err but got Ok")
+    } else {
+        tap_ok(n, name)
+    }
+}
+
+fn main() {
+    // ---- scheme ----
+    check_str(1, "test_scheme_http", scheme("http://example.com/path"), "http")
+    check_str(2, "test_scheme_https", scheme("https://example.com/path"), "https")
+    check_str(3, "test_scheme_ftp", scheme("ftp://files.example.com"), "ftp")
+    check_str(4, "test_scheme_uppercase_lowered", scheme("HTTP://Example.COM/p"), "http")
+
+    // ---- host ----
+    check_str(5, "test_host_simple", host("http://example.com/path"), "example.com")
+    check_str(6, "test_host_with_port_stripped", host("http://example.com:8080/path"), "example.com")
+    check_str(7, "test_host_localhost", host("http://localhost:3000/"), "localhost")
+
+    // ---- path ----
+    check_str(8, "test_path_simple", path("http://example.com/path"), "/path")
+    check_str(9, "test_path_multi_segment", path("http://example.com/a/b/c"), "/a/b/c")
+    check_str(10, "test_path_empty_normalised_to_root", path("http://example.com"), "/")
+    check_str(11, "test_path_root", path("http://example.com/"), "/")
+
+    // ---- parse validation ----
+    check_ok(12, "test_parse_valid_http", is_ok(parse("http://example.com/path")))
+    check_ok(13, "test_parse_valid_https", is_ok(parse("https://example.com")))
+    check_err(14, "test_parse_missing_scheme_separator", is_ok(parse("example.com/path")))
+    check_err(15, "test_parse_empty_string", is_ok(parse("")))
+    check_err(16, "test_parse_only_separator", is_ok(parse("://example.com")))
+}
