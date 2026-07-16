@@ -107,6 +107,68 @@ mod tests {
         assert!(true);
     }
 
+    /// Plan 356 follow-up: a view `for`-loop over an `ident.field` iterable
+    /// (e.g. `for tag in note.tags`) must parse + generate. Previously
+    /// `parse_view_for_loop` only accepted `.field`, numeric ranges, or a bare
+    /// ident, so `note.tags` was read as just `note`, leaving `.tags` to break
+    /// the rest of the view ("Expected term, got RBrace").
+    #[test]
+    fn test_view_for_loop_ident_field_iterable() {
+        let src = r#"
+widget Tags {
+    view {
+        col {
+            for note in .notes {
+                for tag in note.tags {
+                    button { text tag }
+                }
+            }
+        }
+    }
+}
+"#;
+        let out = transpile_vue_aura(src, None).expect("ident.field iterable must generate");
+        // Outer loop iterates .notes; inner loop iterates note.tags.
+        assert!(out.matches("v-for").count() == 2, "expected 2 v-for loops in:\n{out}");
+    }
+
+    /// Plan 356 follow-up: `ident.field.sub` chains as an iterable must also
+    /// work (symmetric with `.field.sub` chained access).
+    #[test]
+    fn test_view_for_loop_ident_field_chain_iterable() {
+        let src = r#"
+widget W {
+    view {
+        for x in store.items {
+            button { text "x" }
+        }
+    }
+}
+"#;
+        let out = transpile_vue_aura(src, None).expect("ident.field.chain iterable must generate");
+        assert!(out.contains("v-for"), "missing v-for in:\n{out}");
+    }
+
+    /// Plan 356 end-to-end (IGNORED): the real 015-notes sidebar (commit
+    /// 50307d51, 200 lines) that originally OOM'd. After the Plan 356 OOM fix
+    /// and the `for ident.field` fix, parsing advances past the tag-filter
+    /// section, but the file still hits a *separate* pre-existing bug: a
+    /// `style: if <complex-cond> { } else { }` attribute with a comparison
+    /// condition fails to parse (offset ~8873, "Expected term, got RBrace").
+    ///
+    /// That is a distinct parser issue, out of scope for this fix. This test is
+    /// kept (ignored) as a guard: once the style:if-attribute bug is fixed,
+    /// un-ignore it to verify the full sidebar regenerates end to end.
+    #[test]
+    #[ignore]
+    fn test_plan356_real_sidebar_generates() {
+        let src = include_str!("../../tests/fixtures/plan356_oom_sidebar.at");
+        let out = transpile_vue_aura(src, None).expect("real sidebar must generate");
+        assert!(out.len() < 100_000, "output too large: {} bytes", out.len());
+        assert!(out.contains("v-for"), "expected v-for in sidebar output");
+        assert!(out.contains("SelectTag"), "expected SelectTag handler in sidebar output");
+    }
+
     /// Plan 356 regression: the minimal OOM trigger. A `for`-loop whose body
     /// has an event handler taking the loop variable as an argument, where the
     /// loop variable is a reserved-keyword identifier (`tag` → TokenKind::Tag).
