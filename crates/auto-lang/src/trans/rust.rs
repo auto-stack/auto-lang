@@ -7935,7 +7935,7 @@ impl RustTrans {
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" | "regex" => {
+                            | "process" | "sys" | "sse" | "may" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", rest)
                             }
@@ -7943,13 +7943,21 @@ impl RustTrans {
                         }
                     } else if use_stmt.paths.len() == 1 && !use_stmt.paths[0].as_str().contains("::") {
                         // Single-file mode: bare module name (e.g., "types", "settings")
-                        // Check if it's a known stdlib module or a local crate module
+                        // Check if it's a known stdlib module or a local crate module.
+                        //
+                        // NOTE (Plan 355): `regex` is intentionally NOT in this list.
+                        // a2r_std has no `regex` module (the entry pointed at a phantom
+                        // `a2r_std::regex`), so routing `use auto.regex` there always failed
+                        // to compile. Treating `regex` like any other crate module lets the
+                        // regex parity library (wrapped as `pub mod regex`) resolve correctly,
+                        // and gives non-parity users a clearer "unresolved module" error
+                        // instead of a misleading one.
                         let mod_name = use_stmt.paths[0].as_str();
                         match mod_name {
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" | "regex" => {
+                            | "process" | "sys" | "sse" | "may" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", mod_name)
                             }
@@ -7962,7 +7970,7 @@ impl RustTrans {
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" | "regex"
+                            | "process" | "sys" | "sse" | "may"
                         );
                         if is_stdlib {
                             self.a2r_std_used.set(true);
