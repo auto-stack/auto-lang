@@ -12,8 +12,10 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
 
     view {
         col {
+            style: "w-80 border-r border-gray-200 flex-col flex-shrink-0"
             // ── Quick shortcuts ──
             row {
+                style: "gap-1 px-2 pt-2 pb-1"
                 button "All" {
                     onclick: .SelectAll
                     style: if .active_folder == "all" && .active_tag == "" {
@@ -38,26 +40,26 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                         "px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
                     }
                 }
-                style: "gap-1 px-2 pt-2 pb-1"
             }
 
             separator { style: "border-t border-gray-200" }
 
             // ── Note tree ──
             col {
+                style: "flex-1 overflow-y-auto px-1 gap-0.5"
                 // When searching: show flat list of matching notes
                 if .search != "" {
                     text "Search Results" { style: "px-3 py-1 text-xs font-semibold text-gray-400 uppercase" }
                     for i, note in .store.notes {
                         if note.title.contains(.search) {
                             button {
+                                text note.title
                                 onclick: .SelectNote(i)
                                 style: if i == .active_id {
                                     "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
                                 } else {
                                     "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                 }
-                                text note.title
                             }
                         }
                     }
@@ -71,13 +73,13 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                             if note.pinned {
                                 if .active_tag == "" {
                                     button {
+                                        text note.title
                                         onclick: .SelectNote(i)
                                         style: if i == .active_id {
                                             "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
                                         } else {
                                             "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                         }
-                                        text note.title
                                     }
                                 }
                             }
@@ -89,13 +91,13 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                         for i, note in .store.notes {
                             if note.folder == "default" {
                                 button {
+                                    text note.title
                                     onclick: .SelectNote(i)
                                     style: if i == .active_id {
                                         "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
                                     } else {
                                         "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                     }
-                                    text note.title
                                 }
                             }
                         }
@@ -103,13 +105,13 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                         for i, note in .store.notes {
                             if note.folder == "work" {
                                 button {
+                                    text note.title
                                     onclick: .SelectNote(i)
                                     style: if i == .active_id {
                                         "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
                                     } else {
                                         "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                     }
-                                    text note.title
                                 }
                             }
                         }
@@ -117,13 +119,13 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                         for i, note in .store.notes {
                             if note.folder == "personal" {
                                 button {
+                                    text note.title
                                     onclick: .SelectNote(i)
                                     style: if i == .active_id {
                                         "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
                                     } else {
                                         "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                     }
-                                    text note.title
                                 }
                             }
                         }
@@ -131,13 +133,13 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                         for i, note in .store.notes {
                             if note.folder == "study" {
                                 button {
+                                    text note.title
                                     onclick: .SelectNote(i)
                                     style: if i == .active_id {
                                         "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
                                     } else {
                                         "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                     }
-                                    text note.title
                                 }
                             }
                         }
@@ -147,45 +149,41 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                         text "All Notes" { style: "px-3 py-1 text-xs font-bold text-gray-500 uppercase" }
                         for i, note in .store.notes {
                             button {
+                                text note.title
                                 onclick: .SelectNote(i)
                                 style: if i == .active_id {
                                     "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
                                 } else {
                                     "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                 }
-                                text note.title
                             }
                         }
                     }
                 }
-                style: "flex-1 overflow-y-auto px-1 gap-0.5"
             }
 
             separator { style: "border-t border-gray-200" }
 
             // ── Tag filter bar ──
+            // Uses the store's flat .all_tags list rather than a nested
+            // `for note in .notes { for tag in note.tags }`, because the view
+            // DSL's `for` only accepts a single iterable token (`.field` or an
+            // ident), not an `ident.field` chain like `note.tags`.
             col {
-                text "Tags" { style: "px-3 py-1 text-xs font-semibold text-gray-400 uppercase" }
-                row {
-                    for note in .store.notes {
-                        for tag in note.tags {
-                            button {
-                                onclick: .SelectTag(tag)
-                                style: if .active_tag == tag {
-                                    "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
-                                } else {
-                                    "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
-                                }
-                                text tag
-                            }
+                style: "flex-shrink-0 px-2 pb-2"
+                text "Tags"
+                for tag in .store.all_tags {
+                    button {
+                        text tag
+                        onclick: .SelectTag(tag)
+                        style: if .active_tag == tag {
+                            "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
+                        } else {
+                            "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
                         }
                     }
-                    style: "flex-wrap gap-1 px-2 pb-2"
                 }
-                style: "flex-shrink-0"
             }
-
-            style: "w-80 border-r border-gray-200 flex-col flex-shrink-0"
         }
     }
 
