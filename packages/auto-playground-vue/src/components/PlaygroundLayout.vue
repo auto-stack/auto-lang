@@ -8,14 +8,14 @@
       <div class="toolbar-right">
         <button
           v-if="!isDebugging && !isReplayMode"
-          class="load-replay-btn"
+          class="toolbar-btn load-replay-btn"
           @click="$emit('loadReplay')"
           title="Load Replay File"
         >
           <span class="icon">📂</span>
           <span class="label">Load Replay</span>
         </button>
-        <button class="share-btn" @click="$emit('share')" title="Copy shareable link">
+        <button class="toolbar-btn share-btn" @click="$emit('share')" title="Copy shareable link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
             <polyline points="16 6 12 2 8 6"/>
@@ -23,6 +23,63 @@
           </svg>
           Share
         </button>
+        <button
+          class="toolbar-btn debug-btn"
+          :class="{ active: isDebugging }"
+          @click="props.onDebug"
+          :disabled="isLoading || isReplayMode"
+          title="Start Debugging"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10"/>
+            <path d="M12 2a10 10 0 0 0-10 10"/>
+            <path d="M12 12l4-4"/>
+            <path d="M12 12l-4-4"/>
+            <path d="M12 12l4 4"/>
+            <path d="M12 12l-4 4"/>
+          </svg>
+          Debug
+        </button>
+        <button
+          class="toolbar-btn run-btn"
+          @click="props.onRun"
+          :disabled="isLoading || isReplayMode"
+        >
+          {{ isLoading ? 'Running...' : 'Run (Ctrl+Enter)' }}
+        </button>
+        <div
+          class="trans-split-btn"
+          :class="{ disabled: isLoading || isReplayMode }"
+          title="Transpile to target language"
+        >
+          <button
+            class="trans-main"
+            @click="props.onTrans"
+            :disabled="isLoading || isReplayMode"
+          >
+            Trans
+          </button>
+          <div
+            ref="transDropdownEl"
+            class="trans-dropdown"
+            :style="{ width: dropdownWidth }"
+          >
+            <select
+              v-model="transTargetModel"
+              class="trans-select"
+              :disabled="isLoading || isDebugging || isReplayMode"
+              @change="onTrans"
+            >
+              <option value="rust">Rust</option>
+              <option value="c">C</option>
+              <option value="python">Python</option>
+              <option value="typescript">TypeScript</option>
+              <option value="abt">ABT</option>
+            </select>
+            <span class="trans-current">{{ targetLabel }}</span>
+            <span class="trans-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -51,35 +108,10 @@
     />
 
     <div class="workspace">
-      <div class="top-row">
-        <div class="editor-pane">
+      <div class="main-row">
+        <div class="editor-pane" :class="{ 'with-preview': mode !== 'editor' }">
           <div class="pane-header">
             <span>{{ isReplayMode ? 'Replay' : 'Auto' }}</span>
-            <div class="editor-actions">
-              <button
-                :class="['debug-btn', { active: isDebugging }]"
-                @click="$emit('toggleDebug')"
-                :title="isDebugging ? 'Stop Debugging' : 'Start Debugging'"
-                :disabled="isReplayMode"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 2a10 10 0 0 1 10 10"/>
-                  <path d="M12 2a10 10 0 0 0-10 10"/>
-                  <path d="M12 12l4-4"/>
-                  <path d="M12 12l-4-4"/>
-                  <path d="M12 12l4 4"/>
-                  <path d="M12 12l-4 4"/>
-                </svg>
-                {{ isDebugging ? 'Stop' : 'Debug' }}
-              </button>
-              <button
-                class="run-btn"
-                @click="$emit('run')"
-                :disabled="isLoading || isReplayMode"
-              >
-                {{ isLoading ? 'Running...' : 'Run (Ctrl+Enter)' }}
-              </button>
-            </div>
           </div>
           <div class="pane-body">
             <CodeEditor
@@ -98,51 +130,41 @@
             />
           </div>
         </div>
-        <div class="transpile-pane">
-          <!-- Debug/Replay mode: show only Bytecode (ABT) panel -->
-          <template v-if="isDebugging || isReplayMode">
-            <div class="pane-header">
-              <span>ABT</span>
-            </div>
-            <div class="pane-body">
-              <BytecodePanel
-                :bytecode="bytecode || []"
-                :current-ip="debugState?.ip"
-                :highlighted-offsets="highlightedOffsets"
-                @offset-click="$emit('offsetClick', $event)"
-              />
-            </div>
-          </template>
-          <!-- Normal mode: show transpile tabs -->
-          <OutputPanel
-            v-else
-            :active-tab="activeTab"
-            :transpiled-code="transpiledCode"
-            :live-compile="liveCompile"
-            :highlight-lines="highlightLines"
-            :bytecode="bytecode"
-            :current-ip="debugState?.ip"
-            :highlighted-offsets="highlightedOffsets"
-            @tab-change="onTabChange"
-            @trans="$emit('trans')"
-            @run-abt="$emit('runAbt')"
-            @run-code="onRunCode"
-            @toggle-live="$emit('toggleLive')"
-            @offset-click="$emit('offsetClick', $event)"
-          />
+        <div v-if="mode !== 'editor'" class="preview-pane">
+          <div class="pane-header">
+            <span>{{ previewTitle }}</span>
+            <button
+              v-if="canRunCode"
+              class="run-code-btn"
+              :disabled="isLoading || isReplayMode"
+              @click="onRunCodeClick"
+            >
+              Run {{ targetLabel }}
+            </button>
+          </div>
+          <div class="pane-body">
+            <BytecodePanel
+              v-if="mode === 'debug' || mode === 'replay'"
+              :bytecode="bytecode || []"
+              :current-ip="debugState?.ip"
+              :highlighted-offsets="highlightedOffsets"
+              @offset-click="$emit('offsetClick', $event)"
+            />
+            <CodePreview
+              v-else
+              :code="transpiledCode"
+              :language="previewLanguage"
+              :highlight-lines="highlightLines"
+            />
+          </div>
         </div>
       </div>
 
-      <div class="console-pane">
+      <div v-if="showOutputPanel" class="output-pane">
         <div class="pane-header">
-          <div class="console-tabs">
-            <button
-              :class="{ active: consoleTab === 'output' }"
-              @click="consoleTab = 'output'"
-            >Console</button>
-          </div>
+          <span>{{ outputTitle }}</span>
         </div>
-        <div class="console-body">
+        <div class="output-body">
           <ConsoleOutput
             class="console-main"
             :stdout="stdout"
@@ -161,10 +183,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import type { OutputTab, BytecodeLine, DebugState } from '../types';
 import CodeEditor from './CodeEditor.vue';
-import OutputPanel from './OutputPanel.vue';
+import CodePreview from './CodePreview.vue';
 import BytecodePanel from './BytecodePanel.vue';
 import ConsoleOutput from './ConsoleOutput.vue';
 import ExampleSelector from './ExampleSelector.vue';
@@ -172,18 +194,23 @@ import DebugToolbar from './DebugToolbar.vue';
 import ReplayToolbar from './ReplayToolbar.vue';
 import DebugAuxPanel from './DebugAuxPanel.vue';
 
+type PlaygroundMode = 'editor' | 'run' | 'trans' | 'debug' | 'replay';
+
 const props = defineProps<{
   source: string;
   isLoading: boolean;
-  activeTab: OutputTab;
+  mode: PlaygroundMode;
+  transTarget: OutputTab;
   stdout: string;
   stderr: string;
   resultCode: string;
   timeMs: number;
   transpiledCode: string;
-  liveCompile: boolean;
   highlightLines?: number[];
   onRun: () => void;
+  onTrans: () => void;
+  onRunCode?: (language: string) => void;
+  onDebug: () => void;
   // Debug props
   isDebugging?: boolean;
   isPaused?: boolean;
@@ -207,22 +234,16 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:source': [value: string];
-  run: [];
-  runAbt: [];
-  runCode: [language: string];
-  trans: [];
-  tabChange: [tab: OutputTab];
+  'update:transTarget': [value: OutputTab];
   loadExample: [code: string];
-  toggleLive: [];
-  lineClick: [line: number];
   share: [];
   // Debug events
-  toggleDebug: [];
   debugCommand: [cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 'stop'];
-  offsetClick: [offset: number];
-  breakpointsChange: [lines: number[]];
   toggleRecord: [];
   exportRecording: [];
+  lineClick: [line: number];
+  offsetClick: [offset: number];
+  breakpointsChange: [lines: number[]];
   // Replay events
   loadReplay: [];
   replayPlay: [];
@@ -232,19 +253,94 @@ const emit = defineEmits<{
   replaySeek: [index: number];
 }>();
 
-function onTabChange(tab: OutputTab) {
-  emit('tabChange', tab);
+const transTargetModel = computed({
+  get: () => props.transTarget,
+  set: (v) => emit('update:transTarget', v),
+});
+
+const targetLabel = computed(() => {
+  const labels: Record<OutputTab, string> = {
+    rust: 'Rust',
+    c: 'C',
+    python: 'Python',
+    typescript: 'TypeScript',
+    bytecode: 'Bytecode',
+    abt: 'ABT',
+  };
+  return labels[props.transTarget] ?? props.transTarget;
+});
+
+const transDropdownEl = ref<HTMLElement | null>(null);
+const dropdownWidth = ref('auto');
+
+onMounted(async () => {
+  await document.fonts?.ready;
+  const el = transDropdownEl.value;
+  if (!el) return;
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const style = getComputedStyle(el);
+  ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const labels = ['Rust', 'C', 'Python', 'TypeScript', 'ABT', 'Bytecode'];
+  let maxTextWidth = 0;
+  for (const label of labels) {
+    maxTextWidth = Math.max(maxTextWidth, ctx.measureText(label).width);
+  }
+  const arrowWidth = 12;
+  const padH = 10;
+  const textArrowGap = 4;
+  dropdownWidth.value = `${Math.ceil(maxTextWidth + arrowWidth + padH * 2 + textArrowGap)}px`;
+});
+
+const codeRunActive = ref(false);
+
+watch(() => props.mode, () => {
+  codeRunActive.value = false;
+});
+
+const canRunCode = computed(() => {
+  const lang = previewLanguage.value;
+  return lang === 'python' || lang === 'typescript';
+});
+
+async function onRunCodeClick() {
+  const lang = previewLanguage.value;
+  if (!lang || !props.onRunCode) return;
+  codeRunActive.value = true;
+  await props.onRunCode(lang);
 }
 
-function onRunCode(language: string) {
-  emit('runCode', language);
+const previewTitle = computed(() => {
+  if (props.mode === 'debug' || props.mode === 'replay') return 'Bytecode';
+  if (props.mode === 'run') return 'ABT';
+  if (props.mode === 'trans') return targetLabel.value;
+  return '';
+});
+
+const previewLanguage = computed(() => {
+  if (props.mode === 'run') return 'abt';
+  if (props.mode === 'trans') return props.transTarget;
+  return undefined;
+});
+
+const showOutputPanel = computed(() =>
+  props.mode === 'run' || props.mode === 'debug' || props.mode === 'replay' || codeRunActive.value
+);
+
+const outputTitle = computed(() => {
+  if (props.mode === 'run' || codeRunActive.value) return 'Output';
+  if (props.mode === 'debug' || props.mode === 'replay') return 'Debug Output';
+  return '';
+});
+
+function onTrans() {
+  props.onTrans();
 }
 
 function onLoadExample(code: string) {
   emit('loadExample', code);
 }
-
-const consoleTab = ref<'output' | 'debug'>('output');
 </script>
 
 <style scoped>
@@ -280,7 +376,7 @@ const consoleTab = ref<'output' | 'debug'>('output');
   margin: 0;
   color: #fff;
 }
-.share-btn {
+.toolbar-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -292,29 +388,111 @@ const consoleTab = ref<'output' | 'debug'>('output');
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
-.share-btn:hover {
+.toolbar-btn:hover:not(:disabled) {
   background: #4a4a4a;
   color: #fff;
 }
-.load-replay-btn {
+.toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.debug-btn.active {
+  background: #b78e1c;
+  color: #fff;
+  border-color: #b78e1c;
+}
+.run-btn {
+  background: #0e639c;
+  color: #fff;
+  border-color: #0e639c;
+}
+.run-btn:hover:not(:disabled) {
+  background: #1177bb;
+}
+.trans-split-btn {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #3c3c3c;
-  color: #ccc;
-  border: 1px solid #555;
+  align-items: stretch;
+  background: #238636;
+  color: #fff;
+  border: 1px solid #238636;
   border-radius: 4px;
-  padding: 6px 14px;
-  cursor: pointer;
+  overflow: hidden;
   font-size: 13px;
   font-weight: 500;
-  transition: background 0.15s;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
 }
-.load-replay-btn:hover {
-  background: #4a4a4a;
+.trans-split-btn:hover:not(.disabled) {
+  background: #2ea043;
+  border-color: #2ea043;
+}
+.trans-split-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.trans-main {
+  background: transparent;
+  color: inherit;
+  border: none;
+  padding: 6px 12px;
+  font-size: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  border-right: 1px solid rgba(255, 255, 255, 0.25);
+}
+.trans-main:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+.trans-main:disabled {
+  cursor: not-allowed;
+}
+.trans-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 72px;
+  padding: 0 10px;
+}
+.trans-dropdown:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.trans-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+.trans-select:disabled {
+  cursor: not-allowed;
+}
+.trans-current {
+  pointer-events: none;
+  flex: 1;
+  font-size: inherit;
+  font-weight: inherit;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  text-align: right;
+  padding-right: 20px;
+}
+.trans-arrow {
+  pointer-events: none;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
   color: #fff;
+}
+.trans-select option {
+  background: #1e1e1e;
+  color: #d4d4d4;
 }
 .workspace {
   flex: 1;
@@ -323,7 +501,7 @@ const consoleTab = ref<'output' | 'debug'>('output');
   overflow: hidden;
 }
 
-.top-row {
+.main-row {
   flex: 2;
   display: flex;
   overflow: hidden;
@@ -332,16 +510,18 @@ const consoleTab = ref<'output' | 'debug'>('output');
   flex: 1;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #444;
   overflow: hidden;
 }
-.transpile-pane {
+.editor-pane.with-preview {
+  border-right: 1px solid #444;
+}
+.preview-pane {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.console-pane {
+.output-pane {
   flex: 1;
   min-height: 140px;
   max-height: 45%;
@@ -362,85 +542,32 @@ const consoleTab = ref<'output' | 'debug'>('output');
   font-weight: 600;
   color: #fff;
   flex-shrink: 0;
+  text-transform: capitalize;
+}
+.run-code-btn {
+  background: #0e639c;
+  color: #fff;
+  border: 1px solid #0e639c;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.run-code-btn:hover:not(:disabled) {
+  background: #1177bb;
+}
+.run-code-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .pane-body {
   flex: 1;
   overflow: hidden;
 }
 
-.editor-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.debug-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #3c3c3c;
-  color: #ccc;
-  border: 1px solid #555;
-  border-radius: 4px;
-  padding: 4px 14px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  transition: background 0.15s;
-}
-.debug-btn:hover {
-  background: #4a4a4a;
-  color: #fff;
-}
-.debug-btn.active {
-  background: #b78e1c;
-  color: #fff;
-  border-color: #b78e1c;
-}
-.debug-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.run-btn {
-  background: #0e639c;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 4px 14px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  transition: background 0.15s;
-}
-.run-btn:hover {
-  background: #1177bb;
-}
-.run-btn:disabled {
-  background: #555;
-  cursor: not-allowed;
-}
-.console-tabs {
-  display: flex;
-  gap: 4px;
-}
-.console-tabs button {
-  padding: 4px 12px;
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 3px;
-}
-.console-tabs button:hover {
-  color: #ccc;
-}
-.console-tabs button.active {
-  background: #3c3c3c;
-  color: #fff;
-}
-
-.console-body {
+.output-body {
   flex: 1;
   display: flex;
   flex-direction: row;
@@ -452,10 +579,10 @@ const consoleTab = ref<'output' | 'debug'>('output');
 }
 
 @media (max-width: 768px) {
-  .top-row {
+  .main-row {
     flex-direction: column;
   }
-  .editor-pane {
+  .editor-pane.with-preview {
     border-right: none;
     border-bottom: 1px solid #444;
   }

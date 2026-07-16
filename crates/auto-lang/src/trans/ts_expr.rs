@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::AutoResult;
-use auto_val::Op;
+use auto_val::{Op, AutoStr};
 use std::io::Write;
 use super::{TypeScriptTrans, ToStrError};
 use super::super::escape_str;
@@ -207,18 +207,28 @@ impl TypeScriptTrans {
             Expr::Cover(cover) => {
                 match cover {
                     crate::ast::Cover::Tag(tag_cover) => {
-                        // Atom.Int(11) -> Atom.Int(11) where Atom is a factory const
                         out.write_all(tag_cover.kind.as_bytes())?;
                         out.write(b".")?;
                         out.write_all(tag_cover.tag.as_bytes())?;
-                        out.write(b"(")?;
-                        let binding_str = tag_cover.bindings.iter()
+
+                        let real_bindings: Vec<&AutoStr> = tag_cover.bindings.iter()
                             .filter(|b| b.as_str() != "_")
-                            .map(|b| b.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        out.write_all(binding_str.as_bytes())?;
-                        out.write(b")")?;
+                            .collect();
+
+                        // Scalar enum members are used directly; payload enums use factory functions.
+                        let is_scalar = self.scalar_enums.contains(&tag_cover.kind) && real_bindings.is_empty();
+                        if !is_scalar {
+                            out.write(b"(")?;
+                            if real_bindings.len() == 1 {
+                                out.write_all(real_bindings[0].as_bytes())?;
+                            } else if real_bindings.len() > 1 {
+                                for (i, b) in real_bindings.iter().enumerate() {
+                                    if i > 0 { out.write(b", ")?; }
+                                    out.write_all(b.as_bytes())?;
+                                }
+                            }
+                            out.write(b")")?;
+                        }
                     }
                 }
                 Ok(())

@@ -9700,7 +9700,7 @@ impl RustTrans {
         ];
 
         // Pattern 1: self.field.get(var) → self.field[var as usize] for known Vec fields
-        if let Ok(re) = regex::Regex::new(r"(self\.(\w+))\.get\((\w+)\)") {
+        if let Some(re) = cached_regex(r"(self\.(\w+))\.get\((\w+)\)") {
             let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let full = caps.get(1).unwrap().as_str();
                 let field = caps.get(2).unwrap().as_str();
@@ -9727,7 +9727,7 @@ impl RustTrans {
         for var in &int_like_vars {
             // vecname.get(var.as_str()) → vecname[var as usize]
             let pattern_str = format!(r"(\w+)\.get\({}\.as_str\(\)\)", regex::escape(var));
-            if let Ok(re) = regex::Regex::new(&pattern_str) {
+            if let Some(re) = cached_regex(&pattern_str) {
                 let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                     let vec_name = caps.get(1).unwrap().as_str();
                     if hash_map_names.contains(&vec_name) {
@@ -9743,7 +9743,7 @@ impl RustTrans {
             // Note: Rust regex crate doesn't support lookahead, so we match broadly
             // and filter in the replacement callback
             let pattern = format!(r"(\w+)\.get\({}\)", regex::escape(var));
-            if let Ok(re) = regex::Regex::new(&pattern) {
+            if let Some(re) = cached_regex(&pattern) {
                 let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                     let full_match = caps.get(0).unwrap();
                     let after = &content[full_match.end()..];
@@ -9773,7 +9773,7 @@ impl RustTrans {
         // Handles cases like goal.items.get(gii), plan.sections.get(pi), etc.
         for var in &int_like_vars {
             let pattern = format!(r"(\w+)\.(\w+)\.get\({}\)", regex::escape(var));
-            if let Ok(re) = regex::Regex::new(&pattern) {
+            if let Some(re) = cached_regex(&pattern) {
                 let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                     let obj = caps.get(1).unwrap().as_str();
                     let field = caps.get(2).unwrap().as_str();
@@ -9793,7 +9793,7 @@ impl RustTrans {
     fn fix_numeric_get_as_str(content: &mut String) {
         // Remove .as_str() after any numeric literal (standalone digits)
         // Use \b to avoid matching trailing digits in identifiers like body_str2.as_str()
-        if let Ok(re) = regex::Regex::new(r"\b(\d+)\.as_str\(\)") {
+        if let Some(re) = cached_regex(r"\b(\d+)\.as_str\(\)") {
             let new_content = re.replace_all(content.as_str(), "$1").to_string();
             *content = new_content;
         }
@@ -9813,7 +9813,7 @@ impl RustTrans {
 
         for field in &known_fields {
             let pattern = format!(r"\.get\(([^)]+)\)\.{}\b", regex::escape(field));
-            if let Ok(re) = regex::Regex::new(&pattern) {
+            if let Some(re) = cached_regex(&pattern) {
                 let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                     let inner = caps.get(1).unwrap().as_str();
                     if inner.contains(".unwrap()") {
@@ -9827,7 +9827,7 @@ impl RustTrans {
         }
         // Also handle .get(X).as_str() → .get(X).unwrap().as_str()
         // (Option<&String> doesn't have .as_str(), need to unwrap first)
-        if let Ok(re) = regex::Regex::new(r"\.get\(([^)]+)\)\.as_str\(\)") {
+        if let Some(re) = cached_regex(r"\.get\(([^)]+)\)\.as_str\(\)") {
             let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let inner = caps.get(1).unwrap().as_str();
                 if inner.contains(".unwrap()") {
@@ -9850,7 +9850,7 @@ impl RustTrans {
         ];
         for field in &fields_needing_cloned {
             let pattern = format!(r"self\.{}\.get\(([^)]+)\) \{{", regex::escape(field));
-            if let Ok(re) = regex::Regex::new(&pattern) {
+            if let Some(re) = cached_regex(&pattern) {
                 let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                     format!("self.{}.get({}).cloned() {{", field, caps.get(1).unwrap().as_str())
                 }).to_string();
@@ -9859,7 +9859,7 @@ impl RustTrans {
         }
         // Also fix: return self.field.get(X); → return self.field.get(X).cloned();
         // HashMap::get returns Option<&T>, but Auto expects Option<T> for return types
-        if let Ok(re) = regex::Regex::new(r"return self\.(\w+)\.get\(([^)]+)\);") {
+        if let Some(re) = cached_regex(r"return self\.(\w+)\.get\(([^)]+)\);") {
             let map_fields = ["sessions", "run", "checkpoint", "pages", "wiki_dirs",
                 "project_locks", "professions", "souls", "agents"];
             let new_content = re.replace_all(content, |caps: &regex::Captures| {
@@ -9883,7 +9883,7 @@ impl RustTrans {
         // Build a map of variable names declared as u32
         let u32_vars: HashMap<String, ()> = {
             let mut map = HashMap::new();
-            if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*:\s*u32\s*=") {
+            if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*:\s*u32\s*=") {
                 for caps in re.captures_iter(content) {
                     map.insert(caps.get(1).unwrap().as_str().to_string(), ());
                 }
@@ -9893,7 +9893,7 @@ impl RustTrans {
         if u32_vars.is_empty() { return; }
 
         // Pattern 1: `let ... : u32 = (... as i32)` → `as u32`
-        if let Ok(re) = regex::Regex::new(r"(let\s+(?:mut\s+)?\w+\s*:\s*u32\s*=\s*\()(.+?)\s+as\s+i32\)") {
+        if let Some(re) = cached_regex(r"(let\s+(?:mut\s+)?\w+\s*:\s*u32\s*=\s*\()(.+?)\s+as\s+i32\)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let prefix = caps.get(1).unwrap().as_str();
                 let expr = caps.get(2).unwrap().as_str();
@@ -9908,7 +9908,7 @@ impl RustTrans {
                 r"(while\s+{}\s*<\s*\()(.+?)\s+as\s+i32\)",
                 regex::escape(var_name)
             );
-            if let Ok(re) = regex::Regex::new(&pattern) {
+            if let Some(re) = cached_regex(&pattern) {
                 let _vn = var_name.clone(); // used in closure if needed
                 let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                     let prefix = caps.get(1).unwrap().as_str();
@@ -9923,7 +9923,7 @@ impl RustTrans {
         // Detected via struct field declarations: `pub field_name: u32,`
         let u32_fields: Vec<String> = {
             let mut fields = Vec::new();
-            if let Ok(re) = regex::Regex::new(r"pub\s+(\w+)\s*:\s*u32\s*,") {
+            if let Some(re) = cached_regex(r"pub\s+(\w+)\s*:\s*u32\s*,") {
                 for caps in re.captures_iter(content) {
                     fields.push(caps.get(1).unwrap().as_str().to_string());
                 }
@@ -9936,7 +9936,7 @@ impl RustTrans {
                 r"(self\.{}\s*=\s*\()(.+?)\s+as\s+i32\)",
                 regex::escape(field_name)
             );
-            if let Ok(re) = regex::Regex::new(&pattern) {
+            if let Some(re) = cached_regex(&pattern) {
                 let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                     let prefix = caps.get(1).unwrap().as_str();
                     let expr = caps.get(2).unwrap().as_str();
@@ -9954,20 +9954,20 @@ impl RustTrans {
         let mut int_names: HashSet<String> = HashSet::new();
         for ty in &["u32", "i32"] {
             let pat = format!(r"let\s+(?:mut\s+)?(\w+)\s*:\s*{}\s*=", ty);
-            if let Ok(re) = regex::Regex::new(&pat) {
+            if let Some(re) = cached_regex(&pat) {
                 for caps in re.captures_iter(content) {
                     int_names.insert(caps.get(1).unwrap().as_str().to_string());
                 }
             }
             let pat = format!(r"pub\s+(\w+)\s*:\s*{}\s*,", ty);
-            if let Ok(re) = regex::Regex::new(&pat) {
+            if let Some(re) = cached_regex(&pat) {
                 for caps in re.captures_iter(content) {
                     int_names.insert(caps.get(1).unwrap().as_str().to_string());
                 }
             }
         }
         // Also collect vars assigned from known u32-returning functions
-        if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*=\s*self\.ensure_tool_call\(") {
+        if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*self\.ensure_tool_call\(") {
             for caps in re.captures_iter(content) {
                 int_names.insert(caps.get(1).unwrap().as_str().to_string());
             }
@@ -9979,7 +9979,7 @@ impl RustTrans {
                 r"\.insert\(\s*{}\s*(,)",
                 regex::escape(name)
             );
-            if let Ok(re) = regex::Regex::new(&pattern) {
+            if let Some(re) = cached_regex(&pattern) {
                 let n = name.clone();
                 let new = re.replace_all(content.as_str(), move |caps: &regex::Captures| {
                     let comma = caps.get(1).unwrap().as_str();
@@ -9995,28 +9995,28 @@ impl RustTrans {
     fn fix_bool_int_comparisons(content: &mut String) {
         // Pattern: `a2r_std::fs::exists(X) == 0` → `!a2r_std::fs::exists(X)`
         // Use non-greedy match to handle nested parens like `file_path.as_str()`
-        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::exists\((.+?)\)\s*==\s*0") {
+        if let Some(re) = cached_regex(r"a2r_std::fs::exists\((.+?)\)\s*==\s*0") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 format!("!a2r_std::fs::exists({})", caps.get(1).unwrap().as_str())
             }).to_string();
             *content = new;
         }
         // Pattern: `a2r_std::fs::exists(X) != 0` → `a2r_std::fs::exists(X)`
-        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::exists\((.+?)\)\s*!=\s*0") {
+        if let Some(re) = cached_regex(r"a2r_std::fs::exists\((.+?)\)\s*!=\s*0") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 format!("a2r_std::fs::exists({})", caps.get(1).unwrap().as_str())
             }).to_string();
             *content = new;
         }
         // Pattern: `a2r_std::fs::is_dir(X) == 0` → `!a2r_std::fs::is_dir(X)`
-        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::is_dir\((.+?)\)\s*==\s*0") {
+        if let Some(re) = cached_regex(r"a2r_std::fs::is_dir\((.+?)\)\s*==\s*0") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 format!("!a2r_std::fs::is_dir({})", caps.get(1).unwrap().as_str())
             }).to_string();
             *content = new;
         }
         // Pattern: `a2r_std::fs::is_dir(X) != 0` → `a2r_std::fs::is_dir(X)`
-        if let Ok(re) = regex::Regex::new(r"a2r_std::fs::is_dir\((.+?)\)\s*!=\s*0") {
+        if let Some(re) = cached_regex(r"a2r_std::fs::is_dir\((.+?)\)\s*!=\s*0") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 format!("a2r_std::fs::is_dir({})", caps.get(1).unwrap().as_str())
             }).to_string();
@@ -10028,20 +10028,20 @@ impl RustTrans {
 
         // Pattern: `let VAR = a2r_std::fs::is_dir(X); ... if VAR != 0` → `if VAR`
         // Find variables assigned from is_dir and replace `VAR != 0` with just `VAR`
-        if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*a2r_std::fs::is_dir\(") {
+        if let Some(re) = cached_regex(r"let\s+(\w+)\s*=\s*a2r_std::fs::is_dir\(") {
             let bool_vars: Vec<String> = re.captures_iter(content.as_str())
                 .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
                 .collect();
             for var in &bool_vars {
                 // var is a simple identifier, safe to embed directly
                 let pattern_ne = format!(r"if\s+{}\s*!=\s*0\s*\{{", var);
-                if let Ok(re) = regex::Regex::new(&pattern_ne) {
+                if let Some(re) = cached_regex(&pattern_ne) {
                     let replacement = format!("if {} {{", var);
                     let new = re.replace_all(content.as_str(), replacement.as_str()).to_string();
                     if new != *content { *content = new; }
                 }
                 let pattern_eq = format!(r"if\s+{}\s*==\s*0\s*\{{", var);
-                if let Ok(re) = regex::Regex::new(&pattern_eq) {
+                if let Some(re) = cached_regex(&pattern_eq) {
                     let replacement = format!("if !{} {{", var);
                     let new = re.replace_all(content.as_str(), replacement.as_str()).to_string();
                     if new != *content { *content = new; }
@@ -10054,7 +10054,7 @@ impl RustTrans {
     /// `dyn Trait` doesn't implement Clone/PartialEq/Eq/PartialOrd/Ord,
     /// so we remove those derives, keeping only Debug.
     fn fix_dyn_trait_derives(content: &mut String) {
-        if let Ok(re) = regex::Regex::new(
+        if let Some(re) = cached_regex(
             r"(?s)(#\[derive\(([^)]*)\)\]\npub struct (\w+) \{[^}]*Box<dyn)"
         ) {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
@@ -10072,18 +10072,18 @@ impl RustTrans {
         // Collect u32 and i32 variable names
         let u32_vars: std::collections::HashSet<String> = {
             let mut vars = std::collections::HashSet::new();
-            if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*:\s*u32\s*=") {
+            if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*:\s*u32\s*=") {
                 for caps in re.captures_iter(content.as_str()) {
                     vars.insert(caps.get(1).unwrap().as_str().to_string());
                 }
             }
-            if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*\(.+?\s+as\s+u32\)") {
+            if let Some(re) = cached_regex(r"let\s+(\w+)\s*=\s*\(.+?\s+as\s+u32\)") {
                 for caps in re.captures_iter(content.as_str()) {
                     vars.insert(caps.get(1).unwrap().as_str().to_string());
                 }
             }
             // Also track struct fields declared as u32 (accessed via self.field)
-            if let Ok(re) = regex::Regex::new(r"pub\s+(\w+):\s*u32") {
+            if let Some(re) = cached_regex(r"pub\s+(\w+):\s*u32") {
                 for caps in re.captures_iter(content.as_str()) {
                     vars.insert(caps.get(1).unwrap().as_str().to_string());
                 }
@@ -10092,18 +10092,18 @@ impl RustTrans {
         };
         let i32_vars: std::collections::HashSet<String> = {
             let mut vars = std::collections::HashSet::new();
-            if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*:\s*i32\s*=") {
+            if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*:\s*i32\s*=") {
                 for caps in re.captures_iter(content.as_str()) {
                     vars.insert(caps.get(1).unwrap().as_str().to_string());
                 }
             }
-            if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*\(.+?\s+as\s+i32\)") {
+            if let Some(re) = cached_regex(r"let\s+(\w+)\s*=\s*\(.+?\s+as\s+i32\)") {
                 for caps in re.captures_iter(content.as_str()) {
                     vars.insert(caps.get(1).unwrap().as_str().to_string());
                 }
             }
             // Also track struct fields declared as i32
-            if let Ok(re) = regex::Regex::new(r"pub\s+(\w+):\s*i32") {
+            if let Some(re) = cached_regex(r"pub\s+(\w+):\s*i32") {
                 for caps in re.captures_iter(content.as_str()) {
                     vars.insert(caps.get(1).unwrap().as_str().to_string());
                 }
@@ -10115,7 +10115,7 @@ impl RustTrans {
         for var in &u32_vars {
             for op in &["<=", ">=", "<", ">"] {
                 let pattern = format!(r"{}\s*{}\s*\((.+?)\s+as\s+i32\)", regex::escape(var), regex::escape(op));
-                if let Ok(re) = regex::Regex::new(&pattern) {
+                if let Some(re) = cached_regex(&pattern) {
                     let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                         let expr = caps.get(1).unwrap().as_str();
                         format!("{} {} ({} as u32)", var, op, expr)
@@ -10139,7 +10139,7 @@ impl RustTrans {
         // Fix u32 vars used as usize index: vec[u32_var] -> vec[u32_var as usize]
         for var in &u32_vars {
             let pattern = format!(r"\[{}\]", regex::escape(var));
-            if let Ok(re) = regex::Regex::new(&pattern) {
+            if let Some(re) = cached_regex(&pattern) {
                 let orig = content.clone();
                 let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                     format!("[{} as usize]", var)
@@ -10157,14 +10157,14 @@ impl RustTrans {
             for var in &u32_vars {
                 // Pattern: Variant(var, or Variant(var)
                 let pat = format!(r"::{}\({},\s*", regex::escape(variant), regex::escape(var));
-                if let Ok(re) = regex::Regex::new(&pat) {
+                if let Some(re) = cached_regex(&pat) {
                     let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                         format!("::{}({} as i32, ", variant, var)
                     }).to_string();
                     if new != *content { *content = new; }
                 }
                 let pat = format!(r"::{}\(\s*{}\s*\)", regex::escape(variant), regex::escape(var));
-                if let Ok(re) = regex::Regex::new(&pat) {
+                if let Some(re) = cached_regex(&pat) {
                     let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                         format!("::{}({} as i32)", variant, var)
                     }).to_string();
@@ -10173,14 +10173,14 @@ impl RustTrans {
                 // Also handle self.var patterns: Variant(self.var,
                 let self_var = format!("self.{}", var);
                 let pat = format!(r"::{}\({},\s*", regex::escape(variant), regex::escape(&self_var));
-                if let Ok(re) = regex::Regex::new(&pat) {
+                if let Some(re) = cached_regex(&pat) {
                     let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                         format!("::{}({} as i32, ", variant, self_var)
                     }).to_string();
                     if new != *content { *content = new; }
                 }
                 let pat = format!(r"::{}\(\s*{}\s*\)", regex::escape(variant), regex::escape(&self_var));
-                if let Ok(re) = regex::Regex::new(&pat) {
+                if let Some(re) = cached_regex(&pat) {
                     let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                         format!("::{}({} as i32)", variant, self_var)
                     }).to_string();
@@ -10194,7 +10194,7 @@ impl RustTrans {
         for func in &functions_needing_u32 {
             for var in &i32_vars {
                 let pat = format!(r"{}\({}\)", regex::escape(func), regex::escape(var));
-                if let Ok(re) = regex::Regex::new(&pat) {
+                if let Some(re) = cached_regex(&pat) {
                     let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                         format!("{}({} as u32)", func, var)
                     }).to_string();
@@ -10206,7 +10206,7 @@ impl RustTrans {
         // Fix self.u32_field used as usize index: vec[self.field] -> vec[self.field as usize]
         for var in &u32_vars {
             let pattern = format!(r"\[self\.{}\]", regex::escape(var));
-            if let Ok(re) = regex::Regex::new(&pattern) {
+            if let Some(re) = cached_regex(&pattern) {
                 let orig = content.clone();
                 let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                     format!("[self.{} as usize]", var)
@@ -10215,7 +10215,7 @@ impl RustTrans {
             }
             // Also: .insert(self.u32_field, -> .insert(self.u32_field as usize,
             let pattern = format!(r"\.insert\(self\.{},\s*", regex::escape(var));
-            if let Ok(re) = regex::Regex::new(&pattern) {
+            if let Some(re) = cached_regex(&pattern) {
                 let orig = content.clone();
                 let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
                     format!(".insert(self.{} as usize, ", var)
@@ -10235,7 +10235,7 @@ impl RustTrans {
         for (i, line) in lines.iter().enumerate() {
             let trimmed = line.trim();
             // Match `let name = ` (without mut)
-            if let Some(caps) = regex::Regex::new(r"^let\s+(\w+)\s*=").unwrap().captures(trimmed) {
+            if let Some(caps) = cached_regex(r"^let\s+(\w+)\s*=").unwrap().captures(trimmed) {
                 let var_name = caps.get(1).unwrap().as_str();
                 // Skip if already mut
                 if trimmed.starts_with("let mut") { continue; }
@@ -10246,7 +10246,7 @@ impl RustTrans {
                 let mut_methods = ["push", "pop", "insert", "remove", "clear", "extend",
                     "truncate", "retain", "sort", "reverse", "dedup", "swap", "splice",
                     "drain", "append", "resize"];
-                if let Ok(re) = regex::Regex::new(&assign_pat) {
+                if let Some(re) = cached_regex(&assign_pat) {
                     for future_line in lines.iter().skip(i + 1) {
                         // Stop at function boundary
                         let fl = future_line.trim();
@@ -10257,13 +10257,13 @@ impl RustTrans {
                             // Check if it's an actual assignment: var.field = or var[idx] =
                             let field_assign = format!(r"\b{}\.\w+\s*=", var_name);
                             let idx_assign = format!(r"\b{}\[[^\]]*\]\s*=", var_name);
-                            if let Ok(re2) = regex::Regex::new(&field_assign) {
+                            if let Some(re2) = cached_regex(&field_assign) {
                                 if re2.is_match(fl) {
                                     needs_mut.insert(i);
                                     break;
                                 }
                             }
-                            if let Ok(re2) = regex::Regex::new(&idx_assign) {
+                            if let Some(re2) = cached_regex(&idx_assign) {
                                 if re2.is_match(fl) {
                                     needs_mut.insert(i);
                                     break;
@@ -10272,7 +10272,7 @@ impl RustTrans {
                             // Check for &mut self method calls: var.push(...), var.insert(...), etc.
                             for method in &mut_methods {
                                 let method_pat = format!(r"\b{}\.{}\s*\(", var_name, method);
-                                if let Ok(re3) = regex::Regex::new(&method_pat) {
+                                if let Some(re3) = cached_regex(&method_pat) {
                                     if re3.is_match(fl) {
                                         needs_mut.insert(i);
                                         break;
@@ -10283,7 +10283,7 @@ impl RustTrans {
                         }
                     }
                 }
-                if let Ok(re) = regex::Regex::new(&direct_pat) {
+                if let Some(re) = cached_regex(&direct_pat) {
                     for future_line in lines.iter().skip(i + 1) {
                         let fl = future_line.trim();
                         if fl.starts_with("pub fn ") || fl.starts_with("fn ") || fl.starts_with("pub async fn ") || fl.starts_with("async fn ") {
@@ -10291,7 +10291,7 @@ impl RustTrans {
                         }
                         if re.is_match(fl) && !fl.starts_with(&format!("let {}", var_name)) {
                             // Exclude == and !=
-                            if let Ok(eq_check) = regex::Regex::new(&format!(r"\b{}\s*=[^=]", var_name)) {
+                            if let Some(eq_check) = cached_regex(&format!(r"\b{}\s*=[^=]", var_name)) {
                                 if eq_check.is_match(fl) {
                                     needs_mut.insert(i);
                                     break;
@@ -10373,7 +10373,7 @@ impl RustTrans {
     fn fix_borrowing_issues(content: &mut String) {
         // Fix: map.get(X).unwrap_or(vec![]) → map.get(X).cloned().unwrap_or_default()
         // Also: map.get(X).unwrap_or(&[]) → map.get(X).cloned().unwrap_or_default()
-        if let Ok(re) = regex::Regex::new(r"\.get\(([^)]+)\)\.unwrap_or\(vec!\[\]\)") {
+        if let Some(re) = cached_regex(r"\.get\(([^)]+)\)\.unwrap_or\(vec!\[\]\)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let key = caps.get(1).unwrap().as_str();
                 format!(".get({}).cloned().unwrap_or_default()", key)
@@ -10382,7 +10382,7 @@ impl RustTrans {
         }
 
         // Fix: .get(X).unwrap_or(&[]) → .get(X).cloned().unwrap_or_default()
-        if let Ok(re) = regex::Regex::new(r"\.get\(([^)]+)\)\.unwrap_or\(&\[\]\)") {
+        if let Some(re) = cached_regex(r"\.get\(([^)]+)\)\.unwrap_or\(&\[\]\)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let key = caps.get(1).unwrap().as_str();
                 format!(".get({}).cloned().unwrap_or_default()", key)
@@ -10391,7 +10391,7 @@ impl RustTrans {
         }
 
         // Fix: let var = map.get(X).unwrap_or(vec![...]) → add .cloned()
-        if let Ok(re) = regex::Regex::new(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(\w+\.get\([^)]+\))\.unwrap_or\(vec!") {
+        if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(\w+\.get\([^)]+\))\.unwrap_or\(vec!") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let var = caps.get(1).unwrap().as_str();
                 let get_expr = caps.get(2).unwrap().as_str();
@@ -10401,7 +10401,7 @@ impl RustTrans {
         }
 
         // Fix: map.insert(key, &variable) → map.insert(key, variable.clone())
-        if let Ok(re) = regex::Regex::new(r"\.insert\(([^,]+),\s+&(\w+)\)") {
+        if let Some(re) = cached_regex(r"\.insert\(([^,]+),\s+&(\w+)\)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let key = caps.get(1).unwrap().as_str();
                 let var = caps.get(2).unwrap().as_str();
@@ -10411,7 +10411,7 @@ impl RustTrans {
         }
 
         // Fix: .field = &variable; → .field = variable.clone();
-        if let Ok(re) = regex::Regex::new(r"(\.\w+)\s*=\s+&(\w+);") {
+        if let Some(re) = cached_regex(r"(\.\w+)\s*=\s+&(\w+);") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let field = caps.get(1).unwrap().as_str();
                 let var = caps.get(2).unwrap().as_str();
@@ -10421,7 +10421,7 @@ impl RustTrans {
         }
 
         // Fix: .push(&variable) → .push(variable.clone())
-        if let Ok(re) = regex::Regex::new(r"\.push\(&(\w+)\)") {
+        if let Some(re) = cached_regex(r"\.push\(&(\w+)\)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let var = caps.get(1).unwrap().as_str();
                 format!(".push({}.clone())", var)
@@ -10438,7 +10438,7 @@ impl RustTrans {
         ];
         for field in &enum_fields {
             let eq_pat = format!(".{}\\s*==\\s*\"", field);
-            if let Ok(re) = regex::Regex::new(&eq_pat) {
+            if let Some(re) = cached_regex(&eq_pat) {
                 let old_eq = format!(".{field} ==");
                 let new_eq = format!(".{field}.to_string() ==");
                 let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
@@ -10447,7 +10447,7 @@ impl RustTrans {
                 if new != *content { *content = new; }
             }
             let ne_pat = format!(".{}\\s*!=\\s*\"", field);
-            if let Ok(re) = regex::Regex::new(&ne_pat) {
+            if let Some(re) = cached_regex(&ne_pat) {
                 let old_ne = format!(".{field} !=");
                 let new_ne = format!(".{field}.to_string() !=");
                 let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
@@ -10570,7 +10570,7 @@ impl RustTrans {
         //         `let VAR = EXPR.get(KEY).cloned().unwrap_or_default();`
         //         ONLY for bootstrap compiler env/state variables (env.*, params.*, state.*)
         //         NOT for use.rust HashMap (those should keep native Option<&V> semantics)
-        if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*(\w+\.get\([^)]+\));") {
+        if let Some(re) = cached_regex(r"let\s+(\w+)\s*=\s*(\w+\.get\([^)]+\));") {
             let mut replacements = Vec::new();
             for caps in re.captures_iter(content) {
                 let var = caps.get(1).unwrap().as_str();
@@ -10596,7 +10596,7 @@ impl RustTrans {
 
         // Step 2: Replace EXPR.get(KEY).as_str() inline patterns
         // Pattern: var.get("key").as_str() → var.get("key").map(|s| s.as_str()).unwrap_or("")
-        if let Ok(re) = regex::Regex::new(r#"(\w+\.get\("[^"]+"\))\.as_str\(\)"#) {
+        if let Some(re) = cached_regex(r#"(\w+\.get\("[^"]+"\))\.as_str\(\)"#) {
             let new = re.replace_all(content, |caps: &regex::Captures| {
                 let get_expr = caps.get(1).unwrap().as_str();
                 format!("{}.map(|s| s.as_str()).unwrap_or(\"\")", get_expr)
@@ -10613,19 +10613,19 @@ impl RustTrans {
         // Track which variables are assigned from integer-returning expressions
         // Pattern: let VAR = ... as i32; or let VAR: u32 = ...;
         let mut int_vars = std::collections::HashSet::new();
-        if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*:\s*(u32|i32|usize)\s*=") {
+        if let Some(re) = cached_regex(r"let\s+(\w+)\s*:\s*(u32|i32|usize)\s*=") {
             for caps in re.captures_iter(content) {
                 int_vars.insert(caps.get(1).unwrap().as_str().to_string());
             }
         }
         // Also track: let VAR = expr as i32/u32/usize;
-        if let Ok(re) = regex::Regex::new(r"let\s+(\w+)\s*=\s*[^;]+\s+as\s+(u32|i32|usize)\s*;") {
+        if let Some(re) = cached_regex(r"let\s+(\w+)\s*=\s*[^;]+\s+as\s+(u32|i32|usize)\s*;") {
             for caps in re.captures_iter(content) {
                 int_vars.insert(caps.get(1).unwrap().as_str().to_string());
             }
         }
         // Also track: let VAR: u32/i32;
-        if let Ok(re) = regex::Regex::new(r"let\s+mut\s+(\w+)\s*:\s*(u32|i32|usize)\s*;") {
+        if let Some(re) = cached_regex(r"let\s+mut\s+(\w+)\s*:\s*(u32|i32|usize)\s*;") {
             for caps in re.captures_iter(content) {
                 int_vars.insert(caps.get(1).unwrap().as_str().to_string());
             }
@@ -10649,7 +10649,7 @@ impl RustTrans {
     /// Rust's Split is an iterator, not a Vec.
     fn fix_split_methods(content: &mut String) {
         // Pattern: VAR.split(X).len() → VAR.split(X).count()
-        if let Ok(re) = regex::Regex::new(r"\.split\(([^)]+)\)\.len\(\)") {
+        if let Some(re) = cached_regex(r"\.split\(([^)]+)\)\.len\(\)") {
             let new = re.replace_all(content, |caps: &regex::Captures| {
                 let arg = caps.get(1).unwrap().as_str();
                 format!(".split({}).count()", arg)
@@ -10658,7 +10658,7 @@ impl RustTrans {
         }
 
         // Pattern: VAR.split(X).get(N) → VAR.split(X).nth(N)
-        if let Ok(re) = regex::Regex::new(r"\.split\(([^)]+)\)\.get\(([^)]+)\)") {
+        if let Some(re) = cached_regex(r"\.split\(([^)]+)\)\.get\(([^)]+)\)") {
             let new = re.replace_all(content, |caps: &regex::Captures| {
                 let split_arg = caps.get(1).unwrap().as_str();
                 let get_arg = caps.get(2).unwrap().as_str();
@@ -10668,7 +10668,7 @@ impl RustTrans {
         }
 
         // Pattern: VAR.split(X)[N] → VAR.split(X).nth(N).unwrap()
-        if let Ok(re) = regex::Regex::new(r"\.split\(([^)]+)\)\[(\d+)\]") {
+        if let Some(re) = cached_regex(r"\.split\(([^)]+)\)\[(\d+)\]") {
             let new = re.replace_all(content, |caps: &regex::Captures| {
                 let split_arg = caps.get(1).unwrap().as_str();
                 let idx = caps.get(2).unwrap().as_str();
@@ -10678,7 +10678,7 @@ impl RustTrans {
         }
 
         // Pattern: VAR.split(X)[VAR2 as usize] → VAR.split(X).nth(VAR2 as usize).unwrap()
-        if let Ok(re) = regex::Regex::new(r"\.split\(([^)]+)\)\[(\w+ as usize)\]") {
+        if let Some(re) = cached_regex(r"\.split\(([^)]+)\)\[(\w+ as usize)\]") {
             let new = re.replace_all(content, |caps: &regex::Captures| {
                 let split_arg = caps.get(1).unwrap().as_str();
                 let idx = caps.get(2).unwrap().as_str();
@@ -10713,7 +10713,7 @@ impl RustTrans {
     /// Pattern: `let mut? var = expr.keys()` → `let mut? var: Vec<_> = expr.keys().cloned().collect()`
     fn fix_map_keys_indexing(content: &mut String) {
         // Find all .keys() assignments and check if they're used with indexing or .len()
-        if let Ok(re) = regex::Regex::new(r"(?m)^(\s+let (?:mut )?)(\w+) = (.+?)\.keys\(\)") {
+        if let Some(re) = cached_regex(r"(?m)^(\s+let (?:mut )?)(\w+) = (.+?)\.keys\(\)") {
             let captures: Vec<(usize, String, String, String)> = re.captures_iter(content.as_str())
                 .filter_map(|caps| {
                     let full = caps.get(0)?;
@@ -10739,7 +10739,7 @@ impl RustTrans {
                 // After converting to Vec, fix map.get(var[i].clone()) → map.get(&var[i])
                 // and map.insert(var[i].clone(), ...) → map.insert(var[i].clone(), ...)
                 let get_clone_pat = format!(r"\.get\({}\[([^\]]+)\]\s*\.clone\(\)\)", regex::escape(var));
-                if let Ok(get_re) = regex::Regex::new(&get_clone_pat) {
+                if let Some(get_re) = cached_regex(&get_clone_pat) {
                     let new = get_re.replace_all(content.as_str(), |caps: &regex::Captures| {
                         format!(".get(&{}[{}])", var, caps.get(1).unwrap().as_str())
                     }).to_string();
@@ -10771,7 +10771,7 @@ impl RustTrans {
             // Check for push patterns: `something.push(varname)`
             if let Some(_rest) = line.trim().strip_suffix(")") {
                 // Match `something.push(varname)` or `something.push(varname.field)`
-                if let Ok(re) = regex::Regex::new(r"^(\s*\S+\.push\()(\w+)(\))$") {
+                if let Some(re) = cached_regex(r"^(\s*\S+\.push\()(\w+)(\))$") {
                     if let Some(caps) = re.captures(line) {
                         let prefix = caps.get(1).unwrap().as_str();
                         let var = caps.get(2).unwrap().as_str();
@@ -10797,7 +10797,7 @@ impl RustTrans {
                             }
                             // Check if var appears as a standalone identifier (not just substring)
                             // Simple heuristic: var followed by . or = or ( or [ or , or )
-                            if let Ok(var_re) = regex::Regex::new(&format!(r"\b{}\b", regex::escape(var))) {
+                            if let Some(var_re) = cached_regex(&format!(r"\b{}\b", regex::escape(var))) {
                                 if var_re.is_match(later) {
                                     // Exclude the case where var appears in the same push
                                     if !later.contains(&format!(".push({})", var)) {
@@ -10837,12 +10837,12 @@ impl RustTrans {
     fn fix_option_unwrap_or_empty(content: &mut String) {
         // Pattern: .unwrap_or("") → .unwrap_or_default()
         // This handles Option<String>.unwrap_or("") → unwrap_or_default()
-        if let Ok(re) = regex::Regex::new(r#"\.unwrap_or\(""\)"#) {
+        if let Some(re) = cached_regex(r#"\.unwrap_or\(""\)"#) {
             let new = re.replace_all(content.as_str(), ".unwrap_or_default()").to_string();
             if new != *content { *content = new; }
         }
         // Pattern: .unwrap_or(vec![]) → .unwrap_or_default()
-        if let Ok(re) = regex::Regex::new(r"\.unwrap_or\(vec!\[\]\)") {
+        if let Some(re) = cached_regex(r"\.unwrap_or\(vec!\[\]\)") {
             let new = re.replace_all(content.as_str(), ".unwrap_or_default()").to_string();
             if new != *content { *content = new; }
         }
@@ -10869,7 +10869,7 @@ impl RustTrans {
 
         // Find &str function parameters (from fn signatures)
         let mut str_params = std::collections::HashSet::new();
-        if let Ok(re) = regex::Regex::new(r#"fn \w+\([^)]*(\w+):\s*&str"#) {
+        if let Some(re) = cached_regex(r#"fn \w+\([^)]*(\w+):\s*&str"#) {
             for line in &lines {
                 for caps in re.captures_iter(line) {
                     if let Some(m) = caps.get(1) {
@@ -10915,10 +10915,29 @@ impl RustTrans {
     }
 }
 
+lazy_static::lazy_static! {
+    static ref RUST_REGEX_CACHE: std::sync::Mutex<std::collections::HashMap<String, regex::Regex>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
+fn cached_regex(pattern: &str) -> Option<regex::Regex> {
+    let mut cache = RUST_REGEX_CACHE.lock().unwrap();
+    if let Some(re) = cache.get(pattern) {
+        return Some(re.clone());
+    }
+    match regex::Regex::new(pattern) {
+        Ok(re) => {
+            cache.insert(pattern.to_string(), re.clone());
+            Some(re)
+        }
+        Err(_) => None,
+    }
+}
+
 /// Helper: extract capture group 1 from all regex matches, return as HashSet.
 fn regex_captures(content: &str, pattern: &str) -> std::collections::HashSet<String> {
     let mut result = std::collections::HashSet::new();
-    if let Ok(re) = regex::Regex::new(pattern) {
+    if let Some(re) = cached_regex(pattern) {
         for caps in re.captures_iter(content) {
             if let Some(m) = caps.get(1) {
                 result.insert(m.as_str().to_string());
@@ -10931,7 +10950,7 @@ fn regex_captures(content: &str, pattern: &str) -> std::collections::HashSet<Str
 /// Helper: extract capture group 1 from all regex matches, return as Vec.
 fn regex_captures_vec(content: &str, pattern: &str) -> Vec<String> {
     let mut result = Vec::new();
-    if let Ok(re) = regex::Regex::new(pattern) {
+    if let Some(re) = cached_regex(pattern) {
         for caps in re.captures_iter(content) {
             if let Some(m) = caps.get(1) {
                 result.push(m.as_str().to_string());
@@ -12378,7 +12397,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     // String + String: (output + int_to_str(val)) -> (output + &int_to_str(val))
     content = content.replace("(output + int_to_str(val))", "(output + &int_to_str(val))");
     // prefix + a2r_expr(...) -> prefix + &a2r_expr(...)
-    let re = regex::Regex::new(r"prefix \+ (a2r_expr\([^)]+\))").unwrap();
+    let re = cached_regex(r"prefix \+ (a2r_expr\([^)]+\))").unwrap();
     content = re.replace_all(&content, "prefix + &$1").to_string();
     // return left == right; -> return if left == right { 1 } else { 0 };
     for op in &["==", "!=", "<", ">", "<=", ">="] {
@@ -12391,7 +12410,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     // node.name partial move fix
     content = content.replace("let mut callee_name = node.name;", "let mut callee_name = node.name.clone();");
     // str_to_int arithmetic fix
-    let re = regex::Regex::new(r#"result = format!\("\{\}\{\}", result \* 10, ch - 48\)"#).unwrap();
+    let re = cached_regex(r#"result = format!\("\{\}\{\}", result \* 10, ch - 48\)"#).unwrap();
     content = re.replace_all(&content, "result = result * 10 + (ch - 48)").to_string();
     // Allow overflowing literals
     if !content.contains("#![allow(overflowing_literals)]") {
@@ -12406,7 +12425,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     );
     // Option.drop() -> Option.take(): now handled at AST level (method name mapping)
     // Fix int_to_str(X).cloned().unwrap_or_default()
-    let re = regex::Regex::new(r"int_to_str\(([^)]+)\)\.cloned\(\)\.unwrap_or_default\(\)").unwrap();
+    let re = cached_regex(r"int_to_str\(([^)]+)\)\.cloned\(\)\.unwrap_or_default\(\)").unwrap();
     content = re.replace_all(&content, "int_to_str($1)").to_string();
     // NodeKind derives: Copy from AST level, Eq/Ord for ASTNode derive compatibility
     content = content.replace(
@@ -12447,7 +12466,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         "\"Param\" | \"param\" => NodeKind::Param,\n            \"NilNode\" | \"nilnode\" => NodeKind::NilNode",
     );
     // Convert push(Param { name: x, type_name: y }) to push(ASTNode { ... })
-    let re = regex::Regex::new(r#"\.push\(Param \{ name: ([^,]+), type_name: ([^}]+) \}\)"#).unwrap();
+    let re = cached_regex(r#"\.push\(Param \{ name: ([^,]+), type_name: ([^}]+) \}\)"#).unwrap();
     content = re.replace_all(&content, ".push(ASTNode { kind: NodeKind::Param, name: $1, type_name: $2, value: \"\".to_string(), children: empty_list(), left: empty_list(), right: empty_list(), op: \"\".to_string(), params: empty_list(), cond: empty_list(), else_body: empty_list() })").to_string();
 
     // === fix_return_types.py ===
@@ -12464,7 +12483,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         "fn lex_fstr_f(mut source: &str, mut pos: i32) -> Vec<Token> {",
     );
     // Add main() with basic self-test if missing
-    if !regex::Regex::new(r"^fn main\(\)").unwrap().is_match(&content) {
+    if !cached_regex(r"^fn main\(\)").unwrap().is_match(&content) {
         content.push_str(concat!(
             "\nfn main() ",
             "{\n",
@@ -12480,14 +12499,14 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     // === fix_contains_key.py: now handled at AST level (contains_rust logic + cross-module struct_field_types) ===
 
     // === fix_vec_get.py: AST level covers most cases, regex catches remaining 2 edge cases ===
-    let re = regex::Regex::new(r"p\.tokens\.get\(([^)]+)\)").unwrap();
+    let re = cached_regex(r"p\.tokens\.get\(([^)]+)\)").unwrap();
     content = re.replace_all(&content, "p.tokens[$1 as usize].clone()").to_string();
-    let re = regex::Regex::new(r"\bcode\.get\(([^)]+)\)").unwrap();
+    let re = cached_regex(r"\bcode\.get\(([^)]+)\)").unwrap();
     content = re.replace_all(&content, "code[$1 as usize].clone()").to_string();
 
     // === fix_usize_insert.py ===
     // .insert(arith_expr, -> .insert((arith_expr) as usize,
-    let re = regex::Regex::new(r"\.insert\(([^,]+),").unwrap();
+    let re = cached_regex(r"\.insert\(([^,]+),").unwrap();
     content = re.replace_all(&content, |caps: &regex::Captures| {
         let idx = caps[1].trim().to_string();
         if idx.contains("as usize") || idx.starts_with('"') || idx.contains(".to_string()") || idx.starts_with('&') {
@@ -12508,7 +12527,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     ];
     for field in &hashmap_fields {
         // env.field.get(X) pattern
-        let pat = regex::Regex::new(&format!(
+        let pat = cached_regex(&format!(
             r"env\.{}\.get\(([^)]+)\)", regex::escape(field)
         )).unwrap();
         content = pat.replace_all(&content, |caps: &regex::Captures| {
@@ -12523,7 +12542,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
             format!("env.{}.get({}).cloned().unwrap_or_default()", field, key_expr)
         }).to_string();
         // bare field.get(X) pattern (when field is a local variable)
-        let pat = regex::Regex::new(&format!(
+        let pat = cached_regex(&format!(
             r"\b{}\.get\(([^)]+)\)", regex::escape(field)
         )).unwrap();
         content = pat.replace_all(&content, |caps: &regex::Captures| {
@@ -12583,7 +12602,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     // === .to_string().cloned().unwrap_or_default() -> .to_string() (E0599: String not iterator) ===
     content = content.replace(".to_string().cloned().unwrap_or_default()", ".to_string()");
     // Also fix .cloned().unwrap_or_default() on format!() results
-    let re = regex::Regex::new(r#"format!\([^)]*\)\.cloned\(\)\.unwrap_or_default\(\)"#).unwrap();
+    let re = cached_regex(r#"format!\([^)]*\)\.cloned\(\)\.unwrap_or_default\(\)"#).unwrap();
     content = re.replace_all(&content, |caps: &regex::Captures| {
         caps[0].trim_end_matches(".cloned().unwrap_or_default()").to_string()
     }).to_string();
@@ -12599,7 +12618,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         content = content.replace(&format!("&&{}.", var), &format!("&{}.", var));
     }
     // int_to_str(x).cloned().unwrap_or_default() already fixed above, but check again
-    let re = regex::Regex::new(r"int_to_str\(([^)]+)\)\.cloned\(\)\.unwrap_or_default\(\)").unwrap();
+    let re = cached_regex(r"int_to_str\(([^)]+)\)\.cloned\(\)\.unwrap_or_default\(\)").unwrap();
     content = re.replace_all(&content, "int_to_str($1)").to_string();
 
     // === Fix Display trait missing fmt method (E0046): now handled at AST level ===
@@ -12642,7 +12661,7 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
     // === Fix known &str param functions called with String args (E0308) ===
     // === Fix .get(...).as_str() (E0599: no method as_str on Option) ===
     // .get(X).as_str() -> .get(X).cloned().unwrap_or_default()
-    let re = regex::Regex::new(r"\.get\(([^)]+)\)\.as_str\(\)").unwrap();
+    let re = cached_regex(r"\.get\(([^)]+)\)\.as_str\(\)").unwrap();
     content = re.replace_all(&content, |caps: &regex::Captures| {
         format!(".get({}).cloned().unwrap_or_default()", &caps[1])
     }).to_string();
@@ -12833,11 +12852,11 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
     // Fix state.get(X) where X has nested .cloned().unwrap_or_default() inside get arg
     // Pattern: .get(&"str".to_string().cloned().unwrap_or_default())
     // Should be: .get(&"str".to_string())
-    let re = regex::Regex::new(r#"\.get\((&[^)]+?)\.to_string\(\)\.cloned\(\)\.unwrap_or_default\(\)\)"#).unwrap();
+    let re = cached_regex(r#"\.get\((&[^)]+?)\.to_string\(\)\.cloned\(\)\.unwrap_or_default\(\)\)"#).unwrap();
     content = re.replace_all(&content, ".get($1.to_string())").to_string();
 
     // === Fix .get(X).as_str() where .get returns Option (E0599) ===
-    let re = regex::Regex::new(r"state\.get\(([^)]+)\)\.as_str\(\)").unwrap();
+    let re = cached_regex(r"state\.get\(([^)]+)\)\.as_str\(\)").unwrap();
     content = re.replace_all(&content, |caps: &regex::Captures| {
         format!("state.get({}).cloned().unwrap_or_default()", &caps[1])
     }).to_string();
@@ -12848,13 +12867,13 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
     // eval_fn_call(callee_name), codegen_extract_var_name(callee), type_is_cmp_op(op), etc.
 
     // === E0308: return state.get(X) -> return state.get(X).cloned().unwrap_or_default() ===
-    let re = regex::Regex::new(r"return state\.get\((&[^)]+)\);").unwrap();
+    let re = cached_regex(r"return state\.get\((&[^)]+)\);").unwrap();
     content = re.replace_all(&content, |caps: &regex::Captures| {
         let arg = &caps[1];
         if arg.contains(".cloned()") { caps[0].to_string() }
         else { format!("return state.get({}).cloned().unwrap_or_default();", arg) }
     }).to_string();
-    let re = regex::Regex::new(r"= state\.get\((&[^)]+)\);").unwrap();
+    let re = cached_regex(r"= state\.get\((&[^)]+)\);").unwrap();
     content = re.replace_all(&content, |caps: &regex::Captures| {
         let arg = &caps[1];
         if arg.contains(".cloned()") { caps[0].to_string() }
@@ -12878,7 +12897,7 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
     {
         // Helper: extract inner env call to temp variable to avoid double borrow
         let extract_env_tmp = |content: &str, pattern: &str, tmpl: &str| -> String {
-            let re = regex::Regex::new(pattern).unwrap();
+            let re = cached_regex(pattern).unwrap();
             re.replace_all(content, tmpl).to_string()
         };
 

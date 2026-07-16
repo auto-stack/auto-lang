@@ -158,7 +158,7 @@ import ConsoleOutput from './components/ConsoleOutput.vue'
 import BytecodePanel from './components/BytecodePanel.vue'
 import ExampleSelector from './components/ExampleSelector.vue'
 import { usePlayground } from './composables/usePlayground'
-import type { OutputTab, DebugCommand } from './types'
+import type { OutputTab } from './types'
 
 const props = withDefaults(defineProps<{
   code?: string

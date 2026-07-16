@@ -29,6 +29,8 @@ pub struct PythonTrans {
     /// Plan 283 Task 2.1: Local variable type tracking for ErrorPropagate and type-aware codegen.
     /// Populated from store.ty (explicit annotations) and basic expression inference.
     local_var_types: HashMap<AutoStr, Type>,
+    /// Names of scalar (C-style) enums, used to emit value patterns in match statements.
+    scalar_enums: HashSet<AutoStr>,
     #[allow(dead_code)]
     name: AutoStr,
 }
@@ -42,6 +44,7 @@ impl PythonTrans {
             py_wildcards: Vec::new(),
             py_deps: Vec::new(),
             local_var_types: HashMap::new(),
+            scalar_enums: HashSet::new(),
             name,
         }
     }
@@ -322,6 +325,53 @@ impl PythonTrans {
                     }
                 }
                 out.write(b")")?;
+                Ok(())
+            }
+
+            // Tag cover pattern in is branches: Color.Red or Shape.Circle(r)
+            Expr::Cover(cover) => {
+                match cover {
+                    Cover::Tag(tag_cover) => {
+                        let real_bindings: Vec<&AutoStr> = tag_cover.bindings.iter()
+                            .filter(|b| b.as_str() != "_")
+                            .collect();
+                        if real_bindings.is_empty() && self.scalar_enums.contains(&tag_cover.kind) {
+                            // Scalar enum member: Color.Red
+                            out.write_all(tag_cover.kind.as_bytes())?;
+                            out.write(b".")?;
+                            out.write_all(tag_cover.tag.as_bytes())?;
+                        } else {
+                            out.write_all(tag_cover.kind.as_bytes())?;
+                            out.write(b"(kind='")?;
+                            out.write_all(tag_cover.tag.as_bytes())?;
+                            out.write(b"'")?;
+                            if !real_bindings.is_empty() {
+                                out.write(b", _")?;
+                                out.write_all(tag_cover.tag.as_bytes())?;
+                                out.write(b"=")?;
+                                if real_bindings.len() == 1 {
+                                    out.write_all(real_bindings[0].as_bytes())?;
+                                } else {
+                                    out.write(b"(")?;
+                                    for (i, b) in real_bindings.iter().enumerate() {
+                                        if i > 0 { out.write(b", ")?; }
+                                        out.write_all(b.as_bytes())?;
+                                    }
+                                    out.write(b")")?;
+                                }
+                            }
+                            out.write(b")")?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+
+            // Tag value extraction: s._Circle or s._Rect
+            Expr::Uncover(uncover) => {
+                out.write_all(uncover.src.as_bytes())?;
+                out.write(b"._")?;
+                out.write_all(uncover.cover.tag.as_bytes())?;
                 Ok(())
             }
 
@@ -747,6 +797,16 @@ impl PythonTrans {
     }
 
     fn for_loop(&mut self, for_loop: &For, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 213 Task 10: Infinite loop with break → while True
+        if matches!(&for_loop.iter, Iter::Ever) {
+            self.print_indent(out)?;
+            out.write(b"while True:\n")?;
+            self.indent();
+            self.body(&for_loop.body, out)?;
+            self.dedent();
+            return Ok(());
+        }
+
         // Plan 213 Task 10: Handle conditional for loop (while in Python)
         if matches!(&for_loop.iter, Iter::Cond) {
             self.print_indent(out)?;
@@ -1252,19 +1312,143 @@ impl PythonTrans {
     }
 
     fn enum_decl(&mut self, enum_decl: &EnumDecl, out: &mut impl Write) -> AutoResult<()> {
-        self.print_indent(out)?;
-        out.write(b"class ")?;
-        out.write_all(enum_decl.name.as_bytes())?;
-        out.write(b"(Enum):\n")?;
-        self.indent();
+        match &enum_decl.kind {
+            EnumKind::Scalar { .. } => {
+                self.scalar_enums.insert(enum_decl.name.clone());
+                self.print_indent(out)?;
+                out.write(b"class ")?;
+                out.write_all(enum_decl.name.as_bytes())?;
+                out.write(b"(Enum):\n")?;
+                self.indent();
 
-        for item in &enum_decl.items {
-            self.print_indent(out)?;
-            out.write_all(item.name.as_bytes())?;
-            out.write(b" = auto()\n")?;
+                for item in &enum_decl.items {
+                    self.print_indent(out)?;
+                    out.write_all(item.name.as_bytes())?;
+                    out.write(b" = auto()\n")?;
+                }
+
+                self.dedent();
+            }
+            EnumKind::Homogeneous { .. } | EnumKind::Heterogeneous { .. } => {
+                self.imports.insert("dataclass".into());
+                self.print_indent(out)?;
+                out.write(b"@dataclass\n")?;
+                self.print_indent(out)?;
+                out.write(b"class ")?;
+                out.write_all(enum_decl.name.as_bytes())?;
+                out.write(b":\n")?;
+                self.indent();
+
+                self.print_indent(out)?;
+                out.write(b"kind: str = ''\n")?;
+
+                for item in &enum_decl.items {
+                    if !item.has_fields() && !item.has_tuple_payload() && item.payload_type.is_none() {
+                        continue;
+                    }
+                    self.print_indent(out)?;
+                    let field_name = format!("_{}", item.name);
+                    out.write_all(field_name.as_bytes())?;
+                    out.write(b": ")?;
+
+                    let type_name = if item.has_tuple_payload() {
+                        let parts: Vec<String> = item.payload_types.iter()
+                            .map(|t| self.python_type_name(t).to_string())
+                            .collect();
+                        format!("tuple[{}]", parts.join(", ")).into()
+                    } else if let Some(ty) = &item.payload_type {
+                        self.python_type_name(ty)
+                    } else if item.has_fields() {
+                        "Any".into()
+                    } else {
+                        "Any".into()
+                    };
+                    out.write_all(type_name.as_bytes())?;
+
+                    out.write(b" = ")?;
+                    let default = if item.has_tuple_payload() {
+                        let parts: Vec<String> = item.payload_types.iter()
+                            .map(|t| self.python_default_value(t).to_string())
+                            .collect();
+                        format!("({})", parts.join(", ")).into()
+                    } else if let Some(ty) = &item.payload_type {
+                        self.python_default_value(ty)
+                    } else {
+                        "None".into()
+                    };
+                    out.write_all(default.as_bytes())?;
+                    out.write(b"\n")?;
+                }
+
+                // Factory static methods for variants with payload
+                for item in &enum_decl.items {
+                    if !item.has_fields() && !item.has_tuple_payload() && item.payload_type.is_none() {
+                        continue;
+                    }
+                    out.write(b"\n")?;
+                    self.print_indent(out)?;
+                    out.write(b"@staticmethod\n")?;
+                    self.print_indent(out)?;
+                    out.write(b"def ")?;
+                    out.write_all(item.name.as_bytes())?;
+                    out.write(b"(")?;
+
+                    let field_name = format!("_{}", item.name);
+
+                    if item.has_tuple_payload() {
+                        for (i, _) in item.payload_types.iter().enumerate() {
+                            if i > 0 { out.write(b", ")?; }
+                            write!(out, "v{}", i)?;
+                        }
+                        out.write(b"):\n")?;
+                        self.indent();
+                        self.print_indent(out)?;
+                        out.write(b"return ")?;
+                        out.write_all(enum_decl.name.as_bytes())?;
+                        out.write(b"('")?;
+                        out.write_all(item.name.as_bytes())?;
+                        out.write(b"', ")?;
+                        out.write_all(field_name.as_bytes())?;
+                        out.write(b"=(")?;
+                        for (i, _) in item.payload_types.iter().enumerate() {
+                            if i > 0 { out.write(b", ")?; }
+                            write!(out, "v{}", i)?;
+                        }
+                        out.write(b"))\n")?;
+                        self.dedent();
+                    } else if let Some(ty) = &item.payload_type {
+                        let type_name = self.python_type_name(ty);
+                        out.write(b"value: ")?;
+                        out.write_all(type_name.as_bytes())?;
+                        out.write(b"):\n")?;
+                        self.indent();
+                        self.print_indent(out)?;
+                        out.write(b"return ")?;
+                        out.write_all(enum_decl.name.as_bytes())?;
+                        out.write(b"('")?;
+                        out.write_all(item.name.as_bytes())?;
+                        out.write(b"', ")?;
+                        out.write_all(field_name.as_bytes())?;
+                        out.write(b"=value)\n")?;
+                        self.dedent();
+                    } else {
+                        out.write(b"value: Any = None):\n")?;
+                        self.indent();
+                        self.print_indent(out)?;
+                        out.write(b"return ")?;
+                        out.write_all(enum_decl.name.as_bytes())?;
+                        out.write(b"('")?;
+                        out.write_all(item.name.as_bytes())?;
+                        out.write(b"', ")?;
+                        out.write_all(field_name.as_bytes())?;
+                        out.write(b"=value)\n")?;
+                        self.dedent();
+                    }
+                }
+
+                self.dedent();
+            }
         }
-
-        self.dedent();
         Ok(())
     }
 
@@ -1672,7 +1856,7 @@ impl Trans for PythonTrans {
                 continue;
             }
 
-            if stmt.is_decl() {
+            if stmt.is_decl() && !matches!(stmt, Stmt::Store(_)) {
                 decls.push((stmt, line));
             } else {
                 main_stmts.push((stmt, line));
@@ -1766,9 +1950,7 @@ impl Trans for PythonTrans {
 
             // Add main guard
             code_buf.write(b"\n\nif __name__ == \"__main__\":\n")?;
-            self.indent();
-            code_buf.write(b"main()\n")?;
-            self.dedent();
+            code_buf.write(b"    main()\n")?;
         }
 
         // ── Phase 3: Now emit imports + code body to sink ──

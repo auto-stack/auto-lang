@@ -1,7 +1,9 @@
 use crate::ast::*;
 use crate::AutoResult;
 use std::io::Write;
+use auto_val::AutoStr;
 use super::{TypeScriptTrans, ToStrError};
+use super::super::escape_str;
 
 impl TypeScriptTrans {
     pub fn stmt(&mut self, stmt: &Stmt, out: &mut impl Write) -> AutoResult<()> {
@@ -195,19 +197,42 @@ impl TypeScriptTrans {
         }
 
         // Function body
-        self.body(&func.body, out)?;
+        let needs_return = !matches!(func.ret, Type::Unknown | Type::Void) && func.name != "main";
+        if needs_return && !func.body.stmts.is_empty() {
+            self.open_block(out)?;
+            let stmts = &func.body.stmts;
+            for (i, stmt) in stmts.iter().enumerate() {
+                out.write(b"\n")?;
+                self.print_indent(out)?;
+                let is_last = i == stmts.len() - 1;
+                if is_last {
+                    if let Stmt::Expr(expr) = stmt {
+                        out.write(b"return ")?;
+                        self.expr(expr, out)?;
+                        out.write(b";")?;
+                    } else {
+                        self.stmt(stmt, out)?;
+                    }
+                } else {
+                    self.stmt(stmt, out)?;
+                }
+            }
+            self.close_block(out)?;
+        } else {
+            self.body(&func.body, out)?;
+        }
 
         Ok(())
     }
 
     pub fn body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
-        out.write(b" {")?;
+        self.open_block(out)?;
         for stmt in &body.stmts {
-            out.write(b"\n    ")?;
+            out.write(b"\n")?;
+            self.print_indent(out)?;
             self.stmt(stmt, out)?;
         }
-        out.write(b"\n}")?;
-        Ok(())
+        self.close_block(out)
     }
 
     pub fn if_stmt(&mut self, if_stmt: &If, out: &mut impl Write) -> AutoResult<()> {
@@ -307,7 +332,11 @@ impl TypeScriptTrans {
                     self.expr(&for_loop.range, out)?;
                     out.write(b".length; ")?;
                     out.write_all(index.as_bytes())?;
-                    out.write(b"++) {\n        const ")?;
+                    out.write(b"++)")?;
+                    self.open_block(out)?;
+                    out.write(b"\n")?;
+                    self.print_indent(out)?;
+                    out.write(b"const ")?;
                     out.write_all(name.as_bytes())?;
                     out.write(b" = ")?;
                     self.expr(&for_loop.range, out)?;
@@ -316,11 +345,12 @@ impl TypeScriptTrans {
                     out.write(b"];")?;
 
                     for stmt in &for_loop.body.stmts {
-                        out.write(b"\n        ")?;
+                        out.write(b"\n")?;
+                        self.print_indent(out)?;
                         self.stmt(stmt, out)?;
                     }
 
-                    out.write(b"\n    }")?;
+                    self.close_block(out)?;
                 }
             }
             Iter::Destructured(key, val) => {
@@ -341,44 +371,347 @@ impl TypeScriptTrans {
         Ok(())
     }
 
-    pub fn is_stmt(&mut self, is_stmt: &Is, out: &mut impl Write) -> AutoResult<()> {
+    pub fn is_stmt(
+        &mut self,
+        is_stmt: &Is,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        if self.can_use_switch_is(is_stmt) {
+            self.emit_switch_is(is_stmt, out)?;
+        } else {
+            self.emit_if_is(is_stmt, out)?;
+        }
+        Ok(())
+    }
+
+    fn can_use_switch_is(
+        &self,
+        is_stmt: &Is,
+    ) -> bool {
+        for branch in &is_stmt.branches {
+            match branch {
+                IsBranch::EqBranch(patterns, _) => {
+                    for pat in patterns {
+                        if !self.is_switchable_pattern(pat) {
+                            return false;
+                        }
+                    }
+                }
+                IsBranch::ElseBranch(_) => {}
+                IsBranch::IfBranch(_, _) => return false,
+            }
+        }
+        true
+    }
+
+    fn is_switchable_pattern(
+        &self,
+        pat: &Expr,
+    ) -> bool {
+        match pat {
+            Expr::Cover(cover) => match cover {
+                crate::ast::Cover::Tag(tag_cover) => {
+                    let real_bindings: Vec<&AutoStr> = tag_cover.bindings.iter()
+                        .filter(|b| b.as_str() != "_")
+                        .collect();
+                    self.scalar_enums.contains(&tag_cover.kind) && real_bindings.is_empty()
+                }
+            }
+            Expr::Int(_) | Expr::Uint(_) | Expr::Float(_, _) | Expr::Bool(_) | Expr::Str(_) | Expr::Ident(_) | Expr::Nil | Expr::Null => true,
+            _ => false,
+        }
+    }
+
+    fn emit_switch_is(
+        &mut self,
+        is_stmt: &Is,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         out.write(b"switch (")?;
         self.expr(&is_stmt.target, out)?;
-        out.write(b") {")?;
+        out.write(b")")?;
+        self.open_block(out)?;
 
         for branch in &is_stmt.branches {
             match branch {
                 IsBranch::EqBranch(patterns, body) => {
-                    for pat in patterns.iter() {
-                        out.write(b"\n        case ")?;
-                        self.expr(pat, out)?;
+                    for pat in patterns {
+                        out.write(b"\n")?;
+                        self.print_indent(out)?;
+                        out.write(b"case ")?;
+                        self.emit_switch_case_value(pat, out)?;
                         out.write(b":")?;
                     }
-                    self.switch_case_body(body, out)?;
-                    out.write(b"\n            break;")?;
-                }
-                IsBranch::IfBranch(expr, body) => {
-                    out.write(b"\n        case ")?;
-                    self.expr(expr, out)?;
-                    out.write(b":")?;
-                    self.switch_case_body(body, out)?;
-                    out.write(b"\n            break;")?;
+                    self.emit_switch_body(body, out)?;
                 }
                 IsBranch::ElseBranch(body) => {
-                    out.write(b"\n        default:")?;
-                    self.switch_case_body(body, out)?;
+                    out.write(b"\n")?;
+                    self.print_indent(out)?;
+                    out.write(b"default:")?;
+                    self.emit_switch_body(body, out)?;
                 }
+                IsBranch::IfBranch(_, _) => {}
             }
         }
 
-        out.write(b"\n    }")?;
+        self.close_block(out)
+    }
+
+    fn emit_switch_case_value(
+        &mut self,
+        pat: &Expr,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        match pat {
+            Expr::Cover(cover) => match cover {
+                crate::ast::Cover::Tag(tag_cover) => {
+                    out.write_all(tag_cover.kind.as_bytes())?;
+                    out.write(b".")?;
+                    out.write_all(tag_cover.tag.as_bytes())?;
+                }
+            }
+            Expr::Int(i) => {
+                write!(out, "{}", i)?;
+            }
+            Expr::Uint(u) => {
+                write!(out, "{}", u)?;
+            }
+            Expr::Float(f, _) => {
+                write!(out, "{}", f)?;
+            }
+            Expr::Bool(b) => {
+                out.write(if *b { b"true" } else { b"false" })?;
+            }
+            Expr::Str(s) => {
+                out.write(b"\"")?;
+                out.write_all(escape_str(s).as_bytes())?;
+                out.write(b"\"")?;
+            }
+            Expr::Ident(name) => {
+                out.write_all(name.as_bytes())?;
+            }
+            Expr::Nil | Expr::Null => {
+                out.write(b"null")?;
+            }
+            _ => {
+                self.expr(pat, out)?;
+            }
+        }
         Ok(())
     }
 
-    pub fn switch_case_body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
+    fn emit_switch_body(
+        &mut self,
+        body: &Body,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        self.indent();
         for stmt in &body.stmts {
-            out.write(b"\n            ")?;
+            out.write(b"\n")?;
+            self.print_indent(out)?;
             self.stmt(stmt, out)?;
+        }
+        out.write(b"\n")?;
+        self.print_indent(out)?;
+        out.write(b"break;")?;
+        self.dedent();
+        Ok(())
+    }
+
+    fn emit_if_is(
+        &mut self,
+        is_stmt: &Is,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        // TypeScript has no pattern matching; use a chain of if/else if with _tag checks.
+        let target_var = format!("__auto_is_{}", self.is_counter);
+        self.is_counter += 1;
+        self.print_indent(out)?;
+        out.write(b"const ")?;
+        out.write(target_var.as_bytes())?;
+        out.write(b" = ")?;
+        self.expr(&is_stmt.target, out)?;
+        out.write(b";")?;
+
+        for (i, branch) in is_stmt.branches.iter().enumerate() {
+            out.write(b"\n")?;
+            self.print_indent(out)?;
+            if i == 0 {
+                out.write(b"if (")?;
+            } else {
+                out.write(b"else if (")?;
+            }
+
+            match branch {
+                IsBranch::EqBranch(patterns, _) => {
+                    for (j, pat) in patterns.iter().enumerate() {
+                        if j > 0 { out.write(b" || ")?; }
+                        self.emit_is_condition(&target_var, pat, out)?;
+                    }
+                }
+                IsBranch::IfBranch(expr, _) => {
+                    self.expr(expr, out)?;
+                }
+                IsBranch::ElseBranch(_) => {
+                    // 'else' has no condition; this arm is handled after the loop.
+                    continue;
+                }
+            }
+
+            out.write(b")")?;
+            self.open_block(out)?;
+
+            // Emit bindings for the first pattern (EqBranch) or the IfBranch expression pattern
+            match branch {
+                IsBranch::EqBranch(patterns, _) if !patterns.is_empty() => {
+                    self.emit_is_bindings(&target_var, &patterns[0], out)?;
+                }
+                IsBranch::IfBranch(_, _) => {}
+                _ => {}
+            }
+
+            // Body
+            let body = match branch {
+                IsBranch::EqBranch(_, body) => body,
+                IsBranch::IfBranch(_, body) => body,
+                IsBranch::ElseBranch(body) => body,
+            };
+            for stmt in &body.stmts {
+                out.write(b"\n")?;
+                self.print_indent(out)?;
+                self.stmt(stmt, out)?;
+            }
+            self.close_block(out)?;
+        }
+
+        // Handle else/default branch
+        if let Some(else_branch) = is_stmt.branches.iter().find(|b| matches!(b, IsBranch::ElseBranch(_))) {
+            out.write(b"\n")?;
+            self.print_indent(out)?;
+            out.write(b"else")?;
+            self.open_block(out)?;
+            if let IsBranch::ElseBranch(body) = else_branch {
+                for stmt in &body.stmts {
+                    out.write(b"\n")?;
+                    self.print_indent(out)?;
+                    self.stmt(stmt, out)?;
+                }
+            }
+            self.close_block(out)?;
+        }
+
+        Ok(())
+    }
+
+    fn emit_is_condition(
+        &mut self,
+        target_var: &str,
+        pat: &Expr,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        match pat {
+            Expr::Cover(cover) => {
+                match cover {
+                    crate::ast::Cover::Tag(tag_cover) => {
+                        let real_bindings: Vec<&AutoStr> = tag_cover.bindings.iter()
+                            .filter(|b| b.as_str() != "_")
+                            .collect();
+                        if self.scalar_enums.contains(&tag_cover.kind) && real_bindings.is_empty() {
+                            out.write(target_var.as_bytes())?;
+                            out.write(b" === ")?;
+                            out.write_all(tag_cover.kind.as_bytes())?;
+                            out.write(b".")?;
+                            out.write_all(tag_cover.tag.as_bytes())?;
+                        } else {
+                            out.write(target_var.as_bytes())?;
+                            out.write(b"._tag === \"")?;
+                            out.write_all(tag_cover.tag.as_bytes())?;
+                            out.write(b"\"")?;
+                        }
+                    }
+                }
+            }
+            Expr::Int(i) => {
+                out.write(target_var.as_bytes())?;
+                out.write(b" === ")?;
+                write!(out, "{}", i)?;
+            }
+            Expr::Uint(u) => {
+                out.write(target_var.as_bytes())?;
+                out.write(b" === ")?;
+                write!(out, "{}", u)?;
+            }
+            Expr::Float(f, _) => {
+                out.write(target_var.as_bytes())?;
+                out.write(b" === ")?;
+                write!(out, "{}", f)?;
+            }
+            Expr::Bool(b) => {
+                out.write(target_var.as_bytes())?;
+                out.write(b" === ")?;
+                out.write(if *b { b"true" } else { b"false" })?;
+            }
+            Expr::Str(s) => {
+                out.write(target_var.as_bytes())?;
+                out.write(b" === \"")?;
+                out.write_all(escape_str(s).as_bytes())?;
+                out.write(b"\"")?;
+            }
+            Expr::Ident(name) => {
+                out.write(target_var.as_bytes())?;
+                out.write(b" === ")?;
+                out.write_all(name.as_bytes())?;
+            }
+            Expr::Nil | Expr::Null => {
+                out.write(target_var.as_bytes())?;
+                out.write(b" === null")?;
+            }
+            _ => {
+                out.write(target_var.as_bytes())?;
+                out.write(b" === ")?;
+                self.expr(pat, out)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn emit_is_bindings(
+        &mut self,
+        target_var: &str,
+        pat: &Expr,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        let cover = match pat {
+            Expr::Cover(cover) => cover,
+            _ => return Ok(()),
+        };
+        match cover {
+            crate::ast::Cover::Tag(tag_cover) => {
+                let real_bindings: Vec<&AutoStr> = tag_cover.bindings.iter()
+                    .filter(|b| b.as_str() != "_")
+                    .collect();
+                if real_bindings.is_empty() {
+                    return Ok(());
+                }
+                out.write(b"\n")?;
+                self.print_indent(out)?;
+                if real_bindings.len() == 1 {
+                    out.write(b"const ")?;
+                    out.write_all(real_bindings[0].as_bytes())?;
+                    out.write(b" = ")?;
+                    out.write(target_var.as_bytes())?;
+                    out.write(b".value;")?;
+                } else {
+                    out.write(b"const [")?;
+                    for (i, b) in real_bindings.iter().enumerate() {
+                        if i > 0 { out.write(b", ")?; }
+                        out.write_all(b.as_bytes())?;
+                    }
+                    out.write(b"] = ")?;
+                    out.write(target_var.as_bytes())?;
+                    out.write(b".value;")?;
+                }
+            }
         }
         Ok(())
     }
@@ -386,17 +719,14 @@ impl TypeScriptTrans {
     pub fn if_body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
         if body.stmts.is_empty() {
             out.write(b" {}")?;
-        } else if body.stmts.len() == 1 {
-            out.write(b" {\n        ")?;
-            self.stmt(&body.stmts[0], out)?;
-            out.write(b"\n    }")?;
         } else {
-            out.write(b" {")?;
+            self.open_block(out)?;
             for stmt in &body.stmts {
-                out.write(b"\n        ")?;
+                out.write(b"\n")?;
+                self.print_indent(out)?;
                 self.stmt(stmt, out)?;
             }
-            out.write(b"\n    }")?;
+            self.close_block(out)?;
         }
         Ok(())
     }
@@ -434,12 +764,12 @@ impl TypeScriptTrans {
             }
         }
 
-        out.write(b" {")?;
-
+        self.open_block(out)?;
 
         // Members as properties
         for member in &type_decl.members {
-            out.write(b"\n    ")?;
+            out.write(b"\n")?;
+            self.print_indent(out)?;
             out.write_all(member.name.as_bytes())?;
             out.write(b": ")?;
 
@@ -454,7 +784,9 @@ impl TypeScriptTrans {
 
         // Constructor
         if !type_decl.members.is_empty() {
-            out.write(b"\n\n    constructor(")?;
+            out.write(b"\n\n")?;
+            self.print_indent(out)?;
+            out.write(b"constructor(")?;
             for (i, member) in type_decl.members.iter().enumerate() {
                 if i > 0 {
                     out.write(b", ")?;
@@ -465,20 +797,24 @@ impl TypeScriptTrans {
                     out.write_all(Self::type_to_ts(&member.ty).as_bytes())?;
                 }
             }
-            out.write(b") {")?;
+            out.write(b")")?;
+            self.open_block(out)?;
             for member in &type_decl.members {
-                out.write(b"\n        this.")?;
+                out.write(b"\n")?;
+                self.print_indent(out)?;
+                out.write(b"this.")?;
                 out.write_all(member.name.as_bytes())?;
                 out.write(b" = ")?;
                 out.write_all(member.name.as_bytes())?;
                 out.write(b";")?;
             }
-            out.write(b"\n    }")?;
+            self.close_block(out)?;
         }
 
         // Methods
         for method in &type_decl.methods {
-            out.write(b"\n\n    ")?;
+            out.write(b"\n\n")?;
+            self.print_indent(out)?;
             out.write_all(method.name.as_bytes())?;
             out.write(b"(")?;
 
@@ -510,13 +846,13 @@ impl TypeScriptTrans {
             }
 
             // Method body — add `return` before the last expression
-            // if the method has a non-void return type (TS method body
-            // does not auto-return like arrow functions)
+            // if the method has a non-void return type
             let needs_return = !matches!(method.ret, Type::Unknown | Type::Void);
-            out.write(b" {")?;
+            self.open_block(out)?;
             let stmts = &method.body.stmts;
             for (i, stmt) in stmts.iter().enumerate() {
-                out.write(b"\n        ")?;
+                out.write(b"\n")?;
+                self.print_indent(out)?;
                 let is_last = i == stmts.len() - 1;
                 if is_last && needs_return {
                     if let Stmt::Expr(expr) = stmt {
@@ -530,11 +866,10 @@ impl TypeScriptTrans {
                     self.stmt(stmt, out)?;
                 }
             }
-            out.write(b"\n    }")?;
+            self.close_block(out)?;
         }
 
-        out.write(b"\n}")?;
-        Ok(())
+        self.close_block(out)
     }
 
     /// Generate TypeScript `interface` for spec declaration
@@ -556,9 +891,11 @@ impl TypeScriptTrans {
         }
 
         out.write(b" {")?;
+        self.open_block(out)?;
 
         for method in &spec_decl.methods {
-            out.write(b"\n    ")?;
+            out.write(b"\n")?;
+            self.print_indent(out)?;
             out.write_all(method.name.as_bytes())?;
             out.write(b"(")?;
             for (i, param) in method.params.iter().enumerate() {
@@ -579,11 +916,13 @@ impl TypeScriptTrans {
             out.write(b";")?;
         }
 
-        out.write(b"\n}\n")?;
+        self.close_block(out)?;
+        out.write(b"\n")?;
         Ok(())
     }
 
     /// Convert a Heterogeneous EnumDecl to a Tag for reusing tag code generation.
+    #[allow(dead_code)]
     fn enum_decl_to_tag(enum_decl: &EnumDecl) -> Tag {
         let fields: Vec<TagField> = enum_decl.items.iter().map(|item| TagField {
             name: item.name.clone().into(),
@@ -601,19 +940,36 @@ impl TypeScriptTrans {
         }
     }
 
+    fn enum_item_payload_type(item: &EnumItem) -> Option<AutoStr> {
+        if item.has_tuple_payload() {
+            let parts: Vec<String> = item.payload_types.iter()
+                .map(|t| Self::type_to_ts(t))
+                .collect();
+            Some(format!("[{}]", parts.join(", ")).into())
+        } else if let Some(ty) = &item.payload_type {
+            Some(Self::type_to_ts(ty).into())
+        } else if item.has_fields() {
+            Some("any".into())
+        } else {
+            None
+        }
+    }
+
     pub fn enum_decl(&mut self, enum_decl: &EnumDecl, out: &mut impl Write) -> AutoResult<()> {
         match &enum_decl.kind {
             EnumKind::Scalar { .. } => {
+                self.scalar_enums.insert(enum_decl.name.clone().into());
                 // C-style scalar enum: emit TypeScript const enum
                 out.write(b"const enum ")?;
                 out.write_all(enum_decl.name.as_bytes())?;
-                out.write(b" {")?;
+                self.open_block(out)?;
 
                 for (i, item) in enum_decl.items.iter().enumerate() {
                     if i > 0 {
                         out.write(b",")?;
                     }
-                    out.write(b"\n    ")?;
+                    out.write(b"\n")?;
+                    self.print_indent(out)?;
                     out.write_all(item.name.as_bytes())?;
 
                     // If there's an explicit non-zero value, use it
@@ -623,9 +979,9 @@ impl TypeScriptTrans {
                     }
                 }
 
-                out.write(b"\n}")?;
+                self.close_block(out)?;
             }
-            EnumKind::Homogeneous { payload_type } => {
+            EnumKind::Homogeneous { .. } | EnumKind::Heterogeneous { .. } => {
                 // Generate TS discriminated union: type Name = { _tag: "V1", value: T } | ...
                 out.write(b"type ")?;
                 out.write_all(enum_decl.name.as_bytes())?;
@@ -635,16 +991,40 @@ impl TypeScriptTrans {
                     if i > 0 { out.write(b"\n    | ")?; } else { out.write(b"    ")?; }
                     out.write(b"{ _tag: \"")?;
                     out.write_all(item.name.as_bytes())?;
-                    out.write(b"\", value: ")?;
-                    out.write_all(Self::type_to_ts(payload_type).as_bytes())?;
+                    out.write(b"\"")?;
+                    if let Some(ty) = Self::enum_item_payload_type(item) {
+                        out.write(b", value: ")?;
+                        out.write_all(ty.as_bytes())?;
+                    }
                     out.write(b" }")?;
                 }
+                out.write(b";\n\n")?;
+
+                // Factory object
+                out.write(b"const ")?;
+                out.write_all(enum_decl.name.as_bytes())?;
+                out.write(b" =")?;
+                self.open_block(out)?;
+                for (i, item) in enum_decl.items.iter().enumerate() {
+                    if i > 0 { out.write(b",")?; }
+                    out.write(b"\n")?;
+                    self.print_indent(out)?;
+                    out.write_all(item.name.as_bytes())?;
+                    out.write(b": ")?;
+                    if let Some(ty) = Self::enum_item_payload_type(item) {
+                        out.write(b"(value: ")?;
+                        out.write_all(ty.as_bytes())?;
+                        out.write(b") => ({ _tag: \"")?;
+                        out.write_all(item.name.as_bytes())?;
+                        out.write(b"\" as const, value })")?;
+                    } else {
+                        out.write(b"() => ({ _tag: \"")?;
+                        out.write_all(item.name.as_bytes())?;
+                        out.write(b"\" as const })")?;
+                    }
+                }
+                self.close_block(out)?;
                 out.write(b";\n")?;
-            }
-            EnumKind::Heterogeneous { .. } => {
-                // Reuse tag code generation: convert EnumDecl to Tag
-                let tag = Self::enum_decl_to_tag(enum_decl);
-                self.tag_decl(&tag, out)?;
             }
         }
         Ok(())
@@ -673,17 +1053,19 @@ impl TypeScriptTrans {
         // C-like unions are represented as objects with optional fields
         out.write(b"interface ")?;
         out.write_all(union.name.as_bytes())?;
-        out.write(b" {")?;
+        self.open_block(out)?;
 
         for member in &union.fields {
-            out.write(b"\n    ")?;
+            out.write(b"\n")?;
+            self.print_indent(out)?;
             out.write_all(member.name.as_bytes())?;
             out.write(b"?: ")?;
             out.write_all(Self::type_to_ts(&member.ty).as_bytes())?;
             out.write(b";")?;
         }
 
-        out.write(b"\n}\n")?;
+        self.close_block(out)?;
+        out.write(b"\n")?;
         Ok(())
     }
 
@@ -722,10 +1104,12 @@ impl TypeScriptTrans {
         // Generate a const object with factory functions
         out.write(b"const ")?;
         out.write_all(tag.name.as_bytes())?;
-        out.write(b" = {")?;
+        out.write(b" =")?;
+        self.open_block(out)?;
         for (i, field) in tag.fields.iter().enumerate() {
             if i > 0 { out.write(b",")?; }
-            out.write(b"\n    ")?;
+            out.write(b"\n")?;
+            self.print_indent(out)?;
             out.write_all(field.name.as_bytes())?;
             out.write(b": ")?;
             
@@ -751,7 +1135,8 @@ impl TypeScriptTrans {
             out.write_all(field.name.as_bytes())?;
             out.write(b"\", value })")?;
         }
-        out.write(b"\n};\n")?;
+        self.close_block(out)?;
+        out.write(b";\n")?;
 
         Ok(())
     }
@@ -787,13 +1172,13 @@ impl TypeScriptTrans {
             }
 
             // Method body — add `return` before the last expression
-            // if the method has a non-void return type (TS function()
-            // does not auto-return like arrow functions)
+            // if the method has a non-void return type
             let needs_return = !matches!(method.ret, Type::Unknown | Type::Void);
-            out.write(b" {")?;
+            self.open_block(out)?;
             let stmts = &method.body.stmts;
             for (i, stmt) in stmts.iter().enumerate() {
-                out.write(b"\n    ")?;
+                out.write(b"\n")?;
+                self.print_indent(out)?;
                 let is_last = i == stmts.len() - 1;
                 if is_last && needs_return {
                     if let Stmt::Expr(expr) = stmt {
@@ -807,7 +1192,7 @@ impl TypeScriptTrans {
                     self.stmt(stmt, out)?;
                 }
             }
-            out.write(b"\n}")?;
+            self.close_block(out)?;
             out.write(b";\n")?;
         }
         Ok(())

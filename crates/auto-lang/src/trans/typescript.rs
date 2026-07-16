@@ -12,6 +12,7 @@ use super::{Sink, Trans, ToStrError};
 use crate::ast::*;
 use crate::AutoResult;
 use auto_val::AutoStr;
+use std::collections::HashSet;
 use std::io::Write;
 
 #[path = "ts_types.rs"]
@@ -34,6 +35,12 @@ pub struct TypeScriptTrans {
     /// Track which runtime symbols are needed
     pub needs_range: bool,
     pub needs_print: bool,
+    /// Current indentation level for block bodies
+    indent: usize,
+    /// Names of scalar (C-style) enums, used to emit correct patterns.
+    scalar_enums: HashSet<AutoStr>,
+    /// Counter for generating unique temporary variable names in `is` statements.
+    is_counter: usize,
 }
 
 impl TypeScriptTrans {
@@ -43,7 +50,43 @@ impl TypeScriptTrans {
             runtime_path: "./runtime".to_string(),
             needs_range: false,
             needs_print: false,
+            indent: 0,
+            scalar_enums: HashSet::new(),
+            is_counter: 0,
         }
+    }
+
+    fn indent(&mut self) {
+        self.indent += 1;
+    }
+
+    fn dedent(&mut self) {
+        if self.indent > 0 {
+            self.indent -= 1;
+        }
+    }
+
+    fn print_indent(&self, out: &mut impl Write) -> AutoResult<()> {
+        for _ in 0..self.indent {
+            out.write(b"    ")?;
+        }
+        Ok(())
+    }
+
+    /// Write an opening brace and increase indentation for the block body.
+    fn open_block(&mut self, out: &mut impl Write) -> AutoResult<()> {
+        out.write(b" {")?;
+        self.indent();
+        Ok(())
+    }
+
+    /// Close the current block at the current indentation level.
+    fn close_block(&mut self, out: &mut impl Write) -> AutoResult<()> {
+        self.dedent();
+        out.write(b"\n")?;
+        self.print_indent(out)?;
+        out.write(b"}")?;
+        Ok(())
     }
 
     /// Set the runtime import path
@@ -107,15 +150,17 @@ impl Trans for TypeScriptTrans {
             if !decls.is_empty() {
                 body_buf.write(b"\n\n")?;
             }
-            body_buf.write(b"function main(): void {")?;
+            body_buf.write(b"function main(): void")?;
+            self.open_block(&mut body_buf)?;
 
             for (stmt, line) in &main_stmts {
                 sink.set_source_line(*line);
-                body_buf.write(b"\n    ")?;
+                body_buf.write(b"\n")?;
+                self.print_indent(&mut body_buf)?;
                 self.stmt(stmt, &mut body_buf)?;
             }
 
-            body_buf.write(b"\n}")?;
+            self.close_block(&mut body_buf)?;
 
             // Call main at the end
             body_buf.write(b"\n\nmain();\n")?;

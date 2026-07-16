@@ -81,7 +81,28 @@ The production deployment consists of two parts: the **VitePress frontend** (sta
                         └─────────────┘     └─────────────────┘
 ```
 
-### 1. Build the Frontend
+### 1. Build the Standalone Playground
+
+The full Playground app is built from `crates/auto-playground/frontend/` and is used in two places:
+
+- `crates/auto-playground/frontend/dist/` — served directly by the Rust backend.
+- `website/public/playground/` — deployed as the standalone `/playground` page on the website.
+
+To keep them in sync, use the root build script:
+
+```bash
+# From the repository root
+npm run build:playground
+```
+
+This runs `scripts/build-playground.mjs`, which:
+
+1. Builds the frontend in `crates/auto-playground/frontend/`.
+2. Copies the output to `website/public/playground/`.
+
+> **Do not manually edit `website/public/playground/` or rely on a pre-existing `crates/auto-playground/frontend/dist/`.** Both are build artifacts. If `dist/` is stale, the backend will serve an outdated Playground without newer features (e.g. debug/replay buttons).
+
+### 2. Build the Frontend
 
 ```bash
 cd website
@@ -138,9 +159,11 @@ print('fixed')
 
 > Note: The exact filename under `assets/chunks/` will vary with each build (hash changes). Find it with `grep -r "localhost:3030" /home/visus/auto-website/`. This is a temporary workaround — always fix the source (`packages/auto-playground-vue/src/AutoPlayground.vue`) and rebuild for the next deployment.
 
-### 2. Build the Backend (Cross-Compilation)
+### 3. Build the Backend (Cross-Compilation)
 
-The Playground backend is `crates/auto-playground/`, a Rust Axum server. On resource-constrained servers (e.g., 1.6 GB RAM, limited disk), **remote compilation often fails** due to cargo crate downloads and linker OOM. The solution is to build locally and copy the binary.
+The Playground backend is `crates/auto-playground/`, a Rust Axum server. It serves the static files from `crates/auto-playground/frontend/dist/`, so make sure you have already run `npm run build:playground` from the repo root before starting the backend.
+
+On resource-constrained servers (e.g., 1.6 GB RAM, limited disk), **remote compilation often fails** due to cargo crate downloads and linker OOM. The solution is to build locally and copy the binary.
 
 #### Option A: Build in WSL (Recommended for Windows dev machines)
 
@@ -165,16 +188,16 @@ cargo build -p auto-playground --release
 cargo build -p auto-playground --release
 ```
 
-### 3. Deploy to Server
+### 4. Deploy to Server
 
-#### 3.1 Copy Frontend
+#### 4.1 Copy Frontend
 
 ```bash
 # Copy built static files to nginx root
 scp -r website/.vitepress/dist/* root@112.74.45.241:/home/visus/auto-website/
 ```
 
-#### 3.2 Copy Backend Binary
+#### 4.2 Copy Backend Binary
 
 ```bash
 # Copy the binary to server
@@ -183,7 +206,7 @@ scp target/release/auto-playground root@112.74.45.241:/usr/local/bin/auto-playgr
 
 The server does **not** need Rust installed — the binary is statically linked and self-contained.
 
-#### 3.3 Create systemd Service
+#### 4.3 Create systemd Service
 
 Create `/etc/systemd/system/auto-playground.service`:
 
@@ -213,7 +236,7 @@ systemctl start auto-playground
 systemctl enable auto-playground
 ```
 
-#### 3.4 Configure nginx
+#### 4.4 Configure nginx
 
 Create `/etc/nginx/sites-enabled/auto-playground`:
 
@@ -257,7 +280,7 @@ nginx -t
 systemctl reload nginx
 ```
 
-### 4. Verify Deployment
+### 5. Verify Deployment
 
 ```bash
 # Test backend directly

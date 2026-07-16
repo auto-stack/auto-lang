@@ -2069,10 +2069,11 @@ impl VueGenerator {
                 } else {
                     self.map_tag(tag, children.is_empty())
                 };
-                eprintln!("DBG shadcn: tag={} is_sub={} force_nat={} is_shadcn={} reg_vue={} reg_vue_lower={}",
-            tag, is_known_sub_widget, force_native, self.is_shadcn(),
-            self.widget_registry.is_backend_supported("vue", tag),
-            self.widget_registry.is_backend_supported("vue", &tag_lower));
+                // DBG: disabled to avoid log spam
+                // eprintln!("DBG shadcn: tag={} is_sub={} force_nat={} is_shadcn={} reg_vue={} reg_vue_lower={}",
+                //     tag, is_known_sub_widget, force_native, self.is_shadcn(),
+                //     self.widget_registry.is_backend_supported("vue", tag),
+                //     self.widget_registry.is_backend_supported("vue", &tag_lower));
                 let is_shadcn_component = !is_known_sub_widget && !force_native && self.is_shadcn() &&
                     (self.widget_registry.is_backend_supported("vue", tag) ||
                      self.widget_registry.is_backend_supported("vue", &tag_lower));

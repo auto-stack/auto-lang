@@ -1,4 +1,12 @@
 {
+  "name": "auto-lang",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build:playground": "node scripts/build-playground.mjs",
+    "dev:playground": "npm run build:playground && cargo run -p auto-playground",
+    "start:playground": "cargo run -p auto-playground"
+  },
   "dependencies": {
     "embla-carousel-vue": "^8.6.0",
     "vue-router": "^5.1.0"

@@ -3,13 +3,11 @@ import type { RunResponse, TransResponse, OutputTab, SourceMapEntry } from '../t
 import { runTypeScript } from '../utils/tsRunner';
 
 const API_BASE = '/api';
-const DEBOUNCE_MS = 500;
 const STORAGE_KEY = 'auto-playground:state';
 
 interface PersistedState {
   source: string;
   activeTab: OutputTab;
-  liveCompile: boolean;
 }
 
 const DEFAULT_SOURCE = `// Welcome to Auto Playground!
@@ -54,7 +52,6 @@ export function usePlaygroundFull() {
   const activeTab = ref<OutputTab>(saved.activeTab ?? 'rust');
   const transpiledCode = ref('');
   const transpileTarget = ref('');
-  const liveCompile = ref(saved.liveCompile ?? true);
 
   interface TransCacheEntry {
     code: string;
@@ -65,7 +62,6 @@ export function usePlaygroundFull() {
   const highlightedSourceLine = ref<number | null>(null);
   const highlightedOutputLines = ref<number[]>([]);
   const shareToast = ref<{ message: string; visible: boolean }>({ message: '', visible: false });
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   const sourceToOutputMap = computed(() => {
     const map: Record<number, number[]> = {};
@@ -142,16 +138,18 @@ export function usePlaygroundFull() {
   }
 
   async function runCode(language: string) {
-    const code = transCache.value[language]?.code || '';
-    if (!code.trim()) {
-      stderr.value = `No ${language} code to run. Make sure the transpilation succeeded.`;
-      return;
-    }
-
     isLoading.value = true;
     stdout.value = '';
     stderr.value = '';
     resultCode.value = '';
+    timeMs.value = 0;
+
+    const code = transCache.value[language]?.code || '';
+    if (!code.trim()) {
+      stderr.value = `No ${language} code to run. Make sure the transpilation succeeded.`;
+      isLoading.value = false;
+      return;
+    }
 
     try {
       if (language === 'typescript') {
@@ -210,8 +208,6 @@ export function usePlaygroundFull() {
     if (cached) {
       transpiledCode.value = cached.code;
       sourceMap.value = cached.sourceMap;
-    } else if (liveCompile.value) {
-      transpile(target);
     } else {
       transpiledCode.value = '';
       sourceMap.value = [];
@@ -232,7 +228,6 @@ export function usePlaygroundFull() {
     const payload = JSON.stringify({
       source: source.value,
       activeTab: activeTab.value,
-      liveCompile: liveCompile.value,
     });
     const hash = '#share=' + encodeURIComponent(btoa(payload));
     return window.location.origin + window.location.pathname + hash;
@@ -264,60 +259,23 @@ export function usePlaygroundFull() {
   }
 
   watch(source, () => {
+    // Invalidate cached transpilation results when source changes,
+    // but do NOT auto-transpile (explicit Run/Trans/Debug actions only).
     transCache.value = {};
-
-    if (liveCompile.value) {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        transpile(activeTab.value);
-      }, DEBOUNCE_MS);
+    if (transpileTarget.value) {
+      transpiledCode.value = '';
+      transpileTarget.value = '';
+      sourceMap.value = [];
     }
   });
 
-  watch([source, activeTab, liveCompile], ([s, t, l]) => {
-    persistState({ source: s, activeTab: t, liveCompile: l });
+  watch([source, activeTab], ([s, t]) => {
+    persistState({ source: s, activeTab: t });
   }, { deep: true });
-
-  // Initial transpile on load: fetch all targets in parallel so every tab has cached content
-  setTimeout(() => {
-    transpileAll();
-  }, 100);
-
-  async function transpileAll() {
-    const targets: OutputTab[] = ['rust', 'c', 'python', 'typescript', 'abt'];
-    isLoading.value = true;
-    try {
-      const results = await Promise.all(
-        targets.map(async (target) => {
-          try {
-            const res = await fetch(`${API_BASE}/trans`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ source: source.value, target }),
-            });
-            const data: TransResponse = await res.json();
-            return { target, code: data.code || '', sourceMap: data.source_map || [] };
-          } catch (e: any) {
-            return { target, code: `Error: ${e.message}`, sourceMap: [] };
-          }
-        })
-      );
-      for (const r of results) {
-        transCache.value[r.target] = { code: r.code, sourceMap: r.sourceMap || [] };
-      }
-      const current = activeTab.value;
-      const cached = transCache.value[current];
-      transpiledCode.value = cached?.code || '';
-      transpileTarget.value = current;
-      sourceMap.value = cached?.sourceMap || [];
-    } finally {
-      isLoading.value = false;
-    }
-  }
 
   return {
     source, stdout, stderr, resultCode, timeMs, isLoading,
-    activeTab, transpiledCode, transpileTarget, liveCompile,
+    activeTab, transpiledCode, transpileTarget,
     sourceMap, highlightedSourceLine, highlightedOutputLines,
     shareToast,
     run, runAbt, runCode, transpile, switchTab, loadExample, highlightSourceLine, clearHighlight,
