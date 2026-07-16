@@ -3175,6 +3175,14 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
 
     trans.trans(ast, &mut sink)?;
 
+    // Plan 355: Apply the same post-processing fixes that the in-process
+    // `transpile_rust()` path applies. Without this, the `auto trans` CLI
+    // emitted raw code with known-correctable defects (e.g. `return None;`
+    // in void fns, double semicolons after `static` decls), so a2r test
+    // binaries built from CLI-transpiled sources failed to compile while the
+    // identical code compiled fine when transpiled via `transpile_rust()`.
+    crate::trans::rust::RustTrans::post_process(&mut sink.body);
+
     // Write output file
     let source_bytes = sink.done()?;
     if !source_bytes.is_empty() {

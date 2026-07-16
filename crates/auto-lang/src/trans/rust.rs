@@ -1089,6 +1089,23 @@ impl RustTrans {
         }
     }
 
+    /// Plan 355: StringBuilder is the Auto VM's shared mutable output buffer.
+    /// When it is a function parameter, the transpiler must pass it by `&mut`
+    /// reference (NOT by value + `.clone()`), because the parser threads a
+    /// single accumulator through recursive calls whose appends must accumulate
+    /// into one buffer. By-value + clone compiles only formally and silently
+    /// drops every recursive append, producing empty/garbage output.
+    ///
+    /// This helper selects StringBuilder params for the `&mut` param-emission
+    /// and `&mut` call-site path (mirroring the merge-mode context-type path),
+    /// so callers pass `&mut sb` and callees declare `sb: &mut a2r_std::StringBuilder`.
+    fn is_sb_ref_type(ty: &Type) -> bool {
+        match ty {
+            Type::User(usr) => usr.name.as_str() == "StringBuilder",
+            _ => false,
+        }
+    }
+
     /// Check if a type implements Copy (primitive types, string slices, etc.).
     /// Non-Copy types (structs, enums, HashMap, Unknown) need .clone() when moved.
     /// Slice/Array/List are treated as Copy for call-site purposes (passed by reference in Rust).
@@ -1223,10 +1240,16 @@ impl RustTrans {
             Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::CStr(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::Ident(name) => {
-                // Plan 151: Global variable access - add .lock().unwrap() pattern
+                // Plan 151: Global variable access - add .lock().unwrap() pattern.
+                // Plan 355: reads must dereference the MutexGuard (`*G.lock()`)
+                // so the value is usable in arithmetic, comparisons, indexing,
+                // and casts — otherwise Rust sees a `MutexGuard<i32>` and
+                // rejects `g + 1`, `g < n`, `g as usize`, etc. The assignment
+                // LHS path emits its own `*` (store() write path), so this
+                // read-only `*` never conflicts.
                 if self.is_global_var(name) {
                     let static_name = self.global_var_static_name(name);
-                    write!(out, "{}.lock().unwrap()", static_name)
+                    write!(out, "*{}.lock().unwrap()", static_name)
                 } else if let Some(rust_name) = Self::auto_type_to_rust(name.as_str()) {
                     write!(out, "{}", rust_name)
                 } else if name.as_str() == "StringBuilder" {
@@ -1502,7 +1525,6 @@ impl RustTrans {
                             if self.is_global_var(name) {
                                 // Global variable assignment: needs *VAR.lock().unwrap() OP= rhs
                                 let static_name = self.global_var_static_name(name);
-                                write!(out, "*{}.lock().unwrap()", static_name)?;
 
                                 // Write the operator (without = for compound ops)
                                 let op_str = match op {
@@ -1514,8 +1536,22 @@ impl RustTrans {
                                     Op::ModEq => "%=",
                                     _ => op.op(),
                                 };
-                                write!(out, " {} ", op_str)?;
+                                // Plan 355: emit the assignment as a block that
+                                // binds the RHS to a local `let` BEFORE taking the
+                                // write lock. A `let` statement is a temporary
+                                // scope, so any MutexGuard the RHS creates (e.g.
+                                // reading the SAME global, `POS = POS + 1`) is
+                                // dropped at the `;`, before the LHS locks the
+                                // Mutex. Without this, `*POS.lock().unwrap() =
+                                // *POS.lock().unwrap() + 1` deadlocks: the RHS
+                                // guard lives until the end of the full statement
+                                // and std::sync::Mutex is non-reentrant. (Mere
+                                // `{ rhs }` braces do NOT create a temporary
+                                // scope for inner temporaries — verified.)
+                                write!(out, "{{ let __a2r_gv = ")?;
                                 self.expr(rhs, out)?;
+                                write!(out, "; *{}.lock().unwrap() {} __a2r_gv; }}",
+                                       static_name, op_str)?;
                                 return Ok(());
                             }
                         }
@@ -5988,6 +6024,16 @@ impl RustTrans {
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
+            // Plan 355: StringBuilder params are passed by &mut reference. The
+            // callee declares `sb: &mut a2r_std::StringBuilder`, so the caller
+            // must pass `&mut sb` (never `sb.clone()` — that would break the
+            // shared accumulator). This is independent of merge_mode.
+            let is_sb_param = if matches!(arg, Arg::Pos(Expr::Ident(_))) {
+                param_types.as_ref()
+                    .and_then(|pts| pts.get(i))
+                    .map(|pt| Self::is_sb_ref_type(pt))
+                    .unwrap_or(false)
+            } else { false };
             // Check param type from fn_param_types for auto &mut insertion
             // Skip if the variable is already a &mut param of the current function
             let is_already_mut_param = if let Arg::Pos(Expr::Ident(name)) = arg {
@@ -6002,6 +6048,7 @@ impl RustTrans {
                     .unwrap_or(false)
             } else { false };
             let needs_clone = is_struct_param && !is_merge_mut && !needs_mut_borrow
+                && !is_sb_param
                 && matches!(arg, Arg::Pos(Expr::Ident(_)));
 
             // Auto-box when passing a value to a function that takes a spec param
@@ -6016,6 +6063,10 @@ impl RustTrans {
 
             // Auto &mut for context-type params in merge mode
             if needs_mut_borrow {
+                write!(out, "&mut ")?;
+            }
+            // Plan 355: StringBuilder params take &mut at the call site.
+            if is_sb_param {
                 write!(out, "&mut ")?;
             }
 
@@ -6703,11 +6754,14 @@ impl RustTrans {
             let static_name = self.global_var_static_name(&store.name);
             let ty = self.rust_type_name(&store.ty);
 
-            // Generate: static NAME: Lazy<Mutex<T>> = Lazy::new(|| Mutex::new(...));
+            // Generate: static NAME: Lazy<Mutex<T>> = Lazy::new(|| Mutex::new(...))
+            // NOTE: no trailing ';' here — the caller (Stmt::Store handler) adds
+            // exactly one ';'. Emitting one here produced `static ...();;`
+            // (double semicolon), which is a compile error in Rust.
             write!(out, "static {}: Lazy<Mutex<{}>> = Lazy::new(|| Mutex::new(",
                    static_name, ty)?;
             self.expr(&store.expr, out)?;
-            write!(out, "));")?;
+            write!(out, "))")?;
             return Ok(());
         }
 
@@ -7092,6 +7146,19 @@ impl RustTrans {
                     write!(
                         sink.body,
                         "{}: &mut {}",
+                        param.name,
+                        self.rust_type_name(&param.ty)
+                    )?;
+                } else if Self::is_sb_ref_type(&param.ty) {
+                    // Plan 355: StringBuilder params are shared mutable buffers
+                    // threaded through recursion — emit `mut sb: &mut a2r_std::StringBuilder`.
+                    // The `mut` on the binding is required so the `&mut` reference
+                    // can be re-borrowed (`&mut sb`) when forwarded to another
+                    // recursive helper; without it Rust rejects the reborrow
+                    // (E0596). Appends accumulate into one buffer across frames.
+                    write!(
+                        sink.body,
+                        "mut {}: &mut {}",
                         param.name,
                         self.rust_type_name(&param.ty)
                     )?;

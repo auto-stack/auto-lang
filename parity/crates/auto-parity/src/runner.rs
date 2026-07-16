@@ -251,6 +251,10 @@ edition = "2021"
 [dependencies]
 auto-lang = {{ path = "{auto_lang}" }}
 a2r-std = {{ path = "{a2r_std}" }}
+# Plan 355: the a2r transpiler emits `use once_cell::sync::Lazy;` (and
+# `std::sync::Mutex`) for module-level `var` globals, so any a2r test binary
+# whose library uses globals needs once_cell on the dep list.
+once_cell = "1"
 
 [[bin]]
 name = "{bin_name}"
