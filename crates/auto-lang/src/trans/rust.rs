@@ -7188,9 +7188,12 @@ impl RustTrans {
         let effective_ret_type = if fn_body_has_try {
             Type::Result(Box::new(Type::Void))
         } else if fn_body_returns_result {
-            // Plan 355: inferred Result<String, String> for un-annotated
-            // Ok/Err-returning functions.
-            Type::Result(Box::new(Type::StrOwned))
+            // Plan 355: infer the Ok payload type from `return Ok(X)` in the
+            // body. Struct constructions (`Url { ... }`) produce
+            // `Result<Url, String>`; string payloads fall back to the
+            // historical `Result<String, String>`.
+            let ok_ty = self.infer_result_ok_type(&fn_decl.body.stmts);
+            Type::Result(Box::new(ok_ty))
         } else {
             fn_decl.ret.clone()
         };
@@ -7199,7 +7202,14 @@ impl RustTrans {
         if fn_body_has_try {
             write!(sink.body, " -> Result<(), Box<dyn std::error::Error>>")?;
         } else if fn_body_returns_result {
-            write!(sink.body, " -> Result<String, String>")?;
+            // Plan 355: emit the inferred Ok type. rust_return_type_name maps
+            // Type::User(Url) -> "Url" and Type::StrOwned -> "String".
+            let ok_ty = match &effective_ret_type {
+                Type::Result(inner) => inner.as_ref().clone(),
+                _ => Type::StrOwned,
+            };
+            let ok_str = self.rust_return_type_name(&ok_ty);
+            write!(sink.body, " -> Result<{}, String>", ok_str)?;
         } else if is_generator_fn {
             // Plan 321: Generator functions return impl Iterator/Stream
             let inner = generator_inner_type.as_deref().unwrap_or("String");
@@ -7857,7 +7867,7 @@ impl RustTrans {
                         match rest {
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
-                            | "char" | "conv" | "io" | "log" | "path" | "net" | "url"
+                            | "char" | "conv" | "io" | "log" | "path" | "net"
                             | "process" | "sys" | "sse" | "may" | "regex" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", rest)
@@ -7871,7 +7881,7 @@ impl RustTrans {
                         match mod_name {
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
-                            | "char" | "conv" | "io" | "log" | "path" | "net" | "url"
+                            | "char" | "conv" | "io" | "log" | "path" | "net"
                             | "process" | "sys" | "sse" | "may" | "regex" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", mod_name)
@@ -7884,7 +7894,7 @@ impl RustTrans {
                         let is_stdlib = matches!(first_seg,
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
-                            | "char" | "conv" | "io" | "log" | "path" | "net" | "url"
+                            | "char" | "conv" | "io" | "log" | "path" | "net"
                             | "process" | "sys" | "sse" | "may" | "regex"
                         );
                         if is_stdlib {
@@ -9626,6 +9636,105 @@ impl RustTrans {
             }
         }
         false
+    }
+
+    /// Plan 355 (url): Infer the Ok payload type for an un-annotated function
+    /// whose body returns `Ok(...)` / `Err(...)`. Previously the inferred
+    /// Result was always `Result<String, String>`, which miscompiles when the
+    /// `Ok` payload is a struct (e.g. `fn parse(...) { return Ok(Url { ... }) }`
+    /// would be typed `Result<String, String>`). This scans the body's
+    /// `return Ok(X)` / tail `Ok(X)` expressions and returns:
+    ///   * `Type::User(TypeDecl{ name, .. })` when X is a struct construction
+    ///     (`Expr::Node { name }`),
+    ///   * `Type::StrOwned` (the original default) otherwise.
+    /// The first struct-typed Ok payload wins; mixed payloads fall back to
+    /// `StrOwned` to stay safe.
+    fn infer_result_ok_type(&self, stmts: &[Stmt]) -> Type {
+        let mut found = None;
+        self.scan_result_ok_type(stmts, &mut found);
+        found.unwrap_or(Type::StrOwned)
+    }
+
+    fn scan_result_ok_type(&self, stmts: &[Stmt], found: &mut Option<Type>) {
+        if found.is_some() {
+            return;
+        }
+        for stmt in stmts {
+            match stmt {
+                Stmt::Return(expr) => {
+                    if let Expr::Ok(inner) = &**expr {
+                        self.classify_ok_payload(inner, found);
+                    }
+                }
+                // A bare `Ok(...)` expression as the last statement (tail expr).
+                Stmt::Expr(e) => {
+                    if let Expr::Ok(inner) = e {
+                        self.classify_ok_payload(inner, found);
+                    }
+                }
+                Stmt::Block(body) => self.scan_result_ok_type(&body.stmts, found),
+                Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        self.scan_result_ok_type(&branch.body.stmts, found);
+                    }
+                    if let Some(else_body) = &if_stmt.else_ {
+                        self.scan_result_ok_type(&else_body.stmts, found);
+                    }
+                }
+                Stmt::For(for_stmt) => self.scan_result_ok_type(&for_stmt.body.stmts, found),
+                Stmt::Is(is_stmt) => {
+                    for branch in &is_stmt.branches {
+                        let body = match branch {
+                            crate::ast::IsBranch::EqBranch(_, body) => body,
+                            crate::ast::IsBranch::IfBranch(_, body) => body,
+                            crate::ast::IsBranch::ElseBranch(body) => body,
+                        };
+                        self.scan_result_ok_type(&body.stmts, found);
+                    }
+                }
+                _ => {}
+            }
+            if found.is_some() {
+                return;
+            }
+        }
+    }
+
+    /// Classify a single `Ok(...)` payload expression into a Rust type.
+    /// Struct construction (`Url { ... }`) parses as `Expr::Node { name }`.
+    fn classify_ok_payload(&self, inner: &Expr, found: &mut Option<Type>) {
+        if found.is_some() {
+            return;
+        }
+        match inner {
+            Expr::Node(node) => {
+                // Struct construction: `Url { scheme: ..., ... }`.
+                let ty = Type::User(crate::ast::TypeDecl {
+                    name: node.name.clone(),
+                    kind: crate::ast::TypeDeclKind::UserType,
+                    parent: None,
+                    has: Vec::new(),
+                    specs: Vec::new(),
+                    spec_impls: Vec::new(),
+                    generic_params: Vec::new(),
+                    members: Vec::new(),
+                    delegations: Vec::new(),
+                    methods: Vec::new(),
+                    attrs: Vec::new(),
+                    doc: None,
+                    is_pub: false,
+                });
+                *found = Some(ty);
+            }
+            Expr::Str(_) | Expr::CStr(_) => {
+                // String payload -> keep the historical default.
+                *found = Some(Type::StrOwned);
+            }
+            _ => {
+                // Anything else (idents, calls, ...): leave unset so other
+                // payloads can still refine; falls back to StrOwned at the end.
+            }
+        }
     }
 
     /// Plan 355: Collect the names of identifiers that are used as the
