@@ -153,13 +153,37 @@ fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
 
 // Template generators
 
-fn generate_package_json(name: &str, has_routes: bool) -> String {
+fn generate_package_json(name: &str, has_routes: bool, extra_deps: &[String]) -> String {
     let router_dep = if has_routes {
         r#"    "vue-router": "^4.2.0",
 "#
     } else {
         ""
     };
+
+    // Build extra deps lines from pac.at npm_deps.
+    // Each entry may be "package" or "package@version".
+    // Scoped packages (@scope/name) have @ in the name, so we split on the
+    // LAST @ that comes after the first character.
+    let extra_lines: String = extra_deps.iter().map(|dep| {
+        // Find version separator: last @ that's not at position 0
+        let (pkg, ver) = if dep.starts_with('@') {
+            // Scoped: @scope/name@version — split on second @
+            if let Some(pos) = dep[1..].find('@') {
+                (&dep[..pos + 1], Some(&dep[pos + 2..]))
+            } else {
+                (dep.as_str(), None)
+            }
+        } else if let Some(pos) = dep.find('@') {
+            (&dep[..pos], Some(&dep[pos + 1..]))
+        } else {
+            (dep.as_str(), None)
+        };
+        match ver {
+            Some(v) => format!("    \"{}\": \"{}\",\n", pkg, v),
+            None => format!("    \"{}\": \"latest\",\n", pkg),
+        }
+    }).collect();
 
     format!(r#"{{
   "name": "{}",
@@ -173,7 +197,7 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
   }},
   "dependencies": {{
     "vue": ">=3.4.0 <3.5.36",
-{}    "@vueuse/core": "^10.7.0",
+{}{}    "@vueuse/core": "^10.7.0",
     "reka-ui": "^2.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
@@ -197,7 +221,7 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
     "@types/prismjs": "^1.26.0"
   }}
 }}
-"#, name, router_dep)
+"#, name, router_dep, extra_lines)
 }
 
 fn generate_vite_config() -> String {
@@ -625,9 +649,10 @@ fn write_project_files(
     vue_code: &str,
     _components: &[String],
     has_routes: bool,
+    extra_deps: &[String],
 ) -> Result<(), String> {
     // package.json
-    let package_json = generate_package_json(name, has_routes);
+    let package_json = generate_package_json(name, has_routes, extra_deps);
     fs::write(output_path.join("package.json"), package_json)
         .map_err(|e| format!("Failed to write package.json: {}", e))?;
 
@@ -766,6 +791,65 @@ fn parse_pac_name(content: &str) -> Option<String> {
     None
 }
 
+/// Parse npm_deps from pac.at content.
+///
+/// Supports two syntaxes:
+/// - Array (multi-line): `npm_deps: ["@autodown/editor", "marked"]`
+/// - Array (one-per-line, Auto style):
+///   ```text
+///   npm_deps:
+///     "@autodown/editor"
+///     "marked"
+///   ```
+/// - Single string: `npm_deps: "@autodown/editor"`
+///
+/// Each entry may include a version: `"marked@^12.0.0"`.
+fn parse_npm_deps(content: &str) -> Vec<String> {
+    let mut deps = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i].trim();
+        if line.starts_with("npm_deps:") {
+            let rest = line["npm_deps:".len()..].trim();
+            if rest.starts_with('[') {
+                // Inline array: ["a", "b"]
+                let value = rest.trim_start_matches('[').trim_end_matches(']');
+                for part in value.split(',') {
+                    let dep = part.trim().trim_matches('"').trim_matches('\'').trim();
+                    if !dep.is_empty() {
+                        deps.push(dep.to_string());
+                    }
+                }
+            } else if rest.starts_with('"') || rest.starts_with('\'') {
+                // Single string: "package"
+                let dep = rest.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+                if !dep.is_empty() {
+                    deps.push(dep.to_string());
+                }
+            } else {
+                // Multi-line Auto-style: each following indented line is a dep
+                let mut j = i + 1;
+                while j < lines.len() {
+                    let next = lines[j];
+                    // Stop at blank line or non-indented line
+                    if next.trim().is_empty() || (!next.starts_with(' ') && !next.starts_with('\t')) {
+                        break;
+                    }
+                    let dep = next.trim().trim_matches('"').trim_matches('\'').trim_end_matches(',');
+                    if !dep.is_empty() {
+                        deps.push(dep.to_string());
+                    }
+                    j += 1;
+                }
+            }
+            break;
+        }
+        i += 1;
+    }
+    deps
+}
+
 /// Vue project generation context
 pub struct VueProject {
     /// Project root directory (where pac.at is)
@@ -788,6 +872,8 @@ pub struct VueProject {
     pub components: Vec<(String, String, String, String)>,
     /// All routes
     pub routes: Vec<AuraRoute>,
+    /// Extra npm dependencies from pac.at (e.g. ["@autodown/editor"])
+    pub npm_deps: Vec<String>,
 }
 
 impl VueProject {
@@ -1092,6 +1178,7 @@ export default router
             app_vue_code,
             components: all_components,
             routes: all_routes,
+            npm_deps: parse_npm_deps(&pac_content),
         })
     }
 
@@ -1145,6 +1232,7 @@ export default router
             &self.app_vue_code,
             &self.shadcn_components,
             self.has_routes,
+            &self.npm_deps,
         )?;
 
         // Generate router files if routes detected
@@ -1244,7 +1332,7 @@ export default router
             let existing_pkg = fs::read_to_string(&pkg_path)
                 .map_err(|e| format!("Failed to read package.json: {}", e))?;
             if !existing_pkg.contains("@types/prismjs") || !existing_pkg.contains("onlyBuiltDependencies") {
-                let new_pkg = generate_package_json(&self.name, self.has_routes);
+                let new_pkg = generate_package_json(&self.name, self.has_routes, &self.npm_deps);
                 fs::write(&pkg_path, &new_pkg)
                     .map_err(|e| format!("Failed to write package.json: {}", e))?;
                 println!("{}", "  ✓ Updated package.json".bright_green());
