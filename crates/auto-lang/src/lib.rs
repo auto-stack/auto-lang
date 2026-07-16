@@ -282,6 +282,36 @@ pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, 
         .stack_size(4 * 1024 * 1024)
         .spawn(move || {
             let rt = get_global_runtime();
+            rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _)| (r, stdout)) })
+        })
+        .expect("Failed to spawn execution thread");
+    handle.join().unwrap()
+}
+
+/// Run AutoLang code with stdout capture and return the disassembled bytecode.
+pub fn run_with_capture_and_bytecode(code: &str) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>)> {
+    let code = code.to_string();
+    let handle = std::thread::Builder::new()
+        .stack_size(4 * 1024 * 1024)
+        .spawn(move || {
+            let rt = get_global_runtime();
+            rt.block_on(async { execute_autovm(&code, true).await })
+        })
+        .expect("Failed to spawn execution thread");
+    handle.join().unwrap()
+}
+
+/// Run AutoLang code with stdout capture and source path, returning bytecode.
+pub fn run_with_capture_and_path_and_bytecode(
+    code: &str,
+    path: &str,
+) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>)> {
+    let code = code.to_string();
+    let path = path.to_string();
+    let handle = std::thread::Builder::new()
+        .stack_size(4 * 1024 * 1024)
+        .spawn(move || {
+            let rt = get_global_runtime();
             rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await })
         })
         .expect("Failed to spawn execution thread");
@@ -308,7 +338,7 @@ pub fn run_autovm(code: &str) -> AutoResult<String> {
         .stack_size(4 * 1024 * 1024)
         .spawn(move || {
             let rt = get_global_runtime();
-            rt.block_on(async { execute_autovm(&code, false).await.map(|(r, _)| r) })
+            rt.block_on(async { execute_autovm(&code, false).await.map(|(r, _, _)| r) })
         })
         .expect("Failed to spawn execution thread");
     handle.join().unwrap()
@@ -321,7 +351,7 @@ pub fn run_autovm_capture(code: &str) -> AutoResult<(String, String)> {
         .stack_size(4 * 1024 * 1024)
         .spawn(move || {
             let rt = get_global_runtime();
-            rt.block_on(async { execute_autovm(&code, true).await })
+            rt.block_on(async { execute_autovm(&code, true).await.map(|(r, stdout, _)| (r, stdout)) })
         })
         .expect("Failed to spawn execution thread");
     handle.join().unwrap()
@@ -566,7 +596,7 @@ fn init_py_ffi(_session: &compile::CompileSession) -> Option<crate::vm::native::
 
 /// Internal AutoVM execution function (async)
 /// Plan 177: capture parameter enables stdout capture for testing
-async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String)> {
+async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>)> {
     execute_autovm_with_path(code, capture, None).await
 }
 
@@ -574,7 +604,11 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
 /// When provided, the source directory is added to CompileSession.source_dirs
 /// so that `use db` can resolve db.at relative to the source file (true
 /// multi-module loading, not string flattening).
-async fn execute_autovm_with_path(code: &str, capture: bool, path: Option<&str>) -> AutoResult<(String, String)> {
+async fn execute_autovm_with_path(
+    code: &str,
+    capture: bool,
+    path: Option<&str>,
+) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>)> {
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::opcode::OpCode;
@@ -886,6 +920,12 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
     // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
+    // Capture disassembly before execution mutates runtime state.
+    let bytecode_lines = {
+        let disasm = crate::vm::disasm::Disassembler::new(&vm.flash);
+        disasm.disassemble_range(0, vm.flash.memory.len())
+    };
+
     // Register standard native shims (fs, str, process, etc.)
     {
         let mut ni = crate::vm::native::NativeInterface::new();
@@ -990,7 +1030,7 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
         let _ = server_thread.join();
     }
 
-    Ok((result, get_stdout()))
+    Ok((result, get_stdout(), bytecode_lines))
 }
 
 /// Plan 260: Compile and run all `#[test]` functions in the given code.
@@ -2293,7 +2333,7 @@ fn run_with_path(code: &str, path: &str) -> AutoResult<String> {
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async {
-                execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout)| {
+                execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _)| {
                     if !stdout.is_empty() { println!("{}", stdout); }
                     r
                 })

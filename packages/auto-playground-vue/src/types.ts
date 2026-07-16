@@ -1,5 +1,6 @@
 export interface RunRequest {
   source: string;
+  project_dir?: string;
 }
 
 export interface RunResponse {
@@ -8,6 +9,7 @@ export interface RunResponse {
   exit_code: number;
   time_ms: number;
   result?: string;
+  bytecode?: BytecodeLine[];
 }
 
 export interface RunCodeRequest {
@@ -18,6 +20,7 @@ export interface RunCodeRequest {
 export interface TransRequest {
   source: string;
   target: string;
+  project_dir?: string;
 }
 
 export interface SourceMapEntry {
@@ -25,22 +28,29 @@ export interface SourceMapEntry {
   output_line: number;
 }
 
-export interface TransResponse {
+export interface TransFile {
+  path: string;
   code: string;
+}
+
+export interface TransResponse {
   target: string;
+  files: TransFile[];
   source_map: SourceMapEntry[];
 }
 
 export interface Example {
   name: string;
   source: string;
+  example_type: 'single' | 'project';
+  project_dir?: string;
 }
 
 export interface ExamplesResponse {
   examples: Example[];
 }
 
-export type OutputTab = 'rust' | 'c' | 'python' | 'typescript' | 'bytecode' | 'abt';
+export type OutputTab = 'rust' | 'c' | 'python' | 'typescript' | 'bytecode';
 
 // Debug types
 export interface BytecodeLine {

@@ -10,16 +10,19 @@
     :result-code="resultCode"
     :time-ms="timeMs"
     :transpiled-code="transpiledCode"
+    :trans-files="transFiles"
+    :selected-trans-file="selectedTransFile"
     :highlight-lines="highlightedOutputLines"
     :on-run="onRun"
     :on-trans="onTrans"
     :on-run-code="onRunCode"
     :on-debug="onDebug"
+    :on-select-trans-file="selectTransFile"
     :is-debugging="debug.isDebugging.value"
     :is-paused="debug.state.value?.status === 'paused'"
     :is-recording="debug.isRecording.value"
     :has-recording="!!debug.recording.value"
-    :bytecode="activeBytecode"
+    :bytecode="layoutBytecode"
     :debug-state="activeDebugState"
     :current-source-line="highlightedSourceLine"
     :highlighted-offsets="highlightedBytecodeOffsets"
@@ -63,10 +66,10 @@ import type { DebugRecording, OutputTab } from './types';
 type PlaygroundMode = 'editor' | 'run' | 'trans' | 'debug' | 'replay';
 
 const {
-  source, stdout, stderr, resultCode, timeMs, isLoading,
-  activeTab, transpiledCode,
+  source, stdout, stderr, resultCode, timeMs, bytecode: runBytecode, isLoading,
+  activeTab, transpiledCode, transFiles, selectedTransFile,
   highlightedOutputLines, highlightedSourceLine,
-  run, transpile, runCode, loadExample, highlightSourceLine, clearHighlight, share, shareToast,
+  run, transpile, runCode, selectTransFile, loadExample, highlightSourceLine, clearHighlight, share, shareToast,
 } = usePlaygroundFull();
 
 const debug = useDebugger();
@@ -89,6 +92,13 @@ const activeBytecode = computed(() => {
     return replay.bytecode.value;
   }
   return debug.bytecode.value;
+});
+
+const layoutBytecode = computed(() => {
+  if (mode.value === 'run') {
+    return runBytecode.value;
+  }
+  return activeBytecode.value;
 });
 
 const highlightedBytecodeOffsets = computed(() => {
@@ -128,8 +138,6 @@ async function onRun() {
   stderr.value = '';
   resultCode.value = '';
   await run();
-  await transpile('abt');
-  activeTab.value = 'abt';
 }
 
 async function onTrans() {
@@ -197,8 +205,8 @@ async function onLoadReplay() {
   input.click();
 }
 
-function onLoadExample(code: string) {
-  loadExample(code);
+function onLoadExample(payload: { source: string; project_dir?: string }) {
+  loadExample(payload);
   mode.value = 'editor';
 }
 

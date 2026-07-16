@@ -74,7 +74,6 @@
               <option value="c">C</option>
               <option value="python">Python</option>
               <option value="typescript">TypeScript</option>
-              <option value="abt">ABT</option>
             </select>
             <span class="trans-current">{{ targetLabel }}</span>
             <span class="trans-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
@@ -142,20 +141,27 @@
               Run {{ targetLabel }}
             </button>
           </div>
-          <div class="pane-body">
+          <div class="pane-body" :class="{ 'with-file-tree': showFileTree }">
             <BytecodePanel
-              v-if="mode === 'debug' || mode === 'replay'"
-              :bytecode="bytecode || []"
+              v-if="mode === 'run' || mode === 'debug' || mode === 'replay'"
+              :bytecode="effectiveBytecode"
               :current-ip="debugState?.ip"
               :highlighted-offsets="highlightedOffsets"
               @offset-click="$emit('offsetClick', $event)"
             />
-            <CodePreview
-              v-else
-              :code="transpiledCode"
-              :language="previewLanguage"
-              :highlight-lines="highlightLines"
-            />
+            <template v-else-if="mode === 'trans'">
+              <FileTree
+                v-if="showFileTree"
+                :files="transFiles || []"
+                :selected="selectedTransFile || ''"
+                @select="onSelectTransFile"
+              />
+              <CodePreview
+                :code="transpiledCode"
+                :language="previewLanguage"
+                :highlight-lines="highlightLines"
+              />
+            </template>
           </div>
         </div>
       </div>
@@ -184,7 +190,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import type { OutputTab, BytecodeLine, DebugState } from '../types';
+import type { OutputTab, BytecodeLine, DebugState, TransFile } from '../types';
 import CodeEditor from './CodeEditor.vue';
 import CodePreview from './CodePreview.vue';
 import BytecodePanel from './BytecodePanel.vue';
@@ -193,6 +199,7 @@ import ExampleSelector from './ExampleSelector.vue';
 import DebugToolbar from './DebugToolbar.vue';
 import ReplayToolbar from './ReplayToolbar.vue';
 import DebugAuxPanel from './DebugAuxPanel.vue';
+import FileTree from './FileTree.vue';
 
 type PlaygroundMode = 'editor' | 'run' | 'trans' | 'debug' | 'replay';
 
@@ -206,11 +213,14 @@ const props = defineProps<{
   resultCode: string;
   timeMs: number;
   transpiledCode: string;
+  transFiles?: TransFile[];
+  selectedTransFile?: string;
   highlightLines?: number[];
   onRun: () => void;
   onTrans: () => void;
   onRunCode?: (language: string) => void;
   onDebug: () => void;
+  onSelectTransFile?: (target: string, path: string) => void;
   // Debug props
   isDebugging?: boolean;
   isPaused?: boolean;
@@ -235,7 +245,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:source': [value: string];
   'update:transTarget': [value: OutputTab];
-  loadExample: [code: string];
+  loadExample: [payload: { source: string; project_dir?: string }];
   share: [];
   // Debug events
   debugCommand: [cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 'stop'];
@@ -265,7 +275,6 @@ const targetLabel = computed(() => {
     python: 'Python',
     typescript: 'TypeScript',
     bytecode: 'Bytecode',
-    abt: 'ABT',
   };
   return labels[props.transTarget] ?? props.transTarget;
 });
@@ -282,7 +291,7 @@ onMounted(async () => {
   if (!ctx) return;
   const style = getComputedStyle(el);
   ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-  const labels = ['Rust', 'C', 'Python', 'TypeScript', 'ABT', 'Bytecode'];
+  const labels = ['Rust', 'C', 'Python', 'TypeScript'];
   let maxTextWidth = 0;
   for (const label of labels) {
     maxTextWidth = Math.max(maxTextWidth, ctx.measureText(label).width);
@@ -300,29 +309,38 @@ watch(() => props.mode, () => {
 });
 
 const canRunCode = computed(() => {
-  const lang = previewLanguage.value;
-  return lang === 'python' || lang === 'typescript';
+  const lang = props.transTarget;
+  return props.mode === 'trans' && (lang === 'python' || lang === 'typescript');
 });
 
 async function onRunCodeClick() {
-  const lang = previewLanguage.value;
+  const lang = props.transTarget;
   if (!lang || !props.onRunCode) return;
   codeRunActive.value = true;
   await props.onRunCode(lang);
 }
 
 const previewTitle = computed(() => {
-  if (props.mode === 'debug' || props.mode === 'replay') return 'Bytecode';
-  if (props.mode === 'run') return 'ABT';
+  if (props.mode === 'run' || props.mode === 'debug' || props.mode === 'replay') return 'Bytecode';
   if (props.mode === 'trans') return targetLabel.value;
   return '';
 });
 
 const previewLanguage = computed(() => {
-  if (props.mode === 'run') return 'abt';
   if (props.mode === 'trans') return props.transTarget;
   return undefined;
 });
+
+const showFileTree = computed(() => props.mode === 'trans' && (props.transFiles?.length ?? 0) > 1);
+
+const effectiveBytecode = computed(() => {
+  if (props.mode === 'run') return props.bytecode ?? [];
+  return props.bytecode ?? [];
+});
+
+function onSelectTransFile(path: string) {
+  props.onSelectTransFile?.(props.transTarget, path);
+}
 
 const showOutputPanel = computed(() =>
   props.mode === 'run' || props.mode === 'debug' || props.mode === 'replay' || codeRunActive.value
@@ -338,8 +356,8 @@ function onTrans() {
   props.onTrans();
 }
 
-function onLoadExample(code: string) {
-  emit('loadExample', code);
+function onLoadExample(payload: { source: string; project_dir?: string }) {
+  emit('loadExample', payload);
 }
 </script>
 
@@ -565,6 +583,8 @@ function onLoadExample(code: string) {
 .pane-body {
   flex: 1;
   overflow: hidden;
+  display: flex;
+  flex-direction: row;
 }
 
 .output-body {

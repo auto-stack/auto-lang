@@ -13,7 +13,6 @@
           <option value="c">→ C</option>
           <option value="python">→ Python</option>
           <option value="typescript">→ TypeScript</option>
-          <option value="abt">→ ABT</option>
         </select>
         <button v-if="!isDebugging" class="run-btn" @click="runAction" :disabled="isLoading">
           <Play v-if="!isLoading" :size="14" />
@@ -107,12 +106,19 @@
             :current-ip="debugState?.ip"
             @offset-click="onBytecodeOffsetClick"
           />
-          <CodePreview
-            v-else
-            :code="transpiledCode"
-            :language="displayTab"
-            :highlight-lines="highlightedOutputLines"
-          />
+          <div v-else class="output-code-split">
+            <FileTree
+              v-if="showTransFileTree"
+              :files="transFiles"
+              :selected="selectedTransFile"
+              @select="onSelectTransFile"
+            />
+            <CodePreview
+              :code="transpiledCode"
+              :language="displayTab"
+              :highlight-lines="highlightedOutputLines"
+            />
+          </div>
         </div>
         <!-- Debug state panel -->
         <div v-if="isDebugging && debugState" class="debug-panel">
@@ -157,6 +163,7 @@ import CodePreview from './components/CodePreview.vue'
 import ConsoleOutput from './components/ConsoleOutput.vue'
 import BytecodePanel from './components/BytecodePanel.vue'
 import ExampleSelector from './components/ExampleSelector.vue'
+import FileTree from './components/FileTree.vue'
 import { usePlayground } from './composables/usePlayground'
 import type { OutputTab } from './types'
 
@@ -177,10 +184,10 @@ const apiBase = props.apiUrl ? `${props.apiUrl}/api` : '/api'
 
 const {
   source, stdout, stderr, resultCode, timeMs, isLoading,
-  transpiledCode, liveCompile,
+  transpiledCode, liveCompile, transFiles, selectedTransFile,
   highlightedOutputLines, shareToast,
   debugState, bytecode, breakpoints, isDebugging,
-  run, switchTab, loadExample, share,
+  run, switchTab, selectTransFile, loadExample, share,
   debugStart, debugSetBreakpoints, debugCommand, debugStop,
 } = usePlayground({
   apiBase,
@@ -193,7 +200,7 @@ const displayTab = ref<EmbedTab>('Output')
 const targetLang = ref<'run' | Exclude<OutputTab, 'bytecode'>>('run')
 const copied = ref(false)
 
-const tabs = ['Output', 'rust', 'c', 'python', 'typescript', 'abt', 'Bytecode'] as const
+const tabs = ['Output', 'rust', 'c', 'python', 'typescript', 'Bytecode'] as const
 type EmbedTab = typeof tabs[number]
 
 const tabLabels: Record<EmbedTab, string> = {
@@ -202,7 +209,6 @@ const tabLabels: Record<EmbedTab, string> = {
   c: 'C',
   python: 'Python',
   typescript: 'TS',
-  abt: 'ABT',
   Bytecode: 'Bytecode',
 }
 
@@ -211,6 +217,15 @@ const wrapperStyle = computed(() => ({
 }))
 
 const canCopy = computed(() => displayTab.value !== 'Output' && displayTab.value !== 'Bytecode' && transpiledCode.value)
+
+const showTransFileTree = computed(() => {
+  const tab = displayTab.value
+  return tab !== 'Output' && tab !== 'Bytecode' && transFiles.value.length > 1
+})
+
+function onSelectTransFile(path: string) {
+  selectTransFile(displayTab.value, path)
+}
 
 async function runAction() {
   if (targetLang.value === 'run') {
@@ -239,8 +254,8 @@ function onSwitchTab(tab: EmbedTab) {
   }
 }
 
-function onLoadExample(code: string) {
-  loadExample(code)
+function onLoadExample(payload: { source: string; project_dir?: string }) {
+  loadExample(payload)
   displayTab.value = 'Output'
   targetLang.value = 'run'
 }
@@ -587,6 +602,13 @@ function onBytecodeOffsetClick(_offset: number) {
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+
+.output-code-split {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  min-height: 0;
 }
 
 .output-content :deep(.bytecode-panel) {

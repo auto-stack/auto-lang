@@ -13026,7 +13026,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         "fn lex_fstr_f(mut source: &str, mut pos: i32) -> Vec<Token> {",
     );
     // Add main() with basic self-test if missing
-    if !cached_regex(r"^fn main\(\)").unwrap().is_match(&content) {
+    if !cached_regex(r"(?m)^fn main\(\)").unwrap().is_match(&content) {
         content.push_str(concat!(
             "\nfn main() ",
             "{\n",

@@ -1,5 +1,5 @@
 import { ref, watch, computed } from 'vue';
-import type { RunResponse, TransResponse, OutputTab, SourceMapEntry, DebugState, DebugCommand, BytecodeLine } from '../types';
+import type { RunResponse, TransResponse, OutputTab, SourceMapEntry, TransFile, DebugState, DebugCommand, BytecodeLine } from '../types';
 import { runTypeScript } from '../utils/tsRunner';
 
 const DEBOUNCE_MS = 500;
@@ -64,15 +64,17 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   const stderr = ref('');
   const resultCode = ref('');
   const timeMs = ref(0);
+  const bytecode = ref<BytecodeLine[]>([]);
   const isLoading = ref(false);
   const activeTab = ref<OutputTab>(saved.activeTab ?? 'rust');
-  const transpiledCode = ref('');
   const transpileTarget = ref('');
   const liveCompile = ref(saved.liveCompile ?? true);
+  const projectDir = ref<string | undefined>(undefined);
 
   interface TransCacheEntry {
-    code: string;
+    files: TransFile[];
     sourceMap: SourceMapEntry[];
+    selectedFile: string;
   }
   const transCache = ref<Record<string, TransCacheEntry>>({});
   const sourceMap = ref<SourceMapEntry[]>([]);
@@ -80,6 +82,27 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   const highlightedOutputLines = ref<number[]>([]);
   const shareToast = ref<{ message: string; visible: boolean }>({ message: '', visible: false });
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const transpiledCode = computed(() => {
+    const target = transpileTarget.value;
+    if (!target) return '';
+    const cached = transCache.value[target];
+    if (!cached) return '';
+    const file = cached.files.find((f) => f.path === cached.selectedFile);
+    return file?.code ?? cached.files[0]?.code ?? '';
+  });
+
+  const transFiles = computed(() => {
+    const target = transpileTarget.value;
+    if (!target) return [];
+    return transCache.value[target]?.files ?? [];
+  });
+
+  const selectedTransFile = computed(() => {
+    const target = transpileTarget.value;
+    if (!target) return '';
+    return transCache.value[target]?.selectedFile ?? '';
+  });
 
   const sourceToOutputMap = computed(() => {
     const map: Record<number, number[]> = {};
@@ -107,44 +130,23 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     stdout.value = '';
     stderr.value = '';
     resultCode.value = '';
+    bytecode.value = [];
 
     try {
+      const body: Record<string, unknown> = { source: source.value };
+      if (projectDir.value) {
+        body.project_dir = projectDir.value;
+      }
       const res = await fetch(`${API_BASE}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: source.value }),
+        body: JSON.stringify(body),
       });
       const data: RunResponse = await res.json();
       stdout.value = data.stdout || '';
       stderr.value = data.stderr || '';
       timeMs.value = data.time_ms || 0;
-      if (data.result !== undefined && data.result !== null && data.result !== '') {
-        resultCode.value = data.result;
-      }
-    } catch (e: any) {
-      stderr.value = `Network error: ${e.message}`;
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
-  async function runAbt() {
-    isLoading.value = true;
-    stdout.value = '';
-    stderr.value = '';
-    resultCode.value = '';
-
-    try {
-      const abtCode = transCache.value['abt']?.code || '';
-      const res = await fetch(`${API_BASE}/run_abt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ abt: abtCode }),
-      });
-      const data: RunResponse = await res.json();
-      stdout.value = data.stdout || '';
-      stderr.value = data.stderr || '';
-      timeMs.value = data.time_ms || 0;
+      bytecode.value = data.bytecode || [];
       if (data.result !== undefined && data.result !== null && data.result !== '') {
         resultCode.value = data.result;
       }
@@ -156,7 +158,8 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   }
 
   async function runCode(language: string) {
-    const code = transCache.value[language]?.code || '';
+    const cached = transCache.value[language];
+    const code = cached?.files[0]?.code ?? '';
     if (!code.trim()) {
       stderr.value = `No ${language} code to run. Make sure the transpilation succeeded.`;
       return;
@@ -199,19 +202,32 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   async function transpile(target: string) {
     isLoading.value = true;
     try {
+      const body: Record<string, unknown> = { source: source.value, target };
+      if (projectDir.value) {
+        body.project_dir = projectDir.value;
+      }
       const res = await fetch(`${API_BASE}/trans`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: source.value, target }),
+        body: JSON.stringify(body),
       });
       const data: TransResponse = await res.json();
-      transpiledCode.value = data.code || '';
+      const files = data.files ?? [];
+      const selected = files[0]?.path ?? '';
       transpileTarget.value = target;
       sourceMap.value = data.source_map || [];
-      transCache.value[target] = { code: transpiledCode.value, sourceMap: data.source_map || [] };
+      transCache.value[target] = {
+        files,
+        sourceMap: data.source_map || [],
+        selectedFile: selected,
+      };
     } catch (e: any) {
-      transpiledCode.value = `Error: ${e.message}`;
       transpileTarget.value = target;
+      transCache.value[target] = {
+        files: [{ path: 'error.txt', code: `Error: ${e.message}` }],
+        sourceMap: [],
+        selectedFile: 'error.txt',
+      };
     } finally {
       isLoading.value = false;
     }
@@ -222,21 +238,28 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     transpileTarget.value = target;
     const cached = transCache.value[target];
     if (cached) {
-      transpiledCode.value = cached.code;
       sourceMap.value = cached.sourceMap;
     } else if (liveCompile.value) {
       transpile(target);
     } else {
-      transpiledCode.value = '';
       sourceMap.value = [];
     }
   }
 
-  function loadExample(code: string) {
-    source.value = code;
+  function selectTransFile(target: string, path: string) {
+    const cached = transCache.value[target];
+    if (!cached) return;
+    cached.selectedFile = path;
+    sourceMap.value = cached.sourceMap;
+  }
+
+  function loadExample(payload: { source: string; project_dir?: string }) {
+    source.value = payload.source;
+    projectDir.value = payload.project_dir;
     stdout.value = '';
     stderr.value = '';
     resultCode.value = '';
+    bytecode.value = [];
     sourceMap.value = [];
     highlightedSourceLine.value = null;
     highlightedOutputLines.value = [];
@@ -301,32 +324,52 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   }
 
   async function transpileAll() {
-    const targets: OutputTab[] = ['rust', 'c', 'python', 'typescript', 'abt'];
+    const targets: OutputTab[] = ['rust', 'c', 'python', 'typescript'];
     isLoading.value = true;
     try {
       const results = await Promise.all(
         targets.map(async (target) => {
           try {
+            const body: Record<string, unknown> = { source: source.value, target };
+            if (projectDir.value) {
+              body.project_dir = projectDir.value;
+            }
             const res = await fetch(`${API_BASE}/trans`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ source: source.value, target }),
+              body: JSON.stringify(body),
             });
             const data: TransResponse = await res.json();
-            return { target, code: data.code || '', sourceMap: data.source_map || [] };
+            const files = data.files ?? [];
+            return {
+              target,
+              files,
+              sourceMap: data.source_map || [],
+              selectedFile: files[0]?.path ?? '',
+            };
           } catch (e: any) {
-            return { target, code: `Error: ${e.message}`, sourceMap: [] };
+            return {
+              target,
+              files: [{ path: 'error.txt', code: `Error: ${e.message}` }],
+              sourceMap: [],
+              selectedFile: 'error.txt',
+            };
           }
         })
       );
       for (const r of results) {
-        transCache.value[r.target] = { code: r.code, sourceMap: r.sourceMap || [] };
+        transCache.value[r.target] = {
+          files: r.files,
+          sourceMap: r.sourceMap || [],
+          selectedFile: r.selectedFile,
+        };
       }
       const current = activeTab.value;
       const cached = transCache.value[current];
-      transpiledCode.value = cached?.code || '';
-      transpileTarget.value = current;
-      sourceMap.value = cached?.sourceMap || [];
+      if (cached) {
+        transpileTarget.value = current;
+        sourceMap.value = cached.sourceMap;
+      }
     } finally {
       isLoading.value = false;
     }
@@ -335,7 +378,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   // ── Debug state ──
   const debugSessionId = ref<string | null>(null);
   const debugState = ref<DebugState | null>(null);
-  const bytecode = ref<BytecodeLine[]>([]);
+  const debugBytecode = ref<BytecodeLine[]>([]);
   const breakpoints = ref<number[]>([]);
   const isDebugging = ref(false);
 
@@ -350,7 +393,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
       });
       const data = await res.json();
       debugSessionId.value = data.session_id;
-      bytecode.value = (data.bytecode || []).map((b: any) => ({
+      debugBytecode.value = (data.bytecode || []).map((b: any) => ({
         offset: b.offset ?? b.idx ?? 0,
         mnemonic: b.mnemonic ?? b.op ?? '',
         operands: b.operands ?? b.args ?? '',
@@ -413,18 +456,20 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     } catch { /* ignore */ }
     debugSessionId.value = null;
     debugState.value = null;
+    debugBytecode.value = [];
     isDebugging.value = false;
   }
 
   return {
-    source, stdout, stderr, resultCode, timeMs, isLoading,
-    activeTab, transpiledCode, transpileTarget, liveCompile,
+    source, stdout, stderr, resultCode, timeMs, runBytecode: bytecode, isLoading,
+    activeTab, transpiledCode, transpileTarget, liveCompile, projectDir,
+    transFiles, selectedTransFile,
     sourceMap, highlightedSourceLine, highlightedOutputLines,
     shareToast,
     // Debug state
-    debugSessionId, debugState, bytecode, breakpoints, isDebugging,
+    debugSessionId, debugState, bytecode: debugBytecode, breakpoints, isDebugging,
     // Methods
-    run, runAbt, runCode, transpile, switchTab, loadExample, highlightSourceLine, clearHighlight,
+    run, runCode, transpile, switchTab, selectTransFile, loadExample, highlightSourceLine, clearHighlight,
     share,
     debugStart, debugSetBreakpoints, debugCommand, debugStop,
   };

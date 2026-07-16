@@ -6,6 +6,8 @@ use std::path::PathBuf;
 pub struct Example {
     pub name: String,
     pub source: String,
+    pub example_type: String,
+    pub project_dir: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -34,55 +36,94 @@ fn load_examples() -> Vec<Example> {
     fallback_examples()
 }
 
+fn display_name_from_stem(stem: &str) -> String {
+    stem.split_once('-')
+        .map(|(_, rest)| {
+            let mut title = String::new();
+            let mut prev = '-';
+            for c in rest.chars() {
+                if c == '_' {
+                    title.push(' ');
+                } else if prev == '-' || prev == '_' || prev == ' ' {
+                    for uc in c.to_uppercase() {
+                        title.push(uc);
+                    }
+                } else {
+                    title.push(c);
+                }
+                prev = c;
+            }
+            title
+        })
+        .unwrap_or_else(|| stem.to_string())
+}
+
 fn load_from_dir(dir: &std::path::Path) -> Vec<Example> {
+    let mut examples = Vec::new();
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read examples dir: {e}"))
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|ext| ext == "at")
-        })
         .collect();
-
     entries.sort_by_key(|e| e.file_name());
 
-    entries
-        .into_iter()
-        .filter_map(|e| {
-            let path = e.path();
-            let source = std::fs::read_to_string(&path).ok()?;
-            let name = path
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            let display_name = name
-                .split_once('-')
-                .map(|(_, rest)| {
-                    let mut title = String::new();
-                    let mut prev = '-';
-                    for c in rest.chars() {
-                        if c == '_' {
-                            title.push(' ');
-                        } else if prev == '-' || prev == '_' || prev == ' ' {
-                            for uc in c.to_uppercase() {
-                                title.push(uc);
-                            }
-                        } else {
-                            title.push(c);
-                        }
-                        prev = c;
-                    }
-                    title
-                })
-                .unwrap_or_else(|| name.clone());
-            Some(Example {
-                name: display_name,
-                source,
-            })
-        })
-        .collect()
+    // Single-file examples
+    for entry in entries.iter() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if path.extension().is_none_or(|ext| ext != "at") {
+            continue;
+        }
+        let source = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let stem = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        examples.push(Example {
+            name: display_name_from_stem(&stem),
+            source,
+            example_type: "single".into(),
+            project_dir: None,
+        });
+    }
+
+    // Project examples: directories containing main.at
+    for entry in entries.iter() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let main_path = path.join("main.at");
+        if !main_path.is_file() {
+            continue;
+        }
+        let source = match std::fs::read_to_string(&main_path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let stem = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let project_dir = path
+            .strip_prefix(dir)
+            .ok()
+            .map(|p| p.to_string_lossy().to_string().replace('\\', "/"));
+        examples.push(Example {
+            name: display_name_from_stem(&stem),
+            source,
+            example_type: "project".into(),
+            project_dir,
+        });
+    }
+
+    examples
 }
 
 fn fallback_examples() -> Vec<Example> {
@@ -90,12 +131,16 @@ fn fallback_examples() -> Vec<Example> {
         Example {
             name: "Hello World".into(),
             source: r#"print("Hello, World!")"#.into(),
+            example_type: "single".into(),
+            project_dir: None,
         },
         Example {
             name: "Variables".into(),
             source: r#"let x = 42
 let name = "Auto"
 print(f"Hello, $name! The answer is $x")"#.into(),
+            example_type: "single".into(),
+            project_dir: None,
         },
         Example {
             name: "Functions".into(),
@@ -105,6 +150,8 @@ print(f"Hello, $name! The answer is $x")"#.into(),
 
 let result = add(3, 4)
 print(result)"#.into(),
+            example_type: "single".into(),
+            project_dir: None,
         },
     ]
 }
