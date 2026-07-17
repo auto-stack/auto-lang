@@ -1,0 +1,59 @@
+/// cli_app edge-case tests — tab separation, runs of newlines, long strings.
+// TAP output format. Names EXACTLY mirror the Rust oracle in
+// tests/rust/tests/cli_app.rs. Working dir is the library root, so the
+// library is imported as `auto.cli_app`.
+use auto.cli_app: count_lines, count_words, count_chars
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    // ---- count_lines edge cases -----------------------------------------
+    // three trailing newlines -> three lines
+    check(1, "test_edge_lines_three_newlines", count_lines("\n\n\n"), 3)
+    // windows-style CRLF: \r\n counts as one line boundary (split on \n)
+    check(2, "test_edge_lines_crlf", count_lines("a\r\nb"), 2)
+    // leading newline before content -> two lines
+    check(3, "test_edge_lines_leading_nl", count_lines("\nabc"), 2)
+    // long multi-line block
+    check(4, "test_edge_lines_many", count_lines("1\n2\n3\n4\n5\n6\n7\n8\n9\n10"), 10)
+
+    // ---- count_words edge cases -----------------------------------------
+    // tab-separated words
+    check(5, "test_edge_words_tab_separated", count_words("a\tb\tc"), 3)
+    // mixed whitespace runs (space + tab + newline) between words
+    check(6, "test_edge_words_mixed_ws", count_words("a  \tb\n c"), 3)
+    // carriage returns as whitespace
+    check(7, "test_edge_words_cr_separated", count_words("a\rb"), 2)
+    // many words
+    check(8, "test_edge_words_many", count_words("the quick brown fox jumps over the lazy dog"), 9)
+
+    // ---- count_chars edge cases -----------------------------------------
+    // tab counts as one char
+    check(9, "test_edge_chars_with_tab", count_chars("a\tb"), 3)
+    // CRLF counts as two chars
+    check(10, "test_edge_chars_crlf", count_chars("a\r\nb"), 4)
+    // long string length
+    check(11, "test_edge_chars_long", count_chars("abcdefghijklmnopqrstuvwxyz"), 26)
+
+    // ---- combined sanity (all three over the same input) ----------------
+    // "one two\nthree four\nfive six": 3 lines, 6 words, 27 bytes
+    //   (7 + 1 + 10 + 1 + 8 = 27: "one two"=7, \n=1, "three four"=10, \n=1,
+    //    "five six"=8).
+    check(12, "test_edge_combined_lines", count_lines("one two\nthree four\nfive six"), 3)
+    check(13, "test_edge_combined_words", count_words("one two\nthree four\nfive six"), 6)
+    check(14, "test_edge_combined_chars", count_chars("one two\nthree four\nfive six"), 27)
+}
