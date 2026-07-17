@@ -745,8 +745,13 @@ impl Codegen {
                 // User-defined void functions (CALL+RET) leave a return value on the stack,
                 // so POP is needed. Native void shims (CALL_NAT) don't push return values,
                 // so POP must be skipped to avoid eating a value below.
-                let needs_pop = self.should_pop_expr_result
-                    && (!matches!(self.last_expr_type, ObjectType::Void) || !self.last_was_native_void);
+                // Plan 359 C4: a native void shim (last_was_native_void) NEVER pushes a
+                // value, so we must never POP in that case regardless of last_expr_type.
+                // The previous `(!Void || !native_void)` OR-logic popped whenever the
+                // type was non-void even when a native shim left nothing on the stack,
+                // corrupting the stack (eating a value from below). Now: pop iff we
+                // should discard AND the last call was not a native void shim.
+                let needs_pop = self.should_pop_expr_result && !self.last_was_native_void;
                 if needs_pop {
                     if matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint) {
                         self.emit(OpCode::POP_N);
@@ -3436,8 +3441,9 @@ impl Codegen {
             Stmt::Node(node) => {
                 // Stmt::Node wraps an Expr::Node — compile the expression
                 self.compile_expr(&Expr::Node(node.clone()))?;
-                let needs_pop = self.should_pop_expr_result
-                    && (!matches!(self.last_expr_type, ObjectType::Void) || !self.last_was_native_void);
+                // Plan 359 C4: see Stmt::Expr — never POP when a native void shim
+                // left nothing on the stack.
+                let needs_pop = self.should_pop_expr_result && !self.last_was_native_void;
                 if needs_pop {
                     self.emit(OpCode::POP);
                 }
