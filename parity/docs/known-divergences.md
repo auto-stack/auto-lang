@@ -229,6 +229,20 @@ and is recorded to scope future a2r / language work.
   - 偏差类型: 待修复 (a2r default-method codegen should emit the body as a
     tail expression, not a `{ expr; }` statement block, for non-void methods).
   - 状态: open
+  - **Fix plan (Plan 359 analysis):** root cause is double-wrapping. The
+    parser stores the default body as `Expr::Block` (`parser.rs:7685`), and
+    `spec_decl` at `trans/rust.rs:9404-9416` wraps it in another `{ ... }`,
+    while the inline `Expr::Block` emitter (`rust.rs:2376-2408`) appends `; `
+    to every stmt including the tail — so `{ { 42; } }` becomes `()`. The
+    generic `body()` emitter (`rust.rs:9426+`) already handles tail
+    expressions correctly. **Recommended fix (option C, ~5-10 lines):** in
+    `spec_decl`, unwrap `SpecMethod.body` by matching `Expr::Block(body)` and
+    delegate to the existing `body()` emitter (passing `method.ret` as the
+    return type), unifying default-body emission with normal method bodies.
+    Regression risk: low — no L1 case uses a value-returning default body;
+    only `test/vm/99_bootstrap/093_a2r_spec/a2r_spec.at` exercises it. Held
+    until the master `trans/rust.rs` WIP (source-map tracking, which touches
+    `body()`) is committed.
 
 - **DIV-TRAIT-A2R-2 — generic spec implementation drops the concrete type
   argument.** Implementing a generic spec with a concrete type argument, e.g.
@@ -245,6 +259,24 @@ and is recorded to scope future a2r / language work.
   - 偏差类型: 待修复 (a2r should thread the spec's concrete type arguments
     into the generated `impl <Spec><<args>> for <Type>`).
   - 状态: open
+  - **Fix plan (Plan 359 analysis):** root cause is a dropped field. The
+    parser captures type args into `TypeDecl.spec_impls: Vec<SpecImpl>`
+    (`parser.rs:7999`, `ast/types.rs:653`), but the spec-impl generator at
+    `trans/rust.rs:8694-8773` reads only `type_decl.specs` (names only) and
+    never `type_decl.spec_impls` (`grep spec_impls trans/rust.rs` → 0 real
+    hits). The trait *declaration* is correct because `spec_decl`
+    (`rust.rs:9349-9376`) reads `spec_decl.generic_params` directly.
+    **Recommended fix (~15-20 lines):** in the spec-impl generator, look up
+    the matching `SpecImpl.type_args` and, when present, emit
+    `impl {spec_name}<{concrete args}> for {Type}` instead of falling back
+    to the declaration's generic params. No AST change needed (`spec_impls`
+    already carries the args). Regression risk: moderate —
+    `test/a2r/10_collections/002_list_storage` parses `as Storage<T>` but
+    skips impl emission via the `matched_methods` empty → `continue` path
+    (`rust.rs:8730`), so it's on the boundary; must re-verify it after the
+    fix. No golden baseline exists for the failing configuration (concrete
+    type args on a spec impl whose methods live on the type, not in `ext`).
+    Held for the same master WIP reason as DIV-TRAIT-A2R-1.
 
 ### AutoVM gaps
 
