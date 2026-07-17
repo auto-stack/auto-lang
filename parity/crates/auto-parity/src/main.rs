@@ -40,6 +40,12 @@ enum Command {
     All,
     /// List discovered libraries.
     List,
+    /// Generate a static HTML dashboard of parity results.
+    Report {
+        /// Path to write the HTML dashboard to.
+        #[arg(short, long, default_value = "docs/parity-dashboard.html")]
+        output: PathBuf,
+    },
 }
 
 fn main() {
@@ -91,6 +97,34 @@ fn main() {
                 println!("{}", lib);
             }
         }
+        Command::Report { output } => {
+            // Currently verified phases are P1 and P2 (per Plan 358 C2).
+            // P3/P4 are listed as L3 roadmap entries by the dashboard itself.
+            let phases = ["p1", "p2"];
+            let mut reports = Vec::new();
+            for phase in &phases {
+                let libs = discover_libraries_by_phase(&root, phase);
+                for lib in libs {
+                    let mut cfg = base_config.clone();
+                    cfg.library = lib;
+                    cfg.sort_results = is_async_library(&cfg.library);
+                    match build_comparison_report(&cfg) {
+                        Ok(r) => reports.push(r),
+                        Err(e) => eprintln!("Warning: {} report failed: {}", cfg.library, e),
+                    }
+                }
+            }
+            let kd = root.join("docs/known-divergences.md");
+            match report::generate_dashboard(&reports, &kd, &output) {
+                Ok(()) => {
+                    println!("Dashboard written to {}", output.display());
+                }
+                Err(e) => {
+                    eprintln!("report error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
     }
 }
 
@@ -118,24 +152,50 @@ fn run_library(config: &RunConfig) {
     // Async libraries have non-deterministic completion order; sort TAP
     // output by test name before comparison.
     let mut config = config.clone();
-    config.sort_results = matches!(config.library.as_str(), "reqwest" | "tokio");
+    config.sort_results = is_async_library(&config.library);
 
     println!();
     println!("{}", "=".repeat(60));
     println!("Checking library: {}", config.library);
     println!("{}", "=".repeat(60));
 
-    // Run all three backends.
-    let vm_results = runner::run_vm(&config).unwrap_or_else(|e| {
-        eprintln!("VM backend error: {}", e);
+    match build_comparison_report(&config) {
+        Ok(report) => {
+            let text = report::format_report(&report);
+            println!("{}", text);
+        }
+        Err(e) => {
+            eprintln!("Failed to build report for {}: {}", config.library, e);
+        }
+    }
+}
+
+/// Whether a library's tests are async and therefore need sorted TAP output.
+///
+/// Async libraries (P4: reqwest, tokio) have non-deterministic completion
+/// order, so their results must be sorted by test name before comparison.
+fn is_async_library(library: &str) -> bool {
+    matches!(library, "reqwest" | "tokio")
+}
+
+/// Run all three backends for a single library and build the per-test
+/// `ComparisonReport` (without printing). Backend errors are logged to stderr
+/// and treated as an empty result set for that backend, so the comparison
+/// still surfaces the missing cases as divergences rather than crashing.
+fn build_comparison_report(config: &RunConfig) -> Result<ComparisonReport, String> {
+    // Run all three backends. Log + swallow per-backend failures so a single
+    // broken backend doesn't abort an aggregate `report` run; the missing
+    // results show up as divergences in the comparison.
+    let vm_results = runner::run_vm(config).unwrap_or_else(|e| {
+        eprintln!("VM backend error for {}: {}", config.library, e);
         Vec::new()
     });
-    let a2r_results = runner::run_a2r(&config).unwrap_or_else(|e| {
-        eprintln!("a2r backend error: {}", e);
+    let a2r_results = runner::run_a2r(config).unwrap_or_else(|e| {
+        eprintln!("a2r backend error for {}: {}", config.library, e);
         Vec::new()
     });
-    let rust_results = runner::run_rust(&config).unwrap_or_else(|e| {
-        eprintln!("Rust backend error: {}", e);
+    let rust_results = runner::run_rust(config).unwrap_or_else(|e| {
+        eprintln!("Rust backend error for {}: {}", config.library, e);
         Vec::new()
     });
 
@@ -161,13 +221,10 @@ fn run_library(config: &RunConfig) {
         })
         .collect();
 
-    let report = ComparisonReport {
+    Ok(ComparisonReport {
         library: config.library.clone(),
         cases,
-    };
-
-    let text = report::format_report(&report);
-    println!("{}", text);
+    })
 }
 
 /// Discover all library directories under `<root>/libs/`, skipping `_dummy`
