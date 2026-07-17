@@ -1,0 +1,125 @@
+/// string_utils — pure string-manipulation functions over ASCII input.
+///
+/// Mirrors Rust std::str operations (reverse, ascii_lowercase,
+/// ascii_uppercase, trim, contains, replace) with hand-rolled implementations
+/// so the three-way parity (AutoVM vs a2r-transpiled Rust vs native Rust std)
+/// is fully deterministic. No external dependencies, no IO — like cli_app,
+/// this exercises a2r's "pure Rust output" path.
+///
+/// VM quirks used (same family as base64 / cli_app):
+///   * `str.char_at(i)` returns the code point as `int` (not a one-char str).
+///   * `str.len()` returns byte length (ASCII tests only).
+///   * Result strings are built with `StringBuilder.append_char(code)` +
+///     `.build()`, because int->single-char-str is not direct.
+
+/// Reverse a string: "abc" -> "cba".
+fn reverse(s str) str {
+    var n = s.len()
+    var sb StringBuilder = StringBuilder.new(n)
+    var i = n - 1
+    for i >= 0 {
+        sb.append_char(s.char_at(i))
+        i = i - 1
+    }
+    return sb.build()
+}
+
+/// ASCII lowercase: 'A'-'Z' (65-90) -> 'a'-'z' (97-122); other chars unchanged.
+fn to_lower(s str) str {
+    var n = s.len()
+    var sb StringBuilder = StringBuilder.new(n)
+    var i = 0
+    for i < n {
+        var c int = s.char_at(i)
+        if c >= 65 && c <= 90 { c = c + 32 }
+        sb.append_char(c)
+        i = i + 1
+    }
+    return sb.build()
+}
+
+/// ASCII uppercase: 'a'-'z' -> 'A'-'Z'; other chars unchanged.
+fn to_upper(s str) str {
+    var n = s.len()
+    var sb StringBuilder = StringBuilder.new(n)
+    var i = 0
+    for i < n {
+        var c int = s.char_at(i)
+        if c >= 97 && c <= 122 { c = c - 32 }
+        sb.append_char(c)
+        i = i + 1
+    }
+    return sb.build()
+}
+
+/// Strip leading/trailing ASCII whitespace. 32=' ' 9='\t' 10='\n' 13='\r'.
+fn trim(s str) str {
+    var n = s.len()
+    var start = 0
+    var end = n
+    for start < end {
+        var c int = s.char_at(start)
+        if c == 32 || c == 9 || c == 10 || c == 13 { start = start + 1 } else { break }
+    }
+    for end > start {
+        var c int = s.char_at(end - 1)
+        if c == 32 || c == 9 || c == 10 || c == 13 { end = end - 1 } else { break }
+    }
+    var sb StringBuilder = StringBuilder.new(end - start)
+    var i = start
+    for i < end {
+        sb.append_char(s.char_at(i))
+        i = i + 1
+    }
+    return sb.build()
+}
+
+/// Does `haystack` contain `needle`? Returns 1 if found, 0 otherwise.
+fn contains(haystack str, needle str) int {
+    var hn = haystack.len()
+    var nn = needle.len()
+    if nn == 0 { return 1 }
+    if nn > hn { return 0 }
+    var i = 0
+    for i <= hn - nn {
+        var match = 1
+        var j = 0
+        for j < nn {
+            if haystack.char_at(i + j) != needle.char_at(j) { match = 0; break }
+            j = j + 1
+        }
+        if match == 1 { return 1 }
+        i = i + 1
+    }
+    return 0
+}
+
+/// Replace every occurrence of `from` in `s` with `to`.
+fn replace(s str, src str, dest str) str {
+    var flen = src.len()
+    if flen == 0 { return s }
+    var n = s.len()
+    var sb StringBuilder = StringBuilder.new(n)
+    var i = 0
+    for i < n {
+        if i <= n - flen {
+            var match = 1
+            var j = 0
+            for j < flen {
+                if s.char_at(i + j) != src.char_at(j) { match = 0; break }
+                j = j + 1
+            }
+            if match == 1 {
+                sb.append(dest)
+                i = i + flen
+            } else {
+                sb.append_char(s.char_at(i))
+                i = i + 1
+            }
+        } else {
+            sb.append_char(s.char_at(i))
+            i = i + 1
+        }
+    }
+    return sb.build()
+}

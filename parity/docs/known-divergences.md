@@ -3,7 +3,7 @@
 This file records all accepted and open divergences between AutoVM, a2r, and
 native Rust for replicated libraries.
 
-## Current phase status (Plan 358 C2 + D1/D2/D3)
+## Current phase status (Plan 358 C2 + D1/D2/D3/D4)
 
 | Phase | Libraries | Status | Notes |
 |-------|-----------|--------|-------|
@@ -12,12 +12,13 @@ native Rust for replicated libraries.
 | D1-new | cli_app | ✅ L1 100% (32/32) | wc-style, pure std, no external dep (Plan 358 D1) |
 | D2 | trait_advanced | ✅ L1 100% (10/10) + 5 L3 gaps | spec basics/default(void)/Comparable pass; assoc types etc. documented below |
 | D2 | generators | L1 (golden a2r test) + L3 tooling | VM+a2r agree via 21_generators golden; no parity/libs/ lib (async_stream dep injection gap) |
+| D4 | string_utils | ✅ L1 100% (22/22) | reverse/lower/upper/trim/contains/replace, pure std (Plan 359 D4) |
 | P4 | tokio | ✅ L1 100% (13/13) | async spawn/join/channel; verified three-way (Plan 355 built it; D3 confirmed) |
-| D3 | http_client_sync | L3 roadmap | needs in-process mock-server harness to avoid external network dep |
-| P3 | sha2, rusqlite | P3 | rusqlite DIVs documented below; sha2 TBD |
+| D3 | http_client_sync | skeleton + L3 blocker | mock-server crate written; blocked by DIV-HTTP-LANG-1 (stdlib http.at parse bug) |
+| P3 | sha2, rusqlite | P3 | rusqlite DIVs documented below; sha2 TBD (sha2 currently 0/11 — a2r transpile gaps) |
 
-Re-verified through Plan 358 C2/D1/D2/D3. The **L1-verified total is now
-232 test cases** across base64/url/serde_json/regex/cli_app/trait_advanced/tokio,
+Re-verified through Plan 358 C2/D1/D2/D3 + Plan 359 D4. The **L1-verified total
+is now 254 test cases** across base64/url/serde_json/regex/cli_app/trait_advanced/string_utils/tokio,
 all 100% three-way consistent (AutoVM vs a2r-transpiled Rust vs native Rust).
 Library/tooling limitations below shaped the implementations but are **not**
 test-case divergences — every included case agrees across all three backends.
@@ -382,3 +383,25 @@ three-way run (the mock server must outlive all three backend processes,
 which are independent).
 
 
+
+## string_utils (D4) — a2r transpiler bug worked around
+
+Plan 359 D4. The library is **L1 100% (22/22)** three-way consistent, but a
+transpiler bug was discovered and worked around in-source:
+
+- **DIV-A2R-CHAR-AT-1 — `char_at` result + int literal is transpiled as string
+  concatenation.** When a variable holds `s.char_at(i)` without an explicit
+  `int` type annotation, a2r infers it as a string, so `c = c + 32` (intended
+  integer add) becomes `c = format!("{}{}", c, 32)` (Rust `String`), causing
+  E0308 ("expected i32, found String"). Workaround: declare the variable with
+  an explicit `int` type — `var c int = s.char_at(i)` — which makes a2r emit
+  `let mut c: i32 = ... as i32;` and `c = c + 32;` correctly. All four
+  `char_at`-bound variables in string_utils.at use this annotation.
+  - AutoVM: runs correctly (VM types `char_at` as int natively).
+  - a2r: without the annotation, emits `format!` concatenation (compile fail);
+    with `var c int`, emits correct integer add.
+  - Rust: native integer arithmetic.
+  - 偏差类型: 待修复 (a2r type inference for `char_at` results should default
+    to i32, mirroring the VM).
+  - 状态: open (worked around via explicit annotation; affects any Auto code
+    that does arithmetic on a `char_at` result stored in an untyped binding).

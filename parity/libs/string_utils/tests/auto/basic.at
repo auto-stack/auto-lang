@@ -1,0 +1,63 @@
+/// string_utils tests — reverse/lower/upper/trim/contains/replace — TAP output.
+// Test names EXACTLY mirror the Rust oracle in tests/rust/tests/string_utils.rs.
+use auto.string_utils: reverse, to_lower, to_upper, trim, contains, replace
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+fn check_int(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    // reverse
+    check_str(1, "test_reverse_basic", reverse("abc"), "cba")
+    check_str(2, "test_reverse_single", reverse("x"), "x")
+    check_str(3, "test_reverse_empty", reverse(""), "")
+    check_str(4, "test_reverse_palindrome", reverse("racecar"), "racecar")
+
+    // to_lower
+    check_str(5, "test_lower_mixed", to_lower("Hello WORLD"), "hello world")
+    check_str(6, "test_lower_already", to_lower("abc"), "abc")
+    check_str(7, "test_lower_with_digits", to_lower("A1B2"), "a1b2")
+
+    // to_upper
+    check_str(8, "test_upper_mixed", to_upper("Hello WORLD"), "HELLO WORLD")
+    check_str(9, "test_upper_already", to_upper("ABC"), "ABC")
+
+    // trim
+    check_str(10, "test_trim_both", trim("  hi  "), "hi")
+    check_str(11, "test_trim_leading", trim("\n\nhi"), "hi")
+    check_str(12, "test_trim_none", trim("abc"), "abc")
+    check_str(13, "test_trim_all_ws", trim("   "), "")
+
+    // contains
+    check_int(14, "test_contains_found", contains("hello world", "world"), 1)
+    check_int(15, "test_contains_missing", contains("hello", "xyz"), 0)
+    check_int(16, "test_contains_empty_needle", contains("abc", ""), 1)
+    check_int(17, "test_contains_at_start", contains("abc", "ab"), 1)
+    check_int(18, "test_contains_too_long", contains("ab", "abc"), 0)
+
+    // replace
+    check_str(19, "test_replace_all", replace("a-b-c", "-", "+"), "a+b+c")
+    check_str(20, "test_replace_none", replace("abc", "x", "y"), "abc")
+    check_str(21, "test_replace_multi_char", replace("foo bar foo", "foo", "XX"), "XX bar XX")
+    check_str(22, "test_replace_empty_src", replace("abc", "", "Z"), "abc")
+}
