@@ -2713,6 +2713,12 @@ impl Codegen {
                     }
                     Iter::Cond => {
                         // Conditional for loop: for condition { ... } (like while)
+                        // Plan 359 C3: push_scope/pop_scope around the body, matching
+                        // every other for-loop variant (Iter::Named, Iter::Indexed, ...).
+                        // Without this, a `break` inside the body could leave the scope
+                        // stack inconsistent with the emitted bytecode.
+                        self.push_scope();
+
                         // Loop start label
                         let loop_start = self.code.len();
 
@@ -2753,6 +2759,9 @@ impl Codegen {
 
                         // Patch exit jump (for loop condition)
                         self.patch_jump(jump_to_end);
+
+                        // Pop loop scope (matches Iter::Named: before patching breaks)
+                        self.pop_scope();
 
                         // Patch all break statements
                         let exits = self.loop_exits.pop().unwrap();
