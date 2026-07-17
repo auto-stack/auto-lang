@@ -786,6 +786,13 @@ impl Codegen {
             Stmt::If(if_stmt) => {
                 let mut jumps_to_end = Vec::new();
 
+                // Plan 359 C5: branch bodies are compiled directly in the
+                // ENCLOSING scope (via compile_body_inline, which does NOT wrap
+                // in Stmt::Block and therefore introduces no extra scope). This
+                // means a `var x = ...` declared inside an if-branch leaks to
+                // the enclosing scope and remains visible after the if —
+                // matching the if-branch scoping of many languages. We do NOT
+                // push a new scope here, so the binding survives the if.
                 for branch in &if_stmt.branches {
                     // Cond
                     self.compile_expr(&branch.cond)?;
@@ -794,8 +801,9 @@ impl Codegen {
                     self.emit(OpCode::JMP_IF_Z);
                     let jump_to_next = self.emit_placeholder_i16();
 
-                    // Body
-                    self.compile_stmt(&Stmt::Block(branch.body.clone()))?;
+                    // Body — compile statements directly (no extra Stmt::Block
+                    // wrapper, so no extra scope is introduced per branch).
+                    self.compile_body_inline(&branch.body)?;
 
                     // If True, JMP to End (skip other branches/else)
                     // Optimization: We could skip this for the very last block, but keeping it uniform is safer/easier.
@@ -808,7 +816,7 @@ impl Codegen {
                 }
 
                 if let Some(else_body) = &if_stmt.else_ {
-                    self.compile_stmt(&Stmt::Block(else_body.clone()))?;
+                    self.compile_body_inline(else_body)?;
                 }
 
                 // Patch all "JMP to End" to point here
@@ -3485,6 +3493,30 @@ impl Codegen {
             _ => {
                 // TODO: Implement other statements
             }
+        }
+        Ok(())
+    }
+
+    /// Plan 359 C5: Compile a `Body`'s statements inline (in the current scope),
+    /// WITHOUT introducing a new scope. This mirrors the inner loop of the
+    /// `Stmt::Block` handler (SOURCE_LINE emission + should_pop_expr_result for
+    /// non-last statements) but skips push_scope/pop_scope, so `var` bindings
+    /// declared in the body remain visible in the enclosing scope. Used by
+    /// `Stmt::If` so variables declared inside an if-branch leak out.
+    fn compile_body_inline(&mut self, body: &crate::ast::Body) -> AutoResult<()> {
+        let n = body.stmts.len();
+        for (i, s) in body.stmts.iter().enumerate() {
+            if i < body.source_lines.len() {
+                self.emit_source_line(body.source_lines[i]);
+            }
+            let is_last = i == n - 1;
+            let old_pop = self.should_pop_expr_result;
+            if !is_last {
+                // Non-last statements always discard their value.
+                self.should_pop_expr_result = true;
+            }
+            self.compile_stmt(s)?;
+            self.should_pop_expr_result = old_pop;
         }
         Ok(())
     }
