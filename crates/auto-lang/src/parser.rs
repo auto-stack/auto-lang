@@ -11749,7 +11749,7 @@ impl<'a> Parser<'a> {
             first = false;
 
             // Parse key (identifier or string)
-            if self.is_kind(TokenKind::Ident) {
+            if self.is_kind(TokenKind::Ident) || self.cur_is_soft_ident() {
                 parts.push(self.cur.text.to_string());
                 self.next();
             } else if self.is_kind(TokenKind::Str) {

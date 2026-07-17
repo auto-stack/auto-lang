@@ -10,6 +10,7 @@
 //! is delegated to the a2ts transpiler for standard expressions.
 
 use crate::ast::*;
+use crate::trans::Sink;
 use crate::trans::typescript::TypeScriptTrans;
 use std::collections::HashSet;
 use std::io::Write;
@@ -90,7 +91,7 @@ pub fn transpile_handler_body(stmts: &[Stmt], ctx: &AuraTsContext) -> String {
     let mut out = Vec::new();
     for (i, stmt) in stmts.iter().enumerate() {
         if i > 0 {
-            writeln!(out).ok();
+            write!(out, " ").ok();  // space separator (each stmt already ends with ;)
         }
         transpile_stmt(stmt, ctx, &mut out);
     }
@@ -180,7 +181,9 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
         // Fallback — delegate to a2ts for anything else
         _ => {
             let mut ts = TypeScriptTrans::new("fragment".into());
-            let _ = ts.stmt(stmt, out);
+            let mut sink = Sink::new("fragment".into());
+            let _ = ts.stmt(stmt, &mut sink);
+            let _ = out.write_all(&sink.body);
         }
     }
 }
@@ -321,6 +324,26 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             match call.name.as_ref() {
                 // Method call: object.method(args)
                 Expr::Dot(object, method) => {
+                    // D3 fix: self-method call (.MethodName()) — when object is
+                    // "." or "self", this is a store sibling action call.
+                    // Generate as bare MethodName() instead of .MethodName().
+                    let is_self = matches!(object.as_ref(), Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self");
+                    if is_self {
+                        // Check if it's a known builtin first
+                        if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out) {
+                            return;
+                        }
+                        // Generate as bare function call (store sibling action)
+                        write!(out, "{}(", method.as_str()).ok();
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 {
+                                write!(out, ", ").ok();
+                            }
+                            transpile_expr(&arg.get_expr(), ctx, out);
+                        }
+                        write!(out, ")").ok();
+                        return;
+                    }
                     if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out) {
                         return;
                     }
@@ -445,6 +468,20 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     // Field access: already handled by Expr::Dot arm above,
                     // but Op::Dot can also appear in Bina. Delegate.
                     delegate_expr(expr, ctx, out);
+                }
+                Op::Add => {
+                    // D2 fix: array concat. If RHS is an array literal,
+                    // use spread syntax to avoid JS string coercion.
+                    if matches!(rhs.as_ref(), Expr::Array(_)) {
+                        transpile_expr(lhs, ctx, out);
+                        write!(out, ".concat(").ok();
+                        transpile_expr(rhs, ctx, out);
+                        write!(out, ")").ok();
+                    } else {
+                        transpile_expr(lhs, ctx, out);
+                        write!(out, " + ").ok();
+                        transpile_expr(rhs, ctx, out);
+                    }
                 }
                 _ => {
                     // Standard binary op
@@ -613,7 +650,9 @@ fn transpile_assign_target(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) 
 /// indexing, ranges, tag construction, etc.
 fn delegate_expr(expr: &Expr, _ctx: &AuraTsContext, out: &mut Vec<u8>) {
     let mut ts = TypeScriptTrans::new("fragment".into());
-    let _ = ts.expr(expr, out);
+    let mut sink = Sink::new("fragment".into());
+    let _ = ts.expr(expr, &mut sink);
+    let _ = out.write_all(&sink.body);
 }
 
 // ---------------------------------------------------------------------------
