@@ -89,3 +89,87 @@ is constructed so all three backends agree:
 - No percent-decoding or host lower-casing (scheme is lower-cased; hosts in
   tests are already lower-case).
 
+## rusqlite (P3)
+
+All 65 rusqlite test cases are consistent across AutoVM, a2r and native
+rusqlite 0.31.0 (100%). No test-case-level divergences are accepted. The
+replication covers rusqlite's deterministic query layer — the `FromSql` and
+`ToSql` value coercions (type dispatch, integral range checks, Integer->Real /
+Integer->bool widening, Blob/Text/Option handling). The native oracle drives
+each value through a real in-memory SQLite `SELECT ?1` so the Value->Rust
+mapping goes through genuine rusqlite 0.31.0.
+
+The following are **library/tooling limitations discovered during the rusqlite
+replication and worked around in the implementation**, recorded here for
+future reference. They are not test-case divergences (every included case
+passes on all three backends); they shaped the scope and API design.
+
+### Scope limitation: no FFI path for Connection/Statement
+
+- **DIV-RUSQLITE-1 — `use.rust rusqlite::Connection` is not viable in the
+  current VM.** `use.rust` `RustFfiBridge` marshals only `VMConvertible`
+  primitives (i32, u32, bool, i64, u64, f64, String, Vec<...>, Option, tuples).
+  `Connection` and `Statement` are opaque, stateful handles with no
+  `VMConvertible` impl and no `RustStdlibObject` shim. Consequently the
+  Plan-355 brief's literal "call rusqlite via `use.rust`" path cannot work for
+  the connection/query types. The replication instead follows the proven
+  parity-library pattern (base64 / url / serde_json / regex / sha2): a pure-Auto
+  reimplementation of the deterministic slice, compared three-way against a
+  native oracle. SQL execution / query planning is SQLite's job, not
+  rusqlite's, and is non-deterministic w.r.t. storage, so it is out of scope.
+  - AutoVM: n/a (design avoids the path)
+  - a2r: n/a
+  - Rust: n/a
+  - 偏差类型: 可接受 (accepted — out of scope by design)
+  - 状态: documented
+
+### VM limitations (AutoVM), worked around
+
+- **DIV-RUSQLITE-VM-1 — `Result`-wrapped *float* payload corrupts when it
+  crosses the module boundary.** A lib function returning `Ok(f)` where `f` is
+  `float`, read in another module via an `is`/`match` binding, comes back with
+  a mangled bit pattern (`5.0` compares unequal to the literal `5.0`). This is
+  the same boundary-corruption family as DIV-URL-VM-1/2, now affecting floats
+  in `Result`. Plain (non-`Result`) int / float / str returns cross cleanly.
+  Workaround: each `FromSql` coercion is split into two plain-primitive
+  functions — `<name>_status(v) int` (0=Ok, 1=InvalidType, 2=OutOfRange) and
+  `<name>_value(v) <T>` — neither of which returns a `Result`. The native
+  oracle mirrors this API.
+  - AutoVM: float-in-Result corrupted across module boundary
+  - a2r: not affected (direct calls, no module boundary)
+  - Rust: n/a
+  - 偏差类型: 可接受 (accepted — worked around; no test-case divergence)
+  - 状态: accepted
+
+- **DIV-RUSQLITE-VM-2 — the 32-bit VM `int` cannot represent i32/u32
+  out-of-range boundary values.** The VM `int` is 32-bit signed and silently
+  wraps (it has no i64), so the literal `2147483648` (one past `i32::MAX`)
+  wraps to `-2147483648`, and `4294967295` (`u32::MAX`) is unrepresentable.
+  rusqlite's `FromSql for i32`/`u32` *would* return `OutOfRange` for these, but
+  the value cannot be constructed in the VM to test that path. Workaround:
+  those specific boundary cases are excluded from the suite; the i32/u32
+  in-range and InvalidType paths are covered, and the i8/i16/u8/u16 coercions
+  exercise the `OutOfRange` path with values (200, 256, 32768, 65536, -1, ...)
+  that ARE representable in a 32-bit int. All three backends agree on every
+  included case.
+  - AutoVM: cannot construct the out-of-range i32/u32 inputs (32-bit wrap)
+  - a2r: same (transpiles the same Auto source; `i32 > i32::MAX` is a
+    compile-time-no-op warning)
+  - Rust: returns `OutOfRange` correctly (real i64)
+  - 偏差类型: 可接受 (accepted — excluded from suite; documented)
+  - 状态: accepted
+
+### rusqlite API representation differences (by design)
+
+These are deliberate modelling choices, not bugs. The suite is constructed so
+all three backends agree:
+
+- SQLite `Value` is modelled as an opaque `Val { kind, ival, sval, fval }`
+  struct (tag + one payload per variant) rather than an enum-with-payload,
+  because Auto has no such construct. Callers never read `Val` fields directly.
+- `FromSql` error variants are encoded as int status codes (0/1/2) rather than
+  the `FromSqlError` enum, because Auto has no enums and the VM corrupts Err
+  string payloads (DIV-URL-VM-2).
+- `bool` results are read as 0/1 ints (Auto has no first-class bool payload in
+  `Result`; the native oracle maps Rust `bool` to 0/1 for comparison).
+

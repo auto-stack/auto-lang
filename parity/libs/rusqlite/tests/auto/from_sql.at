@@ -1,0 +1,170 @@
+/// rusqlite FromSql coercion tests — TAP output format.
+/// Names mirror the Rust oracle in tests/rust/tests/rusqlite.rs EXACTLY so the
+/// parity framework can compare three-way (AutoVM vs a2r vs native Rust).
+///
+/// Each coercion uses the status+value API:
+///   status 0 = Ok, 1 = InvalidType, 2 = OutOfRange.
+/// Each test below emits exactly one TAP line whose name matches one oracle
+/// `#[test]`; the combined status+value assertion is folded into that one line.
+use auto.rusqlite: null_, integer_, real_, text_, blob_, data_type
+use auto.rusqlite: from_i64_status, from_i64_value
+use auto.rusqlite: from_i32_status, from_i32_value
+use auto.rusqlite: from_i16_status, from_i16_value
+use auto.rusqlite: from_i8_status, from_i8_value
+use auto.rusqlite: from_u16_status, from_u16_value
+use auto.rusqlite: from_u32_status, from_u32_value
+use auto.rusqlite: from_u8_status, from_u8_value
+use auto.rusqlite: from_f64_status, from_f64_value
+use auto.rusqlite: from_bool_status, from_bool_value
+use auto.rusqlite: from_string_status, from_string_value
+use auto.rusqlite: from_blob_status, from_blob_value
+use auto.rusqlite: from_option_status
+use auto.rusqlite: option_is_none
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+/// Assert a coercion produced the expected status. (pure status tests)
+fn check_status(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "status got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+/// Assert an int coercion returned status 0 AND the expected int value.
+fn check_int(n int, name str, status int, value int, expected int) {
+    if status == 0 {
+        if value == expected {
+            tap_ok(n, name)
+        } else {
+            tap_not_ok(n, name, "value got " + value.to(str) + " expected " + expected.to(str))
+        }
+    } else {
+        tap_not_ok(n, name, "status " + status.to(str) + " (expected ok)")
+    }
+}
+
+/// Assert a float coercion returned status 0 AND the expected float value.
+fn check_float(n int, name str, status int, value float, expected float) {
+    if status == 0 {
+        if value == expected {
+            tap_ok(n, name)
+        } else {
+            tap_not_ok(n, name, "value got " + value.to(str) + " expected " + expected.to(str))
+        }
+    } else {
+        tap_not_ok(n, name, "status " + status.to(str) + " (expected ok)")
+    }
+}
+
+/// Assert a string coercion returned status 0 AND the expected string.
+fn check_str(n int, name str, status int, value str, expected str) {
+    if status == 0 {
+        if value == expected {
+            tap_ok(n, name)
+        } else {
+            tap_not_ok(n, name, "value got \"" + value + "\" expected \"" + expected + "\"")
+        }
+    } else {
+        tap_not_ok(n, name, "status " + status.to(str) + " (expected ok)")
+    }
+}
+
+fn main() {
+    // ---- data_type / variant kinds ----
+    check_status(1, "test_null_kind", data_type(null_()), 0)
+    check_status(2, "test_integer_kind", data_type(integer_(5)), 1)
+    check_status(3, "test_real_kind", data_type(real_(3.5)), 2)
+    check_status(4, "test_text_kind", data_type(text_("x")), 3)
+    check_status(5, "test_blob_kind", data_type(blob_("y")), 4)
+
+    // ---- i64 (Integer -> i64; else InvalidType) ----
+    check_int(6, "test_i64_ok", from_i64_status(integer_(5)), from_i64_value(integer_(5)), 5)
+    check_int(7, "test_i64_negative", from_i64_status(integer_(-42)), from_i64_value(integer_(-42)), -42)
+    check_int(8, "test_i64_zero", from_i64_status(integer_(0)), from_i64_value(integer_(0)), 0)
+    check_status(9, "test_i64_invalid_type_text", from_i64_status(text_("x")), 1)
+    check_status(10, "test_i64_invalid_type_real", from_i64_status(real_(1.0)), 1)
+    check_status(11, "test_i64_invalid_type_null", from_i64_status(null_()), 1)
+
+    // ---- i32 (in-range + InvalidType only; out-of-range unrepresentable in 32-bit VM) ----
+    check_int(12, "test_i32_in_range", from_i32_status(integer_(100)), from_i32_value(integer_(100)), 100)
+    check_status(13, "test_i32_max", from_i32_status(integer_(2147483647)), 0)
+    check_status(14, "test_i32_min", from_i32_status(integer_(0 - 2147483647 - 1)), 0)
+    check_status(15, "test_i32_invalid_type", from_i32_status(text_("x")), 1)
+
+    // ---- i16 (range [-32768, 32767]) ----
+    check_int(16, "test_i16_in_range", from_i16_status(integer_(100)), from_i16_value(integer_(100)), 100)
+    check_status(17, "test_i16_max", from_i16_status(integer_(32767)), 0)
+    check_status(18, "test_i16_min", from_i16_status(integer_(0 - 32768)), 0)
+    check_status(19, "test_i16_over_range", from_i16_status(integer_(32768)), 2)
+    check_status(20, "test_i16_under_range", from_i16_status(integer_(0 - 32769)), 2)
+
+    // ---- i8 (range [-128, 127]) ----
+    check_int(21, "test_i8_in_range", from_i8_status(integer_(100)), from_i8_value(integer_(100)), 100)
+    check_status(22, "test_i8_max", from_i8_status(integer_(127)), 0)
+    check_status(23, "test_i8_min", from_i8_status(integer_(0 - 128)), 0)
+    check_status(24, "test_i8_over_range", from_i8_status(integer_(200)), 2)
+    check_status(25, "test_i8_under_range", from_i8_status(integer_(0 - 200)), 2)
+
+    // ---- u8 (range [0, 255]) ----
+    check_int(26, "test_u8_in_range", from_u8_status(integer_(100)), from_u8_value(integer_(100)), 100)
+    check_status(27, "test_u8_max", from_u8_status(integer_(255)), 0)
+    check_int(28, "test_u8_zero", from_u8_status(integer_(0)), from_u8_value(integer_(0)), 0)
+    check_status(29, "test_u8_over_range", from_u8_status(integer_(256)), 2)
+    check_status(30, "test_u8_negative", from_u8_status(integer_(-1)), 2)
+
+    // ---- u16 (range [0, 65535]) ----
+    check_int(31, "test_u16_in_range", from_u16_status(integer_(100)), from_u16_value(integer_(100)), 100)
+    check_status(32, "test_u16_max", from_u16_status(integer_(65535)), 0)
+    check_status(33, "test_u16_over_range", from_u16_status(integer_(65536)), 2)
+    check_status(34, "test_u16_negative", from_u16_status(integer_(-1)), 2)
+
+    // ---- f64 (Integer -> i as f64, OR Real -> f, else InvalidType) ----
+    check_float(35, "test_f64_from_int", from_f64_status(integer_(5)), from_f64_value(integer_(5)), 5.0)
+    check_float(36, "test_f64_from_real", from_f64_status(real_(3.5)), from_f64_value(real_(3.5)), 3.5)
+    check_status(37, "test_f64_from_negative_int", from_f64_status(integer_(-7)), 0)
+    check_status(38, "test_f64_invalid_type_text", from_f64_status(text_("x")), 1)
+    check_status(39, "test_f64_invalid_type_null", from_f64_status(null_()), 1)
+
+    // ---- bool (`i64 -> i != 0`) ----
+    check_int(40, "test_bool_zero", from_bool_status(integer_(0)), from_bool_value(integer_(0)), 0)
+    check_int(41, "test_bool_one", from_bool_status(integer_(1)), from_bool_value(integer_(1)), 1)
+    check_int(42, "test_bool_nonzero", from_bool_status(integer_(7)), from_bool_value(integer_(7)), 1)
+    check_int(43, "test_bool_negative", from_bool_status(integer_(-3)), from_bool_value(integer_(-3)), 1)
+    check_status(44, "test_bool_invalid_type_text", from_bool_status(text_("x")), 1)
+    check_status(45, "test_bool_invalid_type_real", from_bool_status(real_(1.0)), 1)
+
+    // ---- String (`value.as_str()`) ----
+    check_str(46, "test_string_ok", from_string_status(text_("hello")), from_string_value(text_("hello")), "hello")
+    check_status(47, "test_string_empty", from_string_status(text_("")), 0)
+    check_status(48, "test_string_invalid_type_int", from_string_status(integer_(5)), 1)
+    check_status(49, "test_string_invalid_type_null", from_string_status(null_()), 1)
+    check_status(50, "test_string_invalid_type_real", from_string_status(real_(1.0)), 1)
+
+    // ---- Option<T> (Null -> None) ----
+    check_status(51, "test_option_none_on_null", option_is_none(null_()), 1)
+    check_status(52, "test_option_some_on_int", option_is_none(integer_(5)), 0)
+    check_status(53, "test_option_some_on_text", option_is_none(text_("x")), 0)
+
+    // ---- Blob (`value.as_blob()`) — bytes read back as a string ----
+    check_str(54, "test_blob_ok", from_blob_status(blob_("abc")), from_blob_value(blob_("abc")), "abc")
+    check_status(55, "test_blob_empty", from_blob_status(blob_("")), 0)
+    check_status(56, "test_blob_invalid_type_text", from_blob_status(text_("x")), 1)
+    check_status(57, "test_blob_invalid_type_int", from_blob_status(integer_(5)), 1)
+
+    // ---- Option<T> status (0 = None/Null, 1 = Some present) ----
+    check_status(58, "test_option_status_none", from_option_status(null_()), 0)
+    check_status(59, "test_option_status_some", from_option_status(integer_(5)), 1)
+
+    // ---- u32 (range [0, 4294967295]; only [0, 2^31-1] and negative testable in 32-bit VM) ----
+    check_int(60, "test_u32_in_range", from_u32_status(integer_(100)), from_u32_value(integer_(100)), 100)
+    check_int(61, "test_u32_zero", from_u32_status(integer_(0)), from_u32_value(integer_(0)), 0)
+    check_status(62, "test_u32_negative", from_u32_status(integer_(-1)), 2)
+}
