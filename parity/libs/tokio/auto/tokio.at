@@ -1,0 +1,49 @@
+/// tokio library: async/await concurrency primitives — Auto replication.
+///
+/// Replicates the async computation patterns of the Rust `tokio` crate
+/// for serial async function composition. Tests that `~T` (Future) functions
+/// compose correctly across the three backends.
+///
+/// ## Scope
+///
+/// This library tests **async/await** (serial future composition), which is the
+/// subset of tokio's concurrency model that works in the current AutoVM.
+///
+/// The following tokio features are NOT tested (VM limitations, documented in
+/// known-divergences.md):
+///   - `spawn` / `join` (`.go` syntax crashes the VM with stack underflow)
+///   - `Handle[T]` generic type (parser rejects `[` after type name)
+///   - `mpsc` channels (`chan_new[T]` has no Auto-level syntax binding to
+///     the VM's CHAN_NEW/SEND/RECV opcodes)
+///
+/// ## API
+///
+///   `double(n int) ~int`      — async function that doubles a number
+///   `add(a, b int) ~int`      — async function that adds two numbers
+///   `compute(a, b int) ~int`  — async function composing double + add
+///   `delay_value(v int) ~int` — async identity function (simulates async work)
+
+fn double(n int) ~int {
+    n * 2
+}
+
+fn add(a int, b int) ~int {
+    a + b
+}
+
+fn compute(a int, b int) ~int {
+    var d int = double(a).await
+    var s int = add(d, b).await
+    s
+}
+
+fn delay_value(v int) ~int {
+    v
+}
+
+fn pipeline(n int) ~int {
+    var step1 int = delay_value(n).await
+    var step2 int = double(step1).await
+    var step3 int = add(step2, 1).await
+    step3
+}

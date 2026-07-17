@@ -1,0 +1,393 @@
+/// rusqlite library: query-layer value marshalling (FromSql / ToSql).
+///
+/// Replicates the *deterministic, observable* behaviour of rusqlite crate
+/// v0.31.0's query layer — the `FromSql::column_result` (SQLite Value -> Rust
+/// value) and `ToSql` (Rust value -> SQLite Value) coercions. These are
+/// pure functions of the value alone (no database needed), which is exactly
+/// why they are suitable for a three-way parity check:
+///
+///   - AutoVM  : the pure-Auto functions below
+///   - a2r     : the same Auto source transpiled to Rust
+///   - native  : real rusqlite 0.31.0 `FromSql`/`ToSql` driving an in-memory
+///               SQLite database (so the Value -> Rust mapping goes through
+///               the real crate)
+///
+/// What is deliberately NOT replicated (and why):
+///   * `Connection` / `Statement` — opaque, stateful handles that cannot cross
+///     the VM boundary (`use.rust` `RustFfiBridge` marshals only primitives via
+///     `VMConvertible`). See `parity/docs/known-divergences.md` DIV-RUSQLITE-1.
+///   * SQL execution / query planning — that is SQLite's job, not rusqlite's.
+///
+/// ## Value representation
+/// A SQLite `Value` is one of { Null, Integer(i64), Real(f64), Text(str),
+/// Blob(bytes) }. Auto has no enums-with-payload, so we model a Value as a
+/// struct `Val` with four fields (one payload per variant):
+///
+///     Val { kind, ival, sval, fval }
+///
+///   kind 0 = Null
+///   kind 1 = Integer  -> payload in `ival`  (signed; bit pattern is the i64)
+///   kind 2 = Real     -> payload in `fval`  (f64)
+///   kind 3 = Text     -> payload in `sval`  (UTF-8 string)
+///   kind 4 = Blob     -> payload in `sval`  (bytes held as a str of code points)
+///
+/// `Val` is treated as an **opaque handle** by callers: created only via the
+/// constructors below and consumed only by the accessors in *this* module.
+/// Callers never read `Val` fields directly. This sidesteps the known VM bug
+/// where user-defined struct fields corrupt across module boundaries
+/// (DIV-URL-VM-1).
+///
+/// ## Result / error encoding
+/// rusqlite's `FromSqlResult` distinguishes `InvalidType` from `OutOfRange`.
+/// The Auto VM corrupts `Result` payloads in two boundary cases:
+///   (a) Err *string* payloads read via `is`/`match` bindings (DIV-URL-VM-2);
+///   (b) `Result`-wrapped *float* payloads crossing the module boundary
+///       (DIV-RUSQLITE-VM-1, discovered here).
+/// So instead of returning `Result<T, E>` across the boundary, each FromSql
+/// coercion is split into TWO plain functions returning plain primitives
+/// (which the VM marshals correctly):
+///   `<name>_status(v) int`   -> 0 = Ok, 1 = InvalidType, 2 = OutOfRange
+///   `<name>_value(v)  <T>`   -> the coerced payload (valid only when status==0)
+/// This keeps the observable (ok payload | invalid_type | out_of_range)
+/// mapping identical across all three backends.
+
+pub type Val {
+    kind int
+    ival int
+    sval str
+    fval float
+}
+
+// ---------------------------------------------------------------------------
+// Value constructors (mirror rusqlite `Value` variants). Each returns an
+// initialised Val; callers treat it opaquely.
+// ---------------------------------------------------------------------------
+
+/// Construct a Null value.
+fn null_() Val {
+    return Val { kind: 0, ival: 0, sval: "", fval: 0.0 }
+}
+
+/// Construct an Integer value carrying the i64 bit pattern (held as Auto int).
+fn integer_(i int) Val {
+    return Val { kind: 1, ival: i, sval: "", fval: 0.0 }
+}
+
+/// Construct a Real value.
+fn real_(f float) Val {
+    return Val { kind: 2, ival: 0, sval: "", fval: f }
+}
+
+/// Construct a Text value.
+fn text_(s str) Val {
+    return Val { kind: 3, ival: 0, sval: s, fval: 0.0 }
+}
+
+/// Construct a Blob value (bytes held as a str).
+fn blob_(s str) Val {
+    return Val { kind: 4, ival: 0, sval: s, fval: 0.0 }
+}
+
+// ---------------------------------------------------------------------------
+// Type inspection (mirrors `ValueRef::data_type`).
+// ---------------------------------------------------------------------------
+
+/// Return the SQLite Type kind (0..4). Exposed so tests can confirm a
+/// constructor produced the right variant without touching fields.
+fn data_type(v Val) int {
+    return v.kind
+}
+
+// ---------------------------------------------------------------------------
+// FromSql coercions — mirror `impl FromSql for ...` in rusqlite's from_sql.rs.
+// Each coercion is exposed as a `_status` int + a `_value` payload accessor.
+// status: 0 = Ok, 1 = InvalidType, 2 = OutOfRange.
+// ---------------------------------------------------------------------------
+
+// --- i64 (the integral root type; Integer -> i64, else InvalidType) --------
+
+/// `impl FromSql for i64` -> `value.as_i64()`. Status only.
+fn from_i64_status(v Val) int {
+    if v.kind == 1 {
+        return 0
+    }
+    return 1
+}
+
+/// i64 payload (valid when status == 0).
+fn from_i64_value(v Val) int {
+    return v.ival
+}
+
+// --- i32 (range [-2147483648, 2147483647]) --------------------------------
+// NOTE: the VM int is 32-bit signed and silently wraps, so the literal value
+// 2147483648 (one past i32::MAX) cannot be represented — it wraps to
+// -2147483648. Therefore the *out-of-range upper bound* for i32 is not
+// testable in the VM (documented in DIV-RUSQLITE-VM-2). In-range values and
+// the InvalidType path are fully tested.
+
+fn from_i32_status(v Val) int {
+    if v.kind != 1 {
+        return 1
+    }
+    // Range check. 2147483647 is representable; the lower bound is computed
+    // to avoid the -2147483648 literal edge case in some VM paths.
+    if v.ival > 2147483647 {
+        return 2
+    }
+    if v.ival < 0 - 2147483647 - 1 {
+        return 2
+    }
+    return 0
+}
+
+fn from_i32_value(v Val) int {
+    return v.ival
+}
+
+// --- i16 (range [-32768, 32767]) ------------------------------------------
+
+fn from_i16_status(v Val) int {
+    if v.kind != 1 {
+        return 1
+    }
+    if v.ival > 32767 {
+        return 2
+    }
+    if v.ival < 0 - 32768 {
+        return 2
+    }
+    return 0
+}
+
+fn from_i16_value(v Val) int {
+    return v.ival
+}
+
+// --- i8 (range [-128, 127]) -----------------------------------------------
+
+fn from_i8_status(v Val) int {
+    if v.kind != 1 {
+        return 1
+    }
+    if v.ival > 127 {
+        return 2
+    }
+    if v.ival < 0 - 128 {
+        return 2
+    }
+    return 0
+}
+
+fn from_i8_value(v Val) int {
+    return v.ival
+}
+
+// --- u32 (range [0, 4294967295]) ------------------------------------------
+// NOTE: same 32-bit-wrap limitation as i32 — values above 2147483647 cannot be
+// represented, so only the lower-bound (negative -> OutOfRange) and in-range
+// [0, 2147483647] paths are exercised (DIV-RUSQLITE-VM-2).
+
+fn from_u32_status(v Val) int {
+    if v.kind != 1 {
+        return 1
+    }
+    if v.ival < 0 {
+        return 2
+    }
+    return 0
+}
+
+fn from_u32_value(v Val) int {
+    return v.ival
+}
+
+// --- u16 (range [0, 65535]) -----------------------------------------------
+
+fn from_u16_status(v Val) int {
+    if v.kind != 1 {
+        return 1
+    }
+    if v.ival > 65535 {
+        return 2
+    }
+    if v.ival < 0 {
+        return 2
+    }
+    return 0
+}
+
+fn from_u16_value(v Val) int {
+    return v.ival
+}
+
+// --- u8 (range [0, 255]) --------------------------------------------------
+
+fn from_u8_status(v Val) int {
+    if v.kind != 1 {
+        return 1
+    }
+    if v.ival > 255 {
+        return 2
+    }
+    if v.ival < 0 {
+        return 2
+    }
+    return 0
+}
+
+fn from_u8_value(v Val) int {
+    return v.ival
+}
+
+// --- f64 (Integer -> i as f64, OR Real -> f, else InvalidType) -------------
+
+fn from_f64_status(v Val) int {
+    if v.kind == 1 {
+        return 0
+    }
+    if v.kind == 2 {
+        return 0
+    }
+    return 1
+}
+
+/// f64 payload. For Integer, widens i -> f64 (mirrors `i as f64`). For Real,
+/// returns the stored f64.
+fn from_f64_value(v Val) float {
+    if v.kind == 1 {
+        return v.ival.to(float)
+    }
+    return v.fval
+}
+
+// --- f32 (same coercion as f64, narrowed) ---------------------------------
+
+fn from_f32_status(v Val) int {
+    return from_f64_status(v)
+}
+
+fn from_f32_value(v Val) float {
+    return from_f64_value(v)
+}
+
+// --- bool (`i64::column_result(value).map(|i| i != 0)`) -------------------
+// Returns 1 for truthy, 0 for falsy (mirrors Rust bool as 0/1).
+
+fn from_bool_status(v Val) int {
+    if v.kind == 1 {
+        return 0
+    }
+    return 1
+}
+
+fn from_bool_value(v Val) int {
+    if v.ival != 0 {
+        return 1
+    }
+    return 0
+}
+
+// --- String (`value.as_str()`) --------------------------------------------
+
+fn from_string_status(v Val) int {
+    if v.kind == 3 {
+        return 0
+    }
+    return 1
+}
+
+fn from_string_value(v Val) str {
+    return v.sval
+}
+
+// --- Blob (`value.as_blob()`) ---------------------------------------------
+
+fn from_blob_status(v Val) int {
+    if v.kind == 4 {
+        return 0
+    }
+    return 1
+}
+
+fn from_blob_value(v Val) str {
+    return v.sval
+}
+
+// --- Option<T> (`Null -> None`, otherwise inner) --------------------------
+// Modelled as a status: 0 = None (Null), 1 = Some-present, 2 = invalid.
+// Callers combine `from_option_status` with the inner accessor they need.
+
+fn from_option_status(v Val) int {
+    if v.kind == 0 {
+        return 0
+    }
+    return 1
+}
+
+/// Convenience: 1 if this Value is Null, else 0 (mirrors `Option::is_none`).
+fn option_is_none(v Val) int {
+    if v.kind == 0 {
+        return 1
+    }
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// ToSql coercions — mirror `impl ToSql for ...` / `impl From<T> for Value` in
+// rusqlite. Each Rust value maps to exactly one SQLite Value variant.
+// ---------------------------------------------------------------------------
+
+/// `i64 -> Value::Integer`.
+fn to_sql_i64(i int) Val {
+    return integer_(i)
+}
+
+/// `i32 -> Value::Integer` (widened).
+fn to_sql_i32(i int) Val {
+    return integer_(i)
+}
+
+/// `f64 -> Value::Real`.
+fn to_sql_f64(f float) Val {
+    return real_(f)
+}
+
+/// `bool -> Value::Integer` (0 or 1).
+fn to_sql_bool(b int) Val {
+    if b != 0 {
+        return integer_(1)
+    }
+    return integer_(0)
+}
+
+/// `String -> Value::Text`.
+fn to_sql_string(s str) Val {
+    return text_(s)
+}
+
+/// `Null -> Value::Null`.
+fn to_sql_null() Val {
+    return null_()
+}
+
+// ---------------------------------------------------------------------------
+// Round-trip helpers (mirror rusqlite's ToSql then FromSql identity).
+// Each returns the status of the read-back coercion; the payload is read via
+// the matching `_value` accessor. Status 0 means the round-trip succeeded.
+// ---------------------------------------------------------------------------
+
+/// Encode i64 -> Value -> read as i64. Returns 0 on a clean round-trip.
+fn roundtrip_i64_status(i int) int {
+    return from_i64_status(to_sql_i64(i))
+}
+
+/// Encode str -> Value -> read as String. Returns 0 on a clean round-trip.
+fn roundtrip_string_status(s str) int {
+    return from_string_status(to_sql_string(s))
+}
+
+/// Encode i64 -> Value -> read as bool. Returns 0 on a clean round-trip.
+fn roundtrip_bool_status(i int) int {
+    return from_bool_status(to_sql_i64(i))
+}

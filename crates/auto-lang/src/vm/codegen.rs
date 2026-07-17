@@ -5869,11 +5869,16 @@ impl Codegen {
                                 vm_debug!("DEBUG: Dot Ident: obj_name={}, method={}, var_type={:?}", obj_name, method, self.var_types.get(obj_name.as_str()));
                                 // Check if it's a static method call (Type.method with capital T)
                                 // Also treat stdlib singleton module names (env, fs) as static
-                                // BUT: if the name is a known local variable (e.g. `json str` parameter),
-                                // treat as instance method call instead of module call
-                                let is_local_var = self.var_types.contains_key(obj_name.as_ref());
+                                // BUT: if the name is a known local variable (e.g. `json str` parameter)
+                                // or a module-level global variable, treat as instance method call
+                                // instead of module call. Without the global_vars check, an
+                                // uppercase-named global (e.g. `H0`) is misclassified as a static
+                                // type reference. See Plan 355 (sha2 global-var bitop bug).
+                                let is_local_var = self.var_types.contains_key(obj_name.as_ref())
+                                    || self.global_vars.contains(obj_name.as_ref())
+                                    || self.lookup_var(obj_name.as_str()).is_some();
                                 let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi");
-                                if is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name) {
+                                if !is_local_var && (is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
                                     if method.as_str() == "spawn" && self.types.contains_key(obj_name.as_ref()) {
@@ -6661,9 +6666,18 @@ impl Codegen {
                         // Also treat stdlib module names (env, fs, etc.) as static
                         let is_static_method = match obj.as_ref() {
                             Expr::Ident(obj_name) => {
-                                // If the identifier resolves to a local variable, it's an
-                                // instance method call on that value — not a static call.
-                                if self.lookup_var(obj_name.as_str()).is_some() {
+                                // If the identifier resolves to a variable (local OR
+                                // module-level global), it's an instance method call on
+                                // that value — not a static call. This MUST be checked
+                                // before the uppercase-heuristic below: a global named
+                                // `H0` or `ABC` starts with an uppercase letter and would
+                                // otherwise be misclassified as a static type reference,
+                                // causing the receiver to never be compiled (so the
+                                // method's `self` argument would pop garbage off the
+                                // stack). See Plan 355 (sha2 global-var bitop bug).
+                                if self.lookup_var(obj_name.as_str()).is_some()
+                                    || self.global_vars.contains(obj_name.as_str())
+                                {
                                     false
                                 } else {
                                     let lower = obj_name.as_ref();
@@ -9260,19 +9274,19 @@ impl Codegen {
 
     fn emit_global_load(&mut self, name: &str) {
         let qname = self.qualified_global_name(name);
-        let idx = self.strings.len() as u8;
+        let idx = self.strings.len() as u16;
         self.strings.push(qname.as_bytes().to_vec());
         self.emit(OpCode::LOAD_GLOBAL);
-        self.code.push(idx);
+        self.emit_u16(idx);
     }
 
     /// Plan 327: Emit STORE_GLOBAL for a module-level variable.
     fn emit_global_store(&mut self, name: &str) {
         let qname = self.qualified_global_name(name);
-        let idx = self.strings.len() as u8;
+        let idx = self.strings.len() as u16;
         self.strings.push(qname.as_bytes().to_vec());
         self.emit(OpCode::STORE_GLOBAL);
-        self.code.push(idx);
+        self.emit_u16(idx);
     }
 
     fn emit_load_loc(&mut self, index: usize) {

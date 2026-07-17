@@ -1,0 +1,29 @@
+/// rusqlite ToSql -> FromSql round-trip tests — TAP output format.
+/// Names mirror the Rust oracle in tests/rust/tests/rusqlite.rs EXACTLY.
+use auto.rusqlite: to_sql_i64, to_sql_string, to_sql_bool
+use auto.rusqlite: from_i64_status, from_string_status, from_bool_status
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_status(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "status got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    // ToSql i64 -> Value -> FromSql i64 : status 0
+    check_status(1, "test_roundtrip_i64_status", from_i64_status(to_sql_i64(42)), 0)
+    // ToSql String -> Value -> FromSql String : status 0
+    check_status(2, "test_roundtrip_string_status", from_string_status(to_sql_string("hello")), 0)
+    // ToSql bool -> Value(Integer) -> FromSql bool : status 0
+    check_status(3, "test_roundtrip_bool_status", from_bool_status(to_sql_bool(1)), 0)
+}

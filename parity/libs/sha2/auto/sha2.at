@@ -1,0 +1,868 @@
+/// sha2 library: SHA-256 hash.
+///
+/// Replicates the input -> hex-digest mapping of the Rust `sha2` crate
+/// v0.10.8 (`Sha256`) for ASCII / byte-string inputs.
+///
+///   `sha256(input str) str` -> 64-char lowercase hex digest.
+///
+/// ## The 32-bit-unsigned-in-a-signed-VM problem (and its solution).
+///
+/// SHA-256 is defined over 32-bit *unsigned* words (`u32`), using addition
+/// mod 2^32, logical right-shift, right-rotation, and AND/OR/XOR/NOT. The
+/// Auto VM has only a signed `int` type — there is no `uint`. This module
+/// proves that the signed `int` is nonetheless sufficient, because:
+///
+///   1. The VM's `int` bit pattern is the full 32-bit two's-complement
+///      representation. A value whose top bit is set (e.g. `0x80000000`) is
+///      carried correctly even though it reads back as a negative number.
+///   2. Integer addition wraps mod 2^32 exactly: `0x7FFFFFFF + 1` yields the
+///      bit pattern `0x80000000`, and `0x80000000 + 0x80000000` yields `0`.
+///      No manual modular reduction is needed.
+///   3. `.shr(n)` is a LOGICAL (zero-filling, unsigned) right shift even when
+///      the operand's top bit is set — which is precisely what SHA-256 needs.
+///      (`.sar(n)`, the arithmetic shift, exists but is NOT used here.)
+///   4. `.and`, `.or`, `.xor` operate on the full 32-bit pattern.
+///
+/// So every SHA-256 word is held as a plain `int`, and its bit pattern *is*
+/// the correct u32 value. We never need to print these as decimal; the only
+/// place the unsigned value matters is the final byte extraction, which reads
+/// the four bytes via `.shr(24).and(255)`, `.shr(16).and(255)`, etc.
+///
+/// ## Load-bearing VM workarounds (the same family as base64/regex/serde_json).
+///
+///   * **No bitwise-operator chaining.** `x.shr(8).and(15)` miscomputes; every
+///     native bitwise call must be applied to a separately-named `let`/`var`.
+///   * **No 32-bit literals.** Hex literals `>= 0x80000000` parse to `0`, and
+///     decimal literals `>= 2^31` also fail. Every K/H constant is built from
+///     its four bytes via `mk32(b0,b1,b2,b3)` (shifts + ors), where each byte
+///     is a small positive literal in `[0,255]`.
+///   * **No arrays.** The 64-entry round-constant table K and the 64-entry
+///     message schedule W are surfaced through accessor functions (`k_at`,
+///     `w_at`) backed by module-level `var int` globals plus set/get helpers,
+///     since the VM has no array/Vec type and module-level `const` is not
+///     reliably visible across calls.
+///   * **`str.char_at(i)` returns the code point as `int`** (not a one-char
+///     string), which is exactly what byte extraction from the message needs.
+///   * **Strings are UTF-8.** `char_at` indexes code points; for ASCII inputs
+///     (all NIST test vectors) code points == bytes, matching the Rust oracle
+///     (`input.as_bytes()`). Non-ASCII inputs are out of scope.
+
+// ---------------------------------------------------------------------------
+// 32-bit unsigned helpers (operate on the bit pattern of a signed int).
+// ---------------------------------------------------------------------------
+
+/// Build a 32-bit word from four bytes (big-endian). Each byte is 0..255.
+fn mk32(b0 int, b1 int, b2 int, b3 int) int {
+    var s0 int = b0.shl(24)
+    var s1 int = b1.shl(16)
+    var s2 int = b2.shl(8)
+    var r int = s0.or(s1)
+    r = r.or(s2)
+    r = r.or(b3)
+    return r
+}
+
+/// Logical right-rotate of a 32-bit word by n bits (n in 1..31).
+///   rotr(x,n) = (x >> n) | (x << (32-n))   all mod 2^32.
+fn rotr(x int, n int) int {
+    var hi int = x.shr(n)
+    var m int = 32 - n
+    var lo int = x.shl(m)
+    var r int = hi.or(lo)
+    return r
+}
+
+/// Ch(x,y,z) = (x & y) ^ (~x & z).
+fn ch(x int, y int, z int) int {
+    var a int = x.and(y)
+    var nx int = x.not()
+    var b int = nx.and(z)
+    var r int = a.xor(b)
+    return r
+}
+
+/// Maj(x,y,z) = (x & y) ^ (x & z) ^ (y & z).
+fn maj(x int, y int, z int) int {
+    var a int = x.and(y)
+    var b int = x.and(z)
+    var c int = y.and(z)
+    var r int = a.xor(b)
+    r = r.xor(c)
+    return r
+}
+
+/// BigSigma0(x) = rotr(x,2) ^ rotr(x,13) ^ rotr(x,22).
+fn big0(x int) int {
+    var a int = rotr(x, 2)
+    var b int = rotr(x, 13)
+    var c int = rotr(x, 22)
+    var r int = a.xor(b)
+    r = r.xor(c)
+    return r
+}
+
+/// BigSigma1(x) = rotr(x,6) ^ rotr(x,11) ^ rotr(x,25).
+fn big1(x int) int {
+    var a int = rotr(x, 6)
+    var b int = rotr(x, 11)
+    var c int = rotr(x, 25)
+    var r int = a.xor(b)
+    r = r.xor(c)
+    return r
+}
+
+/// SmallSigma0(x) = rotr(x,7) ^ rotr(x,18) ^ (x >> 3).
+fn small0(x int) int {
+    var a int = rotr(x, 7)
+    var b int = rotr(x, 18)
+    var c int = x.shr(3)
+    var r int = a.xor(b)
+    r = r.xor(c)
+    return r
+}
+
+/// SmallSigma1(x) = rotr(x,17) ^ rotr(x,19) ^ (x >> 10).
+fn small1(x int) int {
+    var a int = rotr(x, 17)
+    var b int = rotr(x, 19)
+    var c int = x.shr(10)
+    var r int = a.xor(b)
+    r = r.xor(c)
+    return r
+}
+
+/// Add two 32-bit words mod 2^32 (the VM's `+` already wraps correctly).
+fn add32(a int, b int) int {
+    return a + b
+}
+
+// ---------------------------------------------------------------------------
+// Round-constant table K (64 entries). No arrays in the VM, so each entry is
+// returned by `k_at(i)` via an explicit ladder. The byte literals come from
+// the FIPS 180-4 K table (each constant split into its four big-endian bytes
+// because literals >= 2^31 cannot be written directly).
+// ---------------------------------------------------------------------------
+
+fn k_at(i int) int {
+    if i == 0 { return mk32(66, 138, 47, 152) }
+    if i == 1 { return mk32(113, 55, 68, 145) }
+    if i == 2 { return mk32(181, 192, 251, 207) }
+    if i == 3 { return mk32(233, 181, 219, 165) }
+    if i == 4 { return mk32(57, 86, 194, 91) }
+    if i == 5 { return mk32(89, 241, 17, 241) }
+    if i == 6 { return mk32(146, 63, 130, 164) }
+    if i == 7 { return mk32(171, 28, 94, 213) }
+    if i == 8 { return mk32(216, 7, 170, 152) }
+    if i == 9 { return mk32(18, 131, 91, 1) }
+    if i == 10 { return mk32(36, 49, 133, 190) }
+    if i == 11 { return mk32(85, 12, 125, 195) }
+    if i == 12 { return mk32(114, 190, 93, 116) }
+    if i == 13 { return mk32(128, 222, 177, 254) }
+    if i == 14 { return mk32(155, 220, 6, 167) }
+    if i == 15 { return mk32(193, 155, 241, 116) }
+    if i == 16 { return mk32(228, 155, 105, 193) }
+    if i == 17 { return mk32(239, 190, 71, 134) }
+    if i == 18 { return mk32(15, 193, 157, 198) }
+    if i == 19 { return mk32(36, 12, 161, 204) }
+    if i == 20 { return mk32(45, 233, 44, 111) }
+    if i == 21 { return mk32(74, 116, 132, 170) }
+    if i == 22 { return mk32(92, 176, 169, 220) }
+    if i == 23 { return mk32(118, 249, 136, 218) }
+    if i == 24 { return mk32(152, 62, 81, 82) }
+    if i == 25 { return mk32(168, 49, 198, 109) }
+    if i == 26 { return mk32(176, 3, 39, 200) }
+    if i == 27 { return mk32(191, 89, 127, 199) }
+    if i == 28 { return mk32(198, 224, 11, 243) }
+    if i == 29 { return mk32(213, 167, 145, 71) }
+    if i == 30 { return mk32(6, 202, 99, 81) }
+    if i == 31 { return mk32(20, 41, 41, 103) }
+    if i == 32 { return mk32(39, 183, 10, 133) }
+    if i == 33 { return mk32(46, 27, 33, 56) }
+    if i == 34 { return mk32(77, 44, 109, 252) }
+    if i == 35 { return mk32(83, 56, 13, 19) }
+    if i == 36 { return mk32(101, 10, 115, 84) }
+    if i == 37 { return mk32(118, 106, 10, 187) }
+    if i == 38 { return mk32(129, 194, 201, 46) }
+    if i == 39 { return mk32(146, 114, 44, 133) }
+    if i == 40 { return mk32(162, 191, 232, 161) }
+    if i == 41 { return mk32(168, 26, 102, 75) }
+    if i == 42 { return mk32(194, 75, 139, 112) }
+    if i == 43 { return mk32(199, 108, 81, 163) }
+    if i == 44 { return mk32(209, 146, 232, 25) }
+    if i == 45 { return mk32(214, 153, 6, 36) }
+    if i == 46 { return mk32(244, 14, 53, 133) }
+    if i == 47 { return mk32(16, 106, 160, 112) }
+    if i == 48 { return mk32(25, 164, 193, 22) }
+    if i == 49 { return mk32(30, 55, 108, 8) }
+    if i == 50 { return mk32(39, 72, 119, 76) }
+    if i == 51 { return mk32(52, 176, 188, 181) }
+    if i == 52 { return mk32(57, 28, 12, 179) }
+    if i == 53 { return mk32(78, 216, 170, 74) }
+    if i == 54 { return mk32(91, 156, 202, 79) }
+    if i == 55 { return mk32(104, 46, 111, 243) }
+    if i == 56 { return mk32(116, 143, 130, 238) }
+    if i == 57 { return mk32(120, 165, 99, 111) }
+    if i == 58 { return mk32(132, 200, 120, 20) }
+    if i == 59 { return mk32(140, 199, 2, 8) }
+    if i == 60 { return mk32(144, 190, 255, 250) }
+    if i == 61 { return mk32(164, 80, 108, 235) }
+    if i == 62 { return mk32(190, 249, 163, 247) }
+    return mk32(198, 113, 120, 242)
+}
+
+// ---------------------------------------------------------------------------
+// Message schedule W (64 entries). Backed by module-level `var int` slots,
+// read/written through w_get/w_set. (No arrays in the VM.)
+// ---------------------------------------------------------------------------
+
+var W0 int = 0
+var W1 int = 0
+var W2 int = 0
+var W3 int = 0
+var W4 int = 0
+var W5 int = 0
+var W6 int = 0
+var W7 int = 0
+var W8 int = 0
+var W9 int = 0
+var W10 int = 0
+var W11 int = 0
+var W12 int = 0
+var W13 int = 0
+var W14 int = 0
+var W15 int = 0
+var W16 int = 0
+var W17 int = 0
+var W18 int = 0
+var W19 int = 0
+var W20 int = 0
+var W21 int = 0
+var W22 int = 0
+var W23 int = 0
+var W24 int = 0
+var W25 int = 0
+var W26 int = 0
+var W27 int = 0
+var W28 int = 0
+var W29 int = 0
+var W30 int = 0
+var W31 int = 0
+var W32 int = 0
+var W33 int = 0
+var W34 int = 0
+var W35 int = 0
+var W36 int = 0
+var W37 int = 0
+var W38 int = 0
+var W39 int = 0
+var W40 int = 0
+var W41 int = 0
+var W42 int = 0
+var W43 int = 0
+var W44 int = 0
+var W45 int = 0
+var W46 int = 0
+var W47 int = 0
+var W48 int = 0
+var W49 int = 0
+var W50 int = 0
+var W51 int = 0
+var W52 int = 0
+var W53 int = 0
+var W54 int = 0
+var W55 int = 0
+var W56 int = 0
+var W57 int = 0
+var W58 int = 0
+var W59 int = 0
+var W60 int = 0
+var W61 int = 0
+var W62 int = 0
+var W63 int = 0
+
+fn w_get(i int) int {
+    if i == 0 { return W0 }
+    if i == 1 { return W1 }
+    if i == 2 { return W2 }
+    if i == 3 { return W3 }
+    if i == 4 { return W4 }
+    if i == 5 { return W5 }
+    if i == 6 { return W6 }
+    if i == 7 { return W7 }
+    if i == 8 { return W8 }
+    if i == 9 { return W9 }
+    if i == 10 { return W10 }
+    if i == 11 { return W11 }
+    if i == 12 { return W12 }
+    if i == 13 { return W13 }
+    if i == 14 { return W14 }
+    if i == 15 { return W15 }
+    if i == 16 { return W16 }
+    if i == 17 { return W17 }
+    if i == 18 { return W18 }
+    if i == 19 { return W19 }
+    if i == 20 { return W20 }
+    if i == 21 { return W21 }
+    if i == 22 { return W22 }
+    if i == 23 { return W23 }
+    if i == 24 { return W24 }
+    if i == 25 { return W25 }
+    if i == 26 { return W26 }
+    if i == 27 { return W27 }
+    if i == 28 { return W28 }
+    if i == 29 { return W29 }
+    if i == 30 { return W30 }
+    if i == 31 { return W31 }
+    if i == 32 { return W32 }
+    if i == 33 { return W33 }
+    if i == 34 { return W34 }
+    if i == 35 { return W35 }
+    if i == 36 { return W36 }
+    if i == 37 { return W37 }
+    if i == 38 { return W38 }
+    if i == 39 { return W39 }
+    if i == 40 { return W40 }
+    if i == 41 { return W41 }
+    if i == 42 { return W42 }
+    if i == 43 { return W43 }
+    if i == 44 { return W44 }
+    if i == 45 { return W45 }
+    if i == 46 { return W46 }
+    if i == 47 { return W47 }
+    if i == 48 { return W48 }
+    if i == 49 { return W49 }
+    if i == 50 { return W50 }
+    if i == 51 { return W51 }
+    if i == 52 { return W52 }
+    if i == 53 { return W53 }
+    if i == 54 { return W54 }
+    if i == 55 { return W55 }
+    if i == 56 { return W56 }
+    if i == 57 { return W57 }
+    if i == 58 { return W58 }
+    if i == 59 { return W59 }
+    if i == 60 { return W60 }
+    if i == 61 { return W61 }
+    if i == 62 { return W62 }
+    return W63
+}
+
+fn w_set(i int, v int) {
+    if i == 0 { W0 = v }
+    if i == 1 { W1 = v }
+    if i == 2 { W2 = v }
+    if i == 3 { W3 = v }
+    if i == 4 { W4 = v }
+    if i == 5 { W5 = v }
+    if i == 6 { W6 = v }
+    if i == 7 { W7 = v }
+    if i == 8 { W8 = v }
+    if i == 9 { W9 = v }
+    if i == 10 { W10 = v }
+    if i == 11 { W11 = v }
+    if i == 12 { W12 = v }
+    if i == 13 { W13 = v }
+    if i == 14 { W14 = v }
+    if i == 15 { W15 = v }
+    if i == 16 { W16 = v }
+    if i == 17 { W17 = v }
+    if i == 18 { W18 = v }
+    if i == 19 { W19 = v }
+    if i == 20 { W20 = v }
+    if i == 21 { W21 = v }
+    if i == 22 { W22 = v }
+    if i == 23 { W23 = v }
+    if i == 24 { W24 = v }
+    if i == 25 { W25 = v }
+    if i == 26 { W26 = v }
+    if i == 27 { W27 = v }
+    if i == 28 { W28 = v }
+    if i == 29 { W29 = v }
+    if i == 30 { W30 = v }
+    if i == 31 { W31 = v }
+    if i == 32 { W32 = v }
+    if i == 33 { W33 = v }
+    if i == 34 { W34 = v }
+    if i == 35 { W35 = v }
+    if i == 36 { W36 = v }
+    if i == 37 { W37 = v }
+    if i == 38 { W38 = v }
+    if i == 39 { W39 = v }
+    if i == 40 { W40 = v }
+    if i == 41 { W41 = v }
+    if i == 42 { W42 = v }
+    if i == 43 { W43 = v }
+    if i == 44 { W44 = v }
+    if i == 45 { W45 = v }
+    if i == 46 { W46 = v }
+    if i == 47 { W47 = v }
+    if i == 48 { W48 = v }
+    if i == 49 { W49 = v }
+    if i == 50 { W50 = v }
+    if i == 51 { W51 = v }
+    if i == 52 { W52 = v }
+    if i == 53 { W53 = v }
+    if i == 54 { W54 = v }
+    if i == 55 { W55 = v }
+    if i == 56 { W56 = v }
+    if i == 57 { W57 = v }
+    if i == 58 { W58 = v }
+    if i == 59 { W59 = v }
+    if i == 60 { W60 = v }
+    if i == 61 { W61 = v }
+    if i == 62 { W62 = v }
+    if i == 63 { W63 = v }
+}
+
+// ---------------------------------------------------------------------------
+// Padding buffer (the padded message). Backed by module-level `var int` byte
+// slots because there are no arrays. 128 bytes is the max for SHA-256 (one
+// block); inputs longer than 55 bytes need two+ blocks and are processed one
+// 64-byte block at a time via blk_get/blk_set over a rolling 64-byte window.
+// To keep the global count manageable we store the padded message length and
+// fetch bytes directly from the original input string for the data region,
+// reusing a 64-byte block buffer only for the schedule-load step.
+// ---------------------------------------------------------------------------
+
+// 64-byte block buffer for loading W[0..15].
+var B0 int = 0
+var B1 int = 0
+var B2 int = 0
+var B3 int = 0
+var B4 int = 0
+var B5 int = 0
+var B6 int = 0
+var B7 int = 0
+var B8 int = 0
+var B9 int = 0
+var B10 int = 0
+var B11 int = 0
+var B12 int = 0
+var B13 int = 0
+var B14 int = 0
+var B15 int = 0
+var B16 int = 0
+var B17 int = 0
+var B18 int = 0
+var B19 int = 0
+var B20 int = 0
+var B21 int = 0
+var B22 int = 0
+var B23 int = 0
+var B24 int = 0
+var B25 int = 0
+var B26 int = 0
+var B27 int = 0
+var B28 int = 0
+var B29 int = 0
+var B30 int = 0
+var B31 int = 0
+var B32 int = 0
+var B33 int = 0
+var B34 int = 0
+var B35 int = 0
+var B36 int = 0
+var B37 int = 0
+var B38 int = 0
+var B39 int = 0
+var B40 int = 0
+var B41 int = 0
+var B42 int = 0
+var B43 int = 0
+var B44 int = 0
+var B45 int = 0
+var B46 int = 0
+var B47 int = 0
+var B48 int = 0
+var B49 int = 0
+var B50 int = 0
+var B51 int = 0
+var B52 int = 0
+var B53 int = 0
+var B54 int = 0
+var B55 int = 0
+var B56 int = 0
+var B57 int = 0
+var B58 int = 0
+var B59 int = 0
+var B60 int = 0
+var B61 int = 0
+var B62 int = 0
+var B63 int = 0
+
+fn b_get(i int) int {
+    if i == 0 { return B0 }
+    if i == 1 { return B1 }
+    if i == 2 { return B2 }
+    if i == 3 { return B3 }
+    if i == 4 { return B4 }
+    if i == 5 { return B5 }
+    if i == 6 { return B6 }
+    if i == 7 { return B7 }
+    if i == 8 { return B8 }
+    if i == 9 { return B9 }
+    if i == 10 { return B10 }
+    if i == 11 { return B11 }
+    if i == 12 { return B12 }
+    if i == 13 { return B13 }
+    if i == 14 { return B14 }
+    if i == 15 { return B15 }
+    if i == 16 { return B16 }
+    if i == 17 { return B17 }
+    if i == 18 { return B18 }
+    if i == 19 { return B19 }
+    if i == 20 { return B20 }
+    if i == 21 { return B21 }
+    if i == 22 { return B22 }
+    if i == 23 { return B23 }
+    if i == 24 { return B24 }
+    if i == 25 { return B25 }
+    if i == 26 { return B26 }
+    if i == 27 { return B27 }
+    if i == 28 { return B28 }
+    if i == 29 { return B29 }
+    if i == 30 { return B30 }
+    if i == 31 { return B31 }
+    if i == 32 { return B32 }
+    if i == 33 { return B33 }
+    if i == 34 { return B34 }
+    if i == 35 { return B35 }
+    if i == 36 { return B36 }
+    if i == 37 { return B37 }
+    if i == 38 { return B38 }
+    if i == 39 { return B39 }
+    if i == 40 { return B40 }
+    if i == 41 { return B41 }
+    if i == 42 { return B42 }
+    if i == 43 { return B43 }
+    if i == 44 { return B44 }
+    if i == 45 { return B45 }
+    if i == 46 { return B46 }
+    if i == 47 { return B47 }
+    if i == 48 { return B48 }
+    if i == 49 { return B49 }
+    if i == 50 { return B50 }
+    if i == 51 { return B51 }
+    if i == 52 { return B52 }
+    if i == 53 { return B53 }
+    if i == 54 { return B54 }
+    if i == 55 { return B55 }
+    if i == 56 { return B56 }
+    if i == 57 { return B57 }
+    if i == 58 { return B58 }
+    if i == 59 { return B59 }
+    if i == 60 { return B60 }
+    if i == 61 { return B61 }
+    if i == 62 { return B62 }
+    return B63
+}
+
+fn b_set(i int, v int) {
+    if i == 0 { B0 = v }
+    if i == 1 { B1 = v }
+    if i == 2 { B2 = v }
+    if i == 3 { B3 = v }
+    if i == 4 { B4 = v }
+    if i == 5 { B5 = v }
+    if i == 6 { B6 = v }
+    if i == 7 { B7 = v }
+    if i == 8 { B8 = v }
+    if i == 9 { B9 = v }
+    if i == 10 { B10 = v }
+    if i == 11 { B11 = v }
+    if i == 12 { B12 = v }
+    if i == 13 { B13 = v }
+    if i == 14 { B14 = v }
+    if i == 15 { B15 = v }
+    if i == 16 { B16 = v }
+    if i == 17 { B17 = v }
+    if i == 18 { B18 = v }
+    if i == 19 { B19 = v }
+    if i == 20 { B20 = v }
+    if i == 21 { B21 = v }
+    if i == 22 { B22 = v }
+    if i == 23 { B23 = v }
+    if i == 24 { B24 = v }
+    if i == 25 { B25 = v }
+    if i == 26 { B26 = v }
+    if i == 27 { B27 = v }
+    if i == 28 { B28 = v }
+    if i == 29 { B29 = v }
+    if i == 30 { B30 = v }
+    if i == 31 { B31 = v }
+    if i == 32 { B32 = v }
+    if i == 33 { B33 = v }
+    if i == 34 { B34 = v }
+    if i == 35 { B35 = v }
+    if i == 36 { B36 = v }
+    if i == 37 { B37 = v }
+    if i == 38 { B38 = v }
+    if i == 39 { B39 = v }
+    if i == 40 { B40 = v }
+    if i == 41 { B41 = v }
+    if i == 42 { B42 = v }
+    if i == 43 { B43 = v }
+    if i == 44 { B44 = v }
+    if i == 45 { B45 = v }
+    if i == 46 { B46 = v }
+    if i == 47 { B47 = v }
+    if i == 48 { B48 = v }
+    if i == 49 { B49 = v }
+    if i == 50 { B50 = v }
+    if i == 51 { B51 = v }
+    if i == 52 { B52 = v }
+    if i == 53 { B53 = v }
+    if i == 54 { B54 = v }
+    if i == 55 { B55 = v }
+    if i == 56 { B56 = v }
+    if i == 57 { B57 = v }
+    if i == 58 { B58 = v }
+    if i == 59 { B59 = v }
+    if i == 60 { B60 = v }
+    if i == 61 { B61 = v }
+    if i == 62 { B62 = v }
+    if i == 63 { B63 = v }
+}
+
+// ---------------------------------------------------------------------------
+// One SHA-256 compression round. Reads W (via w_get) and the working variables
+// a..h (passed by reference through globals A,B,C,D,E,F,G,H), updates them.
+// ---------------------------------------------------------------------------
+
+var A int = 0
+var B int = 0
+var C int = 0
+var D int = 0
+var E int = 0
+var F int = 0
+var G int = 0
+var H int = 0
+
+/// Process one 64-byte block. The block's 64 bytes must already be loaded into
+/// the B0..B63 window via b_set. Updates the H0..H7 state globals in place.
+var H0 int = 0
+var H1 int = 0
+var H2 int = 0
+var H3 int = 0
+var H4 int = 0
+var H5 int = 0
+var H6 int = 0
+var H7 int = 0
+
+/// Load the 16 big-endian words from the 64-byte block window into W[0..15],
+/// then expand W[16..63].
+fn expand_block() {
+    var t int = 0
+    while t < 16 {
+        var b0 int = b_get(t * 4)
+        var b1 int = b_get(t * 4 + 1)
+        var b2 int = b_get(t * 4 + 2)
+        var b3 int = b_get(t * 4 + 3)
+        var w int = mk32(b0, b1, b2, b3)
+        w_set(t, w)
+        t = t + 1
+    }
+    while t < 64 {
+        var wt16 int = w_get(t - 16)
+        var wt7 int = w_get(t - 7)
+        var s0 int = small0(wt16)
+        var s1 int = small1(wt7)
+        var w2 int = w_get(t - 2)
+        var s1b int = small1(w2)
+        var w15 int = w_get(t - 15)
+        var s0b int = small0(w15)
+        var val int = add32(w_get(t - 16), s0b)
+        val = add32(val, w_get(t - 7))
+        val = add32(val, s1b)
+        w_set(t, val)
+        t = t + 1
+    }
+}
+
+/// Run the 64 rounds of the compression function over the current W, mixing
+/// the eight working variables a..h.
+fn compress() {
+    A = H0
+    B = H1
+    C = H2
+    D = H3
+    E = H4
+    F = H5
+    G = H6
+    H = H7
+    var i int = 0
+    while i < 64 {
+        var s1 int = big1(E)
+        var chv int = ch(E, F, G)
+        var ki int = k_at(i)
+        var wi int = w_get(i)
+        var t1 int = add32(H, s1)
+        t1 = add32(t1, chv)
+        t1 = add32(t1, ki)
+        t1 = add32(t1, wi)
+        var s0 int = big0(A)
+        var majv int = maj(A, B, C)
+        var t2 int = add32(s0, majv)
+        H = G
+        G = F
+        F = E
+        E = add32(D, t1)
+        D = C
+        C = B
+        B = A
+        A = add32(t1, t2)
+        i = i + 1
+    }
+    H0 = add32(H0, A)
+    H1 = add32(H1, B)
+    H2 = add32(H2, C)
+    H3 = add32(H3, D)
+    H4 = add32(H4, E)
+    H5 = add32(H5, F)
+    H6 = add32(H6, G)
+    H7 = add32(H7, H)
+}
+
+// ---------------------------------------------------------------------------
+// Final byte <-> hex helpers.
+// ---------------------------------------------------------------------------
+
+/// Append the two lowercase hex digits of byte b (0..255) to sb.
+fn append_hex_byte(sb StringBuilder, b int) {
+    var digits str = "0123456789abcdef"
+    var hi int = b.shr(4)
+    var lo int = b.and(15)
+    var c0 int = digits.char_at(hi)
+    var c1 int = digits.char_at(lo)
+    sb.append_char(c0)
+    sb.append_char(c1)
+}
+
+/// Append the eight hex digits of 32-bit word w to sb (big-endian).
+/// Inlined byte-by-byte (no nested helper call) because passing a freshly
+/// computed int through an extra call frame can corrupt the value in this VM.
+fn append_hex_word(sb StringBuilder, w int) {
+    var digits str = "0123456789abcdef"
+    // byte 0 = (w >> 24) & 0xff
+    var sh0 int = w.shr(24)
+    var b0 int = sh0.and(255)
+    var h0 int = b0.shr(4)
+    var l0 int = b0.and(15)
+    sb.append_char(digits.char_at(h0))
+    sb.append_char(digits.char_at(l0))
+    // byte 1 = (w >> 16) & 0xff
+    var sh1 int = w.shr(16)
+    var b1 int = sh1.and(255)
+    var h1 int = b1.shr(4)
+    var l1 int = b1.and(15)
+    sb.append_char(digits.char_at(h1))
+    sb.append_char(digits.char_at(l1))
+    // byte 2 = (w >> 8) & 0xff
+    var sh2 int = w.shr(8)
+    var b2 int = sh2.and(255)
+    var h2 int = b2.shr(4)
+    var l2 int = b2.and(15)
+    sb.append_char(digits.char_at(h2))
+    sb.append_char(digits.char_at(l2))
+    // byte 3 = w & 0xff
+    var b3 int = w.and(255)
+    var h3 int = b3.shr(4)
+    var l3 int = b3.and(15)
+    sb.append_char(digits.char_at(h3))
+    sb.append_char(digits.char_at(l3))
+}
+
+// ---------------------------------------------------------------------------
+// The public entry point.
+// ---------------------------------------------------------------------------
+
+/// Compute the SHA-256 hash of `input` and return the 64-char lowercase hex
+/// digest. The input is processed as a sequence of bytes (via `char_at`, which
+/// for ASCII inputs is identical to the UTF-8 byte sequence).
+fn sha256(input str) str {
+    // Initial hash values H0..H7 (FIPS 180-4), built from bytes.
+    H0 = mk32(106, 9, 230, 103)    // 0x6a09e667
+    H1 = mk32(187, 103, 174, 133)  // 0xbb67ae85
+    H2 = mk32(60, 110, 243, 114)   // 0x3c6ef372
+    H3 = mk32(165, 79, 245, 58)    // 0xa54ff53a
+    H4 = mk32(81, 14, 82, 127)     // 0x510e527f
+    H5 = mk32(155, 5, 104, 140)    // 0x9b05688c
+    H6 = mk32(31, 131, 217, 171)   // 0x1f83d9ab
+    H7 = mk32(91, 224, 205, 25)    // 0x5be0cd19
+
+    var n int = input.len()
+    // bit length of the message (mod 2^64). Held as a single 32-bit word for
+    // the low 32 bits, which is more than enough for inputs up to ~512 MB.
+    // We compute it as n*8 mod 2^32; n itself may be large but for the test
+    // vectors n is tiny, so n*8 fits comfortably below 2^31.
+    var bitlen int = n * 8
+
+    // Walk the message in 64-byte blocks. For each block we need 64 bytes:
+    // the first blocks come entirely from the message; the final block(s)
+    // contain the 0x80 padding, zero fill, and the 64-bit big-endian length.
+    var pos int = 0
+    // Total padded length: smallest multiple of 64 that leaves 8 bytes for
+    // the length suffix after the 0x80 marker.
+    //   if (n mod 64) < 56 -> one block of padding; else two.
+    var rem int = n % 64
+    var total int = n + 64 - rem
+    if rem >= 56 {
+        total = n + 128 - rem
+    }
+
+    while pos < total {
+        // Load the 64-byte block window B0..B63 from the padded message.
+        var j int = 0
+        while j < 64 {
+            var idx int = pos + j
+            var bv int = 0
+            if idx < n {
+                bv = input.char_at(idx)
+            } else {
+                if idx == n {
+                    bv = 128
+                } else {
+                    // last 8 bytes carry the big-endian bit length; the rest
+                    // stay zero. bit length occupies bytes [total-8, total).
+                    var dist int = total - idx
+                    if dist <= 8 {
+                        // byte = (bitlen >> ((dist-1)*8)) & 0xff
+                        // NOTE: the VM's `.shr(n)` is `u32::wrapping_shr`, so a
+                        // shift by >= 32 wraps to a shift by (n mod 32) instead
+                        // of yielding 0. For the 64-bit length encoding we must
+                        // therefore treat any shift >= 32 as producing 0 (the
+                        // high 32 bits of the length are always zero for inputs
+                        // under ~512 MB, which covers all test vectors).
+                        var sh int = dist - 1
+                        var shf int = sh * 8
+                        if shf < 32 {
+                            var shifted int = bitlen.shr(shf)
+                            bv = shifted.and(255)
+                        } else {
+                            bv = 0
+                        }
+                    } else {
+                        bv = 0
+                    }
+                }
+            }
+            b_set(j, bv)
+            j = j + 1
+        }
+        expand_block()
+        compress()
+        pos = pos + 64
+    }
+
+    // Emit H0..H7 big-endian as the 64-char hex digest.
+    var sb StringBuilder = StringBuilder.new(64)
+    append_hex_word(sb, H0)
+    append_hex_word(sb, H1)
+    append_hex_word(sb, H2)
+    append_hex_word(sb, H3)
+    append_hex_word(sb, H4)
+    append_hex_word(sb, H5)
+    append_hex_word(sb, H6)
+    append_hex_word(sb, H7)
+    return sb.build()
+}

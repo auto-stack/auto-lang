@@ -726,52 +726,118 @@ async fn execute_autovm_with_path(
         .collect();
 
 /// Plan 346: Remap string pool indices in bytecode after merging string pools.
-/// Scans for opcodes that carry a 1-byte string index operand (LOAD_STR,
-/// LOAD_GLOBAL, STORE_GLOBAL) and remaps the index using the provided table.
-fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
-    let mut i = 0;
-    while i < code.len() {
-        let op = code[i];
-        i += 1;
-        match op {
-            // Opcodes with a 1-byte string pool index operand.
-            0x1F => { // LOAD_STR
-                if i < code.len() {
-                    let old = code[i] as usize;
-                    if old < remap.len() {
-                        code[i] = remap[old];
-                    }
-                    i += 1;
-                }
-            }
-            0xC5 => { // LOAD_GLOBAL
-                if i < code.len() {
-                    let old = code[i] as usize;
-                    if old < remap.len() {
-                        code[i] = remap[old];
-                    }
-                    i += 1;
-                }
-            }
-            0xC6 => { // STORE_GLOBAL
-                if i < code.len() {
-                    let old = code[i] as usize;
-                    if old < remap.len() {
-                        code[i] = remap[old];
-                    }
-                    i += 1;
-                }
-            }
-            _ => {
-                // For all other opcodes, we need to skip their operands.
-                // This is a problem — we don't have a full opcode length table.
-                // However, for the purpose of string remapping, we only care
-                // about the 3 opcodes above. Other opcodes' bytes won't be
-                // mistaken for these specific values often enough to matter
-                // (0x1F, 0xC5, 0xC6 are high/low values unlikely to appear
-                // as operand bytes in practice). This is a known limitation.
+/// Walks the bytecode one instruction at a time (using a per-opcode operand
+/// length table so operand bytes are never misread as opcodes) and remaps the
+/// u16 string-pool index operand of every string-indexed opcode.
+///
+/// Plan 355: this replaces an earlier naive byte-scan that (a) only read 1 byte
+/// per index and (b) could mistake operand bytes of other instructions for
+/// LOAD_STR/LOAD_GLOBAL/STORE_GLOBAL, silently corrupting dep-module bytecode.
+/// The corruption manifested in the sha2 library (large dep module with ~150
+/// globals): random instructions got their bytes rewritten, producing wrong
+/// hashes. The walker below decodes instruction lengths precisely.
+fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
+    use crate::vm::opcode::OpCode;
+    // Helper to read a u16 operand at `pos`.
+    let apply = |code: &mut [u8], pos: usize| {
+        if pos + 1 < code.len() {
+            let old = u16::from_le_bytes([code[pos], code[pos + 1]]) as usize;
+            if old < remap.len() {
+                let new = remap[old];
+                let bytes = new.to_le_bytes();
+                code[pos] = bytes[0];
+                code[pos + 1] = bytes[1];
             }
         }
+    };
+
+    let mut i = 0;
+    // Track the last CONST_I32 value (NEW_INSTANCE reads name_len from the
+    // preceding CONST_I32 push, mirroring the disassembler).
+    let mut last_const_i32: i32 = 0;
+    while i < code.len() {
+        let op_byte = code[i];
+        // Bail out of precise walking if we hit an unknown opcode byte;
+        // fall back to byte-by-byte (the pre-Plan-355 behaviour). This keeps
+        // the walker safe against future opcodes / data regions.
+        if !OpCode::is_valid(op_byte) {
+            i += 1;
+            continue;
+        }
+        let op = OpCode::from(op_byte);
+        let operand_pos = i + 1;
+        // Compute the operand size and whether this op carries a u16 string idx.
+        let (operand_len, is_string_idx): (usize, bool) = match op {
+            // Opcodes whose single u16 operand is a STRING POOL index (remap it).
+            // NOTE: CALL_NAT is intentionally excluded — its u16 is a native ID,
+            // not a string index; remapping it corrupts native dispatch.
+            OpCode::LOAD_STR | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+            | OpCode::GET_FIELD | OpCode::CAPTURE_VAR
+            | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED => (2, true),
+            // CALL_NAT: u16 native ID (must skip but NOT remap).
+            OpCode::CALL_NAT => (2, false),
+            // Other fixed-size operands (must skip correctly even though not remapped).
+            OpCode::CONST_U8 | OpCode::PUSH_BOOL | OpCode::POP_N
+            | OpCode::RESERVE_STACK | OpCode::RET | OpCode::ERROR_PROPAGATE
+            | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
+            | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
+            | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE | OpCode::CREATE_OK
+            | OpCode::GET_GENERIC_FIELD | OpCode::SET_GENERIC_FIELD
+            | OpCode::GET_TUPLE_FIELD => (1, false),
+            OpCode::FN_PROLOG | OpCode::CREATE_OBJ => (2, false),
+            // 4-byte operands
+            OpCode::CONST_I32 | OpCode::CONST_F32 | OpCode::JMP_FAR | OpCode::JMP_L
+            | OpCode::CALL | OpCode::CREATE_FUTURE | OpCode::LOAD_REF | OpCode::STORE_REF
+            | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF => {
+                if let OpCode::CONST_I32 = op {
+                    if operand_pos + 4 <= code.len() {
+                        last_const_i32 = i32::from_le_bytes([
+                            code[operand_pos], code[operand_pos + 1],
+                            code[operand_pos + 2], code[operand_pos + 3],
+                        ]);
+                    }
+                }
+                (4, false)
+            }
+            OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => (8, false),
+            OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, false),
+            OpCode::SLEEP => (4, false),
+            OpCode::JOIN | OpCode::SEND => (4, false),
+            OpCode::CALL_SPEC => (4, false),
+            OpCode::CREATE_NODE => (5, false),
+            OpCode::CLOSURE => (4, false),
+            OpCode::SOURCE_LINE => (2, false),
+            // 2-byte jump offsets
+            OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER => (2, false),
+            // Variable-length: read count byte to skip the trailing bytes.
+            OpCode::BUILD_FSTR => {
+                if operand_pos < code.len() {
+                    let parts = code[operand_pos] as usize;
+                    (1 + parts, false)
+                } else {
+                    (1, false)
+                }
+            }
+            OpCode::IS_VARIANT => {
+                if operand_pos + 2 <= code.len() {
+                    let len = u16::from_le_bytes([code[operand_pos], code[operand_pos + 1]]) as usize;
+                    (2 + len, false)
+                } else {
+                    (2, false)
+                }
+            }
+            OpCode::NEW_INSTANCE => {
+                // name_len came from the preceding CONST_I32 (tracked above).
+                (last_const_i32.max(0) as usize, false)
+            }
+            // No-operand opcodes (arithmetic, stack, type casts, etc.)
+            _ => (0, false),
+        };
+
+        if is_string_idx {
+            apply(code, operand_pos);
+        }
+        i += 1 + operand_len;
     }
 }
 
@@ -779,7 +845,7 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
     // STORE_GLOBAL / LOAD_GLOBAL instructions in dep modules reference wrong
     // strings (the main pool's indices don't match), causing globals to be
     // stored under empty/wrong keys.
-    let _main_string_count = strings.len() as u8;
+    let _main_string_count = strings.len();
     // Plan 346: object_keys/types declared here so the dep module merge loop
     // can append to them. Initialized from the main module's codegen.
     let mut object_keys = codegen.object_keys.clone();
@@ -789,15 +855,16 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u8]) {
             continue;
         }
         // Build remap table: old index → new index.
-        let mut remap = vec![0u8; module.strings.len()];
+        // Plan 355: indices are u16 (modules can have >256 string-pool entries).
+        let mut remap = vec![0u16; module.strings.len()];
         for (old_idx, s) in module.strings.iter().enumerate() {
             // Check if string already exists in main pool (dedup).
             if let Some(existing) = strings.iter().position(|e| e == s) {
-                remap[old_idx] = existing as u8;
+                remap[old_idx] = existing as u16;
             } else {
                 let new_idx = strings.len();
                 strings.push(s.clone());
-                remap[old_idx] = new_idx as u8;
+                remap[old_idx] = new_idx as u16;
             }
         }
         // Remap string indices in bytecode. We scan for opcodes that embed

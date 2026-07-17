@@ -1,0 +1,12 @@
+[package]
+name = "sha2-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sha2 = "=0.10.8"
+hex = "0.4"
+
+# Standalone crate: keep out of the parity workspace so `cargo test` works
+# from this directory without modifying the parent workspace manifest.
+[workspace]
