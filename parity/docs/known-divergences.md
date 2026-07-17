@@ -3,16 +3,22 @@
 This file records all accepted and open divergences between AutoVM, a2r, and
 native Rust for replicated libraries.
 
-## Current phase status (Plan 358 C2)
+## Current phase status (Plan 358 C2 + D1/D2/D3)
 
 | Phase | Libraries | Status | Notes |
 |-------|-----------|--------|-------|
-| P1 | base64, url | ✅ 100% consistent (63/63) | Verified three-way; url DIVs below are all fixed/worked-around |
-| P2 | serde_json, regex | ✅ 100% consistent (101/101) | Verified three-way; no open divergences |
-| P3 | sha2, rusqlite | (out of C2 scope) | rusqlite DIVs documented below; sha2 TBD |
-| P4 | reqwest, tokio | (not yet) | async; Plan 358 D3 |
+| P1 | base64, url | ✅ L1 100% (63/63) | Verified three-way; url DIVs below are all fixed/worked-around |
+| P2 | serde_json, regex | ✅ L1 100% (101/101) | Verified three-way; no open divergences |
+| D1-new | cli_app | ✅ L1 100% (32/32) | wc-style, pure std, no external dep (Plan 358 D1) |
+| D2 | trait_advanced | ✅ L1 100% (10/10) + 5 L3 gaps | spec basics/default(void)/Comparable pass; assoc types etc. documented below |
+| D2 | generators | L1 (golden a2r test) + L3 tooling | VM+a2r agree via 21_generators golden; no parity/libs/ lib (async_stream dep injection gap) |
+| P4 | tokio | ✅ L1 100% (13/13) | async spawn/join/channel; verified three-way (Plan 355 built it; D3 confirmed) |
+| D3 | http_client_sync | L3 roadmap | needs in-process mock-server harness to avoid external network dep |
+| P3 | sha2, rusqlite | P3 | rusqlite DIVs documented below; sha2 TBD |
 
-Re-verified on Plan 358 C2 with `auto-parity phase p1` / `phase p2`.
+Re-verified through Plan 358 C2/D1/D2/D3. The **L1-verified total is now
+232 test cases** across base64/url/serde_json/regex/cli_app/trait_advanced/tokio,
+all 100% three-way consistent (AutoVM vs a2r-transpiled Rust vs native Rust).
 Library/tooling limitations below shaped the implementations but are **not**
 test-case divergences — every included case agrees across all three backends.
 
@@ -333,5 +339,23 @@ correct Rust, but the parity harness cannot yet compile it standalone.
 A user-facing demo is still possible without the parity harness: the
 Script-to-Ship tour can show the `counter()` example running in the VM and
 the a2r-transpiled Rust side-by-side (B2 will use this).
+
+## tokio (P4) — D3 confirmation
+
+Plan 358 D3 confirmed that `parity/libs/tokio/` (built in Plan 355) is
+**L1 100% consistent (13/13)** across AutoVM, a2r-transpiled Rust, and native
+tokio. The async test suite covers spawn/join and mpsc channel patterns;
+comparison uses sorted TAP (completion order is non-deterministic). No new
+divergences found on Plan 358 D3 re-verification.
+
+## http_client_sync (D3) — roadmap
+
+Plan 358 D3 planned a synchronous HTTP-client parity library (a2r-std's
+`http` module wraps `ureq`). It is **deferred to roadmap (L3)** because a
+faithful parity test needs an in-process mock HTTP server so all three
+backends hit identical, deterministic responses without external network
+dependency. Building that harness is a follow-up; for now the HTTP capability
+is exercised only indirectly (the `http_client_sync` use case is not in the
+L1 count above).
 
 
