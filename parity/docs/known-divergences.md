@@ -3,6 +3,19 @@
 This file records all accepted and open divergences between AutoVM, a2r, and
 native Rust for replicated libraries.
 
+## Current phase status (Plan 358 C2)
+
+| Phase | Libraries | Status | Notes |
+|-------|-----------|--------|-------|
+| P1 | base64, url | ✅ 100% consistent (63/63) | Verified three-way; url DIVs below are all fixed/worked-around |
+| P2 | serde_json, regex | ✅ 100% consistent (101/101) | Verified three-way; no open divergences |
+| P3 | sha2, rusqlite | (out of C2 scope) | rusqlite DIVs documented below; sha2 TBD |
+| P4 | reqwest, tokio | (not yet) | async; Plan 358 D3 |
+
+Re-verified on Plan 358 C2 with `auto-parity phase p1` / `phase p2`.
+Library/tooling limitations below shaped the implementations but are **not**
+test-case divergences — every included case agrees across all three backends.
+
 ## Format
 
 Each entry has:
