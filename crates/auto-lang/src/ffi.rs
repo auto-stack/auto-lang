@@ -1004,7 +1004,7 @@ impl RustType {
         use std::ffi::CStr;
         match self {
             RustType::Void => {}
-            RustType::Bool => task.ram.push_i32(if raw != 0 { 1 } else { 0 }),
+            RustType::Bool => task.ram.push_nv(auto_val::encode_bool(raw != 0)),
             RustType::Int => task.ram.push_i32(raw as i32),
             RustType::Long => task.ram.push_i64(raw as i64),
             RustType::Float => task.ram.push_f32(f32::from_bits(raw as u32)),

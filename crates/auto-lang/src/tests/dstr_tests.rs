@@ -119,7 +119,7 @@ fn test_string_is_empty() {
             s.is_empty()
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "1");
+    assert_eq!(result, "true");
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn test_string_is_empty_after_push() {
             s.is_empty()
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "0");
+    assert_eq!(result, "false");
 }
 
 #[test]

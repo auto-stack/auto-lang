@@ -410,9 +410,9 @@ fn shim_int_bit_read(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 fn shim_int_bit_test(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
-    // For n >= 32 or n < 0, the bit does not exist in an i32, so the result is 0.
-    let result = if n >= 32 || n < 0 { 0 } else { (val >> n) & 1 };
-    task.ram.push_i32(result);
+    // For n >= 32 or n < 0, the bit does not exist in an i32, so the result is false.
+    let result = !(n >= 32 || n < 0) && ((val >> n) & 1) != 0;
+    task.ram.push_nv(auto_val::encode_bool(result));
     Ok(())
 }
 
@@ -1068,7 +1068,15 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
-            list.push(auto_val::decode_i32(elem_nv));
+            // ListData<i32> is untyped storage: normalize bools to 1/0 so the raw
+            // i32::MIN/i32::MIN+1 sentinel payload doesn't leak in (it would break
+            // push_tagged_value's negation on read-back and corrupt element values).
+            let stored = if auto_val::is_bool(elem_nv) {
+                if auto_val::decode_bool(elem_nv) { 1 } else { 0 }
+            } else {
+                auto_val::decode_i32(elem_nv)
+            };
+            list.push(stored);
             task.ram.push_i32(0);
             return Ok(());
         }
@@ -1169,13 +1177,13 @@ pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     if let Some(obj) = vm.get_heap_object(list_id) {
         let guard = obj.read().unwrap();
         if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
-            task.ram.push_i32(if list.is_empty() { 1 } else { 0 });
+            task.ram.push_nv(auto_val::encode_bool(list.is_empty()));
             return Ok(());
         }
     }
 
     // Invalid list_id treated as empty
-    task.ram.push_i32(1);
+    task.ram.push_nv(auto_val::encode_bool(true));
     Ok(())
 }
 
@@ -1511,11 +1519,11 @@ pub fn shim_list_any(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         vm.call_closure(task, closure_id, 1)?;
         let result = task.ram.pop_i32();
         if vm_is_truthy(result) {
-            task.ram.push_i32(1);
+            task.ram.push_nv(auto_val::encode_bool(true));
             return Ok(());
         }
     }
-    task.ram.push_i32(0);
+    task.ram.push_nv(auto_val::encode_bool(false));
     Ok(())
 }
 
@@ -1531,11 +1539,11 @@ pub fn shim_list_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         vm.call_closure(task, closure_id, 1)?;
         let result = task.ram.pop_i32();
         if !vm_is_truthy(result) {
-            task.ram.push_i32(0);
+            task.ram.push_nv(auto_val::encode_bool(false));
             return Ok(());
         }
     }
-    task.ram.push_i32(1);
+    task.ram.push_nv(auto_val::encode_bool(true));
     Ok(())
 }
 
@@ -1622,7 +1630,7 @@ pub fn shim_list_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let list_id = task.ram.pop_i32() as u64;
     let elements = get_list_i32_elements(vm, list_id)?;
     let found = elements.iter().any(|&e| e == value);
-    task.ram.push_i32(if found { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(found));
     Ok(())
 }
 
@@ -2879,7 +2887,7 @@ pub fn shim_hashmap_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         true
     };
 
-    task.ram.push_i32(if is_empty { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(is_empty));
     Ok(())
 }
 
@@ -3395,15 +3403,15 @@ pub fn shim_vecdeque_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     let is_empty = if let Some(obj) = vm.get_heap_object(deque_id) {
         let guard = obj.read().unwrap();
         if let Some(deque) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedVecDeque>() {
-            if deque.data.is_empty() { 1 } else { 0 }
+            deque.data.is_empty()
         } else {
-            1
+            true
         }
     } else {
-        1
+        true
     };
 
-    task.ram.push_i32(is_empty);
+    task.ram.push_nv(auto_val::encode_bool(is_empty));
     Ok(())
 }
 
@@ -3566,15 +3574,15 @@ pub fn shim_btreemap_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     let is_empty = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
         if let Some(map) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedBTreeMap>() {
-            if map.data.is_empty() { 1 } else { 0 }
+            map.data.is_empty()
         } else {
-            1
+            true
         }
     } else {
-        1
+        true
     };
 
-    task.ram.push_i32(is_empty);
+    task.ram.push_nv(auto_val::encode_bool(is_empty));
     Ok(())
 }
 
@@ -3713,7 +3721,7 @@ pub fn shim_str_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         let str_nv = task.ram.pop_nv();
         let str_s = nv_to_string(str_nv, vm);
         let sub_s = nv_to_string(sub_nv, vm);
-        task.ram.push_i32(if str_s.contains(sub_s.as_str()) { 1 } else { 0 });
+        task.ram.push_nv(auto_val::encode_bool(str_s.contains(sub_s.as_str())));
     }
     Ok(())
 }
@@ -3725,7 +3733,7 @@ pub fn shim_str_starts_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         let str_nv = task.ram.pop_nv();
         let str_s = nv_to_string(str_nv, vm);
         let prefix_s = nv_to_string(prefix_nv, vm);
-        task.ram.push_i32(if str_s.starts_with(prefix_s.as_str()) { 1 } else { 0 });
+        task.ram.push_nv(auto_val::encode_bool(str_s.starts_with(prefix_s.as_str())));
     }
     Ok(())
 }
@@ -3737,7 +3745,7 @@ pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         let str_nv = task.ram.pop_nv();
         let str_s = nv_to_string(str_nv, vm);
         let suffix_s = nv_to_string(suffix_nv, vm);
-        task.ram.push_i32(if str_s.ends_with(suffix_s.as_str()) { 1 } else { 0 });
+        task.ram.push_nv(auto_val::encode_bool(str_s.ends_with(suffix_s.as_str())));
     }
     Ok(())
 }
@@ -4160,15 +4168,15 @@ pub fn shim_string_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let result = if let Some(obj) = vm.get_heap_object(sb_id) {
         let guard = obj.read().unwrap();
         if let Some(sb) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
-            if sb.buffer.is_empty() { 1 } else { 0 }
+            sb.buffer.is_empty()
         } else {
-            1
+            true
         }
     } else {
-        1
+        true
     };
 
-    task.ram.push_i32(result);
+    task.ram.push_nv(auto_val::encode_bool(result));
     Ok(())
 }
 
@@ -4307,11 +4315,11 @@ pub fn shim_heap_try_grow(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
             };
             list.elems.resize(new_cap, 0);
             drop(guard);
-            task.ram.push_i32(1); // success
+            task.ram.push_nv(auto_val::encode_bool(true)); // success
             return Ok(());
         }
     }
-    task.ram.push_i32(0);
+    task.ram.push_nv(auto_val::encode_bool(false));
     Ok(())
 }
 
@@ -4358,7 +4366,7 @@ pub fn shim_inline_int64_capacity(task: &mut AutoTask, _vm: &AutoVM) -> Result<(
 pub fn shim_inline_int64_try_grow(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let min_cap = task.ram.pop_i32() as u32;
     let _inst_id = task.ram.pop_i32();
-    task.ram.push_i32(if min_cap <= 64 { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(min_cap <= 64));
     Ok(())
 }
 
@@ -4580,12 +4588,12 @@ pub fn shim_re_opaque_is_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
             if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
                 let result = re.lock().unwrap().is_match(&text);
-                task.ram.push_i32(if result { 1 } else { 0 });
+                task.ram.push_nv(auto_val::encode_bool(result));
                 return Ok(());
             }
         }
     }
-    task.ram.push_i32(0);
+    task.ram.push_nv(auto_val::encode_bool(false));
     Ok(())
 }
 
@@ -5095,8 +5103,8 @@ pub fn shim_semver_opaque_cmp_gt(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     } else { None };
 
     match (v1, v2) {
-        (Some(a), Some(b)) => task.ram.push_i32(if a > b { 1 } else { 0 }),
-        _ => task.ram.push_i32(0),
+        (Some(a), Some(b)) => task.ram.push_nv(auto_val::encode_bool(a > b)),
+        _ => task.ram.push_nv(auto_val::encode_bool(false)),
     }
     Ok(())
 }
@@ -5154,10 +5162,10 @@ pub fn shim_semver_opaque_versionreq_matches(task: &mut AutoTask, vm: &AutoVM) -
 
     match (version, req) {
         (Some(ver), Some(req)) => {
-            task.ram.push_i32(if req.matches(&ver) { 1 } else { 0 });
+            task.ram.push_nv(auto_val::encode_bool(req.matches(&ver)));
         }
         _ => {
-            task.ram.push_i32(0);
+            task.ram.push_nv(auto_val::encode_bool(false));
         }
     }
     Ok(())
@@ -5729,18 +5737,18 @@ pub fn shim_f64_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 //   Err(e) => e < 0  (negated error code)
 
 /// Check if a Result is Ok.
-/// Stack: result_val (i32) -> bool (i32)
+/// Stack: result_val (i32) -> bool
 pub fn shim_result_is_ok(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i32();
-    task.ram.push_i32(if val >= 0 { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(val >= 0));
     Ok(())
 }
 
 /// Check if a Result is Err.
-/// Stack: result_val (i32) -> bool (i32)
+/// Stack: result_val (i32) -> bool
 pub fn shim_result_is_err(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i32();
-    task.ram.push_i32(if val < 0 { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(val < 0));
     Ok(())
 }
 
@@ -5837,7 +5845,7 @@ pub fn shim_rand_float(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError>
 }
 
 /// Thread-local random bool.
-/// Stack: -> bool (i32)
+/// Stack: -> bool
 pub fn shim_rand_bool(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -5845,7 +5853,7 @@ pub fn shim_rand_bool(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
         .as_nanos() as u64;
     let mut rng = Xorshift64::new(seed);
     let val = rng.next() % 2 == 0;
-    task.ram.push_i32(if val { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(val));
     Ok(())
 }
 
@@ -6687,12 +6695,12 @@ pub fn shim_random_instance_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
             if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
                 let val = rng.get_mut().unwrap().next() % 2 == 0;
-                task.ram.push_i32(if val { 1 } else { 0 });
+                task.ram.push_nv(auto_val::encode_bool(val));
                 return Ok(());
             }
         }
     }
-    task.ram.push_i32(0);
+    task.ram.push_nv(auto_val::encode_bool(false));
     Ok(())
 }
 

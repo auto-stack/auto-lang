@@ -2703,10 +2703,9 @@ impl AutoVM {
                 OpCode::IS_SOME => {
                     {
                     let nv = task.ram.pop_nv();
-                    let is_some = if auto_val::is_null(nv) { 0 }
-                                  else if auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1 { 0 }
-                                  else { 1 };
-                    task.ram.push_i32(is_some);
+                    let is_some = !(auto_val::is_null(nv)
+                                  || (auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1));
+                    task.ram.push_nv(auto_val::encode_bool(is_some));
                     }
                 }
                 // Plan 120: Check if Result is Ok
@@ -2731,7 +2730,7 @@ impl AutoVM {
                         false
                     };
                     // VM boolean convention: i32::MIN = true, i32::MIN+1 = false
-                    task.ram.push_i32(if is_ok { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(is_ok));
                 }
                 // Plan 120: Unwrap Option (panic if None)
                 OpCode::UNWRAP_SOME => {
@@ -3081,7 +3080,7 @@ impl AutoVM {
                         } else {
                             expected_name == "Option.Some"
                         };
-                        task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                        task.ram.push_nv(auto_val::encode_bool(result));
                     }
                 }
                 OpCode::GET_GENERIC_FIELD => {
@@ -4265,7 +4264,7 @@ impl AutoVM {
                             || decoded == 0
                             || decoded == -2147483647
                             || nv == auto_val::encode_bool(false);
-                        task.ram.push_i32(if is_false { 1 } else { 0 });
+                        task.ram.push_nv(auto_val::encode_bool(is_false));
                     }
                 }
                 OpCode::CALL => {
@@ -6023,7 +6022,7 @@ impl AutoVM {
                     } else {
                         false
                     };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(result));
                     }
                 }
                 OpCode::NE => {
@@ -6057,7 +6056,7 @@ impl AutoVM {
                     } else {
                         true
                     };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(result));
                     }
                 }
                 OpCode::LT => {
@@ -6082,7 +6081,7 @@ impl AutoVM {
                         let b = auto_val::decode_i32(b_nv);
                         a < b
                     };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(result));
                     }
                 }
                 OpCode::GT => {
@@ -6136,7 +6135,7 @@ impl AutoVM {
                         let b = auto_val::decode_i32(b_nv);
                         a > b
                     };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(result));
                     }
                 }
                 OpCode::LE => {
@@ -6161,7 +6160,7 @@ impl AutoVM {
                         let b = auto_val::decode_i32(b_nv);
                         a <= b
                     };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(result));
                     }
                 }
                 OpCode::GE => {
@@ -6186,7 +6185,7 @@ impl AutoVM {
                         let b = auto_val::decode_i32(b_nv);
                         a >= b
                     };
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(result));
                     }
                 }
 
@@ -6194,32 +6193,32 @@ impl AutoVM {
                 OpCode::EQ_D => {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
-                    task.ram.push_i32(if a == b { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(a == b));
                 }
                 OpCode::NE_D => {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
-                    task.ram.push_i32(if a != b { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(a != b));
                 }
                 OpCode::LT_D => {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
-                    task.ram.push_i32(if a < b { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(a < b));
                 }
                 OpCode::GT_D => {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
-                    task.ram.push_i32(if a > b { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(a > b));
                 }
                 OpCode::LE_D => {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
-                    task.ram.push_i32(if a <= b { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(a <= b));
                 }
                 OpCode::GE_D => {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
-                    task.ram.push_i32(if a >= b { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(a >= b));
                 }
 
                 // === Logical ===
@@ -6229,7 +6228,7 @@ impl AutoVM {
                     // Logical AND: both true → push true (i32::MIN), else false (i32::MIN+1)
                     let a_true = a != 0 && a != -2147483647;
                     let b_true = b != 0 && b != -2147483647;
-                    task.ram.push_i32(if a_true && b_true { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(a_true && b_true));
                 }
                 OpCode::OR => {
                     let b = task.ram.pop_i32();
@@ -6237,7 +6236,7 @@ impl AutoVM {
                     // Logical OR: either true → push true (i32::MIN), else false (i32::MIN+1)
                     let a_true = a != 0 && a != -2147483647;
                     let b_true = b != 0 && b != -2147483647;
-                    task.ram.push_i32(if a_true || b_true { -2147483648 } else { -2147483647 });
+                    task.ram.push_nv(auto_val::encode_bool(a_true || b_true));
                 }
                 OpCode::XOR => {
                     let b = task.ram.pop_i32();

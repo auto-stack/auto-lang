@@ -1041,7 +1041,7 @@ pub fn shim_path_exists(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
             } else { false }
         } else { false }
     } else { false };
-    task.ram.push_i32(if exists { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(exists));
     Ok(())
 }
 
@@ -1202,7 +1202,7 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
         if let Some(result) = result {
             task.waiting_http_request_id = None;
             let ok = result.is_ok();
-            task.ram.push_i32(if ok { 1 } else { 0 });
+            task.ram.push_nv(auto_val::encode_bool(ok));
             return Ok(());
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -3610,7 +3610,7 @@ pub fn shim_session_set(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
         })
         .unwrap_or(false);
 
-    task.ram.push_i32(if exists { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(exists));
     Ok(())
 }
 
@@ -3625,7 +3625,7 @@ pub fn shim_session_destroy(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
         .map(|mut sessions| sessions.remove(&id).is_some())
         .unwrap_or(false);
 
-    task.ram.push_i32(if existed { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(existed));
     Ok(())
 }
 
@@ -4560,7 +4560,7 @@ pub fn shim_http_download(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
         }
     }).join().unwrap_or(false);
 
-    task.ram.push_i32(if success { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(success));
     Ok(())
 }
 
@@ -4589,7 +4589,7 @@ pub fn shim_http_download_resume(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
         }
     }).join().unwrap_or(false);
 
-    task.ram.push_i32(if success { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(success));
     Ok(())
 }
 
@@ -4869,7 +4869,7 @@ pub fn shim_http_stream_is_done(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
         let stream = streams.get(&(handle as u64))
             .ok_or_else(|| VMError::RuntimeError(format!("Invalid HTTP stream handle: {}", handle)))?;
 
-        task.ram.push_i32(if stream.done { 1 } else { 0 });
+        task.ram.push_nv(auto_val::encode_bool(stream.done));
         Ok(())
     });
 
@@ -6818,7 +6818,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let path2: String = String::pop_from_stack(task, vm).unwrap_or_default();
             let path1: String = String::pop_from_stack(task, vm).unwrap_or_default();
             let same = same_file::is_same_file(&path1, &path2).unwrap_or(false);
-            task.ram.push_i32(if same { 1 } else { 0 });
+            task.ram.push_nv(auto_val::encode_bool(same));
         }
 
         // ---- String ----

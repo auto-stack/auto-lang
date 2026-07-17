@@ -445,9 +445,9 @@ fn test_list_is_empty() {
     "#;
 
     let result = run(code).unwrap();
-    // Should be [1, 0] (true, false)
-    assert!(result.contains("1"));
-    assert!(result.contains("0"));
+    // Should be [true, false] (empty list, then non-empty)
+    assert!(result.contains("true"), "got: {}", result);
+    assert!(result.contains("false"), "got: {}", result);
 }
 
 #[test]
