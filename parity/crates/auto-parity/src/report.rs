@@ -251,9 +251,11 @@ fn render_maturity_directory(reports: &[ComparisonReport]) -> String {
     // the directory and keep the number descriptive.
     let conformance_count = 27usize;
 
-    // L3: planned-but-not-verified (P3/P4). Filter out anything that already
-    // appears in L1 so the directory is honest about what is outstanding.
-    let planned = ["sha2", "rusqlite", "reqwest", "tokio"];
+    // L3: planned-but-not-verified. Filter out anything that already appears
+    // in L1 so the directory is honest about what is outstanding. Includes P3
+    // crypto/db, the deferred D3 HTTP client (needs mock-server harness), and
+    // generators (a2r emits async_stream dep the runner can't yet inject).
+    let planned = ["sha2", "rusqlite", "reqwest", "tokio", "http_client_sync", "generators"];
     let l3: Vec<&str> = planned
         .iter()
         .copied()

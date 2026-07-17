@@ -98,9 +98,10 @@ fn main() {
             }
         }
         Command::Report { output } => {
-            // Currently verified phases are P1 and P2 (per Plan 358 C2).
-            // P3/P4 are listed as L3 roadmap entries by the dashboard itself.
-            let phases = ["p1", "p2"];
+            // Verified phases included in the dashboard. P1/P2 are the Plan
+            // 355 core; D1/D2 are Plan 358 additions; P4's tokio is L1 (reqwest
+            // is auto-skipped if absent). P3 (sha2/rusqlite) stays L3 roadmap.
+            let phases = ["p1", "p2", "d1", "d2", "p4"];
             let mut reports = Vec::new();
             for phase in &phases {
                 let libs = discover_libraries_by_phase(&root, phase);
@@ -262,6 +263,9 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         ("p2", &["serde_json", "regex"]),
         ("p3", &["sha2", "rusqlite"]),
         ("p4", &["reqwest", "tokio"]),
+        // Plan 358 additions:
+        ("d1", &["cli_app"]),
+        ("d2", &["trait_advanced"]),
     ];
 
     for (p, libs) in phase_map {
