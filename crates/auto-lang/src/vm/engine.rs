@@ -2485,8 +2485,17 @@ impl AutoVM {
                 }
                 // Plan 193: bool -> String
                 OpCode::TYPE_BOOL_TO_STR => {
-                    let val = task.ram.pop_i32();
-                    let string_value = if val != 0 { "true" } else { "false" };
+                    let nv = task.ram.pop_nv();
+                    // Prefer the TAG_BOOL encoding; fall back to legacy i32 truthiness
+                    // (0 / i32::MIN+1 = false, anything else = true) for values pushed
+                    // by older code paths that still use push_i32.
+                    let is_true = if auto_val::is_bool(nv) {
+                        auto_val::decode_bool(nv)
+                    } else {
+                        let v = auto_val::decode_i32(nv);
+                        v != 0 && v != -2147483647
+                    };
+                    let string_value = if is_true { "true" } else { "false" };
                     let mut strings = self.strings.write().unwrap();
                     let str_idx = strings.len();
                     strings.push(string_value.as_bytes().to_vec());

@@ -5712,10 +5712,19 @@ pub fn shim_once_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // ============================================================================
 
 /// Bool to string.
-/// Stack: bool_val (i32, 0/1) -> str_idx
+/// Stack: bool_val -> str_idx
 pub fn shim_bool_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let val = task.ram.pop_i32();
-    let s = if val != 0 { "true" } else { "false" };
+    let nv = task.ram.pop_nv();
+    // Prefer the TAG_BOOL encoding; fall back to legacy i32 truthiness
+    // (0 / i32::MIN+1 = false, anything else = true) for values pushed
+    // by older code paths that still use push_i32.
+    let is_true = if auto_val::is_bool(nv) {
+        auto_val::decode_bool(nv)
+    } else {
+        let v = auto_val::decode_i32(nv);
+        v != 0 && v != -2147483647
+    };
+    let s = if is_true { "true" } else { "false" };
     let str_idx = vm.add_string(s.as_bytes().to_vec());
     task.ram.push_str_idx(str_idx as u32);
     Ok(())
