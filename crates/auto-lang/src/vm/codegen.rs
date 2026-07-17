@@ -8829,6 +8829,12 @@ impl Codegen {
             (ObjectType::String, "starts_with" | "ends_with" | "contains" | "is_empty") => ObjectType::Bool,
             // Int/Uint methods returning String
             (ObjectType::Int | ObjectType::Uint, "to_string" | "to_hex") => ObjectType::String,
+            // Int bitwise methods returning Int (enables chaining: x.and(3).shl(4))
+            (ObjectType::Int | ObjectType::Uint, "and" | "or" | "xor" | "not" | "shl" | "shr"
+                | "sar" | "rol" | "ror" | "count_ones" | "leading_zeros" | "trailing_zeros"
+                | "flip" | "bitrev" | "bit_read" | "bit_on" | "bit_off" | "bit_flip") => ObjectType::Int,
+            // Int bit_test returns Bool
+            (ObjectType::Int | ObjectType::Uint, "bit_test") => ObjectType::Bool,
             // Array methods returning Int
             (ObjectType::Array, "len" | "length") => ObjectType::Int,
             // Array methods returning Array (chained)
