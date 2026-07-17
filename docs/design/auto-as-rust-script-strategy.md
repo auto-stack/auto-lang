@@ -151,7 +151,7 @@ a2r 测试总量可观，但有几个关键 Rust 模式**覆盖稀薄**，正是
 
 ### 2.4 为什么 Rust 开发者是首要受众
 
-- **最难说服**：他们对"披着 X 皮的 Y 语言"高度警惕，会盯着问"产出的 Rust 够不够 Rusty"、"trait 动态分发是不是真的 Box<dyn>"、"所有权/借用有没有被偷偷退化"。
+- **最难说服**：他们对"披着 X 皮的 Y 语言"高度警惕，会盯着问"产出的 Rust 够不够 Rusty"、"trait 动态分发是不是真的 `Box<dyn>`"、"所有权/借用有没有被偷偷退化"。
 - **最有杠杆**：一旦他们认可，就是技术可信度的金字招牌。Rust 社区的 endorsement 会自动辐射到其他受众。
 - **说服策略**：A/B/C/D 四个子项目都要为 Rust 开发者准备"硬核证据层"——不是营销话术，而是可 grep 的代码、可跑的 parity 测试、可审计的 a2r 输出。
 
@@ -202,7 +202,7 @@ a2r 测试总量可观，但有几个关键 Rust 模式**覆盖稀薄**，正是
    - Ch2: AI 在闭环里（演示 AI 生成-验证-迭代，强调脚本模式为何适合 AI）
    - Ch3: 类型与所有权（struct/enum/所有权/borrow，对应 a2r 的 `&`/`&mut`/move）
    - Ch4: 错误处理（`!`/`.?` → Rust `Result`/`?`）
-   - Ch5: trait 与泛型（spec → trait/impl/Box<dyn>，const 泛型）
+   - Ch5: trait 与泛型（spec → trait/impl/`Box<dyn>`，const 泛型）
    - Ch6: 模块与项目（多文件，a2r 产出 Cargo.toml + 多 .rs）
    - Ch7: async 与并发（`~T` → async fn，tokio 场景）—— **依赖 D 的 async parity 用例**
    - Ch8: 发布（a2r 命令行、链 a2r-std、cargo build、性能对比）
