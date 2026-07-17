@@ -20,10 +20,10 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
     view {
         col {
             col {
-                // Title row with pin toggle
+                // Title row with pin toggle (hover to show pin button)
                 if .editing == false {
                     row {
-                        style: "items-center gap-2"
+                        style: "group items-center gap-2"
                         text .note.title { style: "text-lg font-semibold text-foreground" }
                         if .note.pinned {
                             button "📌" {
@@ -34,7 +34,7 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
                         if !note.pinned {
                             button "📌" {
                                 onclick: .TogglePin
-                                style: "text-base cursor-pointer opacity-20 hover:opacity-60"
+                                style: "text-base cursor-pointer opacity-0 group-hover:opacity-40 hover:!opacity-100"
                             }
                         }
                     }
@@ -44,23 +44,23 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
                 }
                 text .note.time { style: "text-xs text-muted-foreground mt-1" }
 
-                // Tags: always editable (inline, no need for Edit mode)
+                // Tags: always editable (hover to show controls)
                 row {
-                    style: "gap-1 mt-1 flex-wrap items-center"
+                    style: "group gap-1 mt-1 flex-wrap items-center"
                     for t in .note.tags {
                         row {
-                            style: "items-center gap-0.5"
+                            style: "group/tag items-center gap-0.5"
                             badge t { variant: "secondary" }
                             button "x" {
                                 onclick: .RemoveTag(t)
-                                style: "text-xs text-muted-foreground hover:text-destructive px-0.5"
+                                style: "text-xs text-muted-foreground hover:text-destructive px-0.5 opacity-0 group-hover/tag:opacity-100"
                             }
                         }
                     }
                     if .show_tag_input == false {
                         button "+" {
                             onclick: .ShowTagInput
-                            style: "text-xs px-2 py-0.5 border border-border rounded text-muted-foreground hover:text-foreground"
+                            style: "text-xs px-2 py-0.5 border border-border rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100"
                         }
                     }
                     if .show_tag_input == true {
