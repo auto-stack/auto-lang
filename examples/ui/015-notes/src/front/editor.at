@@ -1,5 +1,4 @@
-// editor.at — EditorPanel with textarea (temp), tags, pin, folder, delete.
-// TODO: restore autodown_editor after Plan 356 (Vue generator OOM fix).
+// editor.at — EditorPanel with textarea, tags, pin icon, delete.
 
 use store: NotesStore
 use back.api: update_note, delete_note, toggle_pin, update_tags
@@ -21,10 +20,10 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                 if .editing == false {
                     row {
                         style: "items-center gap-2"
-                        text .note.title { style: "text-lg font-semibold text-gray-800" }
                         if .note.pinned {
-                            text "Pinned" { style: "text-xs text-blue-500 font-medium" }
+                            text "📌" { style: "text-base" }
                         }
+                        text .note.title { style: "text-lg font-semibold text-gray-800" }
                     }
                 }
                 if .editing == true {
@@ -32,8 +31,9 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                 }
                 text .note.time { style: "text-xs text-gray-400 mt-1" }
 
+                // Tags: read-only badges or editable with input
                 row {
-                    style: "gap-1"
+                    style: "gap-1 mt-1 flex-wrap items-center"
                     for t in .note.tags {
                         if .editing == false {
                             badge t { variant: "secondary" }
@@ -105,6 +105,16 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                 update_tags(.note.id, .note.tags)
                 .tag_input = ""
             }
+        }
+        .RemoveTag(t) -> {
+            var new_tags []str = []
+            for tg in .note.tags {
+                if tg != t {
+                    new_tags.push(tg)
+                }
+            }
+            .note.tags = new_tags
+            update_tags(.note.id, .note.tags)
         }
         .Delete -> { on_delete() }
         .TogglePin -> {

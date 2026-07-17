@@ -1,12 +1,5 @@
-// app.at — 2-column layout with inline navigation (Plan 354 v3).
+// app.at — 2-column layout with inline navigation (Plan 354 v3 / 357 v2).
 // Navigation inlined to avoid Vue generator OOM bug.
-//
-// Nav layout (top to bottom):
-//   [All] [Pinned] [Recent]    ← view mode
-//   [Search notes...]           ← search filter
-//   Tags: [intro] [ideas] ...   ← tag filter (alongside other filters)
-//   ── Note Tree ──             ← scrollable, grouped by folder
-//   [Dark Mode]                 ← bottom
 
 use store: NotesStore
 use editor: EditorPanel
@@ -78,7 +71,7 @@ widget App {
                         style: "mx-2 mt-2 px-3 py-1.5 text-sm border rounded-lg"
                     }
 
-                    // Tag filters (alongside search, above note tree)
+                    // Tag filters
                     row {
                         style: "flex-wrap gap-1 px-2 mt-2 mb-1"
                         button "intro" {
@@ -127,22 +120,32 @@ widget App {
 
                         // ══ ALL: grouped by folder ══
                         if .store.active_folder == "all" {
+                            // Root notes header with + button
+                            row {
+                                style: "px-3 py-1 items-center"
+                                text "Notes" { style: "text-xs font-bold text-gray-400 uppercase flex-1" }
+                                button "+" {
+                                    onclick: .NewNote
+                                    style: "text-xs text-gray-400 hover:text-blue-500"
+                                }
+                            }
+
                             // Root notes (no folder)
                             for i, note in .store.notes {
                                 if note.folder == "" {
                                     if .store.active_tag == "" {
-                                        if note.pinned {
-                                            button {
-                                                onclick: .SelectNote(i)
-                                                style: if i == .store.active_id {
-                                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                                } else {
-                                                    "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
-                                                }
-                                                text note.title
+                                        button {
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                            } else {
+                                                "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                             }
+                                            text note.title
                                         }
-                                        if !note.pinned {
+                                    }
+                                    if .store.active_tag != "" {
+                                        if note.title.contains(.store.active_tag) {
                                             button {
                                                 onclick: .SelectNote(i)
                                                 style: if i == .store.active_id {
@@ -169,18 +172,18 @@ widget App {
                             for i, note in .store.notes {
                                 if note.folder == "work" {
                                     if .store.active_tag == "" {
-                                        if note.pinned {
-                                            button {
-                                                onclick: .SelectNote(i)
-                                                style: if i == .store.active_id {
-                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                                } else {
-                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
-                                                }
-                                                text note.title
+                                        button {
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                            } else {
+                                                "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                             }
+                                            text note.title
                                         }
-                                        if !note.pinned {
+                                    }
+                                    if .store.active_tag != "" {
+                                        if note.title.contains(.store.active_tag) {
                                             button {
                                                 onclick: .SelectNote(i)
                                                 style: if i == .store.active_id {
@@ -207,18 +210,18 @@ widget App {
                             for i, note in .store.notes {
                                 if note.folder == "personal" {
                                     if .store.active_tag == "" {
-                                        if note.pinned {
-                                            button {
-                                                onclick: .SelectNote(i)
-                                                style: if i == .store.active_id {
-                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                                } else {
-                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
-                                                }
-                                                text note.title
+                                        button {
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                            } else {
+                                                "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                             }
+                                            text note.title
                                         }
-                                        if !note.pinned {
+                                    }
+                                    if .store.active_tag != "" {
+                                        if note.title.contains(.store.active_tag) {
                                             button {
                                                 onclick: .SelectNote(i)
                                                 style: if i == .store.active_id {
@@ -234,7 +237,7 @@ widget App {
                             }
                         }
 
-                        // ══ PINNED: also grouped by folder ══
+                        // ══ PINNED ══
                         if .store.active_folder == "pinned" {
                             for i, note in .store.notes {
                                 if note.pinned {
@@ -247,6 +250,19 @@ widget App {
                                                 "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                             }
                                             text note.title
+                                        }
+                                    }
+                                    if .store.active_tag != "" {
+                                        if note.title.contains(.store.active_tag) {
+                                            button {
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                                text note.title
+                                            }
                                         }
                                     }
                                 }
@@ -265,6 +281,19 @@ widget App {
                                             "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
                                         }
                                         text note.title
+                                    }
+                                }
+                                if .store.active_tag != "" {
+                                    if note.title.contains(.store.active_tag) {
+                                        button {
+                                            onclick: .SelectNote(i)
+                                            style: if i == .store.active_id {
+                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                            } else {
+                                                "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                            }
+                                            text note.title
+                                        }
                                     }
                                 }
                             }
