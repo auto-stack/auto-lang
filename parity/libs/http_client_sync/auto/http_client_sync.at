@@ -1,0 +1,13 @@
+// http_client_sync — synchronous HTTP POST via auto.http.post_sync.
+//
+// This library wraps auto.http.post_sync to POST a body and return the
+// response body string. It is the parity subject; tests (tests/auto/) hit a
+// local mock server on 127.0.0.1:18080 (start mock-server/ first) and assert
+// on the response body. api_key is empty (mock server ignores auth).
+
+use auto.http: post_sync
+
+/// POST `body` to the mock server's /echo endpoint, return response body.
+fn post_echo(body str) str {
+    return post_sync("http://127.0.0.1:18080/echo", body, "")
+}

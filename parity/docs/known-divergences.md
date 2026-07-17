@@ -358,4 +358,27 @@ dependency. Building that harness is a follow-up; for now the HTTP capability
 is exercised only indirectly (the `http_client_sync` use case is not in the
 L1 count above).
 
+**Plan 359 D3 investigation (skeleton + blocker).** A partial
+`parity/libs/http_client_sync/` skeleton was written: a `mock-server/`
+crate (listens on 127.0.0.1:18080, responds to every POST with a fixed
+`{"echo":"ok"}`), an Auto wrapper (`post_echo` → `auto.http.post_sync`),
+Auto TAP tests, and a Rust oracle using `ureq`. The skeleton is committed
+but **cannot run three-way** because of a pre-existing parser bug:
+
+- **DIV-HTTP-LANG-1 — the shipped stdlib `auto/http.at` does not parse.**
+  `~/.auto/libs/stdlib/auto/http.at:53` (identical to the repo's
+  `stdlib/auto/http.at`) uses `pub fn Request.method(self Request) str;`
+  declaration syntax that the current parser rejects ("Expected term, got
+  Newline" at the `/// Get the request path` doc comment that follows a
+  declaration). Any `use auto.http: ...` triggers loading this file and
+  fails before the request is ever made. This is independent of a2r/parity
+  — it blocks `auto.http` on the VM for everyone.
+  - 状态: open (pre-existing parser/stdlib bug; fixing it is a separate
+    language task, not a parity task).
+
+Once DIV-HTTP-LANG-1 is fixed, the committed skeleton can be completed by
+adding a runner setup/teardown hook to spawn `mock-server/` around the
+three-way run (the mock server must outlive all three backend processes,
+which are independent).
+
 

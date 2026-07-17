@@ -1,0 +1,11 @@
+[package]
+name = "http-client-sync-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ureq = { version = "2", features = ["tls"] }
+
+# Standalone crate: keep out of the parity workspace so `cargo test` works
+# from this directory without modifying the parent workspace manifest.
+[workspace]
