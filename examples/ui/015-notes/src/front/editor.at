@@ -1,29 +1,42 @@
-// editor.at — EditorPanel with textarea, tags, pin icon, delete.
+// editor.at — EditorPanel with textarea, inline tag editing, pin toggle, delete.
+// Tags are editable in read mode (not just edit mode).
+// Pin toggle is on the title row (click pin icon).
 
 use store: NotesStore
 use back.api: update_note, delete_note, toggle_pin, update_tags
 
 widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
     msg Msg { Init, Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin,
-              AddTag, EditTagInput, RemoveTag(str) }
+              AddTag, EditTagInput, RemoveTag(str), ShowTagInput }
 
     model {
         var editing bool = false
         var edit_title str = ""
         var edit_body str = ""
         var tag_input str = ""
+        var show_tag_input bool = false
     }
 
     view {
         col {
             col {
+                // Title row with pin toggle
                 if .editing == false {
                     row {
                         style: "items-center gap-2"
-                        if .note.pinned {
-                            text "📌" { style: "text-base" }
-                        }
                         text .note.title { style: "text-lg font-semibold text-foreground" }
+                        if .note.pinned {
+                            button "📌" {
+                                onclick: .TogglePin
+                                style: "text-base cursor-pointer"
+                            }
+                        }
+                        if !note.pinned {
+                            button "📍" {
+                                onclick: .TogglePin
+                                style: "text-base cursor-pointer opacity-50 hover:opacity-100"
+                            }
+                        }
                     }
                 }
                 if .editing == true {
@@ -31,20 +44,27 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                 }
                 text .note.time { style: "text-xs text-muted-foreground mt-1" }
 
-                // Tags: read-only badges or editable with input
+                // Tags: always editable (inline, no need for Edit mode)
                 row {
                     style: "gap-1 mt-1 flex-wrap items-center"
                     for t in .note.tags {
-                        if .editing == false {
-                            badge t { variant: "secondary" }
-                        }
-                        if .editing == true {
-                            badge t { variant: "destructive", onclick: .RemoveTag(t) }
+                        badge t {
+                            variant: "secondary"
+                            onclick: .RemoveTag(t)
                         }
                     }
-                    if .editing == true {
-                        input { value: .tag_input, oninput: .EditTagInput, placeholder: "Add tag...", style: "text-xs px-2 py-0.5 border rounded w-24" }
-                        button "+" { onclick: .AddTag, style: "text-xs px-2 py-0.5 bg-primary text-primary-foreground rounded" }
+                    if .show_tag_input == false {
+                        button "+" {
+                            onclick: .ShowTagInput
+                            style: "text-xs px-2 py-0.5 border border-border rounded text-muted-foreground hover:text-foreground"
+                        }
+                    }
+                    if .show_tag_input == true {
+                        input { value: .tag_input, oninput: .EditTagInput, placeholder: "tag name...", style: "text-xs px-2 py-0.5 border rounded w-24" }
+                        button "OK" {
+                            onclick: .AddTag
+                            style: "text-xs px-2 py-0.5 bg-primary text-primary-foreground rounded"
+                        }
                     }
                 }
 
@@ -59,7 +79,6 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
             row {
                 if .editing == false {
                     button "Edit" { onclick: .Edit, style: "px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-medium" }
-                    button "Pin" { onclick: .TogglePin, style: "px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/90" }
                 }
                 if .editing == true {
                     row {
@@ -99,11 +118,13 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
         .EditBody -> { }
         .EditTitle -> { }
         .EditTagInput -> { }
+        .ShowTagInput -> { .show_tag_input = true }
         .AddTag -> {
             if .tag_input != "" {
                 .note.tags.push(.tag_input)
                 update_tags(.note.id, .note.tags)
                 .tag_input = ""
+                .show_tag_input = false
             }
         }
         .RemoveTag(t) -> {
