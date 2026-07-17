@@ -182,10 +182,14 @@ impl<'a> Disassembler<'a> {
 
             // 1-byte local index
             OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
-            | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
-            | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL => {
+            | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD => {
                 let v = self.flash.read_u8(ip);
                 (format!("{}", v), 1)
+            }
+            // 2-byte global name index (string pool)
+            OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL => {
+                let v = self.flash.read_u16(ip);
+                (format!("{}", v), 2)
             }
             OpCode::LOAD_LOC_0 => ("0".to_string(), 0),
             OpCode::LOAD_LOC_1 => ("1".to_string(), 0),

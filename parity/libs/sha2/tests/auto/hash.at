@@ -1,0 +1,32 @@
+/// SHA-256 hash tests — TAP output format.
+use auto.sha2: sha256
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_hash(n int, name str, input str, expected str) {
+    var actual str = sha256(input)
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+fn main() {
+    check_hash(1, "test_empty", "", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    check_hash(2, "test_a", "a", "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb")
+    check_hash(3, "test_abc", "abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    check_hash(4, "test_message_digest", "message digest", "f7846f55cf23e14eebeab5b4e1550cad5b509e3348fbc4efa3a1413d393cb650")
+    check_hash(5, "test_long", "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")
+    check_hash(6, "test_123", "123", "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3")
+    check_hash(7, "test_hello", "hello", "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")
+    check_hash(8, "test_hello_world", "hello world", "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
+    check_hash(9, "test_quick_fox", "The quick brown fox jumps over the lazy dog", "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592")
+    check_hash(10, "test_two_blocks", "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")
+}

@@ -5921,8 +5921,8 @@ impl AutoVM {
                 // Plan 327: Global variable access (module-level var).
                 // name_idx: u16 indexes the string pool.
                 OpCode::LOAD_GLOBAL => {
-                    let name_idx = self.flash.read_u8(task.ip) as usize;
-                    task.ip += 1;
+                    let name_idx = self.flash.read_u16(task.ip) as usize;
+                    task.ip += 2;
                     let name = self.strings.read().unwrap()
                         .get(name_idx)
                         .map(|b| String::from_utf8_lossy(b).to_string())
@@ -5931,8 +5931,8 @@ impl AutoVM {
                     task.ram.push_nv(nv);
                 }
                 OpCode::STORE_GLOBAL => {
-                    let name_idx = self.flash.read_u8(task.ip) as usize;
-                    task.ip += 1;
+                    let name_idx = self.flash.read_u16(task.ip) as usize;
+                    task.ip += 2;
                     let name = self.strings.read().unwrap()
                         .get(name_idx)
                         .map(|b| String::from_utf8_lossy(b).to_string())
