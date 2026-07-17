@@ -35,7 +35,7 @@ wrapper — same behavior, Rust performance.
 You kept the iteration speed of a script and the delivery properties of Rust.
 No second project to port Python to C++. No "rewrite it in Rust" phase where
 behavior silently drifts. The transpiler is on the hook for agreement, and the
-[parity dashboard](../../parity/docs/parity-dashboard.html) shows exactly which
+[parity dashboard](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html) shows exactly which
 libraries and patterns that agreement has been verified on — 232 test cases
 across seven real libraries at L1, today.
 
@@ -43,7 +43,7 @@ across seven real libraries at L1, today.
 
 - **[Language Tour](../tour/README)** — the language reference (syntax, types,
   control flow) if you haven't read it.
-- **[Parity dashboard](../../parity/docs/parity-dashboard.html)** — live
+- **[Parity dashboard](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)** — live
   evidence: which libraries are L1-verified, which are roadmap.
 - **[Script-to-Ship demos](../../examples/script-to-ship-demos/)** — runnable
   single-file demos (serde_json, regex, wc) you can clone and ship.

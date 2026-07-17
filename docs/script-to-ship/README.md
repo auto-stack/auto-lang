@@ -24,14 +24,14 @@ Every chapter is built around three acts:
 - **Dev** — write Auto, run it in the VM, iterate in seconds (no compile).
 - **Ship** — `a2r` transpiles the same source to Rust; `cargo build` for release.
 - **Bridge** — the transpiler guarantees VM output == Rust output. This is
-  not a claim; it's [verified by parity tests](../../parity/docs/parity-dashboard.html).
+  not a claim; it's [verified by parity tests](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html).
 
 ## Evidence, not promises
 
 Auto's "VM and Rust behave identically" claim is backed by an automated
 three-way parity harness (`parity/`): AutoVM vs a2r-transpiled Rust vs native
 Rust, on real libraries. See the live
-[parity dashboard](../../parity/docs/parity-dashboard.html) for current coverage
+[parity dashboard](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html) for current coverage
 (L1 = verified three-way, L2 = VM-stable, L3 = roadmap). Each chapter links the
 relevant L1 evidence.
 
