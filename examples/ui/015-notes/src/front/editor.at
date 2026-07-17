@@ -34,7 +34,7 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
                         if !note.pinned {
                             button "📌" {
                                 onclick: .TogglePin
-                                style: "text-base cursor-pointer opacity-0 group-hover:opacity-40 hover:!opacity-100"
+                                style: "text-base cursor-pointer opacity-0 group-hover:opacity-30 hover:opacity-60"
                             }
                         }
                     }
@@ -49,11 +49,11 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
                     style: "group gap-1 mt-1 flex-wrap items-center"
                     for t in .note.tags {
                         row {
-                            style: "group/tag items-center gap-0.5"
-                            badge t { variant: "secondary" }
+                            style: "group/tag items-center rounded-full bg-secondary pl-2 pr-1"
+                            text t { style: "text-xs text-secondary-foreground" }
                             button "x" {
                                 onclick: .RemoveTag(t)
-                                style: "text-xs text-muted-foreground hover:text-destructive px-0.5 opacity-0 group-hover/tag:opacity-100"
+                                style: "text-xs text-muted-foreground hover:text-destructive w-4 h-4 flex items-center justify-center opacity-0 group-hover/tag:opacity-100"
                             }
                         }
                     }

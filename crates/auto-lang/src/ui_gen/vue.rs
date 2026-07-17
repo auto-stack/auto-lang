@@ -7867,6 +7867,16 @@ export function cn(...inputs: ClassValue[]) {
             ));
         }
 
+        // Auto-generate a computed 'all_tags' property that collects unique tags
+        // from all notes. This allows nav tag bars to update dynamically.
+        code.push_str("        get all_tags() {\n");
+        code.push_str("            const tags = new Set<string>();\n");
+        code.push_str("            for (const n of notes.value) {\n");
+        code.push_str("                if (n && n.tags) for (const t of n.tags) tags.add(t);\n");
+        code.push_str("            }\n");
+        code.push_str("            return Array.from(tags);\n");
+        code.push_str("        },\n");
+
         code.push_str("    }\n");
         code.push_str("}\n");
         code
