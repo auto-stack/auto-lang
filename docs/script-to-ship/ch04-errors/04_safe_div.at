@@ -1,0 +1,27 @@
+// ch04 — error handling: Auto's ! fn + .? propagation -> Rust Result + ?.
+// A !int function returns Result<int, str>. Success returns the value
+// directly; failure returns Err("..."). The .? operator unwraps Ok or
+// propagates Err upward — exactly Rust's `?`.
+
+fn safe_div(a int, b int) !int {
+    if b == 0 {
+        return Err("divide by zero")
+    }
+    return a / b
+}
+
+// .? propagates the error: if safe_div fails, half fails too.
+fn half_of(a int, b int) !int {
+    return safe_div(a, b).? / 2
+}
+
+fn main() {
+    // happy path
+    print("half of 20/4 = " + half_of(20, 4).to(str))
+    // error propagates: half_of(20, 0) is the same Err as safe_div(20, 0)
+    var r = half_of(20, 0)
+    is r {
+        Ok(v) -> print("ok: " + v.to(str))
+        Err(_) -> print("propagated error (as expected)")
+    }
+}

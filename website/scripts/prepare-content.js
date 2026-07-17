@@ -176,6 +176,17 @@ function listingToCodeView(bookDir, tag) {
     return `<!-- Listing source not found: ${tag.slice(1, -1)} -->`
   }
 
+  // Plan 358 B2: view="scriptship" renders a <ScriptShipView> (Auto VM run +
+  // a2r transpile + optional compare) instead of the static <CodeView>.
+  // The Rust tab is generated live by the component via /api/trans, so only
+  // the .at source is read here (expected.* siblings are ignored).
+  if (attrs.view === 'scriptship') {
+    const props = [`auto="${escapeProp(files.auto)}"`]
+    if (attrs.caption) props.push(`caption="${escapeProp(attrs.caption)}"`)
+    if (attrs.compare === 'true') props.push(':compare-run="true"')
+    return `<ScriptShipView ${props.join(' ')} />`
+  }
+
   const props = [`auto="${escapeProp(files.auto)}"`]
   if (files.rust) props.push(`rust="${escapeProp(files.rust)}"`)
   if (files.c) props.push(`c="${escapeProp(files.c)}"`)
@@ -322,6 +333,7 @@ const DOCS_INCLUDE = new Set([
   'releases',
   'features',
   'tour',  // Plan 244: Auto Language Tour
+  'script-to-ship',  // Plan 358: Script-to-Ship workflow tour
 ])
 
 function shouldIncludeDoc(relPath) {
@@ -357,8 +369,9 @@ function prepareDocs() {
     if (!name.endsWith('.md')) return
 
     // Always copy to EN
-    // Plan 244: Pass docs/ root as bookDir for tour/ files so <Listing> resolves
-    const isTour = relPath.startsWith('tour' + path.sep)
+    // Plan 244: Pass docs/ root as bookDir for tour/ files so <Listing> resolves.
+    // Plan 358: also for script-to-ship/ files (ScriptShipView listings).
+    const isTour = relPath.startsWith('tour' + path.sep) || relPath.startsWith('script-to-ship' + path.sep)
     const docBookDir = isTour ? DOCS_SRC : null
     const enDstPath = path.join(DOCS_DST_EN, relPath)
     copyFile(fullPath, enDstPath, docBookDir)

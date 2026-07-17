@@ -1,0 +1,34 @@
+// ch05 — spec (Auto's trait) -> Rust trait + impl.
+// Declare a spec, implement it on two types via `type T as Spec { ... }`,
+// then dispatch through a spec-typed parameter. This is the L1-verified
+// subset. (Advanced trait features — associated types, default method bodies
+// that return values, bounded generic functions — are honest L3 roadmap;
+// see the chapter text and parity/docs/known-divergences.md.)
+spec Shape {
+    fn area() int
+    fn name() str
+}
+
+type Square as Shape {
+    side int
+    fn area() int { return side * side }
+    fn name() str { return "square" }
+}
+
+type Rect as Shape {
+    w int
+    h int
+    fn area() int { return w * h }
+    fn name() str { return "rect" }
+}
+
+fn area_of(s Shape) int {
+    return s.area()
+}
+
+fn main() {
+    var sq = Square(4)
+    var rc = Rect(3, 6)
+    print(sq.name() + " area = " + area_of(sq).to(str))
+    print(rc.name() + " area = " + area_of(rc).to(str))
+}

@@ -1,0 +1,17 @@
+// ch06 — Ship: this is what you transpile and cargo build for release.
+// A small but non-trivial program (recursive fibonacci with memoization-free
+// clarity). Transpile it, read the Rust, and notice the deliverable is
+// plain Rust you could audit and ship.
+fn fib(n int) int {
+    if n < 2 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn main() {
+    var line = ""
+    for i in 0..10 {
+        if i > 0 { line = line + ", " }
+        line = line + fib(i).to(str)
+    }
+    print("fib: " + line)
+}

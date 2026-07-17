@@ -1,0 +1,14 @@
+// ch01 — the smallest Script-to-Ship loop.
+// One program. Two execution modes. Identical output.
+fn greet(name str) str {
+    return "hello, " + name + " — auto is rust's script layer"
+}
+
+fn main() {
+    print(greet("world"))
+    var sum = 0
+    for i in 1..=10 {
+        sum = sum + i
+    }
+    print("sum 1..10 = " + sum.to(str))
+}
