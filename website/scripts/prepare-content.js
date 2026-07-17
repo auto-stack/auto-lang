@@ -359,8 +359,9 @@ function prepareDocs() {
     const relPath = path.relative(DOCS_SRC, fullPath)
     if (!shouldIncludeDoc(relPath)) return
 
-    // Plan 244: Copy .at files from tour/ directory (needed for Listing reference)
-    if (name.endsWith('.at') && relPath.startsWith('tour' + path.sep)) {
+    // Plan 244: Copy .at files from tour/ directory (needed for Listing reference).
+    // Plan 358: also copy script-to-ship/ .at files (ScriptShipView listings).
+    if (name.endsWith('.at') && (relPath.startsWith('tour' + path.sep) || relPath.startsWith('script-to-ship' + path.sep))) {
       const dstPath = path.join(DOCS_DST_EN, relPath)
       copyFile(fullPath, dstPath)
       return
