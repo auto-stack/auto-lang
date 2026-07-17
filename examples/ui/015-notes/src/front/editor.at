@@ -19,7 +19,13 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
         col {
             col {
                 if .editing == false {
-                    text .note.title { style: "text-lg font-semibold text-gray-800" }
+                    row {
+                        style: "items-center gap-2"
+                        text .note.title { style: "text-lg font-semibold text-gray-800" }
+                        if .note.pinned {
+                            text "Pinned" { style: "text-xs text-blue-500 font-medium" }
+                        }
+                    }
                 }
                 if .editing == true {
                     input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-gray-800 border-b border-gray-200 outline-none w-full focus:border-blue-500 p-1" }
@@ -29,7 +35,16 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                 row {
                     style: "gap-1"
                     for t in .note.tags {
-                        badge t { variant: "secondary" }
+                        if .editing == false {
+                            badge t { variant: "secondary" }
+                        }
+                        if .editing == true {
+                            badge t { variant: "destructive", onclick: .RemoveTag(t) }
+                        }
+                    }
+                    if .editing == true {
+                        input { value: .tag_input, oninput: .EditTagInput, placeholder: "Add tag...", style: "text-xs px-2 py-0.5 border rounded w-24" }
+                        button "+" { onclick: .AddTag, style: "text-xs px-2 py-0.5 bg-blue-500 text-white rounded" }
                     }
                 }
 

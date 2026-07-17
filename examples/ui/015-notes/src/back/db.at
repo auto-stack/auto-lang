@@ -59,7 +59,7 @@ pub fn all_notes() []Note {
 }
 
 /// Create a new note
-pub fn create_note(title str, body str) Note {
+pub fn create_note(title str, body str, folder str) Note {
     let note = Note {
         id: nextid,
         title: title,
@@ -67,7 +67,7 @@ pub fn create_note(title str, body str) Note {
         time: "Just now",
         pinned: false,
         tags: [],
-        folder: "default",
+        folder: folder,
     }
     nextid = nextid + 1
     notes.push(note)

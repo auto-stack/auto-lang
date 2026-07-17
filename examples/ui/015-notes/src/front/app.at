@@ -13,7 +13,7 @@ use editor: EditorPanel
 use back.api: delete_note, list_notes
 
 widget App {
-    msg Msg { Init, NewNote, SelectNote(int), SearchChanged, TogglePin(int),
+    msg Msg { Init, NewNote, NewNoteInFolder(str), SelectNote(int), SearchChanged, TogglePin(int),
               DeleteActive, ToggleDarkMode,
               SelectAll, SelectPinned, SelectRecent, SelectTag(str), ClearTag }
 
@@ -131,50 +131,103 @@ widget App {
                             for i, note in .store.notes {
                                 if note.folder == "" {
                                     if .store.active_tag == "" {
-                                        button {
-                                            onclick: .SelectNote(i)
-                                            style: if i == .store.active_id {
-                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                            } else {
-                                                "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                        if note.pinned {
+                                            button {
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                                text note.title
                                             }
-                                            text note.title
+                                        }
+                                        if !note.pinned {
+                                            button {
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                                text note.title
+                                            }
                                         }
                                     }
                                 }
                             }
 
                             // Work folder
-                            text "Work" { style: "px-3 py-1 text-xs font-bold text-gray-400 uppercase" }
+                            row {
+                                style: "px-3 py-1 items-center"
+                                text "Work" { style: "text-xs font-bold text-gray-400 uppercase flex-1" }
+                                button "+" {
+                                    onclick: .NewNoteInFolder("work")
+                                    style: "text-xs text-gray-400 hover:text-blue-500"
+                                }
+                            }
                             for i, note in .store.notes {
                                 if note.folder == "work" {
                                     if .store.active_tag == "" {
-                                        button {
-                                            onclick: .SelectNote(i)
-                                            style: if i == .store.active_id {
-                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                            } else {
-                                                "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                        if note.pinned {
+                                            button {
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                                text note.title
                                             }
-                                            text note.title
+                                        }
+                                        if !note.pinned {
+                                            button {
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                                text note.title
+                                            }
                                         }
                                     }
                                 }
                             }
 
                             // Personal folder
-                            text "Personal" { style: "px-3 py-1 text-xs font-bold text-gray-400 uppercase" }
+                            row {
+                                style: "px-3 py-1 items-center"
+                                text "Personal" { style: "text-xs font-bold text-gray-400 uppercase flex-1" }
+                                button "+" {
+                                    onclick: .NewNoteInFolder("personal")
+                                    style: "text-xs text-gray-400 hover:text-blue-500"
+                                }
+                            }
                             for i, note in .store.notes {
                                 if note.folder == "personal" {
                                     if .store.active_tag == "" {
-                                        button {
-                                            onclick: .SelectNote(i)
-                                            style: if i == .store.active_id {
-                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
-                                            } else {
-                                                "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                        if note.pinned {
+                                            button {
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                                text note.title
                                             }
-                                            text note.title
+                                        }
+                                        if !note.pinned {
+                                            button {
+                                                onclick: .SelectNote(i)
+                                                style: if i == .store.active_id {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                } else {
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                }
+                                                text note.title
+                                            }
                                         }
                                     }
                                 }
@@ -242,6 +295,7 @@ widget App {
     on {
         .Init -> { store.Init() }
         .NewNote -> { store.NewNote() }
+        .NewNoteInFolder(f) -> { store.NewNoteInFolder(f) }
         .SelectNote(i) -> { store.active_id = i }
         .SearchChanged -> { .search = .search }
         .TogglePin -> { store.TogglePin(.store.notes[.store.active_id].id) }

@@ -24,7 +24,7 @@ store NotesStore {
         // Tags aggregated client-side from notes.
     }
 
-    msg Msg { Init, Refresh, SelectNote(int), NewNote, DeleteNote(int),
+    msg Msg { Init, Refresh, SelectNote(int), NewNote, NewNoteInFolder(str), DeleteNote(int),
               TogglePin(int), SetSort(str), Search(str),
               UpdateTags(int), ToggleDarkMode,
               SelectFolder(str), SelectTag(str) }
@@ -45,7 +45,13 @@ store NotesStore {
         }
 
         .NewNote -> {
-            create_note("", "")
+            create_note("", "", "")
+            .notes = list_notes()
+            .active_id = .notes.len() - 1
+        }
+
+        .NewNoteInFolder(f) -> {
+            create_note("", "", f)
             .notes = list_notes()
             .active_id = .notes.len() - 1
         }

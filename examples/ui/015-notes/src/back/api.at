@@ -39,8 +39,8 @@ pub fn get_note(id int) ?Note {
 /// Create a new note
 /// POST /api/notes
 #[api(method = "POST", path = "/api/notes")]
-pub fn create_note(title str, body str) Note {
-    let note = db.create_note(title, body)
+pub fn create_note(title str, body str, folder str) Note {
+    let note = db.create_note(title, body, folder)
     return note
 }
 
