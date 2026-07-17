@@ -354,6 +354,10 @@ function prepareDocs() {
 
   const enFiles = []
   const zhFiles = []
+  // Plan 359: track ZH paths already filled by a .cn.md so the EN-fallback
+  // branch does not clobber the Chinese translation when walkDir visits the
+  // sibling .md afterwards (visit order is filesystem-dependent).
+  const zhFilledByCn = new Set()
 
   walkDir(DOCS_SRC, (fullPath, name) => {
     const relPath = path.relative(DOCS_SRC, fullPath)
@@ -369,22 +373,30 @@ function prepareDocs() {
 
     if (!name.endsWith('.md')) return
 
-    // Always copy to EN
     // Plan 244: Pass docs/ root as bookDir for tour/ files so <Listing> resolves.
     // Plan 358: also for script-to-ship/ files (ScriptShipView listings).
     const isTour = relPath.startsWith('tour' + path.sep) || relPath.startsWith('script-to-ship' + path.sep)
     const docBookDir = isTour ? DOCS_SRC : null
+
+    // .cn.md files are the Chinese translation — they do NOT go to EN, and
+    // they claim the ZH slot so a later-visited sibling .md (EN fallback)
+    // cannot clobber them.
+    if (name.endsWith('.cn.md')) {
+      const zhRelPath = relPath.replace(/\.cn\.md$/, '.md')
+      const zhDstPath = path.join(DOCS_DST_ZH, zhRelPath)
+      copyFile(fullPath, zhDstPath, docBookDir)
+      zhFiles.push(zhRelPath)
+      zhFilledByCn.add(zhRelPath)
+      return
+    }
+
+    // EN source: always copy to EN.
     const enDstPath = path.join(DOCS_DST_EN, relPath)
     copyFile(fullPath, enDstPath, docBookDir)
     enFiles.push(relPath)
 
-    if (name.endsWith('.cn.md')) {
-      // Chinese version goes to ZH without .cn prefix
-      const zhDstPath = path.join(DOCS_DST_ZH, relPath.replace(/\.cn\.md$/, '.md'))
-      copyFile(fullPath, zhDstPath, docBookDir)
-      zhFiles.push(relPath.replace(/\.cn\.md$/, '.md'))
-    } else {
-      // Non-Chinese files also go to ZH as fallback
+    // EN fallback to ZH — but skip if a .cn.md translation already filled it.
+    if (!zhFilledByCn.has(relPath)) {
       const zhDstPath = path.join(DOCS_DST_ZH, relPath)
       copyFile(fullPath, zhDstPath, docBookDir)
       zhFiles.push(relPath)
