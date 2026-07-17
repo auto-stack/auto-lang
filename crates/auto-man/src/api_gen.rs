@@ -323,8 +323,16 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     std::fs::write(src_dir.join("api.rs"), &api_rs)
         .map_err(|e| format!("Failed to write api.rs: {}", e))?;
 
+    // Read seed data from db.at (if exists)
+    let db_file = root_dir.join("src").join("back").join("db.at");
+    let seed_data = if db_file.exists() {
+        std::fs::read_to_string(&db_file).ok()
+    } else {
+        None
+    };
+
     // Generate main.rs
-    let main_rs = generate_main_rs(api_module);
+    let main_rs = generate_main_rs(api_module, seed_data.as_deref());
     std::fs::write(src_dir.join("main.rs"), &main_rs)
         .map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
@@ -777,8 +785,173 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
     lines.join("\n")
 }
 
-/// Generate initial sample data for the primary type
-pub fn generate_initial_data_pub(api_module: &auto_lang::api::ApiModule) -> String {
+/// Generate initial sample data for the primary type.
+///
+/// If db_at_content is provided, try to extract seed data from
+/// `var notes List<Note>.new([...])` declarations. Fall back to
+/// generating 3 default sample items.
+pub fn generate_initial_data_pub(api_module: &auto_lang::api::ApiModule, db_at_content: Option<&str>) -> String {
+    // Try to extract seed data from db.at first
+    if let Some(content) = db_at_content {
+        if let Some(seed) = extract_seed_data(content, api_module) {
+            return seed;
+        }
+    }
+
+    // Fall back to hardcoded samples
+    generate_default_seed_data(api_module)
+}
+
+/// Extract seed data from db.at's `var notes List<Note>.new([...])` declaration.
+/// Parses the Note { ... } struct literals and converts to Rust.
+fn extract_seed_data(db_content: &str, api_module: &auto_lang::api::ApiModule) -> Option<String> {
+    let primary_type = primary_type_name_pub(api_module)?;
+    let api_type = api_module.types.iter().find(|t| t.name == primary_type)?;
+
+    // Find .new([ pattern (most reliable)
+    let new_pattern = ".new([";
+    let start = db_content.find(new_pattern)?;
+    let after_start = &db_content[start + new_pattern.len()..];
+    let after_start = &db_content[start + new_pattern.len()..];
+
+    // Find matching closing ]) — count brackets
+    let mut depth = 1;
+    let mut end = 0;
+    for (i, c) in after_start.chars().enumerate() {
+        match c {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    if end == 0 {
+        return None;
+    }
+
+    let items_str = &after_start[..end];
+
+    // Parse individual Note { field: value, ... } entries
+    let mut rust_items = Vec::new();
+    let mut remaining = items_str;
+    while let Some(type_start) = remaining.find(&format!("{} {{", primary_type)) {
+        let after_type = &remaining[type_start + primary_type.len()..];
+        // Find matching closing brace
+        let mut brace_depth = 0;
+        let mut brace_end = 0;
+        for (i, c) in after_type.chars().enumerate() {
+            match c {
+                '{' => brace_depth += 1,
+                '}' => {
+                    brace_depth -= 1;
+                    if brace_depth == 0 {
+                        brace_end = i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if brace_end == 0 {
+            break;
+        }
+
+        // Skip leading whitespace and opening brace
+        let inner_start = after_type.find('{').map(|p| p + 1).unwrap_or(1);
+        let fields_str = &after_type[inner_start..brace_end];
+        let rust_fields = convert_at_fields_to_rust(fields_str, api_type);
+        rust_items.push(format!(
+            "        {} {{\n            {}\n        }}",
+            primary_type, rust_fields
+        ));
+
+        remaining = &after_type[brace_end + 1..];
+    }
+
+    if rust_items.is_empty() {
+        return None;
+    }
+
+    Some(format!("vec![\n{}\n    ]", rust_items.join(",\n")))
+}
+
+/// Convert Auto-style struct fields to Rust struct fields.
+/// E.g., `title: "Welcome"` → `title: "Welcome".into()`
+///       `pinned: true` → `pinned: true`
+///       `tags: ["intro"]` → `tags: vec!["intro".into()]`
+///       `folder: ""` → `folder: "".into()`
+fn convert_at_fields_to_rust(fields_str: &str, api_type: &auto_lang::api::ApiType) -> String {
+    let mut rust_fields = Vec::new();
+
+    // Parse field: value pairs (comma-separated at top level)
+    let mut current_field = String::new();
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut fields: Vec<String> = Vec::new();
+
+    for c in fields_str.chars() {
+        match c {
+            '"' => {
+                in_string = !in_string;
+                current_field.push(c);
+            }
+            '[' | '{' if !in_string => {
+                depth += 1;
+                current_field.push(c);
+            }
+            ']' | '}' if !in_string => {
+                depth -= 1;
+                current_field.push(c);
+            }
+            ',' if depth == 0 && !in_string => {
+                fields.push(current_field.trim().to_string());
+                current_field.clear();
+            }
+            _ => {
+                current_field.push(c);
+            }
+        }
+    }
+    if !current_field.trim().is_empty() {
+        fields.push(current_field.trim().to_string());
+    }
+
+    for field_def in &fields {
+        if let Some(colon_pos) = field_def.find(':') {
+            let name = field_def[..colon_pos].trim();
+            let value = field_def[colon_pos + 1..].trim();
+
+            // Infer conversion from value syntax (don't rely on api_type lookup)
+            let rust_value = if value.starts_with('[') {
+                // Array: ["a", "b"] → vec!["a".into(), "b".into()]
+                let inner = value.trim_start_matches('[').trim_end_matches(']');
+                let items: Vec<&str> = inner.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+                let rust_items: Vec<String> = items.iter()
+                    .map(|s| format!("{}.into()", s))
+                    .collect();
+                format!("vec![{}]", rust_items.join(", "))
+            } else if value.starts_with('"') {
+                // String literal: ensure .into()
+                format!("{}.into()", value)
+            } else {
+                // Number, bool, etc: pass through
+                value.to_string()
+            };
+
+            rust_fields.push(format!("{}: {}", name, rust_value));
+        }
+    }
+
+    rust_fields.join(",\n            ")
+}
+
+/// Generate 3 default sample items (fallback when no db.at seed data)
+fn generate_default_seed_data(api_module: &auto_lang::api::ApiModule) -> String {
     let primary_type = match primary_type_name_pub(api_module) {
         Some(t) => t,
         None => return "Vec::new()".to_string(),
@@ -838,7 +1011,7 @@ pub fn generate_initial_data_pub(api_module: &auto_lang::api::ApiModule) -> Stri
 }
 
 /// Generate main.rs with Axum server setup, shared state, and initial data
-fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
+fn generate_main_rs(api_module: &auto_lang::api::ApiModule, db_at_content: Option<&str>) -> String {
     let routes: Vec<String> = api_module.endpoints.iter()
         .map(|e| {
             let path = e.path();
@@ -847,7 +1020,7 @@ fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
         })
         .collect();
 
-    let initial_data = generate_initial_data_pub(api_module);
+    let initial_data = generate_initial_data_pub(api_module, db_at_content);
     let routes_str = routes.join("\n");
 
     let mut s = String::new();
