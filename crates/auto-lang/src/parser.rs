@@ -2920,9 +2920,15 @@ impl<'a> Parser<'a> {
         }
 
         // Handle generic type instances specially (e.g., List<int, Heap>)
-        // This must be checked before the match statement since we need to consume
+        // This is checked before the match statement since we need to consume
         // the identifier and potentially parse type parameters
-        if self.is_kind(TokenKind::Ident) {
+        //
+        // Plan 356 follow-up #2: also accept soft-keyword tokens here (e.g.
+        // `tag` → TokenKind::Tag). Such words are legitimate identifiers in
+        // expression position (a loop variable used in an `if` condition like
+        // `if .active_tag == tag`), but the lexer reserves them as keyword
+        // tokens. Without this, atom() rejected them → "Expected term".
+        if self.is_kind(TokenKind::Ident) || self.cur_is_soft_ident() {
             let name = self.cur.text.clone();
             self.next(); // consume the identifier
 

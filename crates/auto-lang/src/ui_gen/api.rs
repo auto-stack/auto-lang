@@ -107,6 +107,51 @@ mod tests {
         assert!(true);
     }
 
+    /// Plan 356 follow-up #2: a reserved-keyword identifier (e.g. `tag`,
+    /// lexed as TokenKind::Tag) used inside an `if` condition — specifically
+    /// as the right-hand side of a comparison in a `style: if` attribute:
+    ///   style: if .active_tag == tag { ... } else { ... }
+    ///
+    /// Previously the expression atom parser matched only TokenKind::Ident,
+    /// so `tag` here produced "Expected term, got RBrace" (the real 015-notes
+    /// sidebar's offset-8873 error). Must now parse + generate.
+    #[test]
+    fn test_soft_keyword_in_if_condition() {
+        let src = r#"
+widget W(active_tag: str) {
+    view {
+        button {
+            style: if .active_tag == tag {
+                "bg-blue-500"
+            } else {
+                "bg-gray-100"
+            }
+        }
+    }
+}
+"#;
+        let out = transpile_vue_aura(src, None).expect("soft-kw in if-condition must generate");
+        assert!(out.contains(":class"), "expected :class binding in:\n{out}");
+    }
+
+    /// Plan 356 follow-up #2: a reserved-keyword identifier as a comparison
+    /// operand in an `if` condition (the shape the real sidebar uses:
+    /// `if .active_tag == tag`). Covers several soft keywords.
+    ///
+    /// NOTE: a bare soft keyword as the *whole* condition (`if tag {}`) is a
+    /// separate, narrower pre-existing issue with `style:`-attribute parsing
+    /// and is intentionally not covered here — the sidebar doesn't use it.
+    #[test]
+    fn test_soft_keyword_as_condition_value() {
+        for kw in ["tag", "type", "move", "copy", "super"] {
+            let src = format!(
+                "widget W(x: str) {{ view {{ button {{ style: if .x == {kw} {{ \"a\" }} else {{ \"b\" }} }} }} }}",
+            );
+            transpile_vue_aura(&src, None)
+                .unwrap_or_else(|e| panic!("compare-operand {kw}: {e}"));
+        }
+    }
+
     /// Plan 356 follow-up: a view `for`-loop over an `ident.field` iterable
     /// (e.g. `for tag in note.tags`) must parse + generate. Previously
     /// `parse_view_for_loop` only accepted `.field`, numeric ranges, or a bare
@@ -149,18 +194,14 @@ widget W {
         assert!(out.contains("v-for"), "missing v-for in:\n{out}");
     }
 
-    /// Plan 356 end-to-end (IGNORED): the real 015-notes sidebar (commit
-    /// 50307d51, 200 lines) that originally OOM'd. After the Plan 356 OOM fix
-    /// and the `for ident.field` fix, parsing advances past the tag-filter
-    /// section, but the file still hits a *separate* pre-existing bug: a
-    /// `style: if <complex-cond> { } else { }` attribute with a comparison
-    /// condition fails to parse (offset ~8873, "Expected term, got RBrace").
-    ///
-    /// That is a distinct parser issue, out of scope for this fix. This test is
-    /// kept (ignored) as a guard: once the style:if-attribute bug is fixed,
-    /// un-ignore it to verify the full sidebar regenerates end to end.
+    /// Plan 356 end-to-end: the real 015-notes sidebar (commit 50307d51, 200
+    /// lines) that originally OOM'd. This is the full integration guard — it
+    /// exercises every trigger fixed across the three Plan 356 commits:
+    ///   - `onclick: .SelectTag(tag)`        (reserved-kw loop var → OOM)
+    ///   - `for tag in note.tags`            (ident.field iterable)
+    ///   - `style: if .active_tag == tag {}` (reserved-kw in if-condition)
+    /// It must parse AND generate end to end.
     #[test]
-    #[ignore]
     fn test_plan356_real_sidebar_generates() {
         let src = include_str!("../../tests/fixtures/plan356_oom_sidebar.at");
         let out = transpile_vue_aura(src, None).expect("real sidebar must generate");
