@@ -312,26 +312,39 @@ fn shim_int_not(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// int.shl(n) — Logical left shift: val << n
+/// For n >= 32, the result is 0 (all bits shifted out).
 fn shim_int_shl(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
-    task.ram.push_i32(val.wrapping_shl(n as u32));
+    // wrapping_shl masks n to 5 bits, so n>=32 wraps to n & 31. Clamp to 0 instead.
+    let result = if n >= 32 || n < 0 { 0 } else { val.wrapping_shl(n as u32) };
+    task.ram.push_i32(result);
     Ok(())
 }
 
 /// int.shr(n) — Logical right shift: val >> n (unsigned)
+/// For n >= 32, the result is 0 (all bits shifted out).
 fn shim_int_shr(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
-    task.ram.push_i32((val as u32).wrapping_shr(n as u32) as i32);
+    // wrapping_shr masks n to 5 bits, so n>=32 wraps to n & 31. Clamp to 0 instead.
+    let result = if n >= 32 || n < 0 { 0 } else { (val as u32 >> n as u32) as i32 };
+    task.ram.push_i32(result);
     Ok(())
 }
 
 /// int.sar(n) — Arithmetic right shift: val >> n (preserves sign)
+/// For n >= 32, the result is sign-filled (0 if non-negative, -1 if negative).
 fn shim_int_sar(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
-    task.ram.push_i32(val.wrapping_shr(n as u32));
+    // wrapping_shr masks n to 5 bits, so n>=32 wraps to n & 31. Sign-fill instead.
+    let result = if n >= 32 || n < 0 {
+        if val < 0 { -1 } else { 0 }
+    } else {
+        val >> n
+    };
+    task.ram.push_i32(result);
     Ok(())
 }
 
@@ -387,7 +400,9 @@ fn shim_int_bit_read(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let start = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     let mask = if len >= 32 { -1 } else { (1i32 << len) - 1 };
-    task.ram.push_i32((val.wrapping_shr(start as u32)) & mask);
+    // wrapping_shr masks start to 5 bits, so start>=32 wraps to start & 31. Clamp to 0 instead.
+    let shifted = if start >= 32 || start < 0 { 0 } else { (val as u32 >> start as u32) as i32 };
+    task.ram.push_i32(shifted & mask);
     Ok(())
 }
 
@@ -395,32 +410,39 @@ fn shim_int_bit_read(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 fn shim_int_bit_test(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
-    let result = (val.wrapping_shr(n as u32)) & 1;
+    // For n >= 32 or n < 0, the bit does not exist in an i32, so the result is 0.
+    let result = if n >= 32 || n < 0 { 0 } else { (val >> n) & 1 };
     task.ram.push_i32(result);
     Ok(())
 }
 
 /// int.bit_on(n) — Set bit n: val | (1 << n)
+/// For n outside [0, 31], the bit does not exist in an i32, so val is returned unchanged.
 fn shim_int_bit_on(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
-    task.ram.push_i32(val | (1 << n));
+    let result = if n >= 0 && n < 32 { val | (1 << n) } else { val };
+    task.ram.push_i32(result);
     Ok(())
 }
 
 /// int.bit_off(n) — Clear bit n: val & !(1 << n)
+/// For n outside [0, 31], the bit does not exist in an i32, so val is returned unchanged.
 fn shim_int_bit_off(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
-    task.ram.push_i32(val & !(1 << n));
+    let result = if n >= 0 && n < 32 { val & !(1 << n) } else { val };
+    task.ram.push_i32(result);
     Ok(())
 }
 
 /// int.bit_flip(n) — Toggle bit n: val ^ (1 << n)
+/// For n outside [0, 31], the bit does not exist in an i32, so val is returned unchanged.
 fn shim_int_bit_flip(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
-    task.ram.push_i32(val ^ (1 << n));
+    let result = if n >= 0 && n < 32 { val ^ (1 << n) } else { val };
+    task.ram.push_i32(result);
     Ok(())
 }
 
