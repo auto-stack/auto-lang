@@ -140,17 +140,9 @@ fn run_library(config: &RunConfig) {
     });
 
     // Build per-test comparison across all backends.
-    eprintln!("DBG355 main vm_results={} a2r_results={} rust_results={}", vm_results.len(), a2r_results.len(), rust_results.len());
     let vm_map = tap::tap_map_from_results(&vm_results);
     let a2r_map = tap::tap_map_from_results(&a2r_results);
     let rust_map = tap::tap_map_from_results(&rust_results);
-    eprintln!("DBG355 main vm_map={} a2r_map={} rust_map={}", vm_map.len(), a2r_map.len(), rust_map.len());
-    if let Some(k) = vm_map.keys().next() { eprintln!("DBG355 vm sample key={:?} bytes={:?}", k, k.as_bytes()); }
-    if let Some(k) = rust_map.keys().next() { eprintln!("DBG355 rust sample key={:?} bytes={:?}", k, k.as_bytes()); }
-    // Check if a known vm key is in rust_map
-    if let Some(vk) = vm_map.keys().next() {
-        eprintln!("DBG355 vm key {:?} in rust_map? {}", vk, rust_map.contains_key(vk));
-    }
 
     let all_names: std::collections::BTreeSet<String> = vm_map
         .keys()
