@@ -71,17 +71,39 @@ widget App {
                         style: "mx-2 mt-2 px-3 py-1.5 text-sm border rounded-lg"
                     }
 
-                    // Tag filters (dynamic from store.all_tags)
+                    // Tag filters (hardcoded known tags + always show)
                     row {
                         style: "flex-wrap gap-1 px-2 mt-2 mb-1"
-                        for t in .store.all_tags {
-                            button t {
-                                onclick: .SelectTag(t)
-                                style: if .store.active_tag == t {
-                                    "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
-                                } else {
-                                    "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
-                                }
+                        button "intro" {
+                            onclick: .SelectTag("intro")
+                            style: if .store.active_tag == "intro" {
+                                "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
+                            } else {
+                                "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
+                            }
+                        }
+                        button "ideas" {
+                            onclick: .SelectTag("ideas")
+                            style: if .store.active_tag == "ideas" {
+                                "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
+                            } else {
+                                "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
+                            }
+                        }
+                        button "home" {
+                            onclick: .SelectTag("home")
+                            style: if .store.active_tag == "home" {
+                                "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
+                            } else {
+                                "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
+                            }
+                        }
+                        button "work" {
+                            onclick: .SelectTag("work")
+                            style: if .store.active_tag == "work" {
+                                "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
+                            } else {
+                                "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
                             }
                         }
                         if .store.active_tag != "" {
@@ -314,7 +336,7 @@ widget App {
             }
         }
         .ToggleDarkMode -> { store.ToggleDarkMode() }
-        .TagsChanged -> { store.RefreshTags() }
+        .TagsChanged -> { store.notes = list_notes() }
         .SelectAll -> { store.active_folder = "all"; store.active_tag = "" }
         .SelectPinned -> { store.active_folder = "pinned"; store.active_tag = "" }
         .SelectRecent -> { store.active_folder = "recent"; store.active_tag = "" }

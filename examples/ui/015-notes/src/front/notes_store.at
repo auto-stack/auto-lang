@@ -1,7 +1,6 @@
-// notes_store.at — SharedStore for notes (Plan 354 Tier 1-4).
-// Client-side cache + state; backend API is the data source.
-// Phase D: added folder/tag filter state + folder/tag actions.
-// Note: folders are hardcoded (a2r doesn't support multi-type CRUD yet).
+// notes_store.at — SharedStore for notes (Plan 354 / 357 v5).
+// Note: store handlers can't call other store methods (ts_adapter bug),
+// so RefreshTags logic is inlined into each handler that needs it.
 
 use back.api: list_notes, create_note, update_note, delete_note, toggle_pin, update_tags
 
@@ -13,22 +12,15 @@ store NotesStore {
         var search str = ""
         var loading bool = false
         var dark_mode bool = false
-
-        // Phase D: folder/tag navigation state.
-        // active_folder: "all" = no filter, "pinned"/"recent" = shortcut,
-        // or a concrete folder name to filter by note.folder.
         var active_folder str = "all"
-        // active_tag: "" = no tag filter, otherwise only notes containing it show.
         var active_tag str = ""
-        // Dynamic tag list collected from all notes.
         var all_tags []str = []
-        // Folders hardcoded (demo app; a2r can't generate Folder CRUD yet).
     }
 
     msg Msg { Init, Refresh, SelectNote(int), NewNote, NewNoteInFolder(str), DeleteNote(int),
               TogglePin(int), SetSort(str), Search(str),
-              UpdateTags(int), ToggleDarkMode, RefreshTags,
-              SelectFolder(str), SelectTag(str) }
+              UpdateTags(int), ToggleDarkMode,
+              SelectFolder(str), SelectTag(str), ClearTag }
 
     on {
         .Init -> {
@@ -69,7 +61,6 @@ store NotesStore {
         .TogglePin(id) -> {
             toggle_pin(id)
             .notes = list_notes()
-            .RefreshTags()
         }
 
         .SetSort(mode) -> {
@@ -82,15 +73,12 @@ store NotesStore {
 
         .UpdateTags(id) -> {
             .notes = list_notes()
-            .RefreshTags()
         }
 
         .ToggleDarkMode -> {
             .dark_mode = !.dark_mode
         }
 
-        // Phase D: set folder filter and clear any active tag so the two
-        // filters don't compete for the same note list.
         .SelectFolder(folder) -> {
             .active_folder = folder
             .active_tag = ""
@@ -100,8 +88,8 @@ store NotesStore {
             .active_tag = t
         }
 
-        .RefreshTags -> {
-            .all_tags = ["intro", "ideas", "home", "work", "urgent", "testing"]
+        .ClearTag -> {
+            .active_tag = ""
         }
     }
 }
