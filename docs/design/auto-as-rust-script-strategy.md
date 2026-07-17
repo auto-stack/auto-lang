@@ -64,6 +64,8 @@
 - 短期：要么补全 a2r 一侧（transpile → cargo build → run → 对比），要么**修改文件头注释**，诚实标注当前只验证 VM-vs-golden。
 - 中期：把真正的三向对比收敛到 `parity/` 框架，让 `conformance_tests.rs` 要么退役、要么明确降级为"VM 输出回归测试"。
 
+> ✅ （已于 Plan 358 C1 修复：`conformance_tests.rs` 注释已诚实降级为"AutoVM 输出回归测试"，明确指向 `parity/` 负责真正的 VM↔a2r 一致性验证。）
+
 #### 漏洞 2：a2r 测试覆盖的薄弱区
 
 a2r 测试总量可观，但有几个关键 Rust 模式**覆盖稀薄**，正是 Rust 开发者会盯着问的地方：
