@@ -101,7 +101,7 @@ store NotesStore {
         }
 
         .RefreshTags -> {
-            .all_tags = ["intro", "ideas", "home", "work"]
+            .all_tags = ["intro", "ideas", "home", "work", "urgent", "testing"]
         }
     }
 }

@@ -5,7 +5,7 @@
 use store: NotesStore
 use back.api: update_note, delete_note, toggle_pin, update_tags
 
-widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
+widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_changed: msg) {
     msg Msg { Init, Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin,
               AddTag, EditTagInput, RemoveTag(str), ShowTagInput }
 
@@ -28,13 +28,13 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                         if .note.pinned {
                             button "📌" {
                                 onclick: .TogglePin
-                                style: "text-base cursor-pointer"
+                                style: "text-base cursor-pointer opacity-100"
                             }
                         }
                         if !note.pinned {
-                            button "📍" {
+                            button "📌" {
                                 onclick: .TogglePin
-                                style: "text-base cursor-pointer opacity-50 hover:opacity-100"
+                                style: "text-base cursor-pointer opacity-20 hover:opacity-60"
                             }
                         }
                     }
@@ -48,9 +48,13 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                 row {
                     style: "gap-1 mt-1 flex-wrap items-center"
                     for t in .note.tags {
-                        badge t {
-                            variant: "secondary"
-                            onclick: .RemoveTag(t)
+                        row {
+                            style: "items-center gap-0.5"
+                            badge t { variant: "secondary" }
+                            button "x" {
+                                onclick: .RemoveTag(t)
+                                style: "text-xs text-muted-foreground hover:text-destructive px-0.5"
+                            }
                         }
                     }
                     if .show_tag_input == false {
@@ -125,6 +129,7 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                 update_tags(.note.id, .note.tags)
                 .tag_input = ""
                 .show_tag_input = false
+                on_tags_changed()
             }
         }
         .RemoveTag(t) -> {
@@ -136,6 +141,7 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
             }
             .note.tags = new_tags
             update_tags(.note.id, .note.tags)
+            on_tags_changed()
         }
         .Delete -> { on_delete() }
         .TogglePin -> {

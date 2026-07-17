@@ -7,7 +7,7 @@ use back.api: delete_note, list_notes
 
 widget App {
     msg Msg { Init, NewNote, NewNoteInFolder(str), SelectNote(int), SearchChanged, TogglePin(int),
-              DeleteActive, ToggleDarkMode,
+              DeleteActive, ToggleDarkMode, TagsChanged,
               SelectAll, SelectPinned, SelectRecent, SelectTag(str), ClearTag }
 
     model { var search str = "" }
@@ -290,7 +290,7 @@ widget App {
                 // ── Editor column ──
                 col {
                     if .store.notes.len() > 0 {
-                        EditorPanel(note: .store.notes[.store.active_id], on_delete: .DeleteActive, on_toggle_pin: .TogglePin)
+                        EditorPanel(note: .store.notes[.store.active_id], on_delete: .DeleteActive, on_toggle_pin: .TogglePin, on_tags_changed: .TagsChanged)
                     }
                     style: "flex-1 flex-col"
                 }
@@ -314,6 +314,7 @@ widget App {
             }
         }
         .ToggleDarkMode -> { store.ToggleDarkMode() }
+        .TagsChanged -> { store.RefreshTags() }
         .SelectAll -> { store.active_folder = "all"; store.active_tag = "" }
         .SelectPinned -> { store.active_folder = "pinned"; store.active_tag = "" }
         .SelectRecent -> { store.active_folder = "recent"; store.active_tag = "" }
