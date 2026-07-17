@@ -1,0 +1,41 @@
+/// tokio async/await tests — TAP output format.
+use auto.tokio: double, add, compute, delay_value, pipeline
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    // Basic async
+    check(1, "test_double_5", double(5).await, 10)
+    check(2, "test_double_0", double(0).await, 0)
+    check(3, "test_double_negative", double(-3).await, -6)
+    check(4, "test_add_simple", add(3, 4).await, 7)
+    check(5, "test_add_negatives", add(-5, -10).await, -15)
+
+    // Nested async (async calling async with .await)
+    check(6, "test_compute_3_4", compute(3, 4).await, 10)
+    check(7, "test_compute_0_0", compute(0, 0).await, 0)
+    check(8, "test_compute_10_5", compute(10, 5).await, 25)
+
+    // Delay value (async identity)
+    check(9, "test_delay_42", delay_value(42).await, 42)
+    check(10, "test_delay_0", delay_value(0).await, 0)
+
+    // Pipeline (multi-step async composition)
+    check(11, "test_pipeline_5", pipeline(5).await, 11)
+    check(12, "test_pipeline_0", pipeline(0).await, 1)
+    check(13, "test_pipeline_10", pipeline(10).await, 21)
+}

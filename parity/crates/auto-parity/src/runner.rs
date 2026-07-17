@@ -255,6 +255,9 @@ a2r-std = {{ path = "{a2r_std}" }}
 # `std::sync::Mutex`) for module-level `var` globals, so any a2r test binary
 # whose library uses globals needs once_cell on the dep list.
 once_cell = "1"
+# Plan 355 P4: async tests transpile to `async fn main()` with `#[tokio::main]`,
+# so the test binary needs tokio as a dependency.
+tokio = {{ version = "1", features = ["rt", "macros"] }}
 
 [[bin]]
 name = "{bin_name}"
@@ -275,11 +278,24 @@ path = "src/main.rs"
         // symbols via `use crate::<lib>:{...}` (mirroring the Auto `use <lib>`
         // clause), so the library source must be wrapped in a matching
         // `pub mod <lib> { ... }` with public functions for the import to work.
+        //
+        // Plan 355 P4: when the library name collides with an extern crate
+        // (e.g. `tokio`), wrapping as `pub mod tokio` shadows the tokio crate,
+        // breaking `#[tokio::main]`. We wrap as `pub mod auto_<lib>` and
+        // rewrite the test's `use crate::<lib>::` imports to match.
         let main_rs = if lib_rs.is_empty() {
             test_rs
         } else {
             let wrapped = wrap_as_module(&config.library, &lib_rs);
-            format!("{}\n\n{}", wrapped, test_rs)
+            let combined = format!("{}\n\n{}", wrapped, test_rs);
+            // Rewrite `crate::<lib>::` → `crate::auto_<lib>::` in the test code
+            // to match the prefixed module name.
+            let mod_name = config.library.replace('-', "_");
+            let prefixed = format!("auto_{}", mod_name);
+            combined.replace(
+                &format!("crate::{}::", mod_name),
+                &format!("crate::{}::", prefixed),
+            )
         };
         std::fs::write(bin_dir.join("src").join("main.rs"), main_rs)
             .map_err(|e| e.to_string())?;
@@ -334,10 +350,12 @@ path = "src/main.rs"
 /// function signatures are made `pub` (a no-op in Auto but required by Rust's
 /// visibility rules for cross-module imports).
 fn wrap_as_module(lib_name: &str, src: &str) -> String {
-    // Normalise lib names so they are valid Rust identifiers.
-    let mod_name = lib_name.replace('-', "_");
-    // Promote top-level (zero-indent) `fn ` declarations to `pub fn ` so the
-    // imported symbols are visible outside the module.
+    // Normalise lib names so they are valid Rust identifiers, and prefix with
+    // `auto_` to avoid shadowing extern crates (e.g. `tokio`, `regex`).
+    let mod_name = format!("auto_{}", lib_name.replace('-', "_"));
+    // Promote top-level (zero-indent) function declarations to `pub fn` so the
+    // imported symbols are visible outside the module. Handles both `fn` and
+    // `async fn` (the a2r transpiler emits `async fn` for `~T` functions).
     let promoted = src
         .lines()
         .map(|line| {
@@ -347,6 +365,9 @@ fn wrap_as_module(lib_name: &str, src: &str) -> String {
             if indent.is_empty() {
                 if let Some(rest) = trimmed.strip_prefix("fn ") {
                     return format!("pub fn {}", rest);
+                }
+                if let Some(rest) = trimmed.strip_prefix("async fn ") {
+                    return format!("pub async fn {}", rest);
                 }
             }
             line.to_string()
