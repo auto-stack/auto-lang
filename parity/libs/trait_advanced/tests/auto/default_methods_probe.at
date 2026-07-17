@@ -1,0 +1,39 @@
+/// trait_advanced / sub-scenario A — spec default method (L3 probe, TAP output).
+//
+// This file intentionally exercises the default-method feature, which is a
+// known L3 divergence: a2r wraps a spec default-method body as { <expr>; },
+// making it return unit, so the generated Rust fails to compile
+// (DIV-TRAIT-A2R-1). The AutoVM additionally requires the implementer to
+// re-declare the default-bodied method (the trait checker does not skip
+// default-bodied methods). The AutoVM passes; a2r is expected to fail here;
+// the Rust oracle passes. The parity classifier will flag this case as an
+// "a2r transpiler bug" — that classification is the intended, documented
+// output for this probe.
+//
+// The test name matches the Rust #[test] function in
+// tests/rust/tests/trait_advanced.rs.
+use auto.trait_advanced: announce_robot, robot_label
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+fn main() {
+    // Sub-scenario A: the default-method path on Announcer. announce_robot
+    // mirrors what the inherited default announce prints, composed from the
+    // required label method.
+    check_str(1, "test_default_announce_robot", announce_robot(42), "[ANN] robot-42")
+    check_str(2, "test_required_label_method", robot_label(7), "robot-7")
+}

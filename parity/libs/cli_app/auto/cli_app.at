@@ -1,0 +1,74 @@
+/// cli_app library: text statistics (wc-style core).
+///
+/// Three pure functions over a string input: count_lines / count_words /
+/// count_chars. Replicates Rust's std behaviour for ASCII input:
+///   * lines   -> mirrors `str::lines().count()` semantics
+///   * words   -> mirrors `str::split_whitespace().count()`
+///   * chars   -> mirrors `str::len()` (byte length; tests are ASCII-only)
+///
+/// The whole library is pure computation — no file IO, no external deps — so
+/// the three-way parity (AutoVM vs a2r-transpiled Rust vs native Rust std) is
+/// fully deterministic. This fills the "pure Rust output, no external library"
+/// gap in a2r test coverage.
+///
+/// VM quirks used here (same family as base64 / url):
+///   * `str.char_at(i)` returns the code point as `int` (not a one-char str),
+///     which is exactly what the comparisons need.
+///   * `str.len()` returns the length.
+///   * Logical operators are `&&` / `||` / `!` (Plan 072 reverted `and`/`or`).
+
+/// Count lines: empty string = 0; a trailing newline does not add a line;
+/// otherwise the number of lines is count('\n') + 1.
+///
+/// This matches Rust's `str::lines().count()`:
+///   ""       -> 0    "a"     -> 1    "a\n"    -> 1
+///   "a\nb"   -> 2    "a\nb\n"-> 2    "\n"     -> 1    "\n\n" -> 2
+fn count_lines(s str) int {
+    let n int = s.len()
+    if n == 0 {
+        return 0
+    }
+    var count int = 0
+    var i int = 0
+    for i < n {
+        if s.char_at(i) == 10 {
+            count = count + 1
+        }
+        i = i + 1
+    }
+    // If the last char is not '\n', the trailing segment is also a line.
+    if s.char_at(n - 1) != 10 {
+        count = count + 1
+    }
+    return count
+}
+
+/// Count words: split on any ASCII whitespace (space, tab, LF, CR) and count
+/// the non-empty tokens. Matches `str::split_whitespace().count()`:
+///   ""       -> 0    "  "    -> 0    "a b c"  -> 3
+fn count_words(s str) int {
+    let n int = s.len()
+    var count int = 0
+    var in_word bool = false
+    var i int = 0
+    for i < n {
+        let c int = s.char_at(i)
+        // ASCII whitespace: space(32), tab(9), LF(10), CR(13).
+        let is_ws bool = (c == 32 || c == 9 || c == 10 || c == 13)
+        if is_ws {
+            in_word = false
+        } else {
+            if !in_word {
+                count = count + 1
+                in_word = true
+            }
+        }
+        i = i + 1
+    }
+    return count
+}
+
+/// Count characters (byte length for ASCII input). Matches `str::len()`.
+fn count_chars(s str) int {
+    return s.len()
+}

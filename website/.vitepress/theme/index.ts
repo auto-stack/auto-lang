@@ -11,6 +11,7 @@ import StatCard from './components/StatCard.vue'
 import ShowcaseSection from './components/ShowcaseSection.vue'
 import { AutoPlayground } from 'auto-playground-vue'
 import CodeView from './components/CodeView.vue'
+import ScriptShipView from './components/ScriptShipView.vue'
 import UnifiedNavbar from './components/UnifiedNavbar.vue'
 
 // SPA routes served from public/ui/*/index.html.
@@ -60,5 +61,6 @@ export default {
     app.component('ShowcaseSection', ShowcaseSection)
     app.component('AutoPlayground', AutoPlayground)
     app.component('CodeView', CodeView)
+    app.component('ScriptShipView', ScriptShipView)
   },
 } satisfies Theme

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auto Parity Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1f2430;
+    --text: #e6e9ef;
+    --muted: #8b93a7;
+    --accent: #5b9dff;
+    --good: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+    --border: #2a2f3a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 2rem clamp(1rem, 4vw, 4rem);
+  }
+  h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
+  h2 { margin: 2rem 0 .75rem; font-size: 1.2rem; border-bottom: 1px solid var(--border); padding-bottom: .35rem; }
+  h3 { margin: 0 0 .5rem; font-size: 1rem; color: var(--accent); }
+  .subtitle { color: var(--muted); margin-bottom: 1.5rem; }
+  section { margin-bottom: 1.5rem; }
+  .hero {
+    background: linear-gradient(135deg, #1b2230, #11151d);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+  }
+  .rate { font-size: 4.5rem; font-weight: 700; color: var(--good); line-height: 1; }
+  .rate .pct { font-size: 2rem; color: var(--muted); }
+  .rate-sub { color: var(--muted); margin-top: .5rem; }
+  table { border-collapse: collapse; width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th, td { padding: .55rem .8rem; text-align: right; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: var(--panel-2); color: var(--muted); font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .03em; }
+  td.lib { font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--panel-2); }
+  .good { color: var(--good); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+  .bad  { color: var(--bad);  font-weight: 600; }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); }
+  code { background: var(--panel-2); padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  .maturity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; }
+  .card-note { color: var(--muted); font-size: .85rem; margin: 0 0 .75rem; }
+  .card ul { list-style: none; padding: 0; margin: 0; }
+  .card li { padding: .2rem 0; }
+  .badge { display: inline-block; min-width: 2rem; padding: .05rem .4rem; border-radius: 4px; font-size: .75rem; font-weight: 700; text-align: center; margin-right: .4rem; }
+  .badge.good { background: rgba(63,185,80,.15); color: var(--good); }
+  .badge.ok   { background: rgba(91,157,255,.15); color: var(--accent); }
+  .badge.warn { background: rgba(210,153,34,.15); color: var(--warn); }
+  footer { margin-top: 2rem; color: var(--muted); font-size: .8rem; }
+</style>
+</head>
+<body>
+<h1>Auto Parity Dashboard</h1>
+<p class="subtitle">Three-way parity: AutoVM vs a2r (transpiled Rust) vs native Rust.</p>
+<section class="hero"><div class="rate">100.0<span class="pct">%</span></div><div class="rate-sub">three-way consistency (219/219 cases)</div></section><section><h2>Coverage matrix</h2><table><thead><tr><th>Library</th><th>VM ok</th><th>a2r ok</th><th>Rust ok</th><th>Consistent</th><th>Total</th><th>Rate</th></tr></thead><tbody><tr><td class="lib">base64</td><td>33</td><td>33</td><td>33</td><td>33</td><td>33</td><td class="good">100.0%</td></tr><tr><td class="lib">cli_app</td><td>32</td><td>32</td><td>32</td><td>32</td><td>32</td><td class="good">100.0%</td></tr><tr><td class="lib">regex</td><td>45</td><td>45</td><td>45</td><td>45</td><td>45</td><td class="good">100.0%</td></tr><tr><td class="lib">serde_json</td><td>56</td><td>56</td><td>56</td><td>56</td><td>56</td><td class="good">100.0%</td></tr><tr><td class="lib">tokio</td><td>13</td><td>13</td><td>13</td><td>13</td><td>13</td><td class="good">100.0%</td></tr><tr><td class="lib">trait_advanced</td><td>10</td><td>10</td><td>10</td><td>10</td><td>10</td><td class="good">100.0%</td></tr><tr><td class="lib">url</td><td>30</td><td>30</td><td>30</td><td>30</td><td>30</td><td class="good">100.0%</td></tr></tbody></table></section><section><h2>Known divergences</h2><p>13 documented divergence(s) in <a href="known-divergences.md">known-divergences.md</a>.</p></section><section><h2>Maturity directory</h2><div class="maturity-grid"><div class="card"><h3>L1 — Verified consistency</h3><p class="card-note">Libraries at 100% three-way parity (AutoVM = a2r = native Rust).</p><ul><li><span class="badge good">L1</span> base64</li>
+<li><span class="badge good">L1</span> url</li>
+<li><span class="badge good">L1</span> serde_json</li>
+<li><span class="badge good">L1</span> regex</li>
+<li><span class="badge good">L1</span> cli_app</li>
+<li><span class="badge good">L1</span> trait_advanced</li>
+<li><span class="badge good">L1</span> tokio</li></ul></div><div class="card"><h3>L2 — AutoVM output regression</h3><p class="card-note">AutoVM output regression tests (conformance/): 27 spec examples across 6 spec files in <code>docs/conformance/</code>.</p><ul><li><span class="badge ok">L2</span> conformance suite <span class="muted">— 27 examples</span></li></ul></div><div class="card"><h3>L3 — Roadmap (planned)</h3><p class="card-note">P3/P4 libraries not yet verified three-way.</p><ul><li><span class="badge warn">L3</span> sha2 <span class="muted">— planned, not yet verified</span></li>
+<li><span class="badge warn">L3</span> rusqlite <span class="muted">— planned, not yet verified</span></li>
+<li><span class="badge warn">L3</span> reqwest <span class="muted">— planned, not yet verified</span></li>
+<li><span class="badge warn">L3</span> http_client_sync <span class="muted">— planned, not yet verified</span></li>
+<li><span class="badge warn">L3</span> generators <span class="muted">— planned, not yet verified</span></li></ul></div></div></section>
+<footer>Generated by <code>auto-parity report</code>.</footer>
+</body>
+</html>

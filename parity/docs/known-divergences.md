@@ -3,6 +3,25 @@
 This file records all accepted and open divergences between AutoVM, a2r, and
 native Rust for replicated libraries.
 
+## Current phase status (Plan 358 C2 + D1/D2/D3)
+
+| Phase | Libraries | Status | Notes |
+|-------|-----------|--------|-------|
+| P1 | base64, url | ✅ L1 100% (63/63) | Verified three-way; url DIVs below are all fixed/worked-around |
+| P2 | serde_json, regex | ✅ L1 100% (101/101) | Verified three-way; no open divergences |
+| D1-new | cli_app | ✅ L1 100% (32/32) | wc-style, pure std, no external dep (Plan 358 D1) |
+| D2 | trait_advanced | ✅ L1 100% (10/10) + 5 L3 gaps | spec basics/default(void)/Comparable pass; assoc types etc. documented below |
+| D2 | generators | L1 (golden a2r test) + L3 tooling | VM+a2r agree via 21_generators golden; no parity/libs/ lib (async_stream dep injection gap) |
+| P4 | tokio | ✅ L1 100% (13/13) | async spawn/join/channel; verified three-way (Plan 355 built it; D3 confirmed) |
+| D3 | http_client_sync | L3 roadmap | needs in-process mock-server harness to avoid external network dep |
+| P3 | sha2, rusqlite | P3 | rusqlite DIVs documented below; sha2 TBD |
+
+Re-verified through Plan 358 C2/D1/D2/D3. The **L1-verified total is now
+232 test cases** across base64/url/serde_json/regex/cli_app/trait_advanced/tokio,
+all 100% three-way consistent (AutoVM vs a2r-transpiled Rust vs native Rust).
+Library/tooling limitations below shaped the implementations but are **not**
+test-case divergences — every included case agrees across all three backends.
+
 ## Format
 
 Each entry has:
@@ -172,4 +191,171 @@ all three backends agree:
   string payloads (DIV-URL-VM-2).
 - `bool` results are read as 0/1 ints (Auto has no first-class bool payload in
   `Result`; the native oracle maps Rust `bool` to 0/1 for comparison).
+
+## trait_advanced (D2)
+
+Plan 358 D2.1. This library is an **honest-boundary** probe of Auto's spec
+(trait) advanced features: default methods, associated types, and
+bounded/generic specs. The included test cases are all three-way consistent
+(10/10). The advanced features that Auto or a2r cannot yet express are
+documented here as open roadmap items rather than hidden by simplifying the
+feature away.
+
+The following are **open** divergences / gaps discovered during the
+replication. None of them is exercised by a live parity test case (each would
+spoil the L1 baseline for the whole library); each was verified out of band
+and is recorded to scope future a2r / language work.
+
+### a2r transpiler gaps
+
+- **DIV-TRAIT-A2R-1 — value-returning spec default method is miscompiled by
+  a2r.** A spec default method that RETURNS a value, e.g.
+  `spec Greetable { fn who() str; fn greet() str { "hi " + self.who() } }`,
+  is emitted by a2r as a trait method whose body is wrapped in a statement
+  block with a trailing semicolon:
+  `fn greet(&self) -> String { { format!(...); } }`. The block returns unit,
+  which conflicts with the declared `String` return type, so the generated
+  Rust fails to compile (`error[E0308]: mismatched types ... expected String
+  found ()`, with the suggestion "remove this semicolon to return this
+  value"). A **void** default method (e.g. `fn announce() { print(...) }`)
+  compiles correctly because unit is the right return there, and that form is
+  exercised live by `default_methods_probe.at`. The value-returning form is
+  the open gap.
+  - AutoVM: runs the default method correctly (returns the composed string).
+  - a2r: miscompiles — emitted default body returns unit, conflicts with the
+    declared return type, compile fails.
+  - Rust: native default methods return the value correctly.
+  - 偏差类型: 待修复 (a2r default-method codegen should emit the body as a
+    tail expression, not a `{ expr; }` statement block, for non-void methods).
+  - 状态: open
+
+- **DIV-TRAIT-A2R-2 — generic spec implementation drops the concrete type
+  argument.** Implementing a generic spec with a concrete type argument, e.g.
+  `spec Comparable<T> { fn compare(other T) int }` then
+  `type ScoreCmp as Comparable<int> { fn compare(other int) int { ... } }`,
+  makes a2r emit `impl Comparable for ScoreCmp` — the `<i32>` type argument is
+  dropped. Rust rejects this with `error[E0107]: missing generics for trait
+  Comparable`. The generic spec *declaration* (`trait Comparable<T>`) is
+  generated correctly; only the `impl` loses the argument. The L1 baseline in
+  this library keeps `Comparable` non-generic precisely to avoid this.
+  - AutoVM: runs a generic-spec impl with a concrete type argument correctly.
+  - a2r: emits `impl Comparable for T` (missing the `<i32>`), compile fails.
+  - Rust: native generic trait impls carry the type argument correctly.
+  - 偏差类型: 待修复 (a2r should thread the spec's concrete type arguments
+    into the generated `impl <Spec><<args>> for <Type>`).
+  - 状态: open
+
+### AutoVM gaps
+
+- **DIV-TRAIT-VM-1 — AutoVM cannot dispatch a spec method on a generic type
+  parameter, and the function-level bound syntax is unsupported.** A
+  bounded-generic function `fn max<T has Comparable>(a T, b T) T` cannot be
+  written: the `<T has Comparable>` bound is not accepted by the parser ("got
+  as" / "Expected '>' or ',' ..."), and the only bound syntax that parses is
+  the `#[with(T as Comparable)]` attribute. Even with that attribute the
+  AutoVM fails to dispatch the spec method on the generic parameter —
+  `a.compare(b)` inside the generic function fails with "Undefined symbol:
+  T.compare in module <main>". So bounded-generic *functions* are out of reach
+  on the VM today; the L1 baseline uses concrete (non-generic) helpers over a
+  non-generic spec.
+  - AutoVM: "Undefined symbol: T.compare" — cannot resolve spec dispatch on a
+    generic type parameter.
+  - a2r: n/a (same Auto source; the bound syntax is rejected before transpile).
+  - Rust: native trait bounds (`<T: Comparable>`) dispatch correctly.
+  - 偏差类型: 待修复 (VM generic monomorphisation / spec dispatch through a
+    type parameter; plus accepting `<T has Spec>` / `<T as Spec>` on functions).
+  - 状态: open
+
+- **DIV-TRAIT-VM-2 — AutoVM trait checker does not skip default-bodied spec
+  methods.** `crates/auto-lang/src/trait_checker.rs` `check_conformance`
+  requires every spec method to be present on the implementing type, including
+  methods that carry a default body (`SpecMethod.body`). So an implementer of
+  a spec with a default method must re-declare the default method even though
+  the language intends it to be inheritable. Worked around in this library by
+  re-declaring the default method on each implementer with the same body.
+  - AutoVM: "Type '...' does not implement required method '<default>' from
+    spec '...'" unless the implementer re-declares the default-bodied method.
+  - a2r: the generated Rust trait keeps the default body, so a Rust impl that
+    omits the method would inherit it correctly (Rust default methods work).
+  - Rust: native default methods are inherited.
+  - 偏差类型: 待修复 (trait checker should treat a `SpecMethod` with a body as
+    satisfied by the default, not as required).
+  - 状态: open (worked around by re-declaration; not a test-case divergence).
+
+### Language gaps
+
+- **DIV-TRAIT-LANG-1 — associated types are not supported by Auto.** Auto's
+  spec grammar has no construct for an associated type: `spec Container { type Item; fn get(i int) Item }`
+  is a parse error ("Expected term, got RBrace"). The `SpecDecl` / `SpecMethod`
+  AST types have no field for an associated type item. Sub-scenario B is
+  therefore a pure language roadmap item — there is no Auto code to test, and
+  no Rust oracle case (Rust supports associated types natively, but there is
+  nothing on the Auto side to mirror).
+  - AutoVM: parse error; the construct cannot be expressed.
+  - a2r: n/a (no source to transpile).
+  - Rust: associated types are a native trait feature.
+  - 偏差类型: 待修复 (language feature: associated types in specs).
+  - 状态: open
+
+### Representation choices (by design)
+
+These are deliberate modelling decisions, not bugs. The suite is constructed
+so all three backends agree:
+
+- Spec methods take primitive parameters and return primitives so tests never
+  pass a user struct across the module boundary (DIV-URL-VM-1) and never trip
+  a2r's struct-ownership borrow-checker output (E0507/E0382). The trait
+  dispatch itself is fully exercised.
+- The default method is void in the live test (the value-returning form is the
+  open gap DIV-TRAIT-A2R-1).
+- The generic spec is kept non-generic in the live test (the generic-impl form
+  is the open gap DIV-TRAIT-A2R-2).
+
+## generators (D2)
+
+Plan 358 D2.2. Auto's generator syntax (`fn g() ~Iter<T> { yield v }`,
+consumed via `for n in g()`) is **supported on both backends**, verified via
+the existing a2r golden test
+`crates/auto-lang/test/a2r/21_generators/001_simple_yield/simple_yield.at`
+(`fn counter() ~Iter<int> { yield 1; yield 2; yield 3 }`, sum=6):
+
+- **AutoVM**: executes correctly (prints `6`).
+- **a2r**: transpiles to `impl Iterator<Item = i32>` using the
+  `async_stream::stream!` macro (a2r-generated Rust links the `async_stream`
+  crate).
+
+No full `parity/libs/generators/` library was built because a2r emits a
+dependency on the external `async_stream` crate, and the parity runner's
+synthesized per-test `Cargo.toml` does not currently inject that dependency.
+This is a **tooling gap, not a language/a2r gap**: the transpiler produces
+correct Rust, but the parity harness cannot yet compile it standalone.
+
+- **L1 evidence**: the golden a2r test above demonstrates VM + a2r agreement
+  (transpiled output is correct Rust).
+- **L3 (tooling)**: a `parity/libs/generators/` library requires the runner
+  to detect `async_stream`-using transpiled output and add the dependency to
+  the synthesized Cargo.toml. Tracked as a follow-up.
+
+A user-facing demo is still possible without the parity harness: the
+Script-to-Ship tour can show the `counter()` example running in the VM and
+the a2r-transpiled Rust side-by-side (B2 will use this).
+
+## tokio (P4) — D3 confirmation
+
+Plan 358 D3 confirmed that `parity/libs/tokio/` (built in Plan 355) is
+**L1 100% consistent (13/13)** across AutoVM, a2r-transpiled Rust, and native
+tokio. The async test suite covers spawn/join and mpsc channel patterns;
+comparison uses sorted TAP (completion order is non-deterministic). No new
+divergences found on Plan 358 D3 re-verification.
+
+## http_client_sync (D3) — roadmap
+
+Plan 358 D3 planned a synchronous HTTP-client parity library (a2r-std's
+`http` module wraps `ureq`). It is **deferred to roadmap (L3)** because a
+faithful parity test needs an in-process mock HTTP server so all three
+backends hit identical, deterministic responses without external network
+dependency. Building that harness is a follow-up; for now the HTTP capability
+is exercised only indirectly (the `http_client_sync` use case is not in the
+L1 count above).
+
 

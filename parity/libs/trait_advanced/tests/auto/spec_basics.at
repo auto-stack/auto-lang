@@ -1,0 +1,51 @@
+/// trait_advanced / L1 baseline — spec basics (TAP output).
+//
+// Covers the L1 (three-way consistent) subset of sub-scenarios A and C:
+//   * Sub-scenario A required-method dispatch: a plain spec Identifiable
+//     with two formal implementers (Device, Channel).
+//   * Sub-scenario C spec dispatch: a non-generic Comparable spec with a
+//     formal implementer (ScoreCmp).
+//
+// The parity runner sets the working directory to the library root
+// (parity/libs/trait_advanced), so the library at ./auto/trait_advanced.at is
+// imported as auto.trait_advanced. Test names MUST match the Rust #[test]
+// function names in tests/rust/tests/trait_advanced.rs.
+use auto.trait_advanced: device_ident, channel_ident, max_score_val, score_cmp
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
+    }
+}
+
+fn check_int(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    // Sub-scenario A, L1: required method on Identifiable implementers.
+    check_str(1, "test_identifiable_device_ident", device_ident(42), "device-42")
+    check_str(2, "test_identifiable_channel_ident", channel_ident("alpha"), "channel:alpha")
+
+    // Sub-scenario C, L1: Comparable spec dispatch on ScoreCmp.
+    check_int(3, "test_max_score_picks_larger", max_score_val(3, 5), 5)
+    check_int(4, "test_max_score_order_invariant", max_score_val(5, 3), 5)
+    check_int(5, "test_max_score_tie_returns_first", max_score_val(4, 4), 4)
+    check_int(6, "test_score_cmp_less", score_cmp(3, 5), -2)
+    check_int(7, "test_score_cmp_equal", score_cmp(5, 5), 0)
+    check_int(8, "test_score_cmp_greater", score_cmp(7, 3), 4)
+}

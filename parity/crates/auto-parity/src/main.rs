@@ -40,6 +40,12 @@ enum Command {
     All,
     /// List discovered libraries.
     List,
+    /// Generate a static HTML dashboard of parity results.
+    Report {
+        /// Path to write the HTML dashboard to.
+        #[arg(short, long, default_value = "docs/parity-dashboard.html")]
+        output: PathBuf,
+    },
 }
 
 fn main() {
@@ -91,6 +97,35 @@ fn main() {
                 println!("{}", lib);
             }
         }
+        Command::Report { output } => {
+            // Verified phases included in the dashboard. P1/P2 are the Plan
+            // 355 core; D1/D2 are Plan 358 additions; P4's tokio is L1 (reqwest
+            // is auto-skipped if absent). P3 (sha2/rusqlite) stays L3 roadmap.
+            let phases = ["p1", "p2", "d1", "d2", "p4"];
+            let mut reports = Vec::new();
+            for phase in &phases {
+                let libs = discover_libraries_by_phase(&root, phase);
+                for lib in libs {
+                    let mut cfg = base_config.clone();
+                    cfg.library = lib;
+                    cfg.sort_results = is_async_library(&cfg.library);
+                    match build_comparison_report(&cfg) {
+                        Ok(r) => reports.push(r),
+                        Err(e) => eprintln!("Warning: {} report failed: {}", cfg.library, e),
+                    }
+                }
+            }
+            let kd = root.join("docs/known-divergences.md");
+            match report::generate_dashboard(&reports, &kd, &output) {
+                Ok(()) => {
+                    println!("Dashboard written to {}", output.display());
+                }
+                Err(e) => {
+                    eprintln!("report error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
     }
 }
 
@@ -118,39 +153,57 @@ fn run_library(config: &RunConfig) {
     // Async libraries have non-deterministic completion order; sort TAP
     // output by test name before comparison.
     let mut config = config.clone();
-    config.sort_results = matches!(config.library.as_str(), "reqwest" | "tokio");
+    config.sort_results = is_async_library(&config.library);
 
     println!();
     println!("{}", "=".repeat(60));
     println!("Checking library: {}", config.library);
     println!("{}", "=".repeat(60));
 
-    // Run all three backends.
-    let vm_results = runner::run_vm(&config).unwrap_or_else(|e| {
-        eprintln!("VM backend error: {}", e);
+    match build_comparison_report(&config) {
+        Ok(report) => {
+            let text = report::format_report(&report);
+            println!("{}", text);
+        }
+        Err(e) => {
+            eprintln!("Failed to build report for {}: {}", config.library, e);
+        }
+    }
+}
+
+/// Whether a library's tests are async and therefore need sorted TAP output.
+///
+/// Async libraries (P4: reqwest, tokio) have non-deterministic completion
+/// order, so their results must be sorted by test name before comparison.
+fn is_async_library(library: &str) -> bool {
+    matches!(library, "reqwest" | "tokio")
+}
+
+/// Run all three backends for a single library and build the per-test
+/// `ComparisonReport` (without printing). Backend errors are logged to stderr
+/// and treated as an empty result set for that backend, so the comparison
+/// still surfaces the missing cases as divergences rather than crashing.
+fn build_comparison_report(config: &RunConfig) -> Result<ComparisonReport, String> {
+    // Run all three backends. Log + swallow per-backend failures so a single
+    // broken backend doesn't abort an aggregate `report` run; the missing
+    // results show up as divergences in the comparison.
+    let vm_results = runner::run_vm(config).unwrap_or_else(|e| {
+        eprintln!("VM backend error for {}: {}", config.library, e);
         Vec::new()
     });
-    let a2r_results = runner::run_a2r(&config).unwrap_or_else(|e| {
-        eprintln!("a2r backend error: {}", e);
+    let a2r_results = runner::run_a2r(config).unwrap_or_else(|e| {
+        eprintln!("a2r backend error for {}: {}", config.library, e);
         Vec::new()
     });
-    let rust_results = runner::run_rust(&config).unwrap_or_else(|e| {
-        eprintln!("Rust backend error: {}", e);
+    let rust_results = runner::run_rust(config).unwrap_or_else(|e| {
+        eprintln!("Rust backend error for {}: {}", config.library, e);
         Vec::new()
     });
 
     // Build per-test comparison across all backends.
-    eprintln!("DBG355 main vm_results={} a2r_results={} rust_results={}", vm_results.len(), a2r_results.len(), rust_results.len());
     let vm_map = tap::tap_map_from_results(&vm_results);
     let a2r_map = tap::tap_map_from_results(&a2r_results);
     let rust_map = tap::tap_map_from_results(&rust_results);
-    eprintln!("DBG355 main vm_map={} a2r_map={} rust_map={}", vm_map.len(), a2r_map.len(), rust_map.len());
-    if let Some(k) = vm_map.keys().next() { eprintln!("DBG355 vm sample key={:?} bytes={:?}", k, k.as_bytes()); }
-    if let Some(k) = rust_map.keys().next() { eprintln!("DBG355 rust sample key={:?} bytes={:?}", k, k.as_bytes()); }
-    // Check if a known vm key is in rust_map
-    if let Some(vk) = vm_map.keys().next() {
-        eprintln!("DBG355 vm key {:?} in rust_map? {}", vk, rust_map.contains_key(vk));
-    }
 
     let all_names: std::collections::BTreeSet<String> = vm_map
         .keys()
@@ -169,13 +222,10 @@ fn run_library(config: &RunConfig) {
         })
         .collect();
 
-    let report = ComparisonReport {
+    Ok(ComparisonReport {
         library: config.library.clone(),
         cases,
-    };
-
-    let text = report::format_report(&report);
-    println!("{}", text);
+    })
 }
 
 /// Discover all library directories under `<root>/libs/`, skipping `_dummy`
@@ -213,6 +263,9 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         ("p2", &["serde_json", "regex"]),
         ("p3", &["sha2", "rusqlite"]),
         ("p4", &["reqwest", "tokio"]),
+        // Plan 358 additions:
+        ("d1", &["cli_app"]),
+        ("d2", &["trait_advanced"]),
     ];
 
     for (p, libs) in phase_map {

@@ -1,0 +1,56 @@
+/// cli_app basic tests — count_lines / count_words / count_chars — TAP output.
+// The parity runner sets the working directory to the library root
+// (parity/libs/cli_app), so the library lives at ./auto/cli_app.at and is
+// imported as `auto.cli_app`. Test names EXACTLY mirror the Rust oracle in
+// tests/rust/tests/cli_app.rs so the parity framework can compare three-way.
+use auto.cli_app: count_lines, count_words, count_chars
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    // ---- count_lines -----------------------------------------------------
+    // empty string -> 0
+    check(1, "test_lines_empty", count_lines(""), 0)
+    // single char, no newline -> 1
+    check(2, "test_lines_single_no_nl", count_lines("a"), 1)
+    // one line with trailing newline -> 1
+    check(3, "test_lines_one_trailing_nl", count_lines("a\n"), 1)
+    // two lines, no trailing newline -> 2
+    check(4, "test_lines_two_no_trailing", count_lines("a\nb"), 2)
+    // two lines with trailing newline -> 2
+    check(5, "test_lines_two_trailing_nl", count_lines("a\nb\n"), 2)
+    // single newline -> 1
+    check(6, "test_lines_single_newline", count_lines("\n"), 1)
+    // two newlines -> 2
+    check(7, "test_lines_two_newlines", count_lines("\n\n"), 2)
+    // multi-line paragraph no trailing newline
+    check(8, "test_lines_paragraph", count_lines("foo\nbar\nbaz"), 3)
+
+    // ---- count_words -----------------------------------------------------
+    check(9, "test_words_empty", count_words(""), 0)
+    check(10, "test_words_only_spaces", count_words("   "), 0)
+    check(11, "test_words_single", count_words("hello"), 1)
+    check(12, "test_words_three_spaces", count_words("a b c"), 3)
+    check(13, "test_words_leading_trailing_ws", count_words("  a b  c  "), 3)
+    check(14, "test_words_newline_separated", count_words("foo\nbar"), 2)
+
+    // ---- count_chars -----------------------------------------------------
+    check(15, "test_chars_empty", count_chars(""), 0)
+    check(16, "test_chars_single", count_chars("a"), 1)
+    check(17, "test_chars_word", count_chars("hello"), 5)
+    check(18, "test_chars_with_newline", count_chars("ab\nc"), 4)
+}

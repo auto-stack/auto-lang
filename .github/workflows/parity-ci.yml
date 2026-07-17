@@ -1,0 +1,45 @@
+name: parity
+
+on:
+  pull_request:
+    paths:
+      - 'crates/auto-lang/**'
+      - 'crates/a2r-std/**'
+      - 'crates/auto/**'
+      - 'parity/**'
+      - '.github/workflows/parity-ci.yml'
+  push:
+    branches: [master]
+
+jobs:
+  parity-p1-p2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\nparity -> parity/target"
+      - name: Build auto binary
+        run: cargo build -p auto --release
+      - name: Run parity p1 (base64, url)
+        working-directory: parity
+        run: cargo run -p auto-parity -- --auto-binary ../target/release/auto phase p1
+      - name: Run parity p2 (serde_json, regex)
+        working-directory: parity
+        run: cargo run -p auto-parity -- --auto-binary ../target/release/auto phase p2
+      - name: Generate parity dashboard
+        working-directory: parity
+        run: cargo run -p auto-parity -- --auto-binary ../target/release/auto report --output docs/parity-dashboard.html
+      - name: Upload parity dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-dashboard
+          path: parity/docs/parity-dashboard.html
+      - name: Upload parity artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-failure
+          path: parity/

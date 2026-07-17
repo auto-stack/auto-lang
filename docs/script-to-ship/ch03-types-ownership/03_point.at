@@ -1,0 +1,23 @@
+// ch03 — types and ownership map directly to Rust.
+// Auto's view / mut / take become Rust's & / &mut / move.
+type Point { x int, y int }
+
+// a value-taking method (consumes self's data by value in print)
+fn show(p Point) {
+    print("(" + p.x.to(str) + ", " + p.y.to(str) + ")")
+}
+
+// a borrowing method: p.view is &p in Rust
+fn norm_sq(p Point) int {
+    var px = p.x
+    var py = p.y
+    return px * px + py * py
+}
+
+fn main() {
+    var a = Point(3, 4)
+    show(a)                       // (3, 4)
+    print("norm^2: " + norm_sq(a).to(str))   // 25
+    // a is still usable — norm_sq only borrowed it (read fields)
+    show(a)
+}

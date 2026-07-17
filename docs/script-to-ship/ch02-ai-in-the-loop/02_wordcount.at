@@ -1,0 +1,26 @@
+// ch02 — script mode is the right shape for AI-driven development.
+// This is the kind of small, self-checking program an AI writes, runs,
+// reads the output of, and corrects — all in seconds, because there's no
+// compile step waiting on each turn.
+fn count_words(s str) int {
+    var n = 0
+    var in_word = false
+    for i in 0..s.len() {
+        var c = s.char_at(i)
+        var is_ws = c == 32 || c == 9 || c == 10 || c == 13
+        if is_ws {
+            in_word = false
+        } else {
+            if !in_word { n = n + 1; in_word = true }
+        }
+    }
+    return n
+}
+
+fn main() {
+    var sample = "auto is rust's script layer"
+    print("words: " + count_words(sample).to(str))
+    // AI tries a tricky case next — empty string, then only-whitespace:
+    print("empty:  " + count_words("").to(str))
+    print("spaces: " + count_words("   ").to(str))
+}

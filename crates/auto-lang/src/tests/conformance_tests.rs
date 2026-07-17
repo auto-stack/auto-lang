@@ -1,12 +1,17 @@
-// Plan 266 Phase 2: Dual-Execution Conformance Tests
+// AutoVM Output Regression Tests
 //
-// Tests that AutoVM and a2r produce identical output for the same Auto code.
-// Each test case has input.at + expected_output.txt in test/a2r/conformance/.
+// What this file verifies: AutoVM execution output is stable against golden
+// files (expected_output.txt). Each case runs input.at through AutoVM and
+// compares captured stdout to the golden. This catches VM regressions only.
+//
+// What this file does NOT verify: AutoVM-vs-a2r behavioral parity. Three-way
+// parity (AutoVM vs a2r-transpiled Rust vs native Rust) is handled by the
+// separate `parity/` workspace (see parity/docs/parity-guide.md and Plan 355).
 //
 // Strategy:
 // 1. Run input.at through AutoVM → capture stdout
 // 2. Compare AutoVM output against expected_output.txt
-// 3. (Future) Transpile via a2r, compile with rustc, execute, compare
+// 3. On mismatch, write .wrong.out for debugging
 
 use crate::error::AutoResult;
 use crate::run_autovm_capture;

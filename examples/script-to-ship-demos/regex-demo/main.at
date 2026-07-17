@@ -1,0 +1,77 @@
+// regex-demo — 正则匹配最小演示，展示"Auto 即 Rust 脚本"在模式匹配领域。
+//
+// Dev:  auto main.at              (VM 脚本秒级跑，跳过编译)
+// Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
+//
+// 对应 parity 用例: parity/libs/regex/ (L1 ✓ 45/45 三向一致)
+// 这是一个最小正则引擎子集（支持 . * 字面量），对标 Rust regex crate。
+
+/// 匹配单个原子字符 against 输入字符 (codepoint)。返回消耗的输入字符数。
+/// '.' 匹配任意; 字面量精确匹配。返回 1=匹配, 0=不匹配。
+fn match_atom(pattern str, pp int, c int) int {
+    var pc = pattern.char_at(pp)
+    if pc == 46 { return 1 }   // 46 = '.' 匹配任意
+    if pc == c { return 1 }
+    return 0
+}
+
+/// 在 input[ii..] 处尝试匹配 pattern[pp..]。返回是否匹配。
+fn match_here(pattern str, plen int, input str, ilen int, pp int, ii int) int {
+    // pattern 用完 -> 匹配成功
+    if pp >= plen { return 1 }
+    var pc = pattern.char_at(pp)
+    // 看 next 是不是 '*'
+    var has_star = (pp + 1 < plen && pattern.char_at(pp + 1) == 42)   // 42 = '*'
+    if has_star {
+        // x* : 贪婪匹配尽可能多, 然后回溯
+        var j = ii
+        while j < ilen && match_atom(pattern, pp, input.char_at(j)) == 1 {
+            if match_here(pattern, plen, input, ilen, pp + 2, j + 1) == 1 { return 1 }
+            j = j + 1
+        }
+        return match_here(pattern, plen, input, ilen, pp + 2, ii)
+    }
+    // 单字符匹配
+    if ii < ilen && match_atom(pattern, pp, input.char_at(ii)) == 1 {
+        return match_here(pattern, plen, input, ilen, pp + 1, ii + 1)
+    }
+    return 0
+}
+
+/// is_match: pattern 是否在 input 任一位置匹配
+fn is_match(pattern str, input str) int {
+    var plen = pattern.len()
+    var ilen = input.len()
+    var i = 0
+    for i <= ilen {
+        if match_here(pattern, plen, input, ilen, 0, i) == 1 { return 1 }
+        i = i + 1
+    }
+    return 0
+}
+
+fn check(label str, pattern str, input str, expect int) {
+    var got = is_match(pattern, input)
+    if got == expect {
+        print("ok   " + label + "  /" + pattern + "/ vs \"" + input + "\"")
+    } else {
+        print("FAIL " + label + "  /" + pattern + "/ vs \"" + input + "\" got=" + got.to(str) + " want=" + expect.to(str))
+    }
+}
+
+fn main() {
+    print("=== regex matching (Auto script) ===")
+    check("literal",       "abc",  "abc",     1)
+    check("literal_sub",   "bc",   "abcd",    1)
+    check("literal_no",    "xyz",  "abc",     0)
+    check("dot",           "a.c",  "abc",     1)
+    check("dot_any",       "a.c",  "axc",     1)
+    check("dot_no",        "a.c",  "ac",      0)
+    check("star_zero",     "ab*c", "ac",      1)
+    check("star_many",     "ab*c", "abbbbc",  1)
+    check("star_one",      "ab*c", "abc",     1)
+    check("dotstar",       ".*",   "anything",1)
+    print("")
+    print("Dev:  auto main.at              (this — VM, skip compile)")
+    print("Ship: auto trans --path main.at rust  (a2r -> native Rust)")
+}

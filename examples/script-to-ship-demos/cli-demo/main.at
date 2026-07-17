@@ -1,0 +1,56 @@
+// cli-demo — wc 风格文本统计，展示"Auto 即 Rust 脚本"的纯 std 路径。
+//
+// Dev:  auto main.at              (VM 脚本秒级跑，跳过编译)
+// Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
+//
+// 对应 parity 用例: parity/libs/cli_app/ (L1 ✓ 32/32 三向一致)
+
+/// 统计行数: 空串=0; 末尾换行不额外计行; 否则 count('\n')+1
+fn count_lines(s str) int {
+    if s == "" { return 0 }
+    var n = 0
+    var i = 0
+    var len = s.len()
+    for i < len {
+        if s.char_at(i) == 10 { n = n + 1 }   // 10 = '\n'
+        i = i + 1
+    }
+    if s.char_at(len - 1) != 10 { n = n + 1 }
+    return n
+}
+
+/// 统计单词数: 按空白分割的非空 token 数
+fn count_words(s str) int {
+    var n = 0
+    var in_word = false
+    var i = 0
+    var len = s.len()
+    for i < len {
+        var c = s.char_at(i)
+        // 空白: 32=' ' 9='\t' 10='\n' 13='\r'
+        var is_ws = (c == 32 || c == 9 || c == 10 || c == 13)
+        if is_ws {
+            in_word = false
+        } else {
+            if !in_word { n = n + 1; in_word = true }
+        }
+        i = i + 1
+    }
+    return n
+}
+
+/// 统计字符数 (ASCII 字节长度)
+fn count_chars(s str) int {
+    return s.len()
+}
+
+fn main() {
+    var sample = "hello world\nthis is auto\nthe script layer of rust\n"
+    print("=== wc-style stats (Auto script) ===")
+    print("lines: " + count_lines(sample).to(str))
+    print("words: " + count_words(sample).to(str))
+    print("chars: " + count_chars(sample).to(str))
+    print("")
+    print("Dev:  auto main.at              (this — VM, skip compile)")
+    print("Ship: auto trans --path main.at rust  (a2r -> native Rust)")
+}

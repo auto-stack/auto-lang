@@ -15,6 +15,3 @@ libs/*/build_a2r/
 
 # Rust test crate build output (defensive — root .gitignore already covers target/)
 libs/*/tests/rust/target/
-
-# DBG355_*.txt diagnostic dumps written by the parity runner (run_vm) to cwd
-DBG355_*.txt
