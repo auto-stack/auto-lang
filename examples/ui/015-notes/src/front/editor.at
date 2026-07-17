@@ -23,13 +23,13 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                         if .note.pinned {
                             text "📌" { style: "text-base" }
                         }
-                        text .note.title { style: "text-lg font-semibold text-gray-800" }
+                        text .note.title { style: "text-lg font-semibold text-foreground" }
                     }
                 }
                 if .editing == true {
-                    input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-gray-800 border-b border-gray-200 outline-none w-full focus:border-blue-500 p-1" }
+                    input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-foreground border-b border-border outline-none w-full focus:border-primary p-1" }
                 }
-                text .note.time { style: "text-xs text-gray-400 mt-1" }
+                text .note.time { style: "text-xs text-muted-foreground mt-1" }
 
                 // Tags: read-only badges or editable with input
                 row {
@@ -44,32 +44,32 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg) {
                     }
                     if .editing == true {
                         input { value: .tag_input, oninput: .EditTagInput, placeholder: "Add tag...", style: "text-xs px-2 py-0.5 border rounded w-24" }
-                        button "+" { onclick: .AddTag, style: "text-xs px-2 py-0.5 bg-blue-500 text-white rounded" }
+                        button "+" { onclick: .AddTag, style: "text-xs px-2 py-0.5 bg-primary text-primary-foreground rounded" }
                     }
                 }
 
                 if .editing == true {
-                    textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing...", style: "flex-1 p-3 border rounded-lg text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" }
+                    textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing...", style: "flex-1 p-3 border rounded-lg text-sm text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary" }
                 }
                 if .editing == false {
-                    text .note.body { style: "text-gray-700 flex-1 leading-relaxed whitespace-pre-wrap mt-2" }
+                    text .note.body { style: "text-foreground flex-1 leading-relaxed whitespace-pre-wrap mt-2" }
                 }
                 style: "px-6 pt-6 pb-2 flex-1"
             }
             row {
                 if .editing == false {
-                    button "Edit" { onclick: .Edit, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
-                    button "Pin" { onclick: .TogglePin, style: "px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600" }
+                    button "Edit" { onclick: .Edit, style: "px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-medium" }
+                    button "Pin" { onclick: .TogglePin, style: "px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/90" }
                 }
                 if .editing == true {
                     row {
                         style: "gap-2"
-                        button "Save" { onclick: .Save, style: "px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium" }
-                        button "Cancel" { onclick: .Cancel, style: "px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600" }
+                        button "Save" { onclick: .Save, style: "px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-medium" }
+                        button "Cancel" { onclick: .Cancel, style: "px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/90" }
                     }
                 }
-                button "Delete" { onclick: .Delete, style: "ml-auto px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600" }
-                style: "p-4 border-t border-gray-100"
+                button "Delete" { onclick: .Delete, style: "ml-auto px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90" }
+                style: "p-4 border-t border-border"
             }
             style: "flex-1 flex-col"
         }

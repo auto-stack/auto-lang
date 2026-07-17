@@ -14,7 +14,7 @@ widget App {
 
     view {
         col {
-            style: "w-full h-screen flex-col bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100"
+            style: "w-full h-screen flex-col bg-background text-foreground"
 
             // header
             row {
@@ -23,16 +23,16 @@ widget App {
                 }
                 button "+ New" {
                     onclick: .NewNote
-                    style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600"
+                    style: "ml-auto px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
                 }
-                style: "w-full items-center p-3 border-b border-gray-200 dark:border-gray-700 dark:bg-gray-800"
+                style: "w-full items-center p-3 border-b border-border"
             }
 
             // body
             row {
                 // ── Navigation column ──
                 col {
-                    style: "w-80 border-r border-gray-200 flex-col flex-shrink-0"
+                    style: "w-80 border-r border-border flex-col flex-shrink-0"
 
                     // View mode tabs
                     row {
@@ -40,25 +40,25 @@ widget App {
                         button "All" {
                             onclick: .SelectAll
                             style: if .store.active_folder == "all" {
-                                "flex-1 px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700"
+                                "flex-1 px-2 py-1 text-xs font-medium rounded bg-accent text-accent-foreground"
                             } else {
-                                "flex-1 px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                                "flex-1 px-2 py-1 text-xs rounded text-muted-foreground hover:bg-muted"
                             }
                         }
                         button "Pinned" {
                             onclick: .SelectPinned
                             style: if .store.active_folder == "pinned" {
-                                "flex-1 px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700"
+                                "flex-1 px-2 py-1 text-xs font-medium rounded bg-accent text-accent-foreground"
                             } else {
-                                "flex-1 px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                                "flex-1 px-2 py-1 text-xs rounded text-muted-foreground hover:bg-muted"
                             }
                         }
                         button "Recent" {
                             onclick: .SelectRecent
                             style: if .store.active_folder == "recent" {
-                                "flex-1 px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700"
+                                "flex-1 px-2 py-1 text-xs font-medium rounded bg-accent text-accent-foreground"
                             } else {
-                                "flex-1 px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                                "flex-1 px-2 py-1 text-xs rounded text-muted-foreground hover:bg-muted"
                             }
                         }
                     }
@@ -77,39 +77,39 @@ widget App {
                         button "intro" {
                             onclick: .SelectTag("intro")
                             style: if .store.active_tag == "intro" {
-                                "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
+                                "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
                             } else {
-                                "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
                             }
                         }
                         button "ideas" {
                             onclick: .SelectTag("ideas")
                             style: if .store.active_tag == "ideas" {
-                                "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
+                                "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
                             } else {
-                                "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
                             }
                         }
                         button "home" {
                             onclick: .SelectTag("home")
                             style: if .store.active_tag == "home" {
-                                "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
+                                "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
                             } else {
-                                "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
                             }
                         }
                         button "work" {
                             onclick: .SelectTag("work")
                             style: if .store.active_tag == "work" {
-                                "px-2 py-0.5 text-xs rounded-full bg-blue-500 text-white"
+                                "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
                             } else {
-                                "px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
                             }
                         }
                         if .store.active_tag != "" {
                             button "Clear" {
                                 onclick: .ClearTag
-                                style: "px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-600 hover:bg-red-200"
+                                style: "px-2 py-0.5 text-xs rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20"
                             }
                         }
                     }
@@ -123,10 +123,10 @@ widget App {
                             // Root notes header with + button
                             row {
                                 style: "px-3 py-1 items-center"
-                                text "Notes" { style: "text-xs font-bold text-gray-400 uppercase flex-1" }
+                                text "Notes" { style: "text-xs font-bold text-muted-foreground uppercase flex-1" }
                                 button "+" {
                                     onclick: .NewNote
-                                    style: "text-xs text-gray-400 hover:text-blue-500"
+                                    style: "text-xs text-muted-foreground hover:text-primary"
                                 }
                             }
 
@@ -137,9 +137,9 @@ widget App {
                                         button {
                                             onclick: .SelectNote(i)
                                             style: if i == .store.active_id {
-                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
                                             } else {
-                                                "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
                                             }
                                             text note.title
                                         }
@@ -149,9 +149,9 @@ widget App {
                                             button {
                                                 onclick: .SelectNote(i)
                                                 style: if i == .store.active_id {
-                                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
                                                 } else {
-                                                    "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
                                                 }
                                                 text note.title
                                             }
@@ -163,10 +163,10 @@ widget App {
                             // Work folder
                             row {
                                 style: "px-3 py-1 items-center"
-                                text "Work" { style: "text-xs font-bold text-gray-400 uppercase flex-1" }
+                                text "Work" { style: "text-xs font-bold text-muted-foreground uppercase flex-1" }
                                 button "+" {
                                     onclick: .NewNoteInFolder("work")
-                                    style: "text-xs text-gray-400 hover:text-blue-500"
+                                    style: "text-xs text-muted-foreground hover:text-primary"
                                 }
                             }
                             for i, note in .store.notes {
@@ -175,9 +175,9 @@ widget App {
                                         button {
                                             onclick: .SelectNote(i)
                                             style: if i == .store.active_id {
-                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
                                             } else {
-                                                "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
                                             }
                                             text note.title
                                         }
@@ -187,9 +187,9 @@ widget App {
                                             button {
                                                 onclick: .SelectNote(i)
                                                 style: if i == .store.active_id {
-                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
                                                 } else {
-                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
                                                 }
                                                 text note.title
                                             }
@@ -201,10 +201,10 @@ widget App {
                             // Personal folder
                             row {
                                 style: "px-3 py-1 items-center"
-                                text "Personal" { style: "text-xs font-bold text-gray-400 uppercase flex-1" }
+                                text "Personal" { style: "text-xs font-bold text-muted-foreground uppercase flex-1" }
                                 button "+" {
                                     onclick: .NewNoteInFolder("personal")
-                                    style: "text-xs text-gray-400 hover:text-blue-500"
+                                    style: "text-xs text-muted-foreground hover:text-primary"
                                 }
                             }
                             for i, note in .store.notes {
@@ -213,9 +213,9 @@ widget App {
                                         button {
                                             onclick: .SelectNote(i)
                                             style: if i == .store.active_id {
-                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
                                             } else {
-                                                "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
                                             }
                                             text note.title
                                         }
@@ -225,9 +225,9 @@ widget App {
                                             button {
                                                 onclick: .SelectNote(i)
                                                 style: if i == .store.active_id {
-                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
                                                 } else {
-                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                    "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
                                                 }
                                                 text note.title
                                             }
@@ -245,9 +245,9 @@ widget App {
                                         button {
                                             onclick: .SelectNote(i)
                                             style: if i == .store.active_id {
-                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
                                             } else {
-                                                "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
                                             }
                                             text note.title
                                         }
@@ -257,9 +257,9 @@ widget App {
                                             button {
                                                 onclick: .SelectNote(i)
                                                 style: if i == .store.active_id {
-                                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
                                                 } else {
-                                                    "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                    "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
                                                 }
                                                 text note.title
                                             }
@@ -276,9 +276,9 @@ widget App {
                                     button {
                                         onclick: .SelectNote(i)
                                         style: if i == .store.active_id {
-                                            "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                            "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
                                         } else {
-                                            "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                            "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
                                         }
                                         text note.title
                                     }
@@ -288,9 +288,9 @@ widget App {
                                         button {
                                             onclick: .SelectNote(i)
                                             style: if i == .store.active_id {
-                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 font-medium"
+                                                "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
                                             } else {
-                                                "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                                                "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
                                             }
                                             text note.title
                                         }
@@ -301,11 +301,11 @@ widget App {
                     }
 
                     // Dark mode toggle (bottom)
-                    separator { style: "border-t border-gray-200" }
+                    separator { style: "border-t border-border" }
                     button {
                         text "Dark Mode"
                         onclick: .ToggleDarkMode
-                        style: "mx-2 my-1 px-3 py-1.5 text-xs rounded-lg text-gray-600 hover:bg-gray-100"
+                        style: "mx-2 my-1 px-3 py-1.5 text-xs rounded-lg text-muted-foreground hover:bg-muted"
                     }
                 }
 
