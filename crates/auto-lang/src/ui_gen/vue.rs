@@ -1227,12 +1227,13 @@ impl VueGenerator {
         self.dark_mode_var = widget.state_vars.iter()
             .find(|s| s.name == "isDark" || s.name == "dark_mode")
             .map(|s| s.name.clone());
-        // Also check if view tree references dark_mode or if ToggleDarkMode handler exists
+        // Also check if ToggleDarkMode handler exists (D1 fix: removed
+        // format!("{:?}", widget.view_tree) which caused OOM on large
+        // view trees with Expr::If nodes — handler check is sufficient)
         if !self.has_dark_mode {
-            let view_str = format!("{:?}", widget.view_tree);
             let has_toggle = widget.handlers.contains_key("ToggleDarkMode")
                 || widget.lifecycle.iter().any(|l| l.name.contains("DarkMode") || l.name.contains("dark_mode"));
-            if view_str.contains("dark_mode") || has_toggle {
+            if has_toggle {
                 self.has_dark_mode = true;
                 self.dark_mode_var = Some("dark_mode".to_string());
             }
