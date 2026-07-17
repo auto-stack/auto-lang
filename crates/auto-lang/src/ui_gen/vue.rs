@@ -846,6 +846,8 @@ pub struct VueGenerator {
 
     /// Whether the widget has an isDark state var (dark mode toggle)
     has_dark_mode: bool,
+    /// Name of the dark mode state variable (e.g. "isDark" or "dark_mode")
+    dark_mode_var: Option<String>,
 
     /// Whether theme-toggle component is used
     use_theme_toggle: bool,
@@ -935,6 +937,7 @@ impl VueGenerator {
             },
             used_handlers: HashSet::new(),
             has_dark_mode: false,
+            dark_mode_var: None,
             use_theme_toggle: false,
             use_curve_type: false,
             known_sub_widgets: HashSet::new(),
@@ -1107,6 +1110,7 @@ impl VueGenerator {
         // loaded once from AUTO_API_FUNCTIONS env var, and persists across widget generation.
         self.used_handlers.clear();
         self.has_dark_mode = false;
+        self.dark_mode_var = None;
         self.use_theme_toggle = false;
     }
 
@@ -1217,8 +1221,22 @@ impl VueGenerator {
         self.current_widget = Some(widget.name.clone());
         self.reset();
 
-        // Detect dark mode: check if widget has an isDark bool state variable
-        self.has_dark_mode = widget.state_vars.iter().any(|s| s.name == "isDark");
+        // Detect dark mode: check widget state vars, view tree, or handler names
+        self.has_dark_mode = widget.state_vars.iter().any(|s| s.name == "isDark" || s.name == "dark_mode");
+        // Determine the dark mode state variable name for template binding
+        self.dark_mode_var = widget.state_vars.iter()
+            .find(|s| s.name == "isDark" || s.name == "dark_mode")
+            .map(|s| s.name.clone());
+        // Also check if view tree references dark_mode or if ToggleDarkMode handler exists
+        if !self.has_dark_mode {
+            let view_str = format!("{:?}", widget.view_tree);
+            let has_toggle = widget.handlers.contains_key("ToggleDarkMode")
+                || widget.lifecycle.iter().any(|l| l.name.contains("DarkMode") || l.name.contains("dark_mode"));
+            if view_str.contains("dark_mode") || has_toggle {
+                self.has_dark_mode = true;
+                self.dark_mode_var = Some("dark_mode".to_string());
+            }
+        }
 
         // Pre-populate state_names so expr_to_js recognizes refs during template generation
         for state in &widget.state_vars {
@@ -1492,8 +1510,8 @@ impl VueGenerator {
             script.push('\n');
         }
 
-        // Dark mode: detect system preference on mount
-        if self.has_dark_mode {
+        // Dark mode: detect system preference on mount (only for isDark pattern)
+        if self.has_dark_mode && self.dark_mode_var.as_deref() != Some("dark_mode") {
             script.push_str("onMounted(() => {\n");
             script.push_str("  isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches\n");
             script.push_str("})\n\n");
@@ -1966,16 +1984,23 @@ impl VueGenerator {
     fn generate_template(&mut self, root: &AuraNode) -> GenResult<String> {
         let mut template = String::new();
 
-        // Render the view root directly without an extra wrapper div.
-        // The view's root element (col/row/etc.) already gets appropriate classes
-        // from extract_classes(). Adding a hardcoded wrapper breaks apps that
-        // need clean HTML (e.g., TodoMVC where body CSS controls layout).
-        //
-        // For dark mode, inject :class binding into the root element after generation.
         let root_html = self.node_to_html(root, 2)?;
-        if self.has_dark_mode {
-            // Add :class binding for isDark into the first opening tag
-            let html = root_html.replacen("<div ", "<div :class=\"{ dark: isDark }\" ", 1);
+
+        // Check for dark mode: either explicit state var, view tree reference,
+        // or a ToggleDarkMode handler used in the template
+        let has_toggle_dark = self.used_handlers.contains("ToggleDarkMode");
+        if self.has_dark_mode || has_toggle_dark {
+            let dark_expr = match &self.dark_mode_var {
+                Some(var) if var == "dark_mode" => "store.dark_mode",
+                _ => "isDark",
+            };
+            // If dark_expr is store.dark_mode but var wasn't set, use store.dark_mode
+            let dark_expr = if has_toggle_dark && self.dark_mode_var.is_none() {
+                "store.dark_mode"
+            } else {
+                dark_expr
+            };
+            let html = root_html.replacen("<div ", &format!("<div :class=\"{{ dark: {} }}\" ", dark_expr), 1);
             template.push_str(&html);
         } else {
             template.push_str(&root_html);
