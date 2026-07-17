@@ -209,6 +209,11 @@ pub struct Module {
     pub object_keys: Vec<Vec<auto_val::ValueKey>>,
     /// Plan 073: Object field types for runtime value conversion
     pub object_types: Vec<Vec<crate::vm::codegen::ObjectType>>,
+    /// Plan 359 E1: true if this module has top-level global initializers
+    /// (module-level `var`/`const`). Such modules must be retained even when
+    /// they export no functions, so their STORE_GLOBAL init code runs and the
+    /// globals become visible across module boundaries.
+    pub has_globals: bool,
 }
 
 /// Structured linker error with source position info

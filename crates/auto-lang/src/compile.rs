@@ -1359,7 +1359,11 @@ impl CompileSession {
             .unwrap_or_else(|_| root_path.to_string_lossy().to_string());
         if !self.compiled_module_paths.contains(&path_key) {
             let module_code = self.compile_module_to_bytecode(&module_source, &root_path.to_string_lossy())?;
-            if !module_code.exports.is_empty() {
+            // Plan 359 E1: retain a module if it exports functions OR declares
+            // top-level globals (var/const). Previously a const/var-only module
+            // was dropped (empty exports), so its STORE_GLOBAL init code never
+            // ran and the globals stayed invisible across module boundaries.
+            if !module_code.exports.is_empty() || module_code.has_globals {
                 self.compiled_modules.push(module_code);
             }
             self.compiled_module_paths.insert(path_key);

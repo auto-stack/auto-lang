@@ -1258,7 +1258,13 @@ impl Codegen {
                 // Plan 338: auto-register top-level `var` as a global so it's
                 // visible from functions via LOAD_GLOBAL. Without this, script-path
                 // module-level vars are treated as locals (invisible to fns).
-                if matches!(store.kind, crate::ast::StoreKind::Var) && self.scope_stack.len() <= 1 {
+                // Plan 359 E1: also admit top-level `const` so a module-level
+                // const (e.g. `const MAX int = 42`) is stored in vm.globals and
+                // is visible across module boundaries via `use mod: MAX`. `let`
+                // intentionally stays local (mutable-in-scope semantics differ).
+                if matches!(store.kind, crate::ast::StoreKind::Var | crate::ast::StoreKind::Const)
+                    && self.scope_stack.len() <= 1
+                {
                     self.global_vars.insert(name_str.clone());
                 }
                 // Plan 327: module-level global variable (top-level `var`).
@@ -4482,6 +4488,12 @@ impl Codegen {
                 } else if self.global_vars.contains(&name_str) {
                     // Plan 327: module-level global variable.
                     self.emit_global_load(&name_str);
+                } else if let Some(qualified) = self.import_scope.get(&name_str).cloned() {
+                    // Plan 359 E1: imported value name (e.g. `use auto.testlib: MAX`
+                    // → import_scope["MAX"] = "testlib.MAX"). Emit LOAD_GLOBAL with
+                    // the exact qualified name under which it was stored in
+                    // vm.globals (no current_module prefix).
+                    self.emit_global_load_qualified(&qualified);
                 } else {
                     // Plan 127: Check if this is an enum variant (e.g., Red from enum Color)
                     let enum_variant_value = self.type_store.read().unwrap()
@@ -5948,7 +5960,13 @@ impl Codegen {
                                 // type reference. See Plan 355 (sha2 global-var bitop bug).
                                 let is_local_var = self.var_types.contains_key(obj_name.as_ref())
                                     || self.global_vars.contains(obj_name.as_ref())
-                                    || self.lookup_var(obj_name.as_str()).is_some();
+                                    || self.lookup_var(obj_name.as_str()).is_some()
+                                    // Plan 359 E1: an imported value name (e.g.
+                                    // `use testlib: MAX`) is a value global, so a
+                                    // call like `MAX.to(str)` must treat MAX as
+                                    // an instance (load the global) rather than a
+                                    // static type reference.
+                                    || self.import_scope.contains_key(obj_name.as_ref());
                                 let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi");
                                 if !is_local_var && (is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
@@ -8250,6 +8268,10 @@ impl Codegen {
     }
 
     pub fn finish(self, name: String) -> Module {
+        // Plan 359 E1: record whether this module declared any top-level
+        // globals (var/const). The linker retains such modules even without
+        // function exports so their STORE_GLOBAL init code runs.
+        let has_globals = !self.global_vars.is_empty();
         Module {
             name,
             code: self.code,
@@ -8259,6 +8281,7 @@ impl Codegen {
             // Plan 073: Include object_keys and object_types in module
             object_keys: self.object_keys,
             object_types: self.object_types,
+            has_globals,
         }
     }
 
@@ -9352,8 +9375,23 @@ impl Codegen {
 
     fn emit_global_load(&mut self, name: &str) {
         let qname = self.qualified_global_name(name);
-        let idx = self.strings.len() as u16;
-        self.strings.push(qname.as_bytes().to_vec());
+        // Plan 359 C1: intern the qualified name via add_string so the same
+        // global name always resolves to a single, deduplicated pool entry.
+        // The previous direct `self.strings.push(...)` could push duplicate
+        // copies of the same name at different indices, which after linker
+        // pool merging left the STORE and LOAD referencing inconsistent
+        // entries. Interning guarantees both sides agree.
+        let idx = self.add_string(&qname);
+        self.emit(OpCode::LOAD_GLOBAL);
+        self.emit_u16(idx);
+    }
+
+    /// Plan 359 E1: Emit LOAD_GLOBAL for an already-qualified name (e.g.
+    /// "testlib.MAX" resolved from `import_scope`). Unlike emit_global_load,
+    /// this does NOT prepend `self.current_module` — the caller supplies the
+    /// exact name under which the global was stored in `vm.globals`.
+    fn emit_global_load_qualified(&mut self, qname: &str) {
+        let idx = self.add_string(qname);
         self.emit(OpCode::LOAD_GLOBAL);
         self.emit_u16(idx);
     }
@@ -9361,8 +9399,8 @@ impl Codegen {
     /// Plan 327: Emit STORE_GLOBAL for a module-level variable.
     fn emit_global_store(&mut self, name: &str) {
         let qname = self.qualified_global_name(name);
-        let idx = self.strings.len() as u16;
-        self.strings.push(qname.as_bytes().to_vec());
+        // Plan 359 C1: see emit_global_load — intern via add_string for dedup.
+        let idx = self.add_string(&qname);
         self.emit(OpCode::STORE_GLOBAL);
         self.emit_u16(idx);
     }
