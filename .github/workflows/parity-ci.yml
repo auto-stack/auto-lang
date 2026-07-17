@@ -29,6 +29,14 @@ jobs:
       - name: Run parity p2 (serde_json, regex)
         working-directory: parity
         run: cargo run -p auto-parity -- --auto-binary ../target/release/auto phase p2
+      - name: Generate parity dashboard
+        working-directory: parity
+        run: cargo run -p auto-parity -- --auto-binary ../target/release/auto report --output docs/parity-dashboard.html
+      - name: Upload parity dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-dashboard
+          path: parity/docs/parity-dashboard.html
       - name: Upload parity artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
