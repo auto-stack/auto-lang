@@ -1560,8 +1560,33 @@ impl Codegen {
                         self.compile_expr(&store.expr)?;
                     }
                 } else {
-                    // Compile the RHS expression (pushes result on stack)
-                    self.compile_expr(&store.expr)?;
+                    // Plan 359 A3: When a 64-bit integer literal (I64/U64) is stored
+                    // into a 32-bit Int/Uint variable, emit a truncated CONST_I32 so
+                    // the stack stays 1-slot. Otherwise CONST_I64/CONST_U64 push 2
+                    // slots while the Int store consumes only 1, corrupting the value
+                    // (e.g. `var z int = 0x80000000` parsed as Expr::I64).
+                    let store_is_32bit_int = matches!(store.ty, Type::Int | Type::Uint);
+                    if store_is_32bit_int {
+                        let truncated = match &store.expr {
+                            Expr::I64(v) => Some(*v as i32),
+                            Expr::U64(v) => Some(*v as i32),
+                            _ => None,
+                        };
+                        if let Some(trunc) = truncated {
+                            self.last_expr_type = if matches!(store.ty, Type::Uint) {
+                                ObjectType::Uint
+                            } else {
+                                ObjectType::Int
+                            };
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(trunc);
+                        } else {
+                            self.compile_expr(&store.expr)?;
+                        }
+                    } else {
+                        // Compile the RHS expression (pushes result on stack)
+                        self.compile_expr(&store.expr)?;
+                    }
 
                     // Infer 2-slot type from last_expr_type when store.ty is Unknown or narrower
                     // Double expression result overrides Float/Unknown store type

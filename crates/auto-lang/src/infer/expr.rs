@@ -62,9 +62,14 @@ use std::rc::Rc;
 pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
     match expr {
         // ========== 字面量表达式 ==========
-        Expr::Int(_) | Expr::I64(_) => Type::Int,
+        // Plan 359 A3: I64/U64 literals must infer to their 64-bit types so that
+        // downstream codegen stores them as 2-slot values. Previously both
+        // collapsed to Int/Uint, which stranded the low word for large literals.
+        Expr::Int(_) => Type::Int,
+        Expr::I64(_) => Type::I64,
         Expr::I8(_) => Type::Int,
-        Expr::Uint(_) | Expr::U64(_) | Expr::Byte(_) => Type::Uint,
+        Expr::Uint(_) | Expr::Byte(_) => Type::Uint,
+        Expr::U64(_) => Type::U64,
         Expr::U8(_) => Type::Int,  // U8 arithmetic returns plain int (no 'u' suffix)
         Expr::Float(_, _) => Type::Float,
         Expr::Double(_, _) => Type::Double,
