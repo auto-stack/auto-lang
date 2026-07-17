@@ -37,10 +37,11 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 234 | A3UI A2Vue Replica | Complete | A2UI Composer Vue replica — all 7 phases done (7 pages, Widget Editor, Basic/Custom Catalogs, Theater, Icons, state mgmt); pixel-perfect parity split to plan 236 |
 | 235-a2vue | a2vue Transpiler Gaps | Complete | ts_adapter fixes + storage/event/json/math/date/router builtins for comprehensive Vue generation |
 | 238 | Charts Replica | Complete | area/bar/line/donut chart registry with prop mapping for shadcn-vue charts |
+| 356 | Vue Generator OOM / Recursion Fix | Complete | Parser OOM (reserved-kw loop var) + ident.field iterable + soft-kw in conditions; full 015-notes sidebar regenerates |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238 (14 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 356 (15 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -143,3 +144,4 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [234-a3ui-a2vue-replica.md](../plans/archive/234-a3ui-a2vue-replica.md)
 - [235-a2vue-transpiler-gaps.md](../plans/old/235-a2vue-transpiler-gaps.md)
 - [238-shadcn-vue-charts-replica.md](../plans/old/238-shadcn-vue-charts-replica.md)
+- [356-vue-generator-oom-recursion-fix.md](../plans/old/356-vue-generator-oom-recursion-fix.md)

@@ -36,9 +36,10 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 234 | A3UI A2Vue Replica | ✅ | A2UI Composer Vue replica — all 7 phases done; 7 pages, Widget Editor, Catalogs, Theater, Icons (pixel-perfect split to plan 236) |
 | 235-a2vue | a2vue Transpiler Gaps | ✅ | ts_adapter fixes + storage/event/json/math/date/router builtins |
 | 238 | Charts Replica | ✅ | area/bar/line/donut chart registry + prop mapping |
+| 356 | Vue Generator OOM / Recursion Fix | ✅ | Parser OOM (reserved-kw loop var) + ident.field iterable + soft-kw in conditions; full 015-notes sidebar regenerates |
 
 ## Status Summary
-- Completed: 15 | Partial: 4 | Planned: 10 | Deprecated: 0
+- Completed: 16 | Partial: 4 | Planned: 10 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL
