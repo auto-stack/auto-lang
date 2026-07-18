@@ -4376,6 +4376,10 @@ mod plan352_tests;
 #[cfg(test)]
 mod plan353_tests;
 
+// Plan 359 Phase 5 (G1/G2/G3): Concurrency bug fixes (spawn, generic types, channels)
+#[cfg(test)]
+mod plan359_concurrency_tests;
+
 // =============================================================================
 // Plan 015: AutoUI Core (feature-gated)
 // =============================================================================

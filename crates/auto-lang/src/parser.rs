@@ -8809,6 +8809,19 @@ impl<'a> Parser<'a> {
                         return self.parse_generic_instance(name);
                     }
                 }
+                // Plan 359 G2: Support square-bracket generic syntax in type
+                // position (e.g., Handle[int], List[int], May[int]). This only
+                // applies when a `[` immediately follows a type-name identifier,
+                // so it does not conflict with array types (`[N]T`) which start
+                // with `[`. We require a lookahead type check to avoid consuming
+                // an index expression in other contexts.
+                if self.cur.kind == TokenKind::LSquare && self.next_token_is_type() {
+                    return self.parse_generic_instance_delim(
+                        name,
+                        TokenKind::LSquare,
+                        TokenKind::RSquare,
+                    );
+                }
                 // Support Result(T, E) style generic with parens
                 if self.cur.kind == TokenKind::LParen && (name == "Result" || name == "Option" || name == "List" || name == "Map") {
                     self.next(); // consume (
@@ -8933,9 +8946,22 @@ impl<'a> Parser<'a> {
 
     /// Parse generic instance (e.g., List<int>, Map<str, int>, MyType<T, U>)
     fn parse_generic_instance(&mut self, base_name: Name) -> AutoResult<Type> {
+        // Default delimiter is angle brackets `<...>` (e.g. List<int>, Handle<int>).
+        self.parse_generic_instance_delim(base_name, TokenKind::Lt, TokenKind::Gt)
+    }
+
+    /// Plan 359 G2: Parse a generic type instance with an explicit delimiter
+    /// pair. Supports both angle brackets `Ident<T>` and square brackets
+    /// `Ident[T]` (e.g. `Handle[int]`, `List[int]`) in type position.
+    fn parse_generic_instance_delim(
+        &mut self,
+        base_name: Name,
+        open: TokenKind,
+        close: TokenKind,
+    ) -> AutoResult<Type> {
         use crate::ast::{GenericInstance, Type};
 
-        self.expect(TokenKind::Lt)?;
+        self.expect(open)?;
 
         let mut args = Vec::new();
         args.push(self.parse_type()?);
@@ -8945,7 +8971,7 @@ impl<'a> Parser<'a> {
             args.push(self.parse_type()?);
         }
 
-        self.expect(TokenKind::Gt)?;
+        self.expect(close)?;
 
         // Check if base_name refers to a user-defined generic Tag or TypeDecl
         let base_type = self.lookup_type(&base_name);
