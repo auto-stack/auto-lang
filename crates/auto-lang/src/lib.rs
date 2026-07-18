@@ -841,6 +841,116 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
     }
 }
 
+/// Plan 359 B1: Remap CREATE_OBJ `key_index` (u16) operands in bytecode after
+/// the object_keys/object_types pools are merged across modules.
+///
+/// When dep modules' object pools are appended to the main module's pool, every
+/// CREATE_OBJ instruction in a dep module still holds its original 0-based
+/// `key_index`, which now points into the MAIN module's portion of the merged
+/// pool (wrong keys/types → corrupt objects, or field_count/types length
+/// mismatches that overflow at runtime). This walker decodes instruction
+/// lengths precisely (mirroring `remap_string_indices`) and rewrites the u16
+/// operand of each CREATE_OBJ using `obj_remap` (old_index → new_index).
+fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
+    use crate::vm::opcode::OpCode;
+    if obj_remap.is_empty() {
+        return;
+    }
+    // Rewrite the u16 CREATE_OBJ key_index at `pos` if it is in range.
+    let apply = |code: &mut [u8], pos: usize| {
+        if pos + 1 < code.len() {
+            let old = u16::from_le_bytes([code[pos], code[pos + 1]]) as usize;
+            if old < obj_remap.len() {
+                let new = obj_remap[old];
+                let bytes = new.to_le_bytes();
+                code[pos] = bytes[0];
+                code[pos + 1] = bytes[1];
+            }
+        }
+    };
+
+    // Track the last CONST_I32 value (NEW_INSTANCE reads name_len from the
+    // preceding CONST_I32 push — same convention as remap_string_indices).
+    let mut last_const_i32: i32 = 0;
+    let mut i = 0;
+    while i < code.len() {
+        let op_byte = code[i];
+        if !OpCode::is_valid(op_byte) {
+            i += 1;
+            continue;
+        }
+        let op = OpCode::from(op_byte);
+        let operand_pos = i + 1;
+        // Only CREATE_OBJ carries a u16 key_index into the object_keys pool.
+        // All other operand sizes must still be skipped correctly so operand
+        // bytes are never misread as opcodes.
+        let (operand_len, is_obj_idx): (usize, bool) = match op {
+            OpCode::CREATE_OBJ => (2, true),
+            // u16 string-pool / native-id operands (skip, do not remap).
+            OpCode::LOAD_STR | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+            | OpCode::GET_FIELD | OpCode::CAPTURE_VAR
+            | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED | OpCode::CALL_NAT => (2, false),
+            // 1-byte fixed operands.
+            OpCode::CONST_U8 | OpCode::PUSH_BOOL | OpCode::POP_N
+            | OpCode::RESERVE_STACK | OpCode::RET | OpCode::ERROR_PROPAGATE
+            | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
+            | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
+            | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE | OpCode::CREATE_OK
+            | OpCode::GET_GENERIC_FIELD | OpCode::SET_GENERIC_FIELD
+            | OpCode::GET_TUPLE_FIELD => (1, false),
+            OpCode::FN_PROLOG => (2, false),
+            // 4-byte operands.
+            OpCode::CONST_I32 | OpCode::CONST_F32 | OpCode::JMP_FAR | OpCode::JMP_L
+            | OpCode::CALL | OpCode::CREATE_FUTURE | OpCode::LOAD_REF | OpCode::STORE_REF
+            | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF => {
+                if let OpCode::CONST_I32 = op {
+                    if operand_pos + 4 <= code.len() {
+                        last_const_i32 = i32::from_le_bytes([
+                            code[operand_pos], code[operand_pos + 1],
+                            code[operand_pos + 2], code[operand_pos + 3],
+                        ]);
+                    }
+                }
+                (4, false)
+            }
+            OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => (8, false),
+            OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, false),
+            OpCode::SLEEP => (4, false),
+            OpCode::JOIN | OpCode::SEND => (4, false),
+            OpCode::CALL_SPEC => (4, false),
+            OpCode::CREATE_NODE => (5, false),
+            OpCode::CLOSURE => (4, false),
+            OpCode::SOURCE_LINE => (2, false),
+            OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER => (2, false),
+            OpCode::BUILD_FSTR => {
+                if operand_pos < code.len() {
+                    let parts = code[operand_pos] as usize;
+                    (1 + parts, false)
+                } else {
+                    (1, false)
+                }
+            }
+            OpCode::IS_VARIANT => {
+                if operand_pos + 2 <= code.len() {
+                    let len = u16::from_le_bytes([code[operand_pos], code[operand_pos + 1]]) as usize;
+                    (2 + len, false)
+                } else {
+                    (2, false)
+                }
+            }
+            OpCode::NEW_INSTANCE => {
+                (last_const_i32.max(0) as usize, false)
+            }
+            _ => (0, false),
+        };
+
+        if is_obj_idx {
+            apply(code, operand_pos);
+        }
+        i += 1 + operand_len;
+    }
+}
+
     // and remap string indices in their bytecode. Without this, LOAD_STR /
     // STORE_GLOBAL / LOAD_GLOBAL instructions in dep modules reference wrong
     // strings (the main pool's indices don't match), causing globals to be
@@ -851,43 +961,62 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
     let mut object_keys = codegen.object_keys.clone();
     let mut object_types = codegen.object_types.clone();
     for module in dep_modules.iter_mut() {
-        if module.strings.is_empty() {
-            continue;
-        }
-        // Build remap table: old index → new index.
-        // Plan 355: indices are u16 (modules can have >256 string-pool entries).
-        let mut remap = vec![0u16; module.strings.len()];
-        for (old_idx, s) in module.strings.iter().enumerate() {
-            // Check if string already exists in main pool (dedup).
-            if let Some(existing) = strings.iter().position(|e| e == s) {
-                remap[old_idx] = existing as u16;
-            } else {
-                let new_idx = strings.len();
-                strings.push(s.clone());
-                remap[old_idx] = new_idx as u16;
-            }
-        }
-        // Remap string indices in bytecode. We scan for opcodes that embed
-        // a string pool index (LOAD_STR, STORE_GLOBAL, LOAD_GLOBAL, etc.).
-        // These opcodes are followed by a u8 string index.
-        remap_string_indices(&mut module.code, &remap);
-
-        // Plan 346: Merge object_keys/object_types pools and remap CREATE_OBJ
-        // key_index (u16) in bytecode. Without this, Note { id: 0, ... } in
-        // db.at references wrong field names from the main module's pool.
-        if !module.object_keys.is_empty() {
-            let _obj_keys_base = object_keys.len();
-            for (i, keys) in module.object_keys.iter().enumerate() {
-                object_keys.push(keys.clone());
-                if let Some(ty) = module.object_types.get(i) {
-                    object_types.push(ty.clone());
+        // Plan 355: remap string-pool indices. Done even if the module also has
+        // object pools; the two remaps are independent.
+        if !module.strings.is_empty() {
+            // Build remap table: old index → new index.
+            // Plan 355: indices are u16 (modules can have >256 string-pool entries).
+            let mut remap = vec![0u16; module.strings.len()];
+            for (old_idx, s) in module.strings.iter().enumerate() {
+                // Check if string already exists in main pool (dedup).
+                if let Some(existing) = strings.iter().position(|e| e == s) {
+                    remap[old_idx] = existing as u16;
+                } else {
+                    let new_idx = strings.len();
+                    strings.push(s.clone());
+                    remap[old_idx] = new_idx as u16;
                 }
             }
-            // NOTE: CREATE_OBJ remap is intentionally not applied — naive
-            // bytecode scanning corrupts other instructions, and object creation
-            // works without it because CREATE_OBJ uses absolute indices into the
-            // merged pool (dep module indices start at 0, mapping to the base
-            // offset after the main module's entries).
+            // Remap string indices in bytecode. We scan for opcodes that embed
+            // a string pool index (LOAD_STR, STORE_GLOBAL, LOAD_GLOBAL, etc.).
+            remap_string_indices(&mut module.code, &remap);
+        }
+
+        // Plan 359 B1: Merge object_keys/object_types pools AND remap every
+        // CREATE_OBJ key_index (u16) operand in the dep module's bytecode.
+        //
+        // The dep module's CREATE_OBJ instructions hold 0-based indices into
+        // their OWN object_keys pool. After we append that pool to the main
+        // pool, those indices must be rebased by the current main-pool length
+        // (base-offset remap: dep index i → main_base + i), otherwise they
+        // point at the main module's pool entries — producing objects with the
+        // wrong field names/types and, when the main pool's entries have a
+        // different length, a field_count/values length mismatch that overflows
+        // at runtime (engine.rs CREATE_OBJ handler).
+        //
+        // The earlier "CREATE_OBJ remap is intentionally not applied" comment
+        // was incorrect: the indices are NOT self-adjusting. This only appeared
+        // to work because most object creation goes through NEW_INSTANCE (typed
+        // `Point { ... }`), which bypasses the object_keys pool entirely.
+        if !module.object_keys.is_empty() {
+            let obj_base = object_keys.len() as u16;
+            let obj_count = module.object_keys.len();
+            for (i, keys) in module.object_keys.iter().enumerate() {
+                object_keys.push(keys.clone());
+                // Keep object_types aligned with object_keys entry-for-entry.
+                // If a dep module ever lacks a matching types entry, push an
+                // empty vec so the two pools never desync.
+                if let Some(ty) = module.object_types.get(i) {
+                    object_types.push(ty.clone());
+                } else {
+                    object_types.push(Vec::new());
+                }
+            }
+            // Base-offset remap: dep index i → obj_base + i.
+            let obj_remap: Vec<u16> = (0..obj_count)
+                .map(|i| obj_base.saturating_add(i as u16))
+                .collect();
+            remap_obj_indices(&mut module.code, &obj_remap);
         }
     }
 
