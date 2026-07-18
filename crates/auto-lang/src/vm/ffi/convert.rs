@@ -125,12 +125,17 @@ impl VMConvertible for f64 {
 
 impl VMConvertible for bool {
     fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
-        let val = task.ram.pop_i32();
-        Ok(val != 0)
+        let nv = task.ram.pop_nv();
+        if auto_val::is_bool(nv) {
+            Ok(auto_val::decode_bool(nv))
+        } else {
+            // Backward compat: treat nonzero i32 as true
+            Ok(auto_val::decode_i32(nv) != 0)
+        }
     }
 
     fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
-        task.ram.push_i32(if *self { 1 } else { 0 });
+        task.ram.push_nv(auto_val::encode_bool(*self));
         Ok(())
     }
 }

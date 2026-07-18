@@ -745,8 +745,13 @@ impl Codegen {
                 // User-defined void functions (CALL+RET) leave a return value on the stack,
                 // so POP is needed. Native void shims (CALL_NAT) don't push return values,
                 // so POP must be skipped to avoid eating a value below.
-                let needs_pop = self.should_pop_expr_result
-                    && (!matches!(self.last_expr_type, ObjectType::Void) || !self.last_was_native_void);
+                // Plan 359 C4: a native void shim (last_was_native_void) NEVER pushes a
+                // value, so we must never POP in that case regardless of last_expr_type.
+                // The previous `(!Void || !native_void)` OR-logic popped whenever the
+                // type was non-void even when a native shim left nothing on the stack,
+                // corrupting the stack (eating a value from below). Now: pop iff we
+                // should discard AND the last call was not a native void shim.
+                let needs_pop = self.should_pop_expr_result && !self.last_was_native_void;
                 if needs_pop {
                     if matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint) {
                         self.emit(OpCode::POP_N);
@@ -786,6 +791,13 @@ impl Codegen {
             Stmt::If(if_stmt) => {
                 let mut jumps_to_end = Vec::new();
 
+                // Plan 359 C5: branch bodies are compiled directly in the
+                // ENCLOSING scope (via compile_body_inline, which does NOT wrap
+                // in Stmt::Block and therefore introduces no extra scope). This
+                // means a `var x = ...` declared inside an if-branch leaks to
+                // the enclosing scope and remains visible after the if —
+                // matching the if-branch scoping of many languages. We do NOT
+                // push a new scope here, so the binding survives the if.
                 for branch in &if_stmt.branches {
                     // Cond
                     self.compile_expr(&branch.cond)?;
@@ -794,8 +806,9 @@ impl Codegen {
                     self.emit(OpCode::JMP_IF_Z);
                     let jump_to_next = self.emit_placeholder_i16();
 
-                    // Body
-                    self.compile_stmt(&Stmt::Block(branch.body.clone()))?;
+                    // Body — compile statements directly (no extra Stmt::Block
+                    // wrapper, so no extra scope is introduced per branch).
+                    self.compile_body_inline(&branch.body)?;
 
                     // If True, JMP to End (skip other branches/else)
                     // Optimization: We could skip this for the very last block, but keeping it uniform is safer/easier.
@@ -808,7 +821,7 @@ impl Codegen {
                 }
 
                 if let Some(else_body) = &if_stmt.else_ {
-                    self.compile_stmt(&Stmt::Block(else_body.clone()))?;
+                    self.compile_body_inline(else_body)?;
                 }
 
                 // Patch all "JMP to End" to point here
@@ -1245,7 +1258,13 @@ impl Codegen {
                 // Plan 338: auto-register top-level `var` as a global so it's
                 // visible from functions via LOAD_GLOBAL. Without this, script-path
                 // module-level vars are treated as locals (invisible to fns).
-                if matches!(store.kind, crate::ast::StoreKind::Var) && self.scope_stack.len() <= 1 {
+                // Plan 359 E1: also admit top-level `const` so a module-level
+                // const (e.g. `const MAX int = 42`) is stored in vm.globals and
+                // is visible across module boundaries via `use mod: MAX`. `let`
+                // intentionally stays local (mutable-in-scope semantics differ).
+                if matches!(store.kind, crate::ast::StoreKind::Var | crate::ast::StoreKind::Const)
+                    && self.scope_stack.len() <= 1
+                {
                     self.global_vars.insert(name_str.clone());
                 }
                 // Plan 327: module-level global variable (top-level `var`).
@@ -1560,8 +1579,33 @@ impl Codegen {
                         self.compile_expr(&store.expr)?;
                     }
                 } else {
-                    // Compile the RHS expression (pushes result on stack)
-                    self.compile_expr(&store.expr)?;
+                    // Plan 359 A3: When a 64-bit integer literal (I64/U64) is stored
+                    // into a 32-bit Int/Uint variable, emit a truncated CONST_I32 so
+                    // the stack stays 1-slot. Otherwise CONST_I64/CONST_U64 push 2
+                    // slots while the Int store consumes only 1, corrupting the value
+                    // (e.g. `var z int = 0x80000000` parsed as Expr::I64).
+                    let store_is_32bit_int = matches!(store.ty, Type::Int | Type::Uint);
+                    if store_is_32bit_int {
+                        let truncated = match &store.expr {
+                            Expr::I64(v) => Some(*v as i32),
+                            Expr::U64(v) => Some(*v as i32),
+                            _ => None,
+                        };
+                        if let Some(trunc) = truncated {
+                            self.last_expr_type = if matches!(store.ty, Type::Uint) {
+                                ObjectType::Uint
+                            } else {
+                                ObjectType::Int
+                            };
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(trunc);
+                        } else {
+                            self.compile_expr(&store.expr)?;
+                        }
+                    } else {
+                        // Compile the RHS expression (pushes result on stack)
+                        self.compile_expr(&store.expr)?;
+                    }
 
                     // Infer 2-slot type from last_expr_type when store.ty is Unknown or narrower
                     // Double expression result overrides Float/Unknown store type
@@ -2688,6 +2732,12 @@ impl Codegen {
                     }
                     Iter::Cond => {
                         // Conditional for loop: for condition { ... } (like while)
+                        // Plan 359 C3: push_scope/pop_scope around the body, matching
+                        // every other for-loop variant (Iter::Named, Iter::Indexed, ...).
+                        // Without this, a `break` inside the body could leave the scope
+                        // stack inconsistent with the emitted bytecode.
+                        self.push_scope();
+
                         // Loop start label
                         let loop_start = self.code.len();
 
@@ -2728,6 +2778,9 @@ impl Codegen {
 
                         // Patch exit jump (for loop condition)
                         self.patch_jump(jump_to_end);
+
+                        // Pop loop scope (matches Iter::Named: before patching breaks)
+                        self.pop_scope();
 
                         // Patch all break statements
                         let exits = self.loop_exits.pop().unwrap();
@@ -3394,8 +3447,9 @@ impl Codegen {
             Stmt::Node(node) => {
                 // Stmt::Node wraps an Expr::Node — compile the expression
                 self.compile_expr(&Expr::Node(node.clone()))?;
-                let needs_pop = self.should_pop_expr_result
-                    && (!matches!(self.last_expr_type, ObjectType::Void) || !self.last_was_native_void);
+                // Plan 359 C4: see Stmt::Expr — never POP when a native void shim
+                // left nothing on the stack.
+                let needs_pop = self.should_pop_expr_result && !self.last_was_native_void;
                 if needs_pop {
                     self.emit(OpCode::POP);
                 }
@@ -3451,6 +3505,30 @@ impl Codegen {
             _ => {
                 // TODO: Implement other statements
             }
+        }
+        Ok(())
+    }
+
+    /// Plan 359 C5: Compile a `Body`'s statements inline (in the current scope),
+    /// WITHOUT introducing a new scope. This mirrors the inner loop of the
+    /// `Stmt::Block` handler (SOURCE_LINE emission + should_pop_expr_result for
+    /// non-last statements) but skips push_scope/pop_scope, so `var` bindings
+    /// declared in the body remain visible in the enclosing scope. Used by
+    /// `Stmt::If` so variables declared inside an if-branch leak out.
+    fn compile_body_inline(&mut self, body: &crate::ast::Body) -> AutoResult<()> {
+        let n = body.stmts.len();
+        for (i, s) in body.stmts.iter().enumerate() {
+            if i < body.source_lines.len() {
+                self.emit_source_line(body.source_lines[i]);
+            }
+            let is_last = i == n - 1;
+            let old_pop = self.should_pop_expr_result;
+            if !is_last {
+                // Non-last statements always discard their value.
+                self.should_pop_expr_result = true;
+            }
+            self.compile_stmt(s)?;
+            self.should_pop_expr_result = old_pop;
         }
         Ok(())
     }
@@ -4410,6 +4488,12 @@ impl Codegen {
                 } else if self.global_vars.contains(&name_str) {
                     // Plan 327: module-level global variable.
                     self.emit_global_load(&name_str);
+                } else if let Some(qualified) = self.import_scope.get(&name_str).cloned() {
+                    // Plan 359 E1: imported value name (e.g. `use auto.testlib: MAX`
+                    // → import_scope["MAX"] = "testlib.MAX"). Emit LOAD_GLOBAL with
+                    // the exact qualified name under which it was stored in
+                    // vm.globals (no current_module prefix).
+                    self.emit_global_load_qualified(&qualified);
                 } else {
                     // Plan 127: Check if this is an enum variant (e.g., Red from enum Color)
                     let enum_variant_value = self.type_store.read().unwrap()
@@ -5876,7 +5960,13 @@ impl Codegen {
                                 // type reference. See Plan 355 (sha2 global-var bitop bug).
                                 let is_local_var = self.var_types.contains_key(obj_name.as_ref())
                                     || self.global_vars.contains(obj_name.as_ref())
-                                    || self.lookup_var(obj_name.as_str()).is_some();
+                                    || self.lookup_var(obj_name.as_str()).is_some()
+                                    // Plan 359 E1: an imported value name (e.g.
+                                    // `use testlib: MAX`) is a value global, so a
+                                    // call like `MAX.to(str)` must treat MAX as
+                                    // an instance (load the global) rather than a
+                                    // static type reference.
+                                    || self.import_scope.contains_key(obj_name.as_ref());
                                 let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi");
                                 if !is_local_var && (is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
@@ -7735,11 +7825,21 @@ impl Codegen {
             // Plan 126: Go expression - expr.go (spawn background task)
             // Fire-and-forget semantics: spawn the future and discard the result
             Expr::Go { expr } => {
-                // Compile the inner expression (should evaluate to a Future)
+                // Compile the inner expression (should evaluate to a Future).
+                // For an async block `~{ ... }`, the codegen compiles the body
+                // inline and leaves a single Future value on the stack.
                 self.compile_expr(expr)?;
-                // Emit SPAWN_GO to spawn the future in background
-                // SPAWN_GO pops the Future, spawns it, and pushes void
+                // Emit SPAWN_GO to spawn the future in background. SPAWN_GO pops
+                // the single Future value and spawns it (fire-and-forget); it
+                // pushes nothing back, so the net stack effect is zero.
                 self.emit(OpCode::SPAWN_GO);
+                // Plan 359 G1: SPAWN_GO leaves nothing on the stack (void), so
+                // the statement-level POP must be suppressed. Reuse the
+                // existing `last_was_native_void` signal so `needs_pop` is
+                // false and no stray POP eats a value below the stack,
+                // which previously caused a stack underflow after a few spawns.
+                self.last_was_native_void = true;
+                self.last_expr_type = ObjectType::Void;
             }
             // Plan 321: yield expression — compile inner expr, then emit YIELD_VAL
             Expr::Yield(expr) => {
@@ -8178,6 +8278,10 @@ impl Codegen {
     }
 
     pub fn finish(self, name: String) -> Module {
+        // Plan 359 E1: record whether this module declared any top-level
+        // globals (var/const). The linker retains such modules even without
+        // function exports so their STORE_GLOBAL init code runs.
+        let has_globals = !self.global_vars.is_empty();
         Module {
             name,
             code: self.code,
@@ -8187,6 +8291,7 @@ impl Codegen {
             // Plan 073: Include object_keys and object_types in module
             object_keys: self.object_keys,
             object_types: self.object_types,
+            has_globals,
         }
     }
 
@@ -8829,6 +8934,12 @@ impl Codegen {
             (ObjectType::String, "starts_with" | "ends_with" | "contains" | "is_empty") => ObjectType::Bool,
             // Int/Uint methods returning String
             (ObjectType::Int | ObjectType::Uint, "to_string" | "to_hex") => ObjectType::String,
+            // Int bitwise methods returning Int (enables chaining: x.and(3).shl(4))
+            (ObjectType::Int | ObjectType::Uint, "and" | "or" | "xor" | "not" | "shl" | "shr"
+                | "sar" | "rol" | "ror" | "count_ones" | "leading_zeros" | "trailing_zeros"
+                | "flip" | "bitrev" | "bit_read" | "bit_on" | "bit_off" | "bit_flip") => ObjectType::Int,
+            // Int bit_test returns Bool
+            (ObjectType::Int | ObjectType::Uint, "bit_test") => ObjectType::Bool,
             // Array methods returning Int
             (ObjectType::Array, "len" | "length") => ObjectType::Int,
             // Array methods returning Array (chained)
@@ -9274,8 +9385,23 @@ impl Codegen {
 
     fn emit_global_load(&mut self, name: &str) {
         let qname = self.qualified_global_name(name);
-        let idx = self.strings.len() as u16;
-        self.strings.push(qname.as_bytes().to_vec());
+        // Plan 359 C1: intern the qualified name via add_string so the same
+        // global name always resolves to a single, deduplicated pool entry.
+        // The previous direct `self.strings.push(...)` could push duplicate
+        // copies of the same name at different indices, which after linker
+        // pool merging left the STORE and LOAD referencing inconsistent
+        // entries. Interning guarantees both sides agree.
+        let idx = self.add_string(&qname);
+        self.emit(OpCode::LOAD_GLOBAL);
+        self.emit_u16(idx);
+    }
+
+    /// Plan 359 E1: Emit LOAD_GLOBAL for an already-qualified name (e.g.
+    /// "testlib.MAX" resolved from `import_scope`). Unlike emit_global_load,
+    /// this does NOT prepend `self.current_module` — the caller supplies the
+    /// exact name under which the global was stored in `vm.globals`.
+    fn emit_global_load_qualified(&mut self, qname: &str) {
+        let idx = self.add_string(qname);
         self.emit(OpCode::LOAD_GLOBAL);
         self.emit_u16(idx);
     }
@@ -9283,8 +9409,8 @@ impl Codegen {
     /// Plan 327: Emit STORE_GLOBAL for a module-level variable.
     fn emit_global_store(&mut self, name: &str) {
         let qname = self.qualified_global_name(name);
-        let idx = self.strings.len() as u16;
-        self.strings.push(qname.as_bytes().to_vec());
+        // Plan 359 C1: see emit_global_load — intern via add_string for dedup.
+        let idx = self.add_string(&qname);
         self.emit(OpCode::STORE_GLOBAL);
         self.emit_u16(idx);
     }

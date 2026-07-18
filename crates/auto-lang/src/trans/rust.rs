@@ -6945,6 +6945,32 @@ impl RustTrans {
                         }
                     }
                 }
+                // Plan 359 H3: Auto-clone on plain identifier rebind of a
+                // non-Copy local (e.g. `var t = s` / `let t = s` where `s` is a
+                // String). Without this, a2r emits `let t = s;` — a Rust move —
+                // and any later use of `s` fails to compile (E0382: borrow of
+                // moved value). The escape analyzer does not classify simple
+                // print-after-move as Clone tier, so we apply a conservative
+                // type-based heuristic here, mirroring the Expr::Dot arm above.
+                //
+                // Use the strict `is_primitive_copy` check (NOT `is_copy_type`)
+                // because String/Vec/HashMap are NOT Copy in Rust even though
+                // `is_copy_type` loosely treats them as such. Skip globals
+                // (their reads already deref a MutexGuard — `*G.lock()` — and
+                // must stay by-value) and self-rebinds (`let s = s`).
+                if let Expr::Ident(src_name) = &store.expr {
+                    if src_name != &store.name
+                        && !self.is_global_var(src_name)
+                        && !matches!(store.ty, Type::Reference(_) | Type::Ptr(_))
+                    {
+                        let src_is_primitive_copy = self.local_var_types.get(src_name)
+                            .map(|ty| Self::is_primitive_copy(ty))
+                            .unwrap_or(true);
+                        if !src_is_primitive_copy {
+                            write!(out, ".clone()")?;
+                        }
+                    }
+                }
             }
         }
 

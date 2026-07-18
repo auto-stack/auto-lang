@@ -167,7 +167,7 @@ pub fn shim_ws_send(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
         })
         .is_some();
 
-    task.ram.push_i32(if success { 1 } else { 0 });
+    task.ram.push_nv(auto_val::encode_bool(success));
     Ok(())
 }
 

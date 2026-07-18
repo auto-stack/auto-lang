@@ -6,15 +6,23 @@
 ///
 /// ## Representation: the parsed `Value` IS its canonical JSON text.
 ///
-/// The upstream `serde_json::Value` is a recursive sum type. Auto's VM cannot
-/// express that: a recursive `enum` (`node(Tree, Tree)`) fails to parse, and
-/// `is` pattern arms do NOT bind payload variables for user-defined enums (the
-/// bound name comes back "undefined variable"). Only the built-in
-/// `Ok`/`Err`/`Option` destructuring works. So the "Value" is represented by
-/// its canonical (compact) JSON text — a `str`. `parse` is a real
-/// recursive-descent parser that validates and re-emits a canonical form;
-/// `to_string` does the same parse-and-re-emit. Only primitive `str`/`int`
-/// values cross the module boundary.
+/// The upstream `serde_json::Value` is a recursive sum type. Historically
+/// Auto's VM could not express that: a recursive `enum` (`node(Tree, Tree)`)
+/// was believed to fail to parse, and `is` pattern arms were believed to not
+/// bind payload variables for user-defined enums.
+///
+/// NOTE (Plan 359 D1 verification): both claims have been re-tested and are
+/// NO LONGER REPRODUCIBLE. A recursive `tag Tree { leaf(int); node(Tree, Tree) }`
+/// parses and runs, and `is t { Tree.leaf(v) -> v; Tree.node(l, r) -> ... }`
+/// correctly binds payload variables, including for variants whose payload is
+/// a generic collection (`arr(List<Value>)`). See the regression tests
+/// `test_plan359_d1_recursive_enum_is_pattern_binding` and
+/// `test_plan359_d1_recursive_enum_collection_payload` in
+/// `crates/auto-lang/src/tests/vm_tests.rs`. This library could therefore be
+/// rewritten on top of a real recursive `Value` enum; the string-based
+/// representation is kept here because it works and the other VM workarounds
+/// below (StringBuilder return-frame corruption, loop+return bytecode) still
+/// apply.
 ///
 /// ## Output accumulator threaded as a parameter (critical VM workaround).
 ///

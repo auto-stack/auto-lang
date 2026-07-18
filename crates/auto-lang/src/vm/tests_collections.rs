@@ -114,7 +114,7 @@ fn test_vecdeque_is_empty() {
         [empty1, empty2]
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("1") && result.contains("0"));
+    assert!(result.contains("true") && result.contains("false"), "got: {}", result);
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn test_btreemap_is_empty() {
         [empty1, empty2]
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("1") && result.contains("0"));
+    assert!(result.contains("true") && result.contains("false"), "got: {}", result);
 }
 
 #[test]

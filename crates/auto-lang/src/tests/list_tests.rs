@@ -69,8 +69,9 @@ fn test_list_is_empty() {
         [empty1, not_empty, empty2]
     "#;
     let result = run(code).unwrap();
-    // Check that we get some 1s (true) and 0s (false)
-    assert!(result.contains("1") && result.contains("0"), "Should have true and false values");
+    // is_empty() returns a bool; empty lists render as true, non-empty as false.
+    assert!(result.contains("true") && result.contains("false"),
+            "Should have true and false values, got: {}", result);
 }
 
 #[test]

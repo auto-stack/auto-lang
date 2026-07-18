@@ -280,6 +280,78 @@ fn test_add_u8() {
 }
 
 // ============================================================================
+// Plan 359 D1: Recursive enum + is-pattern payload binding
+// ============================================================================
+// Regression guard for the two claims in Plan 359 Bug D1:
+//   1. A recursive enum variant (`node(Tree, Tree)`) must parse and run.
+//      The enum name is only registered AFTER parse_enum_body returns, but
+//      lookup_type() falls back to Type::User for unregistered names, so
+//      parsing never actually fails. This test pins that behaviour.
+//   2. `is`-pattern arms must bind payload variables for user-defined enums
+//      (not just the built-in Ok/Err/Option destructuring). The variant must
+//      be registered in generic_registry during Stmt::EnumDecl codegen.
+// If either behaviour regresses, this test fails.
+
+#[test]
+fn test_plan359_d1_recursive_enum_is_pattern_binding() {
+    let code = r#"
+tag Tree {
+    leaf(int)
+    node(Tree, Tree)
+}
+
+fn sum_tree(t Tree) int {
+    is t {
+        Tree.leaf(v) -> v
+        Tree.node(l, r) -> sum_tree(l) + sum_tree(r)
+    }
+}
+
+fn main() {
+    var t = Tree.node(Tree.leaf(4), Tree.node(Tree.leaf(1), Tree.leaf(2)))
+    print(sum_tree(t).to(str))
+    sum_tree(t)
+}
+"#;
+    let (result, stdout) = crate::run_with_capture(code).unwrap();
+    assert_eq!(stdout, "7\n");
+    assert_eq!(result, "7");
+}
+
+// Recursive enum whose variant carries a collection payload (the shape
+// serde_json needs for Value::Array(List<Value>)). Verifies that generic
+// payload types containing the enum itself parse and that the bound payload
+// is usable in the branch body.
+#[test]
+fn test_plan359_d1_recursive_enum_collection_payload() {
+    let code = r#"
+tag Value {
+    nul
+    num(int)
+    arr(List<Value>)
+}
+
+fn describe(v Value) str {
+    is v {
+        Value.nul -> "n"
+        Value.num(x) -> "num:" + x.to(str)
+        Value.arr(items) -> "arr:" + items.len().to(str)
+    }
+}
+
+fn main() {
+    var v = Value.arr([Value.num(42), Value.nul, Value.num(7)])
+    print(describe(v))
+    print(describe(Value.num(99)))
+    describe(v)
+}
+"#;
+    let (result, stdout) = crate::run_with_capture(code).unwrap();
+    assert_eq!(stdout, "arr:3\nnum:99\n");
+    assert_eq!(result, "arr:3");
+}
+
+// ============================================================================
 // Ignored Tests (kept for future reference)
 // ============================================================================
 
