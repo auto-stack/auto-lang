@@ -74,6 +74,123 @@ pub enum AbtOperand {
     Bytes(Vec<u8>),
 }
 
+impl AbtProgram {
+    /// Render the ABT program to a string and produce a source map that maps
+    /// each output line to the Auto source line that produced it (when known).
+    pub fn to_string_with_source_map(&self) -> (String, Vec<crate::trans::SourceMapEntry>) {
+        use std::fmt::Write;
+        let mut out = String::new();
+        let mut map = Vec::new();
+        let mut line_no: usize = 1;
+        let mut current_line: Option<u32> = None;
+
+        let mut emit_line = |s: &str, src_line: Option<u32>, out: &mut String, map: &mut Vec<crate::trans::SourceMapEntry>, line_no: &mut usize| {
+            out.push_str(s);
+            out.push('\n');
+            if let Some(sl) = src_line {
+                map.push(crate::trans::SourceMapEntry {
+                    source_line: sl as usize,
+                    output_line: *line_no,
+                    source_file: None,
+                });
+            }
+            *line_no += 1;
+        };
+
+        if !self.strings.is_empty() {
+            emit_line(".strings", None, &mut out, &mut map, &mut line_no);
+            for (i, s) in self.strings.iter().enumerate() {
+                emit_line(&format!("  {}: {:?}", i, s), None, &mut out, &mut map, &mut line_no);
+            }
+            emit_line("", None, &mut out, &mut map, &mut line_no);
+        }
+
+        if !self.exports.is_empty() {
+            emit_line(".exports", None, &mut out, &mut map, &mut line_no);
+            for (name, target) in &self.exports {
+                let text = if target.starts_with("0x") || target.parse::<usize>().is_ok() {
+                    format!("  {} -> {}", name, target)
+                } else {
+                    format!("  {} -> @{}", name, target)
+                };
+                emit_line(&text, None, &mut out, &mut map, &mut line_no);
+            }
+            emit_line("", None, &mut out, &mut map, &mut line_no);
+        }
+
+        if !self.object_keys.is_empty() {
+            emit_line(".object_keys", None, &mut out, &mut map, &mut line_no);
+            for (i, keys) in self.object_keys.iter().enumerate() {
+                emit_line(&format!("  {}: {:?}", i, keys), None, &mut out, &mut map, &mut line_no);
+            }
+            emit_line("", None, &mut out, &mut map, &mut line_no);
+        }
+
+        if !self.object_types.is_empty() {
+            emit_line(".object_types", None, &mut out, &mut map, &mut line_no);
+            for (i, types) in self.object_types.iter().enumerate() {
+                let type_names: Vec<String> = types.iter().map(|t| format!("{:?}", t)).collect();
+                emit_line(&format!("  {}: [{}]", i, type_names.join(", ")), None, &mut out, &mut map, &mut line_no);
+            }
+            emit_line("", None, &mut out, &mut map, &mut line_no);
+        }
+
+        emit_line(".code", None, &mut out, &mut map, &mut line_no);
+        for instr in &self.code {
+            for (label, &offset) in &self.labels {
+                if offset == instr.offset {
+                    emit_line(&format!("\n{}:", label), None, &mut out, &mut map, &mut line_no);
+                }
+            }
+
+            if let Some(line) = instr.source_line {
+                if current_line != Some(line) {
+                    emit_line(&format!("  .line {}", line), Some(line), &mut out, &mut map, &mut line_no);
+                    current_line = Some(line);
+                }
+            }
+
+            if instr.opcode == OpCode::SOURCE_LINE {
+                continue;
+            }
+
+            let text = match instr.opcode {
+                OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL => {
+                    if let Some(AbtOperand::ImmU8(v)) = instr.operands.first() {
+                        if *v >= 0x80 {
+                            format!("  {} arg{}", instr.opcode.to_mnemonic(), v - 0x80)
+                        } else {
+                            format!("  {} {}", instr.opcode.to_mnemonic(), v)
+                        }
+                    } else {
+                        format!("  {}", instr.opcode.to_mnemonic())
+                    }
+                }
+                OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
+                | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1 => {
+                    format!("  {}", instr.opcode.to_mnemonic())
+                }
+                _ => {
+                    let ops = instr
+                        .operands
+                        .iter()
+                        .map(|o| format!("{}", o))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    if ops.is_empty() {
+                        format!("  {}", instr.opcode.to_mnemonic())
+                    } else {
+                        format!("  {} {}", instr.opcode.to_mnemonic(), ops)
+                    }
+                }
+            };
+            emit_line(&text, current_line, &mut out, &mut map, &mut line_no);
+        }
+
+        (out, map)
+    }
+}
+
 impl std::fmt::Display for AbtProgram {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // .strings section

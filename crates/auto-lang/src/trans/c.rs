@@ -315,6 +315,7 @@ impl CTrans {
 impl CTrans {
     pub fn code(&mut self, code: Code, sink: &mut Sink) -> AutoResult<()> {
         for (i, stmt) in code.stmts.iter().enumerate() {
+            sink.record();
             if i < code.source_lines.len() {
                 sink.set_source_line(code.source_lines[i]);
             }
@@ -323,6 +324,7 @@ impl CTrans {
             }
             self.stmt(stmt, sink)?;
         }
+        sink.record();
         if let Some(stmt) = code.stmts.last() {
             if !stmt.is_new_block() {
                 sink.body.write(b"\n")?;
@@ -2165,6 +2167,7 @@ impl CTrans {
             sink.body.write(insert.as_bytes())?;
         }
         for (i, stmt) in body.stmts.iter().enumerate() {
+            sink.record();
             if i < body.source_lines.len() {
                 sink.set_source_line(body.source_lines[i]);
             }
@@ -2293,6 +2296,7 @@ impl CTrans {
                 }
             }
         }
+        sink.record();
         self.dedent();
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}")?;
@@ -4384,12 +4388,14 @@ impl Trans for CTrans {
 
         // Decls
         for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.record();
             sink.set_source_line(*line);
             let generated = self.stmt(decl, sink)?;
             if i < decls.len() - 1 && generated {
                 sink.body.write(b"\n").to()?;
             }
         }
+        sink.record();
 
         // Transpile substituted generic tags from scope
         // These are tags created during parsing when generic instances are used (e.g., May<int> → May_int)
@@ -4430,6 +4436,7 @@ impl Trans for CTrans {
             sink.body.write(b"int main(void) {\n").to()?;
             self.indent();
             for (i, (stmt, line)) in main.iter().enumerate() {
+                sink.record();
                 sink.set_source_line(*line);
                 self.print_indent(&mut sink.body)?;
                 if i < main.len() - 1 {
@@ -4448,6 +4455,7 @@ impl Trans for CTrans {
                     }
                 }
             }
+            sink.record();
             self.dedent();
             sink.body.write(b"}\n").to()?;
         }

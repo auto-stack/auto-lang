@@ -7326,6 +7326,7 @@ impl RustTrans {
     /// dropping other statement types (nested loops, if, break, return, etc.)
     fn emit_loop_body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
         for (i, stmt) in body.stmts.iter().enumerate() {
+            sink.record();
             if i < body.source_lines.len() {
                 sink.set_source_line(body.source_lines[i]);
             }
@@ -7353,6 +7354,7 @@ impl RustTrans {
                 }
             }
         }
+        sink.record();
         Ok(())
     }
 
@@ -7529,6 +7531,7 @@ impl RustTrans {
             self.indent();
             let stmt_count = branch.body.stmts.len();
             for (i, stmt) in branch.body.stmts.iter().enumerate() {
+                sink.record();
                 if i < branch.body.source_lines.len() {
                     sink.set_source_line(branch.body.source_lines[i]);
                 }
@@ -7580,6 +7583,7 @@ impl RustTrans {
                     }
                 }
             }
+            sink.record();
             self.dedent();
             self.print_indent(&mut sink.body)?;
             sink.body.write(b"}")?;
@@ -7591,6 +7595,7 @@ impl RustTrans {
             self.indent();
             let stmt_count = else_body.stmts.len();
             for (i, stmt) in else_body.stmts.iter().enumerate() {
+                sink.record();
                 if i < else_body.source_lines.len() {
                     sink.set_source_line(else_body.source_lines[i]);
                 }
@@ -7637,6 +7642,7 @@ impl RustTrans {
                     }
                 }
             }
+            sink.record();
             self.dedent();
             self.print_indent(&mut sink.body)?;
             sink.body.write(b"}\n")?;
@@ -9433,6 +9439,7 @@ impl RustTrans {
 
         // Process statements
         for (i, stmt) in body.stmts.iter().enumerate() {
+            sink.record();
             // Set source line for mapping
             if i < body.source_lines.len() {
                 sink.set_source_line(body.source_lines[i]);
@@ -9493,6 +9500,7 @@ impl RustTrans {
                 }
             }
         }
+        sink.record();
 
         // For Result-returning functions, append Ok(()) if the last
         // statement is not a tail expression (e.g., ends with a semicolon)
@@ -11639,6 +11647,7 @@ impl Trans for RustTrans {
 
         // Phase 3: Generate declarations
         for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.record();
             sink.set_source_line(*line);
             self.stmt(decl, sink)?;
             if i < decls.len() - 1 {
@@ -11651,6 +11660,7 @@ impl Trans for RustTrans {
                 }
             }
         }
+        sink.record();
 
         // Phase 4: Generate main function if needed
         if !main.is_empty() {
@@ -11678,6 +11688,7 @@ impl Trans for RustTrans {
             self.indent();
 
             for (stmt, line) in main.iter() {
+                sink.record();
                 sink.set_source_line(*line);
                 self.print_indent(&mut sink.body)?;
 
@@ -11697,6 +11708,7 @@ impl Trans for RustTrans {
                     }
                 }
             }
+            sink.record();
 
             self.dedent();
             sink.body.write(b"}\n")?;
@@ -11840,7 +11852,7 @@ struct ProjectModule {
 /// 4. Generates mod.rs from mod.at with pub mod declarations
 ///
 /// Returns a HashMap mapping output filename to generated Rust code.
-pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::HashMap<String, Vec<u8>>> {
+pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::HashMap<String, (Vec<u8>, Vec<super::SourceMapEntry>)>> {
     use super::MultiSink;
     use crate::ast::Stmt;
 
@@ -12101,6 +12113,8 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     let mut multi_sink = MultiSink::new();
     for (module, ast) in &parsed_modules {
         let sink = multi_sink.add(&module.output_name);
+        sink.source_file = module.source_path.file_name()
+            .map(|n| n.to_string_lossy().to_string());
         let mut transpiler = RustTrans::new(AutoStr::from(&module.output_name));
         // Only emit #![allow] for crate root (first module), not submodules
         let is_first_module = module.source_path == modules[0].source_path;
@@ -12375,13 +12389,13 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
             }
         }
 
-        result.insert("Cargo.toml".to_string(), cargo_toml.into_bytes());
+        result.insert("Cargo.toml".to_string(), (cargo_toml.into_bytes(), Vec::new()));
     }
 
-    // Phase 4: Collect results
-    let files = multi_sink.done();
-    for (name, content) in files {
-        result.insert(name, content);
+    // Phase 4: Collect results with per-file source maps
+    let files = multi_sink.done_with_source_maps();
+    for (name, content, source_map) in files {
+        result.insert(name, (content, source_map));
     }
 
     Ok(result)

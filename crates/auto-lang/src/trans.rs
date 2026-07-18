@@ -19,6 +19,10 @@ pub mod escape;
 pub struct SourceMapEntry {
     pub source_line: usize,
     pub output_line: usize,
+    /// Optional source file path/name that this entry originates from.
+    /// Used by multi-file project transpilers to map output lines back to
+    /// the correct input module.
+    pub source_file: Option<String>,
 }
 
 pub struct Sink {
@@ -33,6 +37,10 @@ pub struct Sink {
     current_source_line: Option<usize>,
     /// Current output line number (1-based), incremented on each newline in body
     current_output_line: usize,
+    /// Body position already scanned by source map recording.
+    record_pos: usize,
+    /// Source file path/name that output lines originate from (for multi-file projects).
+    pub source_file: Option<String>,
 }
 
 impl Sink {
@@ -46,6 +54,8 @@ impl Sink {
             source_map: Vec::new(),
             current_source_line: None,
             current_output_line: 1,
+            record_pos: 0,
+            source_file: None,
         }
     }
 
@@ -60,19 +70,18 @@ impl Sink {
             source_map: Vec::new(),
             current_source_line: None,
             current_output_line: 1,
+            record_pos: 0,
+            source_file: None,
         }
     }
 
     pub fn print(&mut self, data: &[u8]) -> AutoResult<()> {
-        self.track_newlines(data);
         self.body.write(data)?;
         Ok(())
     }
 
     pub fn println(&mut self, data: &[u8]) -> AutoResult<()> {
-        self.track_newlines(data);
         self.body.write(data)?;
-        self.track_newlines(b"\n");
         self.body.write(b"\n")?;
         Ok(())
     }
@@ -87,19 +96,38 @@ impl Sink {
         self.current_source_line = None;
     }
 
-    /// Track newlines in data and push source map entries when a source line is active.
-    pub(crate) fn track_newlines(&mut self, data: &[u8]) {
-        for &byte in data {
-            if byte == b'\n' {
-                if let Some(sl) = self.current_source_line {
+    /// Commit newlines emitted since last record under the current source line.
+    /// Call this at statement boundaries (e.g. start of each loop iteration over stmts).
+    pub fn record(&mut self) {
+        if let Some(sl) = self.current_source_line {
+            for &b in &self.body[self.record_pos..] {
+                if b == b'\n' {
                     self.source_map.push(SourceMapEntry {
                         source_line: sl,
                         output_line: self.current_output_line,
+                        source_file: self.source_file.clone(),
                     });
+                    self.current_output_line += 1;
                 }
-                self.current_output_line += 1;
             }
         }
+        self.record_pos = self.body.len();
+    }
+
+    /// Prepend data to the body, shifting any committed source map entries so that
+    /// their output lines stay correct. Used by transpilers that must emit header
+    /// or import lines after generating the body.
+    pub fn prepend_body(&mut self, data: &[u8]) {
+        let prefix_lines = data.iter().filter(|&&b| b == b'\n').count();
+        if prefix_lines > 0 {
+            self.current_output_line += prefix_lines;
+            for entry in &mut self.source_map {
+                entry.output_line += prefix_lines;
+            }
+        }
+        let data_len = data.len();
+        self.body.splice(0..0, data.iter().cloned());
+        self.record_pos += data_len;
     }
 
     pub fn done(&mut self) -> AutoResult<&Vec<u8>> {
@@ -185,6 +213,18 @@ impl MultiSink {
 
     pub fn get(&self, name: &str) -> Option<&Sink> {
         self.files.iter().find(|(n, _)| n == name).map(|(_, s)| s)
+    }
+
+    /// Get all files as (name, content, source_map) triples.
+    pub fn done_with_source_maps(self) -> Vec<(String, Vec<u8>, Vec<SourceMapEntry>)> {
+        self.files
+            .into_iter()
+            .map(|(name, mut sink)| {
+                let source_map = sink.source_map.clone();
+                let content = sink.done().unwrap().clone();
+                (name, content, source_map)
+            })
+            .collect()
     }
 
     /// Get all files as (name, content) pairs

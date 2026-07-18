@@ -17,6 +17,7 @@
 //! full expression transpiler here).
 
 use crate::ast::*;
+use crate::trans::Sink;
 use crate::trans::typescript::TypeScriptTrans;
 use std::collections::HashSet;
 use std::io::Write;
@@ -138,7 +139,9 @@ fn transpile_stmt(stmt: &Stmt, ctx: &ArkAdapterCtx, out: &mut Vec<u8>) {
         // Fallback — delegate to TypeScriptTrans (ArkTS is a TS subset)
         _ => {
             let mut ts = TypeScriptTrans::new("fragment".into());
-            let _ = ts.stmt(stmt, out);
+            let mut sink = Sink::new("fragment".into());
+            let _ = ts.stmt(stmt, &mut sink);
+            let _ = out.write_all(&sink.body);
         }
     }
 }
@@ -624,7 +627,9 @@ fn transpile_assign_target(expr: &Expr, ctx: &ArkAdapterCtx, out: &mut Vec<u8>) 
 /// option/result constructors, tuples, etc.) not handled explicitly above.
 fn delegate_expr(expr: &Expr, _ctx: &ArkAdapterCtx, out: &mut Vec<u8>) {
     let mut ts = TypeScriptTrans::new("fragment".into());
-    let _ = ts.expr(expr, out);
+    let mut sink = Sink::new("fragment".into());
+    let _ = ts.expr(expr, &mut sink);
+    let _ = out.write_all(&sink.body);
 }
 
 // ---------------------------------------------------------------------------

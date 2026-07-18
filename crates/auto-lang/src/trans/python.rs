@@ -64,38 +64,40 @@ impl PythonTrans {
         Ok(())
     }
 
-    fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
+    fn expr(&mut self, expr: &Expr, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         match expr {
             // Literals
-            Expr::Int(i) => write!(out, "{}", i).map_err(Into::into),
-            Expr::Uint(u) => write!(out, "{}", u).map_err(Into::into),
-            Expr::Float(f, _) => write!(out, "{}", f).map_err(Into::into),
-            Expr::Double(d, _) => write!(out, "{}", d).map_err(Into::into),
-            Expr::Bool(b) => write!(out, "{}", if *b { "True" } else { "False" }).map_err(Into::into),
-            Expr::Char(c) => write!(out, "'{}'", c).map_err(Into::into),
-            Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
-            Expr::CStr(s) => write!(out, "\"{}\"", s).map_err(Into::into),
+            Expr::Int(i) => write!(sink.body, "{}", i).map_err(Into::into),
+            Expr::Uint(u) => write!(sink.body, "{}", u).map_err(Into::into),
+            Expr::Float(f, _) => write!(sink.body, "{}", f).map_err(Into::into),
+            Expr::Double(d, _) => write!(sink.body, "{}", d).map_err(Into::into),
+            Expr::Bool(b) => write!(sink.body, "{}", if *b { "True" } else { "False" }).map_err(Into::into),
+            Expr::Char(c) => write!(sink.body, "'{}'", c).map_err(Into::into),
+            Expr::Str(s) => write!(sink.body, "\"{}\"", escape_str(s)).map_err(Into::into),
+            Expr::CStr(s) => write!(sink.body, "\"{}\"", s).map_err(Into::into),
 
             // F-strings (direct mapping - AutoLang and Python have identical syntax!)
-            Expr::FStr(fstr) => self.fstr(fstr, out),
+            Expr::FStr(fstr) => self.fstr(fstr, sink),
 
             // Identifiers
-            Expr::Ident(name) => out.write_all(name.as_bytes()).map_err(Into::into),
+            Expr::Ident(name) => sink.body.write_all(name.as_bytes()).map_err(Into::into),
 
             // Binary operations
             Expr::Bina(lhs, op, rhs) => {
                 match op {
-                    Op::Dot => self.dot(lhs, rhs, out),
+                    Op::Dot => self.dot(lhs, rhs, sink),
                     _ => {
-                        self.expr(lhs, out)?;
+                        self.expr(lhs, sink)?;
                         // Python uses 'and'/'or' keywords, not '&&'/'||'
                         let op_str = match op {
                             Op::And => "and",
                             Op::Or => "or",
                             _ => op.op(),
                         };
-                        out.write(format!(" {} ", op_str).as_bytes()).to()?;
-                        self.expr(rhs, out)
+                        sink.body.write(format!(" {} ", op_str).as_bytes()).to()?;
+                        self.expr(rhs, sink)
                     }
                 }
             }
@@ -103,9 +105,9 @@ impl PythonTrans {
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
                 // Python uses . for all field access (including pointers)
-                self.expr(object, out)?;
-                out.write_all(b".")?;
-                out.write_all(field.as_bytes())?;
+                self.expr(object, sink)?;
+                sink.body.write_all(b".")?;
+                sink.body.write_all(field.as_bytes())?;
                 Ok(())
             }
 
@@ -114,35 +116,35 @@ impl PythonTrans {
                 // Python uses 'not' keyword instead of '!'
                 match op {
                     Op::Not => {
-                        out.write(b"not ")?;
-                        self.expr(expr, out)
+                        sink.body.write(b"not ")?;
+                        self.expr(expr, sink)
                     }
                     _ => {
-                        out.write(format!("{}", op.op()).as_bytes()).to()?;
-                        self.expr(expr, out)
+                        sink.body.write(format!("{}", op.op()).as_bytes()).to()?;
+                        self.expr(expr, sink)
                     }
                 }
             }
 
             // Function calls
-            Expr::Call(call) => self.call(call, out),
+            Expr::Call(call) => self.call(call, sink),
 
             // Arrays
-            Expr::Array(elems) => self.array(elems, out),
+            Expr::Array(elems) => self.array(elems, sink),
 
             // Index
-            Expr::Index(arr, idx) => self.index(arr, idx, out),
+            Expr::Index(arr, idx) => self.index(arr, idx, sink),
 
             // Block
             Expr::Block(block) => {
-                out.write(b"{\n")?;
+                sink.body.write(b"{\n")?;
                 self.indent();
                 for stmt in &block.stmts {
-                    self.stmt(stmt, out)?;
+                    self.stmt(stmt, sink)?;
                 }
                 self.dedent();
-                self.print_indent(out)?;
-                out.write(b"}").to()
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"}").to()
             }
 
             // Type cast / conversion
@@ -150,24 +152,24 @@ impl PythonTrans {
                 match target_type {
                     Type::Int | Type::Uint | Type::USize
                     | Type::I64 | Type::U64 | Type::Byte => {
-                        write!(out, "int(")?;
-                        self.expr(expr, out)?;
-                        out.write(b")")?;
+                        write!(sink.body, "int(")?;
+                        self.expr(expr, sink)?;
+                        sink.body.write(b")")?;
                     }
                     Type::Float | Type::Double => {
-                        write!(out, "float(")?;
-                        self.expr(expr, out)?;
-                        out.write(b")")?;
+                        write!(sink.body, "float(")?;
+                        self.expr(expr, sink)?;
+                        sink.body.write(b")")?;
                     }
                     Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => {
-                        write!(out, "str(")?;
-                        self.expr(expr, out)?;
-                        out.write(b")")?;
+                        write!(sink.body, "str(")?;
+                        self.expr(expr, sink)?;
+                        sink.body.write(b")")?;
                     }
                     _ => {
-                        out.write(b"(")?;
-                        self.expr(expr, out)?;
-                        out.write(b")")?;
+                        sink.body.write(b"(")?;
+                        self.expr(expr, sink)?;
+                        sink.body.write(b")")?;
                     }
                 }
                 Ok(())
@@ -175,70 +177,70 @@ impl PythonTrans {
 
             // Plan 213: Option/Result constructors
             // Some(x) -> x (in Python, values are just values)
-            Expr::Some(e) => self.expr(e, out),
+            Expr::Some(e) => self.expr(e, sink),
             // None -> None
-            Expr::None => out.write(b"None").to(),
+            Expr::None => sink.body.write(b"None").to(),
             // Ok(x) -> x
-            Expr::Ok(e) => self.expr(e, out),
+            Expr::Ok(e) => self.expr(e, sink),
             // Err(msg) -> raise Exception(msg) - but as expression, just emit the value
             Expr::Err(e) => {
-                write!(out, "Exception(")?;
-                self.expr(e, out)?;
-                write!(out, ")").map_err(Into::into)
+                write!(sink.body, "Exception(")?;
+                self.expr(e, sink)?;
+                write!(sink.body, ")").map_err(Into::into)
             }
 
             // Plan 213: Null coalescing - x ?? default -> x if x is not None else default
             Expr::NullCoalesce(lhs, rhs) => {
-                write!(out, "(")?;
-                self.expr(lhs, out)?;
-                write!(out, " if ")?;
-                self.expr(lhs, out)?;
-                write!(out, " is not None else ")?;
-                self.expr(rhs, out)?;
-                write!(out, ")").map_err(Into::into)
+                write!(sink.body, "(")?;
+                self.expr(lhs, sink)?;
+                write!(sink.body, " if ")?;
+                self.expr(lhs, sink)?;
+                write!(sink.body, " is not None else ")?;
+                self.expr(rhs, sink)?;
+                write!(sink.body, ")").map_err(Into::into)
             }
 
             // Plan 213: Closure/lambda - (x) => expr -> lambda x: expr
             Expr::Closure(closure) => {
-                write!(out, "lambda ")?;
+                write!(sink.body, "lambda ")?;
                 for (i, param) in closure.params.iter().enumerate() {
                     if i > 0 {
-                        write!(out, ", ")?;
+                        write!(sink.body, ", ")?;
                     }
-                    out.write_all(param.name.as_bytes())?;
+                    sink.body.write_all(param.name.as_bytes())?;
                 }
-                write!(out, ": ")?;
-                self.expr(&closure.body, out)
+                write!(sink.body, ": ")?;
+                self.expr(&closure.body, sink)
             }
 
             // Plan 213: Tuple - (a, b) -> (a, b)
             Expr::Tuple(elems) => {
-                write!(out, "(")?;
+                write!(sink.body, "(")?;
                 for (i, elem) in elems.iter().enumerate() {
                     if i > 0 {
-                        write!(out, ", ")?;
+                        write!(sink.body, ", ")?;
                     }
-                    self.expr(elem, out)?;
+                    self.expr(elem, sink)?;
                 }
                 // Single-element tuple needs trailing comma
                 if elems.len() == 1 {
-                    write!(out, ",")?;
+                    write!(sink.body, ",")?;
                 }
-                write!(out, ")").map_err(Into::into)
+                write!(sink.body, ")").map_err(Into::into)
             }
 
             // Plan 213: Object literal - {key: value} -> {"key": value}
             Expr::Object(pairs) => {
-                write!(out, "{{")?;
+                write!(sink.body, "{{")?;
                 for (i, pair) in pairs.iter().enumerate() {
                     if i > 0 {
-                        write!(out, ", ")?;
+                        write!(sink.body, ", ")?;
                     }
-                    self.key(&pair.key, out)?;
-                    write!(out, ": ")?;
-                    self.expr(&pair.value, out)?;
+                    self.key(&pair.key, sink)?;
+                    write!(sink.body, ": ")?;
+                    self.expr(&pair.value, sink)?;
                 }
-                write!(out, "}}").map_err(Into::into)
+                write!(sink.body, "}}").map_err(Into::into)
             }
 
             // Plan 213: Option pattern in is branches
@@ -247,13 +249,13 @@ impl PythonTrans {
                     crate::ast::cover::OptionVariant::Some => {
                         if let Some(ref binding) = cover.binding {
                             // Some(x) -> capture pattern like ("some", x)
-                            write!(out, "SomeCase({})", binding).map_err(Into::into)
+                            write!(sink.body, "SomeCase({})", binding).map_err(Into::into)
                         } else {
-                            write!(out, "SomeCase(_)").map_err(Into::into)
+                            write!(sink.body, "SomeCase(_)").map_err(Into::into)
                         }
                     }
                     crate::ast::cover::OptionVariant::None => {
-                        write!(out, "None").map_err(Into::into)
+                        write!(sink.body, "None").map_err(Into::into)
                     }
                 }
             }
@@ -263,37 +265,37 @@ impl PythonTrans {
                 match cover.variant {
                     crate::ast::cover::ResultVariant::Ok => {
                         if let Some(ref binding) = cover.binding {
-                            write!(out, "OkCase({})", binding).map_err(Into::into)
+                            write!(sink.body, "OkCase({})", binding).map_err(Into::into)
                         } else {
-                            write!(out, "OkCase(_)").map_err(Into::into)
+                            write!(sink.body, "OkCase(_)").map_err(Into::into)
                         }
                     }
                     crate::ast::cover::ResultVariant::Err => {
                         if let Some(ref binding) = cover.binding {
-                            write!(out, "ErrCase({})", binding).map_err(Into::into)
+                            write!(sink.body, "ErrCase({})", binding).map_err(Into::into)
                         } else {
-                            write!(out, "ErrCase(_)").map_err(Into::into)
+                            write!(sink.body, "ErrCase(_)").map_err(Into::into)
                         }
                     }
                 }
             }
 
             // nil/Null -> None
-            Expr::Nil | Expr::Null => out.write(b"None").to(),
+            Expr::Nil | Expr::Null => sink.body.write(b"None").to(),
 
             // Plan 213 Task 5: Error propagate x.? -> x (Python doesn't have ?, just pass through)
-            Expr::ErrorPropagate(e) => self.expr(e, out),
+            Expr::ErrorPropagate(e) => self.expr(e, sink),
 
             // Plan 213 Task 7: Await expression expr.await -> await expr
             Expr::Await { expr } => {
-                out.write(b"await ")?;
-                self.expr(expr, out)
+                sink.body.write(b"await ")?;
+                self.expr(expr, sink)
             }
 
             // Plan 213 Task 7: Go expression expr.go -> just spawn (fire-and-forget)
             Expr::Go { expr } => {
                 // Python doesn't have spawn, just emit as expression
-                self.expr(expr, out)
+                self.expr(expr, sink)
             }
 
             // Plan 165: Struct destructuring pattern for is match arms
@@ -302,29 +304,29 @@ impl PythonTrans {
                 match &sc.variant {
                     Some(variant) => {
                         // Enum variant with struct destructuring: Type.Variant { field }
-                        out.write_all(variant.as_bytes())?;
+                        sink.body.write_all(variant.as_bytes())?;
                     }
                     None => {
                         // Plain struct destructuring: Type { x, y }
-                        out.write_all(sc.type_name.as_bytes())?;
+                        sink.body.write_all(sc.type_name.as_bytes())?;
                     }
                 }
-                out.write(b"(")?;
+                sink.body.write(b"(")?;
                 for (i, fb) in sc.fields.iter().enumerate() {
                     if i > 0 {
-                        out.write(b", ")?;
+                        sink.body.write(b", ")?;
                     }
                     if fb.field == fb.binding {
                         // Shorthand: field name equals binding name
-                        out.write_all(fb.field.as_bytes())?;
+                        sink.body.write_all(fb.field.as_bytes())?;
                     } else {
                         // Explicit alias: field=binding
-                        out.write_all(fb.field.as_bytes())?;
-                        out.write(b"=")?;
-                        out.write_all(fb.binding.as_bytes())?;
+                        sink.body.write_all(fb.field.as_bytes())?;
+                        sink.body.write(b"=")?;
+                        sink.body.write_all(fb.binding.as_bytes())?;
                     }
                 }
-                out.write(b")")?;
+                sink.body.write(b")")?;
                 Ok(())
             }
 
@@ -337,30 +339,30 @@ impl PythonTrans {
                             .collect();
                         if real_bindings.is_empty() && self.scalar_enums.contains(&tag_cover.kind) {
                             // Scalar enum member: Color.Red
-                            out.write_all(tag_cover.kind.as_bytes())?;
-                            out.write(b".")?;
-                            out.write_all(tag_cover.tag.as_bytes())?;
+                            sink.body.write_all(tag_cover.kind.as_bytes())?;
+                            sink.body.write(b".")?;
+                            sink.body.write_all(tag_cover.tag.as_bytes())?;
                         } else {
-                            out.write_all(tag_cover.kind.as_bytes())?;
-                            out.write(b"(kind='")?;
-                            out.write_all(tag_cover.tag.as_bytes())?;
-                            out.write(b"'")?;
+                            sink.body.write_all(tag_cover.kind.as_bytes())?;
+                            sink.body.write(b"(kind='")?;
+                            sink.body.write_all(tag_cover.tag.as_bytes())?;
+                            sink.body.write(b"'")?;
                             if !real_bindings.is_empty() {
-                                out.write(b", _")?;
-                                out.write_all(tag_cover.tag.as_bytes())?;
-                                out.write(b"=")?;
+                                sink.body.write(b", _")?;
+                                sink.body.write_all(tag_cover.tag.as_bytes())?;
+                                sink.body.write(b"=")?;
                                 if real_bindings.len() == 1 {
-                                    out.write_all(real_bindings[0].as_bytes())?;
+                                    sink.body.write_all(real_bindings[0].as_bytes())?;
                                 } else {
-                                    out.write(b"(")?;
+                                    sink.body.write(b"(")?;
                                     for (i, b) in real_bindings.iter().enumerate() {
-                                        if i > 0 { out.write(b", ")?; }
-                                        out.write_all(b.as_bytes())?;
+                                        if i > 0 { sink.body.write(b", ")?; }
+                                        sink.body.write_all(b.as_bytes())?;
                                     }
-                                    out.write(b")")?;
+                                    sink.body.write(b")")?;
                                 }
                             }
-                            out.write(b")")?;
+                            sink.body.write(b")")?;
                         }
                     }
                 }
@@ -369,9 +371,9 @@ impl PythonTrans {
 
             // Tag value extraction: s._Circle or s._Rect
             Expr::Uncover(uncover) => {
-                out.write_all(uncover.src.as_bytes())?;
-                out.write(b"._")?;
-                out.write_all(uncover.cover.tag.as_bytes())?;
+                sink.body.write_all(uncover.src.as_bytes())?;
+                sink.body.write(b"._")?;
+                sink.body.write_all(uncover.cover.tag.as_bytes())?;
                 Ok(())
             }
 
@@ -380,106 +382,108 @@ impl PythonTrans {
         }
     }
 
-    fn stmt(&mut self, stmt: &Stmt, out: &mut impl Write) -> AutoResult<bool> {
+    fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<bool> {
+        let out = &mut sink.body;
+        let _ = out;
         match stmt {
             // Expression statements
             Stmt::Expr(expr) => {
-                self.print_indent(out)?;
-                self.expr(expr, out)?;
-                out.write(b"\n")?;
+                self.print_indent(&mut sink.body)?;
+                self.expr(expr, sink)?;
+                sink.body.write(b"\n")?;
                 Ok(true)
             }
 
             // Store (variable assignment)
             Stmt::Store(store) => {
-                self.print_indent(out)?;
-                self.store(store, out)?;
-                out.write(b"\n")?;
+                self.print_indent(&mut sink.body)?;
+                self.store(store, sink)?;
+                sink.body.write(b"\n")?;
                 Ok(true)
             }
 
             // Function declarations
             Stmt::Fn(func) => {
-                self.fn_decl(func, out)?;
+                self.fn_decl(func, sink)?;
                 Ok(true)
             }
 
             // If statements
             Stmt::If(if_stmt) => {
-                self.if_stmt(if_stmt, out)?;
+                self.if_stmt(if_stmt, sink)?;
                 Ok(true)
             }
 
             // For loops
             Stmt::For(for_loop) => {
-                self.for_loop(for_loop, out)?;
+                self.for_loop(for_loop, sink)?;
                 Ok(true)
             }
 
             // Pattern matching (is statement)
             Stmt::Is(is_stmt) => {
-                self.is_stmt(is_stmt, out)?;
+                self.is_stmt(is_stmt, sink)?;
                 Ok(true)
             }
 
             // Break statement
             Stmt::Break => {
-                self.print_indent(out)?;
-                out.write(b"break\n")?;
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"break\n")?;
                 Ok(true)
             }
 
             // Continue statement
             Stmt::Continue => {
-                self.print_indent(out)?;
-                out.write(b"continue\n")?;
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"continue\n")?;
                 Ok(true)
             }
 
             // Return statement
             Stmt::Return(expr) => {
-                self.print_indent(out)?;
-                out.write(b"return ")?;
-                self.expr(expr, out)?;
-                out.write(b"\n")?;
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"return ")?;
+                self.expr(expr, sink)?;
+                sink.body.write(b"\n")?;
                 Ok(true)
             }
 
             // Empty lines (for formatting)
             Stmt::EmptyLine(n) => {
                 for _ in 0..*n {
-                    out.write(b"\n")?;
+                    sink.body.write(b"\n")?;
                 }
                 Ok(true)
             }
 
             // Type declarations (structs)
             Stmt::TypeDecl(type_decl) => {
-                self.type_decl(type_decl, out)?;
+                self.type_decl(type_decl, sink)?;
                 Ok(true)
             }
 
             // Enum declarations
             Stmt::EnumDecl(enum_decl) => {
-                self.enum_decl(enum_decl, out)?;
+                self.enum_decl(enum_decl, sink)?;
                 Ok(true)
             }
 
             // Plan 213 Task 8: Spec declarations → Protocol
             Stmt::SpecDecl(spec_decl) => {
-                self.spec_decl(spec_decl, out)?;
+                self.spec_decl(spec_decl, sink)?;
                 Ok(true)
             }
 
             // Plan 213 Task 9: Union declarations → dataclass
             Stmt::Union(union_decl) => {
-                self.union_decl(union_decl, out)?;
+                self.union_decl(union_decl, sink)?;
                 Ok(true)
             }
 
             // Plan 213 Task 9: Tag declarations → dataclass with factory methods
             Stmt::Tag(tag_decl) => {
-                self.tag_decl(tag_decl, out)?;
+                self.tag_decl(tag_decl, sink)?;
                 Ok(true)
             }
 
@@ -496,7 +500,9 @@ impl PythonTrans {
         }
     }
 
-    fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
+    fn store(&mut self, store: &Store, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         // Plan 283 Task 2.1: Track variable type for type-aware codegen
         let effective_ty = if matches!(store.ty, Type::Unknown) {
             self.infer_type_from_expr(&store.expr)
@@ -505,9 +511,9 @@ impl PythonTrans {
         };
         self.local_var_types.insert(store.name.clone(), effective_ty);
 
-        out.write_all(store.name.as_bytes())?;
-        out.write(b" = ")?;
-        self.expr(&store.expr, out)?;
+        sink.body.write_all(store.name.as_bytes())?;
+        sink.body.write(b" = ")?;
+        self.expr(&store.expr, sink)?;
         Ok(())
     }
 
@@ -552,7 +558,9 @@ impl PythonTrans {
         false
     }
 
-    fn fn_decl(&mut self, func: &Fn, out: &mut impl Write) -> AutoResult<()> {
+    fn fn_decl(&mut self, func: &Fn, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         // Plan 283 Task 2.1: Clear and populate local_var_types from function params
         self.local_var_types.clear();
         for param in &func.params {
@@ -561,32 +569,32 @@ impl PythonTrans {
             }
         }
 
-        self.print_indent(out)?;
+        self.print_indent(&mut sink.body)?;
 
         // Plan 213 Task 7: async def for ~T return types, or main with .await
         let is_async = self.is_async_fn(func)
             || (func.name == "main" && Self::has_await(&func.body.stmts));
         if is_async {
-            out.write(b"async ")?;
+            sink.body.write(b"async ")?;
         }
 
-        out.write(b"def ")?;
-        out.write_all(func.name.as_bytes())?;
+        sink.body.write(b"def ")?;
+        sink.body.write_all(func.name.as_bytes())?;
         // Plan 213 Task 6: Skip generic type params (<T> erased in Python)
-        out.write(b"(")?;
+        sink.body.write(b"(")?;
 
         // Plan 213 Task 4: Parameters with type annotations
         // Plan 213 Task 6: Skip type annotations for generic params (type erasure)
         for (i, param) in func.params.iter().enumerate() {
             if i > 0 {
-                out.write(b", ")?;
+                sink.body.write(b", ")?;
             }
-            out.write_all(param.name.as_bytes())?;
+            sink.body.write_all(param.name.as_bytes())?;
             // Add type annotation if known and not a generic param
             if !matches!(param.ty, Type::Unknown) && !self.is_generic_param(&param.ty, func) {
-                out.write(b": ")?;
+                sink.body.write(b": ")?;
                 let type_name = self.python_type_name(&param.ty);
-                out.write_all(type_name.as_bytes())?;
+                sink.body.write_all(type_name.as_bytes())?;
                 // Track Optional import
                 if matches!(param.ty, Type::Option(_)) {
                     self.imports.insert("Optional".into());
@@ -597,11 +605,11 @@ impl PythonTrans {
         // Plan 213 Task 4: Return type annotation
         let ret_type_for_annotation = self.fn_return_type_for_annotation(func);
         if let Some(ret_type_str) = &ret_type_for_annotation {
-            out.write(b") -> ")?;
-            out.write_all(ret_type_str.as_bytes())?;
-            out.write(b":\n")?;
+            sink.body.write(b") -> ")?;
+            sink.body.write_all(ret_type_str.as_bytes())?;
+            sink.body.write(b":\n")?;
         } else {
-            out.write(b"):\n")?;
+            sink.body.write(b"):\n")?;
         }
 
         // Track Optional import for return type
@@ -622,25 +630,36 @@ impl PythonTrans {
         // Process body statements
         if (has_return || is_async) && !func.body.stmts.is_empty() {
             // Handle all but last statement normally
-            for stmt in func.body.stmts.iter().take(func.body.stmts.len() - 1) {
-                self.stmt(stmt, out)?;
+            let stmts = &func.body.stmts;
+            let source_lines = &func.body.source_lines;
+            for (i, stmt) in stmts.iter().take(stmts.len() - 1).enumerate() {
+                sink.record();
+                if i < source_lines.len() {
+                    sink.set_source_line(source_lines[i]);
+                }
+                self.stmt(stmt, sink)?;
             }
 
             // Add return before last statement if it's an expression
-            if let Some(last_stmt) = func.body.stmts.last() {
+            if let Some(last_stmt) = stmts.last() {
+                sink.record();
+                if stmts.len() - 1 < source_lines.len() {
+                    sink.set_source_line(source_lines[stmts.len() - 1]);
+                }
                 if let Stmt::Expr(expr) = last_stmt {
-                    self.print_indent(out)?;
-                    out.write(b"return ")?;
-                    self.expr(expr, out)?;
-                    out.write(b"\n")?;
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"return ")?;
+                    self.expr(expr, sink)?;
+                    sink.body.write(b"\n")?;
                 } else {
                     // Last statement is not an expression, just process it normally
-                    self.stmt(last_stmt, out)?;
+                    self.stmt(last_stmt, sink)?;
                 }
             }
+            sink.record();
         } else {
             // No return type, process body normally
-            self.body(&func.body, out)?;
+            self.body(&func.body, sink)?;
         }
 
         self.dedent();
@@ -663,7 +682,9 @@ impl PythonTrans {
         }
     }
 
-    fn fn_decl_in_class(&mut self, func: &Fn, _type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
+    fn fn_decl_in_class(&mut self, func: &Fn, _type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         // Plan 283 Task 2.1: Clear and populate local_var_types from method params
         self.local_var_types.clear();
         for param in &func.params {
@@ -672,44 +693,44 @@ impl PythonTrans {
             }
         }
 
-        self.print_indent(out)?;
+        self.print_indent(&mut sink.body)?;
 
         // Plan 283 Task 2.2: Static methods get @staticmethod decorator
         let is_static = func.is_static;
         if is_static {
-            out.write(b"@staticmethod\n")?;
-            self.print_indent(out)?;
+            sink.body.write(b"@staticmethod\n")?;
+            self.print_indent(&mut sink.body)?;
         }
 
         // Plan 213 Task 7: async def for ~T return types
         if self.is_async_fn(func) {
-            out.write(b"async ")?;
+            sink.body.write(b"async ")?;
         }
 
-        out.write(b"def ")?;
-        out.write_all(func.name.as_bytes())?;
+        sink.body.write(b"def ")?;
+        sink.body.write_all(func.name.as_bytes())?;
         // Plan 283 Task 2.2: Static methods don't have self parameter
         if !is_static {
-            out.write(b"(self")?;
+            sink.body.write(b"(self")?;
         } else {
-            out.write(b"(")?;
+            sink.body.write(b"(")?;
         }
 
         // Plan 213 Task 4: Parameters with type annotations
         for (i, param) in func.params.iter().enumerate() {
             // Add comma separator: instance methods already have "self", static methods need comma after first param
             if !is_static || i > 0 {
-                out.write(b", ")?;
+                sink.body.write(b", ")?;
             } else {
                 // First param of static method — no preceding comma needed
                 // (we opened with "(" above, so just write the param)
             }
-            out.write_all(param.name.as_bytes())?;
+            sink.body.write_all(param.name.as_bytes())?;
             // Add type annotation if known
             if !matches!(param.ty, Type::Unknown) {
-                out.write(b": ")?;
+                sink.body.write(b": ")?;
                 let type_name = self.python_type_name(&param.ty);
-                out.write_all(type_name.as_bytes())?;
+                sink.body.write_all(type_name.as_bytes())?;
                 if matches!(param.ty, Type::Option(_)) {
                     self.imports.insert("Optional".into());
                 }
@@ -719,11 +740,11 @@ impl PythonTrans {
         // Plan 213 Task 4: Return type annotation
         let ret_type_for_annotation = self.fn_return_type_for_annotation(func);
         if let Some(ret_type_str) = &ret_type_for_annotation {
-            out.write(b") -> ")?;
-            out.write_all(ret_type_str.as_bytes())?;
-            out.write(b":\n")?;
+            sink.body.write(b") -> ")?;
+            sink.body.write_all(ret_type_str.as_bytes())?;
+            sink.body.write(b":\n")?;
         } else {
-            out.write(b"):\n")?;
+            sink.body.write(b"):\n")?;
         }
 
         self.indent();
@@ -735,25 +756,36 @@ impl PythonTrans {
         // Process body statements
         if (has_return || is_async) && !func.body.stmts.is_empty() {
             // Handle all but last statement normally
-            for stmt in func.body.stmts.iter().take(func.body.stmts.len() - 1) {
-                self.stmt(stmt, out)?;
+            let stmts = &func.body.stmts;
+            let source_lines = &func.body.source_lines;
+            for (i, stmt) in stmts.iter().take(stmts.len() - 1).enumerate() {
+                sink.record();
+                if i < source_lines.len() {
+                    sink.set_source_line(source_lines[i]);
+                }
+                self.stmt(stmt, sink)?;
             }
 
             // Add return before last statement if it's an expression
-            if let Some(last_stmt) = func.body.stmts.last() {
+            if let Some(last_stmt) = stmts.last() {
+                sink.record();
+                if stmts.len() - 1 < source_lines.len() {
+                    sink.set_source_line(source_lines[stmts.len() - 1]);
+                }
                 if let Stmt::Expr(expr) = last_stmt {
-                    self.print_indent(out)?;
-                    out.write(b"return ")?;
-                    self.expr(expr, out)?;
-                    out.write(b"\n")?;
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"return ")?;
+                    self.expr(expr, sink)?;
+                    sink.body.write(b"\n")?;
                 } else {
                     // Last statement is not an expression, just process it normally
-                    self.stmt(last_stmt, out)?;
+                    self.stmt(last_stmt, sink)?;
                 }
             }
+            sink.record();
         } else {
             // No return type, process body normally
-            self.body(&func.body, out)?;
+            self.body(&func.body, sink)?;
         }
 
         self.dedent();
@@ -761,150 +793,156 @@ impl PythonTrans {
         Ok(())
     }
 
-    fn if_stmt(&mut self, if_stmt: &If, out: &mut impl Write) -> AutoResult<()> {
+    fn if_stmt(&mut self, if_stmt: &If, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         // Process first branch as "if"
         if let Some(first_branch) = if_stmt.branches.first() {
-            self.print_indent(out)?;
-            out.write(b"if ")?;
-            self.expr(&first_branch.cond, out)?;
-            out.write(b":\n")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"if ")?;
+            self.expr(&first_branch.cond, sink)?;
+            sink.body.write(b":\n")?;
             self.indent();
-            self.body(&first_branch.body, out)?;
+            self.body(&first_branch.body, sink)?;
             self.dedent();
         }
 
         // Process remaining branches as "elif"
         for branch in if_stmt.branches.iter().skip(1) {
-            self.print_indent(out)?;
-            out.write(b"elif ")?;
-            self.expr(&branch.cond, out)?;
-            out.write(b":\n")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"elif ")?;
+            self.expr(&branch.cond, sink)?;
+            sink.body.write(b":\n")?;
             self.indent();
-            self.body(&branch.body, out)?;
+            self.body(&branch.body, sink)?;
             self.dedent();
         }
 
         // Process else if present
         if let Some(else_) = &if_stmt.else_ {
-            self.print_indent(out)?;
-            out.write(b"else:\n")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"else:\n")?;
             self.indent();
-            self.body(else_, out)?;
+            self.body(else_, sink)?;
             self.dedent();
         }
 
         Ok(())
     }
 
-    fn for_loop(&mut self, for_loop: &For, out: &mut impl Write) -> AutoResult<()> {
-        // Plan 213 Task 10: Infinite loop with break → while True
+    fn for_loop(&mut self, for_loop: &For, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
+        // Plan 213 Task 10: Infinite loop with break → for _ in None
         if matches!(&for_loop.iter, Iter::Ever) {
-            self.print_indent(out)?;
-            out.write(b"while True:\n")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"for _ in None:\n")?;
             self.indent();
-            self.body(&for_loop.body, out)?;
+            self.body(&for_loop.body, sink)?;
             self.dedent();
             return Ok(());
         }
 
         // Plan 213 Task 10: Handle conditional for loop (while in Python)
         if matches!(&for_loop.iter, Iter::Cond) {
-            self.print_indent(out)?;
-            out.write(b"while ")?;
-            self.expr(&for_loop.range, out)?;
-            out.write(b":\n")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"while ")?;
+            self.expr(&for_loop.range, sink)?;
+            sink.body.write(b":\n")?;
             self.indent();
-            self.body(&for_loop.body, out)?;
+            self.body(&for_loop.body, sink)?;
             self.dedent();
             return Ok(());
         }
 
-        self.print_indent(out)?;
-        out.write(b"for ")?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"for ")?;
 
         // Handle iterator based on type
         match &for_loop.iter {
             Iter::Named(name) => {
                 // Simple: for name in range
-                out.write_all(name.as_bytes())?;
+                sink.body.write_all(name.as_bytes())?;
             }
             Iter::Indexed(index, name) => {
                 // for i, name in enumerate(...)
-                out.write_all(index.as_bytes())?;
-                out.write(b", ")?;
-                out.write_all(name.as_bytes())?;
+                sink.body.write_all(index.as_bytes())?;
+                sink.body.write(b", ")?;
+                sink.body.write_all(name.as_bytes())?;
             }
             Iter::Call(_call) => {
                 // Function call as iterator - skip for now
-                out.write(b"_")?;
+                sink.body.write(b"_")?;
             }
             _ => {
-                out.write(b"_")?;
+                sink.body.write(b"_")?;
             }
         }
 
-        out.write(b" in ")?;
+        sink.body.write(b" in ")?;
 
         // Handle range expressions
         match &for_loop.range {
             Expr::Range(range) => {
-                out.write(b"range(")?;
-                self.expr(&range.start, out)?;
-                out.write(b", ")?;
-                self.expr(&range.end, out)?;
+                sink.body.write(b"range(")?;
+                self.expr(&range.start, sink)?;
+                sink.body.write(b", ")?;
+                self.expr(&range.end, sink)?;
                 if range.eq {
                     // Inclusive range: add 1
-                    out.write(b" + 1")?;
+                    sink.body.write(b" + 1")?;
                 }
-                out.write(b")")?;
+                sink.body.write(b")")?;
             }
             _ => {
-                self.expr(&for_loop.range, out)?;
+                self.expr(&for_loop.range, sink)?;
             }
         }
 
-        out.write(b":\n")?;
+        sink.body.write(b":\n")?;
         self.indent();
-        self.body(&for_loop.body, out)?;
+        self.body(&for_loop.body, sink)?;
         self.dedent();
 
         Ok(())
     }
 
-    fn is_stmt(&mut self, is_stmt: &Is, out: &mut impl Write) -> AutoResult<()> {
-        self.print_indent(out)?;
-        out.write(b"match ")?;
-        self.expr(&is_stmt.target, out)?;
-        out.write(b":\n")?;
+    fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"match ")?;
+        self.expr(&is_stmt.target, sink)?;
+        sink.body.write(b":\n")?;
         self.indent();
 
         for branch in &is_stmt.branches {
-            self.print_indent(out)?;
+            self.print_indent(&mut sink.body)?;
             match branch {
                 IsBranch::EqBranch(patterns, body) => {
                     for (i, pat) in patterns.iter().enumerate() {
-                        if i == 0 { out.write(b"case ")?; }
-                        else { out.write(b" | ")?; }
-                        self.expr(pat, out)?;
+                        if i == 0 { sink.body.write(b"case ")?; }
+                        else { sink.body.write(b" | ")?; }
+                        self.expr(pat, sink)?;
                     }
-                    out.write(b":\n")?;
+                    sink.body.write(b":\n")?;
                     self.indent();
-                    self.body(body, out)?;
+                    self.body(body, sink)?;
                     self.dedent();
                 }
                 IsBranch::IfBranch(expr, body) => {
                     // Guard pattern - Python supports this with if guards
-                    out.write(b"case ")?;
-                    self.expr(expr, out)?;
-                    out.write(b" if True:\n")?; // TODO: extract guard condition
+                    sink.body.write(b"case ")?;
+                    self.expr(expr, sink)?;
+                    sink.body.write(b" if True:\n")?; // TODO: extract guard condition
                     self.indent();
-                    self.body(body, out)?;
+                    self.body(body, sink)?;
                     self.dedent();
                 }
                 IsBranch::ElseBranch(body) => {
-                    out.write(b"case _:\n")?;
+                    sink.body.write(b"case _:\n")?;
                     self.indent();
-                    self.body(body, out)?;
+                    self.body(body, sink)?;
                     self.dedent();
                 }
             }
@@ -914,13 +952,15 @@ impl PythonTrans {
         Ok(())
     }
 
-    fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+    fn call(&mut self, call: &Call, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         // Plan 283 Task 1.3: Intercept method calls where call.name is Expr::Dot.
         // Parser generates Expr::Call { name: Expr::Dot(obj, method_name), args: [...] }
         // for method calls like items.push(4), "hello".trim(), etc.
         // Note: Expr::Dot(Box<Expr>, Name) — Name is already AutoStr, not Expr.
         if let Expr::Dot(obj, method_name) = call.name.as_ref() {
-            return self.method_call(obj, method_name, &call.args, out);
+            return self.method_call(obj, method_name, &call.args, sink);
         }
 
         // Plan 283 Task 1.2: Map AutoLang builtins to Python stdlib equivalents
@@ -930,37 +970,37 @@ impl PythonTrans {
                 "print" | "len" | "range" | "type" | "abs" | "min" | "max" | "sum"
                 | "sorted" | "reversed" | "enumerate" | "zip" | "map" | "filter"
                 | "isinstance" | "hasattr" | "getattr" | "setattr" => {
-                    return self.emit_plain_call(call, out);
+                    return self.emit_plain_call(call, sink);
                 }
                 // type_name(x) → type(x).__name__
                 "type_name" => {
-                    out.write(b"type(")?;
+                    sink.body.write(b"type(")?;
                     if let Some(arg) = call.args.args.first() {
-                        self.arg(arg, out)?;
+                        self.arg(arg, sink)?;
                     }
-                    out.write(b").__name__")?;
+                    sink.body.write(b").__name__")?;
                     return Ok(());
                 }
                 // sleep_ms(ms) → time.sleep(ms / 1000)
                 "sleep_ms" => {
                     self.py_imports.push(("time".into(), Vec::new()));
-                    out.write(b"time.sleep(")?;
+                    sink.body.write(b"time.sleep(")?;
                     if let Some(arg) = call.args.args.first() {
-                        self.arg(arg, out)?;
+                        self.arg(arg, sink)?;
                     }
-                    out.write(b" / 1000)")?;
+                    sink.body.write(b" / 1000)")?;
                     return Ok(());
                 }
                 // time_now() → time.time()
                 "time_now" => {
                     self.py_imports.push(("time".into(), Vec::new()));
-                    out.write(b"time.time()")?;
+                    sink.body.write(b"time.time()")?;
                     return Ok(());
                 }
                 _ => {}
             }
         }
-        self.emit_plain_call(call, out)
+        self.emit_plain_call(call, sink)
     }
 
     /// Extract a plain identifier name from a call expression (e.g., Expr::Ident("foo"))
@@ -972,66 +1012,76 @@ impl PythonTrans {
     }
 
     /// Emit a plain function call without any builtin mapping
-    fn emit_plain_call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
-        self.expr(&call.name, out)?;
-        out.write(b"(")?;
+    fn emit_plain_call(&mut self, call: &Call, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
+        self.expr(&call.name, sink)?;
+        sink.body.write(b"(")?;
 
         for (i, arg) in call.args.args.iter().enumerate() {
             if i > 0 {
-                out.write(b", ")?;
+                sink.body.write(b", ")?;
             }
-            self.arg(arg, out)?;
+            self.arg(arg, sink)?;
         }
 
-        out.write(b")")?;
+        sink.body.write(b")")?;
         Ok(())
     }
 
-    fn arg(&mut self, arg: &Arg, out: &mut impl Write) -> AutoResult<()> {
+    fn arg(&mut self, arg: &Arg, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         match arg {
-            Arg::Pos(expr) => self.expr(expr, out),
-            Arg::Name(name) => out.write_all(name.as_bytes()).map_err(Into::into),
+            Arg::Pos(expr) => self.expr(expr, sink),
+            Arg::Name(name) => sink.body.write_all(name.as_bytes()).map_err(Into::into),
             Arg::Pair(key, expr) => {
-                out.write_all(key.as_bytes())?;
-                out.write(b"=")?;
-                self.expr(expr, out)
+                sink.body.write_all(key.as_bytes())?;
+                sink.body.write(b"=")?;
+                self.expr(expr, sink)
             }
         }
     }
 
-    fn array(&mut self, elems: &Vec<Expr>, out: &mut impl Write) -> AutoResult<()> {
-        out.write(b"[")?;
+    fn array(&mut self, elems: &Vec<Expr>, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
+        sink.body.write(b"[")?;
         for (i, elem) in elems.iter().enumerate() {
             if i > 0 {
-                out.write(b", ")?;
+                sink.body.write(b", ")?;
             }
-            self.expr(elem, out)?;
+            self.expr(elem, sink)?;
         }
-        out.write(b"]")?;
+        sink.body.write(b"]")?;
         Ok(())
     }
 
-    fn index(&mut self, arr: &Box<Expr>, idx: &Box<Expr>, out: &mut impl Write) -> AutoResult<()> {
-        self.expr(arr, out)?;
-        out.write(b"[")?;
-        self.expr(idx, out)?;
-        out.write(b"]")?;
+    fn index(&mut self, arr: &Box<Expr>, idx: &Box<Expr>, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
+        self.expr(arr, sink)?;
+        sink.body.write(b"[")?;
+        self.expr(idx, sink)?;
+        sink.body.write(b"]")?;
         Ok(())
     }
 
-    fn dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
+    fn dot(&mut self, lhs: &Expr, rhs: &Expr, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         // Plan 283 Task 1.3: Intercept method calls for Pythonic mapping
         // Method call pattern: lhs.method(args) → rhs is Expr::Call
         if let Expr::Call(call) = rhs {
             if let Expr::Ident(method_name) = call.name.as_ref() {
-                return self.method_call(lhs, method_name, &call.args, out);
+                return self.method_call(lhs, method_name, &call.args, sink);
             }
         }
 
         // Default: lhs.rhs
-        self.expr(lhs, out)?;
-        out.write(b".")?;
-        self.expr(rhs, out)?;
+        self.expr(lhs, sink)?;
+        sink.body.write(b".")?;
+        self.expr(rhs, sink)?;
         Ok(())
     }
 
@@ -1041,56 +1091,58 @@ impl PythonTrans {
         receiver: &Expr,
         method: &AutoStr,
         args: &Args,
-        out: &mut impl Write,
+        sink: &mut Sink,
     ) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         match method.as_ref() {
             // ── List methods ──
             // .push(item) → .append(item)
             "push" => {
-                self.expr(receiver, out)?;
-                out.write(b".append(")?;
-                self.emit_args(args, out)?;
-                out.write(b")")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".append(")?;
+                self.emit_args(args, sink)?;
+                sink.body.write(b")")?;
             }
             // .pop() → .pop()
             "pop" => {
-                self.expr(receiver, out)?;
-                out.write(b".pop(")?;
-                self.emit_args(args, out)?;
-                out.write(b")")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".pop(")?;
+                self.emit_args(args, sink)?;
+                sink.body.write(b")")?;
             }
             // .len() → len(receiver)
             "len" => {
-                out.write(b"len(")?;
-                self.expr(receiver, out)?;
-                out.write(b")")?;
+                sink.body.write(b"len(")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b")")?;
             }
             // .contains(item) → item in receiver
             "contains" => {
                 if let Some(first_arg) = args.args.first() {
-                    self.arg(first_arg, out)?;
-                    out.write(b" in ")?;
-                    self.expr(receiver, out)?;
+                    self.arg(first_arg, sink)?;
+                    sink.body.write(b" in ")?;
+                    self.expr(receiver, sink)?;
                 } else {
-                    self.expr(receiver, out)?;
-                    out.write(b".contains(")?;
-                    self.emit_args(args, out)?;
-                    out.write(b")")?;
+                    self.expr(receiver, sink)?;
+                    sink.body.write(b".contains(")?;
+                    self.emit_args(args, sink)?;
+                    sink.body.write(b")")?;
                 }
             }
             // .join(sep) → sep.join(receiver)  (Python string.join takes iterable)
             "join" => {
                 // Auto: list.join(sep) → Python: sep.join(list)
                 if let Some(first_arg) = args.args.first() {
-                    self.arg(first_arg, out)?;
-                    out.write(b".join(")?;
-                    self.expr(receiver, out)?;
-                    out.write(b")")?;
+                    self.arg(first_arg, sink)?;
+                    sink.body.write(b".join(")?;
+                    self.expr(receiver, sink)?;
+                    sink.body.write(b")")?;
                 } else {
-                    self.expr(receiver, out)?;
-                    out.write(b".join(")?;
-                    self.emit_args(args, out)?;
-                    out.write(b")")?;
+                    self.expr(receiver, sink)?;
+                    sink.body.write(b".join(")?;
+                    self.emit_args(args, sink)?;
+                    sink.body.write(b")")?;
                 }
             }
 
@@ -1100,153 +1152,159 @@ impl PythonTrans {
             "set" | "insert" => {
                 // Emit as dict[key] = val only when used as statement
                 // As expression fallback: dict.__setitem__(key, val)
-                self.expr(receiver, out)?;
-                out.write(b"[")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b"[")?;
                 if let Some(first) = args.args.first() {
-                    self.arg(first, out)?;
+                    self.arg(first, sink)?;
                 }
-                out.write(b"] = ")?;
+                sink.body.write(b"] = ")?;
                 if args.args.len() > 1 {
-                    self.arg(&args.args[1], out)?;
+                    self.arg(&args.args[1], sink)?;
                 } else {
-                    out.write(b"None")?;
+                    sink.body.write(b"None")?;
                 }
             }
             // .get(key) → receiver.get(key) (same in Python)
             "get" => {
-                self.expr(receiver, out)?;
-                out.write(b".get(")?;
-                self.emit_args(args, out)?;
-                out.write(b")")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".get(")?;
+                self.emit_args(args, sink)?;
+                sink.body.write(b")")?;
             }
             // .has(key) → key in receiver
             "has" | "contains_key" => {
                 if let Some(first_arg) = args.args.first() {
-                    self.arg(first_arg, out)?;
-                    out.write(b" in ")?;
-                    self.expr(receiver, out)?;
+                    self.arg(first_arg, sink)?;
+                    sink.body.write(b" in ")?;
+                    self.expr(receiver, sink)?;
                 } else {
-                    self.expr(receiver, out)?;
-                    out.write(b".has(")?;
-                    self.emit_args(args, out)?;
-                    out.write(b")")?;
+                    self.expr(receiver, sink)?;
+                    sink.body.write(b".has(")?;
+                    self.emit_args(args, sink)?;
+                    sink.body.write(b")")?;
                 }
             }
             // .keys() / .values() / .items() — pass through
             "keys" | "values" | "items" => {
-                self.expr(receiver, out)?;
-                out.write(b".")?;
-                out.write_all(method.as_bytes())?;
-                out.write(b"(")?;
-                self.emit_args(args, out)?;
-                out.write(b")")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".")?;
+                sink.body.write_all(method.as_bytes())?;
+                sink.body.write(b"(")?;
+                self.emit_args(args, sink)?;
+                sink.body.write(b")")?;
             }
 
             // ── String methods ──
             // .trim() → .strip()
             "trim" => {
-                self.expr(receiver, out)?;
-                out.write(b".strip(")?;
-                self.emit_args(args, out)?;
-                out.write(b")")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".strip(")?;
+                self.emit_args(args, sink)?;
+                sink.body.write(b")")?;
             }
             // .split(sep) → .split(sep) (same in Python)
             "split" => {
-                self.expr(receiver, out)?;
-                out.write(b".split(")?;
-                self.emit_args(args, out)?;
-                out.write(b")")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".split(")?;
+                self.emit_args(args, sink)?;
+                sink.body.write(b")")?;
             }
             // .to_upper() → .upper()
             "to_upper" | "upper" => {
-                self.expr(receiver, out)?;
-                out.write(b".upper()")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".upper()")?;
             }
             // .to_lower() → .lower()
             "to_lower" | "lower" => {
-                self.expr(receiver, out)?;
-                out.write(b".lower()")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".lower()")?;
             }
             // .starts_with(s) → .startswith(s)
             "starts_with" | "startswith" => {
-                self.expr(receiver, out)?;
-                out.write(b".startswith(")?;
-                self.emit_args(args, out)?;
-                out.write(b")")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".startswith(")?;
+                self.emit_args(args, sink)?;
+                sink.body.write(b")")?;
             }
             // .ends_with(s) → .endswith(s)
             "ends_with" | "endswith" => {
-                self.expr(receiver, out)?;
-                out.write(b".endswith(")?;
-                self.emit_args(args, out)?;
-                out.write(b")")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".endswith(")?;
+                self.emit_args(args, sink)?;
+                sink.body.write(b")")?;
             }
             // .replace(old, new) → .replace(old, new) (same in Python)
             "replace" => {
-                self.expr(receiver, out)?;
-                out.write(b".replace(")?;
-                self.emit_args(args, out)?;
-                out.write(b")")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".replace(")?;
+                self.emit_args(args, sink)?;
+                sink.body.write(b")")?;
             }
 
             // ── Default: pass through as receiver.method(args) ──
             _ => {
-                self.expr(receiver, out)?;
-                out.write(b".")?;
-                out.write_all(method.as_bytes())?;
-                out.write(b"(")?;
-                self.emit_args(args, out)?;
-                out.write(b")")?;
+                self.expr(receiver, sink)?;
+                sink.body.write(b".")?;
+                sink.body.write_all(method.as_bytes())?;
+                sink.body.write(b"(")?;
+                self.emit_args(args, sink)?;
+                sink.body.write(b")")?;
             }
         }
         Ok(())
     }
 
     /// Emit call arguments
-    fn emit_args(&mut self, args: &Args, out: &mut impl Write) -> AutoResult<()> {
+    fn emit_args(&mut self, args: &Args, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         for (i, arg) in args.args.iter().enumerate() {
             if i > 0 {
-                out.write(b", ")?;
+                sink.body.write(b", ")?;
             }
-            self.arg(arg, out)?;
+            self.arg(arg, sink)?;
         }
         Ok(())
     }
 
-    fn fstr(&mut self, fstr: &FStr, out: &mut impl Write) -> AutoResult<()> {
-        out.write(b"f\"")?;
+    fn fstr(&mut self, fstr: &FStr, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
+        sink.body.write(b"f\"")?;
         for part in &fstr.parts {
             match part {
                 Expr::Str(s) => {
                     // Literal string part - escape quotes
                     let escaped = s.replace("\"", "\\\"");
-                    out.write_all(escaped.as_bytes())?;
+                    sink.body.write_all(escaped.as_bytes())?;
                 }
                 Expr::Char(c) => {
                     // Character
-                    out.write_all(c.to_string().as_bytes())?;
+                    sink.body.write_all(c.to_string().as_bytes())?;
                 }
                 _ => {
                     // Expression placeholder - AutoLang uses $, Python uses {}
-                    out.write(b"{")?;
-                    self.expr(part, out)?;
-                    out.write(b"}")?;
+                    sink.body.write(b"{")?;
+                    self.expr(part, sink)?;
+                    sink.body.write(b"}")?;
                 }
             }
         }
-        out.write(b"\"")?;
+        sink.body.write(b"\"")?;
         Ok(())
     }
 
-    fn key(&mut self, key: &Key, out: &mut impl Write) -> AutoResult<()> {
+    fn key(&mut self, key: &Key, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         match key {
             Key::NamedKey(name) => {
                 // Named keys become string keys in Python: x -> "x"
-                write!(out, "\"{}\"", name)?;
+                write!(sink.body, "\"{}\"", name)?;
             }
-            Key::IntKey(i) => write!(out, "{}", i)?,
-            Key::BoolKey(b) => write!(out, "{}", b)?,
-            Key::StrKey(s) => write!(out, "\"{}\"", s)?,
+            Key::IntKey(i) => write!(sink.body, "{}", i)?,
+            Key::BoolKey(b) => write!(sink.body, "{}", b)?,
+            Key::StrKey(s) => write!(sink.body, "\"{}\"", s)?,
         }
         Ok(())
     }
@@ -1267,89 +1325,93 @@ impl PythonTrans {
         false
     }
 
-    fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
+    fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         // Plan 283 Task 3.1: Always use @dataclass for consistency and Pythonic output
-        self.print_indent(out)?;
-        out.write(b"@dataclass\n")?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"@dataclass\n")?;
 
         // Plan 213 Task 6: Skip generic type params (<T> erased in Python)
-        self.print_indent(out)?;
-        out.write(b"class ")?;
-        out.write_all(type_decl.name.as_bytes())?;
-        out.write(b":\n")?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"class ")?;
+        sink.body.write_all(type_decl.name.as_bytes())?;
+        sink.body.write(b":\n")?;
         self.indent();
 
         // Emit fields using @dataclass style (field: type)
         for member in &type_decl.members {
-            self.print_indent(out)?;
-            out.write_all(member.name.as_bytes())?;
-            out.write(b": ")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write_all(member.name.as_bytes())?;
+            sink.body.write(b": ")?;
             // Plan 213 Task 6: Use Any for generic param types
             if self.is_type_decl_generic_param(&member.ty, type_decl) {
-                out.write(b"Any")?;
+                sink.body.write(b"Any")?;
             } else {
                 let type_name = self.python_type_name(&member.ty);
-                out.write_all(type_name.as_bytes())?;
+                sink.body.write_all(type_name.as_bytes())?;
             }
-            out.write(b"\n")?;
+            sink.body.write(b"\n")?;
         }
 
         // Python requires at least one statement in class body
         let is_empty = type_decl.members.is_empty() && type_decl.methods.is_empty();
         if is_empty {
-            self.print_indent(out)?;
-            out.write(b"pass\n")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"pass\n")?;
         }
 
         // Emit methods (add blank line before first method)
         for method in type_decl.methods.iter() {
-            out.write(b"\n")?;
-            self.fn_decl_in_class(method, type_decl, out)?;
+            sink.body.write(b"\n")?;
+            self.fn_decl_in_class(method, type_decl, sink)?;
         }
 
         self.dedent();
         Ok(())
     }
 
-    fn enum_decl(&mut self, enum_decl: &EnumDecl, out: &mut impl Write) -> AutoResult<()> {
+    fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         match &enum_decl.kind {
             EnumKind::Scalar { .. } => {
                 self.scalar_enums.insert(enum_decl.name.clone());
-                self.print_indent(out)?;
-                out.write(b"class ")?;
-                out.write_all(enum_decl.name.as_bytes())?;
-                out.write(b"(Enum):\n")?;
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"class ")?;
+                sink.body.write_all(enum_decl.name.as_bytes())?;
+                sink.body.write(b"(Enum):\n")?;
                 self.indent();
 
                 for item in &enum_decl.items {
-                    self.print_indent(out)?;
-                    out.write_all(item.name.as_bytes())?;
-                    out.write(b" = auto()\n")?;
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write_all(item.name.as_bytes())?;
+                    sink.body.write(b" = auto()\n")?;
                 }
 
                 self.dedent();
             }
             EnumKind::Homogeneous { .. } | EnumKind::Heterogeneous { .. } => {
                 self.imports.insert("dataclass".into());
-                self.print_indent(out)?;
-                out.write(b"@dataclass\n")?;
-                self.print_indent(out)?;
-                out.write(b"class ")?;
-                out.write_all(enum_decl.name.as_bytes())?;
-                out.write(b":\n")?;
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"@dataclass\n")?;
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"class ")?;
+                sink.body.write_all(enum_decl.name.as_bytes())?;
+                sink.body.write(b":\n")?;
                 self.indent();
 
-                self.print_indent(out)?;
-                out.write(b"kind: str = ''\n")?;
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"kind: str = ''\n")?;
 
                 for item in &enum_decl.items {
                     if !item.has_fields() && !item.has_tuple_payload() && item.payload_type.is_none() {
                         continue;
                     }
-                    self.print_indent(out)?;
+                    self.print_indent(&mut sink.body)?;
                     let field_name = format!("_{}", item.name);
-                    out.write_all(field_name.as_bytes())?;
-                    out.write(b": ")?;
+                    sink.body.write_all(field_name.as_bytes())?;
+                    sink.body.write(b": ")?;
 
                     let type_name = if item.has_tuple_payload() {
                         let parts: Vec<String> = item.payload_types.iter()
@@ -1363,9 +1425,9 @@ impl PythonTrans {
                     } else {
                         "Any".into()
                     };
-                    out.write_all(type_name.as_bytes())?;
+                    sink.body.write_all(type_name.as_bytes())?;
 
-                    out.write(b" = ")?;
+                    sink.body.write(b" = ")?;
                     let default = if item.has_tuple_payload() {
                         let parts: Vec<String> = item.payload_types.iter()
                             .map(|t| self.python_default_value(t).to_string())
@@ -1376,8 +1438,8 @@ impl PythonTrans {
                     } else {
                         "None".into()
                     };
-                    out.write_all(default.as_bytes())?;
-                    out.write(b"\n")?;
+                    sink.body.write_all(default.as_bytes())?;
+                    sink.body.write(b"\n")?;
                 }
 
                 // Factory static methods for variants with payload
@@ -1385,63 +1447,63 @@ impl PythonTrans {
                     if !item.has_fields() && !item.has_tuple_payload() && item.payload_type.is_none() {
                         continue;
                     }
-                    out.write(b"\n")?;
-                    self.print_indent(out)?;
-                    out.write(b"@staticmethod\n")?;
-                    self.print_indent(out)?;
-                    out.write(b"def ")?;
-                    out.write_all(item.name.as_bytes())?;
-                    out.write(b"(")?;
+                    sink.body.write(b"\n")?;
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"@staticmethod\n")?;
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"def ")?;
+                    sink.body.write_all(item.name.as_bytes())?;
+                    sink.body.write(b"(")?;
 
                     let field_name = format!("_{}", item.name);
 
                     if item.has_tuple_payload() {
                         for (i, _) in item.payload_types.iter().enumerate() {
-                            if i > 0 { out.write(b", ")?; }
-                            write!(out, "v{}", i)?;
+                            if i > 0 { sink.body.write(b", ")?; }
+                            write!(sink.body, "v{}", i)?;
                         }
-                        out.write(b"):\n")?;
+                        sink.body.write(b"):\n")?;
                         self.indent();
-                        self.print_indent(out)?;
-                        out.write(b"return ")?;
-                        out.write_all(enum_decl.name.as_bytes())?;
-                        out.write(b"('")?;
-                        out.write_all(item.name.as_bytes())?;
-                        out.write(b"', ")?;
-                        out.write_all(field_name.as_bytes())?;
-                        out.write(b"=(")?;
+                        self.print_indent(&mut sink.body)?;
+                        sink.body.write(b"return ")?;
+                        sink.body.write_all(enum_decl.name.as_bytes())?;
+                        sink.body.write(b"('")?;
+                        sink.body.write_all(item.name.as_bytes())?;
+                        sink.body.write(b"', ")?;
+                        sink.body.write_all(field_name.as_bytes())?;
+                        sink.body.write(b"=(")?;
                         for (i, _) in item.payload_types.iter().enumerate() {
-                            if i > 0 { out.write(b", ")?; }
-                            write!(out, "v{}", i)?;
+                            if i > 0 { sink.body.write(b", ")?; }
+                            write!(sink.body, "v{}", i)?;
                         }
-                        out.write(b"))\n")?;
+                        sink.body.write(b"))\n")?;
                         self.dedent();
                     } else if let Some(ty) = &item.payload_type {
                         let type_name = self.python_type_name(ty);
-                        out.write(b"value: ")?;
-                        out.write_all(type_name.as_bytes())?;
-                        out.write(b"):\n")?;
+                        sink.body.write(b"value: ")?;
+                        sink.body.write_all(type_name.as_bytes())?;
+                        sink.body.write(b"):\n")?;
                         self.indent();
-                        self.print_indent(out)?;
-                        out.write(b"return ")?;
-                        out.write_all(enum_decl.name.as_bytes())?;
-                        out.write(b"('")?;
-                        out.write_all(item.name.as_bytes())?;
-                        out.write(b"', ")?;
-                        out.write_all(field_name.as_bytes())?;
-                        out.write(b"=value)\n")?;
+                        self.print_indent(&mut sink.body)?;
+                        sink.body.write(b"return ")?;
+                        sink.body.write_all(enum_decl.name.as_bytes())?;
+                        sink.body.write(b"('")?;
+                        sink.body.write_all(item.name.as_bytes())?;
+                        sink.body.write(b"', ")?;
+                        sink.body.write_all(field_name.as_bytes())?;
+                        sink.body.write(b"=value)\n")?;
                         self.dedent();
                     } else {
-                        out.write(b"value: Any = None):\n")?;
+                        sink.body.write(b"value: Any = None):\n")?;
                         self.indent();
-                        self.print_indent(out)?;
-                        out.write(b"return ")?;
-                        out.write_all(enum_decl.name.as_bytes())?;
-                        out.write(b"('")?;
-                        out.write_all(item.name.as_bytes())?;
-                        out.write(b"', ")?;
-                        out.write_all(field_name.as_bytes())?;
-                        out.write(b"=value)\n")?;
+                        self.print_indent(&mut sink.body)?;
+                        sink.body.write(b"return ")?;
+                        sink.body.write_all(enum_decl.name.as_bytes())?;
+                        sink.body.write(b"('")?;
+                        sink.body.write_all(item.name.as_bytes())?;
+                        sink.body.write(b"', ")?;
+                        sink.body.write_all(field_name.as_bytes())?;
+                        sink.body.write(b"=value)\n")?;
                         self.dedent();
                     }
                 }
@@ -1457,41 +1519,43 @@ impl PythonTrans {
     /// →
     /// class Comparable(Protocol):
     ///     def compare(self, other: 'Comparable') -> int: ...
-    fn spec_decl(&mut self, spec_decl: &SpecDecl, out: &mut impl Write) -> AutoResult<()> {
+    fn spec_decl(&mut self, spec_decl: &SpecDecl, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         self.imports.insert("Protocol".into());
 
-        self.print_indent(out)?;
-        out.write(b"class ")?;
-        out.write_all(spec_decl.name.as_bytes())?;
-        out.write(b"(Protocol):\n")?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"class ")?;
+        sink.body.write_all(spec_decl.name.as_bytes())?;
+        sink.body.write(b"(Protocol):\n")?;
         self.indent();
 
         for method in &spec_decl.methods {
-            self.print_indent(out)?;
-            out.write(b"def ")?;
-            out.write_all(method.name.as_bytes())?;
-            out.write(b"(self")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"def ")?;
+            sink.body.write_all(method.name.as_bytes())?;
+            sink.body.write(b"(self")?;
 
             for param in &method.params {
-                out.write(b", ")?;
-                out.write_all(param.name.as_bytes())?;
+                sink.body.write(b", ")?;
+                sink.body.write_all(param.name.as_bytes())?;
                 if !matches!(param.ty, Type::Unknown) {
-                    out.write(b": ")?;
+                    sink.body.write(b": ")?;
                     let type_name = self.python_type_name(&param.ty);
-                    out.write_all(type_name.as_bytes())?;
+                    sink.body.write_all(type_name.as_bytes())?;
                 }
             }
 
             // Return type annotation
             if !matches!(method.ret, Type::Void | Type::Unknown) {
-                out.write(b") -> ")?;
+                sink.body.write(b") -> ")?;
                 let type_name = self.python_type_name(&method.ret);
-                out.write_all(type_name.as_bytes())?;
+                sink.body.write_all(type_name.as_bytes())?;
             } else {
-                out.write(b")")?;
+                sink.body.write(b")")?;
             }
 
-            out.write(b": ...\n")?;
+            sink.body.write(b": ...\n")?;
         }
 
         self.dedent();
@@ -1506,32 +1570,34 @@ impl PythonTrans {
     ///     kind: str = ''
     ///     i: int = 0
     ///     f: float = 0.0
-    fn union_decl(&mut self, union_decl: &Union, out: &mut impl Write) -> AutoResult<()> {
+    fn union_decl(&mut self, union_decl: &Union, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         self.imports.insert("dataclass".into());
 
-        self.print_indent(out)?;
-        out.write(b"@dataclass\n")?;
-        self.print_indent(out)?;
-        out.write(b"class ")?;
-        out.write_all(union_decl.name.as_bytes())?;
-        out.write(b":\n")?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"@dataclass\n")?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"class ")?;
+        sink.body.write_all(union_decl.name.as_bytes())?;
+        sink.body.write(b":\n")?;
         self.indent();
 
         // kind discriminator field
-        self.print_indent(out)?;
-        out.write(b"kind: str = ''\n")?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"kind: str = ''\n")?;
 
         // Fields with default values
         for field in &union_decl.fields {
-            self.print_indent(out)?;
-            out.write_all(field.name.as_bytes())?;
-            out.write(b": ")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write_all(field.name.as_bytes())?;
+            sink.body.write(b": ")?;
             let type_name = self.python_type_name(&field.ty);
-            out.write_all(type_name.as_bytes())?;
-            out.write(b" = ")?;
+            sink.body.write_all(type_name.as_bytes())?;
+            sink.body.write(b" = ")?;
             let default_val = self.python_default_value(&field.ty);
-            out.write_all(default_val.as_bytes())?;
-            out.write(b"\n")?;
+            sink.body.write_all(default_val.as_bytes())?;
+            sink.body.write(b"\n")?;
         }
 
         self.dedent();
@@ -1552,32 +1618,34 @@ impl PythonTrans {
     ///     def Circle(radius): ...
     ///     @staticmethod
     ///     def Rect(w, h): ...
-    fn tag_decl(&mut self, tag_decl: &Tag, out: &mut impl Write) -> AutoResult<()> {
+    fn tag_decl(&mut self, tag_decl: &Tag, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         self.imports.insert("dataclass".into());
 
-        self.print_indent(out)?;
-        out.write(b"@dataclass\n")?;
-        self.print_indent(out)?;
-        out.write(b"class ")?;
-        out.write_all(tag_decl.name.as_bytes())?;
-        out.write(b":\n")?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"@dataclass\n")?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"class ")?;
+        sink.body.write_all(tag_decl.name.as_bytes())?;
+        sink.body.write(b":\n")?;
         self.indent();
 
         // kind discriminator field
-        self.print_indent(out)?;
-        out.write(b"kind: str = ''\n")?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"kind: str = ''\n")?;
 
         // Fields with default values
         for field in &tag_decl.fields {
-            self.print_indent(out)?;
-            out.write_all(field.name.as_bytes())?;
-            out.write(b": ")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write_all(field.name.as_bytes())?;
+            sink.body.write(b": ")?;
             let type_name = self.python_type_name(&field.ty);
-            out.write_all(type_name.as_bytes())?;
-            out.write(b" = ")?;
+            sink.body.write_all(type_name.as_bytes())?;
+            sink.body.write(b" = ")?;
             let default_val = self.python_default_value(&field.ty);
-            out.write_all(default_val.as_bytes())?;
-            out.write(b"\n")?;
+            sink.body.write_all(default_val.as_bytes())?;
+            sink.body.write(b"\n")?;
         }
 
         // Factory methods for each variant
@@ -1586,22 +1654,22 @@ impl PythonTrans {
         // Note: In the Auto parser, tag fields are parsed as TagField with name and type.
         // The factory method name is the field name, and it takes the field type as parameter.
         if !tag_decl.fields.is_empty() {
-            out.write(b"\n")?;
+            sink.body.write(b"\n")?;
         }
         for field in &tag_decl.fields {
-            self.print_indent(out)?;
-            out.write(b"@staticmethod\n")?;
-            self.print_indent(out)?;
-            out.write(b"def ")?;
-            out.write_all(field.name.as_bytes())?;
-            out.write(b"(")?;
-            out.write_all(field.name.as_bytes())?;
-            out.write(b"):\n")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"@staticmethod\n")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"def ")?;
+            sink.body.write_all(field.name.as_bytes())?;
+            sink.body.write(b"(")?;
+            sink.body.write_all(field.name.as_bytes())?;
+            sink.body.write(b"):\n")?;
             self.indent();
-            self.print_indent(out)?;
-            out.write(b"return ")?;
-            out.write_all(tag_decl.name.as_bytes())?;
-            out.write(b"('")?;
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"return ")?;
+            sink.body.write_all(tag_decl.name.as_bytes())?;
+            sink.body.write(b"('")?;
             // Capitalize first letter of variant name
             let name_str = field.name.as_str();
             let mut capped = String::new();
@@ -1614,21 +1682,21 @@ impl PythonTrans {
                     }
                 }
             }
-            out.write_all(capped.as_bytes())?;
-            out.write(b"', ")?;
-            out.write_all(field.name.as_bytes())?;
-            out.write(b"=")?;
-            out.write_all(field.name.as_bytes())?;
-            out.write(b")\n")?;
+            sink.body.write_all(capped.as_bytes())?;
+            sink.body.write(b"', ")?;
+            sink.body.write_all(field.name.as_bytes())?;
+            sink.body.write(b"=")?;
+            sink.body.write_all(field.name.as_bytes())?;
+            sink.body.write(b")\n")?;
             self.dedent();
         }
 
         // Emit methods if present
         for (i, method) in tag_decl.methods.iter().enumerate() {
             if i == 0 || !tag_decl.fields.is_empty() {
-                out.write(b"\n")?;
+                sink.body.write(b"\n")?;
             }
-            self.fn_decl_in_class_for_tag(method, tag_decl, out)?;
+            self.fn_decl_in_class_for_tag(method, tag_decl, sink)?;
         }
 
         self.dedent();
@@ -1636,9 +1704,11 @@ impl PythonTrans {
     }
 
     /// Helper: emit a method inside a tag class
-    fn fn_decl_in_class_for_tag(&mut self, func: &Fn, _tag: &Tag, out: &mut impl Write) -> AutoResult<()> {
+    fn fn_decl_in_class_for_tag(&mut self, func: &Fn, _tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
         // Reuse the same logic as fn_decl_in_class
-        self.fn_decl_in_class(func, &TypeDecl::builtin(&_tag.name), out)
+        self.fn_decl_in_class(func, &TypeDecl::builtin(&_tag.name), sink)
     }
 
     /// Helper: get Python default value for a type
@@ -1816,24 +1886,25 @@ impl PythonTrans {
         Ok(())
     }
 
-    fn body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
-        for stmt in &body.stmts {
-            self.stmt(stmt, out)?;
+    fn body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
+        for (i, stmt) in body.stmts.iter().enumerate() {
+            sink.record();
+            if i < body.source_lines.len() {
+                sink.set_source_line(body.source_lines[i]);
+            }
+            self.stmt(stmt, sink)?;
         }
+        sink.record();
         Ok(())
     }
 }
 
 impl Trans for PythonTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
-        // Find and save main function if it exists
-        let main_func = ast.stmts.iter().find(|s| {
-            if let Stmt::Fn(func) = s {
-                func.name == "main"
-            } else {
-                false
-            }
-        }).cloned();
+        // Find and save main function if it exists, along with its source line
+        let mut main_func: Option<(Stmt, usize)> = None;
 
         // Split into declarations and main statements, preserving source line info
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
@@ -1842,9 +1913,10 @@ impl Trans for PythonTrans {
         let source_lines = ast.source_lines;
         for (i, stmt) in ast.stmts.into_iter().enumerate() {
             let line = source_lines.get(i).copied().unwrap_or(0);
-            // Skip main function declaration - we'll handle it specially
+            // Save main function declaration - we'll handle it specially
             if let Stmt::Fn(func) = &stmt {
                 if func.name == "main" {
+                    main_func = Some((stmt, line));
                     continue;
                 }
             }
@@ -1896,69 +1968,88 @@ impl Trans for PythonTrans {
             }
         }
 
-        // ── Phase 2: Generate code body into a temporary buffer ──
-        // Plan 283: We generate body first, then prepend imports.
-        // This allows builtin function calls to add stdlib imports during codegen.
-        let mut code_buf: Vec<u8> = Vec::new();
+        // ── Phase 2: Generate code body directly into sink ──
+        // Imports are collected during codegen; they will be prepended afterward.
 
         // Generate declarations (excluding main)
         for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.record();
             sink.set_source_line(*line);
-            self.stmt(decl, &mut code_buf)?;
+            self.stmt(decl, sink)?;
             // Add newline between declarations, but not after the last one
             if i < decls.len() - 1 {
-                code_buf.write(b"\n")?;
+                sink.body.write(b"
+")?;
             }
         }
+        sink.record();
 
         // Generate main function or wrap statements
-        if let Some(main_stmt) = main_func {
+        if let Some((ref main_stmt, main_line)) = main_func {
             // Output the main function
             if !decls.is_empty() {
-                code_buf.write(b"\n")?;
+                sink.body.write(b"
+")?;
             }
-            self.stmt(&main_stmt, &mut code_buf)?;
+            sink.record();
+            sink.set_source_line(main_line);
+            self.stmt(main_stmt, sink)?;
+            sink.record();
 
             // Check if main is async (has .await in body or async return type)
-            let main_is_async = if let Stmt::Fn(func) = &main_stmt {
+            let main_is_async = if let Stmt::Fn(func) = main_stmt {
                 self.is_async_fn(func) || Self::has_await(&func.body.stmts)
             } else {
                 false
             };
 
             // Add main guard
-            code_buf.write(b"\nif __name__ == \"__main__\":\n")?;
+            sink.body.write(b"
+if __name__ == \"__main__\":
+")?;
             self.indent();
             if main_is_async {
-                code_buf.write(b"    asyncio.run(main())\n")?;
+                sink.body.write(b"    asyncio.run(main())
+")?;
             } else {
-                code_buf.write(b"    main()\n")?;
+                sink.body.write(b"    main()
+")?;
             }
             self.dedent();
         } else if !main_stmts.is_empty() {
             // Wrap statements in a main function
             if !decls.is_empty() {
-                code_buf.write(b"\n")?;
+                sink.body.write(b"
+")?;
             }
-            code_buf.write(b"def main():\n")?;
+            sink.body.write(b"def main():
+")?;
             self.indent();
             for (stmt, line) in &main_stmts {
+                sink.record();
                 sink.set_source_line(*line);
-                self.stmt(stmt, &mut code_buf)?;
+                self.stmt(stmt, sink)?;
             }
+            sink.record();
             self.dedent();
 
             // Add main guard
-            code_buf.write(b"\n\nif __name__ == \"__main__\":\n")?;
-            code_buf.write(b"    main()\n")?;
+            sink.body.write(b"
+
+if __name__ == \"__main__\":
+")?;
+            sink.body.write(b"    main()
+")?;
         }
 
-        // ── Phase 3: Now emit imports + code body to sink ──
-        // Collect all imports (from use stmts + builtin mappings + typing/dataclass)
+        // ── Phase 3: Collect imports and prepend them to the body ──
+        // This keeps source_map entries (emitted during Phase 2) aligned with the
+        // code lines while allowing imports to appear at the top of the file.
+        let mut import_buf: Vec<u8> = Vec::new();
 
         // Emit Python module imports (from `use` and builtins like time)
         let has_py_imports = !self.py_imports.is_empty() || !self.py_wildcards.is_empty();
-        self.emit_py_imports(&mut sink.body)?;
+        self.emit_py_imports(&mut import_buf)?;
 
         // Emit typing/dataclass/enum imports
         // Add blank line between Python module imports and typing imports
@@ -1968,7 +2059,8 @@ impl Trans for PythonTrans {
             || self.imports.contains("dataclass")
             || self.imports.contains("Enum");
         if has_py_imports && has_typing_imports {
-            sink.body.write(b"\n")?;
+            import_buf.write(b"
+")?;
         }
         let mut typing_imports = Vec::new();
         if self.imports.contains("Optional") {
@@ -1981,27 +2073,29 @@ impl Trans for PythonTrans {
             typing_imports.push("Protocol");
         }
         if !typing_imports.is_empty() {
-            write!(sink.body, "from typing import {}\n", typing_imports.join(", "))?;
+            write!(import_buf, "from typing import {}
+", typing_imports.join(", "))?;
         }
         if self.imports.contains("dataclass") {
-            sink.body.write(b"from dataclasses import dataclass\n")?;
+            import_buf.write(b"from dataclasses import dataclass
+")?;
         }
         if self.imports.contains("Enum") {
-            sink.body.write(b"from enum import Enum, auto\n")?;
+            import_buf.write(b"from enum import Enum, auto
+")?;
         }
         // Blank line after all imports, before code body
         if has_py_imports || has_typing_imports {
-            sink.body.write(b"\n")?;
+            import_buf.write(b"
+")?;
         }
 
-        // Append code body
-        sink.body.write(&code_buf)?;
+        sink.prepend_body(&import_buf);
 
         Ok(())
     }
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::parser::Parser;

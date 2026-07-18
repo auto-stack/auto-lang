@@ -1,22 +1,24 @@
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
+use crate::project::{prepare_project_temp_dir, project_examples_dir, ProjectFile};
 use auto_lang::trans::SourceMapEntry;
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::PathBuf;
 
 #[derive(Deserialize)]
 pub struct TransRequest {
     pub source: String,
     pub target: String, // "rust" | "c" | "python" | "javascript" | "typescript"
     pub project_dir: Option<String>,
+    pub files: Option<Vec<ProjectFile>>,
 }
 
 #[derive(Serialize)]
 pub struct TransFile {
     pub path: String,
     pub code: String,
+    pub source_map: Option<Vec<SourceMapEntry>>,
 }
 
 #[derive(Serialize)]
@@ -32,14 +34,15 @@ pub async fn trans_handler(
     let target = req.target.clone();
     let source = req.source.clone();
     let project_dir = req.project_dir.clone();
+    let req_files = req.files.clone();
 
     let (files, source_map) = tokio::task::spawn_blocking(move || match project_dir {
         Some(dir) => match target.as_str() {
-            "rust" => transpile_rust_project(&source, &dir),
-            "c" => transpile_project_merged(&source, &dir, "c", transpile_c),
-            "python" => transpile_project_merged(&source, &dir, "py", transpile_python),
-            "javascript" => transpile_project_merged(&source, &dir, "js", transpile_javascript),
-            "typescript" => transpile_project_merged(&source, &dir, "ts", transpile_typescript),
+            "rust" => transpile_rust_project(&source, &dir, req_files.as_deref()),
+            "c" => transpile_project_merged(&source, &dir, "c", transpile_c, req_files.as_deref()),
+            "python" => transpile_project_merged(&source, &dir, "py", transpile_python, req_files.as_deref()),
+            "javascript" => transpile_project_merged(&source, &dir, "js", transpile_javascript, req_files.as_deref()),
+            "typescript" => transpile_project_merged(&source, &dir, "ts", transpile_typescript, req_files.as_deref()),
             _ => Err(AppError::Internal(format!(
                 "Project examples do not support target: {target}"
             ))),
@@ -55,7 +58,8 @@ pub async fn trans_handler(
                 _ => return Err(AppError::Internal(format!("Unknown target: {target}"))),
             }?;
             let path = format!("playground.{}", target_to_extension(&target));
-            Ok((vec![TransFile { path, code }], source_map))
+            let file_source_map = source_map.clone();
+            Ok((vec![TransFile { path, code, source_map: Some(file_source_map) }], source_map))
         }
     })
     .await
@@ -79,63 +83,14 @@ fn target_to_extension(target: &str) -> &str {
     }
 }
 
-fn project_examples_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("examples/playground-demo"))
-        .unwrap_or_else(|| PathBuf::from("examples/playground-demo"))
-}
-
-/// Build a temporary copy of the project directory, overwriting `main.at` with
-/// the edited source. Returns the temp directory path.
-fn prepare_project_temp_dir(source: &str, project_dir: &str) -> Result<PathBuf, AppError> {
-    let original_dir = project_examples_dir().join(project_dir);
-    if !original_dir.is_dir() {
-        return Err(AppError::Internal(format!(
-            "Project directory not found: {}",
-            original_dir.display()
-        )));
-    }
-
-    let temp_id = format!(
-        "{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    );
-    let temp_dir = std::env::temp_dir().join(format!("auto-playground-project-{}", temp_id));
-    std::fs::create_dir_all(&temp_dir)
-        .map_err(|e| AppError::Internal(format!("Failed to create temp dir: {e}")))?;
-
-    for entry in std::fs::read_dir(&original_dir)
-        .map_err(|e| AppError::Internal(format!("Failed to read project dir: {e}")))?
-    {
-        let entry = entry.map_err(|e| AppError::Internal(format!("Failed to read dir entry: {e}")))?;
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "at") {
-            let dest = temp_dir.join(path.file_name().unwrap_or_default());
-            std::fs::copy(&path, &dest)
-                .map_err(|e| AppError::Internal(format!("Failed to copy {}: {e}", path.display())))?;
-        }
-    }
-
-    let main_path = temp_dir.join("main.at");
-    std::fs::write(&main_path, source)
-        .map_err(|e| AppError::Internal(format!("Failed to write main.at: {e}")))?;
-
-    Ok(temp_dir)
-}
-
 pub fn transpile_rust_project(
     source: &str,
     project_dir: &str,
+    files: Option<&[ProjectFile]>,
 ) -> Result<(Vec<TransFile>, Vec<SourceMapEntry>), AppError> {
     use auto_lang::trans::rust::transpile_rust_project as auto_transpile_rust_project;
 
-    let temp_dir = prepare_project_temp_dir(source, project_dir)?;
+    let temp_dir = prepare_project_temp_dir(source, project_dir, files)?;
     let main_path = temp_dir.join("main.at");
 
     let result = auto_transpile_rust_project(&main_path.to_string_lossy())
@@ -146,15 +101,17 @@ pub fn transpile_rust_project(
 
     // Order: Cargo.toml first, then entry file (main.rs), then remaining .rs files.
     let mut files: Vec<TransFile> = Vec::new();
-    if let Some(code) = result.get("Cargo.toml") {
+    if let Some((code, source_map)) = result.get("Cargo.toml") {
         files.push(TransFile {
             path: "Cargo.toml".into(),
             code: String::from_utf8_lossy(code).to_string(),
+            source_map: Some(source_map.clone()),
         });
     }
-    let mut remaining: Vec<(String, Vec<u8>)> = result
+    let mut remaining: Vec<(String, Vec<u8>, Vec<SourceMapEntry>)> = result
         .into_iter()
         .filter(|(k, _)| k != "Cargo.toml")
+        .map(|(k, (code, source_map))| (k, code, source_map))
         .collect();
     remaining.sort_by(|a, b| {
         // main.rs first, then alphabetical
@@ -166,39 +123,77 @@ pub fn transpile_rust_project(
             a.0.cmp(&b.0)
         }
     });
-    for (path, code) in remaining {
+    for (path, code, source_map) in remaining {
         files.push(TransFile {
             path,
             code: String::from_utf8_lossy(&code).to_string(),
+            source_map: Some(source_map),
         });
     }
 
-    Ok((files, Vec::new()))
+    // Aggregate a best-effort project-level source map for backwards compatibility.
+    let source_map: Vec<SourceMapEntry> = files
+        .iter()
+        .filter_map(|f| f.source_map.clone())
+        .flat_map(|sm| sm.into_iter())
+        .collect();
+    Ok((files, source_map))
 }
 
 /// For non-Rust targets we merge all project `.at` files into a single source
 /// string (topological order, stripping project-local `use` lines) and then
 /// run the ordinary single-file transpiler. This keeps the change small while
 /// making C / Python / TS / JS work for project examples.
+/// Maps a line in the merged source back to the original project file and line.
+#[derive(Debug, Clone)]
+struct LineOrigin {
+    file: String,
+    line: usize,
+}
+
 pub fn transpile_project_merged(
     source: &str,
     project_dir: &str,
     extension: &str,
     transpile: fn(&str) -> Result<(String, Vec<SourceMapEntry>), AppError>,
+    files: Option<&[ProjectFile]>,
 ) -> Result<(Vec<TransFile>, Vec<SourceMapEntry>), AppError> {
-    let merged = merge_project_source(source, project_dir)?;
+    let (merged, line_origins) = merge_project_source(source, project_dir, files)?;
     let (code, source_map) = transpile(&merged)?;
+
+    // Remap source_map entries from merged-line coordinates back to original
+    // project-file coordinates so multi-file C/Python/JS/TS projects can use
+    // the same per-file bidirectional highlighting as Rust projects.
+    let remapped: Vec<SourceMapEntry> = source_map
+        .into_iter()
+        .map(|mut entry| {
+            if let Some(origin) = line_origins.get(entry.source_line.saturating_sub(1)) {
+                entry.source_file = Some(origin.file.clone());
+                entry.source_line = origin.line;
+            }
+            entry
+        })
+        .collect();
+
     Ok((vec![TransFile {
         path: format!("playground.{extension}"),
         code,
-    }], source_map))
+        source_map: Some(remapped.clone()),
+    }], remapped))
 }
 
-/// Merge project `.at` files into one source string.
+/// Merge project `.at` files into one source string and record the origin of
+/// every merged line so that transpiler source maps can be remapped back to
+/// the original files.
 ///
 /// Project-local `use <stem>` lines are stripped; files are concatenated in
 /// topological order so dependencies are defined before their dependents.
-fn merge_project_source(source: &str, project_dir: &str) -> Result<String, AppError> {
+/// When `files` is provided, those edited contents replace the disk copies.
+fn merge_project_source(
+    source: &str,
+    project_dir: &str,
+    files: Option<&[ProjectFile]>,
+) -> Result<(String, Vec<LineOrigin>), AppError> {
     let original_dir = project_examples_dir().join(project_dir);
     if !original_dir.is_dir() {
         return Err(AppError::Internal(format!(
@@ -227,6 +222,21 @@ fn merge_project_source(source: &str, project_dir: &str) -> Result<String, AppEr
                     .map_err(|e| AppError::Internal(format!("Failed to read {}: {e}", path.display())))?
             };
             sources.insert(stem, content);
+        }
+    }
+
+    // Overlay edited file contents (keyed by file stem, main excluded — the
+    // entry source is already applied above).
+    if let Some(files) = files {
+        for file in files {
+            let stem = std::path::Path::new(&file.path)
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            if stem != "main" && sources.contains_key(&stem) {
+                sources.insert(stem, file.source.clone());
+            }
         }
     }
 
@@ -282,11 +292,16 @@ fn merge_project_source(source: &str, project_dir: &str) -> Result<String, AppEr
     order.retain(|s| s != "main");
     order.push("main".into());
 
-    // Build merged source, stripping project-local `use` lines.
+    // Build merged source, stripping project-local `use` lines, and record
+    // the original file/line for every emitted line.
     let mut merged = String::new();
+    let mut line_origins: Vec<LineOrigin> = Vec::new();
     for stem in order {
         let content = sources.get(&stem).unwrap();
+        let file_name = format!("{stem}.at");
+        let mut file_line: usize = 0;
         for line in content.lines() {
+            file_line += 1;
             let trimmed = line.trim();
             if let Some(cap) = re.captures(trimmed) {
                 let used = cap[1].to_string();
@@ -296,11 +311,22 @@ fn merge_project_source(source: &str, project_dir: &str) -> Result<String, AppEr
             }
             merged.push_str(line);
             merged.push('\n');
+            line_origins.push(LineOrigin {
+                file: file_name.clone(),
+                line: file_line,
+            });
         }
+        // Separator blank line. Map it to the last real line of this file so
+        // that any spurious mapping landing here still points into this module.
         merged.push('\n');
+        let last_line = file_line.max(1);
+        line_origins.push(LineOrigin {
+            file: file_name,
+            line: last_line,
+        });
     }
 
-    Ok(merged)
+    Ok((merged, line_origins))
 }
 
 pub fn transpile_rust(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
@@ -321,7 +347,8 @@ pub fn transpile_abt(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppE
 
     let strings = vm.strings.read().map_err(|e| AppError::Internal(e.to_string()))?;
     let abt = auto_lang::vm::abt::disasm::disassemble_flash(&vm.flash, Some(&strings));
-    Ok((abt.to_string(), Vec::new()))
+    let (text, source_map) = abt.to_string_with_source_map();
+    Ok((text, source_map))
 }
 
 pub fn transpile_c(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {

@@ -1,12 +1,14 @@
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
+use crate::project::ProjectFile;
 use crate::vm_runner;
 
 #[derive(Deserialize)]
 pub struct RunRequest {
     pub source: String,
     pub project_dir: Option<String>,
+    pub files: Option<Vec<ProjectFile>>,
 }
 
 #[derive(Serialize)]
@@ -22,7 +24,7 @@ pub async fn run_handler(
 ) -> Result<Json<RunResponse>, AppError> {
     let result = tokio::task::spawn_blocking(move || {
         match req.project_dir {
-            Some(dir) => vm_runner::run_project_source(&req.source, &dir),
+            Some(dir) => vm_runner::run_project_source(&req.source, &dir, req.files),
             None => vm_runner::run_source(&req.source),
         }
     })

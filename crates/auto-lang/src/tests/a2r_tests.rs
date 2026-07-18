@@ -237,30 +237,30 @@ fn test_14_modules_005_multi_file() {
     assert!(result.contains_key("api/handlers.rs"), "Missing api/handlers.rs");
 
     // Validate main.rs
-    let main_rs = String::from_utf8_lossy(&result["main.rs"]);
+    let main_rs = String::from_utf8_lossy(&result["main.rs"].0);
     assert!(main_rs.contains("mod db;"), "main.rs should have 'mod db;'");
     assert!(main_rs.contains("mod api;"), "main.rs should have 'mod api;'");
     assert!(main_rs.contains("fn main()"), "main.rs should have fn main()");
 
     // Validate api/mod.rs
-    let api_mod = String::from_utf8_lossy(&result["api/mod.rs"]);
+    let api_mod = String::from_utf8_lossy(&result["api/mod.rs"].0);
     assert!(api_mod.contains("pub mod handlers;"), "api/mod.rs should have 'pub mod handlers;'");
 
     // Validate db.rs
-    let db_rs = String::from_utf8_lossy(&result["db.rs"]);
+    let db_rs = String::from_utf8_lossy(&result["db.rs"].0);
     assert!(db_rs.contains("struct Connection"), "db.rs should have struct Connection");
     assert!(db_rs.contains("fn connect()"), "db.rs should have fn connect()");
 
     // Validate api/handlers.rs
-    let handlers_rs = String::from_utf8_lossy(&result["api/handlers.rs"]);
+    let handlers_rs = String::from_utf8_lossy(&result["api/handlers.rs"].0);
     assert!(handlers_rs.contains("use crate::db::*;"), "api/handlers.rs should have 'use crate::db::*;'");
     assert!(handlers_rs.contains("fn handle_request"), "api/handlers.rs should have fn handle_request");
 
     // Validate Cargo.toml
     assert!(result.contains_key("Cargo.toml"), "Missing Cargo.toml");
-    let cargo_toml = String::from_utf8_lossy(&result["Cargo.toml"]);
+    let cargo_toml = String::from_utf8_lossy(&result["Cargo.toml"].0);
     assert!(cargo_toml.contains("[package]"), "Cargo.toml should have [package]");
-    assert!(cargo_toml.contains("name = \"005_multi_file\""), "Cargo.toml should have project name");
+    assert!(cargo_toml.contains("name = \"app-005_multi_file\""), "Cargo.toml should have project name");
     assert!(cargo_toml.contains("edition = \"2021\""), "Cargo.toml should have edition = 2021");
 }
 

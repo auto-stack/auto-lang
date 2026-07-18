@@ -2,12 +2,15 @@ use axum::Json;
 use serde::Serialize;
 use std::path::PathBuf;
 
+use crate::project::ProjectFile;
+
 #[derive(Serialize)]
 pub struct Example {
     pub name: String,
     pub source: String,
     pub example_type: String,
     pub project_dir: Option<String>,
+    pub files: Option<Vec<ProjectFile>>,
 }
 
 #[derive(Serialize)]
@@ -89,6 +92,7 @@ fn load_from_dir(dir: &std::path::Path) -> Vec<Example> {
             source,
             example_type: "single".into(),
             project_dir: None,
+            files: None,
         });
     }
 
@@ -115,11 +119,39 @@ fn load_from_dir(dir: &std::path::Path) -> Vec<Example> {
             .strip_prefix(dir)
             .ok()
             .map(|p| p.to_string_lossy().to_string().replace('\\', "/"));
+        // Collect all project .at files: main.at first, then alphabetical.
+        let mut files: Vec<ProjectFile> = Vec::new();
+        let mut others: Vec<ProjectFile> = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&path) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let file_path = entry.path();
+                if !file_path.is_file()
+                    || file_path.extension().is_none_or(|ext| ext != "at")
+                {
+                    continue;
+                }
+                let file_name = file_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                if let Ok(content) = std::fs::read_to_string(&file_path) {
+                    if file_name == "main.at" {
+                        files.push(ProjectFile { path: file_name, source: content });
+                    } else {
+                        others.push(ProjectFile { path: file_name, source: content });
+                    }
+                }
+            }
+        }
+        others.sort_by(|a, b| a.path.cmp(&b.path));
+        files.extend(others);
         examples.push(Example {
             name: display_name_from_stem(&stem),
             source,
             example_type: "project".into(),
             project_dir,
+            files: Some(files),
         });
     }
 
@@ -133,6 +165,7 @@ fn fallback_examples() -> Vec<Example> {
             source: r#"print("Hello, World!")"#.into(),
             example_type: "single".into(),
             project_dir: None,
+            files: None,
         },
         Example {
             name: "Variables".into(),
@@ -141,6 +174,7 @@ let name = "Auto"
 print(f"Hello, $name! The answer is $x")"#.into(),
             example_type: "single".into(),
             project_dir: None,
+            files: None,
         },
         Example {
             name: "Functions".into(),
@@ -152,6 +186,7 @@ let result = add(3, 4)
 print(result)"#.into(),
             example_type: "single".into(),
             project_dir: None,
+            files: None,
         },
     ]
 }

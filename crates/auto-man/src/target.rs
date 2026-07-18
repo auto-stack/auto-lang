@@ -798,7 +798,7 @@ impl Target {
         std::fs::create_dir_all(rs_dir)
             .map_err(|e| format!("Failed to create dir '{}': {}", rs_dir, e))?;
 
-        for (name, content) in &files {
+        for (name, (content, _source_map)) in &files {
             if name == "Cargo.toml" {
                 info!("Skipping Cargo.toml (CargoBuilder will generate it)");
                 continue;

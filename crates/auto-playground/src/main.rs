@@ -3,6 +3,7 @@ mod code_runner;
 mod debugger;
 mod error;
 mod notebook;
+mod project;
 mod routes;
 
 mod vm_runner;

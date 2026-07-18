@@ -1,4 +1,4 @@
-use super::{escape_str, Sink, Trans, ToStrError};
+use super::{escape_str, Sink, ToStrError, Trans};
 use crate::ast::*;
 use crate::AutoResult;
 use auto_val::AutoStr;
@@ -12,12 +12,11 @@ pub struct JavaScriptTrans {
 
 impl JavaScriptTrans {
     pub fn new(name: AutoStr) -> Self {
-        Self {
-            name,
-        }
+        Self { name }
     }
 
-    fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
+    fn expr(&mut self, expr: &Expr, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         match expr {
             // Literals
             Expr::Int(i) => write!(out, "{}", i).map_err(Into::into),
@@ -30,76 +29,83 @@ impl JavaScriptTrans {
             Expr::CStr(s) => write!(out, "\"{}\"", s).map_err(Into::into),
 
             // F-strings → Template literals (perfect match!)
-            Expr::FStr(fstr) => self.fstr(fstr, out),
+            Expr::FStr(fstr) => self.fstr(fstr, sink),
 
             // Identifiers
             Expr::Ident(name) => out.write_all(name.as_bytes()).map_err(Into::into),
 
             // Binary operations
-            Expr::Bina(lhs, op, rhs) => {
-                match op {
-                    Op::Dot => self.dot(lhs, rhs, out),
-                    _ => {
-                        self.expr(lhs, out)?;
-                        out.write(format!(" {} ", op.op()).as_bytes()).to()?;
-                        self.expr(rhs, out)
-                    }
+            Expr::Bina(lhs, op, rhs) => match op {
+                Op::Dot => self.dot(lhs, rhs, sink),
+                _ => {
+                    self.expr(lhs, sink)?;
+                    sink.body.write(format!(" {} ", op.op()).as_bytes()).to()?;
+                    self.expr(rhs, sink)
                 }
-            }
+            },
 
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
                 // JavaScript uses . for all field access (including pointers)
-                self.expr(object, out)?;
-                out.write_all(b".")?;
-                out.write_all(field.as_bytes())?;
+                self.expr(object, sink)?;
+                sink.body.write_all(b".")?;
+                sink.body.write_all(field.as_bytes())?;
                 Ok(())
             }
 
             // Unary operations
             Expr::Unary(op, expr) => {
-                out.write(format!("{}", op.op()).as_bytes()).to()?;
-                self.expr(expr, out)
+                sink.body.write(format!("{}", op.op()).as_bytes()).to()?;
+                self.expr(expr, sink)
             }
 
             // Function calls
-            Expr::Call(call) => self.call(call, out),
+            Expr::Call(call) => self.call(call, sink),
 
             // Arrays
-            Expr::Array(elems) => self.array(elems, out),
+            Expr::Array(elems) => self.array(elems, sink),
 
             // Index
-            Expr::Index(arr, idx) => self.index(arr, idx, out),
+            Expr::Index(arr, idx) => self.index(arr, idx, sink),
 
             // Block
             Expr::Block(block) => {
-                out.write(b"{")?;
-                for stmt in &block.stmts {
-                    self.stmt(stmt, out)?;
+                sink.body.write(b"{")?;
+                for (i, stmt) in block.stmts.iter().enumerate() {
+                    let line = block.source_lines.get(i).copied().unwrap_or(0);
+                    sink.record();
+                    sink.set_source_line(line);
+                    self.stmt(stmt, sink)?;
                 }
-                out.write(b"}")?;
+                sink.record();
+                sink.body.write(b"}")?;
                 Ok(())
             }
 
             // Type cast / conversion
             Expr::Cast { expr, target_type } | Expr::To { expr, target_type } => {
                 match target_type {
-                    Type::Int | Type::Uint | Type::USize
-                    | Type::I64 | Type::U64 | Type::Byte
-                    | Type::Float | Type::Double => {
-                        write!(out, "Number(")?;
-                        self.expr(expr, out)?;
-                        out.write(b")")?;
+                    Type::Int
+                    | Type::Uint
+                    | Type::USize
+                    | Type::I64
+                    | Type::U64
+                    | Type::Byte
+                    | Type::Float
+                    | Type::Double => {
+                        write!(sink.body, "Number(")?;
+                        self.expr(expr, sink)?;
+                        sink.body.write(b")")?;
                     }
                     Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => {
-                        write!(out, "String(")?;
-                        self.expr(expr, out)?;
-                        out.write(b")")?;
+                        write!(sink.body, "String(")?;
+                        self.expr(expr, sink)?;
+                        sink.body.write(b")")?;
                     }
                     _ => {
-                        out.write(b"(")?;
-                        self.expr(expr, out)?;
-                        out.write(b")")?;
+                        sink.body.write(b"(")?;
+                        self.expr(expr, sink)?;
+                        sink.body.write(b")")?;
                     }
                 }
                 Ok(())
@@ -110,12 +116,13 @@ impl JavaScriptTrans {
         }
     }
 
-    fn stmt(&mut self, stmt: &Stmt, out: &mut impl Write) -> AutoResult<()> {
+    fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         match stmt {
             // Expression statements
             Stmt::Expr(expr) => {
-                self.expr(expr, out)?;
-                out.write(b";")?;
+                self.expr(expr, sink)?;
+                sink.body.write(b";")?;
                 Ok(())
             }
 
@@ -123,34 +130,25 @@ impl JavaScriptTrans {
             Stmt::Store(store) => {
                 // AutoLang: let (immutable) → const, var → let
                 match store.kind {
-                    StoreKind::Let => out.write(b"const ").to()?,
-                    StoreKind::Var => out.write(b"let ").to()?,
+                    StoreKind::Let => sink.body.write(b"const ").to()?,
+                    StoreKind::Var => sink.body.write(b"let ").to()?,
                     _ => {} // Field and CVar don't need declaration
                 };
-                out.write_all(store.name.as_bytes())?;
-                out.write(b" = ")?;
-                self.expr(&store.expr, out)?;
-                out.write(b";")?;
+                sink.body.write_all(store.name.as_bytes())?;
+                sink.body.write(b" = ")?;
+                self.expr(&store.expr, sink)?;
+                sink.body.write(b";")?;
                 Ok(())
             }
 
             // Function declarations
-            Stmt::Fn(func) => {
-                self.fn_decl(func, out)?;
-                Ok(())
-            }
+            Stmt::Fn(func) => self.fn_decl(func, sink),
 
             // If statements
-            Stmt::If(if_stmt) => {
-                self.if_stmt(if_stmt, out)?;
-                Ok(())
-            }
+            Stmt::If(if_stmt) => self.if_stmt(if_stmt, sink),
 
             // For loops
-            Stmt::For(for_loop) => {
-                self.for_loop(for_loop, out)?;
-                Ok(())
-            }
+            Stmt::For(for_loop) => self.for_loop(for_loop, sink),
 
             // Break statements
             Stmt::Break => {
@@ -159,10 +157,7 @@ impl JavaScriptTrans {
             }
 
             // Pattern matching (is)
-            Stmt::Is(is_stmt) => {
-                self.is_stmt(is_stmt, out)?;
-                Ok(())
-            }
+            Stmt::Is(is_stmt) => self.is_stmt(is_stmt, sink),
 
             // Empty lines
             Stmt::EmptyLine(n) => {
@@ -173,23 +168,18 @@ impl JavaScriptTrans {
             }
 
             // Type declarations
-            Stmt::TypeDecl(type_decl) => {
-                self.type_decl(type_decl, out)?;
-                Ok(())
-            }
+            Stmt::TypeDecl(type_decl) => self.type_decl(type_decl, sink),
 
             // Enum declarations
-            Stmt::EnumDecl(enum_decl) => {
-                self.enum_decl(enum_decl, out)?;
-                Ok(())
-            }
+            Stmt::EnumDecl(enum_decl) => self.enum_decl(enum_decl, sink),
 
             // Unsupported statements
             _ => Err(format!("JavaScript Transpiler: unsupported statement: {:?}", stmt).into()),
         }
     }
 
-    fn fn_decl(&mut self, func: &Fn, out: &mut impl Write) -> AutoResult<()> {
+    fn fn_decl(&mut self, func: &Fn, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         out.write(b"function ")?;
         out.write_all(func.name.as_bytes())?;
         out.write(b"(")?;
@@ -205,48 +195,53 @@ impl JavaScriptTrans {
         out.write(b")")?;
 
         // Function body
-        self.body(&func.body, out)?;
-
-        Ok(())
+        self.body(&func.body, sink)
     }
 
-    fn body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
+    fn body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         out.write(b" {")?;
-        for stmt in &body.stmts {
-            out.write(b"\n    ")?;
-            self.stmt(stmt, out)?;
+        for (i, stmt) in body.stmts.iter().enumerate() {
+            let line = body.source_lines.get(i).copied().unwrap_or(0);
+            sink.record();
+            sink.set_source_line(line);
+            sink.body.write(b"\n    ")?;
+            self.stmt(stmt, sink)?;
         }
-        out.write(b"\n}")?;
+        sink.record();
+        sink.body.write(b"\n}")?;
         Ok(())
     }
 
-    fn if_stmt(&mut self, if_stmt: &If, out: &mut impl Write) -> AutoResult<()> {
+    fn if_stmt(&mut self, if_stmt: &If, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         // Process first branch as "if"
         if let Some(first_branch) = if_stmt.branches.first() {
             out.write(b"if (")?;
-            self.expr(&first_branch.cond, out)?;
-            out.write(b")")?;
-            self.if_body(&first_branch.body, out)?;
-        }
+            self.expr(&first_branch.cond, sink)?;
+            sink.body.write(b")")?;
+            self.if_body(&first_branch.body, sink)?;
 
-        // Process remaining branches as "else if"
-        for branch in if_stmt.branches.iter().skip(1) {
-            out.write(b" else if (")?;
-            self.expr(&branch.cond, out)?;
-            out.write(b")")?;
-            self.if_body(&branch.body, out)?;
-        }
+            // Process remaining branches as "else if"
+            for branch in if_stmt.branches.iter().skip(1) {
+                sink.body.write(b" else if (")?;
+                self.expr(&branch.cond, sink)?;
+                sink.body.write(b")")?;
+                self.if_body(&branch.body, sink)?;
+            }
 
-        // Process else if present
-        if let Some(else_) = &if_stmt.else_ {
-            out.write(b" else")?;
-            self.if_body(else_, out)?;
+            // Process else if present
+            if let Some(else_) = &if_stmt.else_ {
+                sink.body.write(b" else")?;
+                self.if_body(else_, sink)?;
+            }
         }
 
         Ok(())
     }
 
-    fn for_loop(&mut self, for_loop: &For, out: &mut impl Write) -> AutoResult<()> {
+    fn for_loop(&mut self, for_loop: &For, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         // For Phase 1, only handle Named iterator with Range
         match &for_loop.iter {
             Iter::Named(name) => {
@@ -257,20 +252,24 @@ impl JavaScriptTrans {
 
                 // Extract range from range expression
                 if let Expr::Range(range) = &for_loop.range {
-                    self.expr(&range.start, out)?;
-                    out.write(b"; ")?;
-                    out.write_all(name.as_bytes())?;
-                    out.write(b" < ")?;
-                    self.expr(&range.end, out)?;
-                    out.write(b"; ")?;
-                    out.write_all(name.as_bytes())?;
-                    out.write(b"++")?;
+                    self.expr(&range.start, sink)?;
+                    sink.body.write(b"; ")?;
+                    sink.body.write_all(name.as_bytes())?;
+                    sink.body.write(b" < ")?;
+                    self.expr(&range.end, sink)?;
+                    sink.body.write(b"; ")?;
+                    sink.body.write_all(name.as_bytes())?;
+                    sink.body.write(b"++")?;
                 } else {
-                    return Err(format!("JavaScript Transpiler: for loop requires range, got: {:?}", for_loop.range).into());
+                    return Err(format!(
+                        "JavaScript Transpiler: for loop requires range, got: {:?}",
+                        for_loop.range
+                    )
+                    .into());
                 }
 
-                out.write(b")")?;
-                self.if_body(&for_loop.body, out)?;
+                sink.body.write(b")")?;
+                self.if_body(&for_loop.body, sink)?;
             }
             Iter::Destructured(key, val) => {
                 // for (k, v) in map -> for (const [key, val] of Object.entries(map))
@@ -279,183 +278,222 @@ impl JavaScriptTrans {
                 out.write(b", ")?;
                 out.write_all(val.as_bytes())?;
                 out.write(b"] of Object.entries(")?;
-                self.expr(&for_loop.range, out)?;
-                out.write(b"))")?;
-                self.if_body(&for_loop.body, out)?;
+                self.expr(&for_loop.range, sink)?;
+                sink.body.write(b"))")?;
+                self.if_body(&for_loop.body, sink)?;
             }
             _ => {
-                return Err(format!("JavaScript Transpiler: unsupported for loop iteration: {:?}", for_loop.iter).into());
+                return Err(format!(
+                    "JavaScript Transpiler: unsupported for loop iteration: {:?}",
+                    for_loop.iter
+                )
+                .into());
             }
         }
         Ok(())
     }
 
-    fn is_stmt(&mut self, is_stmt: &Is, out: &mut impl Write) -> AutoResult<()> {
+    fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         out.write(b"switch (")?;
-        self.expr(&is_stmt.target, out)?;
-        out.write(b") {")?;
+        self.expr(&is_stmt.target, sink)?;
+        sink.body.write(b") {")?;
 
         for branch in &is_stmt.branches {
             match branch {
                 IsBranch::EqBranch(patterns, body) => {
                     for pat in patterns.iter() {
-                        out.write(b"\n        case ")?;
-                        self.expr(pat, out)?;
-                        out.write(b":")?;
+                        sink.body.write(b"\n        case ")?;
+                        self.expr(pat, sink)?;
+                        sink.body.write(b":")?;
                     }
-                    self.switch_case_body(body, out)?;
-                    out.write(b"\n            break;")?;
+                    self.switch_case_body(body, sink)?;
+                    sink.body.write(b"\n            break;")?;
                 }
                 IsBranch::IfBranch(expr, body) => {
-                    out.write(b"\n        case ")?;
-                    self.expr(expr, out)?;
-                    out.write(b":")?;
-                    self.switch_case_body(body, out)?;
-                    out.write(b"\n            break;")?;
+                    sink.body.write(b"\n        case ")?;
+                    self.expr(expr, sink)?;
+                    sink.body.write(b":")?;
+                    self.switch_case_body(body, sink)?;
+                    sink.body.write(b"\n            break;")?;
                 }
                 IsBranch::ElseBranch(body) => {
-                    out.write(b"\n        default:")?;
-                    self.switch_case_body(body, out)?;
+                    sink.body.write(b"\n        default:")?;
+                    self.switch_case_body(body, sink)?;
                 }
             }
         }
 
-        out.write(b"\n    }")?;
+        sink.body.write(b"\n    }")?;
         Ok(())
     }
 
     #[allow(dead_code)]
-    fn body_in_line(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
+    fn body_in_line(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         if body.stmts.len() == 1 {
             out.write(b" ")?;
-            self.stmt(&body.stmts[0], out)?;
+            let line = body.source_lines.get(0).copied().unwrap_or(0);
+            sink.record();
+            sink.set_source_line(line);
+            self.stmt(&body.stmts[0], sink)?;
             // Remove the semicolon since we're in a switch case
             // (already added by stmt)
         } else {
             out.write(b" {")?;
-            for stmt in &body.stmts {
-                out.write(b"\n        ")?;
-                self.stmt(stmt, out)?;
+            for (i, stmt) in body.stmts.iter().enumerate() {
+                let line = body.source_lines.get(i).copied().unwrap_or(0);
+                sink.record();
+                sink.set_source_line(line);
+                sink.body.write(b"\n        ")?;
+                self.stmt(stmt, sink)?;
             }
+            sink.record();
+            let out = &mut sink.body;
             out.write(b"\n    }")?;
         }
         Ok(())
     }
 
-    fn switch_case_body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
-        for stmt in &body.stmts {
-            out.write(b"\n            ")?;
-            self.stmt(stmt, out)?;
+    fn switch_case_body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
+        for (i, stmt) in body.stmts.iter().enumerate() {
+            let line = body.source_lines.get(i).copied().unwrap_or(0);
+            sink.record();
+            sink.set_source_line(line);
+            sink.body.write(b"\n            ")?;
+            self.stmt(stmt, sink)?;
         }
+        sink.record();
         Ok(())
     }
 
-    fn if_body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
+    fn if_body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         if body.stmts.is_empty() {
             out.write(b" {}")?;
         } else if body.stmts.len() == 1 {
             out.write(b" {\n        ")?;
-            self.stmt(&body.stmts[0], out)?;
-            out.write(b"\n    }")?;
+            let line = body.source_lines.get(0).copied().unwrap_or(0);
+            sink.record();
+            sink.set_source_line(line);
+            self.stmt(&body.stmts[0], sink)?;
+            sink.body.write(b"\n    }")?;
         } else {
             out.write(b" {")?;
-            for stmt in &body.stmts {
-                out.write(b"\n        ")?;
-                self.stmt(stmt, out)?;
+            for (i, stmt) in body.stmts.iter().enumerate() {
+                let line = body.source_lines.get(i).copied().unwrap_or(0);
+                sink.record();
+                sink.set_source_line(line);
+                sink.body.write(b"\n        ")?;
+                self.stmt(stmt, sink)?;
             }
-            out.write(b"\n    }")?;
+            sink.record();
+            sink.body.write(b"\n    }")?;
         }
         Ok(())
     }
 
-    fn fstr(&mut self, fstr: &FStr, out: &mut impl Write) -> AutoResult<()> {
+    fn fstr(&mut self, fstr: &FStr, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         out.write(b"`")?;
         for part in &fstr.parts {
             match part {
                 Expr::Str(s) => {
                     let escaped = s.replace("`", "\\`").replace("${", "\\${");
-                    out.write_all(escaped.as_bytes())?;
+                    sink.body.write_all(escaped.as_bytes())?;
                 }
                 Expr::Char(c) => {
-                    out.write_all(c.to_string().as_bytes())?;
+                    sink.body.write_all(c.to_string().as_bytes())?;
                 }
                 _ => {
-                    out.write(b"${")?;
-                    self.expr(part, out)?;
-                    out.write(b"}")?;
+                    sink.body.write(b"${")?;
+                    self.expr(part, sink)?;
+                    sink.body.write(b"}")?;
                 }
             }
         }
+        let out = &mut sink.body;
         out.write(b"`")?;
         Ok(())
     }
 
-    fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+    fn call(&mut self, call: &Call, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         // Check if this is a print call and convert to console.log
         let is_print = matches!(&*call.name, Expr::Ident(name) if name == "print");
 
         if is_print {
             out.write(b"console.log")?;
         } else {
-            self.expr(&call.name, out)?;
+            self.expr(&call.name, sink)?;
         }
 
-        out.write(b"(")?;
+        sink.body.write(b"(")?;
 
         for (i, arg) in call.args.args.iter().enumerate() {
             if i > 0 {
-                out.write(b", ")?;
+                sink.body.write(b", ")?;
             }
-            self.arg(arg, out)?;
+            self.arg(arg, sink)?;
         }
 
-        out.write(b")")?;
+        sink.body.write(b")")?;
         Ok(())
     }
 
-    fn arg(&mut self, arg: &Arg, out: &mut impl Write) -> AutoResult<()> {
+    fn arg(&mut self, arg: &Arg, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         match arg {
-            Arg::Pos(expr) => self.expr(expr, out),
+            Arg::Pos(expr) => self.expr(expr, sink),
             Arg::Name(name) => out.write_all(name.as_bytes()).map_err(Into::into),
             Arg::Pair(key, expr) => {
                 out.write_all(key.as_bytes())?;
                 out.write(b": ")?;
-                self.expr(expr, out)?;
+                self.expr(expr, sink)?;
                 Ok(())
             }
         }
     }
 
-    fn array(&mut self, elems: &[Expr], out: &mut impl Write) -> AutoResult<()> {
+    fn array(&mut self, elems: &[Expr], sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         out.write(b"[")?;
 
         for (i, elem) in elems.iter().enumerate() {
             if i > 0 {
-                out.write(b", ")?;
+                sink.body.write(b", ")?;
             }
-            self.expr(elem, out)?;
+            self.expr(elem, sink)?;
         }
 
+        let out = &mut sink.body;
         out.write(b"]")?;
         Ok(())
     }
 
-    fn index(&mut self, arr: &Box<Expr>, idx: &Box<Expr>, out: &mut impl Write) -> AutoResult<()> {
-        self.expr(arr, out)?;
-        out.write(b"[")?;
-        self.expr(idx, out)?;
-        out.write(b"]")?;
+    fn index(&mut self, arr: &Box<Expr>, idx: &Box<Expr>, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
+        self.expr(arr, sink)?;
+        sink.body.write(b"[")?;
+        self.expr(idx, sink)?;
+        sink.body.write(b"]")?;
         Ok(())
     }
 
-    fn dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
-        self.expr(lhs, out)?;
-        out.write(b".")?;
-        self.expr(rhs, out)?;
+    fn dot(&mut self, lhs: &Expr, rhs: &Expr, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        let _ = out;
+        self.expr(lhs, sink)?;
+        sink.body.write_all(b".")?;
+        self.expr(rhs, sink)?;
         Ok(())
     }
 
-    fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
+    fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         out.write(b"class ")?;
         out.write_all(type_decl.name.as_bytes())?;
         out.write(b" {")?;
@@ -481,15 +519,16 @@ impl JavaScriptTrans {
 
         // Methods
         for method in &type_decl.methods {
-            out.write(b"\n\n    ")?;
-            self.method_in_class(method, out)?;
+            sink.body.write(b"\n\n    ")?;
+            self.method_in_class(method, sink)?;
         }
 
-        out.write(b"\n}")?;
+        sink.body.write(b"\n}")?;
         Ok(())
     }
 
-    fn method_in_class(&mut self, func: &Fn, out: &mut impl Write) -> AutoResult<()> {
+    fn method_in_class(&mut self, func: &Fn, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         out.write_all(func.name.as_bytes())?;
         out.write(b"(")?;
 
@@ -504,29 +543,37 @@ impl JavaScriptTrans {
         out.write(b") {")?;
 
         // Method body
-        for stmt in &func.body.stmts {
-            out.write(b"\n        ")?;
+        for (i, stmt) in func.body.stmts.iter().enumerate() {
+            let line = func.body.source_lines.get(i).copied().unwrap_or(0);
+            sink.record();
+            sink.set_source_line(line);
+            sink.body.write(b"\n        ")?;
             // Convert .x to this.x in method body
-            self.stmt_with_this(stmt, out)?;
+            self.stmt_with_this(stmt, sink)?;
         }
+        sink.record();
+        let out = &mut sink.body;
         out.write(b"\n    }")?;
 
         Ok(())
     }
 
-    fn stmt_with_this(&mut self, stmt: &Stmt, out: &mut impl Write) -> AutoResult<()> {
+    fn stmt_with_this(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         match stmt {
             Stmt::Expr(expr) => {
                 out.write(b"return ")?;
-                self.expr_with_this(expr, out)?;
+                self.expr_with_this(expr, sink)?;
+                let out = &mut sink.body;
                 out.write(b";")?;
                 Ok(())
             }
-            _ => self.stmt(stmt, out),
+            _ => self.stmt(stmt, sink),
         }
     }
 
-    fn expr_with_this(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
+    fn expr_with_this(&mut self, expr: &Expr, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         match expr {
             // Convert .x (which is parsed as self.x) to this.x
             Expr::Dot(object, field) => {
@@ -540,9 +587,9 @@ impl JavaScriptTrans {
                     }
                 }
                 // For other dot expressions, recurse normally
-                self.expr_with_this(object, out)?;
-                out.write(b".")?;
-                out.write_all(field.as_bytes())?;
+                self.expr_with_this(object, sink)?;
+                sink.body.write_all(b".")?;
+                sink.body.write_all(field.as_bytes())?;
                 Ok(())
             }
             // Convert self to this
@@ -550,28 +597,29 @@ impl JavaScriptTrans {
                 out.write(b"this")?;
                 Ok(())
             }
-            // For other expressions, recurse and handle Dot in binary ops
+            // For other dot expressions, recurse and handle Dot in binary ops
             Expr::Bina(lhs, Op::Dot, rhs) => {
-                self.expr_with_this(lhs, out)?;
-                out.write(b".")?;
-                self.expr(rhs, out)
+                self.expr_with_this(lhs, sink)?;
+                sink.body.write_all(b".")?;
+                self.expr(rhs, sink)
             }
             // For other binary ops, recurse on both sides
             Expr::Bina(lhs, op, rhs) => {
-                self.expr_with_this(lhs, out)?;
-                out.write(format!(" {} ", op.op()).as_bytes()).to()?;
-                self.expr_with_this(rhs, out)
+                self.expr_with_this(lhs, sink)?;
+                sink.body.write(format!(" {} ", op.op()).as_bytes()).to()?;
+                self.expr_with_this(rhs, sink)
             }
             // For unary operations (like negation), recurse on the inner expression
             Expr::Unary(op, inner) => {
-                out.write(format!("{}", op.op()).as_bytes()).to()?;
-                self.expr_with_this(inner, out)
+                sink.body.write(format!("{}", op.op()).as_bytes()).to()?;
+                self.expr_with_this(inner, sink)
             }
-            _ => self.expr(expr, out),
+            _ => self.expr(expr, sink),
         }
     }
 
-    fn enum_decl(&mut self, enum_decl: &EnumDecl, out: &mut impl Write) -> AutoResult<()> {
+    fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         out.write(b"const ")?;
         out.write_all(enum_decl.name.as_bytes())?;
         out.write(b" = Object.freeze({")?;
@@ -595,17 +643,21 @@ impl JavaScriptTrans {
 impl Trans for JavaScriptTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
         // Find main function
-        let main_func = ast.stmts.iter().find(|s| {
-            if let Stmt::Fn(func) = s {
-                func.name == "main"
-            } else {
-                false
-            }
-        }).cloned();
+        let main_func = ast
+            .stmts
+            .iter()
+            .find(|s| {
+                if let Stmt::Fn(func) = s {
+                    func.name == "main"
+                } else {
+                    false
+                }
+            })
+            .cloned();
 
         // Split into declarations and main statements, preserving source line info
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
-        let mut main_stmts: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
+        let mut main_stmts: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
 
         let source_lines = ast.source_lines;
         for (i, stmt) in ast.stmts.into_iter().enumerate() {
@@ -627,12 +679,14 @@ impl Trans for JavaScriptTrans {
 
         // Generate declarations first
         for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.record();
             sink.set_source_line(*line);
-            self.stmt(decl, &mut sink.body)?;
+            self.stmt(decl, sink)?;
             if i < decls.len() - 1 {
                 sink.body.write(b"\n\n")?;
             }
         }
+        sink.record();
 
         // Generate main function or wrap statements
         if let Some(main_stmt) = main_func {
@@ -640,7 +694,9 @@ impl Trans for JavaScriptTrans {
             if !decls.is_empty() {
                 sink.body.write(b"\n\n")?;
             }
-            self.stmt(&main_stmt, &mut sink.body)?;
+            sink.record();
+            self.stmt(&main_stmt, sink)?;
+            sink.record();
 
             // Call main at the end
             sink.body.write(b"\n\nmain();\n")?;
@@ -652,10 +708,12 @@ impl Trans for JavaScriptTrans {
             sink.body.write(b"function main() {")?;
 
             for (stmt, line) in &main_stmts {
+                sink.record();
                 sink.set_source_line(*line);
                 sink.body.write(b"\n    ")?;
-                self.stmt(stmt, &mut sink.body)?;
+                self.stmt(stmt, sink)?;
             }
+            sink.record();
 
             sink.body.write(b"\n}")?;
 
@@ -672,7 +730,6 @@ mod tests {
     use super::*;
     use crate::parser::Parser;
     // Plan 091: Universe removed
-    
 
     fn test_a2j(case: &str) -> AutoResult<()> {
         let parts: Vec<&str> = case.split("_").collect();
@@ -686,7 +743,7 @@ mod tests {
 
         // Plan 091: JavaScriptTrans no longer needs Universe, but Parser still requires it
         // Plan 091: Universe removed
-    let _scope = crate::scope_manager::ScopeManager::new();
+        let _scope = crate::scope_manager::ScopeManager::new();
         let mut parser = Parser::from(src.as_str());
         let ast = parser.parse()?;
         let mut sink = Sink::new(name.into());

@@ -1,5 +1,4 @@
 use std::time::Instant;
-use std::path::PathBuf;
 
 pub struct RunResult {
     pub stdout: String,
@@ -46,15 +45,37 @@ pub fn run_source(source: &str) -> RunResult {
 
 /// Run source that belongs to a project example. `project_dir` is relative to
 /// `examples/playground-demo`; the entry file is `main.at` inside that directory.
-pub fn run_project_source(source: &str, project_dir: &str) -> RunResult {
+/// When `files` is provided, the project is first materialized in a temp
+/// directory with those edited contents overlaid, so edits to non-entry files
+/// take effect too.
+pub fn run_project_source(
+    source: &str,
+    project_dir: &str,
+    files: Option<Vec<crate::project::ProjectFile>>,
+) -> RunResult {
     let start = Instant::now();
 
-    let examples_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("examples/playground-demo"))
-        .unwrap_or_else(|| PathBuf::from("examples/playground-demo"));
-    let entry_path = examples_dir.join(project_dir).join("main.at");
+    let examples_dir = crate::project::project_examples_dir();
+
+    // With edited files, run from a temp copy; otherwise run in place.
+    let temp_dir = match &files {
+        Some(f) => match crate::project::prepare_project_temp_dir(source, project_dir, Some(f)) {
+            Ok(dir) => Some(dir),
+            Err(e) => {
+                return RunResult {
+                    stdout: format!("Error: {}", e),
+                    result: String::new(),
+                    time_ms: start.elapsed().as_millis() as u64,
+                    bytecode: Vec::new(),
+                }
+            }
+        },
+        None => None,
+    };
+    let entry_path = match &temp_dir {
+        Some(dir) => dir.join("main.at"),
+        None => examples_dir.join(project_dir).join("main.at"),
+    };
 
     let (result, stdout, bytecode) = match auto_lang::run_with_capture_and_path_and_bytecode(
         source,
@@ -67,6 +88,10 @@ pub fn run_project_source(source: &str, project_dir: &str) -> RunResult {
             Vec::new(),
         ),
     };
+
+    if let Some(dir) = temp_dir {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     let time_ms = start.elapsed().as_millis() as u64;
 

@@ -66,7 +66,8 @@ impl TypeScriptTrans {
         }
     }
 
-    fn print_indent(&self, out: &mut impl Write) -> AutoResult<()> {
+    fn print_indent(&self, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         for _ in 0..self.indent {
             out.write(b"    ")?;
         }
@@ -74,18 +75,18 @@ impl TypeScriptTrans {
     }
 
     /// Write an opening brace and increase indentation for the block body.
-    fn open_block(&mut self, out: &mut impl Write) -> AutoResult<()> {
-        out.write(b" {")?;
+    fn open_block(&mut self, sink: &mut Sink) -> AutoResult<()> {
+        sink.body.write(b" {")?;
         self.indent();
         Ok(())
     }
 
     /// Close the current block at the current indentation level.
-    fn close_block(&mut self, out: &mut impl Write) -> AutoResult<()> {
+    fn close_block(&mut self, sink: &mut Sink) -> AutoResult<()> {
         self.dedent();
-        out.write(b"\n")?;
-        self.print_indent(out)?;
-        out.write(b"}")?;
+        sink.body.write(b"\n")?;
+        self.print_indent(sink)?;
+        sink.body.write(b"}")?;
         Ok(())
     }
 
@@ -98,13 +99,12 @@ impl TypeScriptTrans {
 
 impl Trans for TypeScriptTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
-        // Phase 1: Transpile AST into a buffer (this sets needs_range, needs_print)
-        let mut body_buf: Vec<u8> = Vec::new();
+        // Phase 1: Transpile AST directly into sink.body (this sets needs_range,
+        // needs_print). Runtime imports will be prepended afterward so that
+        // source_map entries stay aligned with the emitted code lines.
 
-        // Find main function
-        let main_func = ast.stmts.iter().find(|s| {
-            matches!(s, Stmt::Fn(func) if func.name == "main")
-        }).cloned();
+        // Find main function and its source line
+        let mut main_func: Option<(Stmt, usize)> = None;
 
         // Split into declarations and main statements, preserving source line info
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
@@ -113,8 +113,9 @@ impl Trans for TypeScriptTrans {
         let source_lines = ast.source_lines;
         for (i, stmt) in ast.stmts.into_iter().enumerate() {
             let line = source_lines.get(i).copied().unwrap_or(0);
-            // Skip main function declaration - we'll handle it specially
+            // Save main function declaration - we'll handle it specially
             if matches!(&stmt, Stmt::Fn(func) if func.name == "main") {
+                main_func = Some((stmt, line));
                 continue;
             }
 
@@ -128,55 +129,59 @@ impl Trans for TypeScriptTrans {
 
         // Generate declarations first
         for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.record();
             sink.set_source_line(*line);
-            self.stmt(decl, &mut body_buf)?;
+            self.stmt(decl, sink)?;
             if i < decls.len() - 1 {
-                body_buf.write(b"\n\n")?;
+                sink.body.write(b"\n\n")?;
             }
         }
+        sink.record();
 
         // Generate main function or wrap statements
-        if let Some(main_stmt) = main_func {
+        if let Some((ref main_stmt, main_line)) = main_func {
             // Output the main function
             if !decls.is_empty() {
-                body_buf.write(b"\n\n")?;
+                sink.body.write(b"\n\n")?;
             }
-            self.stmt(&main_stmt, &mut body_buf)?;
+            sink.record();
+            sink.set_source_line(main_line);
+            self.stmt(main_stmt, sink)?;
+            sink.record();
 
             // Call main at the end
-            body_buf.write(b"\n\nmain();\n")?;
+            sink.body.write(b"\n\nmain();\n")?;
         } else if !main_stmts.is_empty() {
             // Wrap statements in a main function
             if !decls.is_empty() {
-                body_buf.write(b"\n\n")?;
+                sink.body.write(b"\n\n")?;
             }
-            body_buf.write(b"function main(): void")?;
-            self.open_block(&mut body_buf)?;
+            sink.body.write(b"function main(): void")?;
+            self.open_block(sink)?;
 
             for (stmt, line) in &main_stmts {
+                sink.record();
                 sink.set_source_line(*line);
-                body_buf.write(b"\n")?;
-                self.print_indent(&mut body_buf)?;
-                self.stmt(stmt, &mut body_buf)?;
+                sink.body.write(b"\n")?;
+                self.print_indent(sink)?;
+                self.stmt(stmt, sink)?;
             }
+            sink.record();
 
-            self.close_block(&mut body_buf)?;
+            self.close_block(sink)?;
 
             // Call main at the end
-            body_buf.write(b"\n\nmain();\n")?;
+            sink.body.write(b"\n\nmain();\n")?;
         }
 
-        // Phase 2: Write conditional runtime import based on what was used
+        // Phase 2: Build conditional runtime import based on what was used
         sink.clear_source_line();
-        self.inject_runtime_import(&mut sink.body)?;
+        let mut import_buf: Vec<u8> = Vec::new();
+        self.inject_runtime_import(&mut import_buf)?;
         if self.needs_range || self.needs_print {
-            sink.body.write(b"\n")?;
+            import_buf.write(b"\n")?;
         }
-
-        // Phase 3: Append the transpiled body
-        // Track newlines from body_buf through sink for source mapping
-        sink.track_newlines(&body_buf);
-        sink.body.write_all(&body_buf)?;
+        sink.prepend_body(&import_buf);
 
         Ok(())
     }
