@@ -7825,11 +7825,21 @@ impl Codegen {
             // Plan 126: Go expression - expr.go (spawn background task)
             // Fire-and-forget semantics: spawn the future and discard the result
             Expr::Go { expr } => {
-                // Compile the inner expression (should evaluate to a Future)
+                // Compile the inner expression (should evaluate to a Future).
+                // For an async block `~{ ... }`, the codegen compiles the body
+                // inline and leaves a single Future value on the stack.
                 self.compile_expr(expr)?;
-                // Emit SPAWN_GO to spawn the future in background
-                // SPAWN_GO pops the Future, spawns it, and pushes void
+                // Emit SPAWN_GO to spawn the future in background. SPAWN_GO pops
+                // the single Future value and spawns it (fire-and-forget); it
+                // pushes nothing back, so the net stack effect is zero.
                 self.emit(OpCode::SPAWN_GO);
+                // Plan 359 G1: SPAWN_GO leaves nothing on the stack (void), so
+                // the statement-level POP must be suppressed. Reuse the
+                // existing `last_was_native_void` signal so `needs_pop` is
+                // false and no stray POP eats a value below the stack,
+                // which previously caused a stack underflow after a few spawns.
+                self.last_was_native_void = true;
+                self.last_expr_type = ObjectType::Void;
             }
             // Plan 321: yield expression — compile inner expr, then emit YIELD_VAL
             Expr::Yield(expr) => {

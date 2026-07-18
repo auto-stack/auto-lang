@@ -173,3 +173,32 @@ all three backends agree:
 - `bool` results are read as 0/1 ints (Auto has no first-class bool payload in
   `Result`; the native oracle maps Rust `bool` to 0/1 for comparison).
 
+## Concurrency (Plan 359 Phase 5)
+
+These are language-level limitations of the Auto concurrency model. They are
+not test-case divergences; they describe what the runtime supports today.
+
+- **DIV-CONC-1 — `~{ ... }.go` spawn is synchronous-inline (timing).**
+  `~{ body }.go` no longer crashes (Plan 359 G1 fixed a stack underflow in the
+  `SPAWN_GO` handler and a stray POP in the `Expr::Go` codegen). However, the
+  `Expr::AsyncBlock` codegen currently compiles the body **inline** in the
+  caller's code stream and passes a placeholder offset (`0`) to `CREATE_FUTURE`.
+  As a result the spawned body executes synchronously at the spawn point, and
+  `SPAWN_GO` cannot start a real background task (it guards against `body_offset
+  == 0` to avoid restarting at address 0). Fire-and-forget programs therefore
+  run without crashing, but the spawn does not yet provide true concurrent
+  execution. Fixing this requires compiling async-block bodies out-of-line into
+  a separate code region and recording the real offset in the Future.
+
+- **DIV-CONC-2 — channels have no Auto-level syntax (language design gap).**
+  The VM defines `CHAN_NEW` (0x85), `SEND` (0x86), `RECV` (0x87), and
+  `TRY_RECV` (0x88) opcodes with full engine handlers and a Tokio-backed
+  `AutoChannel` runtime (`crates/auto-lang/src/vm/channel.rs`), but **no Auto
+  surface syntax generates them**. There is no `chan` keyword, no `<-` send/recv
+  operator, and no `Channel.new()`/`.send()`/`.recv()` builtin that the parser
+  or codegen recognizes. Adding channels is therefore a language-design task
+  (deciding syntax + semantics), not a bug fix. Until such syntax exists,
+  channel programs cannot be written in Auto source; the opcodes are only
+  reachable by hand-assembled ABT. This is tracked as a known limitation.
+
+

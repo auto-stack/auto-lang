@@ -5738,38 +5738,50 @@ impl AutoVM {
                 }
 
                 // Plan 126: SPAWN_GO - fire-and-forget spawn
-                // Pop function address and arg_count from stack, spawn in background
-                // Returns void (no value pushed to stack)
-                // Stack layout: [..., func_addr:i32, arg_count:i32] (high to low)
+                // Pops a single value from the stack (a Future created by an
+                // async block `~{ ... }.go`, encoded as (future_id << 8) | 0xF0,
+                // or a closure id) and spawns it as a background task.
+                // Returns void (no value pushed to stack).
+                // Stack layout: [..., future_or_closure:i32]
                 OpCode::SPAWN_GO => {
-                    // Pop the function address (or closure reference)
-                    let target = task.ram.pop_i32() as usize;
-                    // Pop arg count
-                    let arg_count = task.ram.pop_i32() as usize;
+                    // Pop the single value pushed by the Expr::Go codegen.
+                    let value = task.ram.pop_i32();
 
-                    // Collect args from stack
-                    let mut args = Vec::with_capacity(arg_count);
-                    for _ in 0..arg_count {
-                        args.push(task.ram.pop_i32());
-                    }
-
-                    // Spawn a new task for this function
-                    let new_task_id = self.spawn_task(target, 1024);
-
-                    // Initialize the new task's stack with args
-                    if let Some(new_task_arc) = self.tasks.get(&new_task_id) {
-                        if let Ok(mut new_task) = new_task_arc.try_lock() {
-                            // Push args in reverse order (A, B, C)
-                            for arg in args.into_iter().rev() {
-                                new_task.ram.push_i32(arg);
+                    // Decode the value: a Future is encoded as (future_id << 8) | 0xF0.
+                    if (value & 0xFF) == 0xF0 {
+                        let future_id = (value >> 8) as u32;
+                        // Look up the future to obtain its body offset, then
+                        // spawn a background task starting at that offset.
+                        if let Some(future_arc) = self.futures.get(&future_id) {
+                            let body_offset = {
+                                let future = future_arc.read().unwrap();
+                                future.body_offset as usize
+                            };
+                            // Note: the AsyncBlock codegen currently compiles
+                            // the body inline and passes a placeholder offset
+                            // (0) to CREATE_FUTURE, so the body has already run
+                            // synchronously by the time SPAWN_GO executes. Only
+                            // spawn a real background task when we have a valid
+                            // (non-zero, in-range) body offset, to avoid
+                            // restarting execution at address 0.
+                            if body_offset != 0 && body_offset < self.flash.memory.len() {
+                                let _new_task_id = self.spawn_task(body_offset, 1024);
                             }
+                            // Fire-and-forget: we do not push task_id back and
+                            // do not wait for the spawned task.
                         }
-                        // If we can't lock, the task will just sit idle
-                        // This is fire-and-forget, so we don't propagate errors
+                    } else {
+                        // Otherwise treat the value as a closure id. Spawn a
+                        // background task at the closure's function address so
+                        // that the closure's body runs concurrently.
+                        let closure_id = value as u32;
+                        if let Some(closure_guard) = self.closures.get(&closure_id) {
+                            let func_addr = closure_guard.func_addr as usize;
+                            let _new_task_id = self.spawn_task(func_addr, 1024);
+                        }
+                        // If neither a valid future nor closure, silently drop
+                        // the value (fire-and-forget; never crash on bad input).
                     }
-
-                    // Fire-and-forget: no value pushed to stack (returns void)
-                    // Unlike SPAWN, we don't push task_id back
                 }
 
                 // Plan 127: TASK_LOOP - enter task message processing loop
