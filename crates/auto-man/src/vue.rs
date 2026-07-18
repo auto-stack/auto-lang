@@ -1158,9 +1158,16 @@ export default router
                             all_components.push(("".to_string(), "app".to_string(), vue_code.clone(), widget.name.clone()));
                         } else {
                             // Additional widgets in app.at become components
+                            // Extract store deps from app.at so these components get store imports
+                            let app_store_deps = auto_lang::extract_store_deps_from_file(
+                                app_at.to_str().unwrap()
+                            );
                             let mut gen = VueGenerator::new_shadcn();
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
+                            }
+                            if !app_store_deps.is_empty() {
+                                gen = gen.with_store_deps(app_store_deps.clone());
                             }
                             match gen.generate(widget) {
                                 Ok(widget_code) => {
@@ -1258,6 +1265,11 @@ export default router
                         for comp in &components {
                             all_shadcn_components.insert(comp.clone());
                         }
+                        // Extract store deps from this .at file so re-generated
+                        // components get their store import + `const store = ...`
+                        let file_store_deps = auto_lang::extract_store_deps_from_file(
+                            path.to_str().unwrap()
+                        );
                         for widget in &widgets {
                             if let Some(ref routes) = widget.routes {
                                 all_routes.extend(routes.routes.clone());
@@ -1266,6 +1278,9 @@ export default router
                             let mut gen = VueGenerator::new_shadcn();
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
+                            }
+                            if !file_store_deps.is_empty() {
+                                gen = gen.with_store_deps(file_store_deps.clone());
                             }
                             match gen.generate(widget) {
                                 Ok(widget_code) => {

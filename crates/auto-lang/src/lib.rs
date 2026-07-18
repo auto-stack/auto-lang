@@ -3971,7 +3971,7 @@ fn is_store_use_stmt(use_stmt: &crate::ast::Use) -> bool {
 }
 
 /// Extract store names from `use store: <Name>` declarations.
-fn extract_store_imports_from_ast(code: &crate::ast::Code) -> Vec<String> {
+pub fn extract_store_imports_from_ast(code: &crate::ast::Code) -> Vec<String> {
     let mut stores = Vec::new();
     for stmt in &code.stmts {
         if let crate::ast::Stmt::Use(ref use_stmt) = stmt {
@@ -3981,6 +3981,24 @@ fn extract_store_imports_from_ast(code: &crate::ast::Code) -> Vec<String> {
         }
     }
     stores
+}
+
+/// Parse an .at file and extract store dependency names from `use store: <Name>` declarations.
+/// Convenience for downstream tools (auto-man) that need store_deps when re-generating
+/// individual components.
+pub fn extract_store_deps_from_file(path: &str) -> Vec<String> {
+    use crate::session::CompilerSession;
+    let code = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let session = CompilerSession::ui().with_backend("vue");
+    let mut parser = Parser::from(code.as_str());
+    parser = parser.with_session(session);
+    match parser.parse() {
+        Ok(ast) => extract_store_imports_from_ast(&ast),
+        Err(_) => Vec::new(),
+    }
 }
 
 /// // Check if any widget has routes

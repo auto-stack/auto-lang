@@ -7,7 +7,8 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
     msg Msg {
         SelectAll, SelectPinned, SelectRecent,
         SelectTag(str), SelectNote(int),
-        NewNote, NewNoteInFolder(str)
+        NewNote, NewNoteInFolder(str),
+        ToggleDarkMode
     }
 
     view {
@@ -260,5 +261,6 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
         .SelectNote(i) -> { store.active_id = i }
         .NewNote -> { store.NewNote() }
         .NewNoteInFolder(f) -> { store.NewNoteInFolder(f) }
+        .ToggleDarkMode -> { store.ToggleDarkMode() }
     }
 }

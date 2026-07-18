@@ -1231,7 +1231,8 @@ impl VueGenerator {
         // format!("{:?}", widget.view_tree) which caused OOM on large
         // view trees with Expr::If nodes — handler check is sufficient)
         if !self.has_dark_mode {
-            let has_toggle = widget.handlers.contains_key("ToggleDarkMode")
+            // Handler keys are stored as ".ToggleDarkMode" (with leading dot)
+            let has_toggle = widget.handlers.contains_key(".ToggleDarkMode")
                 || widget.lifecycle.iter().any(|l| l.name.contains("DarkMode") || l.name.contains("dark_mode"));
             if has_toggle {
                 self.has_dark_mode = true;
@@ -1296,11 +1297,7 @@ impl VueGenerator {
 
         // Then generate script (which can now include shadcn imports and router)
         let script = self.generate_script(widget)?;
-        if script.contains("useNotesStoreStore") {
-            eprintln!("DBG store: script CONTAINS store import for widget {}", widget.name);
-        } else if !self.store_deps.is_empty() {
-            eprintln!("DBG store: script MISSING store import for widget {} (deps={:?})", widget.name, self.store_deps);
-        }        let style = self.generate_style();
+        let style = self.generate_style();
 
         // Plan 100: Add lang="ts" for TypeScript output
         let script_tag = if self.use_typescript {
@@ -1571,7 +1568,6 @@ impl VueGenerator {
 
         // Plan 351: store composable imports + const store
         if !self.store_deps.is_empty() {
-            eprintln!("DBG store: adding imports for {:?}", self.store_deps);
             for dep in &self.store_deps {
                 script.push_str(&format!(
                     "import {{ use{}Store }} from '@/stores/use{}Store'\n",
@@ -2125,10 +2121,12 @@ impl VueGenerator {
                         }
                         attrs.push(format!(":{}=\"{}\"", key, value_str));
                     }
-                    // Add :key binding so sub-widget re-creates when data changes (e.g., switching notes)
-                    if let Some(expr) = first_prop_expr {
-                        attrs.push(format!(":key=\"{}?.id\"", expr));
-                    }
+                    // Add :key binding for component reuse identity.
+                    // Use the widget name as a stable key (not the prop value) so
+                    // components UPDATE their props rather than being destroyed/recreated.
+                    // This is critical for components like AutoDownEditor (Tiptap) that
+                    // throw errors on unmount/remount cycles.
+                    attrs.push(format!(":key=\"'{}'\"", html_tag));
                     // Event handlers
                     for (event, aura_event) in events {
                         let vue_event = self.auto_event_to_vue(event);

@@ -43,7 +43,7 @@ store NotesStore {
         }
 
         .NewNote -> {
-            create_note("", "")
+            create_note("", "", "")
             .notes = list_notes()
             .active_id = .notes.len() - 1
         }
