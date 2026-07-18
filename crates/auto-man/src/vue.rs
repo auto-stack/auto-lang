@@ -1421,6 +1421,63 @@ export default router
         Ok(())
     }
 
+    /// Generate scaffolding only (package.json, vite.config, tsconfig, etc.)
+    /// WITHOUT overwriting component .vue files that were already written incrementally.
+    pub fn generate_scaffolding_only(&self) -> AutoResult<()> {
+        let output_path = &self.output_dir;
+        let src_dir = output_path.join("src");
+        let components_dir = src_dir.join("components");
+        let lib_dir = src_dir.join("lib");
+        let assets_dir = src_dir.join("assets");
+
+        fs::create_dir_all(output_path)
+            .map_err(|e| format!("Failed to create output directory: {}", e))?;
+        fs::create_dir_all(&src_dir)
+            .map_err(|e| format!("Failed to create src: {}", e))?;
+        fs::create_dir_all(&components_dir)
+            .map_err(|e| format!("Failed to create src/components: {}", e))?;
+        fs::create_dir_all(&lib_dir)
+            .map_err(|e| format!("Failed to create src/lib: {}", e))?;
+        fs::create_dir_all(&assets_dir)
+            .map_err(|e| format!("Failed to create src/assets: {}", e))?;
+
+        // Scaffolding files (not component .vue files)
+        write_project_files(
+            output_path,
+            &self.name,
+            &self.app_vue_code,
+            &self.shadcn_components,
+            self.has_routes,
+            &self.npm_deps,
+        )?;
+
+        // Write App.vue (the root component)
+        let app_vue_path = src_dir.join("App.vue");
+        if !app_vue_path.exists() {
+            fs::write(&app_vue_path, &self.app_vue_code)
+                .map_err(|e| format!("Failed to write App.vue: {}", e))?;
+        }
+
+        // Write main.ts
+        let main_ts_content = generate_main_ts(self.has_routes);
+        fs::write(src_dir.join("main.ts"), &main_ts_content)
+            .map_err(|e| format!("Failed to write main.ts: {}", e))?;
+
+        // Write index.css
+        let index_css_content = generate_index_css();
+        fs::write(assets_dir.join("index.css"), &index_css_content)
+            .map_err(|e| format!("Failed to write src/assets/index.css: {}", e))?;
+
+        // Write tsconfig.json
+        let tsconfig = generate_tsconfig();
+        fs::write(output_path.join("tsconfig.json"), &tsconfig)
+            .map_err(|e| format!("Failed to write tsconfig.json: {}", e))?;
+
+        println!("{}", "✓ Generated scaffolding (preserved incremental components)".bright_green());
+
+        Ok(())
+    }
+
     /// Regenerate only source files (App.vue, pages, components, router)
     /// This preserves node_modules, package.json, and installed shadcn components
     pub fn regenerate_source_files(&self) -> AutoResult<()> {
@@ -2221,14 +2278,18 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // Step 1: Generate project structure if not exists, or regenerate source files
     current_step += 1;
     println!();
-    if !project.exists() {
+    if !project.exists() && changed_count == 0 {
+        // Fresh project: no incremental changes were written, so generate everything
         println!("▶ Step {}/{}: Generating Vue project...", current_step, total_steps);
         project.generate()?;
+    } else if !project.exists() && changed_count > 0 {
+        // Project dir was removed but we already wrote files incrementally.
+        // Only generate scaffolding (package.json, vite.config, etc), don't
+        // overwrite the incrementally-written component .vue files.
+        println!("▶ Step {}/{}: Generating project scaffolding...", current_step, total_steps);
+        project.generate_scaffolding_only()?;
     } else if changed_count == 0 {
-        // Only regenerate if no incremental changes were detected
-        // This handles the case where output files are missing but source hasn't changed
         println!("▶ Step {}/{}: Checking source files...", current_step, total_steps);
-        // Skip regeneration if we already did incremental updates
     }
 
     // Copy handmade theme assets if available
@@ -2391,6 +2452,16 @@ fn compile_at_to_vue(_at_path: &Path, content: &str, root_dir: &Path) -> Result<
             // Plan 351: detect use store: Name
             if use_stmt.paths.len() == 1 && use_stmt.paths[0].as_str() == "store" {
                 store_deps.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+            // Also check module_path for store (new-style use)
+            if let Some(ref mp) = use_stmt.module_path {
+                if mp.segments.len() == 1 && mp.segments[0].as_str() == "store" {
+                    let dep_name = use_stmt.items.first().map(|s| s.as_str().to_string())
+                        .unwrap_or_else(|| mp.segments[0].as_str().to_string());
+                    if !store_deps.contains(&dep_name) {
+                        store_deps.push(dep_name);
+                    }
+                }
             }
         }
     }

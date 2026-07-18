@@ -73,10 +73,21 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
                 }
 
                 if .editing == true {
-                    textarea { value: .edit_body, oninput: .EditBody, placeholder: "Start writing...", style: "flex-1 p-3 border rounded-lg text-sm text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary" }
+                    autodown_editor {
+                        content: .edit_body
+                        onupdate: .EditBody
+                        can_edit: true
+                        show_actions: false
+                        style: "flex-1 min-h-64 mt-2 border rounded-lg"
+                    }
                 }
                 if .editing == false {
-                    text .note.body { style: "text-foreground flex-1 leading-relaxed whitespace-pre-wrap mt-2" }
+                    autodown_editor {
+                        content: .note.body
+                        can_edit: false
+                        show_actions: false
+                        style: "flex-1 min-h-64 mt-2"
+                    }
                 }
                 style: "px-6 pt-6 pb-2 flex-1"
             }

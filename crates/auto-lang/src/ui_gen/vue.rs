@@ -1296,7 +1296,11 @@ impl VueGenerator {
 
         // Then generate script (which can now include shadcn imports and router)
         let script = self.generate_script(widget)?;
-        let style = self.generate_style();
+        if script.contains("useNotesStoreStore") {
+            eprintln!("DBG store: script CONTAINS store import for widget {}", widget.name);
+        } else if !self.store_deps.is_empty() {
+            eprintln!("DBG store: script MISSING store import for widget {} (deps={:?})", widget.name, self.store_deps);
+        }        let style = self.generate_style();
 
         // Plan 100: Add lang="ts" for TypeScript output
         let script_tag = if self.use_typescript {
@@ -1567,6 +1571,7 @@ impl VueGenerator {
 
         // Plan 351: store composable imports + const store
         if !self.store_deps.is_empty() {
+            eprintln!("DBG store: adding imports for {:?}", self.store_deps);
             for dep in &self.store_deps {
                 script.push_str(&format!(
                     "import {{ use{}Store }} from '@/stores/use{}Store'\n",
@@ -7869,14 +7874,17 @@ export function cn(...inputs: ClassValue[]) {
         }
 
         // Auto-generate a computed 'all_tags' property that collects unique tags
-        // from all notes. This allows nav tag bars to update dynamically.
-        code.push_str("        get all_tags() {\n");
-        code.push_str("            const tags = new Set<string>();\n");
-        code.push_str("            for (const n of notes.value) {\n");
-        code.push_str("                if (n && n.tags) for (const t of n.tags) tags.add(t);\n");
-        code.push_str("            }\n");
-        code.push_str("            return Array.from(tags);\n");
-        code.push_str("        },\n");
+        // from all notes — but only if the store doesn't already declare all_tags.
+        let has_all_tags = store.state_vars.iter().any(|s| s.name == "all_tags");
+        if !has_all_tags {
+            code.push_str("        get all_tags() {\n");
+            code.push_str("            const tags = new Set<string>();\n");
+            code.push_str("            for (const n of notes.value) {\n");
+            code.push_str("                if (n && n.tags) for (const t of n.tags) tags.add(t);\n");
+            code.push_str("            }\n");
+            code.push_str("            return Array.from(tags);\n");
+            code.push_str("        },\n");
+        }
 
         code.push_str("    }\n");
         code.push_str("}\n");

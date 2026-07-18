@@ -1,55 +1,253 @@
-// sidebar.at — Simplified flat navigation (Plan 354 v3).
-// TODO: restore folder tree + tag filter after Plan 356 (Vue generator OOM fix).
+// sidebar.at — NavTree widget (restored from inline, D1 OOM fix confirmed).
+// Full tree navigation: shortcuts, search, tag filter, folder-grouped notes.
 
 use store: NotesStore
 
 widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int) {
     msg Msg {
         SelectAll, SelectPinned, SelectRecent,
-        SelectTag(str), SelectNote(int)
+        SelectTag(str), SelectNote(int),
+        NewNote, NewNoteInFolder(str)
     }
 
     view {
         col {
-            style: "w-80 border-r border-gray-200 flex-col flex-shrink-0"
+            style: "w-80 border-border flex-col flex-shrink-0"
+
+            // View mode tabs
             row {
-                style: "gap-1 px-2 pt-2 pb-1"
+                style: "gap-1 px-2 pt-2"
                 button "All" {
                     onclick: .SelectAll
-                    style: "flex-1 px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                    style: if .active_folder == "all" {
+                        "flex-1 px-2 py-1 text-xs font-medium rounded bg-accent text-accent-foreground"
+                    } else {
+                        "flex-1 px-2 py-1 text-xs rounded text-muted-foreground hover:bg-muted"
+                    }
                 }
                 button "Pinned" {
                     onclick: .SelectPinned
-                    style: "px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                    style: if .active_folder == "pinned" {
+                        "flex-1 px-2 py-1 text-xs font-medium rounded bg-accent text-accent-foreground"
+                    } else {
+                        "flex-1 px-2 py-1 text-xs rounded text-muted-foreground hover:bg-muted"
+                    }
                 }
                 button "Recent" {
                     onclick: .SelectRecent
-                    style: "px-2 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                    style: if .active_folder == "recent" {
+                        "flex-1 px-2 py-1 text-xs font-medium rounded bg-accent text-accent-foreground"
+                    } else {
+                        "flex-1 px-2 py-1 text-xs rounded text-muted-foreground hover:bg-muted"
+                    }
                 }
             }
 
-            separator { style: "border-t border-gray-200" }
+            // Search input
+            input {
+                placeholder: "Search notes..."
+                value: .search
+                style: "mx-2 mt-2 px-3 py-1.5 text-sm border border-border rounded-lg bg-background text-foreground"
+            }
 
-            col {
-                style: "flex-1 overflow-y-auto px-1 gap-0.5"
-                for i, note in .store.notes {
-                    if .search == "" {
-                        button {
-                            text note.title
-                            onclick: .SelectNote(i)
-                            style: "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+            // Tag filters
+            row {
+                style: "flex-wrap gap-1 px-2 mt-2 mb-1"
+                for t in .store.all_tags {
+                    button t {
+                        onclick: .SelectTag(t)
+                        style: if .store.active_tag == t {
+                            "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
+                        } else {
+                            "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
                         }
                     }
-                    if .search != "" {
-                        if note.title.contains(.search) {
-                            button {
-                                text note.title
-                                onclick: .SelectNote(i)
-                                style: "w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-gray-50"
+                }
+            }
+
+            // Note tree (scrollable)
+            col {
+                style: "flex-1 overflow-y-auto px-1 gap-0.5"
+
+                if .active_folder == "all" {
+                    row {
+                        style: "px-3 py-1 items-center"
+                        text "Notes" { style: "text-xs font-bold text-muted-foreground uppercase flex-1" }
+                        button "+" {
+                            onclick: .NewNote
+                            style: "text-xs text-muted-foreground hover:text-primary"
+                        }
+                    }
+                    for i, note in .store.notes {
+                        if note.folder == "" {
+                            if .store.active_tag == "" {
+                                button {
+                                    text note.title
+                                    onclick: .SelectNote(i)
+                                    style: if i == .store.active_id {
+                                        "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                    } else {
+                                        "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                    }
+                                }
+                            }
+                            if .store.active_tag != "" {
+                                if note.tags.contains(.store.active_tag) {
+                                    button {
+                                        text note.title
+                                        onclick: .SelectNote(i)
+                                        style: if i == .store.active_id {
+                                            "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                        } else {
+                                            "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    row {
+                        style: "px-3 py-1 items-center"
+                        text "Work" { style: "text-xs font-bold text-muted-foreground uppercase flex-1" }
+                        button "+" {
+                            onclick: .NewNoteInFolder("work")
+                            style: "text-xs text-muted-foreground hover:text-primary"
+                        }
+                    }
+                    for i, note in .store.notes {
+                        if note.folder == "work" {
+                            if .store.active_tag == "" {
+                                button {
+                                    text note.title
+                                    onclick: .SelectNote(i)
+                                    style: if i == .store.active_id {
+                                        "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                    } else {
+                                        "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                    }
+                                }
+                            }
+                            if .store.active_tag != "" {
+                                if note.tags.contains(.store.active_tag) {
+                                    button {
+                                        text note.title
+                                        onclick: .SelectNote(i)
+                                        style: if i == .store.active_id {
+                                            "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                        } else {
+                                            "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    row {
+                        style: "px-3 py-1 items-center"
+                        text "Personal" { style: "text-xs font-bold text-muted-foreground uppercase flex-1" }
+                        button "+" {
+                            onclick: .NewNoteInFolder("personal")
+                            style: "text-xs text-muted-foreground hover:text-primary"
+                        }
+                    }
+                    for i, note in .store.notes {
+                        if note.folder == "personal" {
+                            if .store.active_tag == "" {
+                                button {
+                                    text note.title
+                                    onclick: .SelectNote(i)
+                                    style: if i == .store.active_id {
+                                        "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                    } else {
+                                        "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                    }
+                                }
+                            }
+                            if .store.active_tag != "" {
+                                if note.tags.contains(.store.active_tag) {
+                                    button {
+                                        text note.title
+                                        onclick: .SelectNote(i)
+                                        style: if i == .store.active_id {
+                                            "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                        } else {
+                                            "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
+
+                if .active_folder == "pinned" {
+                    for i, note in .store.notes {
+                        if note.pinned {
+                            if .store.active_tag == "" {
+                                button {
+                                    text note.title
+                                    onclick: .SelectNote(i)
+                                    style: if i == .store.active_id {
+                                        "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                    } else {
+                                        "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                    }
+                                }
+                            }
+                            if .store.active_tag != "" {
+                                if note.tags.contains(.store.active_tag) {
+                                    button {
+                                        text note.title
+                                        onclick: .SelectNote(i)
+                                        style: if i == .store.active_id {
+                                            "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                        } else {
+                                            "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if .active_folder == "recent" {
+                    for i, note in .store.notes {
+                        if .store.active_tag == "" {
+                            button {
+                                text note.title
+                                onclick: .SelectNote(i)
+                                style: if i == .store.active_id {
+                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                } else {
+                                    "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                }
+                            }
+                        }
+                        if .store.active_tag != "" {
+                            if note.tags.contains(.store.active_tag) {
+                                button {
+                                    text note.title
+                                    onclick: .SelectNote(i)
+                                    style: if i == .store.active_id {
+                                        "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                    } else {
+                                        "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            separator { style: "border-t border-border" }
+            button {
+                text "Dark Mode"
+                onclick: .ToggleDarkMode
+                style: "mx-2 my-1 px-3 py-1.5 text-xs rounded-lg text-muted-foreground hover:bg-muted"
             }
         }
     }
@@ -58,7 +256,9 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
         .SelectAll -> { store.active_folder = "all"; store.active_tag = "" }
         .SelectPinned -> { store.active_folder = "pinned"; store.active_tag = "" }
         .SelectRecent -> { store.active_folder = "recent"; store.active_tag = "" }
-        .SelectTag(t) -> { store.SelectTag(t) }
+        .SelectTag(t) -> { store.active_tag = t }
         .SelectNote(i) -> { store.active_id = i }
+        .NewNote -> { store.NewNote() }
+        .NewNoteInFolder(f) -> { store.NewNoteInFolder(f) }
     }
 }

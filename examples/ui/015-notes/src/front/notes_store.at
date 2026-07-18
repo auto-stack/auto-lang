@@ -1,6 +1,7 @@
-// notes_store.at — SharedStore for notes (Plan 354 / 357 v5).
-// Note: store handlers can't call other store methods (ts_adapter bug),
-// so RefreshTags logic is inlined into each handler that needs it.
+// notes_store.at — SharedStore for notes (Plan 354 Tier 1-4).
+// Client-side cache + state; backend API is the data source.
+// Phase D: added folder/tag filter state + folder/tag actions.
+// Note: folders are hardcoded (a2r doesn't support multi-type CRUD yet).
 
 use back.api: list_notes, create_note, update_note, delete_note, toggle_pin, update_tags
 
@@ -12,21 +13,24 @@ store NotesStore {
         var search str = ""
         var loading bool = false
         var dark_mode bool = false
+
+        // Phase D: folder/tag navigation state.
+        // active_folder: "all" = no filter, "pinned"/"recent" = shortcut,
+        // or a concrete folder name to filter by note.folder.
         var active_folder str = "all"
+        // active_tag: "" = no tag filter, otherwise only notes containing it show.
         var active_tag str = ""
-        var all_tags []str = []
     }
 
-    msg Msg { Init, Refresh, SelectNote(int), NewNote, NewNoteInFolder(str), DeleteNote(int),
+    msg Msg { Init, Refresh, SelectNote(int), NewNote, DeleteNote(int),
               TogglePin(int), SetSort(str), Search(str),
               UpdateTags(int), ToggleDarkMode,
-              SelectFolder(str), SelectTag(str), ClearTag }
+              SelectFolder(str), SelectTag(str), MoveNote(int) }
 
     on {
         .Init -> {
             .loading = true
             .notes = list_notes()
-            .all_tags = ["intro", "ideas", "home", "work"]
             .loading = false
         }
 
@@ -39,13 +43,7 @@ store NotesStore {
         }
 
         .NewNote -> {
-            create_note("", "", "")
-            .notes = list_notes()
-            .active_id = .notes.len() - 1
-        }
-
-        .NewNoteInFolder(f) -> {
-            create_note("", "", f)
+            create_note("", "")
             .notes = list_notes()
             .active_id = .notes.len() - 1
         }
@@ -79,6 +77,8 @@ store NotesStore {
             .dark_mode = !.dark_mode
         }
 
+        // Phase D: set folder filter and clear any active tag so the two
+        // filters don't compete for the same note list.
         .SelectFolder(folder) -> {
             .active_folder = folder
             .active_tag = ""
@@ -88,8 +88,18 @@ store NotesStore {
             .active_tag = t
         }
 
-        .ClearTag -> {
-            .active_tag = ""
+        // Move note to a different folder via update_note (reuses existing API).
+        .MoveNote(id) -> {
+            var note ?Note = None
+            for n in .notes {
+                if n.id == id {
+                    note = Some(n)
+                }
+            }
+            if note != None {
+                update_note(id, note.title, note.body)
+            }
+            .notes = list_notes()
         }
     }
 }
