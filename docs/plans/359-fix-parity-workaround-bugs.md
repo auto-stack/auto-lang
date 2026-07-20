@@ -299,3 +299,196 @@
 - 按 6 阶段从低风险到高风险排列 ✓
 - 每个 task 有根因、修复位置、验证步骤 ✓
 - 阶段 4（B1/D1）是最高杠杆修复，标注为高风险 ✓
+
+---
+
+# 执行状态（2025-07 更新）
+
+## 已完成
+
+### 阶段 1-6 的 14 个 bug 修复
+
+| Bug | 修复 | 验证 |
+|-----|------|------|
+| A4 (shr wrapping) | ✅ 加 n≥32 守卫 | sha2 10/10 |
+| A1 (位运算链) | ✅ native 返回类型 Void→Int | base64 33/33（简单场景）|
+| A3 (字面量解析) | ✅ I64/U64 类型推断 | 单测通过 |
+| A5 (int 跨帧) | ✅ 随 A1 修复 | sha2 单测通过 |
+| B4 (bool 边界) | ✅ encode_bool | regex/rusqlite bool 移除 |
+| B5 (bool to_str) | ✅ decode_bool | 全部测试 |
+| C3 (for+break) | ✅ push_scope | serde_json |
+| C5 (if var 作用域) | ✅ compile_body_inline | regex |
+| C4 (call+return) | ✅ needs_pop \|\|→&& | regex |
+| E1 (const 边界) | ✅ Const→global_vars (int only) | 部分 |
+| C1 (var str 全局) | ✅ add_string interning | 部分 |
+| B1 (struct 边界) | ✅ CREATE_OBJ remap | url 改为返回 struct |
+| D1 (递归 enum) | ✅ 非 bug，已加回归测试 | — |
+| B6 (type 方法) | ✅ 正常工作 | — |
+| G1 (spawn 崩溃) | ✅ 防崩溃（不真正并发）| tokio |
+| G2 (Handle[T]) | ✅ [] 泛型语法 | tokio |
+| H3 (a2r clone) | ✅ Expr::Ident 加 clone | url |
+
+### Workaround 清理
+
+| 库 | 移除 | 保留 | 一致性 |
+|----|------|------|--------|
+| sha2 | A5 | A1/A3/A4（模块作用域仍坏）| 10/10 |
+| base64 | A1 | E1（const str 仍坏）| 33/33 |
+| regex | B4/C3 | C1（var str 仍坏）| 45/45 |
+| url | B1 → Url struct | DIV-URL-VM-2 | 30/30 |
+| rusqlite | B4 | float-in-Result split | 65/65 |
+| serde_json | header 更新 | C2（StringBuilder）| 56/56 |
+
+**全部 7 库 257 测试 100% 三方一致，0 回归。**
+
+---
+
+## 剩余工作
+
+以下 bug 在 Plan 359 中尝试修复但**不完整**，需要深入处理。清理过程中确认它们在特定上下文仍损坏。
+
+### 阶段 7: 修复不完整的 bug（3 个）
+
+#### Task 20: E1-补全 — 模块级 `const str` / `var str` 全局变量损坏
+
+**问题:** E1 只修复了 `int` 全局变量。`const str` 和 `var str` 仍损坏：
+```
+var PAT str = "hello"
+PAT.len()        // 返回 3（"PAT" 的长度），而非 5
+PAT.char_at(0)   // 返回 'P' 的码点（80），而非 'h' 的码点（104）
+```
+C1 的 `add_string` interning 修复不完整——全局名字虽然 intern 了，但**存储的 string 值**的 NanoValue 索引在 pool merge 后仍错位。
+
+**根因方向:** `emit_global_store` 存储字符串值时，值的 NanoValue 中的 string pool 索引是 codegen 时的局部索引。当 linker 合并多个模块的 string pool 后，该索引不再指向正确的字符串。`remap_string_indices` 只重写了字节码操作数（LOAD_STR/LOAD_GLOBAL），没有重写**已存储在 globals map 中的 NanoValue**。
+
+**修复方案:**
+1. 方案 A：在 linker merge string pool 后，遍历 `vm.globals` 中所有 string NanoValue，用 remap 表更新它们的索引
+2. 方案 B：全局变量的值在 init task 运行时存储（运行时 pool 已 frozen），确保存储时用的是最终索引
+
+**验证:**
+```auto
+var PAT str = "hello"
+fn check() int { PAT.len() }
+fn main() { print(check().to(str)) }  // 应输出 5
+```
+
+**影响:** 移除 base64 E1 workaround（alphabet 重复定义）、regex C1 workaround（参数传递替代全局）
+
+#### Task 21: A1-补全 — 位运算链式调用在模块作用域仍误算
+
+**问题:** A1 修复了简单场景的位运算链（`x.and(3).shl(4)` 在 base64 中工作），但在 sha2 的**模块作用域**复杂链式调用中仍误算：
+```
+// sha2 mk32 中：返回值不正确
+fn mk32(b0 int, b1 int, b2 int, b3 int) int {
+    return b0.shl(24).or(b1.shl(16)).or(b2.shl(8)).or(b3)  // 误算
+}
+```
+而拆分为单独 let 绑定则正确。
+
+**根因方向:** A1 修复了 `native_catalog` 的返回类型注册（Void→Int）和 `stdlib_method_return_type`，但 `infer_object_type`（codegen.rs ~8841-8894）对**多层链式调用**的接收者类型推断可能仍有问题。第一层 `.shl(24)` 返回 Int，但第二层 `.or(...)` 的接收者（第一层的结果）类型推断可能失败。
+
+**修复方案:**
+1. 在 `infer_object_type` 的 `Expr::Call` 分支中，递归推断内部调用的返回类型，而非只查一层
+2. 或在 `stdlib_method_return_type` 中补充对链式调用的支持
+
+**验证:**
+```auto
+fn mk32(b0 int, b1 int) int {
+    return b0.shl(24).or(b1.shl(16))  // 应等于 (b0 << 24) | (b1 << 16)
+}
+fn main() {
+    var r = mk32(1, 2)
+    print(r.to(str))  // 应输出 16777216 + 131072 = 16908288... 实际计算 0x01020000
+}
+```
+
+**影响:** 移除 sha2 的 `mk32` 拆分 workaround、base64 的部分 let 绑定
+
+#### Task 22: G1-补全 — `.go` spawn 的真正并发执行
+
+**问题:** G1 修复了 spawn 的栈下溢崩溃，但 spawn 的 async block body 用 placeholder offset 0 编译，导致 body **同步内联执行**而非真正 spawn 到新 task：
+```auto
+fn main() {
+    var counter int = 0
+    ~{ counter = 42 }.go  // body_offset=0, SPAWN_GO 跳过 spawn
+    print(counter.to(str))  // 输出 42（因为 body 已同步执行），而非不确定值
+}
+```
+
+**根因方向:** `Expr::Go` 的 codegen（codegen.rs ~7825）编译 async block `~{ ... }` 时，使用 `CREATE_FUTURE` 但 body 的函数地址是 placeholder 0。需要：
+1. 将 async block body 编译为独立的 out-of-line 函数
+2. 将该函数的真实地址传递给 SPAWN_GO
+
+**修复方案:**
+1. 在 codegen 中，遇到 `~{ ... }.go` 时，将 body 编译为一个闭包/独立函数（类似普通 fn 的编译方式），获取真实地址
+2. SPAWN_GO 用该地址 spawn 新 task
+3. 处理变量捕获（闭包捕获外部变量）
+
+**验证:**
+```auto
+fn main() {
+    var counter int = 0
+    ~{
+        counter = 42
+    }.go
+    // spawn 后立即读取——如果真正并发，counter 可能还是 0
+    // 如果同步执行，counter 一定是 42
+    // 测试至少确认 spawn 不阻塞主流程
+    print(counter.to(str))
+}
+```
+
+**影响:** tokio 可添加真正的 spawn/join 测试
+
+### 阶段 8: 语言设计限制（需要新语法，非 bug 修复）
+
+以下不是 bug，而是缺少语言特性。需要独立的语言设计决策。
+
+#### Task 23: G3 — Channel 的 Auto 语法绑定
+
+**现状:** VM 有 CHAN_NEW/SEND/RECV 操作码和 `AutoChannel` 运行时（vm/channel.rs），但无 Auto 语法调用它们。
+
+**需要设计:**
+- `chan_new[T](buf int)` 的语法（或 `Chan[T]::new(buf)`）
+- `chan.send(val)` / `chan.recv()` 的方法绑定到 SEND/RECV 操作码
+- 可能需要 `<-` 操作符（如 Go）或方法调用风格
+
+**影响:** tokio 可添加 channel 测试
+
+#### Task 24: `Result[T, E]` 泛型语法
+
+**现状:** parser 不接受 `Result[T, E]` 泛型语法（`[` 后跟类型参数列表）。只能用 `!T` 表示 Result 或 `Result T` 单参数形式。这导致 rusqlite 的 float-in-Result 无法表达，需要 status/value 拆分。
+
+**需要:** `Result[T, E]` 和 `Option[T]` 的方括号泛型语法（G2 已修复了 `Handle[T]`，但 Result/Option 可能需要额外处理）。
+
+**验证:**
+```auto
+fn get_float() Result[float, str] { Ok(3.14) }
+fn main() {
+    var r = get_float()
+    is r { Ok(f) => print(f.to(str)); Err(e) => print("err") }
+}
+```
+
+**影响:** 移除 rusqlite 的 status/value 拆分 workaround
+
+#### Task 25: 递归 enum 的 struct variant `is` 解构
+
+**现状:** tuple variant（`node(Tree, Tree)`）的 `is` 解构正常工作（D1 已验证）。但 struct variant（`Pt.p { x int }`）的 `is` 解构解析失败——pratt parser 消费了 `{...}`。
+
+**需要:** parser 在 `is` 分支条件中正确路由 `Kind.variant { field }` 到 struct cover 解析。
+
+**影响:** 更自然的 enum API（可选，当前 tuple variant 已满足需求）
+
+---
+
+## 剩余工作优先级
+
+| 优先级 | Task | 理由 |
+|--------|------|------|
+| 高 | Task 20 (E1-补全 const/var str) | 影响 base64 + regex，workaround 明确可移除 |
+| 高 | Task 21 (A1-补全 位运算链) | 影响 sha2，mk32 可简化为 hex 字面量 |
+| 中 | Task 22 (G1-补全 spawn 并发) | 影响 tokio 真正并发测试 |
+| 中 | Task 24 (Result[T,E] 语法) | 影响 rusqlite float-in-Result |
+| 低 | Task 23 (channel 语法) | 语言设计任务 |
+| 低 | Task 25 (struct variant is) | 当前 tuple variant 够用 |
