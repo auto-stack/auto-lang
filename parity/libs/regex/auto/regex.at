@@ -9,11 +9,11 @@
 ///   * `[a-z]`  — character range inside a class
 ///   * literal characters
 ///
-/// `is_match(pattern, input)` returns `1` if `pattern` matches *anywhere* in
-/// `input` (unanchored search), else `0` — mirroring `regex::Regex::is_match`.
-/// (It returns an `int`, not a `bool`, because a `bool` returned across the
-/// Auto module boundary is corrupted by the VM — only `str`/`int`/`Result`
-/// cross safely.)
+/// `is_match(pattern, input)` returns `true` if `pattern` matches *anywhere* in
+/// `input` (unanchored search), else `false` — mirroring `regex::Regex::is_match`.
+/// (A `bool` crossing the Auto module boundary used to be corrupted by the VM,
+/// so this returned `int` (1/0); fixed by Plan 359 / B4 — `bool` now crosses
+/// safely, including the `use auto.regex:` import used by the test driver.)
 /// `find(pattern, input)` returns the leftmost match as a string (or "" with
 /// no match), mirroring the matched text of `regex::Regex::find`.
 ///
@@ -37,14 +37,18 @@
 ///     recursive frames corrupts the value. The recursive helpers therefore
 ///     return nothing and set the module globals `MATCHED` / `LAST_END` on
 ///     success (mirroring serde_json's `POS`/`N`/`ERR` globals).
-///  3. **`is_match` returns `int` (1/0), not `bool`** — a `bool` crossing the
-///     module boundary to the caller reads back as a wrong value. The Rust
-///     oracle asserts integers too, so both backends agree.
-///  4. **Control flow is nested if/else with a single trailing return per
-///     function.** A block whose last statements are a function call followed
-///     by `return` can emit invalid bytecode (stack underflow); an accumulator
-///     `var` assigned inside an `if` and returned at the end can also lose the
-///     assignment. Each function therefore returns directly from each branch.
+///  3. **`is_match` returns `bool`.** A `bool` crossing the module boundary to
+///     the caller used to read back as a wrong value; that was fixed by Plan
+///     359 / B4, so the public entry point now returns a plain `bool`. (The
+///     Rust oracle asserts bools too, so both backends agree.)
+///  4. **Control flow: nested if/else, accumulator vars, and `for + break`
+///     all work.** Plan 359 / C3/C4 fixed the VM bugs where an accumulator
+///     `var` assigned inside an `if` could lose its assignment on return, and
+///     where `for + break` miscompiled. `match_atom_against` now uses an
+///     accumulator + single trailing return and `break`s out of its class
+///     scan on first match. The recursive matcher (`match_here` / `match_star`)
+///     still uses the globals-on-success shape from reason 2, and keeps its
+///     early-return structure for that reason (not for C3/C4).
 ///
 /// ## Greedy backtracking == regex crate for this subset.
 ///
@@ -107,49 +111,60 @@ fn atom_len(pattern str, plen int, pp int) int {
 }
 
 /// Test whether the atom at `pattern[pp]` matches a single char code `c`.
-/// Returns the atom end position on a match, or -1. Returns directly from
-/// each branch (no accumulator) because an accumulator var assigned inside an
-/// `if` is not reliably returned by the VM.
+/// Returns the atom end position on a match, or -1. Uses a single accumulator
+/// `result` assigned inside the branches and returned at the end (Plan 359 /
+/// C3/C4 fixed the VM bug where an accumulator assigned in an `if` could lose
+/// its value on return, so we no longer need to return directly from each
+/// branch).
 fn match_atom_against(pattern str, plen int, pp int, c int) int {
+    var result int = -1
     let pc int = pattern.char_at(pp)
     if pc == 91 {
         let cl int = class_close(pattern, plen, pp)
         if cl < 0 {
             // Malformed '[': behave as a literal '['.
-            if c == 91 { return pp + 1 }
-            return -1
-        }
-        var k int = pp + 1
-        var matched bool = false
-        for k < cl {
-            let ch int = pattern.char_at(k)
-            // Range `lo-hi` needs ch, '-', hi all inside the class.
-            if k + 2 < cl {
-                if pattern.char_at(k + 1) == 45 {
-                    let lo int = ch
-                    let hi int = pattern.char_at(k + 2)
-                    if c >= lo {
-                        if c <= hi { matched = true }
+            if c == 91 { result = pp + 1 }
+        } else {
+            var k int = pp + 1
+            var matched bool = false
+            for k < cl {
+                let ch int = pattern.char_at(k)
+                // Range `lo-hi` needs ch, '-', hi all inside the class.
+                if k + 2 < cl {
+                    if pattern.char_at(k + 1) == 45 {
+                        let lo int = ch
+                        let hi int = pattern.char_at(k + 2)
+                        if c >= lo {
+                            if c <= hi {
+                                matched = true
+                                break
+                            }
+                        }
+                        k = k + 3
+                    } else {
+                        if c == ch {
+                            matched = true
+                            break
+                        }
+                        k = k + 1
                     }
-                    k = k + 3
                 } else {
-                    if c == ch { matched = true }
+                    if c == ch {
+                        matched = true
+                        break
+                    }
                     k = k + 1
                 }
-            } else {
-                if c == ch { matched = true }
-                k = k + 1
             }
+            if matched { result = cl + 1 }
         }
-        if matched { return cl + 1 }
-        return -1
-    }
-    if pc == 46 {
+    } else if pc == 46 {
         // '.' matches any single char.
-        return pp + 1
+        result = pp + 1
+    } else {
+        if c == pc { result = pp + 1 }
     }
-    if c == pc { return pp + 1 }
-    return -1
+    return result
 }
 
 /// Match the atom at `pattern[pp]` against `input[ii]`. Returns the atom end
@@ -215,10 +230,9 @@ fn match_here(pattern str, plen int, input str, ilen int, pp int, ii int) {
     }
 }
 
-/// Returns `1` if `pattern` matches anywhere in `input` (unanchored search),
-/// else `0` — mirroring `regex::Regex::is_match`. Returns `int` rather than
-/// `bool` because a `bool` crossing the module boundary is corrupted by the VM.
-fn is_match(pattern str, input str) int {
+/// Returns `true` if `pattern` matches anywhere in `input` (unanchored
+/// search), else `false` — mirroring `regex::Regex::is_match`.
+fn is_match(pattern str, input str) bool {
     let plen int = pattern.len()
     let ilen int = input.len()
     var s int = 0
@@ -226,10 +240,10 @@ fn is_match(pattern str, input str) int {
         MATCHED = false
         LAST_END = -1
         match_here(pattern, plen, input, ilen, 0, s)
-        if MATCHED { return 1 }
+        if MATCHED { return true }
         s = s + 1
     }
-    return 0
+    return false
 }
 
 /// Return the leftmost match of `pattern` in `input` as a string, or "" if

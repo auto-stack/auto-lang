@@ -77,6 +77,31 @@ fn check_str(n int, name str, status int, value str, expected str) {
     }
 }
 
+/// Assert a bool coercion returned status 0 AND the expected bool value.
+/// (Plan 359 / B4 fixed bool crossing the module boundary, so the value
+/// accessor yields a plain bool; we compare bool == bool directly.)
+fn check_bool(n int, name str, status int, value bool, expected bool) {
+    if status == 0 {
+        if value == expected {
+            tap_ok(n, name)
+        } else {
+            tap_not_ok(n, name, "value got " + value.to(str) + " expected " + expected.to(str))
+        }
+    } else {
+        tap_not_ok(n, name, "status " + status.to(str) + " (expected ok)")
+    }
+}
+
+/// Assert a bool predicate matched the expected bool (no status: the predicate
+/// is itself a bool, e.g. option_is_none).
+fn check_bool_pred(n int, name str, actual bool, expected bool) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
 fn main() {
     // ---- data_type / variant kinds ----
     check_status(1, "test_null_kind", data_type(null_()), 0)
@@ -134,10 +159,10 @@ fn main() {
     check_status(39, "test_f64_invalid_type_null", from_f64_status(null_()), 1)
 
     // ---- bool (`i64 -> i != 0`) ----
-    check_int(40, "test_bool_zero", from_bool_status(integer_(0)), from_bool_value(integer_(0)), 0)
-    check_int(41, "test_bool_one", from_bool_status(integer_(1)), from_bool_value(integer_(1)), 1)
-    check_int(42, "test_bool_nonzero", from_bool_status(integer_(7)), from_bool_value(integer_(7)), 1)
-    check_int(43, "test_bool_negative", from_bool_status(integer_(-3)), from_bool_value(integer_(-3)), 1)
+    check_bool(40, "test_bool_zero", from_bool_status(integer_(0)), from_bool_value(integer_(0)), false)
+    check_bool(41, "test_bool_one", from_bool_status(integer_(1)), from_bool_value(integer_(1)), true)
+    check_bool(42, "test_bool_nonzero", from_bool_status(integer_(7)), from_bool_value(integer_(7)), true)
+    check_bool(43, "test_bool_negative", from_bool_status(integer_(-3)), from_bool_value(integer_(-3)), true)
     check_status(44, "test_bool_invalid_type_text", from_bool_status(text_("x")), 1)
     check_status(45, "test_bool_invalid_type_real", from_bool_status(real_(1.0)), 1)
 
@@ -149,9 +174,9 @@ fn main() {
     check_status(50, "test_string_invalid_type_real", from_string_status(real_(1.0)), 1)
 
     // ---- Option<T> (Null -> None) ----
-    check_status(51, "test_option_none_on_null", option_is_none(null_()), 1)
-    check_status(52, "test_option_some_on_int", option_is_none(integer_(5)), 0)
-    check_status(53, "test_option_some_on_text", option_is_none(text_("x")), 0)
+    check_bool_pred(51, "test_option_none_on_null", option_is_none(null_()), true)
+    check_bool_pred(52, "test_option_some_on_int", option_is_none(integer_(5)), false)
+    check_bool_pred(53, "test_option_some_on_text", option_is_none(text_("x")), false)
 
     // ---- Blob (`value.as_blob()`) — bytes read back as a string ----
     check_str(54, "test_blob_ok", from_blob_status(blob_("abc")), from_blob_value(blob_("abc")), "abc")

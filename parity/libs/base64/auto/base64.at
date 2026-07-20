@@ -5,16 +5,19 @@
 ///
 /// VM quirk workarounds used here:
 ///   * Bitwise *operator* syntax (`<<`, `&`, ...) is not supported; the VM
-///     exposes them as int methods (`.shl`, `.and`, ...). Chaining two of those
-///     methods in one expression (`x.and(3).shl(4)`) currently miscomputes, so
-///     every native call is applied to a separately-named binding.
+///     exposes them as int methods (`.shl`, `.and`, ...). (Chaining two methods
+///     in one expression used to miscompute, but that was fixed by Plan 359 /
+///     A1 — so `x.and(3).shl(4)` is now safe and used below.)
 ///   * `int.as(char)` does not produce a single-char string, so single
 ///     characters are built with `StringBuilder.new(n).append_char(code).build()`.
 ///   * `str.char_at(i)` returns the code point as `int` (not a one-char str),
 ///     which is exactly what the encoder needs.
-///   * Module-level `const` values are not reliably visible across the module
-///     boundary in the current VM, so the alphabet is defined as a local `let`
-///     inside each function that needs it.
+///   * Module-level `const` values are still not visible — a top-level
+///     `const ALPHABET str = "..."` reads back as `0` even from within the same
+///     module (verified post-Plan-359: prints `0`, and `var str` globals suffer
+///     the same failure — `.len()` returns the length of the *variable name*).
+///     So the alphabet stays as a local `let` inside each function that needs
+///     it. (Plan 359 / E1 did NOT fix this in our build.)
 
 /// Look up the alphabet index for a base64 character code, or -1 if the
 /// character is not a valid standard-alphabet digit. `=` (padding) returns -2.
@@ -53,16 +56,10 @@ fn encode(input str) str {
         var g int = b0.shr(2)
         sb.append_char(alphabet.char_at(g))
         // g1 = ((b0 & 3) << 4) | (b1 >> 4)
-        let lo int = b0.and(3)
-        let lo4 int = lo.shl(4)
-        let hi4 int = b1.shr(4)
-        g = lo4.or(hi4)
+        g = b0.and(3).shl(4).or(b1.shr(4))
         sb.append_char(alphabet.char_at(g))
         // g2 = ((b1 & 15) << 2) | (b2 >> 6)
-        let m1 int = b1.and(15)
-        let m1s int = m1.shl(2)
-        let h2 int = b2.shr(6)
-        g = m1s.or(h2)
+        g = b1.and(15).shl(2).or(b2.shr(6))
         sb.append_char(alphabet.char_at(g))
         // g3 = b2 & 63
         g = b2.and(63)
@@ -76,8 +73,7 @@ fn encode(input str) str {
         let b0 int = input.char_at(i)
         var g int = b0.shr(2)
         sb.append_char(alphabet.char_at(g))
-        let lo int = b0.and(3)
-        g = lo.shl(4)
+        g = b0.and(3).shl(4)
         sb.append_char(alphabet.char_at(g))
         sb.append("==")
     } else {
@@ -86,13 +82,9 @@ fn encode(input str) str {
             let b1 int = input.char_at(i + 1)
             var g int = b0.shr(2)
             sb.append_char(alphabet.char_at(g))
-            let lo int = b0.and(3)
-            let lo4 int = lo.shl(4)
-            let hi4 int = b1.shr(4)
-            g = lo4.or(hi4)
+            g = b0.and(3).shl(4).or(b1.shr(4))
             sb.append_char(alphabet.char_at(g))
-            let m1 int = b1.and(15)
-            g = m1.shl(2)
+            g = b1.and(15).shl(2)
             sb.append_char(alphabet.char_at(g))
             sb.append("=")
         }
@@ -166,23 +158,16 @@ fn decode(input str) {
         }
 
         // b0 = (v0 << 2) | (v1 >> 4)
-        let s0 int = v0.shl(2)
-        let r1 int = v1.shr(4)
-        let b0 int = s0.or(r1)
+        let b0 int = v0.shl(2).or(v1.shr(4))
         sb.append_char(b0)
 
         if v2 >= 0 {
             // b1 = ((v1 & 15) << 4) | (v2 >> 2)
-            let lo1 int = v1.and(15)
-            let lo1s int = lo1.shl(4)
-            let r2 int = v2.shr(2)
-            let b1 int = lo1s.or(r2)
+            let b1 int = v1.and(15).shl(4).or(v2.shr(2))
             sb.append_char(b1)
             if v3 >= 0 {
                 // b2 = ((v2 & 3) << 6) | v3
-                let lo2 int = v2.and(3)
-                let lo2s int = lo2.shl(6)
-                let b2 int = lo2s.or(v3)
+                let b2 int = v2.and(3).shl(6).or(v3)
                 sb.append_char(b2)
             }
         }

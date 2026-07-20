@@ -7,10 +7,10 @@
 //!
 //! The `regex` crate (v1.10) is the oracle. To stay consistent with the
 //! simplified Auto matcher:
-//!   * `is_match` is represented as `i32` (1 = matched, 0 = no match). The
-//!     Auto implementation returns `int` rather than `bool` because a `bool`
-//!     crossing the Auto module boundary is corrupted by the VM; asserting
-//!     integers here keeps both backends in agreement.
+//!   * `is_match` returns `bool`. (The Auto implementation used to return
+//!     `int` (1/0) because a `bool` crossing the Auto module boundary was
+//!     corrupted by the VM; fixed by Plan 359 / B4, so both backends now
+//!     yield a plain `bool`.)
 //!   * `find` returns the matched text as a `String`, or `""` when there is no
 //!     match — matching the Auto `find`. An empty (zero-width) match also
 //!     yields `""`.
@@ -21,10 +21,10 @@
 
 use regex::Regex;
 
-/// 1 if `pattern` matches anywhere in `input`, else 0.
-fn is_match(pattern: &str, input: &str) -> i32 {
+/// `true` if `pattern` matches anywhere in `input`, else `false`.
+fn is_match(pattern: &str, input: &str) -> bool {
     let re = Regex::new(pattern).expect("valid pattern");
-    if re.is_match(input) { 1 } else { 0 }
+    re.is_match(input)
 }
 
 /// The leftmost match of `pattern` in `input` as a string, or "" if none.
@@ -43,32 +43,32 @@ fn find(pattern: &str, input: &str) -> String {
 
 #[test]
 fn test_literal_match_true() {
-    assert_eq!(is_match("abc", "abc"), 1);
+    assert_eq!(is_match("abc", "abc"), true);
 }
 
 #[test]
 fn test_literal_no_match_false() {
-    assert_eq!(is_match("abc", "xyz"), 0);
+    assert_eq!(is_match("abc", "xyz"), false);
 }
 
 #[test]
 fn test_literal_substring_true() {
-    assert_eq!(is_match("bc", "abcde"), 1);
+    assert_eq!(is_match("bc", "abcde"), true);
 }
 
 #[test]
 fn test_literal_full_substring_true() {
-    assert_eq!(is_match("cde", "abcde"), 1);
+    assert_eq!(is_match("cde", "abcde"), true);
 }
 
 #[test]
 fn test_literal_at_end_true() {
-    assert_eq!(is_match("de", "abcde"), 1);
+    assert_eq!(is_match("de", "abcde"), true);
 }
 
 #[test]
 fn test_literal_single_char_true() {
-    assert_eq!(is_match("a", "a"), 1);
+    assert_eq!(is_match("a", "a"), true);
 }
 
 // ============================================================================
@@ -77,22 +77,22 @@ fn test_literal_single_char_true() {
 
 #[test]
 fn test_dot_any_char_true() {
-    assert_eq!(is_match("a.c", "abc"), 1);
+    assert_eq!(is_match("a.c", "abc"), true);
 }
 
 #[test]
 fn test_dot_any_char_axc_true() {
-    assert_eq!(is_match("a.c", "axc"), 1);
+    assert_eq!(is_match("a.c", "axc"), true);
 }
 
 #[test]
 fn test_dot_no_match_wrong_len_false() {
-    assert_eq!(is_match("a.c", "ac"), 0);
+    assert_eq!(is_match("a.c", "ac"), false);
 }
 
 #[test]
 fn test_dot_matches_anywhere_true() {
-    assert_eq!(is_match("x.y", "zxayz"), 1);
+    assert_eq!(is_match("x.y", "zxayz"), true);
 }
 
 // ============================================================================
@@ -101,32 +101,32 @@ fn test_dot_matches_anywhere_true() {
 
 #[test]
 fn test_star_zero_true() {
-    assert_eq!(is_match("ab*c", "ac"), 1);
+    assert_eq!(is_match("ab*c", "ac"), true);
 }
 
 #[test]
 fn test_star_one_true() {
-    assert_eq!(is_match("ab*c", "abc"), 1);
+    assert_eq!(is_match("ab*c", "abc"), true);
 }
 
 #[test]
 fn test_star_many_true() {
-    assert_eq!(is_match("ab*c", "abbbbc"), 1);
+    assert_eq!(is_match("ab*c", "abbbbc"), true);
 }
 
 #[test]
 fn test_star_no_match_false() {
-    assert_eq!(is_match("ab*c", "axc"), 0);
+    assert_eq!(is_match("ab*c", "axc"), false);
 }
 
 #[test]
 fn test_star_only_true() {
-    assert_eq!(is_match("a*", "bbba"), 1);
+    assert_eq!(is_match("a*", "bbba"), true);
 }
 
 #[test]
 fn test_star_empty_match_true() {
-    assert_eq!(is_match("a*", "bbb"), 1);
+    assert_eq!(is_match("a*", "bbb"), true);
 }
 
 // ============================================================================
@@ -135,22 +135,22 @@ fn test_star_empty_match_true() {
 
 #[test]
 fn test_plus_one_true() {
-    assert_eq!(is_match("ab+c", "abc"), 1);
+    assert_eq!(is_match("ab+c", "abc"), true);
 }
 
 #[test]
 fn test_plus_many_true() {
-    assert_eq!(is_match("ab+c", "abbbbc"), 1);
+    assert_eq!(is_match("ab+c", "abbbbc"), true);
 }
 
 #[test]
 fn test_plus_zero_false() {
-    assert_eq!(is_match("ab+c", "ac"), 0);
+    assert_eq!(is_match("ab+c", "ac"), false);
 }
 
 #[test]
 fn test_plus_no_match_false() {
-    assert_eq!(is_match("ab+c", "axc"), 0);
+    assert_eq!(is_match("ab+c", "axc"), false);
 }
 
 // ============================================================================
@@ -159,22 +159,22 @@ fn test_plus_no_match_false() {
 
 #[test]
 fn test_question_zero_true() {
-    assert_eq!(is_match("colou?r", "color"), 1);
+    assert_eq!(is_match("colou?r", "color"), true);
 }
 
 #[test]
 fn test_question_one_true() {
-    assert_eq!(is_match("colou?r", "colour"), 1);
+    assert_eq!(is_match("colou?r", "colour"), true);
 }
 
 #[test]
 fn test_question_two_false() {
-    assert_eq!(is_match("ab?c", "abbc"), 0);
+    assert_eq!(is_match("ab?c", "abbc"), false);
 }
 
 #[test]
 fn test_question_no_match_false() {
-    assert_eq!(is_match("ab?c", "axc"), 0);
+    assert_eq!(is_match("ab?c", "axc"), false);
 }
 
 // ============================================================================
@@ -183,57 +183,57 @@ fn test_question_no_match_false() {
 
 #[test]
 fn test_class_single_true() {
-    assert_eq!(is_match("[abc]", "b"), 1);
+    assert_eq!(is_match("[abc]", "b"), true);
 }
 
 #[test]
 fn test_class_single_no_match_false() {
-    assert_eq!(is_match("[abc]", "d"), 0);
+    assert_eq!(is_match("[abc]", "d"), false);
 }
 
 #[test]
 fn test_class_in_word_true() {
-    assert_eq!(is_match("x[abc]y", "xby"), 1);
+    assert_eq!(is_match("x[abc]y", "xby"), true);
 }
 
 #[test]
 fn test_class_in_word_no_match_false() {
-    assert_eq!(is_match("x[abc]y", "xdy"), 0);
+    assert_eq!(is_match("x[abc]y", "xdy"), false);
 }
 
 #[test]
 fn test_class_range_digit_true() {
-    assert_eq!(is_match("[0-9]", "5"), 1);
+    assert_eq!(is_match("[0-9]", "5"), true);
 }
 
 #[test]
 fn test_class_range_digit_no_match_false() {
-    assert_eq!(is_match("[0-9]", "a"), 0);
+    assert_eq!(is_match("[0-9]", "a"), false);
 }
 
 #[test]
 fn test_class_range_alpha_true() {
-    assert_eq!(is_match("[a-z][0-9]", "k7"), 1);
+    assert_eq!(is_match("[a-z][0-9]", "k7"), true);
 }
 
 #[test]
 fn test_class_range_alpha_no_match_false() {
-    assert_eq!(is_match("[a-z][0-9]", "77"), 0);
+    assert_eq!(is_match("[a-z][0-9]", "77"), false);
 }
 
 #[test]
 fn test_class_with_star_true() {
-    assert_eq!(is_match("[0-9]*", "abc"), 1);
+    assert_eq!(is_match("[0-9]*", "abc"), true);
 }
 
 #[test]
 fn test_class_with_plus_true() {
-    assert_eq!(is_match("[0-9]+x", "12x"), 1);
+    assert_eq!(is_match("[0-9]+x", "12x"), true);
 }
 
 #[test]
 fn test_class_with_plus_no_match_false() {
-    assert_eq!(is_match("[0-9]+x", "abx"), 0);
+    assert_eq!(is_match("[0-9]+x", "abx"), false);
 }
 
 // ============================================================================

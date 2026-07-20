@@ -186,10 +186,9 @@ fn from_bool_status(v: &Val) -> i32 {
     }
 }
 
-fn from_bool_value(v: &Val) -> i32 {
+fn from_bool_value(v: &Val) -> bool {
     let db = conn();
-    let res: bool = db.query_row("SELECT ?1", [val_to_rusqlite(v)], |r| r.get::<_, bool>(0)).unwrap_or(false);
-    if res { 1 } else { 0 }
+    db.query_row("SELECT ?1", [val_to_rusqlite(v)], |r| r.get::<_, bool>(0)).unwrap_or(false)
 }
 
 fn from_string_status(v: &Val) -> i32 {
@@ -206,8 +205,8 @@ fn from_string_value(v: &Val) -> String {
     db.query_row("SELECT ?1", [val_to_rusqlite(v)], |r| r.get::<_, String>(0)).unwrap_or_default()
 }
 
-fn option_is_none(v: &Val) -> i32 {
-    if v.kind == 0 { 1 } else { 0 }
+fn option_is_none(v: &Val) -> bool {
+    v.kind == 0
 }
 
 // ---------------------------------------------------------------------------
@@ -422,22 +421,22 @@ fn test_f64_invalid_type_null() { assert_eq!(from_f64_status(&null_()), 1); }
 #[test]
 fn test_bool_zero() {
     assert_eq!(from_bool_status(&integer_(0)), 0);
-    assert_eq!(from_bool_value(&integer_(0)), 0);
+    assert_eq!(from_bool_value(&integer_(0)), false);
 }
 #[test]
 fn test_bool_one() {
     assert_eq!(from_bool_status(&integer_(1)), 0);
-    assert_eq!(from_bool_value(&integer_(1)), 1);
+    assert_eq!(from_bool_value(&integer_(1)), true);
 }
 #[test]
 fn test_bool_nonzero() {
     assert_eq!(from_bool_status(&integer_(7)), 0);
-    assert_eq!(from_bool_value(&integer_(7)), 1);
+    assert_eq!(from_bool_value(&integer_(7)), true);
 }
 #[test]
 fn test_bool_negative() {
     assert_eq!(from_bool_status(&integer_(-3)), 0);
-    assert_eq!(from_bool_value(&integer_(-3)), 1);
+    assert_eq!(from_bool_value(&integer_(-3)), true);
 }
 #[test]
 fn test_bool_invalid_type_text() { assert_eq!(from_bool_status(&text_("x")), 1); }
@@ -470,11 +469,11 @@ fn test_string_invalid_type_real() { assert_eq!(from_string_status(&real_(1.0)),
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_option_none_on_null() { assert_eq!(option_is_none(&null_()), 1); }
+fn test_option_none_on_null() { assert_eq!(option_is_none(&null_()), true); }
 #[test]
-fn test_option_some_on_int() { assert_eq!(option_is_none(&integer_(5)), 0); }
+fn test_option_some_on_int() { assert_eq!(option_is_none(&integer_(5)), false); }
 #[test]
-fn test_option_some_on_text() { assert_eq!(option_is_none(&text_("x")), 0); }
+fn test_option_some_on_text() { assert_eq!(option_is_none(&text_("x")), false); }
 
 // ---------------------------------------------------------------------------
 // Blob FromSql (`value.as_blob()`) — bytes read back as a string.

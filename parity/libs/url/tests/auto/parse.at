@@ -1,6 +1,12 @@
 /// url parse tests — scheme / host / path extraction + error cases.
 /// TAP output format. Names mirror the Rust oracle in
 /// tests/rust/tests/url.rs so the parity framework can compare three-way.
+///
+/// Plan 359 cleanup: `parse()` now returns `Result[Url, str]`. The Ok cases
+/// read struct fields directly (exercising the B1 fix — a `Url` crosses the
+/// module boundary through `Ok(...)` with readable fields); the Err cases
+/// assert that parsing failed (DIV-URL-VM-2 still corrupts the Err string, so
+/// the message text is not inspected, only Ok-vs-Err).
 use auto.url: parse, scheme, host, path
 
 fn tap_ok(n int, name str) {
@@ -17,16 +23,6 @@ fn check_str(n int, name str, actual str, expected str) {
     } else {
         tap_not_ok(n, name, "got \"" + actual + "\" expected \"" + expected + "\"")
     }
-}
-
-/// Return true if `r` is an Ok result (parse succeeded).
-fn is_ok(r) bool {
-    var out bool = false
-    is r {
-        Ok(v) -> { out = true }
-        Err(e) -> { out = false }
-    }
-    return out
 }
 
 fn check_ok(n int, name str, ok bool) {
@@ -64,9 +60,50 @@ fn main() {
     check_str(11, "test_path_root", path("http://example.com/"), "/")
 
     // ---- parse validation ----
-    check_ok(12, "test_parse_valid_http", is_ok(parse("http://example.com/path")))
-    check_ok(13, "test_parse_valid_https", is_ok(parse("https://example.com")))
-    check_err(14, "test_parse_missing_scheme_separator", is_ok(parse("example.com/path")))
-    check_err(15, "test_parse_empty_string", is_ok(parse("")))
-    check_err(16, "test_parse_only_separator", is_ok(parse("://example.com")))
+    // Each case inspects the Result via an `is` block. The Ok arms read the
+    // `scheme` field off the returned Url (exercises B1: the struct crosses
+    // the module boundary through Result Ok with readable fields). The
+    // `okNN` boolean is true when the Ok arm fired with the expected scheme
+    // (for Ok cases) or false otherwise (for Err cases, where check_err
+    // wants false).
+    var r12 = parse("http://example.com/path")
+    var ok12 bool = false
+    is r12 {
+        Ok(u) -> { ok12 = (u.scheme == "http") }
+        Err(e) -> { ok12 = false }
+    }
+    check_ok(12, "test_parse_valid_http", ok12)
+
+    var r13 = parse("https://example.com")
+    var ok13 bool = false
+    is r13 {
+        Ok(u) -> { ok13 = (u.scheme == "https") }
+        Err(e) -> { ok13 = false }
+    }
+    check_ok(13, "test_parse_valid_https", ok13)
+
+    // Err cases: okNN stays false (Ok arm never fires). check_err wants false.
+    var r14 = parse("example.com/path")
+    var ok14 bool = false
+    is r14 {
+        Ok(u) -> { ok14 = true }
+        Err(e) -> { ok14 = false }
+    }
+    check_err(14, "test_parse_missing_scheme_separator", ok14)
+
+    var r15 = parse("")
+    var ok15 bool = false
+    is r15 {
+        Ok(u) -> { ok15 = true }
+        Err(e) -> { ok15 = false }
+    }
+    check_err(15, "test_parse_empty_string", ok15)
+
+    var r16 = parse("://example.com")
+    var ok16 bool = false
+    is r16 {
+        Ok(u) -> { ok16 = true }
+        Err(e) -> { ok16 = false }
+    }
+    check_err(16, "test_parse_only_separator", ok16)
 }

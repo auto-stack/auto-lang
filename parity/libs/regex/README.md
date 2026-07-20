@@ -18,8 +18,8 @@ The Auto replication exposes matching as **free functions** that take the
 pattern and input strings and return primitives only (the same shape as the
 base64 / url replications).
 
-- `is_match(pattern str, input str) int` — `1` if `pattern` matches anywhere in
-  `input` (unanchored search), else `0`. Mirrors `regex::Regex::is_match`.
+- `is_match(pattern str, input str) bool` — `true` if `pattern` matches anywhere
+  in `input` (unanchored search), else `false`. Mirrors `regex::Regex::is_match`.
 - `find(pattern str, input str) str` — the leftmost match as a string, or `""`
   if there is no match (a zero-width match also yields `""`). Mirrors the
   matched text of `regex::Regex::find`.
@@ -38,15 +38,15 @@ regex engine. Key, deliberate differences:
   this matcher uses recursive backtracking. For greedy repetitions without
   alternation the two produce the same leftmost-longest result, so the test
   cases (chosen to be unambiguous) agree on both backends.
-- **`is_match` returns `int`, not `bool`.** See "Implementation notes" below.
 - **No anchors, alternation, captures, escapes, or repetition of groups.** The
   supported metacharacters are exactly the five listed above. Characters like
   `(`, `)`, `^`, `$`, `\` are treated as literals (matching themselves).
 
 ## Implementation notes (Auto VM workarounds)
 
-The current Auto VM has four load-bearing constraints this library works
-around (the same families hit by serde_json / url):
+The current Auto VM has constraints this library works around (the same
+families hit by serde_json / url). Plan 359 fixed several of them; the
+remaining load-bearing ones are:
 
 1. **Strings are passed as parameters, not module globals.** A module-level
    `var str` is unreadable via `.char_at` / `.len`: `.char_at(0)` returns the
@@ -61,15 +61,17 @@ around (the same families hit by serde_json / url):
    (`match_here`, `match_star`) return nothing and set `MATCHED` / `LAST_END`
    on success — the same pattern serde_json uses with its `POS`/`N`/`ERR`
    globals.
-3. **`is_match` returns `int` (1/0), not `bool`.** A `bool` crossing the module
-   boundary to the caller reads back as a wrong value and compares with
-   garbage. The Rust oracle asserts integers too, so both backends agree.
-4. **Control flow is nested `if`/`else if`/`else` with one trailing return per
-   function.** A block whose last statements are a function call followed by
-   `return` can emit invalid bytecode (stack underflow / `InvalidOpCode(255)`),
-   and an accumulator `var` assigned inside an `if` and returned at the end can
-   lose the assignment. Each function therefore returns directly from each
-   branch.
+
+Plan 359 fixes that allowed workarounds to be dropped:
+
+- **B4 — `is_match` now returns `bool`.** A `bool` crossing the module
+  boundary to the caller used to read back as a wrong value; that is fixed,
+  so `is_match` returns a plain `bool` and the Rust oracle asserts bools too.
+- **C3/C4 — accumulator vars and `for + break`.** An accumulator `var`
+  assigned inside an `if` and returned at the end used to be able to lose the
+  assignment, and `for + break` miscompiled. Both are fixed, so
+  `match_atom_against` now uses an accumulator + single trailing return and
+  `break`s out of its class scan on first match.
 
 `str.char_at(i)` returns the code point as `int`, so all character comparisons
 use integer codes (e.g. `.`=46, `*`=42, `[`=91, `]`=93, `-`=45); strings are
