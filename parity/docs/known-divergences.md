@@ -136,7 +136,11 @@ passes on all three backends); they shaped the scope and API design.
   `float`, read in another module via an `is`/`match` binding, comes back with
   a mangled bit pattern (`5.0` compares unequal to the literal `5.0`). This is
   the same boundary-corruption family as DIV-URL-VM-1/2, now affecting floats
-  in `Result`. Plain (non-`Result`) int / float / str returns cross cleanly.
+  in `Result`. Plain (non-`Result`) int / float / str / bool returns cross
+  cleanly (bool fixed in Plan 359 / B4 — see the rusqlite cleanup). The parser
+  also does not accept the `Result[float, str]` generic syntax that a
+  float-returning coercion would need, so the status/value split is still
+  load-bearing for the f64/f32 coercions.
   Workaround: each `FromSql` coercion is split into two plain-primitive
   functions — `<name>_status(v) int` (0=Ok, 1=InvalidType, 2=OutOfRange) and
   `<name>_value(v) <T>` — neither of which returns a `Result`. The native
@@ -176,8 +180,10 @@ all three backends agree:
 - `FromSql` error variants are encoded as int status codes (0/1/2) rather than
   the `FromSqlError` enum, because Auto has no enums and the VM corrupts Err
   string payloads (DIV-URL-VM-2).
-- `bool` results are read as 0/1 ints (Auto has no first-class bool payload in
-  `Result`; the native oracle maps Rust `bool` to 0/1 for comparison).
+- `bool` results (`from_bool_value`, `option_is_none`) are returned as plain
+  `bool`. (Plan 359 / B4 fixed bool crossing the Auto module boundary, so the
+  native oracle and the Auto side now both yield/compare real `bool`s; the
+  earlier 0/1-int encoding is no longer needed.)
 
 ## Concurrency (Plan 359 Phase 5)
 

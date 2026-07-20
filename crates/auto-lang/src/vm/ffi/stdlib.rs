@@ -1714,7 +1714,7 @@ pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 if let Some(inner) = vm.get_option_inner(instance_id) {
                     match inner {
                         auto_val::Value::Int(n) => task.ram.push_i32(n),
-                        auto_val::Value::Bool(b) => task.ram.push_i32(if b { 1 } else { 0 }),
+                        auto_val::Value::Bool(b) => task.ram.push_nv(auto_val::encode_bool(b)),
                         _other => task.ram.push_i32(opt_val),
                     }
                     return Ok(());
