@@ -1,0 +1,30 @@
+// Test spec with a value-returning default method body (Plan 359 DIV-TRAIT-A2R-1).
+//
+// Before the fix, a2r wrapped the default body as `{ expr; }` -> unit, so a
+// default method declared `fn f() int { return 42 }` produced a trait method
+// `fn f(&self) -> i32 { { 42; } }` and failed E0308 ("expected i32, found ()").
+// After the fix, the body keeps its tail expression and returns i32 correctly.
+//
+// The default body here deliberately uses only a literal return (no field or
+// method access) to isolate DIV-TRAIT-A2R-1. Spec method bodies that access
+// fields or call sibling methods hit a separate, deeper a2r gap (the body's
+// `self.` prefix is not emitted) — see DIV-TRAIT-A2R-3 in known-divergences.md.
+
+spec Answer {
+    fn base() int
+    // value-returning default method
+    fn doubled() int {
+        return 42
+    }
+}
+
+type Fixed as Answer {
+    fn base() int { return 7 }
+    // re-declaration (VM-2 workaround); the Rust side would inherit the default.
+    fn doubled() int { return 42 }
+}
+
+pub fn main() {
+    var a = Fixed()
+    print(a.doubled())
+}

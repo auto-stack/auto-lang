@@ -9426,17 +9426,28 @@ impl RustTrans {
                 write!(sink.body, ")")?;
             }
 
-            // Default method implementation (Plan 019 Stage 8.5)
+            // Default method implementation (Plan 019 Stage 8.5; fixed Plan 359 DIV-TRAIT-A2R-1).
+            // SpecMethod.body is Option<Box<Expr>>. For a block body we delegate to the
+            // generic body() emitter so a value-returning default method keeps its tail
+            // expression (instead of becoming `{ expr; }` = unit, which caused E0308).
+            // body() writes its own { ... } and uses method.ret for string coercion.
             if let Some(ref default_body) = method.body {
-                // SpecMethod.body is Option<Box<Expr>>, emit as { expr }
-                sink.body.write(b" {\n")?;
-                self.indent();
-                self.print_indent(&mut sink.body)?;
-                self.expr(default_body, &mut sink.body)?;
-                sink.body.write(b"\n")?;
-                self.dedent();
-                self.print_indent(&mut sink.body)?;
-                sink.body.write(b"}\n")?;
+                match **default_body {
+                    Expr::Block(ref block_body) => {
+                        self.body(block_body, sink, &method.ret, "")?;
+                    }
+                    _ => {
+                        // Single-expression default body: wrap minimally.
+                        sink.body.write(b" {\n")?;
+                        self.indent();
+                        self.print_indent(&mut sink.body)?;
+                        self.expr(default_body, &mut sink.body)?;
+                        sink.body.write(b"\n")?;
+                        self.dedent();
+                        self.print_indent(&mut sink.body)?;
+                        sink.body.write(b"}\n")?;
+                    }
+                }
             } else {
                 writeln!(sink.body, ";")?;
             }
