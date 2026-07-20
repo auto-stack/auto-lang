@@ -7773,27 +7773,135 @@ impl Codegen {
                 self.emit(OpCode::CREATE_ERR);
             }
             // Plan 124: Async block - ~{ stmts }
+            // Plan 359 Task 22: compile the body OUT-OF-LINE (like a closure) and
+            // hand CREATE_FUTURE a real bytecode address. This lets SPAWN_GO spawn
+            // a genuine background task (rather than running the body inline) and
+            // lets .await run the body on demand. Captured free variables are
+            // passed through the future's env so the spawned task can read/write
+            // them via LOAD_CAPTURED / STORE_CAPTURED (same mechanism as closures).
             Expr::AsyncBlock { body, return_type: _ } => {
-                // Create a Future value wrapping the async block body
-                // The body will be executed when .await is called
-                // For now, we store the body's code offset and compile it inline
-                // In Phase 2.1, we use a simplified approach:
-                // The async block immediately returns a Future that wraps the body
-                // When .await is called, the body is executed
+                // Step 1: Find free variables referenced by the body (captures).
+                // Reuse the closure free-var analysis by wrapping the Body in an
+                // Expr::Block; collect_free_vars understands that variant.
+                let empty_params: HashSet<String> = HashSet::new();
+                let free_vars: Vec<String> = {
+                    let mut free: HashSet<String> = HashSet::new();
+                    for stmt in &body.stmts {
+                        match stmt {
+                            Stmt::Expr(e) => self.collect_free_vars(e, &empty_params, &mut free),
+                            Stmt::Return(e) => self.collect_free_vars(e, &empty_params, &mut free),
+                            _ => {}
+                        }
+                    }
+                    free.into_iter().collect()
+                };
 
-                // Store the current code position as the body's start
-                let _body_offset = self.code.len() as u32;
+                // Step 2: Emit LOAD_LOC for each captured variable so the values
+                // are on the stack for CREATE_FUTURE to consume.
+                for var_name in &free_vars {
+                    if let Some(var_index) = self.lookup_var(var_name) {
+                        self.emit_load_loc(var_index);
+                    } else {
+                        // Not a local — push a zero placeholder so the stack
+                        // layout stays consistent. This matches the closure
+                        // codegen fallback for missing captures.
+                        self.emit(OpCode::CONST_0);
+                    }
+                }
 
-                // Compile the body statements
+                // Step 3: Emit CREATE_FUTURE. Its immediates are:
+                //   body_offset: u32   (resolved via a reloc, like closures, so
+                //                       the FN_PROLOG/RESERVE_STACK insertion
+                //                       performed by enclosing fn codegen shifts
+                //                       both the patch site and the body address)
+                //   capture_count: u8
+                //   capture_name_idx: u16  (repeated capture_count times)
+                // CREATE_FUTURE pops `capture_count` values and records them in
+                // the future's environment, keyed by the capture names.
+                self.emit(OpCode::CREATE_FUTURE);
+                let body_offset_pos = self.code.len() as u32;
+                self.code.extend_from_slice(&(0u32).to_le_bytes()); // placeholder body offset
+                self.code.push(free_vars.len() as u8); // capture_count
+                for var_name in &free_vars {
+                    let var_idx = self.add_string(var_name);
+                    self.code.extend_from_slice(&var_idx.to_le_bytes());
+                }
+                // Unique symbol name for the out-of-line body; resolved at link
+                // time via the reloc we register in Step 7.
+                let body_symbol = format!("async_block_body_{}", body_offset_pos);
+
+                // Step 4: JMP over the out-of-line body so normal execution flow
+                // skips it (the body is only reached via SPAWN_GO or .await).
+                self.emit(OpCode::JMP);
+                let jmp_offset_pos = self.code.len();
+                self.code.extend_from_slice(&(0i16).to_le_bytes()); // patched after body
+
+                // Step 5: Compile the body as a standalone out-of-line function.
+                // The body address is what we feed back into CREATE_FUTURE.
+                let body_addr = self.code.len() as u32;
+
+                // Make captures visible to the body so LOAD_CAPTURED / STORE_CAPTURED
+                // are emitted instead of LOAD_LOC / STORE_LOC.
+                let mut new_captured_vars: HashMap<String, usize> = HashMap::new();
+                for (idx, var_name) in free_vars.iter().enumerate() {
+                    new_captured_vars.insert(var_name.clone(), idx);
+                }
+                self.push_captured_vars(new_captured_vars);
+
+                // Give the body its own scope so any local declarations inside
+                // don't leak into the enclosing function.
+                self.push_scope();
+
+                // Treat the body like a function body: keep the last expression's
+                // value on the stack so an explicit .await path (which DOES pop a
+                // return value via RET when bp != 0) has something to read. For
+                // the SPAWN_GO path, the spawned task has bp == 0 so RET short-
+                // circuits to Terminated without popping — no underflow risk.
+                let saved_should_pop = self.should_pop_expr_result;
+                self.should_pop_expr_result = false;
                 for stmt in &body.stmts {
                     self.compile_stmt(stmt)?;
                 }
+                self.should_pop_expr_result = saved_should_pop;
 
-                // Emit CREATE_FUTURE with body offset
-                // Note: In a full implementation, the body would be compiled separately
-                // For Phase 2.1, we use a placeholder approach
-                self.emit(OpCode::CREATE_FUTURE);
-                self.code.extend_from_slice(&0u32.to_le_bytes()); // placeholder offset
+                // If the body's last statement didn't push a value (e.g. an
+                // assignment, if/for without a tail expression, etc.), push nil
+                // so the .await path's RET has something to return. When the
+                // body already produced a value, last_expr_type will be non-Void
+                // and we leave the stack alone.
+                if matches!(self.last_expr_type, ObjectType::Void) {
+                    self.emit(OpCode::PUSH_NIL);
+                }
+
+                // The body must always end with RET so a spawned task running it
+                // can terminate cleanly. n_args = 0 (async blocks take no params).
+                self.emit(OpCode::RET);
+                self.code.push(0u8); // n_args = 0
+
+                self.pop_scope();
+                self.pop_captured_vars();
+
+                // Step 6: Back-fill the JMP so the inline path skips the body.
+                let body_end_addr = self.code.len() as u32;
+                let jmp_offset = ((body_end_addr as i32) - (jmp_offset_pos as i32 + 2)) as i16;
+                let jmp_bytes = jmp_offset.to_le_bytes();
+                for (i, byte) in jmp_bytes.iter().enumerate() {
+                    self.code[jmp_offset_pos + i] = *byte;
+                }
+
+                // Step 7: Export the body address and register a reloc so the
+                // enclosing function's FN_PROLOG/RESERVE_STACK insertion (which
+                // happens AFTER this codegen and shifts everything past the
+                // function entry_point) keeps the body_offset site and the body
+                // address in sync. The loader resolves the reloc by writing the
+                // (adjusted) exported symbol address into the patch site.
+                self.exports.insert(body_symbol.clone(), body_addr);
+                self.relocs.push(crate::vm::loader::RelocEntry {
+                    offset: body_offset_pos,
+                    symbol_name: body_symbol,
+                    reloc_type: crate::vm::loader::RelocType::FuncCall,
+                    source_pos: None,
+                });
             }
             // Plan 124: Await expression - expr.await
             Expr::Await { expr } => {

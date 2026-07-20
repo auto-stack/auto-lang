@@ -345,9 +345,14 @@ impl<'a> Disassembler<'a> {
             }
 
             // Async
+            // Plan 359 Task 22: CREATE_FUTURE now carries capture metadata:
+            //   body_offset: u32, capture_count: u8, capture_name_idx: u16 *
             OpCode::CREATE_FUTURE => {
                 let offset_val = self.flash.read_u32(ip);
-                (format!("body=0x{:04x}", offset_val), 4)
+                let capture_count = self.flash.read_u8(ip + 4);
+                // Total immediate length: 4 (offset) + 1 (count) + 2*count (names)
+                let total = 4 + 1 + 2 * capture_count as usize;
+                (format!("body=0x{:04x} captures={}", offset_val, capture_count), total)
             }
 
             // Source line (handled above, but needed for exhaustiveness)
