@@ -231,21 +231,23 @@ current status of each:
   - 状态: fixed.
 
 - **DIV-TRAIT-A2R-2 — generic spec implementation drops concrete type args
-  (open).** `type ScoreCmp as Comparable<i32>` transpiles to
-  `impl Comparable for ScoreCmp` (missing `<i32>`), failing E0107. Root
-  cause: the spec-impl generator at `trans/rust.rs` reads
-  `type_decl.specs` (names only), never `type_decl.spec_impls` (which
-  carries `SpecImpl.type_args`). Fix: ~15-20 lines to thread the concrete
-  args through. The L1 baseline keeps `Comparable` non-generic to avoid
-  this. 状态: open (L3 roadmap).
+  (FIXED).** `type ScoreCmp as Comparable<i32>` previously transpiled to
+  `impl Comparable for ScoreCmp` (missing `<i32>`), failing E0107. Fixed in
+  Plan 359: the spec-impl generator now indexes `type_decl.spec_impls` by
+  spec_name and emits the concrete `type_args` (`impl Comparable<i32> for
+  ScoreCmp`), falling back to declared generic params for non-concrete
+  impls (`as Storage<T>`). Verified by `12_specs/005_generic_impl` (rustc
+  clean) and zero regression on 13 golden tests (incl. 002_list_storage,
+  the boundary case).
+  - 状态: fixed.
 
-- **DIV-TRAIT-A2R-3 — spec method bodies do not emit the `self.` prefix
-  (open, surfaced during A2R-1 verification).** A spec method that reads a
-  field (`return title`) or calls a sibling method (`prefix()`) transpiles
-  without `self.`, failing E0425 ("cannot find value/function"). This is a
-  deeper a2r gap in spec-method scope resolution, not exercised by the
-  existing `12_specs/001-003` tests (whose bodies only call `print`).
-  状态: open (L3 roadmap; affects any spec method body that accesses self).
+- **DIV-TRAIT-A2R-3 — (not a bug; retracted).** An earlier draft recorded a
+  "spec method bodies miss `self.` prefix" gap, but investigation showed
+  Auto uses a leading-dot self convention inside method bodies (`.field` →
+  `self.field`, `.method()` → `self.method()`), which a2r already handles
+  correctly (see `12_specs/005_generic_impl`: `.score` → `self.score`). The
+  original report used bare `score` in the test source, which is not valid
+  Auto for self-field access. No fix needed.
 
 - **DIV-TRAIT-VM-1 — bounded-generic functions (open, VM side).** AutoVM
   cannot dispatch a spec method on a generic type parameter, and the
