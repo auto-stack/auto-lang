@@ -30,6 +30,10 @@
 ///
 /// ## Load-bearing VM workarounds (the same family as base64/regex/serde_json).
 ///
+/// Plan 359 fixed several VM bugs; one is taken advantage of here (A5: ints
+/// now survive an extra call frame, so `append_hex_word` can delegate to
+/// `append_hex_byte`) and the others remain load-bearing in this build.
+///
 ///   * **No bitwise-operator chaining.** `x.shr(8).and(15)` miscomputes; every
 ///     native bitwise call must be applied to a separately-named `let`/`var`.
 ///   * **No 32-bit literals.** Hex literals `>= 0x80000000` parse to `0`, and
@@ -39,8 +43,8 @@
 ///   * **No arrays.** The 64-entry round-constant table K and the 64-entry
 ///     message schedule W are surfaced through accessor functions (`k_at`,
 ///     `w_at`) backed by module-level `var int` globals plus set/get helpers,
-///     since the VM has no array/Vec type and module-level `const` is not
-///     reliably visible across calls.
+///     since the VM has no array/Vec type. (Const visibility was also a
+///     blocker historically; fixed in Plan 359 / E1.)
 ///   * **`str.char_at(i)` returns the code point as `int`** (not a one-char
 ///     string), which is exactly what byte extraction from the message needs.
 ///   * **Strings are UTF-8.** `char_at` indexes code points; for ASCII inputs
@@ -663,14 +667,11 @@ fn expand_block() {
         t = t + 1
     }
     while t < 64 {
-        var wt16 int = w_get(t - 16)
-        var wt7 int = w_get(t - 7)
-        var s0 int = small0(wt16)
-        var s1 int = small1(wt7)
-        var w2 int = w_get(t - 2)
-        var s1b int = small1(w2)
+        // w[t] = w[t-16] + small0(w[t-15]) + w[t-7] + small1(w[t-2])
         var w15 int = w_get(t - 15)
         var s0b int = small0(w15)
+        var w2 int = w_get(t - 2)
+        var s1b int = small1(w2)
         var val int = add32(w_get(t - 16), s0b)
         val = add32(val, w_get(t - 7))
         val = add32(val, s1b)
@@ -739,37 +740,20 @@ fn append_hex_byte(sb StringBuilder, b int) {
 }
 
 /// Append the eight hex digits of 32-bit word w to sb (big-endian).
-/// Inlined byte-by-byte (no nested helper call) because passing a freshly
-/// computed int through an extra call frame can corrupt the value in this VM.
+/// Calls the `append_hex_byte` helper (Plan 359 / A5 fixed the call-frame
+/// corruption that originally forced this to be inlined byte-by-byte).
 fn append_hex_word(sb StringBuilder, w int) {
-    var digits str = "0123456789abcdef"
-    // byte 0 = (w >> 24) & 0xff
     var sh0 int = w.shr(24)
     var b0 int = sh0.and(255)
-    var h0 int = b0.shr(4)
-    var l0 int = b0.and(15)
-    sb.append_char(digits.char_at(h0))
-    sb.append_char(digits.char_at(l0))
-    // byte 1 = (w >> 16) & 0xff
+    append_hex_byte(sb, b0)
     var sh1 int = w.shr(16)
     var b1 int = sh1.and(255)
-    var h1 int = b1.shr(4)
-    var l1 int = b1.and(15)
-    sb.append_char(digits.char_at(h1))
-    sb.append_char(digits.char_at(l1))
-    // byte 2 = (w >> 8) & 0xff
+    append_hex_byte(sb, b1)
     var sh2 int = w.shr(8)
     var b2 int = sh2.and(255)
-    var h2 int = b2.shr(4)
-    var l2 int = b2.and(15)
-    sb.append_char(digits.char_at(h2))
-    sb.append_char(digits.char_at(l2))
-    // byte 3 = w & 0xff
+    append_hex_byte(sb, b2)
     var b3 int = w.and(255)
-    var h3 int = b3.shr(4)
-    var l3 int = b3.and(15)
-    sb.append_char(digits.char_at(h3))
-    sb.append_char(digits.char_at(l3))
+    append_hex_byte(sb, b3)
 }
 
 // ---------------------------------------------------------------------------
