@@ -35,8 +35,6 @@ signed `int`. The module proves the signed `int` is sufficient because:
   if-chain (`k_at(i)`); the 64-entry message schedule W and the 64-byte block
   buffer are backed by module-level `var int` slots with `w_get`/`w_set` and
   `b_get`/`b_set` accessors.
-- **No bitwise-operator chaining.** Every native bitwise call is applied to a
-  separately-named `let`/`var`.
 - **`.shr(n)` for n >= 32 wraps** (it lowers to `u32::wrapping_shr`, so a
   shift by 32 is a shift by 0). The 64-bit message-length encoding guards
   `shf < 32` before shifting so the high length bytes are zero-filled

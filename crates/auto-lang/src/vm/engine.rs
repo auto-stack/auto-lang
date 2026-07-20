@@ -1121,27 +1121,55 @@ impl AutoVM {
 
     /// Plan 321: Check if a function body contains YIELD_VAL (0x8D) opcode.
     fn is_generator_fn(&self, addr: usize) -> bool {
-        // Plan 355: A generator function is one whose body contains a YIELD_VAL
-        // (0x8D) opcode before its terminating RET (0x71). The previous
-        // implementation scanned a fixed 4096-byte window, which produced false
-        // positives whenever another function's body (or operand bytes) within
-        // that window happened to contain 0x8D — causing ordinary multi-function
-        // modules to be misclassified as generators and return an iterator id
-        // instead of executing. Bounding the scan at the first RET keeps it
-        // within a single function's body and eliminates the cross-function
-        // false positives. (A generator always yields before returning, so a
-        // YIELD_VAL cannot legitimately appear after the first RET.)
-        const YIELD_VAL: u8 = 0x8D;
-        const RET: u8 = 0x71;
+        // Plan 359 Task 21: Walk the bytecode instruction-by-instruction,
+        // decoding each opcode's operand stream via `OpCode::operand_size` so
+        // that operand bytes are never mistaken for opcodes.
+        //
+        // The previous implementation (Plan 355) bounded a raw byte scan at the
+        // first 0x71 (RET) byte. This stopped cross-function false positives
+        // but was still vulnerable to *intra-function* false positives:
+        // whenever a function's operand stream (e.g. a CONST_I32 immediate, a
+        // CALL target, or a SOURCE_LINE line number) happened to contain 0x8D
+        // before the real RET opcode, the function was misclassified as a
+        // generator. The CALL handler then short-circuited the body and
+        // returned an iterator id instead of executing the function —
+        // producing symptoms like "sha256 miscomputes" that were hard to
+        // connect back to this scan. The fix is to never look at operand
+        // bytes at all.
+        //
+        // A generator always yields before returning, so a real YIELD_VAL
+        // cannot appear after the first genuine RET opcode. We stop at the
+        // first RET found at an opcode boundary.
+        //
+        // For variable-length instructions (BUILD_FSTR, NEW_INSTANCE,
+        // IS_VARIANT) `operand_size` returns None. NEW_INSTANCE in particular
+        // reads its length from the stack rather than the bytecode, so we
+        // cannot statically step past it; the safe choice is to stop scanning
+        // (return false). Generators are extremely unlikely to contain these
+        // opcodes before their first yield, and the previous behavior on
+        // encountering them was undefined anyway.
+        const YIELD_VAL: u8 = OpCode::YIELD_VAL as u8;
+        const RET: u8 = OpCode::RET as u8;
         let max_scan = std::cmp::min(addr + 4096, self.flash.memory.len());
-        for i in addr..max_scan {
-            let b = self.flash.memory[i];
-            if b == YIELD_VAL {
+        let mut ip = addr;
+        while ip < max_scan {
+            let op_byte = self.flash.memory[ip];
+            if op_byte == YIELD_VAL {
                 return true;
             }
-            if b == RET {
+            if op_byte == RET {
                 return false;
             }
+            if !OpCode::is_valid(op_byte) {
+                // Desynchronized — bail out safely.
+                return false;
+            }
+            let op: OpCode = op_byte.into();
+            let step = match op.operand_size() {
+                Some(n) => n,
+                None => return false, // variable-length; cannot safely step
+            };
+            ip = ip.saturating_add(1 + step);
         }
         false
     }
