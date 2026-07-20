@@ -324,7 +324,7 @@
 | B1 (struct 边界) | ✅ CREATE_OBJ remap | url 改为返回 struct |
 | D1 (递归 enum) | ✅ 非 bug，已加回归测试 | — |
 | B6 (type 方法) | ✅ 正常工作 | — |
-| G1 (spawn 崩溃) | ✅ 防崩溃（不真正并发）| tokio |
+| G1 (spawn 崩溃) | ✅ Task 22 真正并发（body 编译为 out-of-line 函数 + 捕获环境）| tokio |
 | G2 (Handle[T]) | ✅ [] 泛型语法 | tokio |
 | H3 (a2r clone) | ✅ Expr::Ident 加 clone | url |
 
@@ -439,6 +439,27 @@ fn main() {
 ```
 
 **影响:** tokio 可添加真正的 spawn/join 测试
+
+**状态:** ✅ 已修复（Plan 359 Task 22）。
+
+实施细节：
+- `Expr::AsyncBlock` 的 codegen 现在将 body 编译为 out-of-line 函数（参照闭包模式：`LOAD_LOC` 推入捕获值 → `CREATE_FUTURE` 消费捕获 → `JMP` 跳过 body → 编译 body → 回填 JMP）。
+- `CREATE_FUTURE` 操作码格式扩展：`body_offset: u32, capture_count: u8, capture_name_idx: u16 * capture_count`。捕获值存入 `FutureValue.captures`。
+- body 地址通过 `relocs` + `exports` 注册（与闭包一致），确保外层函数的 `FN_PROLOG`/`RESERVE_STACK` 插入移位后，body 地址仍能正确解析。
+- `SPAWN_GO` 从 future 取出 body_offset 和 captures，调用 `spawn_task(body_offset, 1024)`，并合成一个 `Closure` 注册到 `self.closures`，将其 id 写入 spawned task 的 `current_closure_id`，使 body 内的 `LOAD_CAPTURED`/`STORE_CAPTURED` 能解析到捕获值。
+- `handle_await_future` 同样安装合成的 Closure（并保存/恢复调用者的 closure 上下文），让 `.await` 路径下 body 内的捕获也能解析。
+- 当 body 的最后一条语句不产生值（`last_expr_type == Void`）时，body 末尾自动 `PUSH_NIL`，保证 `.await` 路径 RET 不下溢。
+
+语义：
+- `~{ counter = 42 }.go; print(counter)` 输出 `0`（spawned task 在自己的 RAM 中修改自己的 captured `counter`，不回写到调用者）。
+- `~{ 42 }.await` 返回 `42`。
+- 多个 `.go` 连续 spawn 不崩溃（G1 行为保持）。
+
+回归测试：`plan359_concurrency_tests.rs::test_task22_spawn_does_not_run_inline`、`test_task22_await_returns_body_value`、`test_task22_spawn_then_await_coexist`。
+
+未解决（语言设计层面，非本 Task 范围）：
+- 真正的"共享可变状态"并发（需要 `Arc<Mutex<T>>` 或类似的共享通道），目前每个 spawned task 是 RAM 隔离的。
+- `Handle[T]` 句柄语法和 `.await` 在 spawn 后获取结果（需要 Task 23/Task 24 的语法扩展）。
 
 ### 阶段 8: 语言设计限制（需要新语法，非 bug 修复）
 

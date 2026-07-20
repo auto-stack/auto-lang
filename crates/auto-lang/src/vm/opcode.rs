@@ -728,4 +728,111 @@ impl OpCode {
             _ => None,
         }
     }
+
+    /// Plan 359 Task 21: Return the fixed byte size of this opcode's operand
+    /// stream (the bytes immediately following the opcode byte), or `None` if
+    /// the operand size is variable and cannot be determined from the opcode
+    /// alone.
+    ///
+    /// Used by static bytecode walkers (notably `is_generator_fn`) to step
+    /// through bytecode instruction-by-instruction so that operand bytes are
+    /// never mistaken for opcodes. Without this, raw byte scanning produces
+    /// false positives: a function whose operand stream happens to contain
+    /// `0x8D` (YIELD_VAL) is misclassified as a generator and its body never
+    /// runs — the call returns an iterator id instead of the real result.
+    ///
+    /// Variable-length instructions (BUILD_FSTR, NEW_INSTANCE, IS_VARIANT)
+    /// return `None`; callers must handle them specially or treat them as a
+    /// reason to stop scanning.
+    pub fn operand_size(self) -> Option<usize> {
+        match self {
+            // 0-byte operands (opcode only)
+            Self::NOP | Self::POP | Self::DUP | Self::SWAP | Self::DROP
+            | Self::CONST_0 | Self::CONST_1 | Self::HALT | Self::PRINT
+            | Self::RET_D | Self::YIELD_TASK | Self::YIELD_VAL | Self::CREATE_NONE
+            | Self::IS_SOME | Self::IS_OK | Self::UNWRAP_SOME | Self::UNWRAP_OK
+            | Self::UNWRAP_ERR | Self::IS_NIL | Self::NEG | Self::NEG_F
+            | Self::NEG_D | Self::NOT | Self::TO_STR | Self::STR_CAT
+            | Self::ADD | Self::SUB | Self::MUL | Self::DIV | Self::MOD
+            | Self::ADD_F | Self::SUB_F | Self::MUL_F | Self::DIV_F
+            | Self::ADD_D | Self::SUB_D | Self::MUL_D | Self::DIV_D
+            | Self::ADD_U64 | Self::SUB_U64 | Self::MUL_U64 | Self::DIV_U64
+            | Self::MOD_U64 | Self::AND | Self::OR | Self::XOR
+            | Self::SHL | Self::SHR | Self::EQ | Self::NE | Self::LT
+            | Self::GT | Self::LE | Self::GE | Self::EQ_D | Self::NE_D
+            | Self::LT_D | Self::GT_D | Self::LE_D | Self::GE_D
+            | Self::I32_TO_F32 | Self::I64_TO_F64 | Self::U64_TO_F64
+            | Self::PROMOTE_F64 | Self::NULL_COALESCE
+            | Self::TASK_ID | Self::SPAWN_GO | Self::REPLY | Self::HANDLE_MSG
+            | Self::CALL_CLOSURE | Self::TYPE_F64_TO_I32 | Self::TYPE_STR_TO_I64
+            | Self::TYPE_F32_TO_I32 | Self::TYPE_CAST_PTR | Self::ARRAY_LEN
+            | Self::MOD_F | Self::MOD_D
+            | Self::CREATE_SOME | Self::CREATE_ERR
+            | Self::CREATE_RANGE | Self::CREATE_RANGE_EQ
+            | Self::CHAN_NEW | Self::RECV | Self::TRY_RECV
+            | Self::TASK_LOOP | Self::AWAIT_FUTURE | Self::POLL_FUTURE
+            | Self::CONSTRUCT_INSTANCE
+            | Self::CREATE_LIST_INT | Self::CREATE_LIST_STR | Self::CREATE_LIST_BOOL
+            | Self::CREATE_LIST_INT_INLINE | Self::CREATE_LIST_STR_INLINE
+            | Self::CREATE_LIST_BOOL_INLINE | Self::LIST_PUSH_INT
+            | Self::LIST_POP_INT | Self::LIST_GET_INT | Self::LIST_SET_INT
+            | Self::GET_ELEM | Self::SET_ELEM | Self::SET_FIELD | Self::SLICE
+            | Self::PUSH_NIL
+            | Self::LOAD_LOC_0 | Self::LOAD_LOC_1 | Self::LOAD_LOC_2
+            | Self::STORE_LOC_0 | Self::STORE_LOC_1
+            | Self::TYPE_CAST_I32 | Self::TYPE_CAST_U32 | Self::TYPE_CAST_I64
+            | Self::TYPE_CAST_U64 | Self::TYPE_CAST_F64 | Self::TYPE_TO_STR
+            | Self::TYPE_TO_I32 | Self::TYPE_TO_F64 | Self::TYPE_F64_TO_STR
+            | Self::TYPE_I64_TO_STR | Self::TYPE_U64_TO_STR | Self::TYPE_BOOL_TO_STR
+            | Self::TYPE_F32_TO_STR | Self::POP_HANDLER
+            | Self::GET_TUPLE_FIELD => Some(0),
+
+            // 1-byte operand
+            Self::CONST_U8 | Self::PUSH_BOOL | Self::POP_N | Self::RESERVE_STACK
+            | Self::RET | Self::ERROR_PROPAGATE
+            | Self::LOAD_LOCAL | Self::STORE_LOCAL
+            | Self::LOAD_STATE_FIELD | Self::STORE_STATE_FIELD
+            | Self::CREATE_ARRAY | Self::CREATE_TUPLE
+            | Self::CREATE_OK | Self::GET_GENERIC_FIELD | Self::SET_GENERIC_FIELD => Some(1),
+
+            // 2-byte operand
+            Self::LOAD_STR | Self::CALL_NAT | Self::CAPTURE_VAR
+            | Self::LOAD_CAPTURED | Self::STORE_CAPTURED
+            | Self::LOAD_GLOBAL | Self::STORE_GLOBAL
+            | Self::JMP | Self::JMP_IF_Z | Self::JMP_IF_NZ
+            | Self::GET_FIELD | Self::PUSH_HANDLER => Some(2),
+
+            // 3-byte operand (u16 + u8)
+            Self::CREATE_OBJ => Some(3),
+
+            // 2-byte operand (FN_PROLOG: n_args:u8, n_locals:u8)
+            Self::FN_PROLOG => Some(2),
+
+            // 4-byte operand
+            Self::CONST_I32 | Self::CONST_F32
+            | Self::JMP_FAR | Self::JMP_L
+            | Self::CALL | Self::CALL_SPEC
+            | Self::CLOSURE | Self::CREATE_FUTURE
+            | Self::SLEEP
+            | Self::LOAD_REF | Self::STORE_REF
+            | Self::LOAD_MUT_REF | Self::STORE_MUT_REF => Some(4),
+
+            // 5-byte operand
+            Self::SPAWN | Self::CREATE_GENERATOR | Self::CREATE_NODE => Some(5),
+
+            // JOIN / SEND: 4-byte
+            Self::JOIN | Self::SEND => Some(4),
+
+            // 8-byte operand
+            Self::CONST_I64 | Self::CONST_U64 | Self::CONST_F64 => Some(8),
+
+            // SOURCE_LINE: u16 line number
+            Self::SOURCE_LINE => Some(2),
+
+            // Variable-length — caller must compute from operand bytes.
+            // Returning None tells the walker to bail out rather than
+            // risk desynchronizing and misreading operand bytes as opcodes.
+            Self::BUILD_FSTR | Self::NEW_INSTANCE | Self::IS_VARIANT => None,
+        }
+    }
 }

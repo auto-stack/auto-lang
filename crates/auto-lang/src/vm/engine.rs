@@ -322,6 +322,12 @@ pub struct FutureValue {
     pub result: Option<auto_val::Value>,
     /// Task ID that owns this future (for suspension/resumption)
     pub owner_task_id: TaskId,
+    /// Plan 359 Task 22: Captured free-variable environment for `~{ ... }`.
+    /// For SPAWN_GO the spawned task gets its own RAM, so captures cannot be
+    /// read from the caller's stack. Instead we stash them here (keyed by the
+    /// variable name) and expose them to the body via LOAD_CAPTURED by
+    /// installing a synthetic Closure entry before the body runs.
+    pub captures: HashMap<String, auto_val::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1121,27 +1127,55 @@ impl AutoVM {
 
     /// Plan 321: Check if a function body contains YIELD_VAL (0x8D) opcode.
     fn is_generator_fn(&self, addr: usize) -> bool {
-        // Plan 355: A generator function is one whose body contains a YIELD_VAL
-        // (0x8D) opcode before its terminating RET (0x71). The previous
-        // implementation scanned a fixed 4096-byte window, which produced false
-        // positives whenever another function's body (or operand bytes) within
-        // that window happened to contain 0x8D — causing ordinary multi-function
-        // modules to be misclassified as generators and return an iterator id
-        // instead of executing. Bounding the scan at the first RET keeps it
-        // within a single function's body and eliminates the cross-function
-        // false positives. (A generator always yields before returning, so a
-        // YIELD_VAL cannot legitimately appear after the first RET.)
-        const YIELD_VAL: u8 = 0x8D;
-        const RET: u8 = 0x71;
+        // Plan 359 Task 21: Walk the bytecode instruction-by-instruction,
+        // decoding each opcode's operand stream via `OpCode::operand_size` so
+        // that operand bytes are never mistaken for opcodes.
+        //
+        // The previous implementation (Plan 355) bounded a raw byte scan at the
+        // first 0x71 (RET) byte. This stopped cross-function false positives
+        // but was still vulnerable to *intra-function* false positives:
+        // whenever a function's operand stream (e.g. a CONST_I32 immediate, a
+        // CALL target, or a SOURCE_LINE line number) happened to contain 0x8D
+        // before the real RET opcode, the function was misclassified as a
+        // generator. The CALL handler then short-circuited the body and
+        // returned an iterator id instead of executing the function —
+        // producing symptoms like "sha256 miscomputes" that were hard to
+        // connect back to this scan. The fix is to never look at operand
+        // bytes at all.
+        //
+        // A generator always yields before returning, so a real YIELD_VAL
+        // cannot appear after the first genuine RET opcode. We stop at the
+        // first RET found at an opcode boundary.
+        //
+        // For variable-length instructions (BUILD_FSTR, NEW_INSTANCE,
+        // IS_VARIANT) `operand_size` returns None. NEW_INSTANCE in particular
+        // reads its length from the stack rather than the bytecode, so we
+        // cannot statically step past it; the safe choice is to stop scanning
+        // (return false). Generators are extremely unlikely to contain these
+        // opcodes before their first yield, and the previous behavior on
+        // encountering them was undefined anyway.
+        const YIELD_VAL: u8 = OpCode::YIELD_VAL as u8;
+        const RET: u8 = OpCode::RET as u8;
         let max_scan = std::cmp::min(addr + 4096, self.flash.memory.len());
-        for i in addr..max_scan {
-            let b = self.flash.memory[i];
-            if b == YIELD_VAL {
+        let mut ip = addr;
+        while ip < max_scan {
+            let op_byte = self.flash.memory[ip];
+            if op_byte == YIELD_VAL {
                 return true;
             }
-            if b == RET {
+            if op_byte == RET {
                 return false;
             }
+            if !OpCode::is_valid(op_byte) {
+                // Desynchronized — bail out safely.
+                return false;
+            }
+            let op: OpCode = op_byte.into();
+            let step = match op.operand_size() {
+                Some(n) => n,
+                None => return false, // variable-length; cannot safely step
+            };
+            ip = ip.saturating_add(1 + step);
         }
         false
     }
@@ -5750,22 +5784,46 @@ impl AutoVM {
                     // Decode the value: a Future is encoded as (future_id << 8) | 0xF0.
                     if (value & 0xFF) == 0xF0 {
                         let future_id = (value >> 8) as u32;
-                        // Look up the future to obtain its body offset, then
-                        // spawn a background task starting at that offset.
+                        // Look up the future to obtain its body offset and
+                        // captures, then spawn a background task that starts at
+                        // the body offset.
                         if let Some(future_arc) = self.futures.get(&future_id) {
-                            let body_offset = {
+                            let (body_offset, captures) = {
                                 let future = future_arc.read().unwrap();
-                                future.body_offset as usize
+                                (
+                                    future.body_offset as usize,
+                                    future.captures.clone(),
+                                )
                             };
-                            // Note: the AsyncBlock codegen currently compiles
-                            // the body inline and passes a placeholder offset
-                            // (0) to CREATE_FUTURE, so the body has already run
-                            // synchronously by the time SPAWN_GO executes. Only
-                            // spawn a real background task when we have a valid
-                            // (non-zero, in-range) body offset, to avoid
-                            // restarting execution at address 0.
+                            // Plan 359 Task 22: only spawn when the body offset
+                            // is a real, in-range bytecode address. The new
+                            // out-of-line AsyncBlock codegen always supplies a
+                            // non-zero address; the guard keeps us safe if a
+                            // future was constructed through some other path.
                             if body_offset != 0 && body_offset < self.flash.memory.len() {
-                                let _new_task_id = self.spawn_task(body_offset, 1024);
+                                let new_task_id = self.spawn_task(body_offset, 1024);
+                                // Install captures: the spawned task has a fresh
+                                // RAM, so any LOAD_CAPTURED the body emits must
+                                // resolve via a Closure entry. We synthesize one
+                                // and point the task's current_closure_id at it.
+                                if !captures.is_empty() {
+                                    let closure_id =
+                                        self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
+                                    self.closures.insert(
+                                        closure_id,
+                                        Closure {
+                                            func_addr: body_offset as u32,
+                                            env: captures,
+                                            n_args: 0,
+                                        },
+                                    );
+                                    if let Some(task_guard) = self.tasks.get(&new_task_id) {
+                                        if let Ok(mut spawned) = task_guard.try_lock() {
+                                            spawned.current_closure_id = Some(closure_id);
+                                            spawned.saved_closure_id = Some(closure_id);
+                                        }
+                                    }
+                                }
                             }
                             // Fire-and-forget: we do not push task_id back and
                             // do not wait for the spawned task.
@@ -6393,10 +6451,38 @@ impl AutoVM {
 
                 // === Plan 124: Async/Future/Await Instructions ===
                 OpCode::CREATE_FUTURE => {
-                    // Create a Future value from async block body
-                    // Format: body_code_offset: u32
+                    // Create a Future value from an async block body.
+                    // Immediates: body_offset: u32, capture_count: u8,
+                    //             capture_name_idx: u16 (× capture_count)
+                    // Stack (popped in reverse): capture_count values pushed by
+                    // the AsyncBlock codegen (in declaration order).
                     let body_offset = self.flash.read_u32(task.ip);
                     task.ip += 4;
+                    let capture_count = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+
+                    // Read the capture name indices and pop the matching values.
+                    // The codegen pushes captures in declaration order; we read
+                    // names in the same order and pop in reverse, mirroring the
+                    // CLOSURE opcode's convention.
+                    let mut capture_names: Vec<String> = Vec::with_capacity(capture_count);
+                    let strings = self.strings.read().unwrap();
+                    for _ in 0..capture_count {
+                        let name_idx = self.flash.read_u16(task.ip) as usize;
+                        task.ip += 2;
+                        let name = strings
+                            .get(name_idx)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .unwrap_or_default();
+                        capture_names.push(name);
+                    }
+                    drop(strings);
+
+                    let mut captures: HashMap<String, auto_val::Value> = HashMap::new();
+                    for name in capture_names.into_iter().rev() {
+                        let raw = task.ram.pop_i32();
+                        captures.insert(name, auto_val::Value::Int(raw));
+                    }
 
                     // Allocate a new future ID from VM's registry
                     let future_id = self.future_id_gen.fetch_add(1, Ordering::SeqCst);
@@ -6407,6 +6493,7 @@ impl AutoVM {
                         state: FutureState::Pending,
                         result: None,
                         owner_task_id: task.id,
+                        captures,
                     };
 
                     // Store in VM's future registry
@@ -6614,7 +6701,47 @@ impl AutoVM {
         body_offset: u32,
     ) -> Result<(), VMError> {
         const MAX_RECURSION_DEPTH: u32 = 64;
-        self.execute_future_body(task, future_id, body_offset, 0, MAX_RECURSION_DEPTH)
+        // Plan 359 Task 22: if the future carries captures, install a synthetic
+        // closure so LOAD_CAPTURED/STORE_CAPTURED inside the body can resolve.
+        // The closure_id is saved/restored across the body execution below so
+        // the caller's closure context is untouched on return.
+        let saved_closure_id = task.current_closure_id;
+        let saved_saved_closure_id = task.saved_closure_id;
+        let installed_closure_id = self.install_future_captures(future_id, body_offset);
+        if let Some(cid) = installed_closure_id {
+            task.current_closure_id = Some(cid);
+            // Keep saved_closure_id in sync so RET inside the body restores to
+            // the synthetic closure (allowing multiple LOAD_CAPTURED ops).
+            task.saved_closure_id = Some(cid);
+        }
+        let result = self.execute_future_body(task, future_id, body_offset, 0, MAX_RECURSION_DEPTH);
+        task.current_closure_id = saved_closure_id;
+        task.saved_closure_id = saved_saved_closure_id;
+        result
+    }
+
+    /// Plan 359 Task 22: register a synthetic Closure for a future's captures.
+    /// Returns the closure_id (so the caller can wire it into the task's
+    /// current_closure_id), or None if the future has no captures.
+    fn install_future_captures(&self, future_id: u32, body_offset: u32) -> Option<u32> {
+        let captures = {
+            let future_arc = self.futures.get(&future_id)?;
+            let future = future_arc.read().unwrap();
+            if future.captures.is_empty() {
+                return None;
+            }
+            future.captures.clone()
+        };
+        let closure_id = self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
+        self.closures.insert(
+            closure_id,
+            Closure {
+                func_addr: body_offset,
+                env: captures,
+                n_args: 0,
+            },
+        );
+        Some(closure_id)
     }
 
     /// Recursively execute a future's body bytecode.

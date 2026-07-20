@@ -34,8 +34,6 @@
 /// now survive an extra call frame, so `append_hex_word` can delegate to
 /// `append_hex_byte`) and the others remain load-bearing in this build.
 ///
-///   * **No bitwise-operator chaining.** `x.shr(8).and(15)` miscomputes; every
-///     native bitwise call must be applied to a separately-named `let`/`var`.
 ///   * **No 32-bit literals.** Hex literals `>= 0x80000000` parse to `0`, and
 ///     decimal literals `>= 2^31` also fail. Every K/H constant is built from
 ///     its four bytes via `mk32(b0,b1,b2,b3)` (shifts + ors), where each byte
@@ -57,13 +55,7 @@
 
 /// Build a 32-bit word from four bytes (big-endian). Each byte is 0..255.
 fn mk32(b0 int, b1 int, b2 int, b3 int) int {
-    var s0 int = b0.shl(24)
-    var s1 int = b1.shl(16)
-    var s2 int = b2.shl(8)
-    var r int = s0.or(s1)
-    r = r.or(s2)
-    r = r.or(b3)
-    return r
+    return b0.shl(24).or(b1.shl(16)).or(b2.shl(8)).or(b3)
 }
 
 /// Logical right-rotate of a 32-bit word by n bits (n in 1..31).
