@@ -1301,7 +1301,272 @@ git commit -m "docs(website): bilingual landing + tour cross-link (Plan 359 A2)"
 
 ---
 
-## 全局验收（发布前）
+## Phase E: 剩余 trait / VM / 语言缺口（补强）
+
+> **⚠️ 执行前置：本 Phase 全部任务必须等 `plan-359/phase7-bug-completion` 那个 agent 合并后再开始。** 该 agent 正在修 VM bug（Task 20-25：E1/A1/G1 补全 + G3 channel 语法 / Result[T,E] 泛型 / struct variant is 解构），与本 Phase 的 VM/语言改动有 master 稳定性关联。等它的 1 个未合并提交（`4f43d0ab` 及后续）进 master、HEAD 自洽后再开 worktree。
+
+**目标：** 把 trait_advanced 暴露的剩余 a2r/VM/语言层缺口逐个修掉，让 trait_advanced parity 库的 L1 子集从 10/10 扩到接近全覆盖，并解锁被 DIV-HTTP-LANG-1 阻塞的 http_client_sync。
+
+**已完成（本 Phase 前置）：**
+- DIV-TRAIT-A2R-1（返回值默认方法）：fixed（`9042085b`）
+- DIV-TRAIT-A2R-2（泛型 impl 丢参数）：fixed（`15445355`）
+- DIV-TRAIT-A2R-3（self. 前缀）：retracted（非 bug，前导点约定）
+
+**剩余缺口（按依赖与风险排序）：**
+
+| 缺口 | 归属 | 难度 | 阻塞项 |
+|---|---|---|---|
+| E1: DIV-TRAIT-VM-2（VM trait 检查器不跳过默认方法） | VM | 低 | — |
+| E2: DIV-TRAIT-VM-1（有界泛型函数 `<T has Spec>`） | VM+解析 | 中 | 依赖 E1 先让默认方法工作 |
+| E3: DIV-TRAIT-LANG-1（关联类型） | 语言/解析 | 中 | — |
+| E4: DIV-HTTP-LANG-1（stdlib http.at 解析） | 解析 | 中 | 解锁 http_client_sync |
+| E5: DIV-A2R-CHAR-AT-1（a2r char_at 类型推断） | a2r | 低 | — |
+| E6: trait_advanced parity 扩大 L1（回归性收益） | parity | 低 | 依赖 E1-E3 |
+
+---
+
+### Task E1: DIV-TRAIT-VM-2 — VM trait 检查器跳过默认方法
+
+**问题：** `crates/auto-lang/src/trait_checker.rs:108-114` 的 `check_conformance` 对 spec 每个方法在 type_decl 找实现，找不到就报错。但 spec 方法若有默认 body（`SpecMethod.body` 非空），实现者应能继承，不该报错。
+
+**Files:**
+- Modify: `crates/auto-lang/src/trait_checker.rs:95-115`
+
+- [ ] **Step 1: 读 check_conformance 的循环结构**
+
+Run: `sed -n '28,115p' crates/auto-lang/src/trait_checker.rs`
+确认遍历 `spec_decl.methods`，对每个 `spec_method` 查 `type_decl.methods` 匹配（None → 报错）。
+
+- [ ] **Step 2: 修 None 分支：若 spec_method 有 body 则跳过**
+
+在行 ~111 的 `None =>` 分支前，加判断：若 `spec_method.body.is_some()`（默认方法），`continue`（视为由默认提供，不报错）。需确认 `SpecMethod` 结构有 `body: Option<...>` 字段（参考 `crates/auto-lang/src/ast/spec.rs`）。
+
+```rust
+None => {
+    // Plan 359 E1 (DIV-TRAIT-VM-2): a spec method with a default body
+    // is satisfied by the default; don't require the implementer to re-declare.
+    if spec_method.body.is_some() {
+        continue;
+    }
+    errors.push(/* 原报错 */);
+}
+```
+
+- [ ] **Step 3: 验证 — 移除 trait_advanced.at 里 Book 的 full_title 重声明**
+
+`parity/libs/trait_advanced/auto/trait_advanced.at` 里实现者目前重声明了默认方法（VM-2 workaround）。删掉重声明，VM 应仍能跑。
+
+Run: `./target/release/auto.exe parity/libs/trait_advanced/auto/trait_advanced.at`
+Expected: 不再报 "does not implement required method"，正常输出。
+
+- [ ] **Step 4: 回归 — trait_advanced parity 仍 10/10**
+
+Run: `cd parity && cargo run -p auto-parity -- --auto-binary ../target/release/auto.exe run trait_advanced`
+Expected: `Consistency: 10/10 (100.0%)`。
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "fix(vm): trait checker skips spec methods with default body (Plan 359 E1 / DIV-TRAIT-VM-2)"
+```
+
+---
+
+### Task E2: DIV-TRAIT-VM-1 — 有界泛型函数 `<T has Spec>`
+
+**问题：** Auto 无法写 `fn max<T has Comparable>(a T, b T) T`——`<T has Spec>` bound 语法被解析器拒绝，且即使解析通过，AutoVM 无法在泛型类型参数 `T` 上分发 spec 方法（"Undefined symbol: T.compare"）。
+
+**Files:**
+- Modify: `crates/auto-lang/src/parser.rs`（GenericParam 的 bound 解析）
+- Modify: `crates/auto-lang/src/vm/codegen.rs`（泛型函数的 spec 方法分发）
+- Modify: `crates/auto-lang/src/vm/monomorphize.rs`（单态化时注入具体类型）
+
+**这是本 Phase 最复杂的任务**（涉及解析 + 单态化 + codegen 三层）。建议拆成子任务，且先做解析（让 `<T has Spec>` 能解析），再做 VM 分发。
+
+- [ ] **Step 1: 调研现有 GenericParam 与 bound 处理**
+
+Run: `grep -n "GenericParam\|has \|bound\|trait_bound" crates/auto-lang/src/parser.rs | head -10`
+确认 `GenericParam::Type` 当前是否带 bound 字段（`ast/types.rs` 的 `GenericParam` 定义）。
+
+- [ ] **Step 2: 解析器接受 `<T has Spec>` / `<T as Spec>`**
+
+在 `GenericParam::Type` 加 `bound: Option<Name>` 字段；parser 的泛型参数解析处识别 `has`/`as` 后跟 spec 名。
+
+- [ ] **Step 3: VM 单态化时解析 bound → 具体分发**
+
+`monomorphize.rs` 单态化泛型函数时，若 `T` 被 `has Spec` 约束且实参类型实现了该 spec，将 `T.method()` 解析为该类型的 spec 方法。
+
+- [ ] **Step 4: 测试 — bounded generic 函数三向一致**
+
+在 `parity/libs/trait_advanced/tests/auto/` 加 `bounded_generic.at`，验证 `max<T has Comparable>` 在 VM/a2r/rust 三向一致。
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "feat(vm): bounded generic functions <T has Spec> (Plan 359 E2 / DIV-TRAIT-VM-1)"
+```
+
+**风险：高**（三层改动，单态化逻辑复杂）。若 Step 3 卡住，可标 E2 保持 L3 路线图，先做 E1/E3/E4/E5。
+
+---
+
+### Task E3: DIV-TRAIT-LANG-1 — spec 关联类型
+
+**问题：** Auto 的 spec 语法无关联类型构造：`spec Container { type Item; fn get(i int) Item }` 是解析错误（"Expected term, got RBrace"）。
+
+**Files:**
+- Modify: `crates/auto-lang/src/ast/spec.rs`（SpecDecl 加 `associated_types: Vec<...>`）
+- Modify: `crates/auto-lang/src/parser.rs`（spec 解析识别 `type Item;`）
+- Modify: `crates/auto-lang/src/trans/rust.rs`（spec_decl 转译出 `trait C { type Item; ... }`）
+
+- [ ] **Step 1: 调研 spec 解析与 SpecDecl 结构**
+
+Run: `grep -n "parse_spec\|SpecDecl::new\|pub struct SpecDecl" crates/auto-lang/src/parser.rs crates/auto-lang/src/ast/spec.rs | head`
+
+- [ ] **Step 2: SpecDecl 加 associated_types 字段**
+
+`ast/spec.rs` 的 `SpecDecl` 加 `pub associated_types: Vec<Name>`（或带 kind）。`SpecDecl::new` 默认空。
+
+- [ ] **Step 3: parser 在 spec 体里识别 `type Name;`**
+
+spec 体的解析循环里，遇到 `type` 关键字 → 解析为关联类型声明，push 进 `associated_types`。
+
+- [ ] **Step 4: trans/rust.rs 的 spec_decl 输出 `type Item;`**
+
+在 trait 体里，关联类型输出为 `type Item;`（Rust 关联类型声明）。
+
+- [ ] **Step 5: 测试 — 关联类型 spec 转译**
+
+加 `crates/auto-lang/test/a2r/12_specs/006_assoc_types/`，验证 `spec Container { type Item; fn get(i int) Item }` 转译为 `trait Container { type Item; fn get(&self, i: i32) -> Self::Item; }`。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(lang): spec associated types (Plan 359 E3 / DIV-TRAIT-LANG-1)"
+```
+
+**风险：中**（解析+AST+转译三层，但每层改动小）。
+
+---
+
+### Task E4: DIV-HTTP-LANG-1 — stdlib http.at 解析（解锁 http_client_sync）
+
+**问题：** `stdlib/auto/http.at:51` 用 `pub fn Request.method(self Request) str;`（`Type.method` 声明 + 分号），解析器报 "Expected term, got Newline"（在后面的 `///` 文档注释处）。任何 `use auto.http: ...` 都触发此失败。
+
+**这是最高价值的阻塞项**——修它直接解锁 http_client_sync parity 库。
+
+**Files:**
+- Modify: `crates/auto-lang/src/parser.rs`（`Type.method` 声明语法 + `;` 结尾的外部方法声明）
+- Verify: `stdlib/auto/http.at` 能被解析
+
+- [ ] **Step 1: 精确复现解析失败**
+
+Run: `cat > /tmp/t.at <<'EOF'
+type Request
+pub fn Request.method(self Request) str;
+pub fn Request.path(self Request) str;
+EOF
+./target/release/auto.exe /tmp/t.at`
+Expected: 复现 "Expected term, got Newline" 或类似错误。确认是 `Type.method` 语法还是 `;` 结尾的问题。
+
+- [ ] **Step 2: 调研 parser 对 `Type.method` 的支持**
+
+Run: `grep -n "Type\.method\|method_name\|qualified.*method\|\\." crates/auto-lang/src/parser.rs | grep -i "method\|fn " | head`
+看解析器是否识别 `TypeName.method` 作为方法声明（typedecl 外部的方法声明形式）。
+
+- [ ] **Step 3: 实现/修复 `Type.method` 外部声明解析**
+
+在 fn 声明解析处，若 fn 名含 `.`（如 `Request.method`），解析为类型 `Request` 的方法声明（self 类型推断为 Request）。加分号结尾支持（外部声明，无 body）。
+
+- [ ] **Step 4: 验证 stdlib http.at 能解析**
+
+Run: `./target/release/auto.exe -e 'use auto.http: post_sync'`（或最小测试 `use auto.http: post_sync; fn main() {}`）
+Expected: 无解析错误。
+
+- [ ] **Step 5: 激活 http_client_sync parity 库**
+
+去掉 `parity/libs/http_client_sync/README.md` 的 blocker 标注；起 mock-server，跑 `cargo run -p auto-parity -- run http_client_sync`，确认三向一致。
+
+- [ ] **Step 6: 把 http_client_sync 加入 phase 表 + 仪表盘**
+
+`parity/crates/auto-parity/src/main.rs` phase_map 加 `("d3", &["http_client_sync"])`；report phases 加 `d3`；重生成仪表盘。
+
+- [ ] **Step 7: Commit**
+
+```bash
+git commit -m "fix(parser): support Type.method external declarations (Plan 359 E4 / DIV-HTTP-LANG-1)"
+```
+
+**风险：中**（解析器改动，但 `Type.method` 形式可能其他地方也有用）。
+
+---
+
+### Task E5: DIV-A2R-CHAR-AT-1 — a2r char_at 类型推断
+
+**问题：** `var c = s.char_at(i)` 不带显式 `int` 标注时，a2r 把 c 推断为 string，导致 `c = c + 32` 被转成 `format!("{}{}", c, 32)`（E0308）。当前 workaround 是 `var c int = s.char_at(i)`。
+
+**Files:**
+- Modify: `crates/auto-lang/src/trans/rust.rs`（char_at 返回类型推断）
+
+- [ ] **Step 1: 定位 char_at 的类型推断**
+
+Run: `grep -n "char_at\|chars().nth" crates/auto-lang/src/trans/rust.rs | head`
+看 a2r 怎么处理 `s.char_at(i)` 的返回类型——应该是固定推断为 i32（因为 VM 里 char_at 返回 codepoint int）。
+
+- [ ] **Step 2: 修：char_at 结果默认推断为 i32**
+
+在 `self.expr` 处理 `MethodCall` 时，若方法名是 `char_at`，返回类型标注为 i32（而非沿用 string）。
+
+- [ ] **Step 3: 验证 — string_utils.at 去掉 `int` 标注仍工作**
+
+把 `parity/libs/string_utils/auto/string_utils.at` 里 `var c int = s.char_at(i)` 改回 `var c = s.char_at(i)`，重跑 parity 仍 22/22。
+
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "fix(a2r): infer char_at result as i32 (Plan 359 E5 / DIV-A2R-CHAR-AT-1)"
+```
+
+**风险：低**（单点改动，有 parity 库作回归）。
+
+---
+
+### Task E6: trait_advanced parity 扩大 L1
+
+**前置：E1（默认方法继承）、E2（bounded generic）、E3（关联类型）完成后。**
+
+**目标：** 把 trait_advanced.at 里之前因 VM-1/VM-2/LANG-1 标 L3（未跑）的子场景激活，扩到 L1，重生成仪表盘。
+
+- [ ] **Step 1: 激活 trait_advanced.at 里被 L3 注释掉的子场景**
+
+去掉 VM-1/VM-2/LANG-1 相关注释（如 bounded generic 函数、关联类型 spec），加测试用例。
+
+- [ ] **Step 2: 跑 trait_advanced parity，确认新用例三向一致**
+
+Run: `cd parity && cargo run -p auto-parity -- --auto-binary ../target/release/auto.exe run trait_advanced`
+Expected: 用例数 > 10，仍 100%。
+
+- [ ] **Step 3: 重生成仪表盘 + 更新 known-divergences**
+
+`cargo run -p auto-parity -- report`；known-divergences 里 VM-1/VM-2/LANG-1 标 fixed。
+
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(parity): trait_advanced expanded L1 (Plan 359 E6)"
+```
+
+---
+
+### Phase E 出口条件
+
+- E1 完成 → trait_advanced 实现者不再需重声明默认方法
+- E4 完成 → http_client_sync 解锁，加入 L1
+- E5 完成 → a2r char_at 不再需 workaround
+- E2/E3 完成（可选，难度高）→ trait_advanced 接近全覆盖
+- **总验收：L1 用例数从 254 显著增长，known-divergences 的 trait 段落大部分标 fixed**
+
+
 
 - [ ] **V1: parity 仪表盘公开可访问**，L1 用例数 ≥ D1+D3 产出（≥5 个库三向绿）。
 - [ ] **V2: Script-to-Ship tour 6 章全部可交互**（Run/Transpile/Compare 工作），中英双语。
