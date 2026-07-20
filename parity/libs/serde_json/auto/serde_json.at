@@ -20,24 +20,33 @@
 /// `test_plan359_d1_recursive_enum_collection_payload` in
 /// `crates/auto-lang/src/tests/vm_tests.rs`. This library could therefore be
 /// rewritten on top of a real recursive `Value` enum; the string-based
-/// representation is kept here because it works and the other VM workarounds
-/// below (StringBuilder return-frame corruption, loop+return bytecode) still
-/// apply.
+/// representation is kept here because it works and the parser is unchanged
+/// (rewriting it to use a recursive enum is too risky for no observable gain).
 ///
-/// ## Output accumulator threaded as a parameter (critical VM workaround).
+/// ## Output accumulator threaded as a parameter (still load-bearing: C2).
 ///
 /// Returning a StringBuilder-built string back through recursive call frames
 /// corrupts the value, and a module-level StringBuilder mutated during
-/// recursion reads back as garbage. So the output `StringBuilder` is created
-/// LOCALLY by the public entry point and passed as a PARAMETER to every
-/// recursive helper, which only appends to it. The complex value never crosses
-/// a return frame and is never stored in a module global. The simple
-/// `int`/`bool` globals (`POS`, `N`, `ERR`) are unaffected.
+/// recursion reads back as garbage. This is the StringBuilder return-frame
+/// corruption bug (Plan 359 reference: C2), which is **NOT fixed** by
+/// Plan 359 — it is unrelated to the B1/B4/B5 fixes. So the output
+/// `StringBuilder` is created LOCALLY by the public entry point and passed as
+/// a PARAMETER to every recursive helper, which only appends to it. The
+/// complex value never crosses a return frame and is never stored in a module
+/// global. The simple `int`/`bool` globals (`POS`, `N`, `ERR`) are unaffected.
 ///
-/// ## Other VM codegen bugs worked around
+/// ## Other VM codegen bugs (now fixed: C3/C4)
 ///   * `break` inside a `for` loop whose condition references a module global
-///     emits invalid bytecode. Early exits use `loop { if guard { ... return } }`
-///     instead of `for + break`.
+///     used to emit invalid bytecode (Plan 359 C3/C4 fixed the accumulator-
+///     on-return and `for + break` codegen paths). Early exits here still use
+///     `loop { if guard { ... return } }` rather than `for + break` — the
+///     parser works fine as-is, so the shape was not changed. (Verified: a
+///     standalone `for + break` now compiles and runs correctly.)
+///
+/// Summary of Plan 359 status for the workarounds in this file:
+///   - Recursive `Value` enum + `is` payload binding (D1): fixed — verified.
+///   - StringBuilder return-frame corruption (C2): NOT fixed — still load-bearing.
+///   - loop+return / for+break bytecode (C3/C4): fixed — parser unchanged by choice.
 ///
 /// ## API
 ///   parse(input str)      -> Result[str, str]   Ok(canonical) | Err(msg)
