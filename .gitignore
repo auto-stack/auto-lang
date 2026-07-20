@@ -80,6 +80,7 @@ auto/rust/
 # Local IDE/agent settings
 .claude/
 .agent/
+.zcode/
 
 # Graphify knowledge graph output (regenerate with /graphify)
 graphify-out/
@@ -101,6 +102,7 @@ test-deployed.js
 # Local dev tools
 .mcp.json
 .playwright-mcp/
+.playwright-cli/
 bun.lock
 
 # Auto-generated backend skeleton
@@ -118,3 +120,6 @@ test_temp.txt
 
 # Windows null-device artifact (git-bash 2>/dev/null creates a literal file)
 /nul
+
+# Windows MSVC debug symbols (program database)
+*.pdb
