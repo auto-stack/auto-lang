@@ -208,6 +208,8 @@ fn test_a2r_expect_error(case: &str, error_substring: &str) {
 #[test] fn test_12_specs_001_basic_spec() { test_a2r("12_specs/001_basic_spec").unwrap(); }
 #[test] fn test_12_specs_002_spec() { test_a2r("12_specs/002_spec").unwrap(); }
 #[test] fn test_12_specs_003_spec_delegation() { test_a2r("12_specs/003_spec_delegation").unwrap(); }
+#[test] fn test_12_specs_004_default_body() { test_a2r("12_specs/004_default_body").unwrap(); }
+#[test] fn test_12_specs_005_generic_impl() { test_a2r("12_specs/005_generic_impl").unwrap(); }
 
 // === 13_delegation ===
 #[test] fn test_13_delegation_001_single() { test_a2r("13_delegation/001_single").unwrap(); }

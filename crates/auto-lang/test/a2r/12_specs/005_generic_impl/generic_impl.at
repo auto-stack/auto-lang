@@ -1,32 +1,29 @@
 // Test generic spec implementation with concrete type arguments
 // (Plan 359 DIV-TRAIT-A2R-2).
 //
-// Before the fix, `type ScoreCmp as Comparable<i32>` transpiled to
+// Before the fix, `type ScoreCmp as Comparable<int>` transpiled to
 // `impl Comparable for ScoreCmp` (dropping `<i32>`), failing E0107
 // ("missing generics for trait Comparable"). After the fix, a2r threads
 // the concrete type args from `type_decl.spec_impls` into the impl,
 // producing `impl Comparable<i32> for ScoreCmp`.
+//
+// Field/method access inside the spec method body uses Auto's leading-dot
+// self convention (`.score`), which a2r translates to `self.score`. (Earlier
+// drafts used bare `score`, which is not valid Auto for self-field access and
+// surfaced a non-bug — that's why there's no DIV-TRAIT-A2R-3.)
 
 spec Comparable<T> {
     fn compare(other T) int
 }
 
-fn max_of(a Comparable<int>, b Comparable<int>) int {
-    if a.compare(b) >= 0 {
-        return 1
-    }
-    return 2
-}
-
 type ScoreCmp as Comparable<int> {
     score int
     fn compare(other int) int {
-        return score - other
+        return .score - other
     }
 }
 
 pub fn main() {
     var a = ScoreCmp(10)
-    var n = max_of(a, 5)
-    print(n)
+    print(a.compare(5))
 }
