@@ -214,3 +214,47 @@ not test-case divergences; they describe what the runtime supports today.
   reachable by hand-assembled ABT. This is tracked as a known limitation.
 
 
+
+## trait_advanced (Plan 359 D2)
+
+Three-way parity library `parity/libs/trait_advanced/` is **L1 100% (10/10)**
+on its baseline subset: a non-generic spec with required methods, void
+default methods, and a non-generic `Comparable` spec with concrete
+implementations. The library also probes advanced trait features; the
+current status of each:
+
+- **DIV-TRAIT-A2R-1 — value-returning spec default method (FIXED).**
+  Previously a2r wrapped the default body as `{ expr; }` -> unit, failing
+  E0308. Fixed in Plan 359: `spec_decl` now delegates `Expr::Block` default
+  bodies to the generic `body()` emitter, which keeps the tail expression.
+  Verified by `crates/auto-lang/test/a2r/12_specs/004_default_body`.
+  - 状态: fixed.
+
+- **DIV-TRAIT-A2R-2 — generic spec implementation drops concrete type args
+  (open).** `type ScoreCmp as Comparable<i32>` transpiles to
+  `impl Comparable for ScoreCmp` (missing `<i32>`), failing E0107. Root
+  cause: the spec-impl generator at `trans/rust.rs` reads
+  `type_decl.specs` (names only), never `type_decl.spec_impls` (which
+  carries `SpecImpl.type_args`). Fix: ~15-20 lines to thread the concrete
+  args through. The L1 baseline keeps `Comparable` non-generic to avoid
+  this. 状态: open (L3 roadmap).
+
+- **DIV-TRAIT-A2R-3 — spec method bodies do not emit the `self.` prefix
+  (open, surfaced during A2R-1 verification).** A spec method that reads a
+  field (`return title`) or calls a sibling method (`prefix()`) transpiles
+  without `self.`, failing E0425 ("cannot find value/function"). This is a
+  deeper a2r gap in spec-method scope resolution, not exercised by the
+  existing `12_specs/001-003` tests (whose bodies only call `print`).
+  状态: open (L3 roadmap; affects any spec method body that accesses self).
+
+- **DIV-TRAIT-VM-1 — bounded-generic functions (open, VM side).** AutoVM
+  cannot dispatch a spec method on a generic type parameter, and the
+  `<T has Spec>` bound syntax is unsupported. 状态: open (L3).
+
+- **DIV-TRAIT-VM-2 — VM trait checker requires re-declaration of default
+  methods (open, VM side).** Implementers must re-declare every default-
+  bodied spec method even though the language intends inheritance. Worked
+  around in the library by re-declaring. 状态: open (L3).
+
+- **DIV-TRAIT-LANG-1 — associated types not supported (open, language).**
+  Auto's spec grammar has no `type Item;` construct. 状态: open (L3).
