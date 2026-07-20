@@ -1265,6 +1265,18 @@ impl Codegen {
                 if matches!(store.kind, crate::ast::StoreKind::Var | crate::ast::StoreKind::Const)
                     && self.scope_stack.len() <= 1
                 {
+                    // Plan 359 Task 20: also record the initializer so `fn main`
+                    // can run it. execute_autovm spawns main directly (skipping
+                    // the script wrapper's top-level code), so without recording
+                    // the init here, module-level var/const globals are never
+                    // stored when a `main` fn exists — functions that read them
+                    // via LOAD_GLOBAL get the default 0 / wrong value. The init
+                    // is emitted at the top of main's body (see Stmt::Fn handling
+                    // of `fn main` below). Dedup by name so re-declaration or the
+                    // API-routes pre-pass doesn't double-emit.
+                    if !self.global_vars.contains(&name_str) {
+                        self.global_inits.push((name_str.clone(), store.expr.clone()));
+                    }
                     self.global_vars.insert(name_str.clone());
                 }
                 // Plan 327: module-level global variable (top-level `var`).
@@ -7065,14 +7077,30 @@ impl Codegen {
                     // Also treat stdlib module names as static
                     let is_static_method = match obj.as_ref() {
                         Expr::Ident(obj_name) => {
-                            let lower = obj_name.as_ref();
-                            matches!(lower, "env" | "fs" | "process" | "path" | "time" | "math" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex" | "http" | "shell"
-                                | "env_logger" | "chrono" | "serde_json" | "csv" | "walkdir" | "clap" | "simplelog"
-                                | "crossbeam" | "rayon" | "num" | "percent_encoding" | "urlencoding"
-                                | "sha2" | "hmac" | "flate2" | "tar" | "semver" | "once_cell"
-                                | "rand_distr")
-                                || self.is_type_name_heuristic(obj_name)
-                                || self.is_type(obj_name)
+                            // Plan 359 Task 20: a module-level global var (or an
+                            // imported value name) is an INSTANCE receiver, never a
+                            // static type — even when its name starts uppercase (e.g.
+                            // `var PAT str = "hello"` then `PAT.len()`). Without this
+                            // guard, is_type_name_heuristic misclassifies the global
+                            // as a type reference, so the receiver is never loaded and
+                            // the method dispatches against garbage (e.g. returning the
+                            // length of the variable NAME instead of its value).
+                            // Mirrors the Plan 355 guard on the native-call path above.
+                            if self.lookup_var(obj_name.as_str()).is_some()
+                                || self.global_vars.contains(obj_name.as_str())
+                                || self.import_scope.contains_key(obj_name.as_ref())
+                            {
+                                false
+                            } else {
+                                let lower = obj_name.as_ref();
+                                matches!(lower, "env" | "fs" | "process" | "path" | "time" | "math" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex" | "http" | "shell"
+                                    | "env_logger" | "chrono" | "serde_json" | "csv" | "walkdir" | "clap" | "simplelog"
+                                    | "crossbeam" | "rayon" | "num" | "percent_encoding" | "urlencoding"
+                                    | "sha2" | "hmac" | "flate2" | "tar" | "semver" | "once_cell"
+                                    | "rand_distr")
+                                    || self.is_type_name_heuristic(obj_name)
+                                    || self.is_type(obj_name)
+                            }
                         }
                         // Plan 338: GenName("List<Item>") is a static type name, not
                         // an instance. Without this, List<Item>.new([]) compiles the
