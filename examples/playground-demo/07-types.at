@@ -3,15 +3,16 @@ type Point {
     x int
     y int
 
-    fn new(x int, y int) Point {
-        Point { x: x, y: y }
+    static fn new(x int, y int) Point {
+        return Point(x, y)
     }
 
-    fn distance(self) int {
-        self.x * self.x + self.y * self.y
+    // `.x` reads a field of the receiver inside methods
+    fn distance_squared() int {
+        return .x * .x + .y * .y
     }
 }
 
 let p = Point.new(3, 4)
-print(f"Point: ($p.x, $p.y)")
-print(f"Distance squared: $p.distance()")
+print(f"Point: (${p.x}, ${p.y})")
+print(f"Distance squared: ${p.distance_squared()}")

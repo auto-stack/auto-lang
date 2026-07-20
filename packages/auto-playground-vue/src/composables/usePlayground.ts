@@ -8,6 +8,7 @@ interface PersistedState {
   source: string;
   activeTab: OutputTab;
   liveCompile: boolean;
+  projectDir?: string;
 }
 
 export interface UsePlaygroundOptions {
@@ -69,17 +70,22 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   const activeTab = ref<OutputTab>(saved.activeTab ?? 'rust');
   const transpileTarget = ref('');
   const liveCompile = ref(saved.liveCompile ?? true);
-  const projectDir = ref<string | undefined>(undefined);
+  const projectDir = ref<string | undefined>(saved.projectDir);
+
+  interface OutputLocation {
+    outputFile: string;
+    outputLines: number[];
+  }
 
   interface TransCacheEntry {
     files: TransFile[];
-    sourceMap: SourceMapEntry[];
+    fileSourceMaps: Record<string, SourceMapEntry[]>;
     selectedFile: string;
   }
   const transCache = ref<Record<string, TransCacheEntry>>({});
-  const sourceMap = ref<SourceMapEntry[]>([]);
   const highlightedSourceLine = ref<number | null>(null);
   const highlightedOutputLines = ref<number[]>([]);
+  const highlightedOutputFiles = ref<string[]>([]);
   const shareToast = ref<{ message: string; visible: boolean }>({ message: '', visible: false });
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -104,25 +110,92 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     return transCache.value[target]?.selectedFile ?? '';
   });
 
-  const sourceToOutputMap = computed(() => {
-    const map: Record<number, number[]> = {};
-    for (const entry of sourceMap.value) {
-      if (!map[entry.source_line]) {
-        map[entry.source_line] = [];
+  const activeSourceFile = computed(() => '');
+
+  // Forward map: (sourceFile, sourceLine) -> output files with their mapped output lines
+  const forwardSourceMap = computed(() => {
+    const target = transpileTarget.value;
+    const map = new Map<string, Map<number, OutputLocation[]>>();
+    if (!target) return map;
+    const cached = transCache.value[target];
+    if (!cached) return map;
+    for (const file of cached.files) {
+      const entries = cached.fileSourceMaps[file.path] ?? [];
+      for (const entry of entries) {
+        const sourceFile = entry.source_file || activeSourceFile.value;
+        if (!map.has(sourceFile)) map.set(sourceFile, new Map());
+        const fileMap = map.get(sourceFile)!;
+        if (!fileMap.has(entry.source_line)) fileMap.set(entry.source_line, []);
+        const locations = fileMap.get(entry.source_line)!;
+        const loc = locations.find((l) => l.outputFile === file.path);
+        if (loc) {
+          if (!loc.outputLines.includes(entry.output_line)) loc.outputLines.push(entry.output_line);
+        } else {
+          locations.push({ outputFile: file.path, outputLines: [entry.output_line] });
+        }
       }
-      map[entry.source_line].push(entry.output_line);
     }
     return map;
   });
 
+  // Reverse map: (outputFile, outputLine) -> originating source file and line
+  const reverseSourceMap = computed(() => {
+    const target = transpileTarget.value;
+    const map = new Map<string, Map<number, { sourceFile: string; sourceLine: number }>>();
+    if (!target) return map;
+    const cached = transCache.value[target];
+    if (!cached) return map;
+    for (const file of cached.files) {
+      const entries = cached.fileSourceMaps[file.path] ?? [];
+      for (const entry of entries) {
+        const sourceFile = entry.source_file || activeSourceFile.value;
+        if (!map.has(file.path)) map.set(file.path, new Map());
+        map.get(file.path)!.set(entry.output_line, { sourceFile, sourceLine: entry.source_line });
+      }
+    }
+    return map;
+  });
+
+  function refreshOutputHighlight() {
+    if (highlightedSourceLine.value) {
+      highlightSourceLine(highlightedSourceLine.value);
+    } else {
+      highlightedOutputLines.value = [];
+      highlightedOutputFiles.value = [];
+    }
+  }
+
   function highlightSourceLine(line: number) {
     highlightedSourceLine.value = line;
-    highlightedOutputLines.value = sourceToOutputMap.value[line] ?? [];
+    const sourceFile = activeSourceFile.value;
+    const locations = forwardSourceMap.value.get(sourceFile)?.get(line) ?? [];
+    highlightedOutputFiles.value = locations.map((l) => l.outputFile);
+    const currentOutputFile = selectedTransFile.value;
+    const currentLoc = locations.find((l) => l.outputFile === currentOutputFile);
+    highlightedOutputLines.value = currentLoc?.outputLines ?? [];
+  }
+
+  function highlightOutputLine(outputFile: string, outputLine: number) {
+    const loc = reverseSourceMap.value.get(outputFile)?.get(outputLine);
+    if (!loc) {
+      clearHighlight();
+      return;
+    }
+    highlightedSourceLine.value = loc.sourceLine;
+    const locations = forwardSourceMap.value.get(loc.sourceFile)?.get(loc.sourceLine) ?? [];
+    highlightedOutputFiles.value = locations.map((l) => l.outputFile);
+    const currentLoc = locations.find((l) => l.outputFile === outputFile);
+    highlightedOutputLines.value = currentLoc?.outputLines ?? [];
+  }
+
+  function getSourceFileForOutputLine(outputFile: string, outputLine: number): string | undefined {
+    return reverseSourceMap.value.get(outputFile)?.get(outputLine)?.sourceFile;
   }
 
   function clearHighlight() {
     highlightedSourceLine.value = null;
     highlightedOutputLines.value = [];
+    highlightedOutputFiles.value = [];
   }
 
   async function run() {
@@ -213,21 +286,26 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
       });
       const data: TransResponse = await res.json();
       const files = data.files ?? [];
+      const fileSourceMaps: Record<string, SourceMapEntry[]> = {};
+      for (const f of files) {
+        fileSourceMaps[f.path] = f.source_map ?? data.source_map ?? [];
+      }
       const selected = files[0]?.path ?? '';
       transpileTarget.value = target;
-      sourceMap.value = data.source_map || [];
       transCache.value[target] = {
         files,
-        sourceMap: data.source_map || [],
+        fileSourceMaps,
         selectedFile: selected,
       };
+      refreshOutputHighlight();
     } catch (e: any) {
       transpileTarget.value = target;
       transCache.value[target] = {
         files: [{ path: 'error.txt', code: `Error: ${e.message}` }],
-        sourceMap: [],
+        fileSourceMaps: { 'error.txt': [] },
         selectedFile: 'error.txt',
       };
+      refreshOutputHighlight();
     } finally {
       isLoading.value = false;
     }
@@ -237,20 +315,18 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     activeTab.value = target;
     transpileTarget.value = target;
     const cached = transCache.value[target];
-    if (cached) {
-      sourceMap.value = cached.sourceMap;
-    } else if (liveCompile.value) {
+    if (!cached && liveCompile.value) {
       transpile(target);
-    } else {
-      sourceMap.value = [];
+      return;
     }
+    refreshOutputHighlight();
   }
 
   function selectTransFile(target: string, path: string) {
     const cached = transCache.value[target];
     if (!cached) return;
     cached.selectedFile = path;
-    sourceMap.value = cached.sourceMap;
+    refreshOutputHighlight();
   }
 
   function loadExample(payload: { source: string; project_dir?: string }) {
@@ -260,9 +336,9 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     stderr.value = '';
     resultCode.value = '';
     bytecode.value = [];
-    sourceMap.value = [];
     highlightedSourceLine.value = null;
     highlightedOutputLines.value = [];
+    highlightedOutputFiles.value = [];
   }
 
   function getShareUrl(): string {
@@ -271,6 +347,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
       source: source.value,
       activeTab: activeTab.value,
       liveCompile: liveCompile.value,
+      projectDir: projectDir.value,
     });
     const hash = '#share=' + encodeURIComponent(btoa(payload));
     return window.location.origin + window.location.pathname + hash;
@@ -312,8 +389,8 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     }
   });
 
-  watch([source, activeTab, liveCompile], ([s, t, l]) => {
-    persistState({ source: s, activeTab: t, liveCompile: l });
+  watch([source, activeTab, liveCompile, projectDir], ([s, t, l, d]) => {
+    persistState({ source: s, activeTab: t, liveCompile: l, projectDir: d });
   }, { deep: true });
 
   // Initial transpile on load: fetch all targets in parallel so every tab has cached content
@@ -324,7 +401,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   }
 
   async function transpileAll() {
-    const targets: OutputTab[] = ['rust', 'c', 'python', 'typescript'];
+    const targets: OutputTab[] = ['rust', 'c', 'python', 'typescript', 'abt'];
     isLoading.value = true;
     try {
       const results = await Promise.all(
@@ -341,17 +418,21 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
             });
             const data: TransResponse = await res.json();
             const files = data.files ?? [];
+            const fileSourceMaps: Record<string, SourceMapEntry[]> = {};
+            for (const f of files) {
+              fileSourceMaps[f.path] = f.source_map ?? data.source_map ?? [];
+            }
             return {
               target,
               files,
-              sourceMap: data.source_map || [],
+              fileSourceMaps,
               selectedFile: files[0]?.path ?? '',
             };
           } catch (e: any) {
             return {
               target,
               files: [{ path: 'error.txt', code: `Error: ${e.message}` }],
-              sourceMap: [],
+              fileSourceMaps: { 'error.txt': [] },
               selectedFile: 'error.txt',
             };
           }
@@ -360,7 +441,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
       for (const r of results) {
         transCache.value[r.target] = {
           files: r.files,
-          sourceMap: r.sourceMap || [],
+          fileSourceMaps: r.fileSourceMaps,
           selectedFile: r.selectedFile,
         };
       }
@@ -368,7 +449,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
       const cached = transCache.value[current];
       if (cached) {
         transpileTarget.value = current;
-        sourceMap.value = cached.sourceMap;
+        refreshOutputHighlight();
       }
     } finally {
       isLoading.value = false;
@@ -464,12 +545,12 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     source, stdout, stderr, resultCode, timeMs, runBytecode: bytecode, isLoading,
     activeTab, transpiledCode, transpileTarget, liveCompile, projectDir,
     transFiles, selectedTransFile,
-    sourceMap, highlightedSourceLine, highlightedOutputLines,
+    highlightedSourceLine, highlightedOutputLines, highlightedOutputFiles,
     shareToast,
     // Debug state
     debugSessionId, debugState, bytecode: debugBytecode, breakpoints, isDebugging,
     // Methods
-    run, runCode, transpile, switchTab, selectTransFile, loadExample, highlightSourceLine, clearHighlight,
+    run, runCode, transpile, switchTab, selectTransFile, loadExample, highlightSourceLine, highlightOutputLine, getSourceFileForOutputLine, clearHighlight,
     share,
     debugStart, debugSetBreakpoints, debugCommand, debugStop,
   };

@@ -5,6 +5,7 @@
         v-for="(line, index) in highlightedLines"
         :key="index"
         :class="['code-line', { highlighted: isHighlighted(index + 1) }]"
+        @click="onLineClick(index + 1)"
       >
         <span class="line-number">{{ index + 1 }}</span>
         <span class="line-content" v-html="line || ' '"></span>
@@ -39,6 +40,10 @@ const props = defineProps<{
   highlightLines?: number[];
 }>();
 
+const emit = defineEmits<{
+  'line-click': [line: number];
+}>();
+
 const hljsLanguageMap: Record<string, string> = {
   rust: 'rust',
   python: 'python',
@@ -65,6 +70,10 @@ const highlightedLines = computed(() => {
 function isHighlighted(lineNum: number): boolean {
   return props.highlightLines?.includes(lineNum) ?? false;
 }
+
+function onLineClick(lineNum: number) {
+  emit('line-click', lineNum);
+}
 </script>
 
 <style scoped>
@@ -85,6 +94,7 @@ function isHighlighted(lineNum: number): boolean {
   padding: 0 12px;
   min-height: 20px;
   line-height: 20px;
+  cursor: pointer;
 }
 .code-line.highlighted {
   background: rgba(255, 255, 0, 0.12);

@@ -1,0 +1,19 @@
+// todo.at — todo item type with a boolean done flag, a constructor,
+// and a status marker helper.
+
+pub type Todo {
+    id int
+    title str
+    done bool
+}
+
+pub fn new_todo(id int, title str) Todo {
+    return Todo(id, title, false)
+}
+
+pub fn status_text(done bool) str {
+    if done {
+        return "[x]"
+    }
+    return "[ ]"
+}

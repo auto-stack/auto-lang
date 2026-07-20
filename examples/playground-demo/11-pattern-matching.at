@@ -1,0 +1,41 @@
+// `is` pattern matching: literals, enum payloads, struct-carrying variants
+let n = 7
+
+// Match on integer literals with an `else` fallback
+is n {
+    0 -> print("zero")
+    7 -> print("lucky seven")
+    else -> print(f"some other number: $n")
+}
+
+// Heterogeneous enum: each variant carries a different payload type
+enum Atom {
+    Int int
+    Float float
+    Text str
+}
+
+let a = Atom.Text("hello")
+is a {
+    Atom.Int(i) -> print(f"got int: $i")
+    Atom.Float(f) -> print(f"got float: $f")
+    Atom.Text(t) -> print(f"got text: $t")
+}
+
+// Variants can carry whole structs; bind then read the fields
+type Point {
+    x int
+    y int
+}
+
+enum Shape {
+    Circle int
+    Rect Point
+}
+
+let pt = Point(x: 3, y: 4)
+let s = Shape.Rect(pt)
+is s {
+    Shape.Circle(r) -> print(f"circle radius $r")
+    Shape.Rect(pt) -> print(f"rect at ($pt.x, $pt.y)")
+}

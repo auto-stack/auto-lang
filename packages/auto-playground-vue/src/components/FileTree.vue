@@ -4,7 +4,7 @@
       v-for="file in files"
       :key="file.path"
       class="file-item"
-      :class="{ active: file.path === selected }"
+      :class="{ active: file.path === selected, mapped: mappedFiles?.includes(file.path) }"
       @click="$emit('select', file.path)"
     >
       <span class="file-name">{{ file.path }}</span>
@@ -13,11 +13,10 @@
 </template>
 
 <script setup lang="ts">
-import type { TransFile } from '../types';
-
 defineProps<{
-  files: TransFile[];
+  files: { path: string }[];
   selected: string;
+  mappedFiles?: string[];
 }>();
 
 defineEmits<{
@@ -51,6 +50,14 @@ defineEmits<{
 .file-item.active {
   background: #094771;
   color: #ffffff;
+}
+.file-item.mapped {
+  font-weight: 600;
+}
+.file-item.mapped .file-name::before {
+  content: '•';
+  color: #ff9d00;
+  margin-right: 6px;
 }
 .file-name {
   font-family: 'Consolas', 'Monaco', monospace;

@@ -13,6 +13,7 @@
           <option value="c">→ C</option>
           <option value="python">→ Python</option>
           <option value="typescript">→ TypeScript</option>
+          <option value="abt">→ ABT</option>
         </select>
         <button v-if="!isDebugging" class="run-btn" @click="runAction" :disabled="isLoading">
           <Play v-if="!isLoading" :size="14" />
@@ -117,6 +118,7 @@
               :code="transpiledCode"
               :language="displayTab"
               :highlight-lines="highlightedOutputLines"
+              @line-click="onOutputLineClick"
             />
           </div>
         </div>
@@ -188,6 +190,7 @@ const {
   highlightedOutputLines, shareToast,
   debugState, bytecode, breakpoints, isDebugging,
   run, switchTab, selectTransFile, loadExample, share,
+  highlightOutputLine,
   debugStart, debugSetBreakpoints, debugCommand, debugStop,
 } = usePlayground({
   apiBase,
@@ -200,7 +203,7 @@ const displayTab = ref<EmbedTab>('Output')
 const targetLang = ref<'run' | Exclude<OutputTab, 'bytecode'>>('run')
 const copied = ref(false)
 
-const tabs = ['Output', 'rust', 'c', 'python', 'typescript', 'Bytecode'] as const
+const tabs = ['Output', 'rust', 'c', 'python', 'typescript', 'abt', 'Bytecode'] as const
 type EmbedTab = typeof tabs[number]
 
 const tabLabels: Record<EmbedTab, string> = {
@@ -209,6 +212,7 @@ const tabLabels: Record<EmbedTab, string> = {
   c: 'C',
   python: 'Python',
   typescript: 'TS',
+  abt: 'ABT',
   Bytecode: 'Bytecode',
 }
 
@@ -225,6 +229,10 @@ const showTransFileTree = computed(() => {
 
 function onSelectTransFile(path: string) {
   selectTransFile(displayTab.value, path)
+}
+
+function onOutputLineClick(line: number) {
+  highlightOutputLine(selectedTransFile.value, line)
 }
 
 async function runAction() {

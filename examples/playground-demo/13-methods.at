@@ -1,0 +1,31 @@
+// Type methods: `.field` receiver shorthand, static functions, ext blocks
+type Counter {
+    value int
+
+    // Static function: called on the type itself, like Counter.new(10)
+    static fn new(v int) Counter {
+        return Counter(v)
+    }
+
+    // `.value` reads a field of the receiver inside methods
+    fn get() int {
+        return .value
+    }
+
+    fn add(n int) int {
+        return .value + n
+    }
+}
+
+let c = Counter.new(10)
+print(f"counter: ${c.get()}")
+print(f"counter + 5: ${c.add(5)}")
+
+// `ext` adds methods to a type from outside its definition
+ext Counter {
+    fn double() int {
+        return .value * 2
+    }
+}
+
+print(f"counter doubled: ${c.double()}")

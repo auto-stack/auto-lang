@@ -1,0 +1,29 @@
+// Specs: declared interfaces that types conform to — runtime polymorphism
+
+// A spec declares the methods a conforming type must implement
+spec Flyer {
+    fn fly()
+}
+
+// Types conform to a spec with `as Flyer`
+type Pigeon as Flyer {
+    fn fly() {
+        print("Flap Flap")
+    }
+}
+
+type Hawk as Flyer {
+    fn fly() {
+        print("Gawk! Gawk!")
+    }
+}
+
+let b1 = Pigeon()
+let b2 = Hawk()
+
+// Both conform to Flyer, so they can live in one []Flyer array
+// and dispatch fly() dynamically at runtime
+let arr []Flyer = [b1, b2]
+for b in arr {
+    b.fly()
+}

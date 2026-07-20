@@ -1,0 +1,28 @@
+// Collections: HashMap for key-value lookup, HashSet for membership, List for order
+
+// HashMap: insert keys, look them up again
+var scores = HashMap.new()
+scores.insert_str("alice", 90)
+scores.insert_str("bob", 75)
+
+print(f"alice: ${scores.get_str("alice")}")
+print(f"has carol: ${scores.contains("carol")}")
+
+// HashSet: every element is stored at most once
+var seen = HashSet.new()
+seen.insert("red")
+seen.insert("green")
+seen.insert("red")
+
+print(f"seen red: ${seen.contains("red")}")
+print(f"seen blue: ${seen.contains("blue")}")
+
+// List: ordered, growable, iterable
+let nums = List.new([1, 2, 3])
+nums.push(4)
+
+var total = 0
+for n in nums {
+    total = total + n
+}
+print(f"list len: ${nums.len()}, sum: $total")

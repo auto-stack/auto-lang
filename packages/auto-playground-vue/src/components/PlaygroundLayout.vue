@@ -74,6 +74,7 @@
               <option value="c">C</option>
               <option value="python">Python</option>
               <option value="typescript">TypeScript</option>
+              <option value="abt">ABT</option>
             </select>
             <span class="trans-current">{{ targetLabel }}</span>
             <span class="trans-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
@@ -110,9 +111,17 @@
       <div class="main-row">
         <div class="editor-pane" :class="{ 'with-preview': mode !== 'editor' }">
           <div class="pane-header">
-            <span>{{ isReplayMode ? 'Replay' : 'Auto' }}</span>
+            <span v-if="isReplayMode">Replay</span>
+            <span v-else>Auto <span v-if="activeFile" class="active-file-name">· {{ activeFile }}</span></span>
           </div>
           <div class="pane-body">
+            <FileTree
+              v-if="showSourceFileTree"
+              :files="projectFiles!"
+              :selected="activeFile || ''"
+              :mapped-files="mappedSourceFilesArray"
+              @select="$emit('selectFile', $event)"
+            />
             <CodeEditor
               :model-value="source"
               @update:model-value="$emit('update:source', $event)"
@@ -160,6 +169,7 @@
                 :code="transpiledCode"
                 :language="previewLanguage"
                 :highlight-lines="highlightLines"
+                @line-click="onOutputLineClick"
               />
             </template>
           </div>
@@ -190,7 +200,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import type { OutputTab, BytecodeLine, DebugState, TransFile } from '../types';
+import type { OutputTab, BytecodeLine, DebugState, TransFile, ProjectFile } from '../types';
 import CodeEditor from './CodeEditor.vue';
 import CodePreview from './CodePreview.vue';
 import BytecodePanel from './BytecodePanel.vue';
@@ -216,11 +226,15 @@ const props = defineProps<{
   transFiles?: TransFile[];
   selectedTransFile?: string;
   highlightLines?: number[];
+  projectFiles?: ProjectFile[];
+  activeFile?: string;
+  mappedSourceFiles?: Set<string>;
   onRun: () => void;
   onTrans: () => void;
   onRunCode?: (language: string) => void;
   onDebug: () => void;
   onSelectTransFile?: (target: string, path: string) => void;
+  onOutputLineClick?: (outputFile: string, outputLine: number) => void;
   // Debug props
   isDebugging?: boolean;
   isPaused?: boolean;
@@ -245,7 +259,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:source': [value: string];
   'update:transTarget': [value: OutputTab];
-  loadExample: [payload: { source: string; project_dir?: string }];
+  loadExample: [payload: { source: string; project_dir?: string; files?: ProjectFile[] }];
+  selectFile: [path: string];
   share: [];
   // Debug events
   debugCommand: [cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 'stop'];
@@ -274,6 +289,7 @@ const targetLabel = computed(() => {
     c: 'C',
     python: 'Python',
     typescript: 'TypeScript',
+    abt: 'ABT',
     bytecode: 'Bytecode',
   };
   return labels[props.transTarget] ?? props.transTarget;
@@ -291,7 +307,7 @@ onMounted(async () => {
   if (!ctx) return;
   const style = getComputedStyle(el);
   ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-  const labels = ['Rust', 'C', 'Python', 'TypeScript'];
+  const labels = ['Rust', 'C', 'Python', 'TypeScript', 'ABT'];
   let maxTextWidth = 0;
   for (const label of labels) {
     maxTextWidth = Math.max(maxTextWidth, ctx.measureText(label).width);
@@ -333,6 +349,16 @@ const previewLanguage = computed(() => {
 
 const showFileTree = computed(() => props.mode === 'trans' && (props.transFiles?.length ?? 0) > 1);
 
+const showSourceFileTree = computed(() => (props.projectFiles?.length ?? 0) > 1);
+
+const mappedSourceFilesArray = computed(() =>
+  props.mappedSourceFiles ? Array.from(props.mappedSourceFiles) : []
+);
+
+function onOutputLineClick(line: number) {
+  props.onOutputLineClick?.(props.selectedTransFile ?? '', line);
+}
+
 const effectiveBytecode = computed(() => {
   if (props.mode === 'run') return props.bytecode ?? [];
   return props.bytecode ?? [];
@@ -356,7 +382,7 @@ function onTrans() {
   props.onTrans();
 }
 
-function onLoadExample(payload: { source: string; project_dir?: string }) {
+function onLoadExample(payload: { source: string; project_dir?: string; files?: ProjectFile[] }) {
   emit('loadExample', payload);
 }
 </script>
@@ -585,6 +611,11 @@ function onLoadExample(payload: { source: string; project_dir?: string }) {
   overflow: hidden;
   display: flex;
   flex-direction: row;
+}
+
+.active-file-name {
+  text-transform: none;
+  color: #89b4fa;
 }
 
 .output-body {

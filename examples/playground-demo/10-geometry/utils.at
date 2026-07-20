@@ -1,0 +1,14 @@
+// utils.at — shared math helpers, the leaf module of this project.
+// Dependency chain: main.at -> shapes.at -> utils.at
+
+pub fn pi() float {
+    3.141592653589793
+}
+
+pub fn square(x float) float {
+    x * x
+}
+
+pub fn perimeter_of(w float, h float) float {
+    2.0 * (w + h)
+}

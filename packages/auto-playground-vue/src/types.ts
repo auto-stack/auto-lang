@@ -1,6 +1,12 @@
+export interface ProjectFile {
+  path: string;
+  source: string;
+}
+
 export interface RunRequest {
   source: string;
   project_dir?: string;
+  files?: ProjectFile[];
 }
 
 export interface RunResponse {
@@ -21,16 +27,19 @@ export interface TransRequest {
   source: string;
   target: string;
   project_dir?: string;
+  files?: ProjectFile[];
 }
 
 export interface SourceMapEntry {
   source_line: number;
   output_line: number;
+  source_file?: string;
 }
 
 export interface TransFile {
   path: string;
   code: string;
+  source_map?: SourceMapEntry[];
 }
 
 export interface TransResponse {
@@ -44,13 +53,14 @@ export interface Example {
   source: string;
   example_type: 'single' | 'project';
   project_dir?: string;
+  files?: ProjectFile[];
 }
 
 export interface ExamplesResponse {
   examples: Example[];
 }
 
-export type OutputTab = 'rust' | 'c' | 'python' | 'typescript' | 'bytecode';
+export type OutputTab = 'rust' | 'c' | 'python' | 'typescript' | 'abt' | 'bytecode';
 
 // Debug types
 export interface BytecodeLine {

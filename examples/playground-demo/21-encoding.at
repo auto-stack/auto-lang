@@ -1,0 +1,25 @@
+// Encoding: Base64 encode/decode via the base64 crate
+// (uses use.rust — runs in the VM and transpiles to Rust; C target unsupported)
+dep base64
+use.rust base64::Engine
+use.rust base64::engine::general_purpose::STANDARD
+
+// Base64-encode a string: 3 bytes become 4 ASCII characters
+let original = "hello world"
+let encoded = STANDARD.encode(original)
+print(f"base64 of '$original': $encoded")
+
+// Another value, to show the encoding is deterministic
+let again = STANDARD.encode("hello world")
+print(f"same input, same output: ${encoded == again}")
+
+// Decode back into bytes
+let decoded = STANDARD.decode(encoded).unwrap()
+print(f"decoded byte count: ${decoded.len()}")
+
+// Round trip preserves the length of the input
+print(f"round trip ok: ${decoded.len() == original.len()}")
+
+// A shorter example with visible padding
+let hi = STANDARD.encode("hi")
+print(f"base64 of 'hi': $hi")

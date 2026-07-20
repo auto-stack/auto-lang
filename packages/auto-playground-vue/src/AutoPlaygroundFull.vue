@@ -12,12 +12,16 @@
     :transpiled-code="transpiledCode"
     :trans-files="transFiles"
     :selected-trans-file="selectedTransFile"
+    :project-files="projectFiles"
+    :active-file="activeFile"
+    :mapped-source-files="mappedSourceFiles"
     :highlight-lines="highlightedOutputLines"
     :on-run="onRun"
     :on-trans="onTrans"
     :on-run-code="onRunCode"
     :on-debug="onDebug"
     :on-select-trans-file="selectTransFile"
+    :on-output-line-click="highlightOutputLine"
     :is-debugging="debug.isDebugging.value"
     :is-paused="debug.state.value?.status === 'paused'"
     :is-recording="debug.isRecording.value"
@@ -34,6 +38,7 @@
     :is-replay-playing="replay.isPlaying.value"
     @update:source="source = $event"
     @load-example="onLoadExample"
+    @select-file="selectFile"
     @share="share"
     @debug-command="onDebugCommand"
     @toggle-record="toggleRecord"
@@ -61,15 +66,16 @@ import { usePlaygroundFull } from './composables/usePlaygroundFull';
 import { useDebugger } from './composables/useDebugger';
 import { useReplayPlayer } from './composables/useReplayPlayer';
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
-import type { DebugRecording, OutputTab } from './types';
+import type { DebugRecording, OutputTab, ProjectFile } from './types';
 
 type PlaygroundMode = 'editor' | 'run' | 'trans' | 'debug' | 'replay';
 
 const {
   source, stdout, stderr, resultCode, timeMs, bytecode: runBytecode, isLoading,
   activeTab, transpiledCode, transFiles, selectedTransFile,
-  highlightedOutputLines, highlightedSourceLine,
-  run, transpile, runCode, selectTransFile, loadExample, highlightSourceLine, clearHighlight, share, shareToast,
+  projectFiles, activeFile,
+  highlightedOutputLines, highlightedSourceLine, mappedSourceFiles,
+  run, transpile, runCode, selectTransFile, selectFile, loadExample, highlightSourceLine, highlightOutputLine, clearHighlight, share, shareToast,
 } = usePlaygroundFull();
 
 const debug = useDebugger();
@@ -205,7 +211,7 @@ async function onLoadReplay() {
   input.click();
 }
 
-function onLoadExample(payload: { source: string; project_dir?: string }) {
+function onLoadExample(payload: { source: string; project_dir?: string; files?: ProjectFile[] }) {
   loadExample(payload);
   mode.value = 'editor';
 }

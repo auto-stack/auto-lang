@@ -1,0 +1,27 @@
+// account.at — bank account: data type plus its operations as module
+// functions (the VM cannot access named fields inside module code yet,
+// so the API takes/returns plain values and main.at applies them).
+//
+// withdraw returns the new balance, or -1 as the error code for
+// insufficient funds (Result/Option constructors are not supported by
+// the C transpiler yet, so an int status keeps every target working).
+
+pub type Account {
+    owner str
+    balance int
+}
+
+pub fn new_account(owner str, opening int) Account {
+    return Account(owner, opening)
+}
+
+pub fn deposit(balance int, amount int) int {
+    return balance + amount
+}
+
+pub fn withdraw(balance int, amount int) int {
+    if amount > balance {
+        return -1
+    }
+    return balance - amount
+}

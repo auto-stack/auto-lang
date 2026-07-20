@@ -1,0 +1,24 @@
+// Sorting: ints in place, floats with a comparator, structs by key
+
+// sort() orders an int array ascending
+var ints = [5, 1, 10, 2, 15]
+ints.sort()
+print(f"sorted ints: ${ints[0]} ${ints[1]} ${ints[2]} ${ints[3]} ${ints[4]}")
+
+// sort_by takes a comparator, needed for floats
+var floats = [1.15, 1.1, 5.5, 1.123, 2.0]
+floats.sort_by((a, b) => a.total_cmp(b))
+
+// (the VM prints float array elements as raw bits, so verify the order)
+let ascending = floats[0] <= floats[1] && floats[1] <= floats[2]
+print(f"floats sorted ascending: $ascending")
+
+// sort_by_key sorts structs by an extracted field
+type Person {
+    name str
+    age uint
+}
+
+var people = [Person("Zoe", 25), Person("Al", 60), Person("John", 1)]
+people.sort_by_key((p) => p.age)
+print(f"by age: ${people[0].name}, ${people[1].name}, ${people[2].name}")

@@ -1,0 +1,22 @@
+// F-strings: interpolate $var and ${expr} directly inside f"..." text
+let name = "Auto"
+let version = 1
+
+// Simple variable interpolation
+print(f"Hello, $name!")
+
+// Several variables in one string
+print(f"Name: $name, Version: $version")
+
+// Arbitrary expressions inside ${...}
+let x = 10
+let y = 20
+print(f"Sum: ${x + y}, Product: ${x * y}")
+
+// Mix plain variables and expressions
+print(f"x is $x, y doubled is ${y * 2}")
+
+// Multi-line f-string with triple quotes
+let msg = f"""Language: $name
+Next version: ${version + 1}"""
+print(msg)

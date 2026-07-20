@@ -1,0 +1,23 @@
+// Date and time via the chrono crate: now, formatting, timestamps, parsing
+// (uses use.rust — runs in the VM and transpiles to Rust; C target unsupported)
+dep chrono
+use.rust chrono::Local
+use.rust chrono::NaiveDateTime
+
+// Current local date and time, field by field
+let now = Local.now()
+print(f"today: ${now.year()}-${now.month()}-${now.day()}")
+print(f"hour: ${now.hour()}")
+
+// strftime-style formatting
+let formatted = now.format("%Y-%m-%d %H:%M:%S")
+print(f"formatted: $formatted")
+
+// Unix timestamp: seconds since 1970-01-01
+let ts = now.timestamp()
+print(f"timestamp: $ts")
+print(f"one hour later: ${ts + 3600}")
+
+// Parse a date/time string with a layout
+let dt = NaiveDateTime.parse_from_str("2024-01-15 10:30:00", "%Y-%m-%d %H:%M:%S").unwrap()
+print("parsed 2024-01-15 10:30:00 ok")

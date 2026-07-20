@@ -1,0 +1,27 @@
+// Text processing: split, trim, replace, case conversion — chained as methods
+
+// Split a CSV line into fields
+let csv = "apple,banana,cherry"
+let fruits = csv.split(",")
+print(f"first fruit: ${fruits[0]}")
+print(f"fruit count: ${fruits.len()}")
+
+// Trim surrounding whitespace
+let raw = "  padded text  "
+print(f"trimmed: '${raw.trim()}'")
+
+// Replace substrings, chained
+let template = "hello NAME, welcome to PLACE"
+let msg = template.replace("NAME", "Auto").replace("PLACE", "Playground")
+print(msg)
+
+// Case conversion and search
+let shout = "make it loud".upper()
+print(shout)
+print(f"has 'loud': ${"make it loud".contains("loud")}")
+print(f"position of 'loud': ${"make it loud".find("loud")}")
+
+// Split a log line and reformat the pieces
+let line = "2024-01-15 ERROR disk full"
+let parts = line.split(" ")
+print(f"date: ${parts[0]}, level: ${parts[1]}")

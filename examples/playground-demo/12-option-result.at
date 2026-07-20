@@ -1,0 +1,40 @@
+// Option and Result: Some/None and Ok/Err with `??` fallbacks and `is` matching
+// (note: the C backend does not support Option/Result yet — VM and Rust only)
+
+// Result: a value or an error, functions declare it with `!int`
+fn divide(a int, b int) !int {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    Ok(a / b)
+}
+
+let r1 = divide(10, 2)
+is r1 {
+    Ok(v) -> print(f"10 / 2 = $v")
+    Err(e) -> print("10 / 2 failed")
+}
+
+let r2 = divide(10, 0)
+is r2 {
+    Ok(v) -> print(f"10 / 0 = $v")
+    Err(e) -> print("10 / 0 failed: division by zero")
+}
+
+// Option: a value that may be missing
+let some = Some(42)
+let none = None
+
+// `??` falls back to a default when the value is None
+print(f"some ?? 0 -> ${some ?? 0}")
+print(f"none ?? 99 -> ${none ?? 99}")
+
+// `is` unwraps the payload of Some/None
+is some {
+    Some(v) -> print(f"some holds $v")
+    None -> print("some is empty")
+}
+is none {
+    Some(v) -> print(f"none holds $v")
+    None -> print("none is empty")
+}

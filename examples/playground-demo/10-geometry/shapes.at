@@ -1,0 +1,28 @@
+// shapes.at — circle and rectangle data types plus area/perimeter
+// functions built on top of the utils helpers (use utils).
+use utils
+
+pub type Circle {
+    radius float
+}
+
+pub type Rect {
+    width float
+    height float
+}
+
+pub fn circle_area(radius float) float {
+    return pi() * square(radius)
+}
+
+pub fn circle_perimeter(radius float) float {
+    return 2.0 * pi() * radius
+}
+
+pub fn rect_area(w float, h float) float {
+    return w * h
+}
+
+pub fn rect_perimeter(w float, h float) float {
+    return perimeter_of(w, h)
+}

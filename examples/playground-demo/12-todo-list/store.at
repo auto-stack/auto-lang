@@ -1,0 +1,23 @@
+// store.at — TodoStore manages the todo item list (use todo):
+// creating the store and adding items. Item completion and listing
+// are driven from main.at, which can read/write item fields directly.
+use todo
+
+pub type TodoStore {
+    items List<Todo>
+    next_id int
+}
+
+pub fn new_store() TodoStore {
+    return TodoStore(List.new(), 1)
+}
+
+pub fn add_item(items List<Todo>, id int, title str) int {
+    let t = new_todo(id, title)
+    items.push(t)
+    return id + 1
+}
+
+pub fn count_items(items List<Todo>) int {
+    return items.len()
+}

@@ -1,0 +1,26 @@
+// Generic functions: type parameters declared with #[with(...)]
+
+// A single type parameter T works with any argument type
+#[with(T)]
+fn identity(x T) T {
+    return x
+}
+
+print(identity(42))
+print(identity("hello"))
+
+// Two type parameters, pick either side
+#[with(A, B)]
+fn first(a A, b B) A {
+    return a
+}
+
+#[with(A, B)]
+fn second(a A, b B) B {
+    return b
+}
+
+print(first(1, "two"))
+print(second(1, "two"))
+print(first("one", 2))
+print(second("one", 2))

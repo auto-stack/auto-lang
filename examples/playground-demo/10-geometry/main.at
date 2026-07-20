@@ -1,0 +1,16 @@
+// main.at — geometry demo: areas and perimeters.
+// Uses shapes, which itself uses utils (two-level module dependency).
+use shapes
+
+let c = Circle(3.0)
+let radius = c.radius
+let a = circle_area(radius)
+let p = circle_perimeter(radius)
+print(f"Circle r=$radius  area=$a  perimeter=$p")
+
+let r = Rect(4.0, 5.0)
+let w = r.width
+let h = r.height
+let ra = rect_area(w, h)
+let rp = rect_perimeter(w, h)
+print(f"Rect $w x $h  area=$ra  perimeter=$rp")

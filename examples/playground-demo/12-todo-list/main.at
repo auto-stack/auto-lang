@@ -1,0 +1,30 @@
+// main.at — todo list demo: add items, complete one, list them all.
+use store
+
+let store = new_store()
+store.next_id = add_item(store.items, store.next_id, "Buy milk")
+store.next_id = add_item(store.items, store.next_id, "Write the report")
+store.next_id = add_item(store.items, store.next_id, "Call mom")
+
+let total = count_items(store.items)
+print(f"Added $total todos")
+
+// Mark todo #2 as completed.
+var i = 0
+for i < store.items.len() {
+    let t = store.items.get(i)
+    if t.id == 2 {
+        t.done = true
+        print(f"Completed todo #$t.id")
+    }
+    i = i + 1
+}
+
+print("--- Todo list ---")
+var j = 0
+for j < store.items.len() {
+    let t = store.items.get(j)
+    let mark = status_text(t.done)
+    print(f"$mark #$t.id $t.title")
+    j = j + 1
+}

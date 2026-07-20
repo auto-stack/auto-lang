@@ -1,0 +1,20 @@
+// main.at — bank account demo: open an account, deposit, withdraw,
+// and attempt an overdraw to trigger the insufficient-funds error.
+use account
+
+let acc = new_account("Alice", 100)
+print(f"Opened account for $acc.owner with balance $acc.balance")
+
+acc.balance = deposit(acc.balance, 50)
+print(f"deposit(50)   -> balance: $acc.balance")
+
+let ok = withdraw(acc.balance, 30)
+if ok >= 0 {
+    acc.balance = ok
+    print(f"withdraw(30)  -> balance: $acc.balance")
+}
+
+let denied = withdraw(acc.balance, 500)
+if denied < 0 {
+    print(f"withdraw(500) -> error: insufficient funds (balance: $acc.balance)")
+}

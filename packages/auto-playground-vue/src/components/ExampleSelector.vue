@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import type { Example } from '../types';
+import type { Example, ProjectFile } from '../types';
 
 const props = withDefaults(defineProps<{
   apiBase?: string
@@ -33,7 +33,7 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  select: [payload: { source: string; project_dir?: string }];
+  select: [payload: { source: string; project_dir?: string; files?: ProjectFile[] }];
 }>();
 
 const examples = ref<Example[]>([]);
@@ -61,6 +61,7 @@ function onSelect() {
     emit('select', {
       source: ex.source,
       project_dir: ex.project_dir,
+      files: ex.files,
     });
   } catch { /* ignore */ }
   selected.value = '';
