@@ -16,6 +16,9 @@ linker = "rust-lld.exe"
 
 [build]
 jobs = 8
+# Use sccache to cache rustc compilation units and speed up clean builds.
+# Comment this out if a crate fails to build through the wrapper.
+rustc-wrapper = "sccache.exe"
 
 # PYO3_PYTHON is set per-platform via the user shell environment
 # (not here, since [env] is global and cannot differ by target).
