@@ -5,23 +5,31 @@
 ///   scheme://host<:port>/path<?query><#fragment>
 /// where <...> denotes optional components.
 ///
-/// API shape: each accessor is a free function taking the raw URL string and
-/// returning the requested component as a primitive (str / int). A `Url`
-/// record is intentionally avoided because user-defined struct values do not
-/// reliably cross the Auto module boundary through a `Result` Ok payload in
-/// the current VM (a known limitation). Returning only str/int keeps the
-/// module boundary safe — the same pattern the base64 replication relies on.
+/// API shape: `parse(input)` returns `Result[Url, str]` whose `Ok` payload is
+/// a `Url` struct with one field per component. Free-function accessors
+/// (`scheme`/`host`/`path`/`port`/`query`/`fragment`) re-parse on demand and
+/// return the same component as a primitive, preserving the historical API
+/// the Rust oracle mirrors.
 ///
-/// VM quirk workarounds (same family as base64):
-///   * `str.char_at(i)` returns the code point as `int`; all character
-///     comparisons use integer codes. 48='0', 57='9', 58=':', 65='A',
-///     90='Z', 97='a'.
-///   * Strings are built with `StringBuilder`.
-///   * Optional components use sentinels: `port` returns -1 when absent;
-///     `query`/`fragment` return "" when absent.
+/// Plan 359 cleanup: the `Url` struct now crosses the module boundary through
+/// `Result Ok(...)` directly (Bug B1 — struct fields corrupted across the
+/// module boundary — is fixed). The struct payload is the primary API.
+///
+/// VM quirks still in play: `str.char_at(i)` returns the code point as `int`
+/// (all comparisons use integer codes); strings are built with `StringBuilder`;
+/// optional components use sentinels (`port` -1, `query`/`fragment` "").
+/// DIV-URL-VM-2 persists (Err string payloads corrupt across the boundary), so
+/// error tests assert failure, not message text.
 
-/// Find the first index of `needle` in `input` starting at `from`, or -1.
-/// Compares char codes one at a time.
+type Url {
+    scheme str
+    host str
+    path str
+    port int
+    query str
+    fragment str
+}
+
 fn find_from(input str, needle str, from int) int {
     let n int = input.len()
     let m int = needle.len()
@@ -50,13 +58,10 @@ fn find_from(input str, needle str, from int) int {
     return -1
 }
 
-/// Find the first index of `needle` in `input`, or -1.
 fn find_substring(input str, needle str) int {
     return find_from(input, needle, 0)
 }
 
-/// Extract `input[start..end)` as a new string (inclusive start, exclusive
-/// end). Out-of-range indices are clamped.
 fn substring(input str, start int, end int) str {
     let n int = input.len()
     var s int = start
@@ -79,7 +84,6 @@ fn substring(input str, start int, end int) str {
     return sb.build()
 }
 
-/// Lower-case an ASCII character code (A-Z -> a-z); pass others through.
 fn lower_code(c int) int {
     if c >= 65 && c <= 90 {
         return c + 32
@@ -87,7 +91,6 @@ fn lower_code(c int) int {
     return c
 }
 
-/// Lower-case an ASCII string.
 fn lower_str(input str) str {
     let n int = input.len()
     var sb StringBuilder = StringBuilder.new(n)
@@ -99,31 +102,10 @@ fn lower_str(input str) str {
     return sb.build()
 }
 
-// ---------------------------------------------------------------------------
-// Shared internal parsing helpers.
-//
-// The grammar is split in a fixed order: fragment (#), then query (?), then
-// authority vs path (first '/'), then host vs port (first ':' in authority).
-// Each accessor re-runs only the slicing it needs, which is cheap and keeps
-// every function self-contained (no struct crossing the module boundary).
-// ---------------------------------------------------------------------------
-
-/// Index in `input` of the "://" scheme separator, or -1 if absent.
 fn scheme_sep(input str) int {
     return find_substring(input, "://")
 }
 
-/// The scheme (lower-cased), or "" if there is no "://".
-fn scheme(input str) str {
-    let sep int = scheme_sep(input)
-    if sep <= 0 {
-        return ""
-    }
-    return lower_str(substring(input, 0, sep))
-}
-
-/// The substring after "://" (authority + path + query + fragment), or the
-/// whole input if there is no "://".
 fn after_scheme(input str) str {
     let sep int = scheme_sep(input)
     if sep < 0 {
@@ -132,7 +114,6 @@ fn after_scheme(input str) str {
     return substring(input, sep + 3, input.len())
 }
 
-/// The part of `input` after "://" with the fragment removed.
 fn without_fragment(input str) str {
     let rest str = after_scheme(input)
     let h int = find_substring(rest, "#")
@@ -142,8 +123,6 @@ fn without_fragment(input str) str {
     return substring(rest, 0, h)
 }
 
-/// The authority (host and optional port) — the part after "://" up to the
-/// first '/', with query/fragment removed.
 fn authority(input str) str {
     let rest str = without_fragment(input)
     let s int = find_substring(rest, "/")
@@ -153,11 +132,111 @@ fn authority(input str) str {
     return substring(rest, 0, s)
 }
 
-// ---------------------------------------------------------------------------
-// Public component accessors
-// ---------------------------------------------------------------------------
+// Parse `input` into a fully-populated `Url`. Assumes `input` is non-empty and
+// contains a "://" separator (the public `parse` wrapper enforces this).
+fn parse_url(input str) Url {
+    let sep int = scheme_sep(input)
+    var u Url = Url {
+        scheme: "",
+        host: "",
+        path: "/",
+        port: -1,
+        query: "",
+        fragment: ""
+    }
+    if sep > 0 {
+        u.scheme = lower_str(substring(input, 0, sep))
+    }
+    let rest str = after_scheme(input)
+    let h int = find_substring(rest, "#")
+    if h >= 0 {
+        u.fragment = substring(rest, h + 1, rest.len())
+    }
+    let nofrag str = without_fragment(input)
+    let q int = find_substring(nofrag, "?")
+    if q >= 0 {
+        u.query = substring(nofrag, q + 1, nofrag.len())
+    }
+    let a str = authority(input)
+    let c int = find_substring(a, ":")
+    if c < 0 {
+        u.host = a
+    } else {
+        u.host = substring(a, 0, c)
+        let port_part str = substring(a, c + 1, a.len())
+        let pn int = port_part.len()
+        if pn > 0 {
+            var all_digit bool = true
+            var k int = 0
+            for k < pn {
+                let ch int = port_part.char_at(k)
+                if ch < 48 || ch > 57 {
+                    all_digit = false
+                }
+                k = k + 1
+            }
+            if all_digit {
+                var value int = 0
+                var ki int = 0
+                for ki < pn {
+                    value = value * 10 + (port_part.char_at(ki) - 48)
+                    ki = ki + 1
+                }
+                u.port = value
+            }
+        }
+    }
+    let s int = find_substring(nofrag, "/")
+    if s >= 0 {
+        let raw str = substring(nofrag, s, nofrag.len())
+        let q2 int = find_substring(raw, "?")
+        var end int = raw.len()
+        if q2 >= 0 {
+            end = q2
+        }
+        let out str = substring(raw, 0, end)
+        if out != "" {
+            u.path = out
+        }
+    }
+    return u
+}
 
-/// Host (without port), or "" if there is no authority.
+// Parse `input` into a `Url`. Returns Err when the input is empty, has no
+// "://" separator, or has an empty scheme. The Ok payload is built as a
+// `Url { ... }` struct literal (copying fields from parse_url's result) so the
+// a2r transpiler infers `Result<Url, String>` rather than defaulting the Ok
+// type to String (DIV-URL-A2R-1 only inspects literal Ok payloads, not calls).
+fn parse(input str) {
+    if input.len() == 0 {
+        return Err("empty input")
+    }
+    let sep int = scheme_sep(input)
+    if sep < 0 {
+        return Err("missing scheme separator")
+    }
+    if sep == 0 {
+        return Err("empty scheme")
+    }
+    let u Url = parse_url(input)
+    return Ok(Url {
+        scheme: u.scheme,
+        host: u.host,
+        path: u.path,
+        port: u.port,
+        query: u.query,
+        fragment: u.fragment
+    })
+}
+
+fn scheme(input str) str {
+    let sep int = scheme_sep(input)
+    if sep <= 0 {
+        return ""
+    }
+    return lower_str(substring(input, 0, sep))
+}
+
 fn host(input str) str {
     let a str = authority(input)
     let c int = find_substring(a, ":")
@@ -167,7 +246,6 @@ fn host(input str) str {
     return substring(a, 0, c)
 }
 
-/// Explicit port, or -1 if none / not all digits.
 fn port(input str) int {
     let a str = authority(input)
     let c int = find_substring(a, ":")
@@ -200,20 +278,12 @@ fn port(input str) int {
     return value
 }
 
-/// Path including the leading '/', normalised to "/" when empty (matches the
-/// url crate). Returns "/" if there is no path.
 fn path(input str) str {
     let rest str = without_fragment(input)
-    // The authority/path boundary is the first '/'. A query ('?') may follow
-    // the path, but the first '/' always starts the path, so we do not need to
-    // strip the query before locating it.
     let s int = find_substring(rest, "/")
     if s < 0 {
         return "/"
     }
-    // Path runs from the first '/' up to a '?' (if any) — drop the query tail.
-    // Compute the end index first so we take a single substring and never
-    // alias a non-Copy value (the a2r transpiler does not clone on rebind).
     let raw str = substring(rest, s, rest.len())
     let q int = find_substring(raw, "?")
     var end int = raw.len()
@@ -227,7 +297,6 @@ fn path(input str) str {
     return out
 }
 
-/// Query without the leading '?', or "" if absent.
 fn query(input str) str {
     let rest str = without_fragment(input)
     let q int = find_substring(rest, "?")
@@ -237,7 +306,6 @@ fn query(input str) str {
     return substring(rest, q + 1, rest.len())
 }
 
-/// Fragment without the leading '#', or "" if absent.
 fn fragment(input str) str {
     let rest str = after_scheme(input)
     let h int = find_substring(rest, "#")
@@ -245,22 +313,4 @@ fn fragment(input str) str {
         return ""
     }
     return substring(rest, h + 1, rest.len())
-}
-
-/// Validate the URL: returns Ok("ok") when the URL has a "://" separator
-/// with a non-empty scheme, Err(msg) otherwise. The Ok payload is a primitive
-/// str literal (not the borrowed input) so it transpiles and crosses the
-/// module boundary safely; callers only inspect pass/fail via is_err/is_ok.
-fn parse(input str) {
-    if input.len() == 0 {
-        return Err("empty input")
-    }
-    let sep int = scheme_sep(input)
-    if sep < 0 {
-        return Err("missing scheme separator")
-    }
-    if sep == 0 {
-        return Err("empty scheme")
-    }
-    return Ok("ok")
 }

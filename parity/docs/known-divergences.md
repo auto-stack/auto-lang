@@ -33,15 +33,21 @@ all three backends); they shaped the API design.
 ### VM limitations (AutoVM)
 
 - **DIV-URL-VM-1 — user-defined structs do not reliably cross the module
-  boundary.** When a function in one module returns `Ok(Url { ... })` and a
+  boundary.** ~~When a function in one module returns `Ok(Url { ... })` and a
   caller in another module destructures it via `Ok(u)`, the struct value is
   corrupted (field reads return the wrong value). Workaround: the url
   replication returns only `str`/`int` primitives across the module boundary
-  (no `Url` record), so each accessor re-slices the raw URL string.
-  - AutoVM: n/a (design avoids the path)
-  - a2r: n/a
+  (no `Url` record), so each accessor re-slices the raw URL string.~~
+  **Fixed in Plan 359 (Bug B1):** a `Url` struct now crosses the module
+  boundary through `Result Ok(...)` with all fields readable. The url library
+  was rewritten to return `Result[Url, str]` from `parse()`; the test reads
+  struct fields (`u.scheme`) directly. The free-function accessors remain as
+  thin conveniences but are no longer a workaround.
+  - AutoVM: fixed (struct fields readable across boundary)
+  - a2r: works (parity runner's `wrap_as_module` now promotes struct fields to
+    `pub` so cross-module field reads compile)
   - Rust: n/a
-  - 状态: documented (workaround in place)
+  - 状态: fixed (Plan 359 cleanup)
 
 - **DIV-URL-VM-2 — `Err` string payload of a `Result` is corrupted when read
   via an `is`/`match` binding in the AutoVM.** The bound value comes back as a

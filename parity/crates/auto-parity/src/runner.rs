@@ -337,9 +337,15 @@ fn wrap_as_module(lib_name: &str, src: &str) -> String {
     // Normalise lib names so they are valid Rust identifiers, and prefix with
     // `auto_` to avoid shadowing extern crates (e.g. `tokio`, `regex`).
     let mod_name = format!("auto_{}", lib_name.replace('-', "_"));
-    // Promote top-level (zero-indent) function declarations to `pub fn` so the
-    // imported symbols are visible outside the module. Handles both `fn` and
+    // Promote top-level (zero-indent) function declarations to `pub fn`, and
+    // struct/type declarations to `pub struct`/`pub enum`, so the imported
+    // symbols are visible outside the module. Handles both `fn` and
     // `async fn` (the a2r transpiler emits `async fn` for `~T` functions).
+    // Struct *fields* are also promoted to `pub`: in the AutoVM a returned
+    // user-defined struct's fields are readable from any module (Plan 359 B1),
+    // and the parity tests now exercise that (e.g. `u.scheme` on a `Url`
+    // returned across the boundary), so the a2r module wrap must expose the
+    // fields with matching visibility.
     let promoted = src
         .lines()
         .map(|line| {
@@ -353,12 +359,48 @@ fn wrap_as_module(lib_name: &str, src: &str) -> String {
                 if let Some(rest) = trimmed.strip_prefix("async fn ") {
                     return format!("pub async fn {}", rest);
                 }
+                if let Some(rest) = trimmed.strip_prefix("struct ") {
+                    return format!("pub struct {}", rest);
+                }
+                if let Some(rest) = trimmed.strip_prefix("enum ") {
+                    return format!("pub enum {}", rest);
+                }
+            } else if indent_len == 4 {
+                // Inside a struct body: promote `field: Type,` lines to
+                // `pub field: Type,` so cross-module field reads compile.
+                // (The a2r transpiler indents struct fields by 4 spaces.)
+                if let Some(rest) = trimmed.strip_prefix("pub ") {
+                    let _ = rest; // already pub; leave as-is
+                } else if is_struct_field_line(trimmed) {
+                    return format!("{}pub {}", indent, trimmed);
+                }
             }
             line.to_string()
         })
         .collect::<Vec<_>>()
         .join("\n");
     format!("pub mod {} {{\n{}\n}}", mod_name, promoted)
+}
+
+/// Heuristic: does this trimmed line look like a struct field declaration
+/// (`name: Type,`)? Used by `wrap_as_module` to promote fields to `pub`.
+/// Rejects derive attributes, braces, and blank lines.
+fn is_struct_field_line(trimmed: &str) -> bool {
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return false;
+    }
+    // Must contain `: ` (field separator) and not be a brace line.
+    if !trimmed.contains(": ") || trimmed.starts_with('{') || trimmed.starts_with('}') {
+        return false;
+    }
+    // The token before the first `:` must be a valid Rust identifier (the
+    // field name), not e.g. an `impl` or a nested item.
+    let name = trimmed.split(':').next().unwrap_or("").trim();
+    if name.is_empty() {
+        return false;
+    }
+    name.chars().all(|c| c.is_alphanumeric() || c == '_')
+        && name.chars().next().map_or(false, |c| c.is_alphabetic() || c == '_')
 }
 
 /// Transpile all .at files in the library's `auto/` directory into a single
