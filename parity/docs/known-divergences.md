@@ -18,7 +18,27 @@ Each entry has:
 
 ---
 
-(No divergences yet — _dummy is fully consistent across all three backends.)
+## Current phase status (Plan 359, verified 2026-07)
+
+The **L1-verified total is 241/241 (100%)** three-way consistent across eight
+real libraries: base64 (33), url (30), serde_json (56), regex (45), cli_app
+(32), trait_advanced (10), string_utils (22), tokio (13). Every included case
+agrees across AutoVM, a2r-transpiled Rust, and native Rust.
+
+Open gaps (each detailed in its own section below, fix plans in
+`docs/plans/359-auto-as-rust-script-rollout.md` Phase E):
+
+| ID | Area | Status | Blocks |
+|----|------|--------|--------|
+| DIV-TRAIT-VM-1 | VM: bounded generic functions `<T has Spec>` | open (L3) | trait_advanced sub-scenario |
+| DIV-TRAIT-VM-2 | VM: trait checker skips default-body methods | open (L3) | — |
+| DIV-TRAIT-LANG-1 | language: spec associated types | open (L3) | trait_advanced sub-scenario |
+| DIV-HTTP-LANG-1 | parser: stdlib `auto/http.at` `Type.method` decl | open (L3) | **http_client_sync** (skeleton only) |
+| DIV-A2R-CHAR-AT-1 | a2r: `char_at` result inferred as string | open (L3) | — (worked around in string_utils) |
+
+The entries below are library/tooling limitations that shaped the
+implementations but are **not** test-case divergences — every included case
+agrees across all three backends.
 
 ## url (P1)
 
@@ -260,3 +280,50 @@ current status of each:
 
 - **DIV-TRAIT-LANG-1 — associated types not supported (open, language).**
   Auto's spec grammar has no `type Item;` construct. 状态: open (L3).
+
+## http_client_sync (Plan 359 D3) — blocked
+
+A partial `parity/libs/http_client_sync/` skeleton exists (mock-server crate
++ Auto wrapper + Rust oracle), but it **cannot run three-way** because of a
+pre-existing parser bug:
+
+- **DIV-HTTP-LANG-1 — the shipped stdlib `auto/http.at` does not parse (open,
+  parser).** `stdlib/auto/http.at:51` (mirrored under `~/.auto/libs/stdlib/`)
+  uses `pub fn Request.method(self Request) str;` — a `Type.method`
+  declaration with a trailing `;`. The current parser rejects this ("Expected
+  term, got Newline" at the `///` doc comment that follows), so any
+  `use auto.http: ...` fails before a request is ever made. This is
+  independent of a2r/parity — it blocks `auto.http` on the VM for everyone.
+  - AutoVM: parse error; `use auto.http` unusable.
+  - a2r: n/a (transpile also runs the parser, same failure).
+  - Rust: n/a.
+  - 偏差类型: 待修复 (parser must accept `Type.method` external declarations).
+  - 状态: open (L3, Plan 359 Phase E Task E4). Fix plan in
+    `docs/plans/359-auto-as-rust-script-rollout.md` §"Task E4".
+
+Once DIV-HTTP-LANG-1 is fixed, the skeleton needs a runner setup/teardown
+hook to spawn `mock-server/` around the three independent backend processes
+(mock server must outlive all three). The library is **not** in the L1 count.
+
+## string_utils (Plan 359 D4) — a2r transpiler bug worked around
+
+The library is **L1 100% (22/22)** three-way consistent, but a transpiler
+bug is worked around in-source:
+
+- **DIV-A2R-CHAR-AT-1 — `char_at` result + int literal is transpiled as
+  string concatenation (open, a2r).** When a variable holds `s.char_at(i)`
+  without an explicit `int` type annotation, a2r infers it as a string, so
+  `c = c + 32` (intended integer add) becomes `c = format!("{}{}", c, 32)`
+  (Rust `String`), causing E0308 ("expected i32, found String"). Workaround:
+  declare the variable with an explicit `int` type — `var c int = s.char_at(i)`
+  — which makes a2r emit `let mut c: i32 = ... as i32;` and `c = c + 32;`
+  correctly. All four `char_at`-bound variables in string_utils.at use this
+  annotation.
+  - AutoVM: runs correctly (VM types `char_at` as int natively).
+  - a2r: without the annotation, emits `format!` concatenation (compile fail);
+    with `var c int`, emits correct integer add.
+  - Rust: native integer arithmetic.
+  - 偏差类型: 待修复 (a2r type inference for `char_at` results should default
+    to i32, mirroring the VM).
+  - 状态: open (L3, Plan 359 Phase E Task E5). Fix plan in
+    `docs/plans/359-auto-as-rust-script-rollout.md` §"Task E5".
