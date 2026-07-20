@@ -33,19 +33,27 @@
 ///
 /// `Val` is treated as an **opaque handle** by callers: created only via the
 /// constructors below and consumed only by the accessors in *this* module.
-/// Callers never read `Val` fields directly. This sidesteps the known VM bug
-/// where user-defined struct fields corrupt across module boundaries
-/// (DIV-URL-VM-1).
+/// Callers never read `Val` fields directly. (Historically this also sidestepped
+/// a VM bug where user-defined struct fields corrupted across module
+/// boundaries — DIV-URL-VM-1, **fixed in Plan 359 / Bug B1**. The struct
+/// itself is still opaque by design, mirroring rusqlite's own encapsulation.)
 ///
 /// ## Result / error encoding
 /// rusqlite's `FromSqlResult` distinguishes `InvalidType` from `OutOfRange`.
-/// The Auto VM corrupts `Result` payloads in two boundary cases:
+/// The Auto VM still corrupts one `Result` payload case:
 ///   (a) Err *string* payloads read via `is`/`match` bindings (DIV-URL-VM-2);
-///   (b) `Result`-wrapped *float* payloads crossing the module boundary
-///       (DIV-RUSQLITE-VM-1, discovered here).
-/// So instead of returning `Result<T, E>` across the boundary, each FromSql
-/// coercion is split into TWO plain functions returning plain primitives
-/// (which the VM marshals correctly):
+///   (b) ~~`Result`-wrapped *float* payloads crossing the module boundary
+///       (DIV-RUSQLITE-VM-1, discovered here).~~ — **still open**: the parser
+///       does not accept `Result[float, str]` generic syntax, and a float in
+///       a `Result` payload still does not round-trip across the module
+///       boundary. The status/value split below is therefore STILL needed for
+///       the f64/f32 coercions.
+/// Plain (non-`Result`) returns — including `bool` (fixed in Plan 359 / Bug
+/// B4) and `int`/`str`/`float` — now cross the module boundary correctly, so
+/// each `_value` accessor returns its payload as the natural Auto type.
+/// The `_status`/`_value` split is kept for the FromSql coercions because of
+/// (b) above; the status carries the ok/InvalidType/OutOfRange tri-state and
+/// the `_value` accessor carries the coerced payload:
 ///   `<name>_status(v) int`   -> 0 = Ok, 1 = InvalidType, 2 = OutOfRange
 ///   `<name>_value(v)  <T>`   -> the coerced payload (valid only when status==0)
 /// This keeps the observable (ok payload | invalid_type | out_of_range)
@@ -272,7 +280,8 @@ fn from_f32_value(v Val) float {
 }
 
 // --- bool (`i64::column_result(value).map(|i| i != 0)`) -------------------
-// Returns 1 for truthy, 0 for falsy (mirrors Rust bool as 0/1).
+// Returns true for truthy, false for falsy. (Plan 359 / B4 fixed bool crossing
+// the Auto module boundary, so this yields a plain bool rather than 0/1 int.)
 
 fn from_bool_status(v Val) int {
     if v.kind == 1 {
@@ -281,11 +290,11 @@ fn from_bool_status(v Val) int {
     return 1
 }
 
-fn from_bool_value(v Val) int {
+fn from_bool_value(v Val) bool {
     if v.ival != 0 {
-        return 1
+        return true
     }
-    return 0
+    return false
 }
 
 // --- String (`value.as_str()`) --------------------------------------------
@@ -325,12 +334,14 @@ fn from_option_status(v Val) int {
     return 1
 }
 
-/// Convenience: 1 if this Value is Null, else 0 (mirrors `Option::is_none`).
-fn option_is_none(v Val) int {
+/// Convenience: true if this Value is Null, else false (mirrors `Option::is_none`).
+/// (Plan 359 / B4 fixed bool crossing the Auto module boundary, so this yields
+/// a plain bool rather than 0/1 int.)
+fn option_is_none(v Val) bool {
     if v.kind == 0 {
-        return 1
+        return true
     }
-    return 0
+    return false
 }
 
 // ---------------------------------------------------------------------------
