@@ -8719,6 +8719,17 @@ impl RustTrans {
 
         // Generate trait implementations for specs
         if !type_decl.specs.is_empty() {
+            // Plan 359 DIV-TRAIT-A2R-2: spec_impls carries the *concrete* type
+            // arguments for generic spec impls (e.g. `as Comparable<i32>`).
+            // Index them by spec_name so the impl generator can emit
+            // `impl Comparable<i32>` instead of falling back to the trait's
+            // declared generic params (`impl Comparable<T>`) or dropping them.
+            let concrete_args: std::collections::HashMap<&str, &[Type]> = type_decl
+                .spec_impls
+                .iter()
+                .map(|si| (si.spec_name.as_str(), si.type_args.as_slice()))
+                .collect();
+
             // Collect spec declarations: prefer local cache, fallback to database lookup
             let spec_decls: Vec<_> = type_decl
                 .specs
@@ -8762,8 +8773,22 @@ impl RustTrans {
                 // Build impl signature with generic parameters
                 write!(sink.body, "impl {}", spec_decl.name)?;
 
-                // Add generic parameters from spec_decl (trait)
-                if !spec_decl.generic_params.is_empty() {
+                // Plan 359 DIV-TRAIT-A2R-2: prefer concrete type args from
+                // spec_impls (`as Comparable<i32>`); fall back to the trait's
+                // declared generic params (`Comparable<T>`) for non-concrete
+                // impls (`as Storage<T>`).
+                if let Some(args) = concrete_args.get(spec_decl.name.as_str()) {
+                    if !args.is_empty() {
+                        write!(sink.body, "<")?;
+                        for (i, arg) in args.iter().enumerate() {
+                            if i > 0 {
+                                write!(sink.body, ", ")?;
+                            }
+                            write!(sink.body, "{}", self.rust_type_name(arg))?;
+                        }
+                        write!(sink.body, ">")?;
+                    }
+                } else if !spec_decl.generic_params.is_empty() {
                     write!(sink.body, "<")?;
                     for (i, param) in spec_decl.generic_params.iter().enumerate() {
                         if i > 0 {
