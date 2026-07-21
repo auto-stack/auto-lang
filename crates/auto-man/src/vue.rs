@@ -408,30 +408,38 @@ fn generate_index_html(name: &str) -> String {
 "#, name)
 }
 
-fn generate_main_ts(has_routes: bool) -> String {
-    let base = r#"import { createApp } from 'vue'
+fn generate_main_ts(has_routes: bool, uses_autodown: bool) -> String {
+    let autodown_css = if uses_autodown {
+        "\nimport '@autodown/editor/style.css'"
+    } else {
+        ""
+    };
+    let base = format!(
+        r#"import {{ createApp }} from 'vue'
 import App from './App.vue'
-import './assets/index.css'
+import './assets/index.css'{autodown_css}
 import 'prismjs/themes/prism-tomorrow.css'
 import Prism from 'prismjs'
 
 // Define custom 'auto' language for Prism
-Prism.languages.auto = {
+Prism.languages.auto = {{
   'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
-  'string': {
+  'string': {{
     pattern: /f?"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/,
     greedy: true
-  },
+  }},
   'keyword': /\b(?:widget|view|model|msg|fn|let|mut|const|if|else|for|in|return|use|type|spec|import|export|struct|enum|interface|extends|implements|new|true|false|null)\b/,
   'function': /\b[a-z_][a-z0-9_]*(?=\s*\()/i,
   'number': /\b\d+\.?\d*\b/,
   'operator': /[+\-*/%=<>!&|^~?:]+/,
-  'punctuation': /[{}[\]();,.]/,
+  'punctuation': /[{{}}[\]();,.]/,
   'property': /\.[a-z_][a-z0-9_]*/i,
   'element': /\b(?:col|row|button|text|input|card|link|div|span|p|h1|h2|h3|h4|h5|h6|ul|ol|li|table|thead|tbody|tr|td|th|form|label|checkbox|switch|select|option|dialog|modal|toast|dropdown|menu|tab|tabs|accordion|badge|avatar|progress|slider|scroll|codeblock|pre|code|img|video|audio|canvas|svg|path|rect|circle|ellipse|line|polyline|polygon|header|footer|nav|main|aside|section|article|header|footer|sidebar|outlet|slot)\b/,
   'attr': /\([^)]*\)/,
-};
-"#;
+}};
+"#,
+        autodown_css = autodown_css
+    );
     if has_routes {
         format!("{}\nimport router from './router'\n\nconst app = createApp(App)\napp.use(router)\napp.mount('#app')\n", base)
     } else {
@@ -690,7 +698,8 @@ fn write_project_files(
         .map_err(|e| format!("Failed to write index.html: {}", e))?;
 
     // src/main.ts
-    let main_ts = generate_main_ts(has_routes);
+    let uses_autodown = extra_deps.iter().any(|(name, _)| name == "@autodown/editor");
+    let main_ts = generate_main_ts(has_routes, uses_autodown);
     fs::write(output_path.join("src/main.ts"), main_ts)
         .map_err(|e| format!("Failed to write src/main.ts: {}", e))?;
 
@@ -1474,7 +1483,8 @@ export default router
         }
 
         // Write main.ts
-        let main_ts_content = generate_main_ts(self.has_routes);
+        let uses_autodown = self.npm_deps.iter().any(|(name, _)| name == "@autodown/editor");
+        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown);
         fs::write(src_dir.join("main.ts"), &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
 
@@ -1508,7 +1518,8 @@ export default router
         println!("{}", "  ✓ Regenerated App.vue".bright_green());
 
         // Regenerate main.ts
-        let main_ts_content = generate_main_ts(self.has_routes);
+        let uses_autodown = self.npm_deps.iter().any(|(name, _)| name == "@autodown/editor");
+        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown);
         let main_ts_path = src_dir.join("main.ts");
         fs::write(&main_ts_path, &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;

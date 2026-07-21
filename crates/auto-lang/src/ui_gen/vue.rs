@@ -863,6 +863,11 @@ pub struct VueGenerator {
     /// When inside a `for note in .notes { ... }`, this is set to Some("note")
     current_loop_var: Option<String>,
 
+    /// Per-widget key counter — increments for every component usage in the template.
+    /// Produces stable unique keys like 'AutoDownEditor-1', 'NavTree-2', etc. so that
+    /// two components with the same name (e.g. in different v-if branches) don't collide.
+    widget_key_counter: usize,
+
     /// Handlers that need a loop-id parameter (e.g., "SelectNote" needs `i: any`)
     /// Populated during template generation, consumed during script generation.
     /// Maps handler name → loop variable name (e.g., "SelectNote" → "i").
@@ -942,6 +947,7 @@ impl VueGenerator {
             use_curve_type: false,
             known_sub_widgets: HashSet::new(),
             current_loop_var: None,
+            widget_key_counter: 0,
             loop_param_handlers: HashMap::new(),
             needs_child_delete_handler: false,
             explicit_api_imports: false,
@@ -1094,6 +1100,7 @@ impl VueGenerator {
         self.lucide_icons.clear();
         self.wrapper_classes.clear();
         self.current_loop_var = None;
+        self.widget_key_counter = 0;
         self.loop_param_handlers.clear();
         self.needs_child_delete_handler = false;
         // NOTE: explicit_api_imports is NOT reset — it's a config-level setting from with_project_api_functions()
@@ -2122,11 +2129,23 @@ impl VueGenerator {
                         attrs.push(format!(":{}=\"{}\"", key, value_str));
                     }
                     // Add :key binding for component reuse identity.
-                    // Use the widget name as a stable key (not the prop value) so
-                    // components UPDATE their props rather than being destroyed/recreated.
-                    // This is critical for components like AutoDownEditor (Tiptap) that
-                    // throw errors on unmount/remount cycles.
-                    attrs.push(format!(":key=\"'{}'\"", html_tag));
+                    //
+                    // We use a per-widget-instance counter so each component usage site
+                    // gets a unique, STABLE key (e.g. 'AutoDownEditor-0', 'AutoDownEditor-1').
+                    // This is important because:
+                    //   1. Two components with the same name in different v-if branches
+                    //      must NOT share a key — otherwise Vue patches in place instead
+                    //      of mounting a fresh instance (breaks Tiptap editor init).
+                    //   2. The key must stay stable across prop updates so components
+                    //      are reused (not destroyed/recreated) when only props change
+                    //      (prevents Tiptap unmount errors on note switch).
+                    //   3. Inside a for-loop, items need per-item keys for correct diff.
+                    self.widget_key_counter += 1;
+                    if let Some(ref loop_var) = self.current_loop_var {
+                        attrs.push(format!(":key=\"'{}-{}-' + ({}?.id ?? {})\"", html_tag, self.widget_key_counter, loop_var, loop_var));
+                    } else {
+                        attrs.push(format!(":key=\"'{}-{}'\"", html_tag, self.widget_key_counter));
+                    }
                     // Event handlers
                     for (event, aura_event) in events {
                         let vue_event = self.auto_event_to_vue(event);
@@ -2368,6 +2387,25 @@ impl VueGenerator {
                     String::new()
                 } else {
                     format!(" {}", attrs.join(" "))
+                };
+
+                // Plan 360: For custom Vue components (PascalCase tag like AutoDownEditor,
+                // NavTree, EditorPanel, etc.), add a stable unique :key so that two
+                // components with the same name in different v-if branches don't collide.
+                // Without this, Vue patches in place and components that rely on fresh
+                // mount semantics (e.g. Tiptap editor) fail to initialize.
+                // The key is stable across re-renders (counter-based, reset per SFC) so
+                // components are reused when only props change.
+                let is_vue_component = html_tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                let attr_str = if is_vue_component && !attr_str.contains(":key=") {
+                    self.widget_key_counter += 1;
+                    if let Some(ref loop_var) = self.current_loop_var {
+                        format!("{} :key=\"'{}-{}-' + ({}?.id ?? {})\"", attr_str, html_tag, self.widget_key_counter, loop_var, loop_var)
+                    } else {
+                        format!("{} :key=\"'{}-{}'\"", attr_str, html_tag, self.widget_key_counter)
+                    }
+                } else {
+                    attr_str
                 };
 
                 // Check if we have text content (render as inline content)
