@@ -1,6 +1,5 @@
-// editor.at — EditorPanel with textarea, inline tag editing, pin toggle, delete.
-// Tags are editable in read mode (not just edit mode).
-// Pin toggle is on the title row (click pin icon).
+// editor.at — EditorPanel (Plan 360: card-based modern UI).
+// Card wrapper + modern tag pills + unified button design language.
 
 use store: NotesStore
 use back.api: update_note, delete_note, toggle_pin, update_tags
@@ -19,12 +18,14 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
 
     view {
         col {
+            style: "flex-1 flex-col bg-card rounded-xl shadow-sm overflow-hidden min-h-0"
+
             col {
                 // Title row with pin toggle (hover to show pin button)
                 if .editing == false {
                     row {
                         style: "group items-center gap-2"
-                        text .note.title { style: "text-lg font-semibold text-foreground" }
+                        text .note.title { style: "text-xl font-bold text-foreground" }
                         if .note.pinned {
                             button "📌" {
                                 onclick: .TogglePin
@@ -34,40 +35,40 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
                         if !note.pinned {
                             button "📌" {
                                 onclick: .TogglePin
-                                style: "text-base cursor-pointer opacity-0 group-hover:opacity-30 hover:opacity-60"
+                                style: "text-base cursor-pointer opacity-0 group-hover:opacity-30 hover:opacity-60 transition-opacity"
                             }
                         }
                     }
                 }
                 if .editing == true {
-                    input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-lg font-semibold text-foreground border-b border-border outline-none w-full focus:border-primary p-1" }
+                    input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-xl font-bold text-foreground bg-transparent border-b border-border outline-none w-full focus:border-primary p-1 transition-colors" }
                 }
                 text .note.time { style: "text-xs text-muted-foreground mt-1" }
 
-                // Tags: always editable (hover to show controls)
+                // Tags: modern pill design (primary/10 + primary text)
                 row {
-                    style: "group gap-1 mt-1 flex-wrap items-center"
+                    style: "group gap-1 mt-2 flex-wrap items-center"
                     for t in .note.tags {
                         row {
-                            style: "group/tag items-center rounded-full bg-secondary pl-2 pr-1"
-                            text t { style: "text-xs text-secondary-foreground" }
-                            button "x" {
+                            style: "group/tag items-center rounded-full bg-primary/10 pl-2.5 pr-1"
+                            text t { style: "text-xs text-primary font-medium" }
+                            button "×" {
                                 onclick: .RemoveTag(t)
-                                style: "text-xs text-muted-foreground hover:text-destructive w-4 h-4 flex items-center justify-center opacity-0 group-hover/tag:opacity-100"
+                                style: "text-xs text-primary/60 hover:text-destructive w-4 h-4 flex items-center justify-center rounded-full hover:bg-destructive/10 opacity-0 group-hover/tag:opacity-100 transition-opacity ml-0.5"
                             }
                         }
                     }
                     if .show_tag_input == false {
-                        button "+" {
+                        button "+ tag" {
                             onclick: .ShowTagInput
-                            style: "text-xs px-2 py-0.5 border border-border rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100"
+                            style: "text-xs px-2 py-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                         }
                     }
                     if .show_tag_input == true {
-                        input { value: .tag_input, oninput: .EditTagInput, placeholder: "tag name...", style: "text-xs px-2 py-0.5 border rounded w-24" }
-                        button "OK" {
+                        input { value: .tag_input, oninput: .EditTagInput, placeholder: "tag name...", style: "text-xs px-2.5 py-0.5 border border-border rounded-full w-24 focus:border-primary outline-none bg-background" }
+                        button "✓" {
                             onclick: .AddTag
-                            style: "text-xs px-2 py-0.5 bg-primary text-primary-foreground rounded"
+                            style: "text-xs w-5 h-5 flex items-center justify-center bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors"
                         }
                     }
                 }
@@ -78,7 +79,7 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
                         onupdate: .EditBody
                         can_edit: true
                         show_actions: false
-                        style: "flex-1 min-h-64 mt-2 border rounded-lg"
+                        style: "flex-1 min-h-64 mt-4 border border-border rounded-lg overflow-hidden"
                     }
                 }
                 if .editing == false {
@@ -86,26 +87,39 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
                         content: .note.body
                         can_edit: false
                         show_actions: false
-                        style: "flex-1 min-h-64 mt-2"
+                        style: "flex-1 min-h-64 mt-4"
                     }
                 }
-                style: "px-6 pt-6 pb-2 flex-1"
+                style: "px-8 pt-8 pb-2 flex-1 overflow-y-auto"
             }
+
+            // Action row: unified button design language
             row {
                 if .editing == false {
-                    button "Edit" { onclick: .Edit, style: "px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-medium" }
+                    button "Edit" {
+                        onclick: .Edit
+                        style: "px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg shadow-sm hover:bg-primary/90 font-medium transition-colors"
+                    }
                 }
                 if .editing == true {
                     row {
                         style: "gap-2"
-                        button "Save" { onclick: .Save, style: "px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-medium" }
-                        button "Cancel" { onclick: .Cancel, style: "px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/90" }
+                        button "Save" {
+                            onclick: .Save
+                            style: "px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg shadow-sm hover:bg-primary/90 font-medium transition-colors"
+                        }
+                        button "Cancel" {
+                            onclick: .Cancel
+                            style: "px-4 py-2 text-sm text-muted-foreground hover:bg-accent rounded-lg transition-colors"
+                        }
                     }
                 }
-                button "Delete" { onclick: .Delete, style: "ml-auto px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90" }
-                style: "p-4 border-t border-border"
+                button "Delete" {
+                    onclick: .Delete
+                    style: "ml-auto px-4 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                }
+                style: "p-4 border-t border-border bg-muted/30"
             }
-            style: "flex-1 flex-col"
         }
     }
 

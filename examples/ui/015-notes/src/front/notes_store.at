@@ -20,11 +20,15 @@ store NotesStore {
         var active_folder str = "all"
         // active_tag: "" = no tag filter, otherwise only notes containing it show.
         var active_tag str = ""
+
+        // Plan 360: accent color (indigo | coral | ocean | sage | amber).
+        // Aligned with auto-forge's 5-color palette system.
+        var accent_color str = "indigo"
     }
 
     msg Msg { Init, Refresh, SelectNote(int), NewNote, DeleteNote(int),
               TogglePin(int), SetSort(str), Search(str),
-              UpdateTags(int), ToggleDarkMode,
+              UpdateTags(int), ToggleDarkMode, SetAccent(str),
               SelectFolder(str), SelectTag(str), MoveNote(int) }
 
     on {
@@ -75,6 +79,11 @@ store NotesStore {
 
         .ToggleDarkMode -> {
             .dark_mode = !.dark_mode
+        }
+
+        // Plan 360: set accent color (name validated by UI palette list).
+        .SetAccent(name) -> {
+            .accent_color = name
         }
 
         // Phase D: set folder filter and clear any active tag so the two

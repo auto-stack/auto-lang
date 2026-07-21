@@ -1,5 +1,5 @@
-// app.at — 2-column layout with NavTree widget (restored after D1 OOM fix).
-// NavTree is now a separate widget — no more inline workaround.
+// app.at — 2-column layout (Plan 360: card-based modern UI).
+// Outer wrapper uses bg-muted/30 to create depth; inner panels are cards.
 
 use store: NotesStore
 use sidebar: NavTree
@@ -15,36 +15,48 @@ widget App {
 
     view {
         col {
-            style: "w-full h-screen flex-col bg-background text-foreground"
+            style: "w-full h-screen flex-col bg-muted/30 p-3 gap-3"
 
-            // header
+            // header (卡片化)
             row {
-                h2 "Notes" {
-                    style: "text-xl font-bold flex-shrink-0"
+                style: "items-center justify-between px-5 py-3 bg-card rounded-xl shadow-sm"
+                row {
+                    style: "items-center gap-2"
+                    text "📝" { style: "text-xl" }
+                    h2 "Notes" { style: "text-lg font-bold text-foreground" }
                 }
-                button "+ New" {
+                button "New" {
                     onclick: .NewNote
-                    style: "ml-auto px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
+                    style: "px-4 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors"
                 }
-                style: "w-full items-center p-3 border-b border-border"
             }
 
-            // body: NavTree + Editor
+            // body: NavTree + Editor (卡片化, 间距)
             row {
+                style: "flex-1 gap-3 min-h-0"
                 NavTree(
                     search: .search,
                     active_folder: .store.active_folder,
                     active_tag: .store.active_tag,
                     active_id: .store.active_id
                 )
-
                 col {
+                    style: "flex-1 min-h-0"
                     if .store.notes.len() > 0 {
                         EditorPanel(note: .store.notes[.store.active_id], on_delete: .DeleteActive, on_toggle_pin: .TogglePin, on_tags_changed: .TagsChanged)
                     }
-                    style: "flex-1 flex-col"
+                    if .store.notes.len() == 0 {
+                        col {
+                            style: "flex-1 items-center justify-center bg-card rounded-xl shadow-sm"
+                            text "📝" { style: "text-6xl mb-4 opacity-40" }
+                            text "No notes yet" { style: "text-lg text-muted-foreground" }
+                            button "Create your first note" {
+                                onclick: .NewNote
+                                style: "mt-4 px-6 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors"
+                            }
+                        }
+                    }
                 }
-                style: "flex-1"
             }
         }
     }

@@ -490,13 +490,13 @@ fn generate_index_css() -> String {
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 222.2 47% 7%;
     --foreground: 210 40% 98%;
 
-    --card: 222.2 84% 4.9%;
+    --card: 222.2 47% 10%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 222.2 84% 4.9%;
+    --popover: 222.2 47% 10%;
     --popover-foreground: 210 40% 98%;
 
     --primary: 210 40% 98%;
@@ -505,7 +505,7 @@ fn generate_index_css() -> String {
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 217.2 32.6% 17.5%;
+    --muted: 217.2 32.6% 15%;
     --muted-foreground: 215 20.2% 65.1%;
 
     --accent: 217.2 32.6% 17.5%;
@@ -530,6 +530,7 @@ fn generate_index_css() -> String {
   }
   body {
     @apply bg-background text-foreground;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 "#.to_string()

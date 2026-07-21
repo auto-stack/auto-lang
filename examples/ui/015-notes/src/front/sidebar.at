@@ -1,4 +1,4 @@
-// sidebar.at — NavTree widget (restored from inline, D1 OOM fix confirmed).
+// sidebar.at — NavTree widget (Plan 360: card-based modern UI).
 // Full tree navigation: shortcuts, search, tag filter, folder-grouped notes.
 
 use store: NotesStore
@@ -8,59 +8,63 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
         SelectAll, SelectPinned, SelectRecent,
         SelectTag(str), SelectNote(int),
         NewNote, NewNoteInFolder(str),
-        ToggleDarkMode
+        ToggleDarkMode, SetAccent(str)
     }
 
     view {
         col {
-            style: "w-80 border-border flex-col flex-shrink-0"
+            style: "w-80 bg-card rounded-xl shadow-sm flex flex-col h-full overflow-hidden flex-shrink-0"
 
-            // View mode tabs
+            // View mode tabs (segmented control container)
             row {
-                style: "gap-1 px-2 pt-2"
+                style: "gap-1 m-3 p-1 bg-muted rounded-lg"
                 button "All" {
                     onclick: .SelectAll
                     style: if .active_folder == "all" {
-                        "flex-1 px-2 py-1 text-xs font-medium rounded bg-accent text-accent-foreground"
+                        "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-card text-card-foreground shadow-sm"
                     } else {
-                        "flex-1 px-2 py-1 text-xs rounded text-muted-foreground hover:bg-muted"
+                        "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground transition-colors"
                     }
                 }
                 button "Pinned" {
                     onclick: .SelectPinned
                     style: if .active_folder == "pinned" {
-                        "flex-1 px-2 py-1 text-xs font-medium rounded bg-accent text-accent-foreground"
+                        "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-card text-card-foreground shadow-sm"
                     } else {
-                        "flex-1 px-2 py-1 text-xs rounded text-muted-foreground hover:bg-muted"
+                        "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground transition-colors"
                     }
                 }
                 button "Recent" {
                     onclick: .SelectRecent
                     style: if .active_folder == "recent" {
-                        "flex-1 px-2 py-1 text-xs font-medium rounded bg-accent text-accent-foreground"
+                        "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-card text-card-foreground shadow-sm"
                     } else {
-                        "flex-1 px-2 py-1 text-xs rounded text-muted-foreground hover:bg-muted"
+                        "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground transition-colors"
                     }
                 }
             }
 
-            // Search input
-            input {
-                placeholder: "Search notes..."
-                value: .search
-                style: "mx-2 mt-2 px-3 py-1.5 text-sm border border-border rounded-lg bg-background text-foreground"
+            // Search input with icon
+            row {
+                style: "mx-3 mb-2 items-center gap-2 px-3 py-1.5 bg-muted rounded-lg"
+                text "🔍" { style: "text-sm opacity-50" }
+                input {
+                    placeholder: "Search notes..."
+                    value: .search
+                    style: "flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                }
             }
 
             // Tag filters
             row {
-                style: "flex-wrap gap-1 px-2 mt-2 mb-1"
+                style: "flex-wrap gap-1 px-3 mb-2"
                 for t in .store.all_tags {
                     button t {
                         onclick: .SelectTag(t)
                         style: if .store.active_tag == t {
-                            "px-2 py-0.5 text-xs rounded-full bg-primary text-primary-foreground"
+                            "px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium"
                         } else {
-                            "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-muted"
+                            "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-accent transition-colors"
                         }
                     }
                 }
@@ -68,39 +72,41 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
 
             // Note tree (scrollable)
             col {
-                style: "flex-1 overflow-y-auto px-1 gap-0.5"
+                style: "flex-1 overflow-y-auto px-2 gap-0.5"
 
                 if .active_folder == "all" {
                     row {
-                        style: "px-3 py-1 items-center"
-                        text "Notes" { style: "text-xs font-bold text-muted-foreground uppercase flex-1" }
+                        style: "px-2 py-1 items-center"
+                        text "📁 Notes" { style: "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide" }
                         button "+" {
                             onclick: .NewNote
-                            style: "text-xs text-muted-foreground hover:text-primary"
+                            style: "text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors"
                         }
                     }
                     for i, note in .store.notes {
                         if note.folder == "" {
                             if .store.active_tag == "" {
                                 button {
-                                    text note.title
+                                    text note.title { style: "block truncate" }
+                                    text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
                                     onclick: .SelectNote(i)
                                     style: if i == .store.active_id {
-                                        "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                        "w-full text-left px-3 py-2 rounded-lg bg-accent text-accent-foreground"
                                     } else {
-                                        "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                        "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                     }
                                 }
                             }
                             if .store.active_tag != "" {
                                 if note.tags.contains(.store.active_tag) {
                                     button {
-                                        text note.title
+                                        text note.title { style: "block truncate" }
+                                        text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
                                         onclick: .SelectNote(i)
                                         style: if i == .store.active_id {
-                                            "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                            "w-full text-left px-3 py-2 rounded-lg bg-accent text-accent-foreground"
                                         } else {
-                                            "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                            "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                         }
                                     }
                                 }
@@ -109,35 +115,37 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                     }
 
                     row {
-                        style: "px-3 py-1 items-center"
-                        text "Work" { style: "text-xs font-bold text-muted-foreground uppercase flex-1" }
+                        style: "px-2 py-1 items-center mt-2"
+                        text "📁 Work" { style: "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide" }
                         button "+" {
                             onclick: .NewNoteInFolder("work")
-                            style: "text-xs text-muted-foreground hover:text-primary"
+                            style: "text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors"
                         }
                     }
                     for i, note in .store.notes {
                         if note.folder == "work" {
                             if .store.active_tag == "" {
                                 button {
-                                    text note.title
+                                    text note.title { style: "block truncate" }
+                                    text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
                                     onclick: .SelectNote(i)
                                     style: if i == .store.active_id {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                        "w-full text-left px-5 py-2 rounded-lg bg-accent text-accent-foreground"
                                     } else {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                        "w-full text-left px-5 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                     }
                                 }
                             }
                             if .store.active_tag != "" {
                                 if note.tags.contains(.store.active_tag) {
                                     button {
-                                        text note.title
+                                        text note.title { style: "block truncate" }
+                                        text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
                                         onclick: .SelectNote(i)
                                         style: if i == .store.active_id {
-                                            "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                            "w-full text-left px-5 py-2 rounded-lg bg-accent text-accent-foreground"
                                         } else {
-                                            "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                            "w-full text-left px-5 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                         }
                                     }
                                 }
@@ -146,35 +154,37 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                     }
 
                     row {
-                        style: "px-3 py-1 items-center"
-                        text "Personal" { style: "text-xs font-bold text-muted-foreground uppercase flex-1" }
+                        style: "px-2 py-1 items-center mt-2"
+                        text "📁 Personal" { style: "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide" }
                         button "+" {
                             onclick: .NewNoteInFolder("personal")
-                            style: "text-xs text-muted-foreground hover:text-primary"
+                            style: "text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors"
                         }
                     }
                     for i, note in .store.notes {
                         if note.folder == "personal" {
                             if .store.active_tag == "" {
                                 button {
-                                    text note.title
+                                    text note.title { style: "block truncate" }
+                                    text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
                                     onclick: .SelectNote(i)
                                     style: if i == .store.active_id {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                        "w-full text-left px-5 py-2 rounded-lg bg-accent text-accent-foreground"
                                     } else {
-                                        "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                        "w-full text-left px-5 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                     }
                                 }
                             }
                             if .store.active_tag != "" {
                                 if note.tags.contains(.store.active_tag) {
                                     button {
-                                        text note.title
+                                        text note.title { style: "block truncate" }
+                                        text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
                                         onclick: .SelectNote(i)
                                         style: if i == .store.active_id {
-                                            "w-full text-left px-6 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                            "w-full text-left px-5 py-2 rounded-lg bg-accent text-accent-foreground"
                                         } else {
-                                            "w-full text-left px-6 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                            "w-full text-left px-5 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                         }
                                     }
                                 }
@@ -188,24 +198,26 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                         if note.pinned {
                             if .store.active_tag == "" {
                                 button {
-                                    text note.title
+                                    text note.title { style: "block truncate" }
+                                    text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
                                     onclick: .SelectNote(i)
                                     style: if i == .store.active_id {
-                                        "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                        "w-full text-left px-3 py-2 rounded-lg bg-accent text-accent-foreground"
                                     } else {
-                                        "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                        "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                     }
                                 }
                             }
                             if .store.active_tag != "" {
                                 if note.tags.contains(.store.active_tag) {
                                     button {
-                                        text note.title
+                                        text note.title { style: "block truncate" }
+                                        text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
                                         onclick: .SelectNote(i)
                                         style: if i == .store.active_id {
-                                            "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                            "w-full text-left px-3 py-2 rounded-lg bg-accent text-accent-foreground"
                                         } else {
-                                            "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                            "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                         }
                                     }
                                 }
@@ -218,24 +230,26 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                     for i, note in .store.notes {
                         if .store.active_tag == "" {
                             button {
-                                text note.title
+                                text note.title { style: "block truncate" }
+                                text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
                                 onclick: .SelectNote(i)
                                 style: if i == .store.active_id {
-                                    "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                    "w-full text-left px-3 py-2 rounded-lg bg-accent text-accent-foreground"
                                 } else {
-                                    "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                    "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                 }
                             }
                         }
                         if .store.active_tag != "" {
                             if note.tags.contains(.store.active_tag) {
                                 button {
-                                    text note.title
+                                    text note.title { style: "block truncate" }
+                                    text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
                                     onclick: .SelectNote(i)
                                     style: if i == .store.active_id {
-                                        "w-full text-left px-3 py-1.5 text-sm rounded bg-accent text-accent-foreground font-medium"
+                                        "w-full text-left px-3 py-2 rounded-lg bg-accent text-accent-foreground"
                                     } else {
-                                        "w-full text-left px-3 py-1.5 text-sm rounded text-foreground hover:bg-muted"
+                                        "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                     }
                                 }
                             }
@@ -244,11 +258,63 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                 }
             }
 
+            // Footer: Accent color picker (5 swatches) + Dark Mode toggle
             separator { style: "border-t border-border" }
-            button {
-                text "Dark Mode"
-                onclick: .ToggleDarkMode
-                style: "mx-2 my-1 px-3 py-1.5 text-xs rounded-lg text-muted-foreground hover:bg-muted"
+            row {
+                style: "items-center gap-2 m-3 mb-1"
+                text "Theme" { style: "text-xs text-muted-foreground font-medium mr-1" }
+                button "" {
+                    onclick: .SetAccent("indigo")
+                    style: if .store.accent_color == "indigo" {
+                        "w-5 h-5 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-card ring-primary"
+                    } else {
+                        "w-5 h-5 rounded-full bg-indigo-500 hover:scale-110 transition-transform"
+                    }
+                }
+                button "" {
+                    onclick: .SetAccent("coral")
+                    style: if .store.accent_color == "coral" {
+                        "w-5 h-5 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-card ring-primary"
+                    } else {
+                        "w-5 h-5 rounded-full bg-rose-500 hover:scale-110 transition-transform"
+                    }
+                }
+                button "" {
+                    onclick: .SetAccent("ocean")
+                    style: if .store.accent_color == "ocean" {
+                        "w-5 h-5 rounded-full bg-blue-500 ring-2 ring-offset-2 ring-offset-card ring-primary"
+                    } else {
+                        "w-5 h-5 rounded-full bg-blue-500 hover:scale-110 transition-transform"
+                    }
+                }
+                button "" {
+                    onclick: .SetAccent("sage")
+                    style: if .store.accent_color == "sage" {
+                        "w-5 h-5 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-card ring-primary"
+                    } else {
+                        "w-5 h-5 rounded-full bg-emerald-500 hover:scale-110 transition-transform"
+                    }
+                }
+                button "" {
+                    onclick: .SetAccent("amber")
+                    style: if .store.accent_color == "amber" {
+                        "w-5 h-5 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-card ring-primary"
+                    } else {
+                        "w-5 h-5 rounded-full bg-amber-500 hover:scale-110 transition-transform"
+                    }
+                }
+            }
+            if .store.dark_mode {
+                button "☀ Light" {
+                    onclick: .ToggleDarkMode
+                    style: "mx-3 mb-3 px-3 py-1.5 text-xs rounded-lg text-muted-foreground hover:bg-accent transition-colors"
+                }
+            }
+            if !.store.dark_mode {
+                button "🌙 Dark" {
+                    onclick: .ToggleDarkMode
+                    style: "mx-3 mb-3 px-3 py-1.5 text-xs rounded-lg text-muted-foreground hover:bg-accent transition-colors"
+                }
             }
         }
     }
@@ -262,5 +328,6 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
         .NewNote -> { store.NewNote() }
         .NewNoteInFolder(f) -> { store.NewNoteInFolder(f) }
         .ToggleDarkMode -> { store.ToggleDarkMode() }
+        .SetAccent(name) -> { store.SetAccent(name) }
     }
 }

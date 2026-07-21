@@ -7911,6 +7911,10 @@ export function cn(...inputs: ClassValue[]) {
             .with_props(std::collections::HashSet::new())
             .with_api_functions(store.api_imports.clone());
 
+        // Plan 360: detect accent_color state so we can inject the palette
+        // helpers and expose `accent_names` as a computed getter.
+        let has_accent = store.state_vars.iter().any(|s| s.name == "accent_color");
+
         // Export function.
         let fn_name = format!("use{}Store", store.name);
         code.push_str(&format!("export function {}(): any {{\n", fn_name));
@@ -7924,10 +7928,22 @@ export function cn(...inputs: ClassValue[]) {
         // Expose handlers as action functions.
         for (pattern, payload) in &store.handlers {
             let action_name = pattern.trim_start_matches('.');
-            let body = match payload {
+            let mut body = match payload {
                 crate::aura::LogicPayload::AstStmts(stmts) => transpile_handler_body(stmts, &ctx),
                 _ => String::new(),
             };
+            // Plan 360: for accent-enabled stores, wire up CSS-variable updates
+            // alongside the .at-side state changes. We append JS calls that the
+            // .at source can't express directly.
+            if has_accent {
+                if action_name == "SetAccent" {
+                    // applyAccent(name, isDark) writes the --primary CSS variable.
+                    body.push_str("; applyAccent(name, dark_mode.value)");
+                } else if action_name == "ToggleDarkMode" {
+                    // After flipping dark_mode, re-apply accent so lightness adjusts.
+                    body.push_str("; applyAccent(accent_color.value, dark_mode.value)");
+                }
+            }
             // Actions with API calls need to be async (ts_adapter added `await`).
             let is_async = body.contains("await");
             let params = store.handler_params.get(pattern)
@@ -7953,10 +7969,96 @@ export function cn(...inputs: ClassValue[]) {
             code.push_str("        },\n");
         }
 
+        // Plan 360: when accent_color exists, expose the palette name list as
+        // a computed so the UI can render swatch buttons via `for n in .store.accent_names`.
+        if has_accent {
+            code.push_str("        get accent_names() {\n");
+            code.push_str("            return getAccentNames();\n");
+            code.push_str("        },\n");
+        }
+
         code.push_str("    }\n");
         code.push_str("}\n");
+
+        // Plan 360: accent color system. When the store declares an
+        // `accent_color` state var, inject the 5-color palette + applyAccent
+        // function + onMounted bootstrap. The palette is aligned with
+        // auto-forge (indigo/coral/ocean/sage/amber).
+        if has_accent {
+            code.push_str("\n");
+            code.push_str(Self::ACCENT_PALETTE_JS);
+            // Module-level bootstrap: apply saved accent on first import.
+            // Also sync the accent_color ref so the store reflects the
+            // persisted choice (localStorage may differ from the .at default).
+            code.push_str("\n// Restore saved accent on module load.\n");
+            code.push_str(
+                "(function bootstrapAccent() {\n\
+                 \x20 const saved = getSavedAccent()\n\
+                 \x20 accent_color.value = saved\n\
+                 \x20 const isDark = document.documentElement.classList.contains('dark')\n\
+                 \x20 applyAccent(saved, isDark)\n\
+                 })()\n",
+            );
+        }
+
         code
     }
+
+    /// Plan 360: JS code injected into the store composable when `accent_color`
+    /// state is declared. Defines the 5-color palette, an apply function that
+    /// writes the HSL triplet to the `--primary` CSS variable (and persists to
+    /// localStorage), and an onMounted bootstrap that restores the saved choice.
+    ///
+    /// Palette values are aligned with auto-forge's useAccentColor.ts so the
+    /// two products share the same visual language.
+    const ACCENT_PALETTE_JS: &str = r#"
+// Plan 360: Accent color palette (aligned with auto-forge).
+// Each entry maps a name → shadcn --primary HSL triplet (space-separated).
+const ACCENT_PALETTES: Record<string, string> = {
+  indigo: '239 84% 67%',
+  coral:  '350 75% 64%',
+  ocean:  '217 91% 60%',
+  sage:   '160 84% 39%',
+  amber:  '38 92% 50%',
+}
+const ACCENT_NAMES = Object.keys(ACCENT_PALETTES)
+const ACCENT_STORAGE_KEY = 'notes-accent-color'
+
+/** Apply the named accent by writing the --primary CSS variable.
+ *  Also adjusts lightness up slightly in dark mode for readability.
+ *  HSL values are stored as "H S% L%" (shadcn format); the % is preserved
+ *  so we use parseFloat to read the numeric part for the lightness tweak. */
+export function applyAccent(name: string, isDark = false): void {
+  const hsl = ACCENT_PALETTES[name]
+  if (!hsl) return
+  let finalHsl = hsl
+  // Dark mode: boost lightness ~4% for contrast against dark backgrounds.
+  if (isDark) {
+    const match = hsl.match(/^(\d+\s+[\d.]+%)\s+([\d.]+)%$/)
+    if (match) {
+      const boosted = Math.min(85, parseFloat(match[2]) + 4)
+      finalHsl = match[1] + ' ' + boosted + '%'
+    }
+  }
+  const root = document.documentElement
+  root.style.setProperty('--primary', finalHsl)
+  try { localStorage.setItem(ACCENT_STORAGE_KEY, name) } catch {}
+}
+
+/** Read the saved accent from localStorage, defaulting to 'indigo'. */
+export function getSavedAccent(): string {
+  try {
+    const saved = localStorage.getItem(ACCENT_STORAGE_KEY)
+    if (saved && ACCENT_PALETTES[saved]) return saved
+  } catch {}
+  return 'indigo'
+}
+
+/** List of accent names for UI rendering (swatch buttons). */
+export function getAccentNames(): string[] {
+  return ACCENT_NAMES
+}
+"#;
 
     /// Convert an initial-value AuraExpr to a JS literal (v1: simple cases).
     fn store_init_to_js(expr: &crate::ast::Expr) -> String {
