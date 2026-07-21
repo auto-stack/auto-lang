@@ -80,11 +80,66 @@ description: Generate and modify AutoUI (.at) projects safely. Use when creating
 2. **Select pattern**: match the task to a pattern in patterns/
 3. **Generate**: produce .at code following the pattern
 4. **Validate**: run `auto build` and check warnings (Plan 361)
-5. **Smoke test**: for non-trivial changes, run the smoke checklist
+5. **Update acceptance contract**: if behavior changes, update `tests/acceptance.atd`
+   in lockstep (add/modify the T-entry for the affected feature)
+6. **Generate test skeleton**: for new features, emit a `.spec.ts` skeleton
+   matching the new T-entry (see §3.4)
+7. **Smoke test**: run `pnpm test` in `tests/` to verify no regression
+   (~45s if dev server is running; ~60s including server startup)
 
 ## Critical rules (ALWAYS follow)
-[... 引用 generator-contracts.md 的关键不变量 ...]
+- **改 .at 时，同步更新 acceptance.atd**（契约是功能的 single source of truth）
+- **新功能必须配测试**——不要让功能"裸奔"
+- **修 bug 时加回归测试**（标注"历史教训"，如 T12-DARK）
+- 引用 generator-contracts.md 的关键不变量（见 §3）
 ```
+
+### 3.4 测试套件集成（Plan 366a 补充）
+
+Skill 不仅是"生成 .at 代码"，还要**生成和维护测试**。这是防御纵深的关键一环：
+
+#### 三层产物
+
+```
+改功能时，Skill 同步产出/更新：
+├── src/front/foo.at          ← 实现（已有）
+├── tests/acceptance.atd      ← 验收契约（T 条目）
+└── tests/foo.spec.ts         ← 可执行测试骨架
+```
+
+#### 测试骨架生成规则
+
+当 Skill 生成一个新功能（如"分享笔记"）时，自动产出：
+
+**acceptance.atd 里加条目：**
+```markdown
+### T14: 分享笔记
+- **当** 用户点击 "Share" 按钮
+- **那么** 生成一个可分享的链接
+- **契约依据**：C4（handler 引用一致性）
+```
+
+**share.spec.ts 骨架：**
+```typescript
+test('T14: 分享笔记', async ({ page }) => {
+  // TODO: implement per acceptance.atd T14
+  // - click Share button
+  // - assert share link generated
+})
+```
+
+#### 回归测试的强制规则
+
+当 Skill 诊断并修复一个 bug 时，**必须**生成一个回归测试，格式：
+```markdown
+### T14-REGRESS: <bug 简述>
+- **历史教训**：<为什么这个 bug 曾发生>
+- **契约依据**：C-XXX
+- **回归断言**：<测试要验证的不变量>
+```
+
+本次会话的实例：T12-DARK（dark-accent 失效）就是这么来的——它的 acceptance.atd 条目标注了"历史教训"和 C-DARK-1 契约。
+
 
 ---
 
@@ -158,6 +213,59 @@ description: Generate and modify AutoUI (.at) projects safely. Use when creating
 - ✅ 列表项的 key 是自动的，不需要手动指定
 - ⚠️ 如果列表项是**有状态组件**（如 editor），note 切换时组件会销毁/重建。
   这可能触发第三方库的 unmount 问题。见 [editor-integration.md]
+
+## C7: 同名组件的 key 唯一性（Plan 360 教训）
+
+**契约**: 同一模板内，同名组件的每次使用都会获得唯一的稳定 key（如
+`AutoDownEditor-1`、`AutoDownEditor-2`），通过生成器的 `widget_key_counter`。
+
+**这意味着**:
+- ✅ 可以在两个 v-if 分支里用同名组件（如读/写双 editor），生成器会给不同 key
+- ⚠️ 如果两个同名实例**需要状态连续性**（editor 内容不丢失），考虑用单实例 + prop 切换
+- ⚠️ 自定义 key 目前不被 .at 支持——key 完全由生成器管理
+
+**违反症状**: v-if 切换后组件状态丢失、Tiptap editor 空白、`view is not available`
+
+**回归测试**: T1（笔记切换）、T5（Edit/Save/Cancel）
+
+## C8: CSS 变量作用域（Plan 360 教训）⚠️ 关键
+
+**契约**: 所有修改 CSS 变量（如 `--primary`）的子系统，写入的元素必须和
+Tailwind/shadcn 的 CSS 规则（如 `.dark { --primary: ... }`）在**同一个 DOM 元素**上。
+
+**背景**: 生成器把 `.dark` class 加到 `#app > div`（根组件），但 CSS 变量
+继承机制下，子元素同名变量会**覆盖**父元素的继承值。如果 accent 系统把
+`--primary` 写到 `<html>`，而 `.dark` 规则在 `#app > div`，子元素 `.dark` 的
+值会赢 → accent 在暗色模式下失效。
+
+**这意味着**:
+- ✅ 改 CSS 变量的代码必须考虑"目标元素是否和消费它的 class 在同一层"
+- ✅ 如果不确定，写入时**同时覆盖所有可能的目标元素**（见 applyAccent 的 applyToDark）
+- ⚠️ 切换 dark/light 时，要清理旧模式留下的 inline 残留
+
+**违反症状**: 亮色模式主题色生效，暗色模式主题色失效（显示默认色）
+
+**回归测试**: **T12-DARK**（关键回归）、C-DARK-1（契约验证）
+
+**历史教训**: Plan 360 实施时，applyAccent 只写 `<html>`，结果暗色模式下
+accent 失效。修复需要同时写 `<html>` 和 `.dark` 元素 + 清理残留。
+
+## C9: 主题色 accent 系统（Plan 360 新增）
+
+**契约**: store 声明 `accent_color` 状态时，生成器自动注入完整的 accent 系统：
+- `ACCENT_PALETTES` 数据（5 色 HSL）
+- `applyAccent(name, isDark)` 函数（设置 CSS 变量 + localStorage）
+- `SetAccent` handler 自动联动 applyAccent
+- `ToggleDarkMode` handler 自动联动 applyAccent（暗色 lightness +4% 补偿）
+- 模块级 bootstrap（从 localStorage 恢复）
+- `accent_names` getter（供 UI 渲染色板）
+
+**这意味着**:
+- ✅ 用户只需声明 `var accent_color str = "indigo"` + `.SetAccent(name)` handler
+- ✅ 暗色模式下 lightness 自动补偿，无需手动处理
+- ⚠️ 受 C8 约束——applyAccent 的目标元素必须覆盖 `.dark` 元素
+
+**回归测试**: T12-LIGHT、T12-DARK、T12-ROUNDTRIP
 ```
 
 ### 3.2 `known-pitfalls.md`：本次会话的所有教训
@@ -358,31 +466,37 @@ Skill 加载模式时检查版本兼容性，过时的模式会警告。
 ## 7. 实施计划
 
 ### Phase 1: 知识收集（1-2 天）
-- [ ] 从本次会话提炼所有契约和陷阱（已在上文起草）
+- [ ] 从本次会话提炼所有契约和陷阱（已起草：C1-C9, P1-P5）
 - [ ] 审查 015-notes 的所有 .at 文件，提炼成功模式
 - [ ] 审查生成器源码，列出所有隐式假设
-- [ ] 输出 `generator-contracts.md` 初版
+- [ ] 输出 `generator-contracts.md` 初版（含 C1-C9）
 
 ### Phase 2: Skill 骨架（1 天）
 - [ ] 创建 `.claude/skills/autoui/` 或 `crates/autoui-skill/`
-- [ ] 写 SKILL.md 主入口
+- [ ] 写 SKILL.md 主入口（含 7 步 workflow，含测试维护）
 - [ ] 整理 reference / patterns / templates 目录结构
 
 ### Phase 3: 核心模式（2-3 天）
 - [ ] list-detail pattern（最常用）
 - [ ] editor-integration pattern（最容易出错）
-- [ ] store-pattern
-- [ ] dark-mode pattern
+- [ ] store-pattern（含 accent_color 自动注入）
+- [ ] dark-mode pattern（含 C8 CSS 变量作用域陷阱）
 - [ ] 每个 pattern 配完整可运行示例
 
-### Phase 4: 向导工具（3-5 天，可选）
+### Phase 4: 测试集成（1-2 天）⚠️ 新增
+- [ ] Skill 生成新功能时，自动在 acceptance.atd 加 T 条目
+- [ ] Skill 生成对应的 .spec.ts 骨架
+- [ ] 修 bug 时 Skill 强制生成回归测试（含"历史教训"标注）
+- [ ] 集成 Plan 361 的校验 + Plan 366a 的测试运行
+
+### Phase 5: 向导工具（3-5 天，可选）
 - [ ] `auto ui wizard new` 命令
-- [ ] `auto ui wizard add widget` 命令
+- [ ] `auto ui wizard add widget` 命令（含测试骨架生成）
 - [ ] 基于交互式 prompt 生成脚手架
 - [ ] 集成 Plan 361 的校验
 
-### Phase 5: 集成与文档（1 天）
-- [ ] SKILL.md 引用 Plan 361/362 的工具链
+### Phase 6: 集成与文档（1 天）
+- [ ] SKILL.md 引用 Plan 361/362/366 的工具链
 - [ ] 在项目 README 推荐使用 Skill
 - [ ] 记录"何时用 Skill"的决策树
 
@@ -393,19 +507,23 @@ Skill 加载模式时检查版本兼容性，过时的模式会警告。
 ### 质量指标
 
 - [ ] Skill 覆盖本次会话的所有陷阱（P1-P5）
-- [ ] generator-contracts.md 列出生成器的所有隐式假设（至少 C1-C6）
+- [ ] generator-contracts.md 列出生成器的所有隐式假设（C1-C9，含 C7/C8/C9 新增）
 - [ ] 模式库包含至少 7 个经过验证的模式（对应 015-notes 的核心结构）
 - [ ] 用 Skill 生成一个新的 list-detail 应用，无需手动调试即可运行
+- [ ] **Skill 生成新功能时，自动产出 acceptance.atd 条目 + .spec.ts 骨架**
+- [ ] **Skill 修 bug 时，自动产出回归测试**
 
 ### 可衡量的改进
 
 - [ ] AI 使用 Skill 后，生成的 .at 代码首次校验通过率 > 90%（无 Plan 361 警告）
 - [ ] 新项目从零到可运行的步骤数减少 50%（向导 vs 手动）
-- [ ] "操作失效"类 bug 在后续开发中复发率下降（通过冒烟测试监测）
+- [ ] "操作失效"类 bug 在后续开发中复发率下降（通过 T1-T13 + 回归测试监测）
+- [ ] **新功能的测试覆盖率：每个新 T 条目都有对应的 .spec.ts**
+
 
 ---
 
-## 9. 与 Plan 361/362 的协同
+## 9. 与 Plan 361/362/366 的协同
 
 ```
 Plan 361 (校验)          Plan 363 (Skill)
@@ -413,21 +531,32 @@ Plan 361 (校验)          Plan 363 (Skill)
      ↑                          ↑
      │                          │
      └───── 同一套契约 ──────────┘
-              (generator-contracts.md)
+              (generator-contracts.md: C1-C9)
 
 Plan 362 (快速反馈)
 .auto watch 实时校验 ←── 触发 Skill 的 trap 检测
+
+Plan 366 (测试套件)
+acceptance.atd + .spec.ts ←── Skill 生成新功能时自动产出
+        ↓
+auto test:ui 跑测试 ←── Skill workflow 的第 7 步
 ```
 
-三个计划形成闭环：
-- **Plan 361** 是**后置防线**（生成后发现问题）
+四个计划形成闭环：
+- **Plan 361** 是**后置静态防线**（生成后检查 SFC 文本）
 - **Plan 362** 是**加速器**（让发现问题的成本变低）
-- **Plan 363** 是**前置防线**（让问题根本不被生成）
+- **Plan 363** 是**前置防线**（让问题根本不被生成）+ **测试维护者**（产出契约和测试骨架）
+- **Plan 366** 是**运行时防线**（跨平台测试执行，目前 366a 用 Playwright，未来用 Auto 测试 DSL）
 
 理想流程：
 ```
 开发者用 Skill 生成代码 (Plan 363)
-  → auto watch 实时重建+校验 (Plan 362 + 361)
-  → 快照测试捕捉回归 (Plan 362)
+  → Skill 同步产出 acceptance.atd 条目 + .spec.ts 骨架 (Plan 363 §3.4)
+  → auto watch 实时重建 + 静态校验 (Plan 362 + 361)
+  → auto test:ui 跑运行时测试 (Plan 366a)
   → 发现新陷阱 → 反哺 Skill 知识库 (Plan 363 自更新)
+     - 加 known-pitfall 条目
+     - 加 generator-contract 条目
+     - 加回归测试（标注历史教训）
 ```
+
