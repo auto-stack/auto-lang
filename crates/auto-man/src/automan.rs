@@ -155,7 +155,16 @@ impl Automan {
         let port = Self::try_load_port()?;
 
         // let user select a port
-        let config = AutoConfig::read(config_path.as_path())?;
+        // Plan 364: first pass also runs in Config mode; inject a placeholder
+        // port so any top-level `if port == ...` in pac.at can be evaluated by
+        // ConfigCodegen even before the real port is chosen. The real port name
+        // is injected in the second pass below.
+        let probe_args = {
+            let mut a = Obj::new();
+            a.set("port", Value::Str(AutoStr::from("win32")));
+            a
+        };
+        let config = AutoConfig::from_file(config_path.as_path(), &probe_args)?;
         let ports = config.root.get_nodes("port");
 
         let mut port_names = Vec::new();
@@ -187,8 +196,12 @@ impl Automan {
 
         println!("port NAME: {}", port_name);
 
-        // Load config without port variable (port variable was used in old Universe-based code)
-        let config = AutoConfig::from_file(config_path.as_path(), &Obj::new())?;
+        // Plan 364: inject the selected port name as the `port` context variable,
+        // mirroring old auto-man 0.1.3's `env.set_global("port", port_name)`.
+        // This lets pac.at use `if port == "win32" { ... }` to switch per-target config.
+        let mut args = Obj::new();
+        args.set("port", Value::Str(port_name.clone()));
+        let config = AutoConfig::from_file(config_path.as_path(), &args)?;
         let mut index_used: Vec<AutoStr> = Vec::new();
         if config.root.has_prop("index") {
             index_used = config
@@ -900,7 +913,28 @@ impl Automan {
                 // Default C backend
                 println!("Transpiling auto code to c code");
                 self.transpile_auto()?;
-                self.pac.build()?;
+
+                // Plan 364 Step 4: Route IDE/export-based builders through the
+                // exporter instead of the (incomplete) builder pipeline. Old
+                // auto-man 0.1.3 generated IAR/GHS/CMake project files via the
+                // exporter; `make_builder` here only knows ninja/cargo/vue, so
+                // `iar`/`ghs`/`cmake` would otherwise silently no-op.
+                let builder = self.pac.port.builder.as_str().to_string();
+                if matches!(builder.as_str(), "iar" | "ghs" | "cmake") {
+                    println!("Building via {} exporter (project file generation)", builder);
+                    self.pac.resolve()?;
+                    let build_path = AutoPath::new(self.pac.build_location.clone());
+                    if let Some(mut exporter) =
+                        crate::exporter::make_exporter(&builder, build_path)
+                    {
+                        exporter.export(&mut self.pac)?;
+                        println!("Export completed successfully at {}", self.pac.build_location);
+                    } else {
+                        return Err(format!("Unknown export format: {}", builder).into());
+                    }
+                } else {
+                    self.pac.build()?;
+                }
             }
         }
 
