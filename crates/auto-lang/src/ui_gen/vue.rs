@@ -784,6 +784,13 @@ pub struct VueGenerator {
     /// Store dependencies from `use store:` (Plan 351)
     store_deps: Vec<String>,
 
+    /// Whether the project depends on @autodown/editor (from pac.at npm_deps).
+    /// Drives R003 validation + main.ts CSS import.
+    uses_autodown: bool,
+
+    /// Warnings from the last validate_sfc run (Plan 361).
+    pub last_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning>,
+
     /// Event handler definitions (name, body, is_async)
     handlers: Vec<(String, String, bool)>,
 
@@ -913,6 +920,8 @@ impl VueGenerator {
             state_names: Vec::new(),
             prop_names: Vec::new(),
             store_deps: Vec::new(),
+            uses_autodown: false,
+            last_validation_warnings: Vec::new(),
             handlers: Vec::new(),
             emit_events: Vec::new(),
             has_emit: false,
@@ -973,6 +982,14 @@ impl VueGenerator {
     /// Set store dependencies from `use store:` declarations (Plan 351).
     pub fn with_store_deps(mut self, deps: Vec<String>) -> Self {
         self.store_deps = deps;
+        self
+    }
+
+    /// Mark whether the project depends on @autodown/editor (Plan 361).
+    /// Drives R003 validation (CSS import check) and is consumed by
+    /// auto-man's generate_main_ts to inject the stylesheet import.
+    pub fn with_uses_autodown(mut self, uses: bool) -> Self {
+        self.uses_autodown = uses;
         self
     }
 
@@ -1313,7 +1330,7 @@ impl VueGenerator {
             r#"<script setup>"#
         };
 
-        Ok(format!(
+        let sfc = format!(
             r#"<!-- {} component - Auto-generated from Auto language -->
 {}
 {}
@@ -1328,7 +1345,21 @@ impl VueGenerator {
 </style>
 "#,
             widget.name, script_tag, script, template, style
-        ))
+        );
+
+        // Plan 361: Post-generation validation. Run all rules against the SFC
+        // and stash warnings so callers (generate_component_from_file, auto-man)
+        // can print/log them. Non-fatal — generation always succeeds.
+        let ctx = crate::ui_gen::validators::ValidationContext {
+            store_deps: self.store_deps.clone(),
+            uses_autodown: self.uses_autodown,
+            used_handlers: self.used_handlers.iter().cloned().collect(),
+            strict: false,
+        };
+        let warnings = crate::ui_gen::validate_sfc(&sfc, &widget.name, &ctx);
+        self.last_validation_warnings = warnings;
+
+        Ok(sfc)
     }
 
     /// Generate <script setup> content

@@ -23,6 +23,7 @@ pub mod ark_adapter;
 pub mod kotlin_adapter;
 pub mod widget;
 pub mod api;
+pub mod validators;
 
 // Re-export main types
 pub use vue::VueGenerator;
@@ -31,6 +32,7 @@ pub use rust::RustGenerator;
 pub use style::StyleGenerator;
 pub use jet::JetGenerator;
 pub use widget::{WidgetCategory, WidgetRegistry, WidgetSpec};
+pub use validators::{validate_sfc, ValidationContext, ValidationWarning, Severity};
 
 // Re-export transpiler API (Plan 175 Phase 3)
 pub use api::{transpile_file, transpile_aura, transpile_vue_aura};
