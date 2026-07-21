@@ -1,0 +1,16 @@
+{
+  "name": "notes-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plan 366a acceptance tests for 015-notes",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "report": "playwright show-report test-results/html"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}
