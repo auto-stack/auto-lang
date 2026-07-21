@@ -3183,11 +3183,12 @@ fn extract_node_deep(vm: &crate::vm::engine::AutoVM, node: &Node, visited: &mut 
 
 /// let result = eval_config_with_vm(config, &Obj::new()).unwrap();
 /// ```
-pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
+pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
     use crate::vm::config_codegen::ConfigCodegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::opcode::OpCode;
     use crate::vm::virt_memory::VirtualFlash;
+    use crate::parser::CompileDest;
 
     // Note: Plan 091 - Universe parameter removed, AutoVM uses its own state
     // Note: Do NOT preprocess macros here — pac.at is config code, not UI code.
@@ -3196,10 +3197,23 @@ pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
 
     // 1. Parse the code
     let mut parser = Parser::from(code);
+    // Plan 364: Config mode enables tolerant manifest parsing (bare-name nodes,
+    // relaxed undefined checks) and context-variable injection (e.g. `port`).
+    parser.compile_dest = CompileDest::Config;
+    if let Some(port) = args.get_str("port") {
+        parser.define_config_globals(port.as_str());
+    }
     let ast = parser.parse()?;
 
     // 2. Compile to bytecode using ConfigCodegen
     let mut configgen = ConfigCodegen::new();
+    // Plan 364 Step 2: inject context variables (e.g. `port`) into the
+    // ConfigCodegen's substitution table so `if port == "..."` guards resolve
+    // at flatten time. (The parser injection in step 1 only keeps parsing happy;
+    // the value must also reach ConfigCodegen for condition evaluation.)
+    if let Some(port) = args.get_str("port") {
+        configgen.define_var("port", crate::ast::Expr::Str(port.into()));
+    }
     configgen.compile_config(&ast)?;
 
     // Add explicit RET at the end (ConfigCodegen already adds this, but ensure it)

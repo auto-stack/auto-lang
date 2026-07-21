@@ -148,10 +148,12 @@ fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
 // }
 
 #[derive(Debug, Clone)]
+#[derive(PartialEq)]
 pub enum CompileDest {
     Interp,    // for interperter
     TransC,    // for tranpiler to C
     TransRust, // for tranpiler to Rust
+    Config,    // for pac.at manifest config evaluation (Plan 364)
 }
 
 /// Plan 260: Parsed function annotations returned by parse_fn_annotations()
@@ -1349,6 +1351,13 @@ impl<'a> Parser<'a> {
                     },
                     CompileDest::TransRust => match current_section {
                         CodeSection::None | CodeSection::Rust => {}
+                        _ => {
+                            self.skip_line()?;
+                            continue;
+                        }
+                    },
+                    CompileDest::Config => match current_section {
+                        CodeSection::None | CodeSection::Auto => {}
                         _ => {
                             self.skip_line()?;
                             continue;
@@ -5463,6 +5472,7 @@ impl<'a> Parser<'a> {
             CompileDest::Interp => vec![".at", ".vm.at"], // Interpreter: Interface (first) → VM implementation (second)
             CompileDest::TransC => vec![".at", ".c.at"], // Transpiler: Interface (first) → C implementation (second)
             CompileDest::TransRust => vec![".at", ".rs.at"], // Rust transpiler: Interface → Rust implementation
+            CompileDest::Config => vec![".at"], // Plan 364: config evaluates a single pac.at, no layered impl
         }
     }
 
@@ -9446,6 +9456,11 @@ impl<'a> Parser<'a> {
         if self.skip_check {
             return Ok(expr);
         }
+        // Plan 364: in Config mode (pac.at manifest), `port` and other context
+        // variables are injected at evaluation time; skip strict undefined checks.
+        if self.compile_dest == CompileDest::Config {
+            return Ok(expr);
+        }
         match &expr {
             Expr::Bina(l, op, _) => match op {
                 Op::Dot => {
@@ -9517,6 +9532,23 @@ impl<'a> Parser<'a> {
             }
             _ => Ok(expr),
         }
+    }
+
+    /// Plan 364: Inject context globals into the parser symbol table for Config
+    /// mode (pac.at manifest evaluation). Mirrors old auto-man 0.1.3's
+    /// `env.set_global("port", port_name)` — the `port` variable holds the
+    /// currently selected port name so `if port == "win32" { ... }` can resolve.
+    pub fn define_config_globals(&mut self, port: &str) {
+        self.define(
+            "port",
+            Meta::Store(Store {
+                name: AutoStr::from("port"),
+                kind: StoreKind::Var,
+                attrs: vec![],
+                ty: Type::Unknown,
+                expr: Expr::Str(port.into()),
+            }),
+        );
     }
 
     pub fn find_type_for_expr(&mut self, expr: &Expr) -> AutoResult<Type> {

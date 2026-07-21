@@ -6,7 +6,8 @@ use crate::vm::codegen::Codegen;
 use crate::vm::opcode::OpCode;
 use crate::vm::loader::Module;
 use crate::error::{AutoResult, AutoError};
-use auto_val::ValueKey;
+use auto_val::{Op, ValueKey};
+use std::collections::HashMap;
 
 /// ConfigCodegen transforms configuration files into bytecode that builds
 /// a unified object structure.
@@ -27,6 +28,16 @@ use auto_val::ValueKey;
 /// CREATE_OBJ keys=["server", "database", "debug"]
 /// RET
 /// ```
+/// A literal value extracted from a config expression for compile-time
+/// condition evaluation (Plan 364 Step 2). Only the types used in manifest
+/// `if` guards are supported: string / int / bool.
+#[derive(Debug, Clone)]
+enum ConstVal {
+    Str(String),
+    Int(i32),
+    Bool(bool),
+}
+
 pub struct ConfigCodegen {
     /// Base codegen for opcode emission
     base: Codegen,
@@ -34,6 +45,13 @@ pub struct ConfigCodegen {
     field_paths: Vec<String>,
     /// Collected field values (expressions to compile)
     field_values: Vec<Expr>,
+    /// Evaluation-time variables (Plan 364 Step 2).
+    ///
+    /// `var x = expr` records `variables["x"] = expr` WITHOUT emitting a field.
+    /// References (`Expr::Ident("x")`) are substituted with the recorded value
+    /// at collect time via `substitute_vars`. This mirrors how old auto-man 0.1.3
+    /// treated manifest `var`s: pure substitution, not config root fields.
+    variables: HashMap<String, Expr>,
 }
 
 impl ConfigCodegen {
@@ -43,15 +61,30 @@ impl ConfigCodegen {
             base: Codegen::new(),
             field_paths: Vec::new(),
             field_values: Vec::new(),
+            variables: HashMap::new(),
         }
+    }
+
+    /// Define an evaluation-time variable before compilation (Plan 364 Step 2).
+    ///
+    /// Used to inject manifest context variables like `port` so that
+    /// `if port == "win32"` guards resolve at flatten time. This mirrors old
+    /// auto-man 0.1.3's `env.set_global("port", port_name)`.
+    pub fn define_var(&mut self, name: &str, value: Expr) {
+        self.variables.insert(name.to_string(), value);
     }
 
     /// Compile config file to bytecode
     ///
     /// Collects all field assignments and creates a single object.
     pub fn compile_config(&mut self, code: &Code) -> AutoResult<()> {
+        // Phase 0 (Plan 364 Step 2): Pre-evaluate control flow and variables.
+        // Flatten `if`/`for`/`var` into a flat list of data statements at the
+        // AST level, so the rest of the pipeline stays purely declarative.
+        let flat = self.flatten_config_stmts(&code.stmts)?;
+
         // Phase 1: Collect all field assignments
-        for stmt in &code.stmts {
+        for stmt in &flat {
             self.collect_config_stmt(stmt)?;
         }
 
@@ -71,6 +104,232 @@ impl ConfigCodegen {
         self.base.code.push(0); // n_args = 0 for config return
 
         Ok(())
+    }
+
+    // -------------------------------------------------------------------------
+    // Plan 364 Step 2: AST pre-evaluation (flatten)
+    // -------------------------------------------------------------------------
+
+    /// Flatten a statement list by pre-evaluating `if`/`for`/`var` into plain
+    /// data statements (Store/Expr/Node/EmptyLine).
+    ///
+    /// `if` selects a branch via [`eval_const_cond`]; `for` unrolls a literal
+    /// iterator; `var` records a substitution without emitting a field.
+    fn flatten_config_stmts(&mut self, stmts: &[Stmt]) -> AutoResult<Vec<Stmt>> {
+        let mut out = Vec::new();
+        for stmt in stmts {
+            self.flatten_one(stmt, &mut out)?;
+        }
+        Ok(out)
+    }
+
+    fn flatten_one(&mut self, stmt: &Stmt, out: &mut Vec<Stmt>) -> AutoResult<()> {
+        match stmt {
+            Stmt::If(if_stmt) => {
+                // Pick the first branch whose condition evaluates truthy.
+                let mut chosen: Option<&[Stmt]> = None;
+                for branch in &if_stmt.branches {
+                    if self.eval_const_cond(&branch.cond)? {
+                        chosen = Some(&branch.body.stmts);
+                        break;
+                    }
+                }
+                let body_stmts = match chosen {
+                    Some(s) => s,
+                    None => match &if_stmt.else_ {
+                        Some(body) => &body.stmts[..],
+                        None => return Ok(()),
+                    },
+                };
+                // Recurse: branch body may itself contain if/for/var.
+                for inner in body_stmts {
+                    self.flatten_one(inner, out)?;
+                }
+            }
+            Stmt::For(for_stmt) => {
+                // Only literal iterators are supported in config mode.
+                let iter_name = match &for_stmt.iter {
+                    crate::ast::Iter::Named(name) => name.to_string(),
+                    _ => {
+                        return Err(AutoError::Msg(format!(
+                            "Config mode only supports `for x in <literal>`; got {:?}",
+                            for_stmt.iter
+                        )));
+                    }
+                };
+                let items = self.eval_literal_iter(&for_stmt.range)?;
+                for item in items {
+                    self.variables.insert(iter_name.clone(), item);
+                    for inner in &for_stmt.body.stmts {
+                        self.flatten_one(inner, out)?;
+                    }
+                }
+                self.variables.remove(&iter_name);
+            }
+            Stmt::Store(store) => {
+                use crate::ast::StoreKind;
+                match store.kind {
+                    StoreKind::Var => {
+                        // Record substitution; do not emit a field.
+                        let expr = self.substitute_vars(&store.expr);
+                        self.variables
+                            .insert(store.name.to_string(), expr);
+                    }
+                    StoreKind::Let | StoreKind::Const => {
+                        // Treat plain `let`/`const` assignments as variables too
+                        // (manifests sometimes use `let`), AND as a field if it
+                        // looks like a config value. To stay safe and match the
+                        // pre-Step-2 behavior for `let`, record it as a variable.
+                        let expr = self.substitute_vars(&store.expr);
+                        self.variables.insert(store.name.to_string(), expr);
+                    }
+                    _ => {
+                        out.push(stmt.clone());
+                    }
+                }
+            }
+            // Data statements pass through unchanged.
+            Stmt::EmptyLine(_)
+            | Stmt::Expr(_)
+            | Stmt::Node(_)
+            | Stmt::Comment(_)
+            | Stmt::Dep(_) => {
+                out.push(stmt.clone());
+            }
+            _ => {
+                return Err(AutoError::Msg(format!(
+                    "Config mode does not support statement: {:?}",
+                    stmt
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Evaluate a condition expression to a boolean at compile time.
+    ///
+    /// Supports the subset needed by manifest `if port == "win32"` guards:
+    /// - `Expr::Bool(b)` → b
+    /// - `Expr::Bina(lhs, Op::Eq|Op::Neq, rhs)` → string/int/bool equality
+    /// - `Expr::Ident(name)` → resolve via `variables`, then recurse
+    fn eval_const_cond(&self, expr: &Expr) -> AutoResult<bool> {
+        match expr {
+            Expr::Bool(b) => Ok(*b),
+            Expr::Bina(lhs, op, rhs) => {
+                let lv = self.const_value(lhs)?;
+                let rv = self.const_value(rhs)?;
+                match op {
+                    Op::Eq => Ok(Self::values_equal(&lv, &rv)),
+                    Op::Neq => Ok(!Self::values_equal(&lv, &rv)),
+                    other => Err(AutoError::Msg(format!(
+                        "Config mode condition only supports == / !=, got {:?}",
+                        other
+                    ))),
+                }
+            }
+            Expr::Ident(name) => {
+                if let Some(val) = self.variables.get(name.as_str()) {
+                    self.eval_const_cond(val)
+                } else {
+                    Err(AutoError::Msg(format!(
+                        "Config mode: undefined variable in condition: {}",
+                        name
+                    )))
+                }
+            }
+            _ => Err(AutoError::Msg(format!(
+                "Config mode: cannot evaluate condition at compile time: {:?}",
+                expr
+            ))),
+        }
+    }
+
+    /// Resolve an expression to a comparable literal value (after substitution).
+    /// Returns a small `ConstVal` so equality is straightforward.
+    fn const_value(&self, expr: &Expr) -> AutoResult<ConstVal> {
+        match expr {
+            Expr::Str(s) => Ok(ConstVal::Str(s.to_string())),
+            Expr::Int(i) => Ok(ConstVal::Int(*i)),
+            Expr::Bool(b) => Ok(ConstVal::Bool(*b)),
+            Expr::Ident(name) => {
+                if let Some(val) = self.variables.get(name.as_str()) {
+                    self.const_value(val)
+                } else {
+                    Err(AutoError::Msg(format!(
+                        "Config mode: undefined variable: {}",
+                        name
+                    )))
+                }
+            }
+            other => Err(AutoError::Msg(format!(
+                "Config mode: non-literal value in condition: {:?}",
+                other
+            ))),
+        }
+    }
+
+    fn values_equal(a: &ConstVal, b: &ConstVal) -> bool {
+        match (a, b) {
+            (ConstVal::Str(x), ConstVal::Str(y)) => x == y,
+            (ConstVal::Int(x), ConstVal::Int(y)) => x == y,
+            (ConstVal::Bool(x), ConstVal::Bool(y)) => x == y,
+            _ => false,
+        }
+    }
+
+    /// Unroll a literal iterator (`[a, b, c]` of string/int, or a bare string
+    /// iterated char-by-char is NOT supported — only arrays).
+    fn eval_literal_iter(&mut self, range: &Expr) -> AutoResult<Vec<Expr>> {
+        match range {
+            Expr::Array(items) => {
+                // Substitute each item so referenced vars resolve now.
+                Ok(items.iter().map(|e| self.substitute_vars(e)).collect())
+            }
+            _ => Err(AutoError::Msg(format!(
+                "Config mode only supports literal array iterators, got {:?}",
+                range
+            ))),
+        }
+    }
+
+    /// Recursively replace `Expr::Ident(name)` with the recorded variable
+    /// value when `name` exists in `variables`. Returns a clone with
+    /// substitutions applied at every level (Object fields, Array items, etc.).
+    fn substitute_vars(&self, expr: &Expr) -> Expr {
+        match expr {
+            Expr::Ident(name) => match self.variables.get(name.as_str()) {
+                Some(val) => val.clone(),
+                None => expr.clone(),
+            },
+            // Recurse into composite expressions so nested idents resolve too.
+            Expr::Bina(l, op, r) => Expr::Bina(
+                Box::new(self.substitute_vars(l)),
+                *op,
+                Box::new(self.substitute_vars(r)),
+            ),
+            Expr::Unary(op, e) => Expr::Unary(*op, Box::new(self.substitute_vars(e))),
+            Expr::Array(items) => {
+                Expr::Array(items.iter().map(|e| self.substitute_vars(e)).collect())
+            }
+            Expr::Object(pairs) => {
+                let pairs = pairs
+                    .iter()
+                    .map(|p| crate::ast::Pair {
+                        key: p.key.clone(),
+                        value: Box::new(self.substitute_vars(&p.value)),
+                    })
+                    .collect();
+                Expr::Object(pairs)
+            }
+            Expr::Pair(p) => Expr::Pair(crate::ast::Pair {
+                key: p.key.clone(),
+                value: Box::new(self.substitute_vars(&p.value)),
+            }),
+            Expr::Dot(obj, name) => {
+                Expr::Dot(Box::new(self.substitute_vars(obj)), name.clone())
+            }
+            _ => expr.clone(),
+        }
     }
 
     /// Collect field assignments from statements
@@ -109,12 +368,18 @@ impl ConfigCodegen {
         // e.g., "server.host" stays as "server.host"
         let field_path = store.name.to_string();
 
-        // Clone the expression for later compilation
-        let expr = store.expr.clone();
+        // Substitute any evaluation-time variables referenced in the value
+        // (Plan 364 Step 2: e.g. `kernel: kernel_config` → resolved value).
+        let expr = self.substitute_vars(&store.expr);
 
-        // Track this field
-        self.field_paths.push(field_path);
-        self.field_values.push(expr);
+        // Track this field. A later assignment to the same path overrides the
+        // earlier one (mirrors object semantics: `{ a: 1, a: 2 }` → a == 2).
+        if let Some(pos) = self.field_paths.iter().position(|p| *p == field_path) {
+            self.field_values[pos] = expr;
+        } else {
+            self.field_paths.push(field_path);
+            self.field_values.push(expr);
+        }
 
         Ok(())
     }
@@ -134,9 +399,16 @@ impl ConfigCodegen {
             (format!("_expr{}", self.field_values.len()), expr.clone())
         };
 
-        // Track this field
-        self.field_paths.push(field_name);
-        self.field_values.push(expr);
+        // Substitute evaluation-time variables in the value (Plan 364 Step 2).
+        let expr = self.substitute_vars(&expr);
+
+        // Track this field. Same-name override semantics as collect_store_field.
+        if let Some(pos) = self.field_paths.iter().position(|p| *p == field_name) {
+            self.field_values[pos] = expr;
+        } else {
+            self.field_paths.push(field_name);
+            self.field_values.push(expr);
+        }
 
         Ok(())
     }
@@ -280,5 +552,105 @@ timeout: 30
         let bytecode = &module.code;
         assert!(bytecode.contains(&0x71), "Expected RET opcode (0x71)");
         assert!(!bytecode.contains(&0x2E), "Should not have CREATE_OBJ for empty config");
+    }
+
+    // ---------------------------------------------------------------------
+    // Plan 364 Step 2: AST pre-evaluation (if / var / for) — end-to-end
+    // ---------------------------------------------------------------------
+    //
+    // These tests go through the full pipeline (parser → ConfigCodegen →
+    // AutoVM) via `AutoConfig::from_code`, so they verify real behavior,
+    // not just bytecode shape. `port` is injected exactly like `auto build`
+    // does for manifest evaluation.
+
+    use crate::config::AutoConfig;
+    use auto_val::Obj;
+
+    fn eval_with_port(source: &str, port: &str) -> AutoConfig {
+        let mut args = Obj::new();
+        args.set("port", auto_val::Value::str(port));
+        AutoConfig::from_code(source, &args).unwrap()
+    }
+
+    #[test]
+    fn test_config_if_else_picks_matching_branch() {
+        // port == "win32" → x = 1
+        let source = r#"
+if port == "win32" {
+    x: 1
+} else {
+    x: 2
+}
+"#;
+        let cfg = eval_with_port(source, "win32");
+        assert_eq!(cfg.root.get_prop("x").to_astr().as_str(), "1");
+
+        // port == "linux" → else → x = 2
+        let cfg = eval_with_port(source, "linux");
+        assert_eq!(cfg.root.get_prop("x").to_astr().as_str(), "2");
+    }
+
+    #[test]
+    fn test_config_var_declaration_and_reference() {
+        // Mirrors SCU001's `var kernel_config = {...}` then `kernel: kernel_config`.
+        let source = r#"
+var kernel_config = { mode: "lockstep", mpu: true }
+kernel: kernel_config
+"#;
+        let cfg = eval_with_port(source, "win32");
+        // `kernel_config` itself must NOT be a root field (it's a variable).
+        // `kernel` must resolve to the recorded object.
+        let kernel = cfg.root.get_prop("kernel");
+        let repr = kernel.repr().to_string();
+        assert!(repr.contains("lockstep"),
+            "kernel should resolve to the var's object value (containing 'lockstep'), got {}",
+            repr);
+    }
+
+    #[test]
+    fn test_config_var_redeclared_takes_latest() {
+        // Re-declaring the same var before reference takes the latest value.
+        let source = r#"
+var arch = "arm"
+var arch = "armv7"
+target: arch
+"#;
+        let cfg = eval_with_port(source, "win32");
+        assert_eq!(cfg.root.get_prop("target").to_astr().as_str(), "armv7");
+    }
+
+    #[test]
+    fn test_config_for_unrolls_literal_array() {
+        let source = r#"
+ports: [8080, 9090]
+"#;
+        // This is a baseline: array literal as a field value.
+        let cfg = eval_with_port(source, "win32");
+        let ports = cfg.root.get_prop("ports");
+        assert!(matches!(ports, auto_val::Value::Array(_)),
+            "ports should be an array, got {:?}", ports);
+    }
+
+    #[test]
+    fn test_config_if_in_nested_manifest_style() {
+        // SCU001-style: top-level data plus a port-guarded block.
+        let source = r#"
+app: "SCU001"
+if port == "win32" {
+    builder: "iar"
+    toolchain: "arm"
+} else {
+    builder: "make"
+}
+"#;
+        let cfg = eval_with_port(source, "win32");
+        assert_eq!(cfg.root.get_prop("app").to_astr().as_str(), "SCU001");
+        assert_eq!(cfg.root.get_prop("builder").to_astr().as_str(), "iar");
+        assert_eq!(cfg.root.get_prop("toolchain").to_astr().as_str(), "arm");
+
+        let cfg2 = eval_with_port(source, "linux");
+        assert_eq!(cfg2.root.get_prop("builder").to_astr().as_str(), "make");
+        // toolchain should not exist when else branch taken (empty/nil)
+        assert_ne!(cfg2.root.get_prop("toolchain").to_astr().as_str(), "arm");
     }
 }
