@@ -3824,7 +3824,17 @@ impl<'a> Parser<'a> {
             TokenKind::Yield => self.yield_expr_stmt()?, // Plan 321: yield
             TokenKind::Reply => self.reply_stmt()?,  // Plan 124 Phase 2.3: reply statement
             TokenKind::Use => self.use_stmt()?,
-            TokenKind::Dep => self.dep_stmt()?, // Plan 092: Dependency declaration
+            TokenKind::Dep => {
+                // Plan 364 Step 3: In Config mode, manifest `dep xmen {}` is a
+                // dependency *node*, not the lang-level `dep name(version=...)`
+                // declaration. `dep_stmt` assumes the latter and chokes on `{`.
+                // Delegate to node parsing so bare-name dep nodes parse cleanly.
+                if self.compile_dest == CompileDest::Config {
+                    self.parse_node_or_call_stmt()?
+                } else {
+                    self.dep_stmt()?
+                }
+            }
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
             TokenKind::Loop => self.loop_stmt()?, // Plan 200 Task 1.1

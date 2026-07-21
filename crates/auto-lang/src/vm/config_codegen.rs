@@ -188,12 +188,43 @@ impl ConfigCodegen {
                     }
                 }
             }
+            // Bare assignment `name = value` (no let/var prefix). Manifests use
+            // this to update a previously-declared `var` inside an if/else, e.g.
+            // SCU001's `var kernel_config = {}` then `kernel_config = {...}`.
+            // Treat it as a variable update, NOT a field/expr.
+            Stmt::Expr(expr) => {
+                if let Expr::Bina(lhs, op, rhs) = expr {
+                    if *op == Op::Asn {
+                        if let Expr::Ident(name) = lhs.as_ref() {
+                            let val = self.substitute_vars(rhs);
+                            self.variables.insert(name.to_string(), val);
+                            return Ok(());
+                        }
+                    }
+                }
+                // Non-assignment expression: substitute any var references it
+                // contains (so `kernel: kernel_config` inside a node body
+                // resolves to the recorded value), then emit it.
+                let new_expr = self.substitute_vars(expr);
+                out.push(Stmt::Expr(new_expr));
+            }
+            // Node statements: recurse into the body to (a) flatten any nested
+            // if/for/var and (b) substitute variable references in every body
+            // expression (e.g. `kernel: kernel_config` inside `dep osal {}`).
+            // This is essential because node bodies are evaluated by the VM at
+            // runtime, where ConfigCodegen's compile-time `variables` table is
+            // not visible — so references must be resolved to literals now.
+            Stmt::Node(node) => {
+                let mut new_node = node.clone();
+                let mut body_out = Vec::new();
+                for inner in &node.body.stmts {
+                    self.flatten_one(inner, &mut body_out)?;
+                }
+                new_node.body.stmts = body_out;
+                out.push(Stmt::Node(new_node));
+            }
             // Data statements pass through unchanged.
-            Stmt::EmptyLine(_)
-            | Stmt::Expr(_)
-            | Stmt::Node(_)
-            | Stmt::Comment(_)
-            | Stmt::Dep(_) => {
+            Stmt::EmptyLine(_) | Stmt::Comment(_) | Stmt::Dep(_) => {
                 out.push(stmt.clone());
             }
             _ => {
@@ -652,5 +683,36 @@ if port == "win32" {
         assert_eq!(cfg2.root.get_prop("builder").to_astr().as_str(), "make");
         // toolchain should not exist when else branch taken (empty/nil)
         assert_ne!(cfg2.root.get_prop("toolchain").to_astr().as_str(), "arm");
+    }
+
+    #[test]
+    #[ignore] // Plan 364: regression guard for the real SCU001 manifest shape.
+    fn diag_scu001_real_manifest() {
+        let base = env!("CARGO_MANIFEST_DIR").to_string() + "/../../tmp/pacprobe_s3/scu001_real.at";
+        let src = std::fs::read_to_string(&base).unwrap();
+        let mut args = Obj::new();
+        args.set("port", auto_val::Value::str("lanshan"));
+        let cfg = AutoConfig::from_code(&src, &args).expect("SCU001 pac.at must parse");
+
+        // Spot-check key nodes that previously broke parsing.
+        let port_names: Vec<String> = cfg
+            .root
+            .get_nodes("port")
+            .iter()
+            .map(|n| n.id().to_string())
+            .collect();
+        assert!(port_names.iter().any(|n| n == "lanshan"),
+            "port lanshan must be present, got {:?}", port_names);
+
+        // dep osal must carry the resolved kernel object (var substitution).
+        let osal = cfg
+            .root
+            .get_nodes("dep")
+            .into_iter()
+            .find(|n| n.id().as_str() == "osal")
+            .expect("dep osal node");
+        let kernel = osal.get_prop("kernel");
+        assert!(kernel.repr().contains("heap_4"),
+            "osal.kernel must be the lanshan-branch value, got {}", kernel.repr());
     }
 }
