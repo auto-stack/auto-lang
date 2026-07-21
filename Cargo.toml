@@ -24,6 +24,11 @@ members = [
     "crates/auto-bindgen",
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
+exclude = [
+    # Generated Rust UI examples live in their own workspace with a shared
+    # target-dir pointing back at the main workspace target/.
+    "examples/rust-workspace",
+]
 resolver = "2"
 
 [workspace.dependencies]

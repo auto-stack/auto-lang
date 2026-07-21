@@ -1,0 +1,19 @@
+[package]
+name = "notes"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+ui-gpui = ["auto-lang/ui-gpui"]
+ui-iced = ["auto-lang/ui-iced"]
+default = ["ui-iced", "auto-lang/default"]
+
+[dependencies]
+auto-lang.workspace = true
+serde_json.workspace = true
+ureq.workspace = true
+reqwest = { version = "0.12", features = ["blocking", "multipart"] }
+tungstenite = { version = "0.24", features = ["native-tls"] }
+lazy_static = "1"
+tokio.workspace = true
+iced.workspace = true

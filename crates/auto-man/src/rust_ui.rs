@@ -160,7 +160,7 @@ pub fn generate_rust_ui(
         at_files.len()
     );
 
-    // Determine output directory — use shared workspace at D:/.auto/rust-workspace/
+    // Determine output directory — use shared workspace at examples/rust-workspace/
     let ws_dir = ensure_shared_workspace(project_dir);
     let member_name = front_member_name(project_dir);
     let default_output = ws_dir.join(&member_name);
@@ -1099,7 +1099,7 @@ fn to_snake_case(s: &str) -> String {
 /// Generate Cargo.toml content for the Rust UI project (workspace member version).
 ///
 /// No `[workspace]` section — this project is a member of the shared workspace
-/// at `D:/.auto/rust-workspace/`. Dependencies use `workspace = true` to inherit
+/// at `examples/rust-workspace/`. Dependencies use `workspace = true` to inherit
 /// from the workspace-level `[workspace.dependencies]`.
 fn generate_cargo_toml(project_name: &str, _project_dir: &Path) -> String {
     let snake_name = to_snake_case(project_name);
@@ -1173,11 +1173,12 @@ fn find_workspace_target_path(cargo_dir: &Path) -> String {
 
 /// Get the shared Rust workspace directory for all generated UI projects.
 ///
-/// Located outside the auto-lang repo to avoid Cargo's nested workspace restriction.
-/// All generated Rust projects become members of this single workspace, enabling
-/// cross-project compilation artifact reuse.
+/// Located inside the repo at `examples/rust-workspace/` and excluded from the
+/// main workspace via `exclude` in the root `Cargo.toml`. All generated Rust
+/// projects become members of this single workspace, enabling cross-project
+/// compilation artifact reuse.
 pub fn get_rust_workspace_dir() -> PathBuf {
-    PathBuf::from("D:/.auto/rust-workspace")
+    PathBuf::from("examples/rust-workspace")
 }
 
 /// Compute the relative path from the shared workspace dir to auto-lang crate.
@@ -1246,8 +1247,8 @@ fn compute_target_rel_path(project_dir: &Path) -> String {
 /// Ensure the shared Rust workspace exists and is configured.
 ///
 /// Creates/updates:
-/// - `D:/.auto/rust-workspace/Cargo.toml` (virtual manifest with all members)
-/// - `D:/.auto/rust-workspace/.cargo/config.toml` (target-dir pointing to auto-lang/target/)
+/// - `examples/rust-workspace/Cargo.toml` (virtual manifest with all members)
+/// - `examples/rust-workspace/.cargo/config.toml` (target-dir pointing to auto-lang/target/)
 ///
 /// Returns the workspace directory path.
 pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
@@ -1332,7 +1333,7 @@ pub fn back_member_name(project_dir: &Path) -> String {
 /// Start the API backend server if a backend exists in the shared workspace.
 /// Returns the child process handle so the caller can clean it up on exit.
 pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
-    // Backend lives in the shared workspace at D:/.auto/rust-workspace/{name}-back/
+    // Backend lives in the shared workspace at examples/rust-workspace/{name}-back/
     let ws_dir = get_rust_workspace_dir();
     let back_name = back_member_name(project_dir);
     let api_backend_dir = ws_dir.join(&back_name);
@@ -1488,7 +1489,7 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
 }
 
 pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
-    // Rust project now lives in the shared workspace at D:/.auto/rust-workspace/{name}/
+    // Rust project now lives in the shared workspace at examples/rust-workspace/{name}/
     let ws_dir = get_rust_workspace_dir();
     let member_name = front_member_name(project_dir);
     let rust_dir = ws_dir.join(&member_name);

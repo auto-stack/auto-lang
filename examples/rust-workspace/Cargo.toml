@@ -1,0 +1,31 @@
+[workspace]
+members = [
+    "011-calculator",
+    "012-stopwatch",
+    "013-todo",
+    "014-weather",
+    "015-notes",
+    "015-notes-back",
+    "016-calendar",
+    "auto-musk-back",
+    "contact-form",
+    "converter",
+    "counter",
+    "hero-section",
+    "login",
+    "myapp-back",
+    "pricing-table",
+    "profile-card",
+    "stats-board"
+]
+resolver = "2"
+
+[workspace.dependencies]
+auto-lang = { path = "../../crates/auto-lang" }
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+tokio = { version = "1", features = ["rt"] }
+iced = { version = "0.14.0", features = ["tokio", "advanced"] }
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+tower-http = { version = "0.5", features = ["cors"] }

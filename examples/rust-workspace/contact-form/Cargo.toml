@@ -1,0 +1,13 @@
+[package]
+name = "contact-form"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+ui-gpui = ["auto-lang/ui-gpui"]
+ui-iced = ["auto-lang/ui-iced"]
+default = ["ui-iced"]
+
+
+[dependencies]
+auto-lang = { workspace = true }
