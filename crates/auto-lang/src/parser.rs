@@ -3835,6 +3835,19 @@ impl<'a> Parser<'a> {
                     self.dep_stmt()?
                 }
             }
+            TokenKind::Pac | TokenKind::Link => {
+                // Plan 364 Step 3: `pac` and `link` are reserved keywords, but
+                // config/manifest files (including auto-man's index.at) use them
+                // as node names: `pac("kernel") {...}`, `link foo {...}`. In
+                // Config mode, delegate to node parsing so they parse as nodes
+                // instead of falling through to parse_term which rejects the
+                // keyword. In other modes they keep their original handling.
+                if self.compile_dest == CompileDest::Config {
+                    self.parse_node_or_call_stmt()?
+                } else {
+                    self.expr_stmt()?
+                }
+            }
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
             TokenKind::Loop => self.loop_stmt()?, // Plan 200 Task 1.1

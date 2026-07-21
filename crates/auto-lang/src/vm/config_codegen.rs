@@ -38,6 +38,16 @@ enum ConstVal {
     Bool(bool),
 }
 
+/// Extract a plain string key from a `Pair` key, if it is a named/string key.
+/// Used so `for d in modules` can look up a previously-seen `modules: [...]` Pair.
+fn pair_key_str(key: &crate::ast::Key) -> Option<String> {
+    match key {
+        crate::ast::Key::NamedKey(name) => Some(name.to_string()),
+        crate::ast::Key::StrKey(s) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
 pub struct ConfigCodegen {
     /// Base codegen for opcode emission
     base: Codegen,
@@ -206,6 +216,17 @@ impl ConfigCodegen {
                 // contains (so `kernel: kernel_config` inside a node body
                 // resolves to the recorded value), then emit it.
                 let new_expr = self.substitute_vars(expr);
+                // Plan 364: also record Pair fields (`key: value`) into the
+                // variables table so that `for d in modules` can iterate a
+                // previously-defined prop. The Pair is still emitted as a field
+                // below — this only makes its value available as an iteration
+                // source for nested for-loops.
+                if let Expr::Pair(pair) = &new_expr {
+                    if let Some(key) = pair_key_str(&pair.key) {
+                        let val = (*pair.value).clone();
+                        self.variables.insert(key, val);
+                    }
+                }
                 out.push(Stmt::Expr(new_expr));
             }
             // Node statements: recurse into the body to (a) flatten any nested
@@ -308,17 +329,41 @@ impl ConfigCodegen {
         }
     }
 
-    /// Unroll a literal iterator (`[a, b, c]` of string/int, or a bare string
-    /// iterated char-by-char is NOT supported — only arrays).
+    /// Unroll a literal iterator. Supports:
+    /// - `[a, b, c]` literal arrays
+    /// - `name` identifier that resolves (via variables / a prior Pair field)
+    ///   to a literal array, e.g. `for d in modules` where
+    ///   `modules: ["a", "b"]` was defined earlier.
     fn eval_literal_iter(&mut self, range: &Expr) -> AutoResult<Vec<Expr>> {
-        match range {
-            Expr::Array(items) => {
-                // Substitute each item so referenced vars resolve now.
-                Ok(items.iter().map(|e| self.substitute_vars(e)).collect())
+        let resolved = match range {
+            Expr::Array(_) => self.substitute_vars(range),
+            Expr::Ident(name) => match self.variables.get(name.as_str()) {
+                Some(val) => self.substitute_vars(val),
+                None => {
+                    return Err(AutoError::Msg(format!(
+                        "Config mode for-loop: undefined iterator '{}'",
+                        name
+                    )));
+                }
+            },
+            other => {
+                // Try substituting first (ident inside a larger expression).
+                let sub = self.substitute_vars(other);
+                if matches!(sub, Expr::Array(_)) {
+                    sub
+                } else {
+                    return Err(AutoError::Msg(format!(
+                        "Config mode only supports array iterators (literal or named), got {:?}",
+                        range
+                    )));
+                }
             }
-            _ => Err(AutoError::Msg(format!(
-                "Config mode only supports literal array iterators, got {:?}",
-                range
+        };
+        match resolved {
+            Expr::Array(items) => Ok(items),
+            other => Err(AutoError::Msg(format!(
+                "Config mode for-loop iterator did not resolve to an array, got {:?}",
+                other
             ))),
         }
     }
@@ -686,15 +731,16 @@ if port == "win32" {
     }
 
     #[test]
-    #[ignore] // Plan 364: regression guard for the real SCU001 manifest shape.
+    #[ignore] // Plan 364: regression guard for the real SCU001 root manifest.
+              // (Dep pac.at files need full DSL eval — f-string templates,
+              //  obj field access — tracked separately.)
     fn diag_scu001_real_manifest() {
         let base = env!("CARGO_MANIFEST_DIR").to_string() + "/../../tmp/pacprobe_s3/scu001_real.at";
         let src = std::fs::read_to_string(&base).unwrap();
         let mut args = Obj::new();
         args.set("port", auto_val::Value::str("lanshan"));
-        let cfg = AutoConfig::from_code(&src, &args).expect("SCU001 pac.at must parse");
+        let cfg = AutoConfig::from_code(&src, &args).expect("SCU001 root pac.at must parse");
 
-        // Spot-check key nodes that previously broke parsing.
         let port_names: Vec<String> = cfg
             .root
             .get_nodes("port")
@@ -704,7 +750,6 @@ if port == "win32" {
         assert!(port_names.iter().any(|n| n == "lanshan"),
             "port lanshan must be present, got {:?}", port_names);
 
-        // dep osal must carry the resolved kernel object (var substitution).
         let osal = cfg
             .root
             .get_nodes("dep")
