@@ -120,7 +120,54 @@ spec 文档所载，移植时**必须遵守**：
 ```
 
 ## 阶段 2：auto-ai-client
-（阶段 1 验收后展开）
+
+### 文件清单
+| Rust | Auto | 状态 |
+|---|---|---|
+| `error.rs` | `error.at` | ✅ 已完成 |
+| `daemon.rs` | `daemon.at` | ✅ 已完成 |
+| `lib.rs` | `lib.at` | ✅ 已完成（a2r-first） |
+
+**阶段 2 全部完成**。3 个文件，~535 行 Rust → ~430 行 Auto。
+
+`lib.at` 是 **a2r-first**：HTTP + JSON + SSE 流式依赖 `reqwest`/`serde_json`/
+`futures`，Auto VM 的 `json.encode[T]`/`json.decode[T]` 泛型分发在纯解释器
+里有 bug（返回指针值），所以 `complete`/`complete_stream` 的真实行为走 a2r→
+Rust 路径。已验证可翻译，且 `fn ... ~Result<T,E>` 正确译为
+`pub async fn ... -> Result<T,E>`（plan 的 async 决策落地）。
+
+纯 VM 可验证的部分（均已通过行为测试）：
+- error.at：3 个错误变体的 message 格式化。
+- daemon.at：daemon_url() 默认值 + `$AAID_URL` 覆盖 + default_daemon_url()。
+- lib.at 的 SseBuffer：跨 chunk 重组、`[DONE]` 过滤、finish() 尾部 flush。
+
+### 阶段 2 新踩坑（追加到上面的清单）
+
+8. **`pub const` 不支持**
+   `pub const X str = "..."` 报 `Expected infix operator, got const`。
+   模块级 `const X = ...`（无 pub、无类型注解）可以。需要公开的常量改用
+   **公开函数**返回（如 `default_daemon_url()`）。
+
+9. **`json.encode[T]` / `json.decode[T]` 在 VM 里不可靠**
+   泛型 JSON 编解码在纯 VM 下返回指针/ID 值（如 `"4000000"`）而非真正
+   序列化结果，且 `json.decode[T](...)` 会 panic（"Dynamic call not
+   supported"）。依赖 JSON 编解码的文件标为 **a2r-first**（翻译后由
+   serde_json 提供真实行为）。纯 VM 里只能用 `json.parse(s) → JsonValue`
+   + 手动字段提取。
+
+10. **`use <stdlib_module>` 会触发 stdlib 解析错误**
+    `use http` / `use fs` / `use json` 等会加载对应 stdlib `.at` 文件，
+    其中某些声明（如 `pub fn JsonValue.as_int(self JsonValue) int;`）让
+    VM 解析器报 `Expected term, got Newline`。但这些模块的函数**全局可
+    用，无需 import**（`http.request(...)`、`fs.exists(...)`、
+    `json.parse(...)` 直接调）。**规则：不要写 `use <stdlib>`，直接用。**
+
+11. **跨文件用户模块在独立 VM 运行里不可见**
+    `use daemon` / `use loader` 等用户 crate 内的模块，在单独 `auto a.at`
+    运行时报 `Module not found` / `Undefined variable`。这是 VM 的模块
+    解析限制（只认注册过的 stdlib/auto 模块），不影响 a2r 翻译（译为
+    `use crate::daemon`）。行为测试时需把被测模块的类型/函数内联到同一
+    文件，或仅测不依赖跨文件的部分。
 
 ## 阶段 3：auto-ai-agent
 （阶段 2 验收后展开）

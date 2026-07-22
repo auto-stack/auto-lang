@@ -1,0 +1,300 @@
+/// AutoOS AI client — a thin daemon HTTP client.
+///
+/// This client sends **canonical** [CompletionRequest]s to the `aaid` daemon
+/// and receives canonical [CompletionResponse]s back. It carries no provider
+/// knowledge and has no "direct" (LLM-direct) mode — the daemon owns all LLM
+/// communication and canonical↔provider translation. The client's only other
+/// responsibility is auto-discovering (and lazy-starting) the daemon via
+/// [daemon.ensure_daemon].
+///
+/// Canonical wire types (`Message`, `ContentBlock`, `CompletionRequest`, …)
+/// are defined in the `ai-config` crate.
+///
+/// Two modes of constructing a client:
+/// - [AiClient.new] — discover/start the daemon, error if unreachable.
+/// - [AiClient.with_url] — talk to a daemon at an explicit URL (testing).
+///
+/// Auto port of crates/auto-ai-client/src/lib.rs (auto-ai v0.4.0).
+///
+/// a2r-FIRST NOTE: the Rust original relies on `reqwest` (async HTTP),
+/// `serde_json` (wire serialization), and `futures::StreamExt` (SSE). Auto's VM
+/// has `http.request`/`http.post_stream_with_headers` and a `json` module, but
+/// the generic `json.encode[T]`/`json.decode[T]` and list-valued encoding do
+/// not yet round-trip correctly in the pure VM interpreter. This file is
+/// therefore written to be **correct as Auto source and to transpile cleanly to
+/// Rust** (where serde_json + reqwest provide the real behavior). The pure-VM
+/// path is exercised only for the non-IO pieces (SseBuffer, error formatting).
+
+use error: ClientError
+use daemon
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AiClient
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The daemon HTTP client. See the crate docs for the (canonical) wire format.
+///
+/// Unlike the Rust original (which holds a `reqwest::Client`), the Auto port
+/// stores only the URL and issues each request via the global `http` module —
+/// Auto's HTTP client is connection-pooled internally.
+type AiClient {
+    url str
+}
+
+ext AiClient {
+    /// Create a client. Auto-discovers the daemon (lazy-starting it if needed,
+    /// ssh-agent model). Errors if the daemon can't be reached.
+    static fn new() Result<AiClient, ClientError> {
+        is daemon.ensure_daemon() {
+            Some(url) -> {
+                return Ok(AiClient(url: url))
+            }
+            None -> return Err(ClientError.DaemonUnavailable)
+        }
+    }
+
+    /// Create a client pointed at an explicit daemon URL (for testing).
+    static fn with_url(url str) AiClient {
+        return AiClient(url: url)
+    }
+
+    /// The daemon URL this client talks to.
+    fn url() str {
+        return self.url
+    }
+
+    /// Always true (the client is daemon-only).
+    fn is_daemon_mode() bool {
+        return true
+    }
+
+    /// Send a canonical completion request, receive a canonical response.
+    ///
+    /// Async per the plan's `async fn → fn … ~T` mapping.
+    pub fn complete(req CompletionRequest) ~Result<CompletionResponse, ClientError> {
+        let endpoint = f"${self.url}/v1/chat/completions"
+        let body = json.encode(req)
+        let resp = http.request("POST", endpoint)
+            .header("Content-Type", "application/json")
+            .header("X-App-Name", "auto-ai-client")
+            .body(body)
+            .send()
+
+        let status = resp.status_code()
+        if status < 200 || status >= 300 {
+            let text = bytes_to_str(resp.body_bytes())
+            return Err(ClientError.Api(f"daemon ${status}: ${text}"))
+        }
+
+        let text = bytes_to_str(resp.body_bytes())
+        is json.decode[CompletionResponse](text) {
+            Ok(parsed) -> return Ok(parsed),
+            Err(e) -> return Err(ClientError.Api(f"parse response: ${e}"))
+        }
+    }
+
+    /// Send a **streaming** completion request. Sets `stream: true` and reads
+    /// the daemon's SSE response, invoking `on_event` for each parsed event.
+    ///
+    /// Each event is the JSON object the daemon emitted as a `data:` line:
+    /// `{ "type": "delta", "text": "..." }`, `{ "type": "done", ... }`, or
+    /// `{ "type": "error", "message": "..." }`. The caller decides how to
+    /// handle each type.
+    ///
+    /// Returns the accumulated full text (all deltas concatenated) on success.
+    pub fn complete_stream(req CompletionRequest, on_event fn(JsonValue)) ~Result<CompletionResponse, ClientError> {
+        var sreq = req
+        sreq.stream = true
+
+        let endpoint = f"${self.url}/v1/chat/completions"
+        let body = json.encode(sreq)
+        let stream = http.post_stream_with_headers(endpoint, body, "Content-Type: application/json\nX-App-Name: auto-ai-client")
+
+        var sse = SseBuffer.new()
+        var full = ""
+        // Collect tool_calls + metadata from the done event (Plan 006).
+        var tool_calls List<ToolCall> = []
+        var stop_reason ?str = None
+        var usage ?Usage = None
+        var model = ""
+        var error_msg ?str = None
+
+        for stream.is_done() == 0 {
+            let chunk = stream.next()
+            if chunk.is_empty() == false {
+                for data_line in sse.push(chunk) {
+                    is json.parse(data_line) {
+                        Some(value) -> {
+                            full = full + text_of(value)
+                            is value.get("type").as_string() {
+                                "error" -> {
+                                    error_msg = Some(value.get("message").as_string())
+                                },
+                                "done" -> {
+                                    tool_calls = parse_tool_calls(value)
+                                    stop_reason = opt_str_field(value, "stop_reason")
+                                    model = value.get("model").as_string()
+                                    usage = parse_usage(value)
+                                },
+                                else -> {}
+                            }
+                            on_event(value)
+                        },
+                        None -> {}
+                    }
+                }
+            }
+        }
+        // Flush any trailing payload without a final blank line.
+        for data_line in sse.finish() {
+            is json.parse(data_line) {
+                Some(value) -> {
+                    full = full + text_of(value)
+                    is value.get("type").as_string() {
+                        "error" -> {
+                            error_msg = Some(value.get("message").as_string())
+                        },
+                        "done" -> {
+                            tool_calls = parse_tool_calls(value)
+                            stop_reason = opt_str_field(value, "stop_reason")
+                            model = value.get("model").as_string()
+                            usage = parse_usage(value)
+                        },
+                        else -> {}
+                    }
+                    on_event(value)
+                },
+                None -> {}
+            }
+        }
+
+        return Ok(CompletionResponse(
+            content: full,
+            tool_calls: tool_calls,
+            stop_reason: stop_reason,
+            usage: usage,
+            model: model,
+            error: error_msg
+        ))
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SseBuffer — pure string manipulation (runs in the VM)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Minimal SSE line buffer: accumulates bytes, yields complete `data:` payloads.
+/// (The client's former `sse.rs` moved to the daemon; this is a small inline
+/// reader for the daemon's `text/event-stream` response.)
+type SseBuffer {
+    buf str
+}
+
+ext SseBuffer {
+    static fn new() SseBuffer {
+        return SseBuffer(buf: "")
+    }
+
+    /// Feed a chunk, returning any complete `data:` payloads found. A payload
+    /// is the text after `data: ` up to a blank line (`\n\n`).
+    mut fn push(chunk str) List<str> {
+        self.buf = self.buf + chunk
+        var out List<str> = []
+        loop {
+            let idx = self.buf.find("\n\n")
+            if idx < 0 {
+                break
+            }
+            let block = self.buf.slice(0, idx + 2)
+            self.buf = self.buf.slice(idx + 2)
+            for line in block.split("\n") {
+                let data = strip_data_prefix(line)
+                if data.is_empty() == false && data != "[DONE]" {
+                    out.push(data)
+                }
+            }
+        }
+        return out
+    }
+
+    /// Flush any trailing payload without a final `\n\n`.
+    mut fn finish() List<str> {
+        if self.buf.is_empty() {
+            return []
+        }
+        let block = self.buf
+        self.buf = ""
+        var out List<str> = []
+        for line in block.split("\n") {
+            let data = strip_data_prefix(line)
+            if data.is_empty() == false && data != "[DONE]" {
+                out.push(data)
+            }
+        }
+        return out
+    }
+}
+
+/// Strip a leading `data: ` or `data:` prefix and trim; "" if absent.
+fn strip_data_prefix(line str) str {
+    let trimmed = line.trim()
+    if trimmed.starts_with("data: ") {
+        return trimmed.slice(6).trim()
+    }
+    if trimmed.starts_with("data:") {
+        return trimmed.slice(5).trim()
+    }
+    return ""
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JSON field helpers (operate on the dynamic JsonValue from json.parse)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The `text` field of a delta event, or "" if absent.
+fn text_of(value JsonValue) str {
+    return value.get("text").as_string()
+}
+
+/// An optional string field, or None if absent/empty.
+fn opt_str_field(value JsonValue, key str) ?str {
+    let s = value.get(key).as_string()
+    if s.is_empty() {
+        return None
+    }
+    return Some(s)
+}
+
+/// Parse `tool_calls` array from a done event into typed ToolCall list.
+fn parse_tool_calls(value JsonValue) List<ToolCall> {
+    var out List<ToolCall> = []
+    let arr = value.get("tool_calls").as_array()
+    for tc in arr {
+        let id = tc.get("id").as_string()
+        let name = tc.get("name").as_string()
+        let input = tc.get("input")
+        out.push(ToolCall(id: id, name: name, input: input))
+    }
+    return out
+}
+
+/// Parse `usage` object from a done event, or None if absent.
+fn parse_usage(value JsonValue) ?Usage {
+    let u = value.get("usage")
+    if u.is_null() != 0 {
+        return None
+    }
+    return Some(Usage(
+        input_tokens: u.get("input_tokens").as_int(),
+        output_tokens: u.get("output_tokens").as_int()
+    ))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// byte → str
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Decode a response body byte array to a string (UTF-8, lossy).
+fn bytes_to_str(bytes []byte) str {
+    return str.from_bytes(bytes)
+}

@@ -1,0 +1,208 @@
+/// Daemon discovery + lazy start (ssh-agent model).
+///
+/// When any app creates an `AiClient` via `AiClient.new`, this module checks
+/// if `aaid` is running. If not, it finds and spawns the daemon binary, then
+/// waits for it to be ready. If the daemon can't be found or started, `new()`
+/// returns `Err(DaemonUnavailable)` — callers then use `AiClient.with_url` to
+/// point at a known daemon URL instead.
+///
+/// Auto port of crates/auto-ai-client/src/daemon.rs (auto-ai v0.4.0).
+///
+/// Note: the Rust original has both blocking and `async` variants of
+/// `is_running` / `ensure_daemon` (the blocking ones panic inside a tokio
+/// runtime — review-003 M6). Auto's `http.request` / `process.spawn` are not
+/// bound to a reactor, so a single synchronous implementation suffices; the
+/// `_async` variants simply alias to the sync ones for API parity.
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Constants & URL
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Default daemon URL.
+// (Auto has no `pub const`; expose the value via a function instead.)
+const DEFAULT_DAEMON_URL = "http://127.0.0.1:17654"
+
+/// The default daemon URL (mirrors the Rust `pub const DEFAULT_DAEMON_URL`).
+pub fn default_daemon_url() str {
+    return DEFAULT_DAEMON_URL
+}
+
+/// The daemon URL (overridable via `$AAID_URL`).
+pub fn daemon_url() str {
+    let v = env.get("AAID_URL")
+    if v.is_empty() {
+        return DEFAULT_DAEMON_URL
+    }
+    return v
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Health check
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Check if the daemon is running by probing `/v1/status`.
+pub fn is_running() bool {
+    let url = f"${daemon_url()}/v1/status"
+    // A failed connect / non-2xx both count as "not running".
+    let resp = http.request("GET", url).timeout(500).send()
+    return resp.status_code() >= 200 && resp.status_code() < 300
+}
+
+/// Async version of [is_running] — kept for API parity with the Rust original.
+/// (Auto's http client is not reactor-bound, so this is just an alias.)
+pub fn is_running_async() bool {
+    return is_running()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ensure_daemon
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Ensure the daemon is running. If not, try to start it.
+/// Returns `Some(url)` if daemon is available, `None` if not (caller should
+/// fall back to [AiClient.with_url] or surface an error).
+pub fn ensure_daemon() ?str {
+    // 1. Already running?
+    if is_running() {
+        return Some(daemon_url())
+    }
+
+    // 2. Find aaid binary.
+    is find_aaid_binary() {
+        Some(aaid_path) -> {
+            // 3. Spawn daemon in background.
+            if spawn_daemon(aaid_path) == false {
+                return None
+            }
+            // 4. Wait for ready (up to 3 seconds).
+            let deadline = time.now_ms() + 3000
+            for time.now_ms() < deadline {
+                time.sleep_ms(100)
+                if is_running() {
+                    return Some(daemon_url())
+                }
+            }
+            // Timeout — daemon didn't start in time.
+            return None
+        }
+        None -> return None
+    }
+}
+
+/// Async version of [ensure_daemon] — kept for API parity. Uses a longer
+/// (10s) ready-wait to match the Rust async variant (daemon loads config).
+pub fn ensure_daemon_async() ?str {
+    if is_running_async() {
+        return Some(daemon_url())
+    }
+    is find_aaid_binary() {
+        Some(aaid_path) -> {
+            if spawn_daemon(aaid_path) == false {
+                return None
+            }
+            let deadline = time.now_ms() + 10000
+            loop {
+                if is_running_async() {
+                    return Some(daemon_url())
+                }
+                if time.now_ms() >= deadline {
+                    break
+                }
+                time.sleep_ms(200)
+            }
+            return None
+        }
+        None -> return None
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Binary discovery
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Find the `aaid` binary by searching:
+/// 1. `$AAID_PATH` env var
+/// 2. `PATH` lookup (`aaid` / `aaid.exe`)
+/// 3. Dev relative paths (auto-ai repo target dir)
+fn find_aaid_binary() ?str {
+    // 1. Explicit path.
+    let explicit = env.get("AAID_PATH")
+    if explicit.is_empty() == false {
+        if fs.exists(explicit) {
+            return Some(explicit)
+        }
+    }
+
+    // 2. PATH lookup.
+    let exe_name = if env.get("OS").contains("Windows") || path_sep() == ";" {
+        "aaid.exe"
+    } else {
+        "aaid"
+    }
+    is which(exe_name) {
+        Some(p) -> return Some(p),
+        None -> {}
+    }
+
+    // 3. Dev relative paths (try to find auto-ai/target/debug/aaid).
+    let rels = [
+        "../../auto-ai/target/debug/aaid",
+        "../../auto-ai/target/debug/aaid.exe",
+        "../auto-ai/target/debug/aaid",
+        "../../../auto-ai/target/debug/aaid",
+        "../../../auto-ai/target/debug/aaid.exe"
+    ]
+    for rel in rels {
+        if fs.exists(rel) {
+            return Some(rel)
+        }
+    }
+    return None
+}
+
+/// The PATH separator (`;` on Windows, `:` elsewhere).
+fn path_sep() str {
+    // env.get("PATH") is universal; the separator is inferred from OS. We use
+    // a crude Windows check via the COMSPEC/OS env var since Auto has no
+    // cfg!(windows) equivalent in the VM.
+    let os = env.get("OS")
+    if os.contains("Windows") {
+        return ";"
+    }
+    return ":"
+}
+
+/// Simple `which` implementation: search $PATH for `exe`.
+fn which(exe str) ?str {
+    let path = env.get("PATH")
+    if path.is_empty() {
+        return None
+    }
+    let sep = path_sep()
+    for dir in path.split(sep) {
+        if dir.is_empty() {
+            // skip empty entries
+        } else {
+            let candidate = path.join(dir, exe)
+            if fs.exists(candidate) {
+                // On Windows, also try with .exe if not already suffixed.
+                if candidate.ends_with(".exe") == false && path_sep() == ";" {
+                    let with_exe = candidate + ".exe"
+                    if fs.exists(with_exe) {
+                        return Some(with_exe)
+                    }
+                }
+                return Some(candidate)
+            }
+        }
+    }
+    return None
+}
+
+/// Spawn the daemon binary as a detached background process.
+fn spawn_daemon(aaid_path str) bool {
+    // process.spawn returns a pid (>0) on success, <=0 on failure. Auto's
+    // spawn takes an arg list; the daemon reads its own config, so no args.
+    let pid = process.spawn([aaid_path])
+    return pid > 0
+}

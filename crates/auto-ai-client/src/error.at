@@ -1,0 +1,28 @@
+/// Client errors.
+///
+/// The client is a thin daemon HTTP client, so its error surface is small:
+/// the daemon isn't reachable, the HTTP call failed, or the daemon returned an
+/// error response.
+///
+/// Auto port of crates/auto-ai-client/src/error.rs (auto-ai v0.4.0).
+
+/// Unified error type for the (thin) daemon client.
+enum ClientError {
+    /// The daemon could not be discovered or started.
+    DaemonUnavailable
+    /// The HTTP request to the daemon failed (network/transport).
+    Http(str)
+    /// The daemon returned a non-success response or the body failed to parse.
+    Api(str)
+}
+
+ext ClientError {
+    /// Human-readable message (mirrors Rust's `Display` impl).
+    fn message() str {
+        is self {
+            ClientError.DaemonUnavailable -> return "daemon unavailable",
+            ClientError.Http(e) -> return f"HTTP error: ${e}",
+            ClientError.Api(e) -> return f"API error: ${e}"
+        }
+    }
+}
