@@ -92,12 +92,12 @@ ext ModelDefinition {
     /// Construct a new model definition with the given id and tier.
     /// The display name defaults to the id.
     static fn new(id str, tier ModelTier) ModelDefinition {
-        ModelDefinition(id: id, name: id, tier: tier)
+        return ModelDefinition(id: id, name: id, tier: tier)
     }
 
     /// Construct with an explicit display name.
     static fn with_name(id str, name str, tier ModelTier) ModelDefinition {
-        ModelDefinition(id: id, name: name, tier: tier)
+        return ModelDefinition(id: id, name: name, tier: tier)
     }
 
     /// The display name (falls back to the id if empty).

@@ -1,0 +1,248 @@
+/// Canonical wire types for the AutoOS AI stack.
+///
+/// These are the provider-agnostic, neutral-format types exchanged between
+/// `auto-ai-client` (which sends canonical [CompletionRequest]s) and
+/// `auto-ai-daemon` (which receives them and translates to a concrete
+/// provider's format). Defining them once here means the client, daemon, and
+/// agent crates all share one source of truth — no provider-specific shapes
+/// leak across the client↔daemon boundary.
+///
+/// Messages carry an ordered list of [ContentBlock]s so the same type can
+/// represent plain text, assistant tool-use requests, and user tool results.
+/// This is what makes the native tool-calling ReAct loop in `auto-ai-agent`
+/// possible without a separate protocol.
+///
+/// Auto port of crates/ai-config/src/wire.rs (auto-ai v0.4.0).
+///
+/// Note on ContentBlock: the Rust original uses struct-style enum variants
+/// (`Text { text }`, `ToolUse { id, name, input }`). Auto's AutoVM does not
+/// yet implement destructuring of struct-style variants (codegen panic), so
+/// the Auto port models them as **tuple variants** with positional fields.
+/// Field order mirrors the struct field order; access is via positional
+/// destructuring in `is` patterns.
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ContentBlock
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// One block within a message's content.
+///
+/// Mirrors the Anthropic content-block model, which the OpenAI provider
+/// translates to/from its `tool_calls` array.
+///
+/// Field order (positional, matching the Rust struct fields):
+/// - `Text(text)`
+/// - `ToolUse(id, name, input)`
+/// - `ToolResult(tool_use_id, content, is_error)`
+enum ContentBlock {
+    Text(str)
+    ToolUse(str, str, JsonValue)
+    ToolResult(str, str, bool)
+}
+
+ext ContentBlock {
+    /// Wrap a plain-text span in a Text block.
+    static fn text(t str) ContentBlock {
+        return ContentBlock.Text(t)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Message
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A single message in a conversation.
+///
+/// `content` is a list of [ContentBlock]s rather than a flat string so the
+/// same message can carry text, tool-use requests (assistant), and tool
+/// results (user). The convenience constructors [user], [assistant], [system]
+/// wrap a single Text block; use [tool_result] when feeding a tool's output
+/// back to the model.
+type Message {
+    role str
+    content List<ContentBlock>
+}
+
+ext Message {
+    /// A user-role message carrying a single Text block.
+    static fn user(text str) Message {
+        return Message(role: "user", content: [ContentBlock.text(text)])
+    }
+
+    /// An assistant-role message carrying a single Text block.
+    static fn assistant(text str) Message {
+        return Message(role: "assistant", content: [ContentBlock.text(text)])
+    }
+
+    /// A system-role message carrying a single Text block.
+    static fn system(text str) Message {
+        return Message(role: "system", content: [ContentBlock.text(text)])
+    }
+
+    /// A user-role message that returns the result of a tool call. The model
+    /// matches it to the prior assistant ToolUse block via `tool_use_id`.
+    static fn tool_result(tool_use_id str, content str) Message {
+        return Message(
+            role: "user",
+            content: [ContentBlock.ToolResult(tool_use_id, content, false)]
+        )
+    }
+
+    /// Like [tool_result] but flagged as an error.
+    static fn tool_error(tool_use_id str, content str) Message {
+        return Message(
+            role: "user",
+            content: [ContentBlock.ToolResult(tool_use_id, content, true)]
+        )
+    }
+
+    /// Convenience: the concatenated text of all Text blocks in this message
+    /// (ignoring tool-use / tool-result blocks). Handy for logging & tests.
+    fn text() str {
+        var parts List<str> = []
+        for b in self.content {
+            is b {
+                ContentBlock.Text(t) -> parts.push(t),
+                else -> {}
+            }
+        }
+        return parts.join("")
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ToolDefinition
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A tool the model is allowed to call.
+///
+/// `parameters` is a JSON-schema fragment (the `parameters` field of an
+/// OpenAI function definition, or the `input_schema` of an Anthropic tool).
+type ToolDefinition {
+    name str
+    description str
+    parameters JsonValue
+}
+
+ext ToolDefinition {
+    static fn new(name str, description str, parameters JsonValue) ToolDefinition {
+        return ToolDefinition(name: name, description: description, parameters: parameters)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ToolCall
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A tool invocation the model emitted in its response.
+type ToolCall {
+    id str
+    name str
+    input JsonValue
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Usage
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Token usage statistics.
+type Usage {
+    input_tokens uint
+    output_tokens uint
+}
+
+ext Usage {
+    /// Sum of input + output tokens.
+    fn total_tokens() uint {
+        return self.input_tokens + self.output_tokens
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CompletionRequest
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A completion request (provider-agnostic).
+type CompletionRequest {
+    model str
+    messages List<Message>
+    max_tokens ?uint
+    temperature ?float
+    system_prompt ?str
+    /// Tools the model may call. Empty by default.
+    tools List<ToolDefinition>
+    /// If true, the daemon streams SSE deltas back instead of a single
+    /// response. (Non-streaming callers leave this false.)
+    stream bool
+}
+
+ext CompletionRequest {
+    /// Simple single-turn request: one user message.
+    static fn single(model str, prompt str) CompletionRequest {
+        return CompletionRequest(
+            model: model,
+            messages: [Message.user(prompt)],
+            max_tokens: None,
+            temperature: None,
+            system_prompt: None,
+            tools: [],
+            stream: false
+        )
+    }
+
+    /// With a system prompt.
+    mut fn with_system(system str) CompletionRequest {
+        self.system_prompt = Some(system)
+        return self
+    }
+
+    /// With max output tokens.
+    mut fn with_max_tokens(n uint) CompletionRequest {
+        self.max_tokens = Some(n)
+        return self
+    }
+
+    /// With temperature.
+    mut fn with_temperature(t float) CompletionRequest {
+        self.temperature = Some(t)
+        return self
+    }
+
+    /// With a set of callable tools.
+    mut fn with_tools(tools List<ToolDefinition>) CompletionRequest {
+        self.tools = tools
+        return self
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CompletionResponse
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A completion response.
+type CompletionResponse {
+    /// The full text response (all chunks joined for streaming).
+    content str
+    /// Tool invocations the model requested, if any.
+    tool_calls List<ToolCall>
+    /// Why the model stopped ("end_turn", "tool_use", "stop", ...).
+    stop_reason ?str
+    /// Token usage (if reported by the API).
+    usage ?Usage
+    /// Model that produced the response.
+    model str
+    /// Error message (if any). Content may still be partial.
+    error ?str
+}
+
+ext CompletionResponse {
+    /// True when there is no error.
+    fn is_ok() bool {
+        return self.error.is_none()
+    }
+
+    /// True when the model wants to call at least one tool.
+    fn wants_tool() bool {
+        return self.tool_calls.len() > 0
+    }
+}
