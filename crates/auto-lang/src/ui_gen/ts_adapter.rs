@@ -89,11 +89,14 @@ pub fn snake_to_camel(name: &str) -> String {
 /// Transpile a list of AutoLang statements to TypeScript, with AURA rewrites.
 pub fn transpile_handler_body(stmts: &[Stmt], ctx: &AuraTsContext) -> String {
     let mut out = Vec::new();
-    for (i, stmt) in stmts.iter().enumerate() {
-        if i > 0 {
-            write!(out, " ").ok();  // space separator (each stmt already ends with ;)
-        }
+    for stmt in stmts.iter() {
         transpile_stmt(stmt, ctx, &mut out);
+        // Each statement already ends with a newline (via writeln!), but
+        // ensure separation even if a statement's output doesn't end with \n.
+        let s = std::str::from_utf8(&out).unwrap_or("");
+        if !s.ends_with('\n') {
+            writeln!(out).ok();
+        }
     }
     String::from_utf8(out).unwrap_or_default()
 }

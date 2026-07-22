@@ -1597,9 +1597,26 @@ impl VueGenerator {
 
         // Generate emit if needed
         if self.has_emit {
+            // Build event → payload type map from msg declarations.
+            // Each variant may carry a single payload type (e.g. SelectTag(str) → str).
+            // handler_params stores param names (e.g. ["t"]) for the on-block's .Handler(t).
+            // We use the variant's payload type when available.
+            let mut event_payload_types: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            for msg in &widget.messages {
+                for variant in &msg.variants {
+                    if let Some(ref ty) = variant.payload {
+                        event_payload_types.insert(variant.name.clone(), Self::auto_type_to_ts_type(ty));
+                    }
+                }
+            }
+
             script.push_str("const emit = defineEmits<{\n");
             for event in &self.emit_events {
-                script.push_str(&format!("  {}: []\n", event));
+                if let Some(ts_type) = event_payload_types.get(event) {
+                    script.push_str(&format!("  {}: [{}]\n", event, ts_type));
+                } else {
+                    script.push_str(&format!("  {}: []\n", event));
+                }
             }
             script.push_str("}>()\n\n");
         }
@@ -1623,9 +1640,17 @@ impl VueGenerator {
         for (pattern, payload) in &widget.handlers {
             let handler_name = self.pattern_to_handler_name(pattern);
             let mut body = self.generate_handler_body(payload)?;
-            // Auto-emit events for sub-widget handlers that match emit declarations
+            // Auto-emit events for sub-widget handlers that match emit declarations.
+            // Plan 367 P0-1: Skip emit if the handler already notifies the parent
+            // via a callback prop (props.on_xxx()). In that case the emit is
+            // redundant — the parent's callback was already invoked.
             if self.has_emit && self.emit_events.contains(&handler_name) {
-                body.push_str(&format!("\nemit('{}')", handler_name));
+                let snake = Self::pascal_to_snake(&handler_name);
+                let callback_key = format!("props.on_{}", snake);
+                let already_notifies_parent = body.contains(&callback_key);
+                if !already_notifies_parent {
+                    body.push_str(&format!("\nemit('{}')", handler_name));
+                }
             }
             // Plan 132: Check if handler contains API calls (needs async)
             let is_async = self.handler_has_api_calls(payload);
@@ -1682,11 +1707,13 @@ impl VueGenerator {
             };
 
             if let Some(ref body) = auto_body {
-                script.push_str(&format!("{}function {}({}){} {{\n  {}\n}}\n\n", async_kw, handler_name, params_str, return_type, body));
+                let indented = Self::indent_body(body, "  ");
+                script.push_str(&format!("{}function {}({}){} {{\n{}\n}}\n\n", async_kw, handler_name, params_str, return_type, indented));
             } else if handler_body.is_empty() {
                 script.push_str(&format!("{}function {}({}){} {{\n  // TODO\n}}\n\n", async_kw, handler_name, params_str, return_type));
             } else {
-                script.push_str(&format!("{}function {}({}){} {{\n  {}\n}}\n\n", async_kw, handler_name, params_str, return_type, handler_body));
+                let indented = Self::indent_body(handler_body, "  ");
+                script.push_str(&format!("{}function {}({}){} {{\n{}\n}}\n\n", async_kw, handler_name, params_str, return_type, indented));
             }
         }
 
@@ -1748,7 +1775,8 @@ impl VueGenerator {
             let is_async = self.handler_has_api_calls(&init.payload);
             let async_kw = if is_async { "async " } else { "" };
             let body = self.generate_handler_body(&init.payload).unwrap_or_default();
-            script.push_str(&format!("onMounted({}() => {{\n  {}\n}})\n\n", async_kw, body));
+            let indented = Self::indent_body(&body, "  ");
+            script.push_str(&format!("onMounted({}() => {{\n{}\n}})\n\n", async_kw, indented));
         }
         // .Destroy → onUnmounted
         if let Some(destroy) = widget.lifecycle.iter().find(|l| l.name == "Destroy") {
@@ -1756,24 +1784,10 @@ impl VueGenerator {
             script.push_str(&format!("onUnmounted(() => {{\n  {}\n}})\n\n", body));
         }
 
-        // Auto-enter edit mode for sub-widgets when receiving a new/empty item
-        // If widget has editing state and a 'note' prop, auto-start editing when title is empty
-        let has_editing = self.state_names.iter().any(|n| n == "editing");
-        let has_note_prop = self.prop_names.iter().any(|n| n == "note");
-        let has_edit_title = self.state_names.iter().any(|n| n == "edit_title");
-        if has_editing && has_note_prop {
-            script.push_str("onMounted(() => {\n");
-            script.push_str("  if (!props.note?.title) {\n");
-            if has_edit_title {
-                script.push_str("    edit_title.value = ''\n");
-                if self.state_names.iter().any(|n| n == "edit_body") {
-                    script.push_str("    edit_body.value = ''\n");
-                }
-            }
-            script.push_str("    editing.value = true\n");
-            script.push_str("  }\n");
-            script.push_str("})\n\n");
-        }
+        // Note: auto-edit-mode onMounted was previously hardcoded here (Plan 367 P0-3
+        // removed it). This logic now lives in the .at source's .Init handler,
+        // which is faithfully transpiled to onMounted above. Having both caused
+        // a duplicate onMounted in EditorPanel.vue.
 
         // Generate timer/tick mechanism (setInterval + onUnmounted cleanup)
         // The timer only runs when the widget has a `running` state var set to "true"
@@ -7533,6 +7547,50 @@ impl VueGenerator {
             "ondblclick" | "onDblClick" | "on_double_click" => "@dblclick".to_string(),
             "onsubmit" | "onSubmit" => "@submit.prevent".to_string(),
             _ => format!("@{}", event.trim_start_matches("on")),
+        }
+    }
+
+    /// Plan 367 P0-1: Convert PascalCase to snake_case for callback prop matching.
+    /// e.g. "TogglePin" → "toggle_pin", "DeleteActive" → "delete_active"
+    fn pascal_to_snake(s: &str) -> String {
+        let mut result = String::new();
+        for (i, ch) in s.chars().enumerate() {
+            if ch.is_uppercase() && i > 0 {
+                result.push('_');
+            }
+            result.push(ch.to_lowercase().next().unwrap_or(ch));
+        }
+        result
+    }
+
+    /// Plan 367 P0-2: Indent every line of a body string by the given prefix.
+    /// Used when wrapping transpiled handler bodies into function/onMounted.
+    /// Ensures multi-line bodies have consistent indentation.
+    fn indent_body(body: &str, indent: &str) -> String {
+        body.lines()
+            .map(|line| {
+                if line.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!("{}{}", indent, line)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Plan 367 P0-4: Map an Auto type to its TypeScript equivalent.
+    /// Used for emit payload types and (future) prop types.
+    fn auto_type_to_ts_type(ty: &crate::ast::Type) -> String {
+        use crate::ast::Type;
+        match ty {
+            Type::StrSlice | Type::StrOwned | Type::StrFixed(_) | Type::CStrLit => "string".to_string(),
+            Type::Int | Type::I64 | Type::Uint | Type::U64 | Type::USize | Type::Float | Type::Double => "number".to_string(),
+            Type::Bool => "boolean".to_string(),
+            Type::List(inner) => format!("{}[]", Self::auto_type_to_ts_type(inner)),
+            Type::Slice(_) => "any[]".to_string(),
+            Type::Option(inner) => format!("{} | null", Self::auto_type_to_ts_type(inner)),
+            _ => "any".to_string(),
         }
     }
 
