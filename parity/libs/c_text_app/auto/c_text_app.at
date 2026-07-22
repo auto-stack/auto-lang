@@ -6,9 +6,9 @@
 ///
 /// 消费者模式：调库能力（fs.read_text / fs.write_text）+ 字符串方法做应用。
 ///
-/// 实现注记（VM 怪癖规避，Plan 368 F5）：文本变换结果都先存进局部变量再
-/// 返回（`return <方法调用>` 在 VM 里会丢值——同 string_utils/Plan 359 C2 家族）。
-/// 完整路径以内联拼接传给 fs.write_text（见 c_fs_app.at 的 a2r 注记）。
+/// 实现注记（VM 怪癖规避）：文本变换结果都先存进局部变量再返回
+/// （`return <方法调用>` 在 VM 里会丢值——同 string_utils/Plan 359 C2 家族，
+///  仍是未修的 VM bug，与 a2r 无关）。
 use auto.fs
 
 /// 读文件、把 `old` 替换成 `new`、写回、读回返回。

@@ -3,11 +3,8 @@
 /// 测试名镜像 Rust oracle（tests/rust/tests/c_env_app.rs）。
 ///
 /// 确定性：每端用唯一 key（C_ENV_APP_TEST_*）+ 固定值，测"本进程内
-/// set→get 往返"行为模式。三端各自独立进程，互不干扰。
-///
-/// 为彻底规避 a2r 转译器两条已知怪癖（见 c_fs_app.at 注记：owned str 变量
-/// 登记为 StrSlice；用户函数的内联拼接参数不自动 .as_str()），所有 key 都
-/// 用字符串字面量直接传递（无拼接、无变量），既清晰又在三端完全一致。
+/// set→get 往返"行为模式。三端各自独立进程，互不干扰。key 用字符串字面量
+/// 直接传递（清晰、三端一致）。
 use auto.c_env_app: set_and_get, get_missing, get_or_value
 use auto.env
 

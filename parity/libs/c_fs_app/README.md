@@ -31,25 +31,25 @@ parallel threads (Auto/a2r run all assertions in a single sequential `main()`).
 `test_exists_yes`, `test_exists_no`, `test_mkdir_write_read`,
 `test_nested_exists`.
 
-## a2r notes (Plan 368 F1 — discovered transpiler gaps)
+## a2r notes (Plan 368 — transpiler gaps discovered then fixed)
 
-The consumer source works around two pre-existing a2r transpiler limitations
-(recorded for a future a2r improvement, out of this plan's scope):
+Two pre-existing a2r transpiler gaps were hit while writing this lib and
+have since been **fixed** (Plan 368 FU-2), so the source now uses natural
+string patterns:
 
-1. **Owned `str` var registered as `StrSlice`.** `var x str = <concat>` is
-   tracked in `local_var_types` as `StrSlice` but transpiled to Rust `String`.
-   Re-using it (e.g. passing to `fs.write_text` then `fs.read_text`) triggers
-   `E0382 use of moved value`. Workaround in `c_fs_app.at`: pass the path as
-   an **inline** concatenation at each call site (inline concats go through
-   `expr_as_str` and are correctly `.as_str()`-borrowed).
+1. **Owned `str` var registered as `StrSlice`** — `var x str = <concat>` was
+   tracked as `StrSlice` but transpiled to owned `String`, so re-using it
+   (e.g. `fs.write_text(fullpath)` then `fs.read_text(fullpath)`) moved it
+   (E0382). Fixed in `needs_as_str`: only function *params* declared `str`
+   are truly `&str`; locals render to owned `String` and need `.as_str()`
+   at `&str` use sites (which also borrows instead of moving).
 
-2. **Inline-concat args to user functions.** `f(base + "/x")` transpiles to
-   `f(format!(...), ...)` without `.as_str()`, failing `E0308` when `f`
-   takes `&str`. Workaround in `basic.at`: bind the concat to a local `str`
-   variable first (variable-form string args are auto-`.as_str()`'d).
+2. **Inline-concat args to user functions** — `f(base + "/x")` transpiled to
+   `f(format!(...))` without `.as_str()` (E0308). Fixed in
+   `needs_borrow_unknown_callee`: inline-concat args are now borrowed via
+   `expr_contains_string`.
 
-Both quirks are documented inline in the `.at` sources. A small a2r-std
-alignment fix was also needed: `a2r_std::fs::read_text`/`read_to_string` now
-return `String` (empty on error) to match the VM's `auto.fs.read_text`
-native (`shim_file_read_text` → `unwrap_or_default()`), so the same `.at`
-source behaves identically across VM/a2r/Rust.
+A small a2r-std alignment fix was also applied earlier: `a2r_std::fs::read_text`
+/`read_to_string` return `String` (empty on error) to match the VM's
+`auto.fs.read_text` native (`shim_file_read_text` → `unwrap_or_default()`),
+so the same `.at` source behaves identically across VM/a2r/Rust.

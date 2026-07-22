@@ -5,12 +5,6 @@
 ///
 /// 消费者模式：Auto 调用库能力（read_text / write_text / exists / create_dir）
 /// 完成文件操作，而不是重实现库内部。Rust oracle 直调 std::fs。
-///
-/// a2r 注记（Plan 368 F1）：`mkdir_write_read` 把完整路径以内联拼接形式传给
-/// `fs.write_text` / `fs.read_text`，而不是先存进一个 `str` 变量。原因是 a2r
-/// 把 `var x str = <拼接>` 仍登记为 StrSlice 却转译成 Rust `String`，导致
-/// 第二次使用时触发 E0382 moved value（已记为转译器后续改进项）。内联拼接走
-/// `expr_as_str` 路径会被正确 `.as_str()` 借用，两个后端一致。
 use auto.fs
 
 /// 写入并读回文本，返回读回的内容（确定性）。
@@ -27,7 +21,8 @@ fn check_exists(path str) int {
 
 /// 创建目录、写文件、读回，返回读回内容。
 fn mkdir_write_read(dir str, filename str, content str) str {
+    var fullpath str = dir + "/" + filename
     fs.create_dir(dir)
-    fs.write_text(dir + "/" + filename, content)
-    return fs.read_text(dir + "/" + filename)
+    fs.write_text(fullpath, content)
+    return fs.read_text(fullpath)
 }
