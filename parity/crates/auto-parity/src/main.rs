@@ -271,7 +271,7 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         // Plan 367 (consumer-mode parity): Layer 1 consumer apps. Each calls
         // `auto.<module>` stdlib and is compared three-way with a native Rust
         // oracle that calls the same underlying crate directly.
-        ("d5", &["c_fs_app", "c_env_app"]),
+        ("d5", &["c_fs_app", "c_env_app", "c_process_app"]),
     ];
 
     for (p, libs) in phase_map {

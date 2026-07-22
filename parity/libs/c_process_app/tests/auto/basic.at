@@ -1,0 +1,47 @@
+/// c_process_app tests — CLI 参数解析消费者 TAP 断言。
+///
+/// 测试名镜像 Rust oracle（tests/rust/tests/c_process_app.rs）。
+/// 传入固定 args_str 串，测解析逻辑（设计文档 §F4：真 argv 跨进程不可比，
+/// 故测"解析固定 args_str"逻辑）。所有参数都用字符串字面量直接传递，规避
+/// a2r 的拼接参数怪癖（见 c_fs_app.at 注记）。越界用 "<none>" 占位（规避
+/// VM print("") 吞行怪癖）。
+use auto.c_process_app: parse_count, parse_nth
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_int(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " want " + expected.to(str))
+    }
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got [" + actual + "] want [" + expected + "]")
+    }
+}
+
+fn main() {
+    // parse_count
+    check_int(1, "test_count_basic", parse_count("cmd arg1 arg2 arg3"), 4)
+    check_int(2, "test_count_single", parse_count("cmd"), 1)
+    check_int(3, "test_count_two", parse_count("cmd arg1"), 2)
+    check_int(4, "test_count_empty", parse_count(""), 0)
+    check_int(5, "test_count_extra_spaces", parse_count("cmd  arg1   arg2"), 3)
+
+    // parse_nth（命中返回词；越界返回 "<none>"）
+    check_str(6, "test_nth_first", parse_nth("cmd arg1 arg2", 0), "cmd")
+    check_str(7, "test_nth_middle", parse_nth("cmd arg1 arg2", 1), "arg1")
+    check_str(8, "test_nth_last", parse_nth("cmd arg1 arg2", 2), "arg2")
+    check_str(9, "test_nth_out_of_range", parse_nth("cmd arg1", 5), "<none>")
+}
