@@ -6050,6 +6050,14 @@ impl RustTrans {
                                 Type::StrOwned | Type::StrFixed(_) | Type::CStrLit
                                 | Type::StrSlice))
                             .unwrap_or(false)
+                } else if let Arg::Pos(expr) = arg {
+                    // Plan 368 FU-2: an inline string concatenation
+                    // (e.g. `base + "/x"`) renders to an owned `String`
+                    // (format!(...)) — borrow it when calling an imported fn
+                    // that takes &str. Matches the same convention as the Ident
+                    // branch above. expr_contains_string detects any concat
+                    // involving a string operand.
+                    self.expr_contains_string(expr)
                 } else { false };
 
             // Auto-cast enum→i32 when passing an enum variable to an Int param
@@ -6306,11 +6314,16 @@ impl RustTrans {
     fn needs_as_str(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Ident(name) => {
-                // Variables tracked as StrSlice are &str — no conversion needed.
-                if let Some(ty) = self.local_var_types.get(name) {
-                    if matches!(ty, Type::StrSlice) {
-                        return false;
-                    }
+                // Plan 368 FU-2: only function PARAMS declared `str` are truly
+                // &str in the generated Rust. A LOCAL declared `var x str = ...`
+                // renders to an owned String (rust_type_name maps StrSlice ->
+                // "String"), so it still needs .as_str() at &str use sites — and
+                // borrowing (instead of moving) lets it be reused (e.g. passed to
+                // both fs.write_text and fs.read_text). The old check (any
+                // StrSlice-tracked ident => false) caused E0382 use-of-moved-value
+                // and E0308 String-vs-&str mismatches.
+                if self.current_fn_str_params.contains(name) {
+                    return false;
                 }
                 true
             }
