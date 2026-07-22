@@ -134,8 +134,100 @@
 
 ---
 
+## 桌面模式行为契约（Plan 370）
+
+以下 D 条目声明跨平台行为约束。标注了每个平台的支持状态。
+桌面测试由 `desktop_behavior.rs`（Headless）和 `desktop_mcp.py`（MCP）执行。
+
+### D1: 状态初始化
+- **当** widget 挂载并触发 Init
+- **那么** model 声明的状态字段应全部可读
+- **且** 初始值与 .at 声明一致
+- **平台**: Web ✅ | VM ✅ | Rust ✅
+- **测试**: desktop_behavior.rs D1
+
+### D2: Handler 执行
+- **当** 触发 .Inc handler
+- **那么** count 状态正确递增
+- **平台**: Web ✅ | VM ✅ | Rust ✅
+- **测试**: desktop_behavior.rs D2, desktop_mcp.py T-MCP-3
+
+### D3: 事件参数传递
+- **当** handler 接收字符串参数（如 SetName(n)）
+- **那么** 参数值正确传递到 handler body
+- **平台**: Web ✅ | VM ⚠️（VM string assignment 有 overflow bug） | Rust ✅
+- **测试**: desktop_behavior.rs D3
+
+### D4: 布尔状态切换
+- **当** 触发 .Toggle handler（dark_mode = !dark_mode）
+- **那么** 布尔状态正确翻转
+- **平台**: Web ✅ | VM ✅ | Rust ✅
+- **测试**: desktop_behavior.rs D4
+
+### D5: 条件逻辑
+- **当** handler body 含 if 条件
+- **那么** 条件分支正确执行
+- **平台**: Web ✅ | VM ✅ | Rust ✅
+- **测试**: desktop_behavior.rs D5
+
+### D6: 视图模板完整性
+- **当** widget 构造完成
+- **那么** view_template 生成有效的 AuraNode 树
+- **平台**: Web ✅ | VM ✅ | Rust ✅
+- **测试**: desktop_behavior.rs D6, desktop_mcp.py T-MCP-1
+
+### D7: MCP 交互闭环
+- **当** 通过 MCP 工具 snapshot → click → state 查询
+- **那么** UI 快照正确、点击触发 handler、state 实时更新
+- **平台**: Web ✅（Playwright） | VM ✅（MCP 9247） | Rust ❌（无 MCP）
+- **测试**: desktop_mcp.py T-MCP-1 到 T-MCP-6
+
+---
+
+## 桌面模式 known-gap（Plan 370）
+
+以下 D-GAP 条目记录桌面模式的已知限制。这些**不是测试失败**，而是
+平台差异——Web 有但桌面（iced/VM）没有的特性。
+
+### D-GAP-1: 语义 CSS token
+- **Web**: bg-primary/text-foreground/bg-card/bg-muted/border-border 等生效（CSS 变量）
+- **Desktop**: iced style parser 不识别 semantic token，全部静默丢弃
+- **影响**: 桌面 UI 无颜色主题（默认黑白色）
+- **根因**: `style/class.rs` 的 `from_tailwind` 只认 Tailwind 调色板，不构造 semantic Color 变体
+- **修复方向**: 在 iced adapter 里映射 semantic token → Color 枚举的 Primary/Background 等
+
+### D-GAP-2: dark mode
+- **Web**: `:class="{ dark: store.dark_mode }"` + CSS 变量切换
+- **Desktop**: 无实现（iced renderer 不读 dark_mode 状态）
+- **影响**: 桌面无法切换暗色模式
+- **修复方向**: iced renderer 监听 dark_mode 状态，切换 Color 调色板
+
+### D-GAP-3: AutoDownEditor（Tiptap 富文本）
+- **Web**: `<AutoDownEditor>` 挂载 Tiptap WYSIWYG 编辑器
+- **Desktop VM**: `autodown_editor` tag 走 fallback → 渲染为 Empty
+- **Desktop Rust**: a2r 不识别 `autodown_editor`（不在 KNOWN_TAGS）
+- **影响**: 桌面无富文本编辑
+- **修复方向**: 在 iced 渲染器或 a2r 中映射 `autodown_editor` → iced `text_editor`
+
+### D-GAP-4: store composable
+- **Web**: `use store: NotesStore` → Vue reactive composable，跨组件共享
+- **Desktop VM**: `use store:` 不被处理；handler 引用 `store.X` 报 `Undefined variable: store`
+- **Desktop Rust**: a2r 不生成 store 代码
+- **影响**: **015-notes App 无法在 VM 模式下运行**（所有 handler 都用 store）
+- **根因**: VmBridge 和 a2r 都不处理 `use store:` 声明
+- **修复方向**: VmBridge 在合成时把 store 的 state/handler 合并到 root widget；a2r 生成 store 模块
+
+### D-GAP-5: accent 主题色
+- **Web**: applyAccent 写 CSS 变量 + localStorage 持久化
+- **Desktop**: 无实现
+- **影响**: 桌面无主题色切换
+- **修复方向**: 依赖 D-GAP-1（semantic token）先落地
+
+---
+
 ## 维护约定
 
 - 改 .at 功能时，**同步更新本契约**（加/改/删 T 条目）
 - 新增生成器契约时，在"契约依据汇总"加行，并关联到对应 T
 - 修复 bug 时，加一个**回归测试**条目（如 T12-DARK），标注"历史教训"
+- 新增桌面特性或修复 D-GAP 时，**同步更新 D/D-GAP 条目**
