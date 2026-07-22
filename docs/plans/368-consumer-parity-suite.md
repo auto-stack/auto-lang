@@ -552,36 +552,81 @@ Layer 1（F1/F3/F4/F5）实施完成后做了一次完整审计，确认了**未
 
 #### FU-1（高收益）修 parser 的 `Type.method` 顶层声明解析
 
-- **现状**：`crates/auto-lang/src/parser.rs:7070` 的 `fn_decl_stmt()` 在读完
+- **现状**：`crates/auto-lang/src/parser.rs` 的 `fn_decl_stmt()` 在读完
   类型名（如 `JsonValue`）后直接 `expect(LParen)`，遇到 `.` 就报 E0007。
-  `parse_name()`（`parser.rs:2680`）也只读第一个标识符。
+  `parse_name()` 也只读第一个标识符。词法确认：`JsonValue.as_int` 被切成
+  3 个 token（`Ident`/`Dot`/`Ident`），`.` 不会被词法器融合。
 - **影响范围**（实测，5 个 stdlib 模块全部 `use` 失败）：
   - `http.at`（35 处 self-Type 声明）= **DIV-HTTP-LANG-1**（已记录在
-    `parity/docs/known-divergences.md:290`，open/L3）
+    `parity/docs/known-divergences.md`，open/L3）
   - `json.at`（12 处）= **F2 阻塞**
   - `net.at`（12 处）、`async.at`（4 处，泛型叠加更复杂）、`llm.at`（2 处）
 - **根因纠正**：之前以为是 `self Type` 参数的问题；实测确认是**点分
   `Type.method` 声明名**不可解析（`pub fn Foo.bar(x int) int` 同样报
   E0001）。`self` 作为参数名本身能解析。
-- **为什么 fs/env/process/str/time/file 能用**：它们用普通模块级函数
-  （`pub fn get(key str) str;`），零 self-Type 声明。
+- **关键调研结论**：`.at` 里的 `Type.method` 声明**不是纯文档**——它是
+  load-bearing 的。模块加载（`compile.rs` `parse_module_to_type_store`）
+  必须把它解析成 `Fn { name, parent: Some(Type), ... }`，下游
+  `register_fn_decl`（`types.rs`）和 `enrich_fn_return_types_from_type_store`
+  （`codegen.rs:10358`）读 `fn_decl.parent` 做返回类型推断。因此不能"跳过"，
+  必须真正解析成正确的 `Fn` 形状。好消息：这与 `ext Type { fn method(self) }`
+  块（`parse_ext_stmt`，已有且经过验证）语义完全等价——后者把 `parent_name`
+  传给 `fn_decl_stmt`，触发 `self` 自动定义 + `Fn.parent` 设置。带点形式只是
+  缺了花括号块。
+- **实施方案（Option A，~15 行，单文件 `parser.rs`）**：
+  1. 新增 helper `parse_fn_name()`（在 `parse_name` 之后）：先 `parse_name()`
+     读第一个标识符；若下一个 token 是 `Dot` 且再下一个是 `Ident`，则消费掉
+     `.`，再 `parse_name()` 读方法名，返回 `(method_name, Some(parent_type))`；
+     否则返回 `(name, None)`。对 `fn.c`/`fn.vm` 向后兼容路径无冲突（那条路径
+     在解析名字之前已消费掉点）。
+  2. 在 `fn_decl_stmt()` 和 `fn_decl_stmt_with_annotations()` 里，把
+     `let name = self.parse_name()?;` 换成 `let (name, dotted_parent) =
+     self.parse_fn_name()?;`，当 `dotted_parent` 非空时用它覆盖 `parent_name`。
+     下游代码（`parent_name.is_empty()` 判断、`Fn.parent`、
+     `unique_name = "Type.method"`）无需改动——已经按 parent 工作。
+- **风险**：极低。带点形式当前是硬解析错误，没有合法程序在顶层用它。
+  helper 只在 `fn`/`pub fn` 后 `Ident . Ident` 时激活；裸名和 `ext` 块路径不受
+  影响。泛型参数 `<T>` 的解析在名字之后、点已消费，也不受影响。
+- **验证**：
+  - `use auto.json` + 调 `json.parse`/`JsonValue` 方法能跑通（之前 E0007）。
+  - 同样验证 `use auto.http`、`use auto.net`。
+  - `cargo test -p auto-lang --lib` 全过；现有 332 个转译器测试无回归。
+  - 解锁后即可做 F2（c_json_app）。
 - **修复后解锁**：F2（json）+ F6（http）+ F7（wget/crawler）+ DIV-HTTP-LANG-1。
   **一处修复解锁整个 Layer 2**。
-- **建议**：单独开一个 plan（如 369-vm-type-method-parse），用 worktree 实施。
-  这是本计划之外的工作，但价值最高。
 
 #### FU-2（中收益）修 a2r 的 StrSlice 类型追踪
 
 一次性修掉 **3 个相关 workaround**（W1/W2/W3，见下表），让消费者代码写得更自然
 （不再需要"内联拼接"或"全用字面量"的写法规避）。
-- **根因**：`trans/rust.rs:6748-6753` 的 `store()` 对显式 `str` 注解的变量直接
-  用 `Type::StrSlice`（跳过类型推断），但 `rust_type_name` 把 StrSlice 渲染成
-  `String`（`rust.rs:981`）。同时 `infer_type_from_expr()`（`rust.rs:6203`）没有
-  `Expr::Bina`（拼接）分支。
-- **修复方向**：在 `store()` 里，当 RHS 是字符串拼接（`Expr::Bina` + 字符串）
-  时，把变量登记为 `StrOwned` 而非 `StrSlice`；或在 `arg()`/用户函数调用处对
-  `Expr::Bina` 拼接参数也加 `.as_str()`。
-- **影响**：仅消费者代码可读性，不影响正确性（workaround 已让测试通过）。
+- **关键调研结论（比预想更简洁）**：真正的 bug **不在 `store()`**，而在
+  `needs_as_str()`（`rust.rs`）。该函数对**所有** `StrSlice` 登记的 ident 返回
+  `false`（当作 `&str`），但实际上只有 **`StrSlice` 参数**才是 `&str`；
+  `var x str = ...` 的局部变量被渲染成 owned `String`（`rust_type_name` 把
+  StrSlice → `"String"`）。所以局部 `str` 变量在 `&str` 使用点也需要
+  `.as_str()` 借用。不需要动 `store()` 或 `infer_type_from_expr()`。
+- **实施方案（Option C = A + B，共 ~16 行，单文件 `trans/rust.rs`）**：
+  - **Option A（修 `needs_as_str`，~6 行）**：把 `Expr::Ident(name)` 分支从
+    "StrSlice 登记就返回 false" 改成 "仅当 name 是当前函数的 `str` 参数
+    （`current_fn_str_params.contains(name)`）才返回 false"。修掉 W1（`var x str`
+    第二次用被 move → E0382）和"传 `str` 局部给 `&str` 参数"（E0308）。
+  - **Option B（修用户函数调用的借用，~10 行）**：把 `needs_borrow_unknown_callee`
+    （跨模块/未知被调的借用判断）从只认 `Expr::Ident` 扩展到也认产生 owned
+    String 的表达式——对 `Arg::Pos(Expr::Bina(..))` 用现成的
+    `expr_contains_string()`（`rust.rs:470`，已检测字符串拼接）判断。
+    修掉 W2（`f(base+"/x")` 内联拼接给用户函数 → E0308）。
+- **为什么选 A+B 而非改 `store()`**：改 `store()` 把 StrSlice 改登记为 StrOwned
+  会影响 ~15 个其它查询点（`expr_contains_string`、借用路径等），爆炸半径更大。
+  Option A 达到相同运行时效果（`.as_str()` 借用），但只改一个函数的一处判断，
+  因为真正的恒等式"StrSlice 局部渲染成 owned String"已经成立——只有
+  `needs_as_str` 的假设错了。
+- **影响**：仅消费者代码可读性 + 解锁更自然的写法，不影响正确性。
+- **验证**：把 `parity/libs/c_fs_app/auto/c_fs_app.at` 的 `mkdir_write_read`
+  改回自然写法（`var fullpath str = dir + "/" + filename` 后两处用 `fullpath`），
+  `auto-parity run c_fs_app` 仍 7/7；测试里直接传内联拼接
+  `write_and_read(base + "/c.txt", "x")` 也能过。全量 15 个 parity lib 不回归
+  （grep 各 `.at` 里 `var .* str = .* +` 找所有可简化的 workaround）。
+- **W3**（env.* 未用 expr_as_str）顺手在 Option B 同批修掉（env.* 分支也借用）。
 
 #### FU-3（低成本，纯文档）同步计划号 367→368
 
