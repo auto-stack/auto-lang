@@ -15,3 +15,8 @@ libs/*/build_a2r/
 
 # Rust test crate build output (defensive — root .gitignore already covers target/)
 libs/*/tests/rust/target/
+
+# Plan 367 consumer-mode libs: runtime test-data dirs written by the
+# consumer apps themselves (c_fs_app writes c_fs_app_tmp/, etc.). These are
+# deterministic per-run and must not be committed.
+libs/*/c_*_tmp/
