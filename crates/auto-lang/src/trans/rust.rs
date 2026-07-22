@@ -3299,7 +3299,7 @@ impl RustTrans {
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     if let Arg::Pos(expr) = arg {
-                                        // Plan 367: borrow both path (i==0) and content (i==1)
+                                        // Plan 368: borrow both path (i==0) and content (i==1)
                                         // as &str so owned strings (e.g. from concatenation) are
                                         // not moved out of scope at the call site.
                                         self.expr_as_str(expr, out)?;
@@ -3326,7 +3326,7 @@ impl RustTrans {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
-                                    // Plan 367: borrow both path (i==0) and content (i==1) as
+                                    // Plan 368: borrow both path (i==0) and content (i==1) as
                                     // &str (a2r_std::fs::write_text takes (&str, &str)). Borrowing
                                     // instead of moving lets an owned path String (e.g. built from
                                     // concatenation) be reused by a subsequent fs.read_text call.
@@ -4563,7 +4563,7 @@ impl RustTrans {
                     return Ok(());
                 }
                 "set" => {
-                    // Plan 367: skip the Map.set -> HashMap::insert rewrite when the
+                    // Plan 368: skip the Map.set -> HashMap::insert rewrite when the
                     // receiver is a known stdlib module identifier (env.set / fs.set /
                     // json.set / ...). Those are stdlib calls that must fall through
                     // to the (module, method) stdlib routing below; rewriting them to
@@ -4631,7 +4631,7 @@ impl RustTrans {
             // env.* stdlib calls must work regardless of whether env is a local
             // variable (it could be shadowed by a local var named "env").
             // These always route to the a2r_std::env module.
-            // Plan 367: env.set is now routed here too — the generic Map.set
+            // Plan 368: env.set is now routed here too — the generic Map.set
             // -> HashMap::insert rewrite (which used to capture env.set and emit
             // `env.insert(...)`, producing invalid Rust E0423) now skips stdlib
             // module receivers, so env.set falls through to this handler.
@@ -6050,6 +6050,14 @@ impl RustTrans {
                                 Type::StrOwned | Type::StrFixed(_) | Type::CStrLit
                                 | Type::StrSlice))
                             .unwrap_or(false)
+                } else if let Arg::Pos(expr) = arg {
+                    // Plan 368 FU-2: an inline string concatenation
+                    // (e.g. `base + "/x"`) renders to an owned `String`
+                    // (format!(...)) — borrow it when calling an imported fn
+                    // that takes &str. Matches the same convention as the Ident
+                    // branch above. expr_contains_string detects any concat
+                    // involving a string operand.
+                    self.expr_contains_string(expr)
                 } else { false };
 
             // Auto-cast enum→i32 when passing an enum variable to an Int param
@@ -6306,11 +6314,16 @@ impl RustTrans {
     fn needs_as_str(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Ident(name) => {
-                // Variables tracked as StrSlice are &str — no conversion needed.
-                if let Some(ty) = self.local_var_types.get(name) {
-                    if matches!(ty, Type::StrSlice) {
-                        return false;
-                    }
+                // Plan 368 FU-2: only function PARAMS declared `str` are truly
+                // &str in the generated Rust. A LOCAL declared `var x str = ...`
+                // renders to an owned String (rust_type_name maps StrSlice ->
+                // "String"), so it still needs .as_str() at &str use sites — and
+                // borrowing (instead of moving) lets it be reused (e.g. passed to
+                // both fs.write_text and fs.read_text). The old check (any
+                // StrSlice-tracked ident => false) caused E0382 use-of-moved-value
+                // and E0308 String-vs-&str mismatches.
+                if self.current_fn_str_params.contains(name) {
+                    return false;
                 }
                 true
             }

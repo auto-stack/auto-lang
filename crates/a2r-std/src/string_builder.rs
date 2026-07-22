@@ -50,7 +50,7 @@ impl StringBuilder {
     ///
     /// Matches Auto's `sb.build()`: the VM StringBuilder is **not** consumed by
     /// build() — the same builder can be built, appended to further, and built
-    /// again. Plan 367 (consumer-mode parity): take `&self` + clone so the a2r
+    /// again. Plan 368 (consumer-mode parity): take `&self` + clone so the a2r
     /// backend mirrors the VM's non-consuming semantics (taking `self` would
     /// move the builder and break any `.at` source that calls build() more than
     /// once on the same builder, or build() after a conditional append path).

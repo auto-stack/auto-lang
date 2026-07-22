@@ -2683,6 +2683,28 @@ impl<'a> Parser<'a> {
         Ok(name)
     }
 
+    /// Plan 368 FU-1: parse a function name that may be a dotted
+    /// `Type.method` form (used by stdlib `.at` files to declare methods on
+    /// an existing type externally, e.g. `pub fn JsonValue.as_int(self JsonValue) int;`).
+    ///
+    /// Returns `(method_name, Some(parent_type))` when the name is dotted,
+    /// else `(name, None)`. The caller feeds `parent_type` into the existing
+    /// `parent_name` machinery (same path `ext Type { fn ... }` blocks use),
+    /// which auto-defines `self` and sets `Fn.parent`. This does NOT collide
+    /// with the `fn.c`/`fn.vm` backward-compat path (parser.rs ~7020), which
+    /// fires only when the token right after `fn` is a `Dot` — here `parse_name`
+    /// has already consumed the leading `Type` identifier before we see the dot.
+    pub fn parse_fn_name(&mut self) -> AutoResult<(Name, Option<Name>)> {
+        let first = self.parse_name()?;
+        if self.is_kind(TokenKind::Dot) {
+            self.next(); // skip '.'
+            let method = self.parse_name()?;
+            Ok((method, Some(first)))
+        } else {
+            Ok((first, None))
+        }
+    }
+
     pub fn parse_ints(&mut self) -> AutoResult<Expr> {
         let res = match self.cur.kind {
             TokenKind::Int => self.parse_int(),
@@ -7029,8 +7051,17 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // parse function name
-        let name = self.parse_name()?;
+        // parse function name (Plan 368 FU-1: supports dotted `Type.method` form)
+        let (name, dotted_parent) = self.parse_fn_name()?;
+        // A dotted top-level decl (`pub fn JsonValue.as_int(...)`) overrides the
+        // caller-supplied parent_name — it declares a method on `Type`. For
+        // non-dotted names the caller's parent_name (e.g. from `ext Type {}`)
+        // still applies.
+        let parent_name: &str = if let Some(ref p) = dotted_parent {
+            p.as_str()
+        } else {
+            parent_name
+        };
 
         // Capture the position of the function name for LSP
         // self.prev now points to the name token after parse_name()
@@ -7245,8 +7276,17 @@ impl<'a> Parser<'a> {
         let is_vm = has_vm;
         let _is_rs = has_rs;
 
-        // parse function name
-        let name = self.parse_name()?;
+        // parse function name (Plan 368 FU-1: supports dotted `Type.method` form)
+        let (name, dotted_parent) = self.parse_fn_name()?;
+        // A dotted top-level decl (`pub fn JsonValue.as_int(...)`) overrides the
+        // caller-supplied parent_name — it declares a method on `Type`. For
+        // non-dotted names the caller's parent_name (e.g. from `ext Type {}`)
+        // still applies.
+        let parent_name: &str = if let Some(ref p) = dotted_parent {
+            p.as_str()
+        } else {
+            parent_name
+        };
 
         // Capture the position of the function name for LSP
         // self.prev now points to the name token after parse_name()
@@ -7920,6 +7960,22 @@ impl<'a> Parser<'a> {
         if kind == TypeDeclKind::CType {
             // C types are opaque, no body needed
             // Type already registered above at line 3356
+            return Ok(Stmt::TypeDecl(decl));
+        }
+
+        // Plan 368 FU-1: forward/opaque type declaration `type X` (no body).
+        // stdlib `.at` files declare types this way (json.at `type JsonValue`,
+        // http.at `type Server`, ...). The name is already registered above, so
+        // `self JsonValue` params and `JsonValue?` returns resolve. Return an
+        // empty TypeDecl (same shape the CType path above relies on). Only fire
+        // when the next token is an end-of-statement/block token — NOT `is`,
+        // `as`, `has`, or `{` (those continue to the body-parse path below).
+        if matches!(self.cur.kind,
+            TokenKind::Newline | TokenKind::Semi | TokenKind::EOF | TokenKind::RBrace)
+        {
+            if self.is_kind(TokenKind::Semi) {
+                self.next(); // consume optional trailing ';'
+            }
             return Ok(Stmt::TypeDecl(decl));
         }
 
@@ -8694,11 +8750,20 @@ impl<'a> Parser<'a> {
     /// Parse generic parameter list: <T, N u32>
     /// Returns Vec<GenericParam> and adds type parameters to current_type_params
     fn parse_generic_params(&mut self) -> AutoResult<Vec<crate::ast::GenericParam>> {
-        if !self.is_kind(TokenKind::Lt) {
+        // Plan 368 FU-1: accept BOTH `<T>` and `[T]` as function generic-param
+        // lists. stdlib `.at` files use `[T]` (e.g. json.at `fn encode[T](...)`),
+        // while `may.at` uses `<T>`. In the position where this is called (right
+        // after a fn name, before `(`), a `[` can ONLY be generics (there's no
+        // preceding type for it to be an array of), so the disambiguation is safe.
+        let (open, close, close_text) = if self.is_kind(TokenKind::Lt) {
+            (TokenKind::Lt, TokenKind::Gt, "'>'")
+        } else if self.is_kind(TokenKind::LSquare) {
+            (TokenKind::LSquare, TokenKind::RSquare, "']'")
+        } else {
             return Ok(Vec::new());
-        }
+        };
 
-        self.next(); // skip `<`
+        self.next(); // skip open (`<` or `[`)
         let mut params = Vec::new();
 
         // Parse comma-separated generic parameters
@@ -8707,8 +8772,8 @@ impl<'a> Parser<'a> {
             params.push(self.parse_generic_param()?);
             self.skip_empty_lines();
 
-            if self.is_kind(TokenKind::Gt) {
-                self.next(); // skip `>`
+            if self.is_kind(close) {
+                self.next(); // skip close (`>` or `]`)
                 break;
             } else if self.is_kind(TokenKind::Comma) {
                 self.next(); // skip `,`
@@ -8716,8 +8781,8 @@ impl<'a> Parser<'a> {
             } else {
                 return Err(SyntaxError::Generic {
                     message: format!(
-                        "Expected '>' or ',' in generic parameter list, got {}",
-                        self.cur.text
+                        "Expected {} or ',' in generic parameter list, got {}",
+                        close_text, self.cur.text
                     ),
                     span: pos_to_span(self.cur.pos),
                 }
@@ -9237,6 +9302,22 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_type(&mut self) -> AutoResult<Type> {
+        let base = self.parse_type_base()?;
+        // Plan 368 FU-1: support suffix `?` on any type (e.g. `JsonValue?`,
+        // `T?`, `int?`). stdlib `.at` files declare nullable return types this
+        // way (json.at `fn parse(s str) JsonValue?;`). The prefix `?T` form
+        // (handled inside parse_type_base) stays for backward compat.
+        let mut ty = base;
+        while self.is_kind(TokenKind::Question) {
+            self.next(); // consume '?'
+            ty = Type::Option(Box::new(ty));
+        }
+        Ok(ty)
+    }
+
+    /// Parse the base type (without a trailing `?` suffix). Plan 368 FU-1 split
+    /// this out of parse_type so the suffix-`?` loop can wrap any base type.
+    fn parse_type_base(&mut self) -> AutoResult<Type> {
         match self.cur.kind {
             TokenKind::Question => {
                 // Plan 120: Parse ?T as Type::Option(T)

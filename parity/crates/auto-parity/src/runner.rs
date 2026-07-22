@@ -1,6 +1,6 @@
 use crate::tap::{parse_tap, parse_tap_sorted, TapResult};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
 
 /// Configuration for running a parity check on a single library.
 #[derive(Debug, Clone)]
@@ -39,6 +39,98 @@ impl RunConfig {
             parse_tap_sorted(output)
         } else {
             parse_tap(output)
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Plan 368 FU-4: mock-server setup/teardown for HTTP consumer parity libs.
+//
+// Some consumer libs (e.g. http_client_sync) need a live HTTP server to test
+// against. The server lives at `<lib_dir>/mock-server/` as a standalone Cargo
+// binary ( TcpListener on 127.0.0.1:18080). This RAII guard builds + spawns it
+// before the three-way run, waits for the port to accept connections, and kills
+// it on drop so the server always outlives all three backend runs.
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Address the mock servers bind to (must match mock-server/src/main.rs).
+const MOCK_HOST: &str = "127.0.0.1";
+const MOCK_PORT: u16 = 18080;
+
+/// True iff `<lib_dir>/mock-server/Cargo.toml` exists — i.e. this lib needs a
+/// mock server for its three-way run.
+pub fn lib_has_mock_server(lib_dir: &Path) -> bool {
+    lib_dir.join("mock-server").join("Cargo.toml").is_file()
+}
+
+/// A guard that keeps the mock server alive until dropped. Spawned via
+/// `cargo run --manifest-path <lib>/mock-server/Cargo.toml` so it builds on
+/// first use and runs as a child process.
+pub struct MockServer {
+    child: Option<Child>,
+}
+
+impl MockServer {
+    /// Build + spawn the mock server for `lib_dir` and wait (up to ~30s) for it
+    /// to start accepting connections on MOCK_HOST:MOCK_PORT. Returns a guard
+    /// that kills the server on drop. If the lib has no mock-server dir, returns
+    /// an empty guard (no-op).
+    pub fn start_for(lib_dir: &Path) -> Self {
+        if !lib_has_mock_server(lib_dir) {
+            return MockServer { child: None };
+        }
+        let manifest = lib_dir.join("mock-server").join("Cargo.toml");
+        let child = Command::new("cargo")
+            .args(["run", "--manifest-path", &manifest.to_string_lossy()])
+            // Detach stdout/stderr so cargo's build/run chatter doesn't pollute
+            // the parity TAP output (which is parsed from the backends' stdout).
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        let child = match child {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "mock-server: failed to spawn (cargo run --manifest-path {}): {}",
+                    manifest.display(),
+                    e
+                );
+                return MockServer { child: None };
+            }
+        };
+        let mut guard = MockServer { child: Some(child) };
+        guard.wait_for_port();
+        guard
+    }
+
+    /// Poll-connect to MOCK_HOST:MOCK_PORT until it succeeds or ~30s elapse.
+    fn wait_for_port(&self) {
+        use std::net::TcpStream;
+        use std::time::{Duration, Instant};
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let addr = format!("{MOCK_HOST}:{MOCK_PORT}");
+        while Instant::now() < deadline {
+            if TcpStream::connect(&addr).is_ok() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        eprintln!(
+            "mock-server: port {MOCK_HOST}:{MOCK_PORT} did not come up within 30s; \
+             HTTP consumer tests will likely fail"
+        );
+    }
+}
+
+impl Drop for MockServer {
+    fn drop(&mut self) {
+        if let Some(child) = self.child.as_mut() {
+            // Kill the whole process tree: `cargo run` spawns the build + the
+            // server binary as children. cargo itself forwards signals on Unix;
+            // on Windows we kill the cargo process (which orphans the server on
+            // some setups, but the port frees once the OS reaps it). Best-effort.
+            let _ = child.kill();
+            let _ = child.wait();
         }
     }
 }

@@ -5,7 +5,7 @@ mod tap;
 
 use clap::{Parser, Subcommand};
 use compare::{ComparisonReport, TestCaseComparison};
-use runner::RunConfig;
+use runner::{lib_has_mock_server, MockServer, RunConfig};
 use std::path::PathBuf;
 
 /// Three-way parity checker: AutoVM vs a2r vs native Rust.
@@ -101,8 +101,9 @@ fn main() {
             // Verified phases included in the dashboard. P1/P2 are the Plan
             // 355 core; D1/D2 are Plan 358 additions; P4's tokio is L1 (reqwest
             // is auto-skipped if absent). P3 (sha2/rusqlite) stays L3 roadmap.
-            // D5 is Plan 367 consumer-mode parity (Auto as library consumer).
-            let phases = ["p1", "p2", "d1", "d2", "d4", "d5", "p4"];
+            // D5/D6 are Plan 368 consumer-mode parity (Auto as library
+            // consumer); D6 libs need a live mock server (Layer 2 HTTP).
+            let phases = ["p1", "p2", "d1", "d2", "d4", "d5", "d6", "p4"];
             let mut reports = Vec::new();
             for phase in &phases {
                 let libs = discover_libraries_by_phase(&root, phase);
@@ -185,6 +186,14 @@ fn is_async_library(library: &str) -> bool {
 /// and treated as an empty result set for that backend, so the comparison
 /// still surfaces the missing cases as divergences rather than crashing.
 fn build_comparison_report(config: &RunConfig) -> Result<ComparisonReport, String> {
+    // Plan 368 FU-4: if this lib has a mock-server/ dir, spawn it now so all
+    // three backend runs can hit it; it's killed automatically when `_mock`
+    // goes out of scope (after the three runs below).
+    let _mock = MockServer::start_for(&config.lib_dir());
+    if lib_has_mock_server(&config.lib_dir()) {
+        eprintln!("mock-server: started for {} (will be killed after the run)", config.library);
+    }
+
     // Run all three backends. Log + swallow per-backend failures so a single
     // broken backend doesn't abort an aggregate `report` run; the missing
     // results show up as divergences in the comparison.
@@ -268,10 +277,13 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         ("d1", &["cli_app"]),
         ("d2", &["trait_advanced"]),
         ("d4", &["string_utils"]),
-        // Plan 367 (consumer-mode parity): Layer 1 consumer apps. Each calls
+        // Plan 368 (consumer-mode parity): Layer 1 consumer apps. Each calls
         // `auto.<module>` stdlib and is compared three-way with a native Rust
         // oracle that calls the same underlying crate directly.
         ("d5", &["c_fs_app", "c_env_app", "c_process_app", "c_text_app"]),
+        // Plan 368 FU-4 (Layer 2): HTTP consumer apps. Need a live mock server
+        // (parity runner auto-spawns libs/<name>/mock-server/ via MockServer).
+        ("d6", &["http_client_sync"]),
     ];
 
     for (p, libs) in phase_map {

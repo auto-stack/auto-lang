@@ -298,13 +298,33 @@ git commit -m "feat(parity): add c_fs_app to d5 phase (Plan 367 F1)"
 
 # Phase F2: c_json_app — JSON 配置处理器消费者
 
-> **⛔ 阻塞（2026-07-22 审计确认）**：VM 无法 `use auto.json`。根因是 VM parser
-> 不支持顶层 `Type.method(self Type, ...)` 声明形式（`parser.rs:7070` 在读完
-> `JsonValue` 后 `expect(LParen)` 遇到 `.` 报 E0007）。`stdlib/auto/json.at`
-> 里全部 12 个 `JsonValue.*` 方法都是这种形式。同样的 bug 还阻塞 http.at
-> (35 处)、net.at (12)、async.at (4)、llm.at (2) ——即 **F6/F7 也被同一个
-> parser bug 阻塞**。详见 §"实施后审计与后续工作" FU-1。修 FU-1 后本 Phase
-> 才能启动。
+> **⛔ 阻塞（2026-07-22 审计 + 2026-07-23 FU-1 后复核）**：
+>
+> 1. **解析层阻塞（FU-1 已修）**：原 VM parser 不支持顶层
+>    `Type.method(self Type)` 声明 + `T?` 返回 + `[T]` 泛型 + 裸 `type X`。
+>    **FU-1 已修复全部 4 个解析缺口**，`use auto.json`（及 http/net/async/llm）
+>    现在能成功加载。
+>
+> 2. **运行时层阻塞（FU-1 未解，新发现）**：即便能 `use auto.json`，VM 的
+>    json 运行时**只是占位实现**——`json.parse(s)` 原样返回输入串（不解析），
+>    每个 `json.get`/`as_string`/`as_int` 都重新解析文本串。VM 里**没有真正的
+>    `JsonValue`/`serde_json::Value`**，方法形式 `v.get(k).as_string()` 完全
+>    没接线（会 dispatch 成字符串方法）。而 a2r 用真正的 `serde_json::Value`。
+>    实测：`json.as_int(json.get(v,"n"))` 对 `{"n":42}` 在 VM 返回 **0**（get 返回
+>    带引号的 `"42"`，as_int 期望裸数字），在 a2r 返回 **42**——**三端发散**。
+>    `json.type_of` 在 a2r 无映射；`json.len`/`has_key` 在 a2r 会生成不存在的
+>    `len_str`/`has_key_str`（编译失败）。
+>
+>    **结论**：靠 `auto.json` 做三方一致目前**不可行**——VM 运行时是占位
+>    string-roundtrip，与 a2r/native 的真 Value 语义根本不一致。这不是调用约定
+>    问题，是 VM json shim 实现不完整（需把 `json.parse` 改成真正返回
+>    `serde_json::Value` 并接线方法 dispatch，或改 VM 用 opaque handle）。
+>
+>    **可选出路**（本计划不做）：照搬 `parity/libs/serde_json` 的纯 Auto 手写
+>    parser（不调 `auto.json`）——但那是"实现者模式"，失去 F2"消费者"意义。
+>
+>    **F2 状态：搁置**，等 VM json 运行时补齐（独立工作）。FU-1 已让 http/net
+>    等模块可加载，对后续 http 消费者（如果 VM http 运行时是完整的）仍有价值。
 
 **目标：** 验证 Auto 通过 `auto.json` 调 serde_json 能力（parse/encode/查询）的应用，与 Rust serde_json 行为三方一致。
 
@@ -552,36 +572,81 @@ Layer 1（F1/F3/F4/F5）实施完成后做了一次完整审计，确认了**未
 
 #### FU-1（高收益）修 parser 的 `Type.method` 顶层声明解析
 
-- **现状**：`crates/auto-lang/src/parser.rs:7070` 的 `fn_decl_stmt()` 在读完
+- **现状**：`crates/auto-lang/src/parser.rs` 的 `fn_decl_stmt()` 在读完
   类型名（如 `JsonValue`）后直接 `expect(LParen)`，遇到 `.` 就报 E0007。
-  `parse_name()`（`parser.rs:2680`）也只读第一个标识符。
+  `parse_name()` 也只读第一个标识符。词法确认：`JsonValue.as_int` 被切成
+  3 个 token（`Ident`/`Dot`/`Ident`），`.` 不会被词法器融合。
 - **影响范围**（实测，5 个 stdlib 模块全部 `use` 失败）：
   - `http.at`（35 处 self-Type 声明）= **DIV-HTTP-LANG-1**（已记录在
-    `parity/docs/known-divergences.md:290`，open/L3）
+    `parity/docs/known-divergences.md`，open/L3）
   - `json.at`（12 处）= **F2 阻塞**
   - `net.at`（12 处）、`async.at`（4 处，泛型叠加更复杂）、`llm.at`（2 处）
 - **根因纠正**：之前以为是 `self Type` 参数的问题；实测确认是**点分
   `Type.method` 声明名**不可解析（`pub fn Foo.bar(x int) int` 同样报
   E0001）。`self` 作为参数名本身能解析。
-- **为什么 fs/env/process/str/time/file 能用**：它们用普通模块级函数
-  （`pub fn get(key str) str;`），零 self-Type 声明。
+- **关键调研结论**：`.at` 里的 `Type.method` 声明**不是纯文档**——它是
+  load-bearing 的。模块加载（`compile.rs` `parse_module_to_type_store`）
+  必须把它解析成 `Fn { name, parent: Some(Type), ... }`，下游
+  `register_fn_decl`（`types.rs`）和 `enrich_fn_return_types_from_type_store`
+  （`codegen.rs:10358`）读 `fn_decl.parent` 做返回类型推断。因此不能"跳过"，
+  必须真正解析成正确的 `Fn` 形状。好消息：这与 `ext Type { fn method(self) }`
+  块（`parse_ext_stmt`，已有且经过验证）语义完全等价——后者把 `parent_name`
+  传给 `fn_decl_stmt`，触发 `self` 自动定义 + `Fn.parent` 设置。带点形式只是
+  缺了花括号块。
+- **实施方案（Option A，~15 行，单文件 `parser.rs`）**：
+  1. 新增 helper `parse_fn_name()`（在 `parse_name` 之后）：先 `parse_name()`
+     读第一个标识符；若下一个 token 是 `Dot` 且再下一个是 `Ident`，则消费掉
+     `.`，再 `parse_name()` 读方法名，返回 `(method_name, Some(parent_type))`；
+     否则返回 `(name, None)`。对 `fn.c`/`fn.vm` 向后兼容路径无冲突（那条路径
+     在解析名字之前已消费掉点）。
+  2. 在 `fn_decl_stmt()` 和 `fn_decl_stmt_with_annotations()` 里，把
+     `let name = self.parse_name()?;` 换成 `let (name, dotted_parent) =
+     self.parse_fn_name()?;`，当 `dotted_parent` 非空时用它覆盖 `parent_name`。
+     下游代码（`parent_name.is_empty()` 判断、`Fn.parent`、
+     `unique_name = "Type.method"`）无需改动——已经按 parent 工作。
+- **风险**：极低。带点形式当前是硬解析错误，没有合法程序在顶层用它。
+  helper 只在 `fn`/`pub fn` 后 `Ident . Ident` 时激活；裸名和 `ext` 块路径不受
+  影响。泛型参数 `<T>` 的解析在名字之后、点已消费，也不受影响。
+- **验证**：
+  - `use auto.json` + 调 `json.parse`/`JsonValue` 方法能跑通（之前 E0007）。
+  - 同样验证 `use auto.http`、`use auto.net`。
+  - `cargo test -p auto-lang --lib` 全过；现有 332 个转译器测试无回归。
+  - 解锁后即可做 F2（c_json_app）。
 - **修复后解锁**：F2（json）+ F6（http）+ F7（wget/crawler）+ DIV-HTTP-LANG-1。
   **一处修复解锁整个 Layer 2**。
-- **建议**：单独开一个 plan（如 369-vm-type-method-parse），用 worktree 实施。
-  这是本计划之外的工作，但价值最高。
 
 #### FU-2（中收益）修 a2r 的 StrSlice 类型追踪
 
 一次性修掉 **3 个相关 workaround**（W1/W2/W3，见下表），让消费者代码写得更自然
 （不再需要"内联拼接"或"全用字面量"的写法规避）。
-- **根因**：`trans/rust.rs:6748-6753` 的 `store()` 对显式 `str` 注解的变量直接
-  用 `Type::StrSlice`（跳过类型推断），但 `rust_type_name` 把 StrSlice 渲染成
-  `String`（`rust.rs:981`）。同时 `infer_type_from_expr()`（`rust.rs:6203`）没有
-  `Expr::Bina`（拼接）分支。
-- **修复方向**：在 `store()` 里，当 RHS 是字符串拼接（`Expr::Bina` + 字符串）
-  时，把变量登记为 `StrOwned` 而非 `StrSlice`；或在 `arg()`/用户函数调用处对
-  `Expr::Bina` 拼接参数也加 `.as_str()`。
-- **影响**：仅消费者代码可读性，不影响正确性（workaround 已让测试通过）。
+- **关键调研结论（比预想更简洁）**：真正的 bug **不在 `store()`**，而在
+  `needs_as_str()`（`rust.rs`）。该函数对**所有** `StrSlice` 登记的 ident 返回
+  `false`（当作 `&str`），但实际上只有 **`StrSlice` 参数**才是 `&str`；
+  `var x str = ...` 的局部变量被渲染成 owned `String`（`rust_type_name` 把
+  StrSlice → `"String"`）。所以局部 `str` 变量在 `&str` 使用点也需要
+  `.as_str()` 借用。不需要动 `store()` 或 `infer_type_from_expr()`。
+- **实施方案（Option C = A + B，共 ~16 行，单文件 `trans/rust.rs`）**：
+  - **Option A（修 `needs_as_str`，~6 行）**：把 `Expr::Ident(name)` 分支从
+    "StrSlice 登记就返回 false" 改成 "仅当 name 是当前函数的 `str` 参数
+    （`current_fn_str_params.contains(name)`）才返回 false"。修掉 W1（`var x str`
+    第二次用被 move → E0382）和"传 `str` 局部给 `&str` 参数"（E0308）。
+  - **Option B（修用户函数调用的借用，~10 行）**：把 `needs_borrow_unknown_callee`
+    （跨模块/未知被调的借用判断）从只认 `Expr::Ident` 扩展到也认产生 owned
+    String 的表达式——对 `Arg::Pos(Expr::Bina(..))` 用现成的
+    `expr_contains_string()`（`rust.rs:470`，已检测字符串拼接）判断。
+    修掉 W2（`f(base+"/x")` 内联拼接给用户函数 → E0308）。
+- **为什么选 A+B 而非改 `store()`**：改 `store()` 把 StrSlice 改登记为 StrOwned
+  会影响 ~15 个其它查询点（`expr_contains_string`、借用路径等），爆炸半径更大。
+  Option A 达到相同运行时效果（`.as_str()` 借用），但只改一个函数的一处判断，
+  因为真正的恒等式"StrSlice 局部渲染成 owned String"已经成立——只有
+  `needs_as_str` 的假设错了。
+- **影响**：仅消费者代码可读性 + 解锁更自然的写法，不影响正确性。
+- **验证**：把 `parity/libs/c_fs_app/auto/c_fs_app.at` 的 `mkdir_write_read`
+  改回自然写法（`var fullpath str = dir + "/" + filename` 后两处用 `fullpath`），
+  `auto-parity run c_fs_app` 仍 7/7；测试里直接传内联拼接
+  `write_and_read(base + "/c.txt", "x")` 也能过。全量 15 个 parity lib 不回归
+  （grep 各 `.at` 里 `var .* str = .* +` 找所有可简化的 workaround）。
+- **W3**（env.* 未用 expr_as_str）顺手在 Option B 同批修掉（env.* 分支也借用）。
 
 #### FU-3（低成本，纯文档）同步计划号 367→368
 
@@ -590,11 +655,36 @@ Layer 1（F1/F3/F4/F5）实施完成后做了一次完整审计，确认了**未
 README、`parity/.gitignore`、`crates/a2r-std/src/{fs.rs,env.rs,string_builder.rs}`
 的 doc 注释、`crates/auto-lang/src/a2r_std.rs`。批量 sed 即可。
 
-#### FU-4（中成本）F6.1 mock-server runner hook + Layer 2 实施
+#### FU-4（中成本）F6.1 mock-server runner hook + 激活 http 消费者
 
-等 FU-1 完成后：实现 `runner.rs` 的 mock-server setup/teardown hook（约 20-30 行：
-`cargo run` mock-server 后台进程 → poll `TcpStream::connect` 等端口 → 跑 parity →
-`child.kill()`），然后按 F6.2/F6.3/F7.1/F7.2 实施 http 消费者库。
+FU-1 已修，`use auto.http` 现在能加载。**调研结论：http 与 json 不同——VM 的
+http 运行时是真实实现**（基于 `reqwest::blocking`，有通过的测试
+`plan349_tests::test_http_get_sync` 证明），a2r 用 `ureq`（同步）。对返回固定
+200+body 的 mock server，reqwest vs ureq 的传输层差异在语义层（status/body）
+完全一致——**三方 parity 可行**。
+- **好消息**：`parity/libs/http_client_sync/` 骨架已完整存在——mock-server
+  （`127.0.0.1:18080`，POST→200+`{"echo":"ok"}`）、wrapper `.at`、测试
+  `tests/auto/post_echo.at`（3 TAP）、Rust oracle（用 ureq，与 a2r 一致）都写好了。
+- **缺两个小东西**：
+  1. **`stdlib/auto/http.at` 漏声明 `post_sync`/`post_bearer`/`last_status`**
+     （它们只在 `http.vm.at` + 有真实 Rust shim，但 `http.at` 没声明 → 链接期
+     `auto_link_E0401 Undefined symbol: http.post_sync`）。补 3 行声明即可。
+  2. **parity runner 没有 mock-server setup/teardown hook**（`runner.rs`/`main.rs`
+     零相关代码）。需加：在 `run_library` 里，若 `libs/<name>/mock-server/` 存在，
+     `Command::new(mock-server.exe).spawn()` → poll `TcpStream::connect` 等端口
+     可用 → 跑三向 → `child.kill()`。可参考 `plan349_tests.rs:14` 的 in-process
+     模式，但 runner 跑独立进程，需用 `Command::spawn` + 显式 teardown。
+- **调用约定**：同步 helper 用**模块形式** `http.post_sync(url, body, api_key)`
+  返回 `str`（响应 body），状态码经 `http.last_status()` 取（thread-local）。
+  不要用方法形式 `req.method()`。
+- **实施步骤**：
+  1. 补 `stdlib/auto/http.at` 3 个声明。
+  2. 加 runner mock hook（~25 行）。
+  3. 把 `http_client_sync` 从 `report.rs` 的 L3 planned 列表移到 `d6` phase_map
+     （新 phase）并加入 report phases。
+  4. `auto-parity run http_client_sync` 应 3/3 一致。
+- **F7（c_wget/c_crawler）**：等 F6 激活后再做（组合 http+fs/json）。注意 F7 若
+  用 json 会撞上 F2 的 VM json 运行时占位问题——需用纯文本解析或等 VM json 补齐。
 
 ### 未修的底层 bug 清单（全部以 .at 源码侧 workaround 规避）
 

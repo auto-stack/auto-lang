@@ -3,11 +3,6 @@
 /// 测试名镜像 Rust oracle（tests/rust/tests/c_fs_app.rs）。
 /// 用固定相对路径（lib 目录下 `c_fs_app_tmp`）做临时目录；三方都在各自
 /// 工作目录运行（Auto: lib 根；Rust: tests/rust/），路径互不共享，只对比 TAP。
-///
-/// a2r 注记（Plan 367 F1）：路径都先存进局部 `str` 变量再传给被测函数。
-/// 原因：a2r 在调用用户函数时，只有"变量形式"的字符串参数会被自动
-/// `.as_str()` 借用（内联拼接 `base + "/x"` 不会）。详见 c_fs_app.at 注记。
-/// 另：`fs.create_dir` 用字符串字面量调用，避免 `base` 变量被 move 后再用。
 use auto.c_fs_app: write_and_read, check_exists, mkdir_write_read
 use auto.fs
 
@@ -37,23 +32,18 @@ fn check_int(n int, name str, actual int, expected int) {
 
 fn main() {
     var base str = "c_fs_app_tmp"
-    fs.create_dir("c_fs_app_tmp")
+    fs.create_dir(base)
 
     // write_and_read 系列
-    var p1 str = base + "/a.txt"
-    check_str(1, "test_write_read_basic", write_and_read(p1, "hello world"), "hello world")
-    var p2 str = base + "/b.txt"
-    check_str(2, "test_write_read_empty", write_and_read(p2, ""), "")
-    check_str(3, "test_write_overwrite", write_and_read(p1, "second"), "second")
+    check_str(1, "test_write_read_basic", write_and_read(base + "/a.txt", "hello world"), "hello world")
+    check_str(2, "test_write_read_empty", write_and_read(base + "/b.txt", ""), "")
+    check_str(3, "test_write_overwrite", write_and_read(base + "/a.txt", "second"), "second")
 
     // exists 系列
-    check_int(4, "test_exists_yes", check_exists(p1), 1)
-    var p_missing str = base + "/no_such.txt"
-    check_int(5, "test_exists_no", check_exists(p_missing), 0)
+    check_int(4, "test_exists_yes", check_exists(base + "/a.txt"), 1)
+    check_int(5, "test_exists_no", check_exists(base + "/no_such.txt"), 0)
 
     // mkdir + write + read
-    var subdir str = base + "/sub"
-    check_str(6, "test_mkdir_write_read", mkdir_write_read(subdir, "nested.txt", "nested content"), "nested content")
-    var p_nested str = subdir + "/nested.txt"
-    check_int(7, "test_nested_exists", check_exists(p_nested), 1)
+    check_str(6, "test_mkdir_write_read", mkdir_write_read(base + "/sub", "nested.txt", "nested content"), "nested content")
+    check_int(7, "test_nested_exists", check_exists(base + "/sub/nested.txt"), 1)
 }

@@ -1,4 +1,4 @@
-# c_env_app (Plan 367 F3 — consumer parity)
+# c_env_app (Plan 368 F3 — consumer parity)
 
 Environment-variable consumer application. Verifies that Auto consuming the
 `env.*` stdlib (backed by std::env) produces the same behavior as a native
@@ -29,7 +29,7 @@ threads on the Rust side do not collide.
 `test_set_get_overwrite`, `test_get_missing`, `test_get_or_exists`,
 `test_get_or_missing`.
 
-## a2r notes (Plan 367 F3)
+## a2r notes (Plan 368 F3)
 
 Same family of pre-existing a2r transpiler quirks as c_fs_app (documented
 there). To keep the test source unambiguous across backends, all env keys are
