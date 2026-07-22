@@ -1582,17 +1582,36 @@ impl VueGenerator {
 
         // Generate defineProps if widget has props (sub-widget component)
         if !widget.props.is_empty() {
+            // Plan 367 P1-1: collect custom type names that need importing from api.ts
+            let mut custom_types: Vec<String> = Vec::new();
             script.push_str("const props = defineProps<{\n");
             for prop in &widget.props {
-                // Use 'any' for all prop types since Auto's type system
-                // cannot fully map to TypeScript (e.g., object literals)
+                // Plan 367 P1-1: map Auto types to TS types instead of using 'any'.
+                let ts_type = Self::auto_type_to_ts_type(&prop.type_info);
+                // Track custom types for import generation
+                if let crate::ast::Type::User(decl) = &prop.type_info {
+                    let name = decl.name.as_str().to_string();
+                    // Only track types that aren't built-in aliases
+                    if !matches!(name.as_str(), "msg" | "str" | "int" | "i64" | "uint" | "bool") {
+                        if !custom_types.contains(&name) {
+                            custom_types.push(name);
+                        }
+                    }
+                }
                 if prop.default.is_some() {
-                    script.push_str(&format!("  {}?: any\n", prop.name));
+                    script.push_str(&format!("  {}?: {}\n", prop.name, ts_type));
                 } else {
-                    script.push_str(&format!("  {}: any\n", prop.name));
+                    script.push_str(&format!("  {}: {}\n", prop.name, ts_type));
                 }
             }
             script.push_str("}>()\n\n");
+            // Import custom types from api.ts (type-only import)
+            if !custom_types.is_empty() {
+                script.push_str(&format!(
+                    "import type {{ {} }} from '@/lib/api'\n\n",
+                    custom_types.join(", ")
+                ));
+            }
         }
 
         // Generate emit if needed
@@ -1605,13 +1624,25 @@ impl VueGenerator {
             for msg in &widget.messages {
                 for variant in &msg.variants {
                     if let Some(ref ty) = variant.payload {
-                        event_payload_types.insert(variant.name.clone(), Self::auto_type_to_ts_type(ty));
+                        // Only carry payload type if the handler actually has
+                        // matching params (otherwise the emit() call won't pass
+                        // args, causing a TS mismatch).
+                        let pattern_key = format!(".{}", variant.name);
+                        if widget.handler_params.contains_key(&pattern_key) {
+                            event_payload_types.insert(variant.name.clone(), Self::auto_type_to_ts_type(ty));
+                        }
                     }
                 }
             }
 
             script.push_str("const emit = defineEmits<{\n");
             for event in &self.emit_events {
+                // Plan 367 P1-4: only declare events for handlers that are
+                // actually used in the template. Unused handlers don't get
+                // function definitions, so declaring their emit types is noise.
+                if !self.used_handlers.contains(event) {
+                    continue;
+                }
                 if let Some(ts_type) = event_payload_types.get(event) {
                     script.push_str(&format!("  {}: [{}]\n", event, ts_type));
                 } else {
@@ -1649,7 +1680,17 @@ impl VueGenerator {
                 let callback_key = format!("props.on_{}", snake);
                 let already_notifies_parent = body.contains(&callback_key);
                 if !already_notifies_parent {
-                    body.push_str(&format!("\nemit('{}')", handler_name));
+                    // Plan 367 P1-4: pass handler params to emit() so the call
+                    // matches the typed defineEmits declaration.
+                    let pattern_key = format!(".{}", handler_name);
+                    let emit_args: String = widget.handler_params.get(&pattern_key)
+                        .map(|params| params.iter().map(|p| p.as_str().to_string()).collect::<Vec<_>>().join(", "))
+                        .unwrap_or_default();
+                    if emit_args.is_empty() {
+                        body.push_str(&format!("\nemit('{}')", handler_name));
+                    } else {
+                        body.push_str(&format!("\nemit('{}', {})", handler_name, emit_args));
+                    }
                 }
             }
             // Plan 132: Check if handler contains API calls (needs async)
@@ -7579,8 +7620,8 @@ impl VueGenerator {
             .join("\n")
     }
 
-    /// Plan 367 P0-4: Map an Auto type to its TypeScript equivalent.
-    /// Used for emit payload types and (future) prop types.
+    /// Plan 367 P0-4/P1-1: Map an Auto type to its TypeScript equivalent.
+    /// Used for emit payload types and prop types.
     fn auto_type_to_ts_type(ty: &crate::ast::Type) -> String {
         use crate::ast::Type;
         match ty {
@@ -7590,6 +7631,18 @@ impl VueGenerator {
             Type::List(inner) => format!("{}[]", Self::auto_type_to_ts_type(inner)),
             Type::Slice(_) => "any[]".to_string(),
             Type::Option(inner) => format!("{} | null", Self::auto_type_to_ts_type(inner)),
+            Type::User(decl) => {
+                let name = decl.name.as_str();
+                match name {
+                    "msg" => "() => void".to_string(),
+                    "str" => "string".to_string(),
+                    "int" | "i64" | "uint" => "number".to_string(),
+                    "bool" => "boolean".to_string(),
+                    // Custom types (e.g. Note) — use the type name directly.
+                    // The interface should be imported from api.ts.
+                    other => other.to_string(),
+                }
+            }
             _ => "any".to_string(),
         }
     }

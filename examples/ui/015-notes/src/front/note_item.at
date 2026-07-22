@@ -1,4 +1,4 @@
-widget NoteItem(note: str, is_active: bool) {
+widget NoteItem(note: Note, is_active: bool) {
     msg Msg { Select, Delete }
 
     view {

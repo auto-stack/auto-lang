@@ -4,7 +4,7 @@
 use store: NotesStore
 use back.api: update_note, delete_note, toggle_pin, update_tags
 
-widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_changed: msg) {
+widget EditorPanel(note: Note, on_delete: msg, on_toggle_pin: msg, on_tags_changed: msg) {
     msg Msg { Init, Edit, Save, Cancel, EditBody(str), EditTitle(str), Delete, TogglePin,
               AddTag, EditTagInput, RemoveTag(str), ShowTagInput }
 
