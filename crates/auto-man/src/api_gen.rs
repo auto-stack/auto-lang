@@ -391,6 +391,19 @@ fn generate_types_rs(api_module: &auto_lang::api::ApiModule) -> String {
 }
 
 /// Convert AutoLang type to Rust type
+/// Convert snake_case to PascalCase (e.g. "search_notes" → "SearchNotes")
+fn to_pascal_case(s: &str) -> String {
+    s.split('_')
+        .map(|word| {
+            let mut c = word.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
 fn auto_type_to_rust(auto_type: &str) -> String {
     // Handle optional type: prefix ?T (AutoLang syntax: ?Note) or suffix T?
     let auto_type = auto_type.trim();
@@ -428,11 +441,24 @@ pub fn primary_type_name_pub(api_module: &auto_lang::api::ApiModule) -> Option<S
     api_module.types.first().map(|t| t.name.clone())
 }
 
-/// Get body params (params that aren't path params)
+/// Get body params (params that aren't path params and aren't query params)
 fn endpoint_body_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
     let path = endpoint.path();
+    let method = endpoint.method();
     endpoint.params.iter().filter(|p| {
-        !path.contains(&format!(":{}", p.name))
+        let is_path = path.contains(&format!(":{}", p.name));
+        let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
+        !is_path && !is_query
+    }).collect()
+}
+
+/// Get query params (non-path params on GET/DELETE endpoints)
+fn endpoint_query_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
+    let path = endpoint.path();
+    let method = endpoint.method();
+    endpoint.params.iter().filter(|p| {
+        let is_path = path.contains(&format!(":{}", p.name));
+        !is_path && matches!(method.as_str(), "GET" | "DELETE")
     }).collect()
 }
 
@@ -454,7 +480,7 @@ fn endpoint_has_body(endpoint: &ApiEndpoint) -> bool {
 fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
     let mut lines = vec![
         "use axum::{".to_string(),
-        "    extract::{Path, State, Json},".to_string(),
+        "    extract::{Path, State, Json, Query},".to_string(),
         "    http::StatusCode,".to_string(),
         "    Json as JsonResponse,".to_string(),
         "};".to_string(),
@@ -545,6 +571,22 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
         }
     }
 
+    // Generate Query structs for GET/DELETE endpoints with query params
+    for endpoint in &api_module.endpoints {
+        let query_params = endpoint_query_params(endpoint);
+        if !query_params.is_empty() {
+            let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
+            lines.push("#[derive(serde::Deserialize)]".to_string());
+            lines.push(format!("pub struct {} {{", struct_name));
+            for param in &query_params {
+                let rust_type = auto_type_to_rust(&param.ty);
+                lines.push(format!("    pub {}: {},", param.name, rust_type));
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+        }
+    }
+
     // Get type field names for time detection
     let type_fields: Vec<&str> = api_module.types.iter()
         .find(|t| t.name == primary_type)
@@ -570,6 +612,13 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
             }
         }
         params.push("State(db): State<Db>".to_string());
+        // Query params for GET/DELETE with non-path params
+        let query_params = endpoint_query_params(endpoint);
+        let has_query = !query_params.is_empty();
+        if has_query {
+            let query_struct = format!("{}Query", to_pascal_case(fn_name));
+            params.push(format!("Query(query): Query<{}>", query_struct));
+        }
         if endpoint_has_body(endpoint) {
             if method == "POST" {
                 let body_params = endpoint_body_params(endpoint);
@@ -640,6 +689,25 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
 
         // Generate handler body based on CRUD operation
         match method.as_str() {
+            "GET" if !has_path && has_query => {
+                // Search/filter: filter items by query params (case-insensitive
+                // substring match on all string fields, or exact match on others).
+                lines.push("    let items = db.lock().unwrap();".to_string());
+                lines.push("    let filtered: Vec<_> = items.iter().filter(|n| {".to_string());
+                for (i, param) in query_params.iter().enumerate() {
+                    let connector = if i == 0 { "" } else { " && " };
+                    let field = param.name.trim_start_matches("query_").trim_start_matches("search_");
+                    // Heuristic: "query" param → search title+body; named field → match that field
+                    if field == "query" || field == "q" || field == "search" {
+                        lines.push(format!("        {}n.title.to_lowercase().contains(&query.{}.to_lowercase()) || n.body.to_lowercase().contains(&query.{}.to_lowercase())",
+                            connector, param.name, param.name));
+                    } else {
+                        lines.push(format!("        {}n.{} == query.{}", connector, field, param.name));
+                    }
+                }
+                lines.push("    }).cloned().collect();".to_string());
+                lines.push("    JsonResponse(filtered)".to_string());
+            }
             "GET" if !has_path => {
                 // List all
                 lines.push("    let items = db.lock().unwrap();".to_string());
