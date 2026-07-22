@@ -14,10 +14,31 @@
 
 ## 阶段总览
 
+> **实施进度（2026-07-22 worktree `plan-367/consumer-parity`）**
+>
+> - **F1 ✅ 完成**（c_fs_app，7/7 三方一致，已提交）。实际用例数 7（非预估 ~16），
+>   覆盖 write/read/empty/overwrite/exists±/mkdir+nested。
+>   实施中发现并修复两个 a2r 缺口（让消费者代码在三端行为一致）：
+>   1. `a2r-std::fs::read_text/read_to_string` 返回 `Option<String>` 而 VM 的
+>      `auto.fs.read_text` 返回 `String`（错误时空串）——已对齐为返回 `String`。
+>   2. a2r 转译器 `fs.*` 的 obj.method 分支未借用字符串参数，导致 owned path
+>      被 move——已改为 `expr_as_str` 借用（见 commit）。
+>   另外两条 a2r 转译器怪癖（owned `str` 变量登记为 StrSlice；用户函数的内联
+>   拼接参数不自动 `.as_str()`）以 `.at` 源码侧的写法规避并记录在 README，
+>   不在本计划范围内修。
+> - **F2 ⛔ 阻塞**（c_json_app）：VM 无法 import `auto.json`——stdlib `json.at`
+>   里的 `pub fn JsonValue.as_int(self JsonValue) int` 方法声明触发
+>   `auto_syntax_E0007 Expected term, got Newline`（解析 `json.at:58` 附近）。
+>   仅 `use auto.json`（无任何调用）即可复现。这是 VM 解析 stdlib json.at 的 bug，
+>   类似 DIV-HTTP-LANG-1 但针对 json 模块，**超出 Plan 367 范围**。需单独修 VM
+>   解析器（`self Type` 方法声明语法）后才能做 F2。
+> - **F3 / F4 / F5 → 继续实施**：`auto.env`、`auto.process.args`、`auto.fs`+文本
+>   均在 VM + a2r 双端实测可用，立即可做。实施顺序调整为 F3 → F4 → F5。
+
 | 阶段 | 用例 | 调用能力 | 前置 | 预估用例数 |
 |------|------|---------|------|-----------|
 | **F1** | c_fs_app（文件读写器） | auto.file / auto.fs | 无 | ~16 |
-| **F2** | c_json_app（JSON 配置处理器） | auto.json | 无 | ~14 |
+| **F2** | c_json_app（JSON 配置处理器） | auto.json | 无（**实际阻塞：VM 解析 json.at**） | ~14 |
 | **F3** | c_env_app（环境变量工具） | auto.env | 无 | ~10 |
 | **F4** | c_process_app（CLI 参数解析） | auto.process.args + auto.file | 无 | ~8 |
 | **F5** | c_text_app（文本批处理器） | auto.file + regex(复用) | 无 | ~12 |
