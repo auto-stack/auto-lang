@@ -1,4 +1,4 @@
-# c_process_app (Plan 367 F4 — consumer parity)
+# c_process_app (Plan 368 F4 — consumer parity)
 
 CLI argument-parsing consumer application. Verifies that Auto's parsing of a
 simulated argv string (the core of any "read `process.args()` then
@@ -25,7 +25,7 @@ mirror the Rust oracle exactly:
 `test_count_basic/single/two/empty/extra_spaces`,
 `test_nth_first/middle/last/out_of_range`.
 
-## VM quirks worked around (Plan 367 F4)
+## VM quirks worked around (Plan 368 F4)
 
 The implementation avoids several pre-existing AutoVM quirks (each documented
 inline in `c_process_app.at`):

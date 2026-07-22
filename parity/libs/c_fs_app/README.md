@@ -1,4 +1,4 @@
-# c_fs_app (Plan 367 F1 — consumer parity)
+# c_fs_app (Plan 368 F1 — consumer parity)
 
 File read/write consumer application. Verifies that Auto consuming the `fs.*`
 stdlib (backed by std::fs) produces the same behavior as a native Rust app
@@ -31,7 +31,7 @@ parallel threads (Auto/a2r run all assertions in a single sequential `main()`).
 `test_exists_yes`, `test_exists_no`, `test_mkdir_write_read`,
 `test_nested_exists`.
 
-## a2r notes (Plan 367 F1 — discovered transpiler gaps)
+## a2r notes (Plan 368 F1 — discovered transpiler gaps)
 
 The consumer source works around two pre-existing a2r transpiler limitations
 (recorded for a future a2r improvement, out of this plan's scope):

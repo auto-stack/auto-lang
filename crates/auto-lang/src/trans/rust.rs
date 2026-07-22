@@ -3299,7 +3299,7 @@ impl RustTrans {
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     if let Arg::Pos(expr) = arg {
-                                        // Plan 367: borrow both path (i==0) and content (i==1)
+                                        // Plan 368: borrow both path (i==0) and content (i==1)
                                         // as &str so owned strings (e.g. from concatenation) are
                                         // not moved out of scope at the call site.
                                         self.expr_as_str(expr, out)?;
@@ -3326,7 +3326,7 @@ impl RustTrans {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
-                                    // Plan 367: borrow both path (i==0) and content (i==1) as
+                                    // Plan 368: borrow both path (i==0) and content (i==1) as
                                     // &str (a2r_std::fs::write_text takes (&str, &str)). Borrowing
                                     // instead of moving lets an owned path String (e.g. built from
                                     // concatenation) be reused by a subsequent fs.read_text call.
@@ -4563,7 +4563,7 @@ impl RustTrans {
                     return Ok(());
                 }
                 "set" => {
-                    // Plan 367: skip the Map.set -> HashMap::insert rewrite when the
+                    // Plan 368: skip the Map.set -> HashMap::insert rewrite when the
                     // receiver is a known stdlib module identifier (env.set / fs.set /
                     // json.set / ...). Those are stdlib calls that must fall through
                     // to the (module, method) stdlib routing below; rewriting them to
@@ -4631,7 +4631,7 @@ impl RustTrans {
             // env.* stdlib calls must work regardless of whether env is a local
             // variable (it could be shadowed by a local var named "env").
             // These always route to the a2r_std::env module.
-            // Plan 367: env.set is now routed here too — the generic Map.set
+            // Plan 368: env.set is now routed here too — the generic Map.set
             // -> HashMap::insert rewrite (which used to capture env.set and emit
             // `env.insert(...)`, producing invalid Rust E0423) now skips stdlib
             // module receivers, so env.set falls through to this handler.

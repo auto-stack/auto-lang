@@ -1,4 +1,4 @@
-# c_text_app (Plan 367 F5 — consumer parity)
+# c_text_app (Plan 368 F5 — consumer parity)
 
 Text batch-processor consumer application. Combines `auto.fs` (file read/write)
 with text transforms (replace / trim / lower): read a file → transform → write
@@ -25,7 +25,7 @@ threads do not collide. ASCII-only inputs so Auto `lower()` and Rust
 `to_lowercase` agree. 6 test cases, names mirror the Rust oracle exactly:
 `test_replace_basic/no_match`, `test_trim_both/none`, `test_lower_mixed/already`.
 
-## a2r notes (Plan 367 F5)
+## a2r notes (Plan 368 F5)
 
 * A small a2r gap was fixed alongside this lib: `str.lower()` / `str.upper()`
   (the stdlib `str.at` method names) were not in the a2r method-remap table

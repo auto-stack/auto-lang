@@ -13,7 +13,7 @@ use std::path::Path;
 /// Returns the file contents on success, or an empty string on error —
 /// matching the AutoVM `auto.fs.read_text` / `auto.file.read_text` native
 /// (`shim_file_read_text` uses `read_to_string(...).unwrap_or_default()`).
-/// Plan 367 (consumer-mode parity): aligning the a2r backend's error
+/// Plan 368 (consumer-mode parity): aligning the a2r backend's error
 /// convention with the VM's keeps three-way parity well-defined (the `.at`
 /// source is written once and must behave identically across VM/a2r/Rust).
 pub fn read_to_string(path: &str) -> String {
