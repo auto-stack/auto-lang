@@ -212,125 +212,137 @@ function Delete() { props.on_delete() }
 
 ---
 
-## 4. P2 — 高成本（改语言，1-2 周）
+## 4. P2 — DSL 表达力增强（深入调研后修订）
 
-### P2-1: 子组件 / 可复用视图片段
+> 以下方案基于 Plan 369 的代码级深入调研。三个特性的复杂度都远低于初步预估。
 
-**问题**: sidebar.at 的笔记列表项逻辑被复制 15+ 次（~400 行）。
+### P2-1: else-if 链式语法 ✅ 已完成（P1-2 的延续）
 
-**方案**: 引入 `fn` 视图片段语法：
+**状态**: `else` 语法 view DSL 早已支持（`parser.rs:11397`）。`if/else` 在 P1-2 已用于 015-notes。
+`else if` 链式只需在解析器 `else` 后加一个 peek（~6行）。
 
+**改动**:
+| 文件 | 改动 | 行数 |
+|------|------|------|
+| `parser.rs:~11399` | else 后 peek `if` → 递归 `parse_view_conditional` | ~6 |
+| `vue.rs:~2650` | else_body 为单 Conditional 时生成 `v-else-if` | ~15 |
+
+### P2-2: store computed（~80 行改动）
+
+**核心发现**: `parse_computed_block_inner` 已存在可复用。widget computed 全链路已实现（但零测试）。闭包 `n => expr` 已支持。
+
+**语法**（复用 widget 的 `=> ` 表达式语法）：
 ```auto
-// 新语法：视图片段（view fragment）
-view fn NoteListItem(note: Note, i: int, active: bool, onclick: msg) {
+store NotesStore {
+    model { var notes []Note = [] ... }
+    computed {
+        filtered_notes => .notes.filter(n =>
+            .active_folder == "all" || n.folder == .active_folder
+        )
+    }
+    on { ... }
+}
+```
+
+**改动**:
+| 文件 | 改动 | 行数 |
+|------|------|------|
+| `ast/ui.rs` | `StoreDecl` 加 `computed: Option<ComputedBlock>` | ~2 |
+| `aura/types.rs` | `AuraStore` 加 `computed: Vec<AuraComputed>` | ~2 |
+| `parser.rs:~10283` | store 解析 match 加 `"computed"` 分支（复用 `parse_computed_block_inner`） | ~3 |
+| `aura/extract.rs` | `extract_store_from_decl` 读 computed | ~5 |
+| `vue.rs` | `generate_store_composable` 加 computed getter 循环（用 ts_adapter 转译） | ~20 |
+
+**store composable 生成**：
+```typescript
+get filtered_notes() {
+    return notes.value.filter(n =>
+        active_folder.value === "all" || n.folder === active_folder.value
+    )
+}
+```
+
+### P2-3: view fn — 视图片段 / 内联展开（~300 行改动）
+
+**核心发现**: `ViewNode::Component` 和 `AuraNode::Component` 变体**早已存在但从未被解析器使用**——是死代码。所有四个生成器（Vue/Ark/Jet/Rust）都已处理 Component 节点。方案 A（内联展开）零生成器改动。
+
+**语法**：
+```auto
+view fn NoteItem(note: Note, active: bool) {
     button {
         text note.title { style: "block truncate" }
         text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
-        onclick: onclick
-        style: if active {
-            "w-full text-left px-3 py-2 rounded-lg bg-accent text-accent-foreground"
-        } else {
-            "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
-        }
+        onclick: .SelectNote(i)    // 使用父 widget 的 handler
+        style: if active { "active-class" } else { "inactive-class" }
     }
 }
 
 // 使用
-for i, note in .store.notes {
-    if note.folder == "" {
-        if .store.active_tag == "" {
-            NoteListItem(note, i, i == .store.active_id, .SelectNote(i))
-        }
-        if .store.active_tag != "" {
-            if note.tags.contains(.store.active_tag) {
-                NoteListItem(note, i, i == .store.active_id, .SelectNote(i))
-            }
-        }
-    }
+for i, note in .store.visible_notes {
+    NoteItem(note, i == .store.active_id)
 }
 ```
 
-**生成策略**: 视图片段翻译为 Vue 的**子组件**或**`<script setup>` 中的 render function**。如果片段简单（单根元素），可以直接内联展开（消除复制粘贴但保持性能）。
+**展开逻辑**：在 aura extract 阶段，遇到 `ViewNode::Component { name: "NoteItem" }` 时查片段表，用调用参数替换片段参数引用，内联展开为普通元素节点。
 
-**改动范围**: 解析器（新语法）、aura 提取器、Vue 生成器。
+**改动**:
+| 文件 | 改动 | 行数 |
+|------|------|------|
+| `ast/ui.rs` | 加 `ViewFragmentDecl` 结构 + `Stmt::ViewFragmentDecl` 变体 | ~15 |
+| `ast.rs` | Display 分支 | ~5 |
+| `dialect/ui.rs` | `TokenKind::View` + `fn` 分支 | ~5 |
+| `parser.rs` | `parse_view_fragment_decl()` + PascalCase 调用检测 | ~80 |
+| `aura/extract.rs` | 片段收集 + 参数替换展开 | ~150 |
+| `aura/types.rs` | `AuraModule` 加 `fragments` 字段 | ~15 |
+| 生成器（vue/ark/jet/rust） | **零改动** | 0 |
 
-### P2-2: computed 属性
-
-**问题**: 列表过滤逻辑散落在模板的 v-if 嵌套里，而不是用 computed。
-
-```auto
-// 新语法
-model {
-    computed filtered_notes []Note = {
-        if .active_folder == "all" {
-            return .notes
-        }
-        if .active_folder == "pinned" {
-            return .notes.filter(fn(n Note) bool { return n.pinned })
-        }
-        ...
-    }
-}
-
-// view 里直接用
-for i, note in .filtered_notes {
-    NoteListItem(note, i, ...)
-}
-```
-
-**改动范围**: 解析器、aura 提取器、Vue 生成器（computed → `computed(() => ...)`）。
-
-### P2-3: else / else-if 支持
-
-**问题**: 不支持 else，导致互斥条件必须写两个独立 if。
-
-```auto
-// 当前
-if .editing == false { ... }
-if .editing == true { ... }
-
-// 期望
-if .editing == false { ... }
-else { ... }
-
-// 或
-if .active_folder == "all" { ... }
-else if .active_folder == "pinned" { ... }
-else { ... }
-```
-
-**改动范围**: 解析器（语法）、aura view 树（else 节点）、Vue 生成器（v-else / v-else-if）。
+**内联展开 vs 子组件**：方案 A（内联展开）对 015-notes 最合适——`.store.xxx` 和 `onclick: .Handler` 直接用父组件的，不需要 props/callback 转发。
 
 ---
 
 ## 5. 实施路线
 
-### 阶段 1: 清扫低垂果实（1-2 天）
+### 阶段 1: 清扫低垂果实（已完成 ✅）
 
 P0 全部：
-- [ ] P0-1 去掉无消费者 emit
-- [ ] P0-2 修正 ts_adapter 缩进
-- [ ] P0-3 去掉重复 onMounted
-- [ ] P0-4 emit 带 payload 类型
+- [x] P0-1 去掉无消费者 emit
+- [x] P0-2 修正 ts_adapter 缩进
+- [x] P0-3 去掉重复 onMounted
+- [x] P0-4 emit 带 payload 类型
 
-**验证**: 快照测试（Plan 362 的 insta）对比改动前后的 SFC，确认噪音减少。
-**预期收益**: .vue 文件可读性显著提升，代码量减少 ~20%。
+### 阶段 2: 类型安全 + DSL 表达力（已完成 ✅）
 
-### 阶段 2: 类型安全（2-3 天）
+- [x] P1-1 Auto → TS 类型映射（props 不再是 any）
+- [x] P1-2 if/else 语法（view DSL 早已支持，改 .at 源码即可）
+- [x] P1-3 a2r query 参数（search API 正确过滤）
+- [x] P1-4 callback prop 类型 + emit 调用传参
 
-- [ ] P1-1 Auto → TS 类型映射
-- [ ] P1-4 callback prop 映射
+**验证**: vue-tsc 严格模式零错误，16/17 测试通过。
 
-**验证**: `vue-tsc --noEmit` 通过（目前因为 `any` 不报错，改成具体类型后可能暴露新的 TS 错误，需要修复）。
-**预期收益**: props/emits 有类型保护，IDE 智能提示可用。
+### 阶段 3: else-if 链式（半天）
 
-### 阶段 3: DSL 表达力（3-5 天）
+- [ ] parser.rs 加 else if peek（~6 行）
+- [ ] vue.rs 加 v-else-if 生成（~15 行）
+- [ ] 015-notes 用 else-if 改写 Pinned/Recent 分支
 
-- [ ] P1-2 v-if/v-else
-- [ ] P1-3 a2r query 参数
+### 阶段 4: store computed（1 天）
 
-**验证**: 015-notes 改写为用 v-else + search 功能可用。
-**预期收益**: 模板更简洁，search 功能真正可用。
+- [ ] 5 处加字段/分支（AST + parser + aura + extract + composable）
+- [ ] notes_store.at 加 filtered_notes/pinned_notes computed
+- [ ] sidebar.at 用 computed 替代模板内嵌 if
+
+### 阶段 5: view fn 内联展开（2-3 天）
+
+- [ ] AST 加 ViewFragmentDecl + Stmt 变体
+- [ ] parser 加声明解析 + PascalCase 调用检测
+- [ ] aura extract 加片段收集 + 参数替换展开
+- [ ] sidebar.at 用 view fn 消除 15x 复制粘贴
+
+### 阶段 6: 验证
+
+- [ ] vue-tsc 严格模式通过
+- [ ] 16/17 测试通过（无回归）
+- [ ] sidebar.at 从 ~400 行降到 ~150 行
 
 ### 阶段 4: 语言级改进（1-2 周，长期）
 
