@@ -40,7 +40,7 @@
 //! ```
 
 mod types;
-mod extract;
+pub mod extract;
 mod atom;
 pub mod schema;
 pub mod schema_loader;

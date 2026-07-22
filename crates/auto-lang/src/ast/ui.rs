@@ -80,6 +80,18 @@ pub struct StoreDecl {
 }
 
 // ============================================================================
+// View Fragment (Plan 367 P2-3: reusable inline view snippets)
+// ============================================================================
+
+/// A view fragment declaration: `view fn NoteItem(note: Note, active: bool) { ... }`
+#[derive(Debug, Clone)]
+pub struct ViewFragmentDecl {
+    pub name: Name,
+    pub params: Vec<(Name, String)>,
+    pub body: ViewNode,
+}
+
+// ============================================================================
 // Lifecycle Method
 // ============================================================================
 

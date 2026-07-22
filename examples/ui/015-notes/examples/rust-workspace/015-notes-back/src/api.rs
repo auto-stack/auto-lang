@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State, Json},
+    extract::{Path, State, Json, Query},
     http::StatusCode,
     Json as JsonResponse,
 };
@@ -24,6 +24,11 @@ pub struct UpdateNoteInput {
 #[derive(serde::Deserialize)]
 pub struct UpdateNoteUpdateTagsInput {
     pub tags: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct SearchNotesQuery {
+    pub query: String,
 }
 
 pub async fn list_notes(State(db): State<Db>) -> JsonResponse<Vec<Note>> {
@@ -99,7 +104,10 @@ pub async fn update_tags(Path(id): Path<i64>, State(db): State<Db>, Json(input):
     }
 }
 
-pub async fn search_notes(State(db): State<Db>) -> JsonResponse<Vec<Note>> {
+pub async fn search_notes(State(db): State<Db>, Query(query): Query<SearchNotesQuery>) -> JsonResponse<Vec<Note>> {
     let items = db.lock().unwrap();
-    JsonResponse(items.clone())
+    let filtered: Vec<_> = items.iter().filter(|n| {
+        n.title.to_lowercase().contains(&query.query.to_lowercase()) || n.body.to_lowercase().contains(&query.query.to_lowercase())
+    }).cloned().collect();
+    JsonResponse(filtered)
 }

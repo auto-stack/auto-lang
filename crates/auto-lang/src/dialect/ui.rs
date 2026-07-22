@@ -44,8 +44,23 @@ impl Dialect for UiDialect {
         kind: TokenKind,
     ) -> AutoResult<Option<Stmt>> {
         match kind {
-            // view 是 TokenKind::View（Core 参数模式关键字），UI 场景下作为 view 块。
-            TokenKind::View => Ok(Some(p.parse_view_block()?)),
+            // view 是 TokenKind::View。Plan 367 P2-3: peek for 'fn' → view fragment.
+            // We need to check if next token after 'view' is 'fn'.
+            // Parser has already consumed 'view' before calling try_parse_token_stmt?
+            // No — try_parse_token_stmt is called with the kind, token not yet consumed.
+            // parse_view_block will consume 'view' itself.
+            TokenKind::View => {
+                // Peek at the token after 'view' to decide: fragment or block
+                // Use the parser's peek position — check if 'view' is followed by 'fn'
+                // We'll let parse_view_block handle the decision since it knows the
+                // exact cursor state. Add a variant flag there.
+                // Actually simplest: check cur+1 by looking at p.cur (which is 'view')
+                // and the next token.
+                //
+                // Since we can't easily peek ahead without consuming, let parse_view_block
+                // do the dispatch.
+                Ok(Some(p.parse_view_block_or_fragment()?))
+            }
             // on 行首是 TokenKind::On，UI 场景仍解析为 OnEvents（行为不变）。
             TokenKind::On => Ok(Some(Stmt::OnEvents(p.parse_on_events()?))),
             _ => Ok(None),

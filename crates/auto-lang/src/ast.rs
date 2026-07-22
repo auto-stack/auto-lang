@@ -54,7 +54,7 @@ mod use_;
 pub use use_::*;
 mod range;
 pub use range::*;
-mod ui;
+pub mod ui;
 pub use ui::*;
 mod route;
 pub use route::*;
@@ -213,6 +213,8 @@ pub enum Stmt {
     WidgetDecl(WidgetDecl),
     // Plan 351: shared store (scene:ui)
     StoreDecl(crate::ast::ui::StoreDecl),
+    /// Plan 367 P2-3: view fragment declaration
+    ViewFragmentDecl(crate::ast::ui::ViewFragmentDecl),
     MsgDecl(MsgDecl),
     ModelBlock(ModelBlock),
     ViewBlock(ViewBlock),
@@ -292,6 +294,7 @@ impl fmt::Display for Stmt {
             // Plan 096: UI scenario statements
             Stmt::WidgetDecl(widget) => write!(f, "(widget {})", widget.name),
             Stmt::StoreDecl(store) => write!(f, "(store {})", store.name),
+            Stmt::ViewFragmentDecl(frag) => write!(f, "(view fn {})", frag.name),
             Stmt::Try(_) => write!(f, "(try)"),
             Stmt::MsgDecl(msg) => write!(f, "(msg {})", msg.name),
             Stmt::ModelBlock(model) => write!(f, "(model {} fields)", model.fields.len()),
@@ -1160,6 +1163,11 @@ impl ToNode for Stmt {
                 node.add_arg(auto_val::Arg::Pos(Value::str(store.name.as_str())));
                 node
             }
+            Stmt::ViewFragmentDecl(frag) => {
+                let mut node = AutoNode::new("view-fn");
+                node.add_arg(auto_val::Arg::Pos(Value::str(frag.name.as_str())));
+                node
+            }
             Stmt::Try(_) => AutoNode::new("try"),
             Stmt::MsgDecl(msg) => {
                 let mut node = AutoNode::new("msg");
@@ -1235,6 +1243,7 @@ impl ToAtom for Stmt {
             // Plan 096: UI scenario statements
             Stmt::WidgetDecl(widget) => format!("(widget {})", widget.name).into(),
             Stmt::StoreDecl(store) => format!("(store {})", store.name).into(),
+            Stmt::ViewFragmentDecl(frag) => format!("(view fn {})", frag.name).into(),
             Stmt::Try(_) => "(try)".into(),
             Stmt::MsgDecl(msg) => format!("(msg {})", msg.name).into(),
             Stmt::ModelBlock(model) => format!("(model {} fields)", model.fields.len()).into(),

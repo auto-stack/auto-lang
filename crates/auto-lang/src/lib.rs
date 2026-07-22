@@ -3761,6 +3761,13 @@ pub fn ui_build(
     })?;
 
     // Extract AURA widgets from AST
+    // Plan 367 P2-3: register view fragments before widget extraction
+    crate::aura::extract::clear_view_fragments();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            crate::aura::extract::register_view_fragment(frag);
+        }
+    }
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
@@ -3869,6 +3876,13 @@ pub fn ui_build_shadcn(
     })?;
 
     // Extract AURA widgets from AST
+    // Plan 367 P2-3: register view fragments before widget extraction
+    crate::aura::extract::clear_view_fragments();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            crate::aura::extract::register_view_fragment(frag);
+        }
+    }
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
@@ -4049,6 +4063,13 @@ pub fn ui_build_shadcn_with_widgets(
     }
 
     // Extract AURA widgets from AST
+    // Plan 367 P2-3: register view fragments before widget extraction
+    crate::aura::extract::clear_view_fragments();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            crate::aura::extract::register_view_fragment(frag);
+        }
+    }
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {

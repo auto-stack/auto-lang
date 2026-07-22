@@ -3,6 +3,33 @@
 
 use store: NotesStore
 
+// Plan 367 P2-3: view fragment for note list items — eliminates 15x copy-paste.
+view fn NoteRow(note: Note, active: bool, indent: str) {
+    button {
+        text note.title { style: "block truncate" }
+        text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
+        style: if active {
+            "w-full text-left py-2 rounded-lg bg-accent text-accent-foreground"
+        } else {
+            "w-full text-left py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
+        }
+    }
+}
+
+// Wrapper that adds indentation prefix to the style
+view fn NoteItem(note: Note, active: bool, indent: str) {
+    button {
+        text note.title { style: "block truncate" }
+        text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
+        onclick: .SelectNote(i)
+        style: if active {
+            "w-full text-left py-2 rounded-lg bg-accent text-accent-foreground"
+        } else {
+            "w-full text-left py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
+        }
+    }
+}
+
 widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int) {
     msg Msg {
         SelectAll, SelectPinned, SelectRecent,
@@ -86,28 +113,10 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                     for i, note in .store.notes {
                         if note.folder == "" {
                             if .store.active_tag == "" {
-                                button {
-                                    text note.title { style: "block truncate" }
-                                    text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
-                                    onclick: .SelectNote(i)
-                                    style: if i == .store.active_id {
-                                        "w-full text-left px-3 py-2 rounded-lg bg-accent text-accent-foreground"
-                                    } else {
-                                        "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
-                                    }
-                                }
+                                NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
                             } else {
                                 if note.tags.contains(.store.active_tag) {
-                                    button {
-                                        text note.title { style: "block truncate" }
-                                        text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
-                                        onclick: .SelectNote(i)
-                                        style: if i == .store.active_id {
-                                            "w-full text-left px-3 py-2 rounded-lg bg-accent text-accent-foreground"
-                                        } else {
-                                            "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
-                                        }
-                                    }
+                                    NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
                                 }
                             }
                         }

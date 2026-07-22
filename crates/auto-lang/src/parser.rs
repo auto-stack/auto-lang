@@ -10911,6 +10911,58 @@ impl<'a> Parser<'a> {
         Ok(Stmt::ViewBlock(view))
     }
 
+    /// Plan 367 P2-3: Parse either a view block or a view fragment declaration.
+    pub fn parse_view_block_or_fragment(&mut self) -> AutoResult<Stmt> {
+        self.expect_ident("view")?;
+        self.skip_empty_lines();
+        if self.cur.text.as_str() == "fn" {
+            self.parse_view_fragment_decl_body()
+        } else {
+            self.expect(TokenKind::LBrace)?;
+            self.skip_empty_lines();
+            let root = self.parse_view_node()?;
+            self.skip_empty_lines();
+            self.expect(TokenKind::RBrace)?;
+            Ok(Stmt::ViewBlock(ViewBlock { root }))
+        }
+    }
+
+    /// Parse view fragment declaration body (after 'view' has been consumed).
+    fn parse_view_fragment_decl_body(&mut self) -> AutoResult<Stmt> {
+        self.expect_ident("fn")?;
+        let name = self.cur.text.clone();
+        self.next();
+        let mut params = Vec::new();
+        if self.cur.text.as_str() == "(" {
+            self.next();
+            while self.cur.text.as_str() != ")" {
+                self.skip_empty_lines();
+                let pname = self.cur.text.clone();
+                self.next();
+                let mut type_hint = String::new();
+                if self.cur.text.as_str() == ":" {
+                    self.next();
+                    let mut ty_parts = Vec::new();
+                    while !matches!(self.cur.text.as_str(), "," | ")") {
+                        ty_parts.push(self.cur.text.as_str().to_string());
+                        self.next();
+                    }
+                    type_hint = ty_parts.join(" ");
+                }
+                params.push((pname, type_hint));
+                if self.cur.text.as_str() == "," { self.next(); }
+            }
+            self.next();
+        }
+        self.skip_empty_lines();
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let body = self.parse_view_node()?;
+        self.skip_empty_lines();
+        self.expect(TokenKind::RBrace)?;
+        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body }))
+    }
+
     /// Parse view block, returning the ViewBlock directly
     fn parse_view_block_inner(&mut self) -> AutoResult<ViewBlock> {
         self.expect_ident("view")?;
@@ -10973,6 +11025,11 @@ impl<'a> Parser<'a> {
                 return Ok(ViewNode::Text(ViewText::Interpolated { template, bindings }));
             }
         }
+
+        // Plan 367 P2-3: view fragment calls are detected at extraction time,
+        // not parse time. PascalCase tags parse as normal elements, and the
+        // aura extractor checks if the tag name matches a registered fragment.
+        // This avoids interfering with normal component parsing.
 
         // Parse element tag
         let tag = self.cur.text.to_string();

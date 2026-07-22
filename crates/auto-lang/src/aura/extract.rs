@@ -13,6 +13,25 @@ use super::types::*;
 use crate::ast::{Expr, Type, Key, ViewPropValue};
 use std::collections::HashMap;
 
+// Plan 367 P2-3: thread-local store for view fragments.
+// Populated during module-level extraction, consumed during view tree extraction.
+thread_local! {
+    static VIEW_FRAGMENTS: std::cell::RefCell<HashMap<String, crate::ast::ui::ViewFragmentDecl>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// Register a view fragment for inline expansion (Plan 367 P2-3).
+pub fn register_view_fragment(frag: &crate::ast::ui::ViewFragmentDecl) {
+    VIEW_FRAGMENTS.with(|cell| {
+        cell.borrow_mut().insert(frag.name.as_str().to_string(), frag.clone());
+    });
+}
+
+/// Clear all registered view fragments (call before processing a new module).
+pub fn clear_view_fragments() {
+    VIEW_FRAGMENTS.with(|cell| cell.borrow_mut().clear());
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -618,6 +637,27 @@ fn extract_view_block(view: &ViewBlock) -> ExtractResult<AuraNode> {
 fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
     match node {
         ViewNode::Element { tag, props, events, children, span } => {
+            // Plan 367 P2-3: check if this element is a view fragment call.
+            // Fragment calls are PascalCase tags whose name matches a registered
+            // view fragment. Props are passed as named props matching fragment params.
+            // When matched, inline-expand the fragment body with parameter substitution.
+            let is_pascal = tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+            if is_pascal {
+                let fragment = VIEW_FRAGMENTS.with(|cell| cell.borrow().get(tag.as_str()).cloned());
+                if let Some(frag) = fragment {
+                    // Build substitution map: param_name → call expression
+                    let mut subs: HashMap<String, Expr> = HashMap::new();
+                    for (pname, _type_hint) in &frag.params {
+                        if let Some(prop) = props.iter().find(|p| p.name == *pname) {
+                            if let ViewPropValue::Expr(expr) = &prop.value {
+                                subs.insert(pname.as_str().to_string(), expr.clone());
+                            }
+                        }
+                    }
+                    let expanded = expand_fragment_node(&frag.body, &subs)?;
+                    return extract_view_node(&expanded);
+                }
+            }
             let aura_props: HashMap<String, AuraPropValue> = props.iter()
                 .map(|p| {
                     let value = match &p.value {
@@ -714,6 +754,25 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             })
         }
         ViewNode::Component { name, props, events, span } => {
+            // Plan 367 P2-3: check if this is a view fragment call.
+            // If so, inline-expand the fragment body with parameter substitution.
+            let fragment = VIEW_FRAGMENTS.with(|cell| cell.borrow().get(name.as_str()).cloned());
+            if let Some(frag) = fragment {
+                // Build parameter substitution map: arg0 → call_expr, arg1 → ...
+                let mut substitutions: HashMap<String, Expr> = HashMap::new();
+                for (i, param) in frag.params.iter().enumerate() {
+                    if let Some(call_prop) = props.get(i) {
+                        if let ViewPropValue::Expr(expr) = &call_prop.value {
+                            substitutions.insert(param.0.as_str().to_string(), expr.clone());
+                        }
+                    }
+                }
+                // Clone and expand the fragment body with substitutions
+                let expanded = expand_fragment_node(&frag.body, &substitutions)?;
+                return extract_view_node(&expanded);
+            }
+
+            // Normal component (not a fragment) — extract as-is
             let aura_props: HashMap<String, Expr> = props.iter()
                 .filter_map(|p| {
                     match &p.value {
@@ -764,7 +823,168 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
     }
 }
 
-/// Assign stable AuraNodeIds to the AuraNode tree via DFS traversal.
+/// Plan 367 P2-3: Expand a view fragment body with parameter substitution.
+///
+/// Walks the ViewNode tree and replaces references to fragment parameters
+/// with the actual expressions from the call site. This is a deep clone +
+/// transform — the original fragment is not modified.
+///
+/// Substitution targets:
+/// - In `text .param_name` → `text <call_expr>`
+/// - In `onclick: .Handler` → preserved (parent widget's handler)
+/// - In conditions `if .param_name == ...` → `if <call_expr> == ...`
+/// - In style strings → preserved (styles don't reference params)
+fn expand_fragment_node(
+    node: &ViewNode,
+    subs: &HashMap<String, Expr>,
+) -> ExtractResult<ViewNode> {
+    match node {
+        ViewNode::Element { tag, props, events, children, span } => {
+            // Transform props: substitute param references in expressions
+            let new_props: Vec<crate::ast::ui::ViewProp> = props.iter()
+                .map(|p| {
+                    let new_value = match &p.value {
+                        ViewPropValue::Expr(expr) => {
+                            ViewPropValue::Expr(substitute_expr(expr, subs))
+                        }
+                        other => other.clone(),
+                    };
+                    Ok(crate::ast::ui::ViewProp {
+                        name: p.name.clone(),
+                        value: new_value,
+                    })
+                })
+                .collect::<ExtractResult<_>>()?;
+            // Recursively expand children
+            let new_children: Vec<ViewNode> = children.iter()
+                .map(|c| expand_fragment_node(c, subs))
+                .collect::<ExtractResult<_>>()?;
+            Ok(ViewNode::Element {
+                tag: tag.clone(),
+                props: new_props,
+                events: events.clone(),
+                children: new_children,
+                span: *span,
+            })
+        }
+        ViewNode::Conditional { condition, then_body, else_body, span } => {
+            let new_condition = substitute_condition(condition, subs);
+            let new_then: Vec<ViewNode> = then_body.iter()
+                .map(|c| expand_fragment_node(c, subs))
+                .collect::<ExtractResult<_>>()?;
+            let new_else: Option<Vec<ViewNode>> = else_body.as_ref()
+                .map(|nodes| nodes.iter()
+                    .map(|c| expand_fragment_node(c, subs))
+                    .collect::<ExtractResult<_>>()
+                )
+                .transpose()?;
+            Ok(ViewNode::Conditional {
+                condition: new_condition,
+                then_body: new_then,
+                else_body: new_else,
+                span: *span,
+            })
+        }
+        ViewNode::ForLoop { var, index, iterable, body, span } => {
+            let new_body: Vec<ViewNode> = body.iter()
+                .map(|c| expand_fragment_node(c, subs))
+                .collect::<ExtractResult<_>>()?;
+            Ok(ViewNode::ForLoop {
+                var: var.clone(),
+                index: index.clone(),
+                iterable: iterable.clone(),
+                body: new_body,
+                span: *span,
+            })
+        }
+        ViewNode::Component { name, props, events, span } => {
+            // Nested component call — expand its props too
+            let new_props: Vec<crate::ast::ui::ViewProp> = props.iter()
+                .map(|p| {
+                    let new_value = match &p.value {
+                        ViewPropValue::Expr(expr) => ViewPropValue::Expr(substitute_expr(expr, subs)),
+                        other => other.clone(),
+                    };
+                    Ok(crate::ast::ui::ViewProp { name: p.name.clone(), value: new_value })
+                })
+                .collect::<ExtractResult<_>>()?;
+            Ok(ViewNode::Component {
+                name: name.clone(),
+                props: new_props,
+                events: events.clone(),
+                span: *span,
+            })
+        }
+        // Pass through other node types unchanged
+        _ => Ok(node.clone()),
+    }
+}
+
+/// Substitute fragment parameter references in an expression.
+/// Replaces `.param_name` (Expr::Dot(Ident("self"), "param_name")) with the
+/// actual expression from the call site.
+fn substitute_expr(expr: &Expr, subs: &HashMap<String, Expr>) -> Expr {
+    use crate::ast::Expr;
+    match expr {
+        // .param_name → substitution
+        Expr::Dot(obj, field) if matches!(obj.as_ref(), Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self") => {
+            if let Some(replacement) = subs.get(field.as_str()) {
+                return replacement.clone();
+            }
+            expr.clone()
+        }
+        // Recurse into compound expressions
+        Expr::Bina(lhs, op, rhs) => {
+            Expr::Bina(
+                Box::new(substitute_expr(lhs, subs)),
+                op.clone(),
+                Box::new(substitute_expr(rhs, subs)),
+            )
+        }
+        Expr::Dot(obj, field) => {
+            Expr::Dot(Box::new(substitute_expr(obj, subs)), field.clone())
+        }
+        Expr::Call(call) => {
+            let mut new_call = call.clone();
+            new_call.args.args = call.args.args.iter()
+                .map(|a| match a {
+                    crate::ast::Arg::Pos(e) => crate::ast::Arg::Pos(substitute_expr(e, subs)),
+                    crate::ast::Arg::Pair(n, e) => crate::ast::Arg::Pair(n.clone(), substitute_expr(e, subs)),
+                    other => other.clone(),
+                })
+                .collect();
+            Expr::Call(new_call)
+        }
+        Expr::Closure(c) => {
+            let mut new_c = c.clone();
+            new_c.body = Box::new(substitute_expr(&c.body, subs));
+            Expr::Closure(new_c)
+        }
+        _ => expr.clone(),
+    }
+}
+
+/// Substitute fragment parameter references in a condition string.
+/// Condition strings like "param_name == value" need param_name replaced.
+fn substitute_condition(condition: &str, subs: &HashMap<String, Expr>) -> String {
+    let mut result = condition.to_string();
+    for (param_name, expr) in subs {
+        // Replace bare references to param_name in the condition string.
+        // This is simplified — conditions are strings, not AST.
+        // Replace ".param_name" with the expression's string representation.
+        let replacement = match expr {
+            Expr::Ident(name) => format!(".{}", name.as_str()),
+            _ => condition.to_string(), // Fallback: don't replace complex exprs in conditions
+        };
+        if replacement != result {
+            result = result.replace(
+                &format!(".{}", param_name),
+                &replacement,
+            );
+        }
+    }
+    result
+}
 /// Returns a SpanMap mapping each AuraNodeId to its source info.
 /// Called once after extraction, before constructing AuraWidget.
 fn assign_node_ids(root: &mut AuraNode) -> std::collections::HashMap<AuraNodeId, SpanInfo> {
