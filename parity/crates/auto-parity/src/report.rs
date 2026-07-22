@@ -253,9 +253,10 @@ fn render_maturity_directory(reports: &[ComparisonReport]) -> String {
 
     // L3: planned-but-not-verified. Filter out anything that already appears
     // in L1 so the directory is honest about what is outstanding. Includes P3
-    // crypto/db, the deferred D3 HTTP client (needs mock-server harness), and
-    // generators (a2r emits async_stream dep the runner can't yet inject).
-    let planned = ["sha2", "rusqlite", "reqwest", "tokio", "http_client_sync", "generators"];
+    // crypto/db and generators (a2r emits async_stream dep the runner can't
+    // yet inject). Plan 368 FU-4 promoted http_client_sync to L1 (phase d6,
+    // with the mock-server harness), so it's no longer listed here.
+    let planned = ["sha2", "rusqlite", "reqwest", "tokio", "generators"];
     let l3: Vec<&str> = planned
         .iter()
         .copied()

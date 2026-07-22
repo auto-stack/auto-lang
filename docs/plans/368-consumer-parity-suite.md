@@ -655,11 +655,36 @@ Layer 1（F1/F3/F4/F5）实施完成后做了一次完整审计，确认了**未
 README、`parity/.gitignore`、`crates/a2r-std/src/{fs.rs,env.rs,string_builder.rs}`
 的 doc 注释、`crates/auto-lang/src/a2r_std.rs`。批量 sed 即可。
 
-#### FU-4（中成本）F6.1 mock-server runner hook + Layer 2 实施
+#### FU-4（中成本）F6.1 mock-server runner hook + 激活 http 消费者
 
-等 FU-1 完成后：实现 `runner.rs` 的 mock-server setup/teardown hook（约 20-30 行：
-`cargo run` mock-server 后台进程 → poll `TcpStream::connect` 等端口 → 跑 parity →
-`child.kill()`），然后按 F6.2/F6.3/F7.1/F7.2 实施 http 消费者库。
+FU-1 已修，`use auto.http` 现在能加载。**调研结论：http 与 json 不同——VM 的
+http 运行时是真实实现**（基于 `reqwest::blocking`，有通过的测试
+`plan349_tests::test_http_get_sync` 证明），a2r 用 `ureq`（同步）。对返回固定
+200+body 的 mock server，reqwest vs ureq 的传输层差异在语义层（status/body）
+完全一致——**三方 parity 可行**。
+- **好消息**：`parity/libs/http_client_sync/` 骨架已完整存在——mock-server
+  （`127.0.0.1:18080`，POST→200+`{"echo":"ok"}`）、wrapper `.at`、测试
+  `tests/auto/post_echo.at`（3 TAP）、Rust oracle（用 ureq，与 a2r 一致）都写好了。
+- **缺两个小东西**：
+  1. **`stdlib/auto/http.at` 漏声明 `post_sync`/`post_bearer`/`last_status`**
+     （它们只在 `http.vm.at` + 有真实 Rust shim，但 `http.at` 没声明 → 链接期
+     `auto_link_E0401 Undefined symbol: http.post_sync`）。补 3 行声明即可。
+  2. **parity runner 没有 mock-server setup/teardown hook**（`runner.rs`/`main.rs`
+     零相关代码）。需加：在 `run_library` 里，若 `libs/<name>/mock-server/` 存在，
+     `Command::new(mock-server.exe).spawn()` → poll `TcpStream::connect` 等端口
+     可用 → 跑三向 → `child.kill()`。可参考 `plan349_tests.rs:14` 的 in-process
+     模式，但 runner 跑独立进程，需用 `Command::spawn` + 显式 teardown。
+- **调用约定**：同步 helper 用**模块形式** `http.post_sync(url, body, api_key)`
+  返回 `str`（响应 body），状态码经 `http.last_status()` 取（thread-local）。
+  不要用方法形式 `req.method()`。
+- **实施步骤**：
+  1. 补 `stdlib/auto/http.at` 3 个声明。
+  2. 加 runner mock hook（~25 行）。
+  3. 把 `http_client_sync` 从 `report.rs` 的 L3 planned 列表移到 `d6` phase_map
+     （新 phase）并加入 report phases。
+  4. `auto-parity run http_client_sync` 应 3/3 一致。
+- **F7（c_wget/c_crawler）**：等 F6 激活后再做（组合 http+fs/json）。注意 F7 若
+  用 json 会撞上 F2 的 VM json 运行时占位问题——需用纯文本解析或等 VM json 补齐。
 
 ### 未修的底层 bug 清单（全部以 .at 源码侧 workaround 规避）
 

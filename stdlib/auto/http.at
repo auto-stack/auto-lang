@@ -154,6 +154,24 @@ pub fn get(url str) Response;
 /// Example: let res = http.post("https://api.example.com/users", body)
 pub fn post(url str, body str) Response;
 
+/// Synchronous POST: returns the response BODY as a string directly (no
+/// Response handle). The HTTP status code from the call is stored and can be
+/// retrieved with http.last_status(). api_key is sent as a bearer/authorization
+/// header (empty string to omit). Plan 368 FU-4: declared here (was missing —
+/// the VM shim http_post_sync and a2r a2r_std::http::post_sync already existed,
+/// but the omission caused an auto_link_E0401 undefined-symbol error).
+/// Example: let body = http.post_sync(url, payload, "")
+pub fn post_sync(url str, body str, api_key str) str;
+
+/// Synchronous POST with Bearer auth. Same return/status convention as
+/// post_sync. Plan 368 FU-4: declared here (was missing).
+pub fn post_bearer(url str, body str, api_key str) str;
+
+/// Return the HTTP status code from the last post_sync / post_bearer call
+/// (thread-local). Plan 368 FU-4: declared here (was missing).
+/// Example: let code = http.last_status()
+pub fn last_status() int;
+
 /// Perform a PUT request
 pub fn put(url str, body str) Response;
 

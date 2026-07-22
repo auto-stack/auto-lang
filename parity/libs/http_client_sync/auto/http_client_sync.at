@@ -2,12 +2,21 @@
 //
 // This library wraps auto.http.post_sync to POST a body and return the
 // response body string. It is the parity subject; tests (tests/auto/) hit a
-// local mock server on 127.0.0.1:18080 (start mock-server/ first) and assert
-// on the response body. api_key is empty (mock server ignores auth).
+// local mock server on 127.0.0.1:18080 (the parity runner auto-spawns
+// mock-server/ via the MockServer hook — see runner.rs). api_key is empty
+// (mock server ignores auth).
+//
+// Plan 368 FU-4: uses the MODULE form `http.post_sync(...)` (not a bare
+// `post_sync(...)` via `use auto.http: post_sync`). The module form is the
+// one both backends handle correctly: the VM routes it to the post_sync
+// native shim (returns the body, stashes status for last_status); a2r routes
+// it to a2r_std::http::post_sync and unwraps the (status, body) tuple. The
+// bare-call form is not handled by the a2r transpiler for stdlib functions
+// (same family as the fs/env import quirk).
 
-use auto.http: post_sync
+use auto.http
 
 /// POST `body` to the mock server's /echo endpoint, return response body.
 fn post_echo(body str) str {
-    return post_sync("http://127.0.0.1:18080/echo", body, "")
+    return http.post_sync("http://127.0.0.1:18080/echo", body, "")
 }
