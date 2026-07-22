@@ -8,14 +8,23 @@ use std::path::Path;
 // File Read/Write
 // ═══════════════════════════════════════════════════════════
 
-/// Read text content from a file, returns None on error
-pub fn read_to_string(path: &str) -> Option<String> {
-    std::fs::read_to_string(path).ok()
+/// Read text content from a file.
+///
+/// Returns the file contents on success, or an empty string on error —
+/// matching the AutoVM `auto.fs.read_text` / `auto.file.read_text` native
+/// (`shim_file_read_text` uses `read_to_string(...).unwrap_or_default()`).
+/// Plan 367 (consumer-mode parity): aligning the a2r backend's error
+/// convention with the VM's keeps three-way parity well-defined (the `.at`
+/// source is written once and must behave identically across VM/a2r/Rust).
+pub fn read_to_string(path: &str) -> String {
+    std::fs::read_to_string(path).unwrap_or_default()
 }
 
-/// Read text content from a file (alias), returns None on error
-pub fn read_text(path: &str) -> Option<String> {
-    std::fs::read_to_string(path).ok()
+/// Read text content from a file (alias).
+///
+/// See `read_to_string`: returns empty string on error (VM parity).
+pub fn read_text(path: &str) -> String {
+    std::fs::read_to_string(path).unwrap_or_default()
 }
 
 /// Write text content to a file, returns true on success

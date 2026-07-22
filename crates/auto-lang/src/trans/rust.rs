@@ -3284,13 +3284,13 @@ impl RustTrans {
                         "fs" => match method.as_str() {
                             "read_to_string" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_to_string(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "read_text" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_text(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -3298,21 +3298,27 @@ impl RustTrans {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
-                                    if i == 1 { write!(out, "&")?; }
-                                    self.arg(arg, out)?;
+                                    if let Arg::Pos(expr) = arg {
+                                        // Plan 367: borrow both path (i==0) and content (i==1)
+                                        // as &str so owned strings (e.g. from concatenation) are
+                                        // not moved out of scope at the call site.
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
                                 }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "exists" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::exists(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "create_dir" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::create_dir(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -3320,8 +3326,15 @@ impl RustTrans {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
-                                    if i == 1 { write!(out, "&")?; }
-                                    self.arg(arg, out)?;
+                                    // Plan 367: borrow both path (i==0) and content (i==1) as
+                                    // &str (a2r_std::fs::write_text takes (&str, &str)). Borrowing
+                                    // instead of moving lets an owned path String (e.g. built from
+                                    // concatenation) be reused by a subsequent fs.read_text call.
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
                                 }
                                 write!(out, ")")?;
                                 return Ok(());
