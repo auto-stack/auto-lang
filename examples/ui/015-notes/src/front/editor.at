@@ -5,7 +5,7 @@ use store: NotesStore
 use back.api: update_note, delete_note, toggle_pin, update_tags
 
 widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_changed: msg) {
-    msg Msg { Init, Edit, Save, Cancel, EditBody, EditTitle, Delete, TogglePin,
+    msg Msg { Init, Edit, Save, Cancel, EditBody(str), EditTitle(str), Delete, TogglePin,
               AddTag, EditTagInput, RemoveTag(str), ShowTagInput }
 
     model {
@@ -144,8 +144,8 @@ widget EditorPanel(note: str, on_delete: msg, on_toggle_pin: msg, on_tags_change
             .editing = false
         }
         .Cancel -> { .editing = false }
-        .EditBody -> { }
-        .EditTitle -> { }
+        .EditBody(md) -> { .edit_body = md }
+        .EditTitle(t) -> { .edit_title = t }
         .EditTagInput -> { }
         .ShowTagInput -> { .show_tag_input = true }
         .AddTag -> {

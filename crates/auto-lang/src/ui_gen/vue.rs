@@ -2174,6 +2174,18 @@ impl VueGenerator {
                     self.widget_key_counter += 1;
                     if let Some(ref loop_var) = self.current_loop_var {
                         attrs.push(format!(":key=\"'{}-{}-' + ({}?.id ?? {})\"", html_tag, self.widget_key_counter, loop_var, loop_var));
+                    } else if let Some(ref expr) = first_prop_expr {
+                        // Non-loop component: if the first prop looks like an object
+                        // reference (contains '[' for index access, suggesting an array
+                        // element like store.notes[idx]), bind key to its .id so the
+                        // component REMOUNTS when the underlying object changes.
+                        // Skip for primitive props (search: str, active_id: int) — those
+                        // don't have .id and would cause TS errors.
+                        if expr.contains('[') {
+                            attrs.push(format!(":key=\"'{}-{}-' + ({}?.id ?? 'new')\"", html_tag, self.widget_key_counter, expr));
+                        } else {
+                            attrs.push(format!(":key=\"'{}-{}'\"", html_tag, self.widget_key_counter));
+                        }
                     } else {
                         attrs.push(format!(":key=\"'{}-{}'\"", html_tag, self.widget_key_counter));
                     }
