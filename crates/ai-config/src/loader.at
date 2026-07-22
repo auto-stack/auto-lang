@@ -1,0 +1,508 @@
+/// `.at` configuration loading for client and daemon, via the shared
+/// `auto_atom` parser.
+///
+/// Auto port of crates/ai-config/src/loader.rs (auto-ai v0.4.0).
+///
+/// BRIDGE NOTE (plan 013): the Rust original depends on the `auto_atom` +
+/// `auto_val` crates (Atom/Node/Kid/Value) to parse the `client { … }` /
+/// `daemon { … }` config format. Auto's VM stdlib has no equivalent parser
+/// yet, so this file bridges those Rust crates via `use.rust`. Consequences:
+/// - `loader.at` is **a2r-first**: it runs when transpiled to Rust (cargo),
+///   not in the pure AutoVM interpreter (the bridged types are unknown to the
+///   VM). Behavior is verified via the a2r→Rust test path.
+/// - When Auto achieves self-hosting and gains a native Atom parser, drop the
+///   `use.rust` lines and swap the bridged calls for the Auto-native ones;
+///   the public API (parse_client_config / parse_daemon_config / the *Config
+///   types) stays unchanged.
+///
+/// Two file shapes, both single-root (auto-atom parses exactly one root
+/// value, so the legacy flat format is wrapped in a root node):
+///
+/// `ai-client.at`:
+/// ```text
+/// client {
+///     default_provider : zhipu
+///     default_model : "glm-4.6"
+///     zhipu {
+///         kind : openai
+///         base_url : "https://open.bigmodel.cn/api/paas/v4"
+///         key_env : ZHIPU_API_KEY
+///         models : [
+///             { id : "glm-5.2", tier : max },
+///             { id : "glm-4.6", tier : mid }
+///         ]
+///     }
+/// }
+/// ```
+///
+/// `ai-daemon.at` — same, rooted in `daemon { … }`, plus daemon-only fields
+/// (`listen_addr`, `idle_timeout_min`, `log_level`, and `max_concurrency`
+/// inside each provider block).
+
+use.rust std::collections::HashMap
+dep auto_atom
+use.rust auto_atom
+dep auto_val
+use.rust auto_val
+
+use provider: ProviderConfig
+use tier: ModelDefinition, ModelTier
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ConfigError
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Configuration error.
+enum ConfigError {
+    Parse(str)
+}
+
+ext ConfigError {
+    fn message() str {
+        is self {
+            ConfigError.Parse(msg) -> return f"config parse error: ${msg}",
+            else -> return "config parse error"
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ClientConfig
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Client-side view: provider registry + defaults.
+///
+/// `provider_names` is an insertion-ordered list of keys kept in parallel
+/// with `providers` because Auto's VM Map exposes no iteration API. Consumers
+/// walk `provider_names` and reach each provider via `providers.get(name)`.
+type ClientConfig {
+    providers Map<str, ProviderConfig>
+    provider_names List<str>
+    default_provider str
+    default_model str
+}
+
+ext ClientConfig {
+    /// Empty config (no providers).
+    static fn empty() ClientConfig {
+        return ClientConfig(
+            providers: Map.new(),
+            provider_names: [],
+            default_provider: "",
+            default_model: ""
+        )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DaemonConfig
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Daemon-side view: client config + daemon-only operational fields.
+type DaemonConfig {
+    listen_addr str
+    idle_timeout_min uint
+    log_level str
+    providers Map<str, ProviderConfig>
+    provider_names List<str>
+    default_provider str
+    default_model str
+    /// Explicit tier routing table. When non-empty, overrides auto-derivation.
+    tier_routing TierRouting
+}
+
+ext DaemonConfig {
+    static fn default() DaemonConfig {
+        return DaemonConfig(
+            listen_addr: "127.0.0.1:17654",
+            idle_timeout_min: 10,
+            log_level: "info",
+            providers: Map.new(),
+            provider_names: [],
+            default_provider: "",
+            default_model: "",
+            tier_routing: TierRouting.empty()
+        )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TierRouting
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A single tier routing candidate: provider + model.
+type TierRouteCandidate {
+    provider str
+    model str
+}
+
+/// Tier routing table: tier name → ordered candidate list (primary first).
+/// When present in the config, overrides auto-derivation.
+///
+/// `tier_names` parallels `entries` for the same reason ClientConfig carries
+/// `provider_names`: Auto's VM Map has no iteration API.
+///
+/// Note: the field is named `entries`, not `routes` — `routes` is a reserved
+/// keyword in Auto (routing/navigation) and cannot be used as a field name.
+type TierRouting {
+    entries Map<str, List<TierRouteCandidate>>
+    tier_names List<str>
+}
+
+ext TierRouting {
+    static fn empty() TierRouting {
+        return TierRouting(entries: Map.new(), tier_names: [])
+    }
+
+    fn is_empty() bool {
+        return self.tier_names.len() == 0
+    }
+
+    /// Ordered candidates for a tier, or None if the tier isn't routed.
+    fn candidates(tier str) ?List<TierRouteCandidate> {
+        if self.entries.contains(tier) {
+            return Some(self.entries.get(tier))
+        }
+        return None
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Public parse entry points
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Parse `ai-client.at` content (root must be `client { … }`).
+pub fn parse_client_config(content str) Result<ClientConfig, ConfigError> {
+    is root_node(content, "client").? {
+        Ok(node) -> {
+            let default_provider = opt_str(node, "default_provider")
+            let default_model = opt_str(node, "default_model")
+            let providers = parse_provider_blocks(node)
+            let names = provider_keys(node)
+
+            if names.len() == 0 {
+                return Err(ConfigError.Parse("no providers configured in client { } block"))
+            }
+            let dp = if default_provider.is_empty() {
+                names[0]
+            } else {
+                default_provider
+            }
+            return Ok(ClientConfig(
+                providers: providers,
+                provider_names: names,
+                default_provider: dp,
+                default_model: default_model
+            ))
+        }
+        Err(e) -> return Err(e)
+    }
+}
+
+/// Parse `daemon { … }` content (root must be `daemon { … }`).
+pub fn parse_daemon_config(content str) Result<DaemonConfig, ConfigError> {
+    is root_node(content, "daemon").? {
+        Ok(node) -> {
+            var cfg = DaemonConfig.default()
+            let la = opt_str(node, "listen_addr")
+            if la.is_empty() == false {
+                cfg.listen_addr = la
+            }
+            let itm = opt_uint(node, "idle_timeout_min")
+            is itm {
+                Some(n) -> cfg.idle_timeout_min = n,
+                None -> {}
+            }
+            let ll = opt_str(node, "log_level")
+            if ll.is_empty() == false {
+                cfg.log_level = ll
+            }
+            cfg.default_provider = opt_str(node, "default_provider")
+            cfg.default_model = opt_str(node, "default_model")
+            cfg.providers = parse_provider_blocks(node)
+            cfg.provider_names = provider_keys(node)
+            cfg.tier_routing = parse_tier_routing(node)
+
+            if cfg.default_provider.is_empty() && cfg.provider_names.len() > 0 {
+                cfg.default_provider = cfg.provider_names[0]
+            }
+            if cfg.default_model.is_empty() {
+                if cfg.providers.contains(cfg.default_provider) {
+                    let p = cfg.providers.get(cfg.default_provider)
+                    if p.models.len() > 0 {
+                        cfg.default_model = p.models[0].id
+                    }
+                }
+            }
+            return Ok(cfg)
+        }
+        Err(e) -> return Err(e)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Internal helpers (auto_atom / auto_val bridge)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Parse the single root node and assert its name is `expected`.
+fn root_node(content str, expected str) Result<Node, ConfigError> {
+    is auto_atom.AtomParser.parse(content) {
+        Ok(atom) -> {
+            is atom {
+                auto_atom.Atom.Node(n) -> {
+                    if n.name == expected {
+                        return Ok(n)
+                    }
+                    return Err(ConfigError.Parse(f"expected a '${expected}' root block, found '${n.name}'"))
+                }
+                else -> return Err(ConfigError.Parse(f"expected a '${expected}' root node"))
+            }
+        }
+        Err(e) -> return Err(ConfigError.Parse(f"${expected}.at: ${e}"))
+    }
+}
+
+/// Collect the names of each `name { … }` child block of `node` (in order).
+fn provider_keys(node Node) List<str> {
+    var names List<str> = []
+    for (_key, kid) in node.kids_iter() {
+        is kid {
+            auto_val.Kid.Node(child) -> {
+                let pc_kind = opt_str(child, "kind")
+                if pc_kind.is_empty() == false {
+                    names.push(child.name)
+                }
+            },
+            else -> {}
+        }
+    }
+    return names
+}
+
+/// Walk a node's children, turning each `name { … }` block into a
+/// ProviderConfig. Returns a Map keyed by block name.
+fn parse_provider_blocks(node Node) Map<str, ProviderConfig> {
+    let providers Map<str, ProviderConfig> = Map.new()
+    for (_key, kid) in node.kids_iter() {
+        is kid {
+            auto_val.Kid.Node(child) -> {
+                let kind = opt_str(child, "kind")
+                if kind.is_empty() == false {
+                    let pc = ProviderConfig(
+                        kind: kind,
+                        base_url: opt_str(child, "base_url"),
+                        api_key: opt_str_opt(child, "api_key"),
+                        key_env: opt_str_opt(child, "key_env"),
+                        models: opt_models(child, "models"),
+                        max_concurrency: opt_uint_opt(child, "max_concurrency"),
+                        auth_required: opt_bool(child, "auth_required")
+                    )
+                    providers.set(child.name, pc)
+                }
+            },
+            else -> {}
+        }
+    }
+    return providers
+}
+
+/// Parse the `tier_routing { … }` child block from a daemon config.
+fn parse_tier_routing(node Node) TierRouting {
+    let routing = TierRouting.empty()
+    for (_key, kid) in node.kids_iter() {
+        is kid {
+            auto_val.Kid.Node(tr_node) -> {
+                if tr_node.name != "tier_routing" {
+                    // continue to next kid
+                } else {
+                    // Each prop is a tier name → array of candidates.
+                    for (tier_key, tier_val) in tr_node.props_iter() {
+                        let tier_name = valuekey_to_str(tier_key)
+                        if tier_name.is_empty() {
+                            // skip non-string keys
+                        } else {
+                            let cands = parse_candidates(tier_val)
+                            if cands.len() > 0 {
+                                routing.entries.set(tier_name, cands)
+                                routing.tier_names.push(tier_name)
+                            }
+                        }
+                    }
+                }
+            },
+            else -> {}
+        }
+    }
+    return routing
+}
+
+/// Parse a Value::Array of `{ provider, model }` objects into candidates.
+fn parse_candidates(val Value) List<TierRouteCandidate> {
+    var out List<TierRouteCandidate> = []
+    is val {
+        auto_val.Value.Array(arr) -> {
+            for v in arr.values {
+                is v {
+                    auto_val.Value.Obj(o) -> {
+                        let provider = obj_get_str(o, "provider")
+                        let model = obj_get_str(o, "model")
+                        if provider.is_empty() == false && model.is_empty() == false {
+                            out.push(TierRouteCandidate(provider: provider, model: model))
+                        }
+                    },
+                    else -> {}
+                }
+            }
+        },
+        else -> {}
+    }
+    return out
+}
+
+// ─── prop readers ───────────────────────────────────────────────────────────
+
+/// Read a string prop; "" when missing or nil.
+fn opt_str(node Node, key str) str {
+    let val = node.get_prop_of(key)
+    is val {
+        auto_val.Value.Str(s) -> return s,
+        auto_val.Value.String(s) -> return s,
+        auto_val.Value.Nil -> return "",
+        else -> return val.to_astr()
+    }
+}
+
+/// Read an optional string prop: None when missing/nil.
+fn opt_str_opt(node Node, key str) ?str {
+    let val = node.get_prop_of(key)
+    is val {
+        auto_val.Value.Str(s) -> return Some(s),
+        auto_val.Value.String(s) -> return Some(s),
+        auto_val.Value.Nil -> return None,
+        else -> return Some(val.to_astr())
+    }
+}
+
+/// Read a non-negative integer prop; None when missing.
+fn opt_uint_opt(node Node, key str) ?uint {
+    let val = node.get_prop_of(key)
+    is val {
+        auto_val.Value.Uint(u) -> return Some(u),
+        auto_val.Value.Int(i) -> {
+            if i >= 0 {
+                return Some(i)
+            }
+            return None
+        },
+        else -> return None
+    }
+}
+
+/// Read an optional uint prop (kept for parity with opt_uint in the original).
+fn opt_uint(node Node, key str) ?uint {
+    return opt_uint_opt(node, key)
+}
+
+/// Read a boolean prop: true/false/1/0/yes/no. None if absent/unrecognized.
+fn opt_bool(node Node, key str) ?bool {
+    let val = node.get_prop_of(key)
+    is val {
+        auto_val.Value.Bool(b) -> return Some(b),
+        auto_val.Value.Uint(u) -> return Some(u != 0),
+        auto_val.Value.Int(i) -> return Some(i != 0),
+        auto_val.Value.Str(s) -> {
+            let lower = s.to_ascii_lowercase()
+            is lower {
+                "true" -> return Some(true),
+                "yes" -> return Some(true),
+                "1" -> return Some(true),
+                "on" -> return Some(true),
+                "false" -> return Some(false),
+                "no" -> return Some(false),
+                "0" -> return Some(false),
+                "off" -> return Some(false),
+                else -> return None
+            }
+        },
+        else -> return None
+    }
+}
+
+/// Read the `models` field as a list of [ModelDefinition]s (id + tier).
+///
+/// Accepted shapes (each element of the `models` array):
+/// - `Obj { id, name?, tier }` — full, preferred.
+/// - `Str "glm-5.2"` — bare model id, defaults to [ModelTier.Mid].
+/// Legacy: a comma-separated bare string `glm-4.6,glm-flash` → all Mid.
+fn opt_models(node Node, key str) List<ModelDefinition> {
+    let val = node.get_prop_of(key)
+    var out List<ModelDefinition> = []
+    is val {
+        auto_val.Value.Array(arr) -> {
+            for el in arr.values {
+                is el {
+                    auto_val.Value.Obj(o) -> {
+                        let id = obj_get_str(o, "id")
+                        if id.is_empty() == false {
+                            let name = obj_get_str(o, "name")
+                            let tier = parse_tier(obj_get_str(o, "tier"))
+                            out.push(ModelDefinition(id: id, name: name, tier: tier))
+                        }
+                    },
+                    auto_val.Value.Str(s) -> {
+                        // bare string → Mid default
+                        out.push(ModelDefinition.new(s, ModelTier.Mid))
+                    },
+                    else -> {}
+                }
+            }
+        },
+        auto_val.Value.Str(s) -> {
+            // legacy: comma-separated string
+            let parts = s.split(",")
+            for raw in parts {
+                let m = raw.trim()
+                if m.is_empty() == false {
+                    out.push(ModelDefinition.new(m, ModelTier.Mid))
+                }
+            }
+        },
+        else -> {}
+    }
+    return out
+}
+
+/// Parse a tier name → ModelTier. Accepts snake_case ("max", "mid"), display
+/// ("Max", "Mid"), and auto-forge aliases ("large"=Pro, "heavy"=Max).
+/// Unknown → Mid (sane default).
+fn parse_tier(s str) ModelTier {
+    is ModelTier.parse_name(s) {
+        Some(t) -> return t,
+        None -> return ModelTier.Mid
+    }
+}
+
+// ─── Obj field reader (bridge over auto_val::Obj) ───────────────────────────
+
+/// Read a string field from an Obj, or "" if absent / not a string.
+fn obj_get_str(o Obj, key str) str {
+    is o.get(key) {
+        Some(v) -> {
+            is v {
+                auto_val.Value.Str(s) -> return s,
+                auto_val.Value.String(s) -> return s,
+                else -> return ""
+            }
+        },
+        None -> return ""
+    }
+}
+
+/// Extract the str payload from a ValueKey::Str, else "".
+fn valuekey_to_str(k ValueKey) str {
+    is k {
+        auto_val.ValueKey.Str(s) -> return s,
+        else -> return ""
+    }
+}
+

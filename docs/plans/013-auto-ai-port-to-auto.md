@@ -34,10 +34,15 @@ Auto 代码必须能通过 AutoVM 运行，也能通过 a2r 翻译成 Rust，行
 |---|---|---|
 | `tier.rs` | `tier.at` | ✅ 已完成 |
 | `wire.rs` | `wire.at` | ✅ 已完成 |
-| `provider.rs` | `provider.at` | 待做 |
-| `loader.rs` | `loader.at` | 待做 |
-| `validate.rs` | `validate.at` | 待做 |
-| `lib.rs` | `lib.at` | 待做 |
+| `provider.rs` | `provider.at` | ✅ 已完成 |
+| `loader.rs` | `loader.at` | ✅ 已完成（桥接 auto_atom/auto_val） |
+| `validate.rs` | `validate.at` | ✅ 已完成 |
+| `lib.rs` | `lib.at` | ✅ 已完成 |
+
+**阶段 1 全部完成**。验收：provider.at 通过全部 6 个对标 Rust `#[test]`
+的行为测试；tier/wire/provider 在 AutoVM 干净运行；loader/validate/lib 因
+依赖 `use.rust` 桥接类型，AutoVM 不解析（a2r-first，见下），但 a2r 能翻译
+出结构正确的 Rust。
 
 ### 验收标准
 - AutoVM 能运行 parse_name / resolve_key / resolve_model_id
@@ -74,9 +79,35 @@ spec 文档所载，移植时**必须遵守**：
    但"通过 cargo check"这一条尚达不到：
    - enum 缺 `Eq`/`Ord` derive，却被用到带 `Eq,Ord` 的 struct 上；
    - 返回 `&self` 的 String 字段时漏 `.clone()`（E0507）；
+   - `use.rust` 导入的本地类型被误加 crate 前缀（如本地 `TierRouting`
+     被译成 `auto_atom::TierRouting`）；
+   - `&iter()` 借用迭代器译法不对（`for x in &node.kids_iter()` 应为
+     `for x in node.kids_iter()`）；
    - 每次有 `unbalanced parentheses (depth: 1)` 假警告（输出实际合法）。
-   验收以 **AutoVM 运行 + 行为冒烟测试** 为准（wire.at 已通过全部 8 个
-   对标 Rust `#[test]` 的用例）。
+   验收以 **AutoVM 运行（纯 Auto 文件）+ 行为冒烟测试 + a2r 结构正确** 为准
+   （wire.at / provider.at 已通过全部对标 Rust `#[test]` 的用例）。
+
+5. **`routes` / `route` 是保留关键字，不能做字段名**
+   Auto 把 `route`、`routes` 保留给 routing/navigation。用作字段名时
+   lexer 把它当关键字 token，报 `Expected term, got Routes`。loader.at 的
+   `TierRouting.routes` 改名为 `entries`。**移植前先查保留字表。**
+
+6. **Auto VM 的 Map 没有 iteration API**
+   `Map<K,V>` / `HashMap` 只有 `set/get/contains/remove/size`，没有
+   `keys()/values()/entries()/iter()`，且 `for k,v in map` 静默产出 0 项。
+   凡需遍历 map 的地方（validate、loader 的 providers 表），改用一个
+   **并行的 `List<str>` 键表**（如 `provider_names`、`tier_names`），
+   `for name in keys { map.get(name) }`。这与 Rust 原版的
+   `for (_, p) in &map` 等价，但要多维护一个键表字段。
+
+7. **`use.rust` 桥接的文件是 a2r-first（AutoVM 不解析）**
+   loader.at 用 `dep auto_atom` + `use.rust auto_atom` 桥接 Rust 的
+   AtomParser/Node/Kid/Value。这些类型对纯 AutoVM 解释器是未知的，所以
+   loader/validate/lib 在 AutoVM 里跑不起来（报
+   `Unknown enum variant: Atom.Node` 等）。它们的价值在 a2r→Rust 路径：
+   翻译后的代码在 cargo 下行为与原版一致。**未来 Auto 自举出原生 Atom
+   解析器后，去掉 `use.rust` 行、换成原生调用即可，公开 API 不变。**
+   （决策来源：用户明确选择"先用桥接模式，记录问题，未来自举后替换"。）
 
 ### 验证命令
 

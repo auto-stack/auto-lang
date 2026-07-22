@@ -1,0 +1,90 @@
+/// Unified provider configuration (shared by client and daemon).
+///
+/// Replaces the two near-identical structs that previously lived separately
+/// in `auto-ai-client::config::ProviderConfig` and
+/// `auto-ai-daemon::config::ProviderEntry`. The only field unique to the
+/// daemon is `max_concurrency`, modelled as `?uint` so the client (which
+/// doesn't care about it) simply leaves it `None`.
+///
+/// Auto port of crates/ai-config/src/provider.rs (auto-ai v0.4.0).
+
+use env
+use tier: ModelDefinition
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ProviderConfig
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// One LLM provider's configuration.
+///
+/// `models` are [ModelDefinition]s (each tagged with a [tier.ModelTier]),
+/// not bare strings — so a profession's tier can be resolved to a concrete
+/// model at request time. `max_concurrency` is only meaningful to the daemon.
+type ProviderConfig {
+    /// Provider type: "anthropic" | "openai" | "zhipu".
+    kind str
+    /// API base URL.
+    base_url str
+    /// API key as a direct string (alternative to key_env).
+    api_key ?str
+    /// Environment variable name holding the API key (alternative to api_key).
+    key_env ?str
+    /// Available models, each tagged with its capability tier.
+    models List<ModelDefinition>
+    /// Daemon-only: per-provider concurrency cap. None on the client side.
+    max_concurrency ?uint
+    /// Whether this provider requires an API key for authentication. Defaults
+    /// to true. Set to false for local/no-auth providers (e.g. Ollama) —
+    /// resolve_key then returns a placeholder so the daemon can skip the
+    /// Authorization header, instead of failing with NoApiKey. (review-003 W1)
+    auth_required bool
+}
+
+ext ProviderConfig {
+    /// Resolve the API key: direct string takes precedence, else read the env
+    /// var named by key_env. None if neither is available.
+    ///
+    /// Behavior depends on auth_required:
+    /// - auth_required = true (default): no key and no key_env → None,
+    ///   so the daemon fails fast with a clear "no API key" error instead of
+    ///   sending a bogus header upstream.
+    /// - auth_required = false (local/no-auth providers like Ollama): returns
+    ///   a "no-key-needed" placeholder so the daemon can skip the
+    ///   Authorization header rather than rejecting the provider.
+    fn resolve_key() ?str {
+        // 1. Direct api_key string takes precedence.
+        is self.api_key {
+            Some(key) -> {
+                if key.is_empty() {
+                    // An explicitly-empty api_key: treat like "no key".
+                    if self.auth_required == false {
+                        return Some("no-key-needed")
+                    }
+                    return None
+                }
+                return Some(key)
+            }
+            None -> {}
+        }
+        // 2. Else read the env var named by key_env.
+        is self.key_env {
+            Some(env_name) -> {
+                let val = env.get(env_name)
+                if val.is_empty() == false {
+                    return Some(val)
+                }
+                // env var unset/empty.
+                if self.auth_required {
+                    return None
+                }
+                return Some("no-key-needed")
+            }
+            None -> {}
+        }
+        // 3. No api_key and no key_env.
+        if self.auth_required {
+            return None
+        }
+        return Some("no-key-needed")
+    }
+}

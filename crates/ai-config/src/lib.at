@@ -1,0 +1,35 @@
+/// Shared AI configuration + canonical wire types for AutoOS.
+///
+/// Three consumers:
+/// - `auto-ai-client` — sends canonical [wire.CompletionRequest]s to the
+///   daemon.
+/// - `auto-ai-daemon` — receives canonical requests and translates them to a
+///   concrete provider's format.
+/// - `auto-ai-agent` — validates Profession models against the loaded config.
+///
+/// Defining the canonical types once here keeps the client↔daemon boundary
+/// provider-neutral (no OpenAI/Anthropic shapes leak across it).
+///
+/// Auto port of crates/ai-config/src/lib.rs (auto-ai v0.4.0).
+///
+/// The Rust original re-exports the public API of each submodule via
+/// `pub use`. Auto's crate module system resolves these by `use <module>`,
+/// so this file just imports the submodules so a single `use ai-config` pulls
+/// in everything. Individual types are also re-listed below for discoverability.
+
+use tier
+use wire
+use provider
+use loader
+use validate
+
+// Convenience re-exports mirror `lib.rs`'s `pub use` block, grouped by origin.
+//
+// tier:        ModelTier, ModelDefinition, all_tiers, resolve_model_id
+// wire:        Message, ContentBlock, ToolDefinition, ToolCall,
+//              CompletionRequest, CompletionResponse, Usage
+// provider:    ProviderConfig
+// loader:      ClientConfig, DaemonConfig, ConfigError,
+//              TierRouting, TierRouteCandidate,
+//              parse_client_config, parse_daemon_config
+// validate:    validate_model_exists

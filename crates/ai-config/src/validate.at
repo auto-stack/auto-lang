@@ -1,0 +1,36 @@
+/// Cross-field validation for loaded configs.
+///
+/// Auto port of crates/ai-config/src/validate.rs (auto-ai v0.4.0).
+///
+/// Note on provider iteration: the Rust original iterates
+/// `config.providers` (a HashMap) directly. Auto's VM Map type does not yet
+/// expose an iteration API (no keys()/entries()), so ClientConfig carries a
+/// parallel `provider_names List<str>` (insertion-ordered) that consumers walk
+/// to reach each provider via `providers.get(name)`. This keeps validate.at
+/// Auto-native without changing its observable behavior.
+
+use loader: ClientConfig
+
+/// Verify that `model` exists in at least one provider's `models` list.
+///
+/// Used by `auto-ai-agent` to fail fast (with a clear message) when a
+/// Profession references a model the user hasn't configured.
+pub fn validate_model_exists(config ClientConfig, model str) Result<None, str> {
+    for name in config.provider_names {
+        let p = config.providers.get(name)
+        for m in p.models {
+            if m.id == model {
+                return Ok(None)
+            }
+        }
+    }
+    // Build the list of available model ids for the error message.
+    var available List<str> = []
+    for name in config.provider_names {
+        let p = config.providers.get(name)
+        for m in p.models {
+            available.push(m.id)
+        }
+    }
+    return Err(f"model '${model}' not found in any configured provider; available: ${available}")
+}
