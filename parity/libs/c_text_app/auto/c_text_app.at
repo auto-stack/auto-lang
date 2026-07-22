@@ -1,0 +1,39 @@
+/// c_text_app — 文本批处理消费者应用。
+///
+/// 组合 `auto.fs`（文件读写）+ 文本变换（replace / trim / lower）做批处理：
+/// 读文件 → 变换 → 写回 → 读回返回。验证 Auto 组合 stdlib 能力做文本批处理
+/// 的行为，与 Rust oracle（std::fs + str::replace/trim/to_lowercase）三方一致。
+///
+/// 消费者模式：调库能力（fs.read_text / fs.write_text）+ 字符串方法做应用。
+///
+/// 实现注记（VM 怪癖规避，Plan 367 F5）：文本变换结果都先存进局部变量再
+/// 返回（`return <方法调用>` 在 VM 里会丢值——同 string_utils/Plan 359 C2 家族）。
+/// 完整路径以内联拼接传给 fs.write_text（见 c_fs_app.at 的 a2r 注记）。
+use auto.fs
+
+/// 读文件、把 `old` 替换成 `new`、写回、读回返回。
+fn transform_replace(path str, old str, new str) str {
+    var content = fs.read_text(path)
+    var changed = content.replace(old, new)
+    fs.write_text(path, changed)
+    var back = fs.read_text(path)
+    return back
+}
+
+/// 读文件、trim 两端空白、写回、读回返回。
+fn transform_trim(path str) str {
+    var content = fs.read_text(path)
+    var changed = content.trim()
+    fs.write_text(path, changed)
+    var back = fs.read_text(path)
+    return back
+}
+
+/// 读文件、转小写、写回、读回返回。
+fn transform_lower(path str) str {
+    var content = fs.read_text(path)
+    var changed = content.lower()
+    fs.write_text(path, changed)
+    var back = fs.read_text(path)
+    return back
+}
