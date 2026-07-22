@@ -298,13 +298,33 @@ git commit -m "feat(parity): add c_fs_app to d5 phase (Plan 367 F1)"
 
 # Phase F2: c_json_app — JSON 配置处理器消费者
 
-> **⛔ 阻塞（2026-07-22 审计确认）**：VM 无法 `use auto.json`。根因是 VM parser
-> 不支持顶层 `Type.method(self Type, ...)` 声明形式（`parser.rs:7070` 在读完
-> `JsonValue` 后 `expect(LParen)` 遇到 `.` 报 E0007）。`stdlib/auto/json.at`
-> 里全部 12 个 `JsonValue.*` 方法都是这种形式。同样的 bug 还阻塞 http.at
-> (35 处)、net.at (12)、async.at (4)、llm.at (2) ——即 **F6/F7 也被同一个
-> parser bug 阻塞**。详见 §"实施后审计与后续工作" FU-1。修 FU-1 后本 Phase
-> 才能启动。
+> **⛔ 阻塞（2026-07-22 审计 + 2026-07-23 FU-1 后复核）**：
+>
+> 1. **解析层阻塞（FU-1 已修）**：原 VM parser 不支持顶层
+>    `Type.method(self Type)` 声明 + `T?` 返回 + `[T]` 泛型 + 裸 `type X`。
+>    **FU-1 已修复全部 4 个解析缺口**，`use auto.json`（及 http/net/async/llm）
+>    现在能成功加载。
+>
+> 2. **运行时层阻塞（FU-1 未解，新发现）**：即便能 `use auto.json`，VM 的
+>    json 运行时**只是占位实现**——`json.parse(s)` 原样返回输入串（不解析），
+>    每个 `json.get`/`as_string`/`as_int` 都重新解析文本串。VM 里**没有真正的
+>    `JsonValue`/`serde_json::Value`**，方法形式 `v.get(k).as_string()` 完全
+>    没接线（会 dispatch 成字符串方法）。而 a2r 用真正的 `serde_json::Value`。
+>    实测：`json.as_int(json.get(v,"n"))` 对 `{"n":42}` 在 VM 返回 **0**（get 返回
+>    带引号的 `"42"`，as_int 期望裸数字），在 a2r 返回 **42**——**三端发散**。
+>    `json.type_of` 在 a2r 无映射；`json.len`/`has_key` 在 a2r 会生成不存在的
+>    `len_str`/`has_key_str`（编译失败）。
+>
+>    **结论**：靠 `auto.json` 做三方一致目前**不可行**——VM 运行时是占位
+>    string-roundtrip，与 a2r/native 的真 Value 语义根本不一致。这不是调用约定
+>    问题，是 VM json shim 实现不完整（需把 `json.parse` 改成真正返回
+>    `serde_json::Value` 并接线方法 dispatch，或改 VM 用 opaque handle）。
+>
+>    **可选出路**（本计划不做）：照搬 `parity/libs/serde_json` 的纯 Auto 手写
+>    parser（不调 `auto.json`）——但那是"实现者模式"，失去 F2"消费者"意义。
+>
+>    **F2 状态：搁置**，等 VM json 运行时补齐（独立工作）。FU-1 已让 http/net
+>    等模块可加载，对后续 http 消费者（如果 VM http 运行时是完整的）仍有价值。
 
 **目标：** 验证 Auto 通过 `auto.json` 调 serde_json 能力（parse/encode/查询）的应用，与 Rust serde_json 行为三方一致。
 
