@@ -1,0 +1,126 @@
+/// Model tier abstraction — decouples "what capability does a profession need"
+/// (a [ModelTier]) from "which concrete model serves that tier" (a
+/// [ModelDefinition] in a provider's config).
+///
+/// Five tiers, weakest→strongest: Min < Lite < Mid < Pro < Max.
+///
+/// Auto port of crates/ai-config/src/tier.rs (auto-ai v0.4.0).
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ModelTier enum
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Cost/performance tier for model selection.
+enum ModelTier {
+    Min
+    Lite
+    Mid
+    Pro
+    Max
+}
+
+ext ModelTier {
+    /// Human-readable name for display (e.g. "Min", "Mid").
+    fn display_name() str {
+        is self {
+            ModelTier.Min -> "Min",
+            ModelTier.Lite -> "Lite",
+            ModelTier.Mid -> "Mid",
+            ModelTier.Pro -> "Pro",
+            ModelTier.Max -> "Max"
+        }
+    }
+
+    /// Short description of the tier's intended use case.
+    fn description() str {
+        is self {
+            ModelTier.Min -> "Ultra-cheap: high-volume, low-complexity tasks",
+            ModelTier.Lite -> "Cheap: routing, chat, simple coding",
+            ModelTier.Mid -> "Balanced: planning, coding, most tasks",
+            ModelTier.Pro -> "Strong: architecture, review, complex tasks",
+            ModelTier.Max -> "Ultra-strong: deepest reasoning, research"
+        }
+    }
+
+    /// Weakest→strongest ordering: Min=0 … Max=4.
+    fn order() byte {
+        is self {
+            ModelTier.Min -> 0,
+            ModelTier.Lite -> 1,
+            ModelTier.Mid -> 2,
+            ModelTier.Pro -> 3,
+            ModelTier.Max -> 4
+        }
+    }
+
+    /// Parse a tier name (case-insensitive, trims whitespace) into a
+    /// [ModelTier]. Returns None for unrecognized names.
+    ///
+    /// This is the **single source of truth** for tier-name parsing — every
+    /// call site (daemon router, agent config, .at loader) should call this
+    /// instead of maintaining its own match table (review-003 M8).
+    /// Accepted aliases (beyond the snake_case enum names):
+    /// "light" → Lite, "large" → Pro, "heavy" → Max.
+    static fn parse_name(s str) ?ModelTier {
+        let lower = s.trim().to_ascii_lowercase()
+        is lower {
+            "min" -> Some(ModelTier.Min),
+            "lite" -> Some(ModelTier.Lite),
+            "light" -> Some(ModelTier.Lite),
+            "mid" -> Some(ModelTier.Mid),
+            "pro" -> Some(ModelTier.Pro),
+            "large" -> Some(ModelTier.Pro),
+            "max" -> Some(ModelTier.Max),
+            "heavy" -> Some(ModelTier.Max),
+            else -> None
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ModelDefinition
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A concrete model entry in a provider's config, tagged with its tier.
+type ModelDefinition {
+    id str
+    name str
+    tier ModelTier
+}
+
+ext ModelDefinition {
+    /// Construct a new model definition with the given id and tier.
+    /// The display name defaults to the id.
+    static fn new(id str, tier ModelTier) ModelDefinition {
+        ModelDefinition(id: id, name: id, tier: tier)
+    }
+
+    /// Construct with an explicit display name.
+    static fn with_name(id str, name str, tier ModelTier) ModelDefinition {
+        ModelDefinition(id: id, name: name, tier: tier)
+    }
+
+    /// The display name (falls back to the id if empty).
+    fn display_name() str {
+        if self.name.is_empty() {
+            self.id
+        } else {
+            self.name
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tier resolution helper
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Resolve a [ModelTier] to a concrete model id from a list of models.
+/// Returns the first model whose tier matches, or None if no match.
+pub fn resolve_model_id(tier ModelTier, models List<ModelDefinition>) ?str {
+    for m in models {
+        if m.tier.order() == tier.order() {
+            return Some(m.id)
+        }
+    }
+    None
+}
