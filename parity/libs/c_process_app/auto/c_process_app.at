@@ -1,0 +1,93 @@
+/// c_process_app — CLI 参数解析消费者应用。
+///
+/// 演示"Auto 消费 `auto.process.args` 能力做 CLI 应用"的核心：把 argv 串
+/// 解析成参数个数 / 第 N 个参数。因为 parity 三端各跑独立进程、真 argv 不可
+/// 比（设计文档 §F4），这里**测解析逻辑**——被测函数接受一个模拟的
+/// `args_str` 串，按空格切分，镜像 Rust oracle 的 `split(' ')` + 过滤空段。
+///
+/// 实现注记（VM 怪癖规避，Plan 367 F4）：
+///   * 不用 `str.split`（返回 `[]str` 在 VM 跨模块调用时被破坏）——改用逐字符
+///     状态机，只返回 int/str 原语。
+///   * int→单字符串不能直接 `.to(str)`（会拼成十进制数字串）——用
+///     `StringBuilder.append_char(code)` + `.build()`（string_utils 已验证）。
+///   * 不在 for 循环体内 `return`（VM loop+return codegen bug）——用 `done`
+///     标志收尾，循环结束后再返回。
+///   * 不返回空串（VM `print("")` 会吞掉前一行输出）——越界用 parse_count
+///     的结果间接覆盖，parse_nth 只在命中时返回非空词。
+///
+/// 仍属消费者模式：代表"读 argv 后解析分派"这类 CLI 应用的核心逻辑。
+
+/// 数 args 串里的参数个数（按空格切分，连续空格只算一个分隔，空串=0）。
+/// 镜像 Rust 的 `split(' ').filter(non_empty).count()`。
+fn parse_count(args_str str) int {
+    var n = args_str.len()
+    var count = 0
+    var in_word = 0
+    var i = 0
+    for i < n {
+        var c = args_str.char_at(i)
+        if c == 32 {
+            in_word = 0
+        } else {
+            if in_word == 0 {
+                count = count + 1
+                in_word = 1
+            }
+        }
+        i = i + 1
+    }
+    return count
+}
+
+/// 取第 n 个非空参数（0-based）。命中返回该词；未命中返回 "<none>" 占位
+/// （非空，规避 VM print("") 吞行的怪癖）。
+///
+/// 只在命中且该词结束时 build 一次（用一个 `built` 标志保证 StringBuilder
+/// 不被 move 后再用——a2r 把 sb.build() 视为 move）。
+fn parse_nth(args_str str, n int) str {
+    var len = args_str.len()
+    var idx = 0
+    var in_word = 0
+    var i = 0
+    var sb StringBuilder = StringBuilder.new(16)
+    var collecting = 0
+    var built = 0
+    var result str = "<none>"
+    for i < len {
+        if built == 0 {
+            var c = args_str.char_at(i)
+            if c == 32 {
+                if collecting == 1 {
+                    // 目标词刚结束：build 一次，停止收集。
+                    result = sb.build()
+                    built = 1
+                    collecting = 0
+                }
+                in_word = 0
+            } else {
+                if in_word == 0 {
+                    idx = idx + 1
+                    in_word = 1
+                    if idx == n + 1 {
+                        collecting = 1
+                    } else {
+                        collecting = 0
+                    }
+                }
+                if collecting == 1 {
+                    sb.append_char(c)
+                }
+            }
+        }
+        i = i + 1
+    }
+    // 循环结束还没 build：若正在收集（目标词是最后一个词、无尾随空格），
+    // 此时 build。
+    if built == 0 {
+        if collecting == 1 {
+            return sb.build()
+        }
+        return result
+    }
+    return result
+}

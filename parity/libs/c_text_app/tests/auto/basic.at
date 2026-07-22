@@ -1,0 +1,46 @@
+/// c_text_app tests — 文本批处理消费者 TAP 断言。
+///
+/// 测试名镜像 Rust oracle（tests/rust/tests/c_text_app.rs）。
+/// 每个用例先写种子文件、再调被测变换函数、再断言读回结果。
+/// 用固定相对目录 `c_text_app_tmp`；三方各自工作目录，路径互不共享，只对比 TAP。
+/// 所有路径用字符串字面量直接传递，规避 a2r 拼接参数怪癖（见 c_fs_app.at 注记）。
+use auto.c_text_app: transform_replace, transform_trim, transform_lower
+use auto.fs
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got [" + actual + "] want [" + expected + "]")
+    }
+}
+
+fn main() {
+    fs.create_dir("c_text_app_tmp")
+
+    // transform_replace
+    fs.write_text("c_text_app_tmp/r1.txt", "hello world world")
+    check_str(1, "test_replace_basic", transform_replace("c_text_app_tmp/r1.txt", "world", "auto"), "hello auto auto")
+    fs.write_text("c_text_app_tmp/r2.txt", "no match here")
+    check_str(2, "test_replace_no_match", transform_replace("c_text_app_tmp/r2.txt", "xyz", "abc"), "no match here")
+
+    // transform_trim
+    fs.write_text("c_text_app_tmp/t1.txt", "  hello  ")
+    check_str(3, "test_trim_both", transform_trim("c_text_app_tmp/t1.txt"), "hello")
+    fs.write_text("c_text_app_tmp/t2.txt", "already")
+    check_str(4, "test_trim_none", transform_trim("c_text_app_tmp/t2.txt"), "already")
+
+    // transform_lower
+    fs.write_text("c_text_app_tmp/l1.txt", "Hello WORLD")
+    check_str(5, "test_lower_mixed", transform_lower("c_text_app_tmp/l1.txt"), "hello world")
+    fs.write_text("c_text_app_tmp/l2.txt", "already_lower")
+    check_str(6, "test_lower_already", transform_lower("c_text_app_tmp/l2.txt"), "already_lower")
+}

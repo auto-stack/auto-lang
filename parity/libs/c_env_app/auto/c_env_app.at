@@ -1,0 +1,27 @@
+/// c_env_app — 环境变量消费者应用。
+///
+/// 通过 `use auto.env` 消费 stdlib 环境变量能力（底层 std::env），
+/// 验证 Auto 消费 std::env 的行为，与 Rust oracle（直调 std::env）三方一致。
+///
+/// 消费者模式：Auto 调用库能力（get / set / get_or）做环境变量读写。
+///
+/// 确定性（设计文档 §F3）：env 是进程级共享，三端在各自独立进程里跑。
+/// 因此只测"本进程内 set(k,v) → get(k) == v"这个**行为模式**是否一致，
+/// 不跨进程比对同一个 env 值。每端用唯一 key（C_ENV_APP_TEST_*）避免互相污染。
+use auto.env
+
+/// set 再 get 回，验证往返（确定性：本进程内 set 一定可见）。
+fn set_and_get(key str, val str) str {
+    env.set(key, val)
+    return env.get(key)
+}
+
+/// get 不存在的 key 返回空串（VM 语义）。
+fn get_missing(key str) str {
+    return env.get(key)
+}
+
+/// get_or：存在返回值，不存在返回 default。
+fn get_or_value(key str, default str) str {
+    return env.get_or(key, default)
+}

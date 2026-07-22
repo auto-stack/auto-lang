@@ -101,7 +101,8 @@ fn main() {
             // Verified phases included in the dashboard. P1/P2 are the Plan
             // 355 core; D1/D2 are Plan 358 additions; P4's tokio is L1 (reqwest
             // is auto-skipped if absent). P3 (sha2/rusqlite) stays L3 roadmap.
-            let phases = ["p1", "p2", "d1", "d2", "d4", "p4"];
+            // D5 is Plan 367 consumer-mode parity (Auto as library consumer).
+            let phases = ["p1", "p2", "d1", "d2", "d4", "d5", "p4"];
             let mut reports = Vec::new();
             for phase in &phases {
                 let libs = discover_libraries_by_phase(&root, phase);
@@ -267,6 +268,10 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         ("d1", &["cli_app"]),
         ("d2", &["trait_advanced"]),
         ("d4", &["string_utils"]),
+        // Plan 367 (consumer-mode parity): Layer 1 consumer apps. Each calls
+        // `auto.<module>` stdlib and is compared three-way with a native Rust
+        // oracle that calls the same underlying crate directly.
+        ("d5", &["c_fs_app", "c_env_app", "c_process_app", "c_text_app"]),
     ];
 
     for (p, libs) in phase_map {

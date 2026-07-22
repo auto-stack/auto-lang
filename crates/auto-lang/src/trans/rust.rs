@@ -3284,13 +3284,13 @@ impl RustTrans {
                         "fs" => match method.as_str() {
                             "read_to_string" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_to_string(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "read_text" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_text(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -3298,21 +3298,27 @@ impl RustTrans {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
-                                    if i == 1 { write!(out, "&")?; }
-                                    self.arg(arg, out)?;
+                                    if let Arg::Pos(expr) = arg {
+                                        // Plan 367: borrow both path (i==0) and content (i==1)
+                                        // as &str so owned strings (e.g. from concatenation) are
+                                        // not moved out of scope at the call site.
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
                                 }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "exists" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::exists(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "create_dir" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::create_dir(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -3320,8 +3326,15 @@ impl RustTrans {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
-                                    if i == 1 { write!(out, "&")?; }
-                                    self.arg(arg, out)?;
+                                    // Plan 367: borrow both path (i==0) and content (i==1) as
+                                    // &str (a2r_std::fs::write_text takes (&str, &str)). Borrowing
+                                    // instead of moving lets an owned path String (e.g. built from
+                                    // concatenation) be reused by a subsequent fs.read_text call.
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
                                 }
                                 write!(out, ")")?;
                                 return Ok(());
@@ -4037,8 +4050,8 @@ impl RustTrans {
                     let needs_i32_cast_1 = matches!(method_name.as_str(), "len" | "length");
                     let rust_method = match method_name.as_str() {
                         // String methods
-                        "to_lower" => Some("to_lowercase"),
-                        "to_upper" => Some("to_uppercase"),
+                        "to_lower" | "lower" => Some("to_lowercase"),
+                        "to_upper" | "upper" => Some("to_uppercase"),
                         "length" | "len" => Some("len"),
                         "is_empty" => Some("is_empty"),
                         "trim" => Some("trim"),
@@ -4550,6 +4563,20 @@ impl RustTrans {
                     return Ok(());
                 }
                 "set" => {
+                    // Plan 367: skip the Map.set -> HashMap::insert rewrite when the
+                    // receiver is a known stdlib module identifier (env.set / fs.set /
+                    // json.set / ...). Those are stdlib calls that must fall through
+                    // to the (module, method) stdlib routing below; rewriting them to
+                    // `<module>.insert(...)` produces invalid Rust (E0423: module has
+                    // no method `insert`). `_ => {}` here lets the later dispatch
+                    // handle `env.set` -> `a2r_std::env::set`.
+                    let receiver_is_stdlib_module = matches!(object.as_ref(),
+                        Expr::Ident(name) if matches!(name.as_str(),
+                            "env" | "json" | "fs" | "file" | "http" | "io"
+                            | "shell" | "regex" | "math" | "str" | "time" | "process"));
+                    if receiver_is_stdlib_module {
+                        // fall through to the stdlib (module, method) routing.
+                    } else {
                     // Map.set(key, val) -> HashMap::insert(key, val)
                     self.expr(object, out)?;
                     write!(out, ".insert(")?;
@@ -4595,24 +4622,53 @@ impl RustTrans {
                     }
                     write!(out, ")")?;
                     return Ok(());
+                    } // end else (non-stdlib Map.set rewrite)
+                    // (stdlib module receiver: fall through to _ => {} below)
                 }
                 _ => {} // fall through to regular method handling
             }
 
-            // env.get_or() and env.args() must work regardless of whether env is
-            // a local variable (it could be shadowed by a local var named "env").
+            // env.* stdlib calls must work regardless of whether env is a local
+            // variable (it could be shadowed by a local var named "env").
             // These always route to the a2r_std::env module.
-            // Note: env.set() is NOT handled here — it goes through Bina dispatch "set"
-            // which correctly generates env.insert("key".to_string(), "val".to_string())
-            // because HashMap<String,String> requires String arguments.
+            // Plan 367: env.set is now routed here too — the generic Map.set
+            // -> HashMap::insert rewrite (which used to capture env.set and emit
+            // `env.insert(...)`, producing invalid Rust E0423) now skips stdlib
+            // module receivers, so env.set falls through to this handler.
             if let Expr::Ident(type_name) = object.as_ref() {
                 if type_name == "env" {
                     match method_name.as_str() {
+                        "get" => {
+                            self.a2r_std_used.set(true); write!(out, "a2r_std::env::get(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        "set" => {
+                            self.a2r_std_used.set(true); write!(out, "a2r_std::env::set(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 { write!(out, ", ")?; }
+                                if let Arg::Pos(expr) = arg {
+                                    // env::set takes (&str, &str) — borrow owned
+                                    // string args (e.g. a path/key built from concat)
+                                    // so they are not moved.
+                                    self.expr_as_str(expr, out)?;
+                                } else {
+                                    self.arg(arg, out)?;
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
                         "get_or" => {
                             self.a2r_std_used.set(true); write!(out, "a2r_std::env::get_or(")?;
                             for (i, arg) in call.args.args.iter().enumerate() {
                                 if i > 0 { write!(out, ", ")?; }
-                                self.arg(arg, out)?;
+                                if let Arg::Pos(expr) = arg {
+                                    self.expr_as_str(expr, out)?;
+                                } else {
+                                    self.arg(arg, out)?;
+                                }
                             }
                             write!(out, ")")?;
                             return Ok(());
@@ -5114,8 +5170,8 @@ impl RustTrans {
 
             let rust_method = match method_name.as_str() {
                 // String methods
-                "to_lower" => Some("to_lowercase"),
-                "to_upper" => Some("to_uppercase"),
+                "to_lower" | "lower" => Some("to_lowercase"),
+                "to_upper" | "upper" => Some("to_uppercase"),
                 "length" | "len" => Some("len"),
                 "is_empty" => Some("is_empty"),
                 "trim" => Some("trim"),
