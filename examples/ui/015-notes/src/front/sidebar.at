@@ -96,8 +96,7 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                                         "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                     }
                                 }
-                            }
-                            if .store.active_tag != "" {
+                            } else {
                                 if note.tags.contains(.store.active_tag) {
                                     button {
                                         text note.title { style: "block truncate" }
@@ -135,8 +134,7 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                                         "w-full text-left px-5 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                     }
                                 }
-                            }
-                            if .store.active_tag != "" {
+                            } else {
                                 if note.tags.contains(.store.active_tag) {
                                     button {
                                         text note.title { style: "block truncate" }
@@ -174,8 +172,7 @@ widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int)
                                         "w-full text-left px-5 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                     }
                                 }
-                            }
-                            if .store.active_tag != "" {
+                            } else {
                                 if note.tags.contains(.store.active_tag) {
                                     button {
                                         text note.title { style: "block truncate" }

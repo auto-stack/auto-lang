@@ -2648,6 +2648,49 @@ impl VueGenerator {
                 }
 
                 if let Some(else_nodes) = else_body {
+                    // Plan 367 P2-1: if else_body is a single Conditional node,
+                    // it's an "else if" chain → generate v-else-if (not nested v-else).
+                    if else_nodes.len() == 1 {
+                        if let AuraNode::Conditional { condition: else_cond, then_body: else_then, else_body: inner_else, .. } = &else_nodes[0] {
+                            let else_if_cond = self.convert_condition(else_cond);
+                            let mut else_if_html = String::new();
+                            for child in else_then {
+                                else_if_html.push_str(&self.node_to_html(child, indent + 1)?);
+                            }
+                            // Recursively handle inner_else (could be another else-if or a final else)
+                            let inner_part = if let Some(inner_nodes) = inner_else {
+                                // Check if inner is also a single Conditional (continuation of else-if chain)
+                                if inner_nodes.len() == 1 {
+                                    if let AuraNode::Conditional { .. } = &inner_nodes[0] {
+                                        // Recurse: generate v-else-if for this inner conditional
+                                        let inner_html = self.node_to_html(&inner_nodes[0], indent)?;
+                                        // Strip leading indentation from recursive call to match our format
+                                        let inner_trimmed = inner_html.trim_start();
+                                        format!("{}<template v-else>\n{}{}</template>\n", ind, inner_trimmed, ind)
+                                    } else {
+                                        let mut h = String::new();
+                                        for child in inner_nodes {
+                                            h.push_str(&self.node_to_html(child, indent + 1)?);
+                                        }
+                                        format!("{}<template v-else>\n{}{}</template>\n", ind, h, ind)
+                                    }
+                                } else {
+                                    let mut h = String::new();
+                                    for child in inner_nodes {
+                                        h.push_str(&self.node_to_html(child, indent + 1)?);
+                                    }
+                                    format!("{}<template v-else>\n{}{}</template>\n", ind, h, ind)
+                                }
+                            } else {
+                                String::new()
+                            };
+                            return Ok(format!(
+                                "{}<template v-if=\"{}\">\n{}{}</template>\n{}<template v-else-if=\"{}\">\n{}{}</template>\n{}",
+                                ind, vue_condition, then_html, ind, ind, else_if_cond, else_if_html, ind, inner_part
+                            ));
+                        }
+                    }
+                    // Normal else (not else-if)
                     let mut else_html = String::new();
                     for child in else_nodes {
                         else_html.push_str(&self.node_to_html(child, indent + 1)?);

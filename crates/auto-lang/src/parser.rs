@@ -11396,21 +11396,30 @@ impl<'a> Parser<'a> {
         // Check for else clause
         let else_body = if self.cur.text.as_str() == "else" {
             self.expect_ident("else")?;
-            self.expect(TokenKind::LBrace)?;
-            self.skip_empty_lines();
+            // Plan 367 P2-1: support "else if" chains by peeking for "if"
+            // after "else". If found, recursively parse the conditional
+            // and wrap it as a single-element else_body. This naturally
+            // handles multi-level "else if ... else if ... else" chains.
+            if self.cur.text.as_str() == "if" {
+                let nested = self.parse_view_conditional()?;
+                Some(vec![nested])
+            } else {
+                self.expect(TokenKind::LBrace)?;
+                self.skip_empty_lines();
 
-            let mut else_nodes = Vec::new();
-            while !self.is_kind(TokenKind::RBrace) {
-                self.skip_empty_lines();
-                if self.is_kind(TokenKind::RBrace) {
-                    break;
+                let mut else_nodes = Vec::new();
+                while !self.is_kind(TokenKind::RBrace) {
+                    self.skip_empty_lines();
+                    if self.is_kind(TokenKind::RBrace) {
+                        break;
+                    }
+                    let node = self.parse_view_node()?;
+                    else_nodes.push(node);
+                    self.skip_empty_lines();
                 }
-                let node = self.parse_view_node()?;
-                else_nodes.push(node);
-                self.skip_empty_lines();
+                self.expect(TokenKind::RBrace)?;
+                Some(else_nodes)
             }
-            self.expect(TokenKind::RBrace)?;
-            Some(else_nodes)
         } else {
             None
         };
