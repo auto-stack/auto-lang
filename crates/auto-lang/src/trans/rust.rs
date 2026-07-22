@@ -4050,8 +4050,8 @@ impl RustTrans {
                     let needs_i32_cast_1 = matches!(method_name.as_str(), "len" | "length");
                     let rust_method = match method_name.as_str() {
                         // String methods
-                        "to_lower" => Some("to_lowercase"),
-                        "to_upper" => Some("to_uppercase"),
+                        "to_lower" | "lower" => Some("to_lowercase"),
+                        "to_upper" | "upper" => Some("to_uppercase"),
                         "length" | "len" => Some("len"),
                         "is_empty" => Some("is_empty"),
                         "trim" => Some("trim"),
@@ -5170,8 +5170,8 @@ impl RustTrans {
 
             let rust_method = match method_name.as_str() {
                 // String methods
-                "to_lower" => Some("to_lowercase"),
-                "to_upper" => Some("to_uppercase"),
+                "to_lower" | "lower" => Some("to_lowercase"),
+                "to_upper" | "upper" => Some("to_uppercase"),
                 "length" | "len" => Some("len"),
                 "is_empty" => Some("is_empty"),
                 "trim" => Some("trim"),
