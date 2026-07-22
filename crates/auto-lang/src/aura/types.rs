@@ -195,6 +195,9 @@ pub struct AuraStore {
 
     /// API function names imported via `use back.api` (→ import in composable)
     pub api_imports: Vec<String>,
+
+    /// Computed properties (Plan 367 P2-2: → getters in store composable)
+    pub computed: Vec<AuraComputed>,
 }
 
 

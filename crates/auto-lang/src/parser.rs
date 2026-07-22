@@ -10273,6 +10273,7 @@ impl<'a> Parser<'a> {
         let mut messages = Vec::new();
         let mut model = None;
         let mut on = None;
+        let mut computed = None;
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -10287,13 +10288,16 @@ impl<'a> Parser<'a> {
                 "model" => {
                     model = Some(self.parse_model_block_inner()?);
                 }
+                "computed" => {
+                    computed = Some(self.parse_computed_block_inner()?);
+                }
                 "on" => {
                     on = Some(self.parse_on_block()?);
                 }
                 _ => {
                     return Err(SyntaxError::Generic {
                         message: format!(
-                            "Expected 'model', 'msg', or 'on' in store, got '{}'",
+                            "Expected 'model', 'msg', 'computed', or 'on' in store, got '{}'",
                             ident
                         ),
                         span: pos_to_span(self.cur.pos),
@@ -10309,6 +10313,7 @@ impl<'a> Parser<'a> {
             name,
             messages,
             model,
+            computed,
             on,
         }))
     }

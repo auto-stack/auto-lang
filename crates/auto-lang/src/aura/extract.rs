@@ -431,6 +431,19 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
     } else {
         (HashMap::new(), HashMap::new())
     };
+    // Plan 367 P2-2: extract computed properties (same pattern as widget)
+    let computed: Vec<AuraComputed> = if let Some(ref computed_block) = decl.computed {
+        computed_block.properties.iter()
+            .map(|p| {
+                Ok(AuraComputed {
+                    name: p.name.as_str().to_string(),
+                    expr: p.expr.clone(),
+                })
+            })
+            .collect::<ExtractResult<Vec<_>>>()?
+    } else {
+        Vec::new()
+    };
     Ok(AuraStore {
         name: decl.name.as_str().to_string(),
         state_vars,
@@ -438,6 +451,7 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
         handlers,
         handler_params,
         api_imports: Vec::new(),
+        computed,
     })
 }
 

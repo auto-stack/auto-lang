@@ -8143,6 +8143,18 @@ export function cn(...inputs: ClassValue[]) {
             code.push_str("        },\n");
         }
 
+        // Plan 367 P2-2: user-declared computed properties → JS getters.
+        // Uses ts_adapter to transpile the expression, with store state_names
+        // as context (so .value is appended correctly to module-level refs).
+        for computed_prop in &store.computed {
+            let mut buf = Vec::new();
+            crate::ui_gen::ts_adapter::transpile_expr_pub(&computed_prop.expr, &ctx, &mut buf);
+            let expr_js = String::from_utf8_lossy(&buf);
+            code.push_str(&format!("        get {}() {{\n", computed_prop.name));
+            code.push_str(&format!("            return {};\n", expr_js.trim()));
+            code.push_str("        },\n");
+        }
+
         code.push_str("    }\n");
         code.push_str("}\n");
 

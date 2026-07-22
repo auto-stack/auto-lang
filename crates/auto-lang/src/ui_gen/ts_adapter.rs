@@ -269,6 +269,11 @@ fn transpile_for(for_loop: &For, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 // Expression transpilation — AURA-aware with a2ts delegation
 // ---------------------------------------------------------------------------
 
+/// Public wrapper for transpile_expr (Plan 367 P2-2: store computed needs it).
+pub fn transpile_expr_pub(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
+    transpile_expr(expr, ctx, out);
+}
+
 fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
     match expr {
         // === AURA-specific rewrites ===
@@ -590,16 +595,17 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 
         // Closure: x => expr or (a, b) => expr
         // Must use transpile_expr (not delegate) so StateRef gets .value inside closures
+        // Plan 367 P2-2: add ': any' type annotations for TS strict mode.
         Expr::Closure(closure) => {
             if closure.params.len() == 1 {
-                write!(out, "{}", closure.params[0].name).ok();
+                write!(out, "({}: any)", closure.params[0].name).ok();
             } else {
                 write!(out, "(").ok();
                 for (i, param) in closure.params.iter().enumerate() {
                     if i > 0 {
                         write!(out, ", ").ok();
                     }
-                    write!(out, "{}", param.name).ok();
+                    write!(out, "{}: any", param.name).ok();
                 }
                 write!(out, ")").ok();
             }

@@ -72,6 +72,9 @@ pub struct StoreDecl {
     /// State/model declaration
     pub model: Option<ModelBlock>,
 
+    /// Computed properties (Plan 367 P2-2)
+    pub computed: Option<ComputedBlock>,
+
     /// Event handlers
     pub on: Option<OnBlock>,
 }

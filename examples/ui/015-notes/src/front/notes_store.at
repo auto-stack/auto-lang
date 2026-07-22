@@ -31,6 +31,10 @@ store NotesStore {
               UpdateTags(int), ToggleDarkMode, SetAccent(str),
               SelectFolder(str), SelectTag(str), MoveNote(int) }
 
+    computed {
+        pinned_notes => .notes.filter(n => n.pinned)
+    }
+
     on {
         .Init -> {
             .loading = true
