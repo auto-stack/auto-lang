@@ -37,9 +37,10 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 235-a2vue | a2vue Transpiler Gaps | ✅ | ts_adapter fixes + storage/event/json/math/date/router builtins |
 | 238 | Charts Replica | ✅ | area/bar/line/donut chart registry + prop mapping |
 | 356 | Vue Generator OOM / Recursion Fix | ✅ | Parser OOM (reserved-kw loop var) + ident.field iterable + soft-kw in conditions; full 015-notes sidebar regenerates |
+| 365 | AutoUI Pluggable Host Architecture | ⏳ | One app core (VTree=AutoTree), three hosts: dev host (Windows), libcosmic host (COSMIC target), AutoOS shared compositor (deferred); system ports with Linux adapters + Windows mocks |
 
 ## Status Summary
-- Completed: 16 | Partial: 4 | Planned: 10 | Deprecated: 0
+- Completed: 16 | Partial: 4 | Planned: 11 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL

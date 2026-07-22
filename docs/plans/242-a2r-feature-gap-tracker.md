@@ -14,7 +14,7 @@ This tracker serves as a **living document** that inventories all outstanding a2
 
 | # | Feature | Status | Plan | Difficulty | Owner | Blockers | Completion Date |
 |---|---------|--------|------|------------|-------|----------|-----------------|
-| 1 | Generic constraints output (`<T: Trait>`) | ⏳ Planned | 166 | ⭐ Low | — | None | — |
+| 1 | Generic constraints output (`<T: Trait>`) | ⏳ Planned | 166 / 364 | ⭐ Low | — | fn-level done (Plan 166); type/impl-level + multi-bound tracked in Plan 364 W3 | — |
 | 2 | HashMap literal transpilation | ⚠️ Workaround | 159 | ⭐⭐ Low-Mid | — | Type context propagation in transpiler | — |
 | 3 | `.to(Type)` method keyword | ⏳ Planned | 162 | ⭐⭐ Low-Mid | — | None (`.as(Type)` provides reference pattern) | — |
 | 4 | `Result<T>` error handling chains | 🔧 Partial | 159 | ⭐⭐ Mid | — | None | — |

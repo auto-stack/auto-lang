@@ -41,9 +41,10 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 240 | Rust Cookbook a2r Tests | ✅ | Systematic a2r test suite — 163 .at files, 124/124 pass, all assert-based; DB/async/cc stubs handed off to Plan 242 #10/#12/#17 |
 | 241 | a2r String Type Cleanup | ✅ | Fix get_or/insert .to_string() heuristics, return newline support, not-in-if |
 | 264 | a2r Dot to Double Colon | ✅ | module_types mapping, qualify_type_name(), use stmt path handling for `.` → `::` |
+| 364 | a2r COSMIC Replication Readiness | ⏳ | Dotted attribute-macro annotations, multi-bound `#[with(T as A + B)]`, move closures, full `~{}` statements, stream parity — closing a2r gaps for COSMIC desktop replication |
 
 ## Status Summary
-- Completed: 15 | Partial: 3 | Planned: 12 | Deprecated: 0
+- Completed: 15 | Partial: 3 | Planned: 13 | Deprecated: 0
 
 ## Key Achievements
 - Complete transpiler suite: a2c (106 tests), a2r (144 tests), a2ts (24 tests), a2p (96 tests), a2j (9 tests)
