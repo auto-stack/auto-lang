@@ -44,8 +44,7 @@ widget App {
                     style: "flex-1 min-h-0"
                     if .store.notes.len() > 0 {
                         EditorPanel(note: .store.notes[.store.active_id], on_delete: .DeleteActive, on_toggle_pin: .TogglePin, on_tags_changed: .TagsChanged)
-                    }
-                    if .store.notes.len() == 0 {
+                    } else {
                         col {
                             style: "flex-1 items-center justify-center bg-card rounded-xl shadow-sm"
                             text "📝" { style: "text-6xl mb-4 opacity-40" }

@@ -39,8 +39,7 @@ widget EditorPanel(note: Note, on_delete: msg, on_toggle_pin: msg, on_tags_chang
                             }
                         }
                     }
-                }
-                if .editing == true {
+                } else {
                     input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-xl font-bold text-foreground bg-transparent border-b border-border outline-none w-full focus:border-primary p-1 transition-colors" }
                 }
                 text .note.time { style: "text-xs text-muted-foreground mt-1" }
@@ -81,8 +80,7 @@ widget EditorPanel(note: Note, on_delete: msg, on_toggle_pin: msg, on_tags_chang
                         show_actions: false
                         style: "flex-1 min-h-64 mt-4 border border-border rounded-lg overflow-hidden"
                     }
-                }
-                if .editing == false {
+                } else {
                     autodown_editor {
                         content: .note.body
                         can_edit: false
@@ -100,8 +98,7 @@ widget EditorPanel(note: Note, on_delete: msg, on_toggle_pin: msg, on_tags_chang
                         onclick: .Edit
                         style: "px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg shadow-sm hover:bg-primary/90 font-medium transition-colors"
                     }
-                }
-                if .editing == true {
+                } else {
                     row {
                         style: "gap-2"
                         button "Save" {
