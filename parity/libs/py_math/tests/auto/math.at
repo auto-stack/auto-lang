@@ -1,0 +1,41 @@
+// py_math Auto test — TAP output format (Plan 369 Python parity).
+// The parity runner sets the working directory to the library root
+// (parity/libs/py_math), so `use.py math` resolves the Python stdlib module.
+//
+// Test names MUST match tests/python/test_math.py because the comparator joins
+// backends by name. The function set is chosen so every case is deterministic
+// and yields a plain integer, keeping the P0 skeleton a clean green baseline
+// (see README for the known AutoVM divergences on gcd/fabs that motivated
+// excluding those two).
+//
+// Plan 369 P1: expanded with log2/log10/isfinite/isinf/isnan/sin/cos. Float
+// returns are coerced via .to(int); boolean predicates are compared against
+// 0/1 (PyFFI marshals Python bool to int). math.pi / math.e are omitted: the
+// AutoVM returns 0 for module-attribute access (a known FFI limitation).
+use.py math: ceil, floor, factorial, trunc, isqrt, sqrt, pow, log2, log10, isfinite, isinf, isnan, sin, cos
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn main() {
+    if ceil(3.2) == 4 { tap_ok(1, "test_ceil") } else { tap_not_ok(1, "test_ceil", "got " + ceil(3.2).to(str)) }
+    if floor(3.8) == 3 { tap_ok(2, "test_floor") } else { tap_not_ok(2, "test_floor", "got " + floor(3.8).to(str)) }
+    if factorial(5) == 120 { tap_ok(3, "test_factorial") } else { tap_not_ok(3, "test_factorial", "got " + factorial(5).to(str)) }
+    if trunc(3.7) == 3 { tap_ok(4, "test_trunc") } else { tap_not_ok(4, "test_trunc", "got " + trunc(3.7).to(str)) }
+    if isqrt(17) == 4 { tap_ok(5, "test_isqrt") } else { tap_not_ok(5, "test_isqrt", "got " + isqrt(17).to(str)) }
+    if sqrt(16).to(int) == 4 { tap_ok(6, "test_sqrt_int") } else { tap_not_ok(6, "test_sqrt_int", "got " + sqrt(16).to(str)) }
+    if pow(2, 10).to(int) == 1024 { tap_ok(7, "test_pow_int") } else { tap_not_ok(7, "test_pow_int", "got " + pow(2, 10).to(str)) }
+    // Plan 369 P1: expanded coverage (see header comment).
+    if log2(8).to(int) == 3 { tap_ok(8, "test_log2") } else { tap_not_ok(8, "test_log2", "got " + log2(8).to(str)) }
+    if log10(1000).to(int) == 3 { tap_ok(9, "test_log10") } else { tap_not_ok(9, "test_log10", "got " + log10(1000).to(str)) }
+    if isfinite(5) == 1 { tap_ok(10, "test_isfinite") } else { tap_not_ok(10, "test_isfinite", "got " + isfinite(5).to(str)) }
+    if isinf(5) == 0 { tap_ok(11, "test_isinf") } else { tap_not_ok(11, "test_isinf", "got " + isinf(5).to(str)) }
+    if isnan(5) == 0 { tap_ok(12, "test_isnan") } else { tap_not_ok(12, "test_isnan", "got " + isnan(5).to(str)) }
+    if sin(0).to(int) == 0 { tap_ok(13, "test_sin_zero") } else { tap_not_ok(13, "test_sin_zero", "got " + sin(0).to(str)) }
+    if cos(0).to(int) == 1 { tap_ok(14, "test_cos_zero") } else { tap_not_ok(14, "test_cos_zero", "got " + cos(0).to(str)) }
+}

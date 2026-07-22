@@ -101,9 +101,8 @@ fn main() {
             // Verified phases included in the dashboard. P1/P2 are the Plan
             // 355 core; D1/D2 are Plan 358 additions; P4's tokio is L1 (reqwest
             // is auto-skipped if absent). P3 (sha2/rusqlite) stays L3 roadmap.
-            // D5/D6 are Plan 368 consumer-mode parity (Auto as library
-            // consumer); D6 libs need a live mock server (Layer 2 HTTP).
-            let phases = ["p1", "p2", "d1", "d2", "d4", "d5", "d6", "p4"];
+            // D5 is Plan 367 consumer-mode parity (Auto as library consumer).
+            let phases = ["p1", "p2", "d1", "d2", "d4", "d5", "p4"];
             let mut reports = Vec::new();
             for phase in &phases {
                 let libs = discover_libraries_by_phase(&root, phase);
@@ -159,7 +158,12 @@ fn run_library(config: &RunConfig) {
 
     println!();
     println!("{}", "=".repeat(60));
-    println!("Checking library: {}", config.library);
+    let mode = detect_parity_mode(&config);
+    let mode_label = match mode {
+        ParityMode::Python => " [Python parity]",
+        ParityMode::Rust => "",
+    };
+    println!("Checking library: {}{}", config.library, mode_label);
     println!("{}", "=".repeat(60));
 
     match build_comparison_report(&config) {
@@ -194,21 +198,50 @@ fn build_comparison_report(config: &RunConfig) -> Result<ComparisonReport, Strin
         eprintln!("mock-server: started for {} (will be killed after the run)", config.library);
     }
 
-    // Run all three backends. Log + swallow per-backend failures so a single
-    // broken backend doesn't abort an aggregate `report` run; the missing
-    // results show up as divergences in the comparison.
-    let vm_results = runner::run_vm(config).unwrap_or_else(|e| {
-        eprintln!("VM backend error for {}: {}", config.library, e);
-        Vec::new()
-    });
-    let a2r_results = runner::run_a2r(config).unwrap_or_else(|e| {
-        eprintln!("a2r backend error for {}: {}", config.library, e);
-        Vec::new()
-    });
-    let rust_results = runner::run_rust(config).unwrap_or_else(|e| {
-        eprintln!("Rust backend error for {}: {}", config.library, e);
-        Vec::new()
-    });
+    // Detect the parity mode (Rust vs Python) from the library's on-disk test
+    // layout. The mode determines which backends are dispatched and how their
+    // results map into the three-way comparison slots (vm/a2r/rust).
+    let mode = detect_parity_mode(config);
+
+    // Run the appropriate backends. Log + swallow per-backend failures so a
+    // single broken backend doesn't abort an aggregate `report` run; the
+    // missing results show up as divergences in the comparison.
+    let (vm_results, a2r_results, rust_results) = match mode {
+        ParityMode::Rust => {
+            let vm = runner::run_vm(config).unwrap_or_else(|e| {
+                eprintln!("VM backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            let a2r = runner::run_a2r(config).unwrap_or_else(|e| {
+                eprintln!("a2r backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            let rust = runner::run_rust(config).unwrap_or_else(|e| {
+                eprintln!("Rust backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            (vm, a2r, rust)
+        }
+        ParityMode::Python => {
+            // Python parity mapping (Plan 369):
+            //   vm slot   -> AutoVM (run_vm)
+            //   a2r slot  -> a2py (run_a2py) — the transpiler slot
+            //   rust slot -> Python oracle (run_python_oracle) — the oracle slot
+            let vm = runner::run_vm(config).unwrap_or_else(|e| {
+                eprintln!("VM backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            let a2py = runner::run_a2py(config).unwrap_or_else(|e| {
+                eprintln!("a2py backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            let oracle = runner::run_python_oracle(config).unwrap_or_else(|e| {
+                eprintln!("Python oracle backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            (vm, a2py, oracle)
+        }
+    };
 
     // Build per-test comparison across all backends.
     let vm_map = tap::tap_map_from_results(&vm_results);
@@ -236,6 +269,32 @@ fn build_comparison_report(config: &RunConfig) -> Result<ComparisonReport, Strin
         library: config.library.clone(),
         cases,
     })
+}
+
+/// Which parity variant a library exercises.
+///
+/// - `Rust`: the original three-way parity (AutoVM vs a2r vs native Rust).
+///   Used when the library has a `tests/rust/` directory.
+/// - `Python`: three-way parity against a Python oracle (AutoVM vs a2py vs
+///   native Python). Used when the library has a `tests/python/` directory
+///   instead of (or in addition to) `tests/rust/`. Plan 369.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParityMode {
+    Rust,
+    Python,
+}
+
+/// Detect the parity mode for a library by inspecting its test layout.
+///
+/// A `tests/python/` directory selects Python parity; otherwise the default is
+/// the original Rust parity. If both directories exist, Python wins (the
+/// library was explicitly migrated to Python oracle parity).
+fn detect_parity_mode(config: &RunConfig) -> ParityMode {
+    if config.lib_dir().join("tests").join("python").is_dir() {
+        ParityMode::Python
+    } else {
+        ParityMode::Rust
+    }
 }
 
 /// Discover all library directories under `<root>/libs/`, skipping `_dummy`
@@ -266,6 +325,8 @@ fn discover_all_libraries(root: &PathBuf) -> Vec<String> {
 /// - p2: `serde_json`, `regex`
 /// - p3: `sha2`, `rusqlite`
 /// - p4: `reqwest`, `tokio`
+/// - p5: `py_math`, `py_random` (Plan 369 Python parity)
+/// - p6: `py_datetime`, `py_struct`, `py_uuid` (Plan 369 Python parity)
 fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
     let phase_map: &[(&str, &[&str])] = &[
         ("p0", &["_dummy"]),
@@ -277,13 +338,18 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         ("d1", &["cli_app"]),
         ("d2", &["trait_advanced"]),
         ("d4", &["string_utils"]),
-        // Plan 368 (consumer-mode parity): Layer 1 consumer apps. Each calls
+        // Plan 367 (consumer-mode parity): Layer 1 consumer apps. Each calls
         // `auto.<module>` stdlib and is compared three-way with a native Rust
         // oracle that calls the same underlying crate directly.
         ("d5", &["c_fs_app", "c_env_app", "c_process_app", "c_text_app"]),
         // Plan 368 FU-4 (Layer 2): HTTP consumer apps. Need a live mock server
         // (parity runner auto-spawns libs/<name>/mock-server/ via MockServer).
         ("d6", &["http_client_sync"]),
+        // Plan 369 (Python parity): three-way parity against a Python oracle
+        // (AutoVM vs a2py vs native Python). The mode is auto-detected from the
+        // library's `tests/python/` directory by `detect_parity_mode`.
+        ("p5", &["py_math", "py_random"]),
+        ("p6", &["py_datetime", "py_struct", "py_uuid"]),
     ];
 
     for (p, libs) in phase_map {

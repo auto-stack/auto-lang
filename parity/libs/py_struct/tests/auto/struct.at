@@ -1,0 +1,32 @@
+/// struct module parity tests — calcsize.
+/// NOTE: struct.pack/unpack require multi-arg FFI (format string + values)
+/// which is currently broken in PyFFI. Only calcsize (single string arg, int
+/// return) works. See README for details.
+use.py struct: calcsize
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    check(1, "test_calcsize_uint_be", calcsize(">I"), 4)
+    check(2, "test_calcsize_ushort_be", calcsize(">H"), 2)
+    check(3, "test_calcsize_double", calcsize(">d"), 8)
+    check(4, "test_calcsize_char", calcsize(">c"), 1)
+    check(5, "test_calcsize_3char", calcsize("3s"), 3)
+    check(6, "test_calcsize_float", calcsize(">f"), 4)
+    check(7, "test_calcsize_longlong", calcsize(">q"), 8)
+    check(8, "test_calcsize_2int", calcsize(">II"), 8)
+}

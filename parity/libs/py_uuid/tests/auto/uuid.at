@@ -1,0 +1,12 @@
+/// uuid module parity tests.
+///
+/// LIMITATION: uuid5(namespace, name) requires:
+/// 1. NAMESPACE_DNS — a Python module constant, not importable via use.py (DIV-PY-CONST-1)
+/// 2. Two-arg FFI call with a UUID object as first arg
+///
+/// Both are currently broken. This is a stub documenting the gap.
+fn main() {
+    print("# py_uuid: blocked by PyFFI limitations")
+    print("# NAMESPACE_DNS is a constant, not a function (DIV-PY-CONST-1)")
+    print("# uuid5(ns, name) needs UUID object arg + 2-arg FFI")
+}

@@ -1,0 +1,14 @@
+/// datetime module parity tests.
+///
+/// LIMITATION: datetime.date(y,m,d) requires 3-arg FFI which is currently
+/// broken (DIV-PY-MULTIARG-1). Python object methods (d.isoformat()) are
+/// also not supported via PyFFI. This test is intentionally minimal —
+/// it documents the limitation. When PyFFI multi-arg is fixed, expand.
+///
+/// The Python oracle runs the full suite for reference. This Auto test
+/// has NO matching test names yet, so parity will show all as "test case
+/// issue" (AutoVM missing). This is the expected result and documents the gap.
+fn main() {
+    print("# py_datetime: all tests blocked by PyFFI multi-arg limitation (DIV-PY-MULTIARG-1)")
+    print("# date(y,m,d) needs 3-arg FFI; d.isoformat() needs object method calls")
+}

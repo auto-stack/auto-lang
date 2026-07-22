@@ -691,3 +691,214 @@ mod tests {
         );
     }
 }
+fn python_interpreter() -> &'static str {
+    use std::sync::OnceLock;
+    static INTERP: OnceLock<String> = OnceLock::new();
+    INTERP.get_or_init(|| {
+        for candidate in ["python3", "python"] {
+            if Command::new(candidate)
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                return candidate.to_string();
+            }
+        }
+        // Default to python3 even if the probe failed — the actual run will
+        // surface a clear error if neither interpreter is on PATH.
+        "python3".to_string()
+    })
+}
+
+/// Run the Python oracle backend: `python3 tests/python/*.py`
+/// Returns TAP results parsed from stdout.
+pub fn run_python_oracle(config: &RunConfig) -> Result<Vec<TapResult>, String> {
+    let python_dir = config.lib_dir().join("tests").join("python");
+    if !python_dir.is_dir() {
+        return Err(format!(
+            "python test dir not found: {}",
+            python_dir.display()
+        ));
+    }
+
+    let mut all_results = Vec::new();
+
+    let mut entries: Vec<_> = std::fs::read_dir(&python_dir)
+        .map_err(|e| format!("failed to read python test dir: {}", e))?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path().extension().and_then(|s| s.to_str()) == Some("py")
+                && e.file_name().to_string_lossy().starts_with("test_")
+        })
+        .collect();
+    entries.sort_by_key(|e| e.path());
+
+    for entry in entries {
+        let path = entry.path();
+        let abs_path = path.canonicalize().unwrap_or_else(|_| path.clone());
+
+        let output = Command::new(python_interpreter())
+            .arg(&abs_path)
+            .current_dir(config.lib_dir())
+            .output()
+            .map_err(|e| format!("failed to run {}: {}", python_interpreter(), e))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        if !output.status.success() && stdout.is_empty() {
+            all_results.push(TapResult {
+                passed: false,
+                number: 0,
+                name: path
+                    .file_stem()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string(),
+                diagnostics: Some(format!("python crashed: {}", stderr.trim())),
+            });
+        } else {
+            all_results.extend(config.parse(&stdout));
+        }
+    }
+
+    Ok(all_results)
+}
+
+/// Run the a2py backend: transpile each .at test to Python, then run with the
+/// Python interpreter. Returns TAP results parsed from stdout.
+pub fn run_a2py(config: &RunConfig) -> Result<Vec<TapResult>, String> {
+    let test_dir = config.lib_dir().join("tests").join("auto");
+    let build_dir = config.lib_dir().join("build_a2py");
+    std::fs::create_dir_all(&build_dir).map_err(|e| e.to_string())?;
+
+    let mut all_results = Vec::new();
+
+    let mut entries: Vec<_> = std::fs::read_dir(&test_dir)
+        .map_err(|e| format!("failed to read test dir {}: {}", test_dir.display(), e))?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("at"))
+        .collect();
+    entries.sort_by_key(|e| e.path());
+
+    for entry in entries {
+        let test_path = entry.path();
+        let test_stem = test_path
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        // Transpile .at -> .py.
+        //
+        // Note: `auto trans ... python --output <f>` does NOT honour `--output`
+        // for the code payload — `trans_python` always writes the generated
+        // source to a sibling `<stem>.py` next to the input, and `--output`
+        // only receives the `[trans] ... -> ...` status string. So we invoke
+        // the transpiler WITHOUT `--output` and read back the sibling file
+        // (mirroring how `run_a2r` reads `<stem>.a2r.rs`). We then copy it
+        // into the build dir so a2py artefacts are isolated from the source
+        // tree.
+        let py_path = build_dir.join(format!("{}.py", test_stem));
+        let abs_test = test_path
+            .canonicalize()
+            .unwrap_or_else(|_| test_path.clone());
+
+        let trans_output = Command::new(&config.auto_binary)
+            .args([
+                "trans",
+                "--path",
+                &abs_test.to_string_lossy(),
+                "python",
+            ])
+            .current_dir(config.lib_dir())
+            .output()
+            .map_err(|e| format!("failed to run auto trans python: {}", e))?;
+
+        if !trans_output.status.success() {
+            let stderr = String::from_utf8_lossy(&trans_output.stderr);
+            all_results.push(TapResult {
+                passed: false,
+                number: 0,
+                name: test_stem.clone(),
+                diagnostics: Some(format!("a2py transpile failed: {}", stderr.trim())),
+            });
+            continue;
+        }
+
+        // The transpiler writes `<stem>.py` next to the source. Read it back.
+        let sibling_py = abs_test.with_extension("py");
+        let py_source = match std::fs::read_to_string(&sibling_py) {
+            Ok(s) => s,
+            Err(_) => {
+                // Fall back to stdout for auto versions that print source
+                // directly instead of writing a sibling file.
+                let stdout = String::from_utf8_lossy(&trans_output.stdout).to_string();
+                if stdout.contains("def ") || stdout.contains("import ") {
+                    stdout
+                } else {
+                    all_results.push(TapResult {
+                        passed: false,
+                        number: 0,
+                        name: test_stem.clone(),
+                        diagnostics: Some(format!(
+                            "a2py output not found at {}",
+                            sibling_py.display()
+                        )),
+                    });
+                    continue;
+                }
+            }
+        };
+        // The transpiler unconditionally writes the sibling `<stem>.py` next
+        // to the source; remove it after reading so a2py artefacts do not
+        // pollute the library's source tree. Ignore errors — the file may
+        // legitimately not exist when we took the stdout fallback above.
+        let _ = std::fs::remove_file(&sibling_py);
+
+        // Copy the generated source into the isolated build dir and run it
+        // from there so the source tree is not polluted by a2py artefacts.
+        std::fs::write(&py_path, &py_source).map_err(|e| e.to_string())?;
+
+        // Run the transpiled Python.
+        //
+        // `-P` (PYTHONSAFEPATH) prevents Python from prepending the script's
+        // own directory to sys.path. The a2py build dir holds the transpiled
+        // `<stem>.py`; when a test stem matches a pure-Python stdlib module
+        // (e.g. `random`, `datetime`, `uuid`), the build-dir file would
+        // otherwise shadow the stdlib module and `from random import ...` would
+        // fail with ImportError. Built-in modules like `math` are unaffected
+        // (they resolve before the path search), which is why py_math worked
+        // without this flag. This makes a2py usable for all Python-parity libs.
+        let abs_py = py_path.canonicalize().unwrap_or_else(|_| py_path.clone());
+        let run_output = Command::new(python_interpreter())
+            .arg("-P")
+            .arg(&abs_py)
+            .current_dir(config.lib_dir())
+            .output()
+            .map_err(|e| {
+                format!(
+                    "failed to run {} on transpiled: {}",
+                    python_interpreter(),
+                    e
+                )
+            })?;
+
+        let stdout = String::from_utf8_lossy(&run_output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&run_output.stderr).to_string();
+
+        if !run_output.status.success() && stdout.is_empty() {
+            all_results.push(TapResult {
+                passed: false,
+                number: 0,
+                name: test_stem,
+                diagnostics: Some(format!("a2py python crashed: {}", stderr.trim())),
+            });
+        } else {
+            all_results.extend(config.parse(&stdout));
+        }
+    }
+
+    Ok(all_results)
+}
