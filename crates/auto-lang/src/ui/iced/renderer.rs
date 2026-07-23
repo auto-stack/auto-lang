@@ -3431,7 +3431,10 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         if !mcp.has_view() {
             eprintln!("AutoUI MCP: first state sync in view()");
         }
-        let state_vals = state.component.read_all_state();
+        // Plan 370 D-GAP-4: materialize VmRef list fields (e.g. store.notes) to
+        // inline Value::Array so the MCP snapshot/inspect tools can expand
+        // `for` loops and evaluate `.len()` without VM heap access.
+        let state_vals = state.component.read_all_state_materialized();
         let input_map = state.component.input_state_map().clone();
         // Plan 307 Task 18: MCP sync never needs the probe — capture_probe=false
         // makes the returned probe a disabled no-op (zero probe overhead here).

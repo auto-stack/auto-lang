@@ -2475,6 +2475,35 @@ fn run_file_dynamic_ui_inner(
                                     registry.register(child_widget);
                                 }
                             }
+                        } else if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+                            // Plan 370 D-GAP-4: stores imported via `use module: Store`
+                            // (e.g. `use notes_store: NotesStore`) live in their own
+                            // source file, NOT the root AST. Convert them to view-less
+                            // child WidgetDecls here — mirroring the root-AST store
+                            // conversion below — so their state fields get merged into
+                            // the root state object and their handlers compile into the
+                            // single VM module. Without this, `store.X` fields (notes,
+                            // active_id, ...) never exist in `__state`, so handlers
+                            // like `.notes = list_notes()` silently no-op and the view
+                            // renders an empty list.
+                            let name = store_decl.name.clone();
+                            if use_stmt.is_wildcard
+                                || use_stmt.items.is_empty()
+                                || use_stmt.items.iter().any(|s| *s == name.as_str())
+                            {
+                                child_decls.push(crate::ast::ui::WidgetDecl {
+                                    name: name.clone(),
+                                    messages: store_decl.messages.clone(),
+                                    model: store_decl.model.clone(),
+                                    computed: store_decl.computed.clone(),
+                                    view: None,
+                                    on: store_decl.on.clone(),
+                                    bind: None,
+                                    props: Vec::new(),
+                                    routes: None,
+                                    lifecycle: Vec::new(),
+                                });
+                            }
                         }
                     }
                 }
@@ -4448,7 +4477,7 @@ mod unified_registry_tests;
 mod tests;
 
 #[cfg(test)]
-mod plan337_tests;
+mod plan320_tests;
 
 #[cfg(test)]
 mod plan339_tests;
@@ -4463,6 +4492,9 @@ mod plan341_tests;
 mod plan349_tests;
 
 #[cfg(test)]
+mod plan370_store_vm_tests;
+
+#[cfg(test)]
 mod plan352_tests;
 
 #[cfg(test)]
@@ -4470,7 +4502,7 @@ mod plan353_tests;
 
 // Plan 359 Phase 5 (G1/G2/G3): Concurrency bug fixes (spawn, generic types, channels)
 #[cfg(test)]
-mod plan359_concurrency_tests;
+mod plan348_concurrency_tests;
 
 // =============================================================================
 // Plan 015: AutoUI Core (feature-gated)

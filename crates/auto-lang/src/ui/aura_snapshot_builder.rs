@@ -227,9 +227,12 @@ impl<'a> AuraSnapshotBuilder<'a> {
                     None => String::new(),
                 };
 
-                // Try to expand the loop from state
+                // Try to expand the loop from state.
+                // Plan 370 D-GAP-4: store fields are merged into root state as
+                // bare names, so `.store.notes` must flatten to `notes`.
+                let state_name = Self::flatten_state_path(iterable.trim_start_matches('.'));
                 if let Some(auto_val::Value::Array(items)) =
-                    Self::resolve_state_ref(self.state, iterable.trim_start_matches('.'))
+                    Self::resolve_state_ref(self.state, &state_name)
                 {
                     for (i, _item) in items.iter().enumerate() {
                         out.push_str(&format!(
@@ -448,42 +451,117 @@ impl<'a> AuraSnapshotBuilder<'a> {
     }
 
     /// Evaluate a condition string (for Conditional nodes).
-    fn eval_condition(&self, condition: &str) -> bool {
+    ///
+    /// Supports patterns:
+    /// - `.field == "lit"` / `.field != "lit"` — string comparison
+    /// - `.field > N` / `<` / `>=` / `<=` — numeric comparison
+    /// - `.array_field.len() > N` — list-length numeric comparison
+    ///   (Plan 370 D-GAP-4: needed for store arrays like `.store.notes`)
+    /// - `.field` — bare state ref truthy check
+    /// - `true` / `false` — boolean literals
+    ///
+    /// Plan 370 D-GAP-4: store fields are merged into root state as bare
+    /// names, so `.store.X` paths are flattened to `X` before lookup.
+    pub(crate) fn eval_condition(&self, condition: &str) -> bool {
         let cond = condition.trim();
 
-        // Strip leading dot for state ref
-        if let Some(rest) = cond.strip_prefix('.') {
-            // Check for comparison operators
-            if let Some(pos) = rest.find(" == ") {
-                let lhs = &rest[..pos];
-                let rhs = rest[pos + 4..].trim();
-                let lhs_val = self
-                    .state
-                    .get(lhs)
-                    .map(|v| Self::format_eval_value(v))
-                    .unwrap_or_default();
-                return lhs_val == rhs.trim_matches('"');
-            }
-            if let Some(pos) = rest.find(" != ") {
-                let lhs = &rest[..pos];
-                let rhs = rest[pos + 4..].trim();
-                let lhs_val = self
-                    .state
-                    .get(lhs)
-                    .map(|v| Self::format_eval_value(v))
-                    .unwrap_or_default();
-                return lhs_val != rhs.trim_matches('"');
-            }
-            // Bare state ref — truthy check
-            return self
-                .state
-                .get(rest)
-                .map(|v| v.as_bool())
-                .unwrap_or(false);
+        // Boolean literals
+        if cond == "true" {
+            return true;
+        }
+        if cond == "false" {
+            return false;
         }
 
-        // Boolean literal
-        cond == "true"
+        // Split into lhs op rhs at the first top-level comparison operator.
+        // (Conditions here are simple — no nested parens/boolean combinators in
+        // the snapshot path; AuraViewBuilder handles those for the live render.)
+        if let Some((lhs, op, rhs)) = Self::split_comparison(cond) {
+            let lhs_val = self.state_value_string(lhs);
+            let rhs_val = rhs.trim().trim_matches('"');
+            return Self::compare(&lhs_val, op, rhs_val);
+        }
+
+        // Bare state ref (with optional leading dot) — truthy check
+        let name = cond.trim_start_matches('.');
+        let name = Self::flatten_state_path(name);
+        self.state
+            .get(name)
+            .map(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
+    /// Split a condition into `(lhs, op, rhs)` at the first comparison operator
+    /// found (` == `, ` != `, ` >= `, ` <= `, ` > `, ` < `). Returns None if no
+    /// operator is present. Checks two-char operators before one-char ones so
+    /// `>=` is not mis-split as `>`.
+    fn split_comparison(cond: &str) -> Option<(&str, &str, &str)> {
+        for (op, len) in [(" == ", 4), (" != ", 4), (" >= ", 4), (" <= ", 4), (" > ", 3), (" < ", 3)]
+        {
+            if let Some(pos) = cond.find(op) {
+                return Some((&cond[..pos], op.trim(), &cond[pos + len..]));
+            }
+        }
+        None
+    }
+
+    /// Resolve a condition lhs (e.g. `.store.notes.len()` or `.active_folder`)
+    /// to its display string, flattening `.store.` and evaluating `.len()`.
+    fn state_value_string(&self, lhs: &str) -> String {
+        // Normalize spaces the parser may insert inside the call parens.
+        let normalized = lhs.replace(" ( ", "(").replace("( ", "(").replace(" )", ")");
+        let (field_expr, want_len) = if let Some(stripped) = normalized.strip_suffix(".len()") {
+            (stripped, true)
+        } else {
+            (normalized.as_str(), false)
+        };
+        let name = Self::flatten_state_path(field_expr.trim_start_matches('.'));
+        let Some(val) = self.state.get(name) else {
+            return String::new();
+        };
+        if want_len {
+            return match val {
+                auto_val::Value::Array(a) => a.values.len().to_string(),
+                // VmRef/other already materialized to Array by the MCP sync
+                // path; if not, fall back to a truthy-but-unknown length of 0.
+                _ => 0.to_string(),
+            };
+        }
+        Self::format_eval_value(val)
+    }
+
+    /// Compare two display-string operands under `op`. Numeric for the ordering
+    /// operators; string for == / !=.
+    fn compare(lhs: &str, op: &str, rhs: &str) -> bool {
+        match op {
+            "==" => lhs == rhs,
+            "!=" => lhs != rhs,
+            ">" | "<" | ">=" | "<=" => {
+                let l: f64 = match lhs.parse() {
+                    Ok(n) => n,
+                    Err(_) => return false,
+                };
+                let r: f64 = match rhs.parse() {
+                    Ok(n) => n,
+                    Err(_) => return false,
+                };
+                match op {
+                    ">" => l > r,
+                    "<" => l < r,
+                    ">=" => l >= r,
+                    "<=" => l <= r,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Flatten a `.store.X` / `store.X` state path to the bare root-state name
+    /// `X`. Store fields are merged into the root state object as bare names, so
+    /// a `store.notes` reference must become `notes` before a HashMap lookup.
+    fn flatten_state_path(name: &str) -> &str {
+        name.strip_prefix("store.").unwrap_or(name)
     }
 
     // ── Helpers ──

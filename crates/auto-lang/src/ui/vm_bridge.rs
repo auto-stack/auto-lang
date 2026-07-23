@@ -591,6 +591,28 @@ impl VmBridge {
         result
     }
 
+    /// Like [`read_all_state`], but materializes `Value::VmRef` list fields into
+    /// inline `Value::Array` so snapshot/inspect tools (which only receive a
+    /// `HashMap<String, Value>` with no VM heap access) can expand `for` loops
+    /// and compare `.len()` against the actual element count.
+    ///
+    /// Plan 370 D-GAP-4: store fields like `notes` are produced by VM handlers
+    /// (`list_notes()` → `db.all_notes()`) as `Value::VmRef` heap ids. Without
+    /// materialization, the MCP snapshot's `for i, note in .store.notes` loop
+    /// cannot expand (it sees a VmRef, not an Array), so the note list renders
+    /// empty even though the data exists.
+    pub fn read_all_state_materialized(&self) -> HashMap<String, Value> {
+        let mut result = self.read_all_state();
+        for (_name, val) in result.iter_mut() {
+            if let Value::VmRef(r) = val {
+                if let Ok(elems) = self.vmref_to_vec(r.id) {
+                    *val = Value::Array(auto_val::Array { values: elems });
+                }
+            }
+        }
+        result
+    }
+
     /// Plan 333: run the synthesized `__module_init` fn, which initializes
     /// imported module-level globals (`var notes = ...` etc.). Must be called
     /// once before `Init` (and before any handler that reads those globals).

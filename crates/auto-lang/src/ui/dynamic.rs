@@ -539,6 +539,15 @@ impl DynamicComponent {
         self.bridge.read_all_state()
     }
 
+    /// Read all state fields with `Value::VmRef` list fields materialized to
+    /// inline `Value::Array`. Delegates to
+    /// [`VmBridge::read_all_state_materialized`]. Use this (not
+    /// [`read_all_state`]) when feeding snapshot/inspect tools that have no VM
+    /// heap access and need to expand `for` loops over store arrays.
+    pub fn read_all_state_materialized(&self) -> std::collections::HashMap<String, auto_val::Value> {
+        self.bridge.read_all_state_materialized()
+    }
+
     /// Reload the component from a new widget definition, preserving state.
     ///
     /// This is the core hot-reload mechanism:

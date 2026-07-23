@@ -164,23 +164,36 @@ impl<'a> AuraViewBuilder<'a> {
     /// Plan 320: read a state field. When override_state_obj_id is set (rendering
     /// a child widget's view), reads from the child's state object. Otherwise
     /// reads from the root widget's state (legacy behavior).
+    /// Plan 370 D-GAP-4: also handles "store.field" paths by stripping the
+    /// "store." prefix (store fields are merged into root state as bare names).
     fn read_state(&self, field_name: &str) -> Result<auto_val::Value, String> {
+        // Strip "store." prefix for merged store fields
+        let name = field_name.strip_prefix("store.").unwrap_or(field_name);
         if let Some(child_id) = self.override_state_obj_id {
-            self.bridge.read_child_state(child_id, field_name)
-                .map_err(|e| e.to_string())
+            // Try child state first, fall back to root state for store fields
+            match self.bridge.read_child_state(child_id, name) {
+                Ok(v) => Ok(v),
+                Err(_) => self.bridge.read_state(name).map_err(|e| e.to_string()),
+            }
         } else {
-            self.bridge.read_state(field_name)
+            self.bridge.read_state(name)
                 .map_err(|e| e.to_string())
         }
     }
 
     /// Plan 320: read a state field as Vec<Value> (override-aware).
+    /// Plan 370 D-GAP-4: also handles "store.field" paths by stripping the
+    /// "store." prefix (store fields are merged into root state as bare names).
     fn read_state_as_vec(&self, field_name: &str) -> Result<Vec<auto_val::Value>, String> {
+        let name = field_name.strip_prefix("store.").unwrap_or(field_name);
         if let Some(child_id) = self.override_state_obj_id {
-            self.bridge.read_child_state_as_vec(child_id, field_name)
-                .map_err(|e| e.to_string())
+            // Try child state first, fall back to root state for store fields
+            match self.bridge.read_child_state_as_vec(child_id, name) {
+                Ok(v) => Ok(v),
+                Err(_) => self.bridge.read_state_as_vec(name).map_err(|e| e.to_string()),
+            }
         } else {
-            self.bridge.read_state_as_vec(field_name)
+            self.bridge.read_state_as_vec(name)
                 .map_err(|e| e.to_string())
         }
     }
@@ -1985,6 +1998,21 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // Field access: object.field → Dot(object, field)
             Expr::Dot(object, field) => {
+                // Plan 370 D-GAP-4: handle .store.X path — flatten to read root state X.
+                // Store fields are merged into root state as bare names.
+                if let Expr::Dot(inner_obj, store_field) = object.as_ref() {
+                    if store_field.as_str() == "store"
+                        && matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
+                    {
+                        return self.read_state(field.as_str()).ok();
+                    }
+                }
+                // Also handle bare "store.X" (Ident("store") Dot field)
+                if let Expr::Ident(name) = object.as_ref() {
+                    if name.as_str() == "store" {
+                        return self.read_state(field.as_str()).ok();
+                    }
+                }
                 let obj = self.resolve_expr_to_value(object, bindings)?;
                 let field_str = field.as_str();
                 match obj {
