@@ -179,8 +179,19 @@ impl AutovmReplSession {
                     }
                 }
             } else {
-                // Named imports: register with short name
+                // Named imports: register callables with short name; constants
+                // (non-callable attributes) as zero-arg natives (Plan 369 Task 11).
                 for func_name in &stmt.items {
+                    // Plan 369 Task 11: constants are non-callable module attributes.
+                    if !bridge.is_callable(&stmt.module, func_name) {
+                        if let Ok(native_id) = bridge.register_constant(&stmt.module, func_name) {
+                            let qualified = format!("py.{}", func_name);
+                            if let Ok(mut reg) = BIGVM_NATIVES.lock() {
+                                reg.register_with_id(&qualified, native_id);
+                            }
+                        }
+                        continue;
+                    }
                     let param_count = bridge.inspect_param_count(&stmt.module, func_name, 1);
                     let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
                     if let Ok(native_id) = bridge.register_function(&stmt.module, func_name, sig) {

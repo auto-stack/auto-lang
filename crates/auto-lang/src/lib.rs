@@ -562,8 +562,25 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
             continue;
         }
 
-        // Named function imports — use inspect to get param count
+        // Named imports — use inspect to get param count for callables; register
+        // non-callable attributes (e.g. math.pi) as zero-arg constants (Plan 369 Task 11).
         for func_name in functions {
+            // Plan 369 Task 11: constants are non-callable module attributes.
+            if !bridge.is_callable(module_name, &func_name) {
+                match bridge.register_constant(module_name, &func_name) {
+                    Ok(native_id) => {
+                        log::info!("Registered Python const: {}.{} (native_id={})", module_name, func_name, native_id);
+                        let qualified = format!("py.{}", func_name);
+                        if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                            registry.register_with_id(&qualified, native_id);
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to register Python const {}.{}: {:?}", module_name, func_name, e);
+                    }
+                }
+                continue;
+            }
             let param_count = bridge.inspect_param_count(module_name, &func_name, 1);
             let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
             match bridge.register_function(module_name, func_name, sig) {

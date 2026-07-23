@@ -4573,6 +4573,24 @@ impl Codegen {
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
+                        } else if self.py_native_map.contains_key(&name_str) {
+                            // Plan 369 Task 11: bare reference to a py-imported name
+                            // that is not a local/global/enum resolves to a zero-arg
+                            // py-FFI native call (e.g. math.pi constant, or a no-arg
+                            // Python function). Resolve the native_id and emit CALL_PY
+                            // with arg_count=0. py_constants marks genuine constants;
+                            // zero-arg callables also flow through here.
+                            let qualified = format!("py.{}", name_str);
+                            let native_id = {
+                                let mut reg = BIGVM_NATIVES.lock().unwrap();
+                                reg.resolve_qualified(&qualified)
+                                    .unwrap_or_else(|| reg.register(&qualified))
+                            };
+                            self.emit(OpCode::CALL_PY);
+                            self.code.extend_from_slice(&native_id.to_le_bytes());
+                            self.code.push(0); // arg_count = 0
+                            // py-FFI auto return marshals to string pool by default
+                            self.last_expr_type = ObjectType::String;
                         } else {
                             return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
                         }

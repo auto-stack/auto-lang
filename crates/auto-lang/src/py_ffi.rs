@@ -162,6 +162,64 @@ impl PyFfiBridge {
         Ok(native_id)
     }
 
+    /// Plan 369 Task 11: Register a module-level constant (non-callable attribute)
+    /// as a zero-arg native. The emitted shim performs `getattr(module, name)` and
+    /// marshals the resulting Python object to the VM stack via the auto path.
+    /// Returns the assigned native_id. Pair with codegen that emits CALL_PY with
+    /// arg_count=0 for the bare identifier reference.
+    pub fn register_constant(
+        &mut self,
+        module_name: &str,
+        const_name: &str,
+    ) -> Result<u16, VMError> {
+        let native_id = self.next_native_id;
+        self.next_native_id += 1;
+
+        let qualified = format!("{}.{}", module_name, const_name);
+        self.functions.insert(qualified, native_id);
+
+        let module: Py<PyModule> = Python::attach(|py| {
+            self.modules
+                .get(module_name)
+                .ok_or_else(|| VMError::FFI(format!("Module {} not imported", module_name)))
+                .map(|m| m.clone_ref(py))
+        })?;
+        let const_name = const_name.to_string();
+
+        let shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let mod_ref = module.bind(py);
+                let py_val = mod_ref.getattr(&const_name).map_err(|e| {
+                    VMError::FFI(format!("Python constant '{}' not found: {}", const_name, e))
+                })?;
+                // Zero-arg constant: no args to pop. pending_native_arg_count is 0.
+                py_auto_marshal_return(&py_val, task, vm)?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(native_id, shim);
+
+        Ok(native_id)
+    }
+
+    /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
+    /// with __call__), false if it is a plain constant. Used at registration time
+    /// to decide between register_function and register_constant. Returns true on
+    /// any introspection failure (preserves prior behavior — only treats genuinely
+    /// non-callable attributes as constants).
+    pub fn is_callable(&self, module_name: &str, attr_name: &str) -> bool {
+        Python::attach(|py| {
+            let Some(mod_ref) = self.modules.get(module_name) else {
+                return true;
+            };
+            let Ok(attr) = mod_ref.bind(py).getattr(attr_name) else {
+                return true;
+            };
+            attr.is_callable()
+        })
+    }
+
     pub fn native_interface(&self) -> &NativeInterface {
         &self.native_interface
     }
