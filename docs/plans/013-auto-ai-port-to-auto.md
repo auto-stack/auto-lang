@@ -267,3 +267,27 @@ for-loop borrow）基础上，继续修了 5 个新发现的 a2r 缺口（B11–
 
 a2r golden 套件：283 passed，仅 4 个预存失败（与并行 agent 的 codegen 工作有
 关，非本改动）。
+
+#### 合并 + B14-followup（已合回 master）
+
+`plan-013/a2r-b1-fixes` 分支已合入 master（无冲突）。合入后继续修了
+**B14-followup**（Expr::Err 不给具体枚举错误套 Box::new）：loader.at 的
+`Err(Box::new(ConfigError::...))` 类型不匹配（Box<E> vs E）消除，cargo check
+错误从 44 降到 **31**。tier+provider 仍 0 错。
+
+#### loader.at 剩余 31 错（桥接 API 集成，记为 B16）
+
+这些不是 a2r 通用 codegen 问题，而是 loader.at 的 Auto 源码与 auto_val/auto_atom
+真实 Rust API 的对接差异，需逐个调整 Auto 源码或 a2r 的桥接类型处理：
+
+| 类别 | 数量 | 根因 | 修法方向 |
+|---|---|---|---|
+| `Node` vs `Box<Node>` | ~6 | `Kid::Node(child)` 的 child 是 `Box<Node>`，helper 期望 `Node` | helper 改收 `&Node`，调用处 deref |
+| `String` vs `AutoStr` | ~6 | auto_val 字段/返回用 `AutoStr`，Auto 当 `String` 用 | `.to_string()` / `.as_str()` |
+| `Node` vs `Result` | ~4 | `is root_node(...).? { Ok(node)=>... }` 的 `?` 处理 | Auto 源码 `?` 用法调整 |
+| `Value.Nil` 路径 | 2 | a2r 生成 `auto_val::Value.Nil`（点），应为 `::Nil` | a2r 无参变体路径 |
+| Option.unwrap | 2 | `providers.get(x)` 返回 Option，代码当引用用 | Auto 源码加 unwrap 检查 |
+| 其他 | ~3 | mutability / borrow / private fn | 源码侧 |
+
+**这些仅在 loader.at（唯一桥接文件）出现**，不阻塞其它文件。可作为后续
+专项任务。
