@@ -13,6 +13,10 @@ Cargo.lock
 # a2r per-test build directory created by the parity runner
 libs/*/build_a2r/
 
+# a2py per-test build directory (Auto-to-Python transpile output) created by
+# the parity runner when exercising the a2r/a2py backend.
+libs/*/build_a2py/
+
 # Rust test crate build output (defensive — root .gitignore already covers target/)
 libs/*/tests/rust/target/
 

@@ -3969,6 +3969,48 @@ impl Codegen {
             // Plan 300: Bare module import (`use.py math`) — record for dot-call resolution
             self.py_modules.insert(module_path.to_string());
         }
+
+        // Plan 369 Task 12: seed the py-object built-ins (py_call, py_getattr)
+        // so calls like `py_call(d, "isoformat")` route through CALL_PY with the
+        // correct arg count. These resolve to fixed native IDs registered by
+        // init_py_ffi. Marking them in py_native_map also sets is_py_ffi_call,
+        // so the runtime arg-count byte is emitted.
+        self.register_py_object_builtins();
+    }
+
+    /// Plan 369 Task 12: register py_call / py_getattr in py_native_map so the
+    /// codegen treats them as py-FFI calls (emitting CALL_PY with runtime arg
+    /// count). Idempotent.
+    fn register_py_object_builtins(&mut self) {
+        // Use fixed IDs directly to avoid importing py_ffi (which is feature-gated).
+        // NATIVE_PY_CALL = 450, NATIVE_PY_GETATTR = 451 (defined in py_ffi.rs).
+        const NATIVE_PY_CALL: u16 = 450;
+        const NATIVE_PY_GETATTR: u16 = 451;
+        // Insert placeholder entries; the (module, full_path) tuple is unused for
+        // dispatch since the native IDs are fixed constants. The qualified lookup
+        // below uses the entry's existence to set is_py_ffi_call = true.
+        if !self.py_native_map.contains_key("py_call") {
+            self.py_native_map.insert(
+                "py_call".to_string(),
+                ("__pyobj__".to_string(), "__pyobj__.py_call".to_string()),
+            );
+            self.py_return_types
+                .insert("py_call".to_string(), crate::py_ffi_types::PyType::Auto);
+            // Pin the fixed native ID so resolve_qualified() finds it without
+            // needing a runtime import.
+            if let Ok(mut reg) = BIGVM_NATIVES.lock() {
+                reg.register_with_id("py.py_call", NATIVE_PY_CALL);
+                reg.register_with_id("py.py_getattr", NATIVE_PY_GETATTR);
+            }
+        }
+        if !self.py_native_map.contains_key("py_getattr") {
+            self.py_native_map.insert(
+                "py_getattr".to_string(),
+                ("__pyobj__".to_string(), "__pyobj__.py_getattr".to_string()),
+            );
+            self.py_return_types
+                .insert("py_getattr".to_string(), crate::py_ffi_types::PyType::Auto);
+        }
     }
 
     pub fn compile_expr(&mut self, expr: &Expr) -> AutoResult<()> {
@@ -4573,6 +4615,24 @@ impl Codegen {
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
+                        } else if self.py_native_map.contains_key(&name_str) {
+                            // Plan 369 Task 11: bare reference to a py-imported name
+                            // that is not a local/global/enum resolves to a zero-arg
+                            // py-FFI native call (e.g. math.pi constant, or a no-arg
+                            // Python function). Resolve the native_id and emit CALL_PY
+                            // with arg_count=0. py_constants marks genuine constants;
+                            // zero-arg callables also flow through here.
+                            let qualified = format!("py.{}", name_str);
+                            let native_id = {
+                                let mut reg = BIGVM_NATIVES.lock().unwrap();
+                                reg.resolve_qualified(&qualified)
+                                    .unwrap_or_else(|| reg.register(&qualified))
+                            };
+                            self.emit(OpCode::CALL_PY);
+                            self.code.extend_from_slice(&native_id.to_le_bytes());
+                            self.code.push(0); // arg_count = 0
+                            // py-FFI auto return marshals to string pool by default
+                            self.last_expr_type = ObjectType::String;
                         } else {
                             return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
                         }
@@ -6568,6 +6628,10 @@ impl Codegen {
                 }
 
                 // Check if it's a native function (either intrinsic or BIGVM_NATIVE)
+                // Plan 369 Task 10: track whether the resolved native is a py-FFI call,
+                // so the emit site can use CALL_PY (carrying runtime arg count) instead
+                // of CALL_NAT. Set true in the py_native_map / py_modules branches below.
+                let mut is_py_ffi_call = false;
                 let native_id = if let Some(name) = &func_name {
                     // Check intrinsics first (print, etc.)
                     if let Some(&id) = self.intrinsics.get(name) {
@@ -6603,10 +6667,12 @@ impl Codegen {
                         let mut reg = BIGVM_NATIVES.lock().unwrap();
                         if let Some(id) = reg.resolve_qualified(&qualified) {
                             drop(reg);
+                            is_py_ffi_call = true;
                             Some(id)
                         } else {
                             drop(reg);
                             let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
+                            is_py_ffi_call = true;
                             Some(id)
                         }
                     }
@@ -6632,10 +6698,12 @@ impl Codegen {
                         let mut reg = BIGVM_NATIVES.lock().unwrap();
                         if let Some(id) = reg.resolve_qualified(&qualified) {
                             drop(reg);
+                            is_py_ffi_call = true;
                             Some(id)
                         } else {
                             drop(reg);
                             let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
+                            is_py_ffi_call = true;
                             Some(id)
                         }
                     }
@@ -6982,8 +7050,19 @@ impl Codegen {
                         id
                     };
 
-                    self.emit(OpCode::CALL_NAT);
-                    self.code.extend_from_slice(&resolved_id.to_le_bytes());
+                    // Plan 369 Task 10: py-FFI calls use CALL_PY which carries the
+                    // call-site arg count as an extra byte, so the Python shim pops
+                    // the ACTUAL number of args (count cannot be introspected for
+                    // C builtins like datetime.date, and struct.pack is variadic).
+                    if is_py_ffi_call {
+                        self.emit(OpCode::CALL_PY);
+                        self.code.extend_from_slice(&resolved_id.to_le_bytes());
+                        let py_arg_count = call.args.args.len().min(255) as u8;
+                        self.code.push(py_arg_count);
+                    } else {
+                        self.emit(OpCode::CALL_NAT);
+                        self.code.extend_from_slice(&resolved_id.to_le_bytes());
+                    }
 
                     // Track return type for type-aware dispatch (e.g., print choosing STR vs I32)
                     if let Some(ref name) = func_name {

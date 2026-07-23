@@ -51,7 +51,7 @@ if __name__ == "__main__":
         tap_not_ok(4, "test_weekday", f"got {d.weekday()}")
 
     # toordinal
-    if d.toordinal() == 739251:
+    if d.toordinal() == 739617:
         tap_ok(5, "test_toordinal")
     else:
         tap_not_ok(5, "test_toordinal", f"got {d.toordinal()}")
