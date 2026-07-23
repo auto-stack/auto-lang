@@ -32,17 +32,18 @@ Auto 代码必须能通过 AutoVM 运行，也能通过 a2r 翻译成 Rust，行
 ### 文件清单
 | Rust | Auto | 状态 |
 |---|---|---|
-| `tier.rs` | `tier.at` | ✅ 已完成 |
-| `wire.rs` | `wire.at` | ✅ 已完成 |
-| `provider.rs` | `provider.at` | ✅ 已完成 |
-| `loader.rs` | `loader.at` | ✅ 已完成（桥接 auto_atom/auto_val） |
-| `validate.rs` | `validate.at` | ✅ 已完成 |
-| `lib.rs` | `lib.at` | ✅ 已完成 |
+| `tier.rs` | `tier.at` | ⚠️ 已移植，有缺陷待修（见下） |
+| `wire.rs` | `wire.at` | ⚠️ 已移植，有已知限制 |
+| `provider.rs` | `provider.at` | ⚠️ 已移植，有边界差异 |
+| `loader.rs` | `loader.at` | ⚠️ 已移植，有缺陷待修 |
+| `validate.rs` | `validate.at` | ⚠️ 已移植，错误格式略有差异 |
+| `lib.rs` | `lib.at` | ⚠️ 已移植，re-export 未落实 |
 
-**阶段 1 全部完成**。验收：provider.at 通过全部 6 个对标 Rust `#[test]`
-的行为测试；tier/wire/provider 在 AutoVM 干净运行；loader/validate/lib 因
-依赖 `use.rust` 桥接类型，AutoVM 不解析（a2r-first，见下），但 a2r 能翻译
-出结构正确的 Rust。
+阶段 1 文件均已移植且 AutoVM 能解析，但逐文件对照 Rust 源码审计发现若干
+**真实行为缺陷**（详见[已知不足](#已知不足与补救路径)），需修复后方能称
+"完成"。provider.at 通过了全部 6 个对标 Rust `#[test]` 的行为测试；
+tier/wire/provider 在 AutoVM 干净运行；loader/validate/lib 因依赖
+`use.rust` 桥接类型，AutoVM 不解析（a2r-first）。
 
 ### 验收标准
 - AutoVM 能运行 parse_name / resolve_key / resolve_model_id
@@ -124,11 +125,12 @@ spec 文档所载，移植时**必须遵守**：
 ### 文件清单
 | Rust | Auto | 状态 |
 |---|---|---|
-| `error.rs` | `error.at` | ✅ 已完成 |
-| `daemon.rs` | `daemon.at` | ✅ 已完成 |
-| `lib.rs` | `lib.at` | ✅ 已完成（a2r-first） |
+| `error.rs` | `error.at` | ⚠️ 已移植，缺 `From<reqwest::Error>` 转换 |
+| `daemon.rs` | `daemon.at` | ⚠️ 已移植，Windows 检测/stdio 有差异 |
+| `lib.rs` | `lib.at` | ⚠️ 已移植（a2r-first），有缺陷待修 |
 
-**阶段 2 全部完成**。3 个文件，~535 行 Rust → ~430 行 Auto。
+阶段 2 三文件均已移植（~535 行 Rust → ~430 行 Auto），但审计发现若干
+**真实缺陷**（详见[已知不足](#已知不足与补救路径)），需修复。
 
 `lib.at` 是 **a2r-first**：HTTP + JSON + SSE 流式依赖 `reqwest`/`serde_json`/
 `futures`，Auto VM 的 `json.encode[T]`/`json.decode[T]` 泛型分发在纯解释器
@@ -170,4 +172,71 @@ Rust 路径。已验证可翻译，且 `fn ... ~Result<T,E>` 正确译为
     文件，或仅测不依赖跨文件的部分。
 
 ## 阶段 3：auto-ai-agent
-（阶段 2 验收后展开）
+
+### 文件清单与进度
+| Rust | Auto | 状态 |
+|---|---|---|
+| `error.rs` | `error.at` | ✅ 已移植 |
+| `role_def.rs` | `role_def.at` | ✅ 已移植（Role spec） |
+| `relay.rs` | `relay.at` | ✅ 已移植（RelayTarget spec） |
+| `tool.rs` | `tool.at` | ✅ 已移植（Tool spec + ToolRegistry） |
+| `memory.rs` | `memory.at` | ✅ 已移植（含配对感知 trim） |
+| `validate.rs` | `validate.at` | ✅ 已移植 |
+| `lib.rs` | `lib.at` | ⏳ 待做 |
+| `roles.rs` (395) | `roles.at` | ⏳ 待做 |
+| `skill.rs` (476) | `skill.at` | ⏳ 待做 |
+| `role_def` 之上的 15 个 `builtin_roles/*` | `builtin_roles/*.at` | ⏳ 待做 |
+| `config/role_config.rs` (712) | `config/role_config.at` | ⏳ 待做 |
+| `workflow.rs` (1181) | `workflow.at` | ⏳ 待做（标记 deprecated） |
+| `workflow_validator.rs` (192) | `workflow_validator.at` | ⏳ 待做 |
+| `orchestration/*` (5 文件, ~1487) | `orchestration/*.at` | ⏳ 待做 |
+
+**阶段 3 仅完成 6/26 文件**（基础层：错误、Role/Tool spec、memory、validate）。
+核心的 ReAct 循环（`agent.rs` 918 行）、workflow 引擎、orchestration
+pipeline/driver 均未开始。
+
+## 已知不足与补救路径
+
+> 2026-07-23 逐文件对照 Rust 源码审计得出。分为 **A. 真实移植错误**（Auto
+> 代码 bug，可修复）与 **B. VM/a2r 平台限制**（需平台侧改进，当前记档）。
+
+### A. 真实移植错误（必须修复）
+
+| # | 文件 | 缺陷 | Rust 行为 | Auto 当前行为 | 严重度 |
+|---|---|---|---|---|---|
+| A1 | `tier.at` | `resolve_model_id` 缺 nearest-tier 回退 | 精确匹配→否则最近的"≥tier"→否则最高"<tier" | 仅精确匹配，否则 None | **高**（3/4 Rust 测试会失败） |
+| A2 | `tier.at` | 缺 `all_tiers()` 函数 | 返回 5 个 tier 的有序数组 | 完全缺失 | 中（lib.at 还引用了它） |
+| A3 | `tier.at` | `ModelDefinition.new` 的 name 默认值 | `name = ""`（空） | `name = id` | 中（影响 display） |
+| A4 | `loader.at` | `auth_required` 丢了 `unwrap_or(true)` | 默认 true（缺 key 则 fail-fast） | 赋了 `?bool` 给 `bool`，默认 false | **高（安全相关）** |
+| A5 | `loader.at` | `parse_tier` 默认值 | `unwrap_or_default()`=**Min**（注释自相矛盾说 Mid） | 显式 Mid | 中（忠实了注释而非代码） |
+| A6 | `client/lib.at` | 缺 `Default` for AiClient | `with_url(daemon_url())`（honors $AAID_URL） | 无 | 中（公开 API 缺失） |
+| A7 | `client/lib.at` | 缺 wire 类型 re-export | `pub use ai_config::{Message,...}` | 仅 `use error/daemon` | 中（公开 API 缺失） |
+| A8 | `client/lib.at` | HTTP 传输错误未映射为 ClientError | `.map_err(ClientError::from)?` | `.send()` 无错误包装 | 中（错误不可表示） |
+| A9 | `client/lib.at` | `complete()` 重复读 body | 错误分支读 text，成功分支用 json | 两个分支都 `body_bytes()` | 低-中（若消费式读取则第二次为空） |
+| A10 | `client/error.at` | 缺 `From<reqwest::Error>` | `.into()` / `?` 依赖此转换 | 无 | 中（A8 的根因之一） |
+| A11 | `ai-config/lib.at` | re-export 是注释非代码 | `pub use ...` | `//` 注释罗列 | 中（A2 使其中一处还引用了不存在的符号） |
+| A12 | 全部文件 | 未移植任何 Rust 测试 | 37+ 测试（ai-config）+ 客户端测试 | 0 个 `#[test]` 移植 | 中（行为靠手测，无回归保护） |
+
+### B. VM/a2r 平台限制（记档，待平台改进）
+
+| # | 限制 | 影响 | 触及文件 |
+|---|---|---|---|
+| B1 | a2r 译出的 Rust **过不了 cargo check** | enum 缺 Eq/Ord derive、返回 String 字段漏 .clone()、本地类型被误加 crate 前缀、`&iter()` 借用错误 | 全部经 a2r 的文件 |
+| B2 | `ContentBlock` 用 tuple 变体 → 丢失 `serde(tag="type")` 线上判别符 | client↔daemon 序列化格式不一致（wire 模块的核心目的） | `wire.at` |
+| B3 | AutoVM 不能解构 struct-style enum 变体 | B2 的根因 | `wire.at` |
+| B4 | `json.encode/decode[T]` 在 VM 返回垃圾值 / panic | JSON 编解码只能走 a2r | client、agent |
+| B5 | VM Map 无 keys()/entries()/iter() | 需并行键表 workaround | loader、validate、tool |
+| B6 | 跨文件用户模块在独立 VM 运行不可见 | 只能 a2r 或内联测试 | 全部多文件 crate |
+| B7 | `pub const` 不支持 | 用公开函数替代 | daemon |
+| B8 | `use <stdlib>` 触发 stdlib 解析错误 | 全局直接调用，不 import | 全部 |
+| B9 | `daemon.at` Windows 检测用 `env OS` 而非 `cfg!(windows)` | 标准环境正确，精简环境脆弱 | daemon |
+| B10 | `daemon.at` `spawn` 未设 stdio=null | 守护进程可能继承父进程 stdio | daemon |
+
+### 补救优先级
+
+1. **先修 A 类真实错误**（A1/A4 安全与正确性优先）——本计划后续提交。
+2. B 类中，**B1（a2r 过 cargo check）** 是验收标准的硬阻塞，需 a2r 侧改进；
+   待 auto-lang 的 a2r 修好对应问题后回归验证。
+3. B2/B3（ContentBlock 序列化）影响线上互操作，优先级高但受 B3 阻塞——
+   需 AutoVM 实现 struct 变体解构后才能用 struct 变体还原 tag。
+4. 阶段 3 剩余 20 文件在 A 类修复后再继续，避免在新文件里重复同类错误。
