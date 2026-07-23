@@ -8961,6 +8961,29 @@ impl Codegen {
         if name == "auto.hashmap.get" {
             return ObjectType::NestedObject;
         }
+        // Plan 368 W8: string methods. infer_native_return_type is consulted by
+        // the native-call codegen path to set last_expr_type / last_was_native_void.
+        // Without these arms, a string method's return type defaulted to the stale
+        // last_expr_type (often Void after compiling the receiver+args), which made
+        // `return s.upper()` / `return s.replace(...)` drop the value. Match both
+        // "auto.str.X" and "str.X" forms. Keep in sync with infer_call_spec_return_type
+        // and the native_catalog str/Str entries.
+        let str_method = name
+            .strip_prefix("auto.str.")
+            .or_else(|| name.strip_prefix("str."))
+            .or_else(|| name.strip_prefix("Str."));
+        if let Some(m) = str_method {
+            match m {
+                "trim" | "replace" | "replace_first" | "to_upper" | "to_lower"
+                | "upper" | "lower" | "to_uppercase" | "to_lowercase"
+                | "substr" | "sub" | "slice" | "repeat" | "reverse" => return ObjectType::String,
+                "split" | "lines" | "split_once" => return ObjectType::Array,
+                "len" | "find" | "char_at" | "parse_int" | "match_count" => return ObjectType::Int,
+                "contains" | "starts_with" | "ends_with" | "is_empty" => return ObjectType::Bool,
+                "parse_float" => return ObjectType::Float,
+                _ => {}
+            }
+        }
         // Default: preserve current last_expr_type (no change)
         self.last_expr_type
     }
