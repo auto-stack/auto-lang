@@ -93,6 +93,12 @@ pub struct RustTrans {
     // Cache for tag type names (for tag construction detection)
     tag_types: HashSet<AutoStr>,
 
+    // Plan 013 (B1/BUG3): Cache for locally-declared struct/type names, so
+    // expression-position construction of a local type (e.g. `TierRouting{...}`)
+    // is NOT spuriously qualified with an external crate prefix when a
+    // `use.rust <crate>` import is present. Mirrors tag_types/known_enum_names.
+    local_struct_types: HashSet<AutoStr>,
+
     // Plan 310 Phase 0.2: Cache for union type names (to rewrite construction
     // and field-access into safe accessor methods, since Rust union fields
     // require `unsafe`).
@@ -239,6 +245,7 @@ impl RustTrans {
             struct_field_types: HashMap::new(),
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
+            local_struct_types: HashSet::new(),
             union_types: HashSet::new(),
             warnings: Vec::new(),
             escape_results: HashMap::new(),
@@ -295,6 +302,7 @@ impl RustTrans {
             struct_field_types: HashMap::new(),
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
+            local_struct_types: HashSet::new(),
             union_types: HashSet::new(),
             warnings: Vec::new(),
             escape_results: HashMap::new(),
@@ -728,6 +736,23 @@ impl RustTrans {
         })
     }
 
+    /// Plan 013 (B1/BUG2): Check if the current function's return type is a
+    /// non-Copy owned type (String, struct, enum, List, Map, Option, etc.).
+    /// Returning `self.field` of such a type from a `&self` method needs an
+    /// explicit `.clone()` to avoid E0507 (cannot move out of &self).
+    fn ret_type_is_owned_noncopy(&self) -> bool {
+        match &self.current_fn_ret_type {
+            // Copy primitives — returning self.field of these is fine.
+            None
+            | Some(Type::Byte | Type::Int | Type::Uint | Type::USize
+                | Type::I64 | Type::U64 | Type::Float | Type::Double
+                | Type::Bool | Type::Char) => false,
+            // Everything else (String variants, List, Map, User, Enum, Tag,
+            // Option, Result, Tuple, …) is owned and non-Copy.
+            Some(_) => true,
+        }
+    }
+
     /// Check if an expression produces &str that needs .to_string() for String return
     fn expr_needs_string_coercion(&self, expr: &Expr) -> bool {
         match expr {
@@ -759,10 +784,16 @@ impl RustTrans {
         }
         let needs_to_string = self.ret_type_needs_string_coercion()
             && self.expr_needs_string_coercion(expr);
+        // Plan 013 (B1/BUG2): returning `self.field` of an owned non-Copy type
+        // from a &self method needs `.clone()` (E0507 otherwise).
+        let needs_self_clone = Self::is_self_dot(expr) && self.ret_type_is_owned_noncopy();
         out.write(b"return ")?;
         self.expr(expr, out)?;
         if needs_to_string {
             out.write(b".to_string()")?;
+        }
+        if needs_self_clone && !needs_to_string {
+            out.write(b".clone()")?;
         }
         if add_semi { out.write(b";")?; }
         Ok(())
@@ -5321,6 +5352,15 @@ impl RustTrans {
                     let qualified_type = if type_in_uses {
                         // Type name found in uses (possibly via brace expansion) — use as-is
                         rust_type_name.to_string()
+                    } else if self.local_struct_types.contains(type_name.as_str())
+                        || self.tag_types.contains(type_name.as_str())
+                        || self.known_enum_names.contains(type_name.as_str())
+                        || self.union_types.contains(type_name.as_str()) {
+                        // Plan 013 (B1/BUG3): the type is declared locally in
+                        // this file (struct/enum/tag/union). Never qualify it
+                        // with an external crate prefix — a `use.rust <crate>`
+                        // import must not leak onto local type construction.
+                        rust_type_name.to_string()
                     } else if !self.uses.contains(type_name.as_str()) {
                         // Type not in uses at all — qualify with the best matching
                         // external crate. Prefer the most specific (longest named) crate.
@@ -6703,9 +6743,16 @@ impl RustTrans {
                 // If return type is String and expr produces &str, add .to_string()
                 let needs_to_string = self.ret_type_needs_string_coercion()
                     && self.expr_needs_string_coercion(expr);
+                // Plan 013 (B1/BUG2): returning `self.field` of an owned
+                // non-Copy type from a &self method needs `.clone()`.
+                let needs_self_clone = Self::is_self_dot(expr)
+                    && self.ret_type_is_owned_noncopy();
                 self.expr(expr, &mut sink.body)?;
                 if needs_to_string {
                     sink.body.write(b".to_string()")?;
+                }
+                if needs_self_clone && !needs_to_string {
+                    sink.body.write(b".clone()")?;
                 }
                 sink.body.write(b";")?;
                 Ok(true)
@@ -7489,14 +7536,26 @@ impl RustTrans {
                 }
             }
             Iter::Destructured(key, val) => {
-                // for (k, v) in map -> for (ref k, v) in map
-                // This consumes the map but gives owned values
-                // Actually use: for (k, v) in &map — k: &String, v: &String
+                // for (k, v) in <expr>
+                // - If <expr> is a collection (map/variable/field), iterate by
+                //   reference: `for (k, v) in &map` (Rust idiom for HashMap).
+                // - If <expr> is an iterator-yielding method call (e.g.
+                //   `node.kids_iter()`, `tr_node.props_iter()`), the call already
+                //   returns an iterator — borrowing it with `&` would try to
+                //   iterate a reference to a temporary, which doesn't compile.
+                //   Emit `for (k, v) in node.kids_iter()` with no `&`.
+                //   (Plan 013 B1/BUG4.)
+                let is_iter_call = matches!(&for_stmt.range, Expr::Call(_))
+                    || matches!(&for_stmt.range, Expr::Dot(_, _));
                 sink.body.write(b"for (")?;
                 sink.body.write(key.as_bytes())?;
                 sink.body.write(b", ")?;
                 sink.body.write(val.as_bytes())?;
-                sink.body.write(b") in &")?;
+                if is_iter_call {
+                    sink.body.write(b") in ")?;
+                } else {
+                    sink.body.write(b") in &")?;
+                }
                 self.expr(&for_stmt.range, &mut sink.body)?;
                 sink.body.write(b" {\n")?;
                 self.indent();
@@ -8152,6 +8211,12 @@ impl RustTrans {
                         ("percent_encoding", "use percent_encoding::{percent_encode, NON_ALPHANUMERIC};"),
                         ("urlencoding", "use urlencoding::encode;"),
                         ("hex", "use hex;"),
+                        // Plan 013 (B14): bridge crates whose many types are
+                        // referenced unqualified in the Auto source (e.g.
+                        // `auto_val.Value.Str` → a2r emits bare `Value::Str`).
+                        // A glob import resolves all of them without enumerating.
+                        ("auto_val", "use auto_val::*;"),
+                        ("auto_atom", "use auto_atom::*;"),
                     ];
 
                     let already_emitted = self.uses.contains(full_path.as_str());
@@ -8249,6 +8314,9 @@ impl RustTrans {
 
     // Type declaration (struct)
     fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Plan 013 (B1/BUG3): register this struct's name as locally-defined so
+        // expression-position construction isn't spuriously crate-prefixed.
+        self.local_struct_types.insert(type_decl.name.clone());
         // Register struct→spec mapping for spec array inference
         for spec_name in &type_decl.specs {
             self.struct_to_spec.insert(type_decl.name.clone(), spec_name.clone());
@@ -9019,14 +9087,79 @@ impl RustTrans {
         // Plan 204 Phase 2C: Add #[derive(Clone, Debug, PartialEq)] to enums
         // Scalar enums with repr type also need Copy
         // Heterogeneous enums with all-empty variants (no data) also get Copy
+        //
+        // Plan 013 (B1/BUG1): enums additionally derive Eq, PartialOrd, Ord when
+        // every payload type is Eq-safe (no float, no Map, no nested enum/tag).
+        // This mirrors the struct derive logic at the TypeDecl handler — fieldless
+        // enums (e.g. ModelTier) are trivially Eq-safe, and downstream code
+        // commonly compares enum values (`m.tier == desired`), which needs Eq.
+        // The old comment "Enums don't derive Eq" only holds for float-bearing
+        // heterogeneous enums, not the common fieldless/scalar case.
         let all_variants_empty = matches!(&enum_decl.kind, EnumKind::Heterogeneous { .. })
             && enum_decl.items.iter().all(|item| {
                 item.fields.is_empty() && item.payload_type.is_none() && item.payload_types.is_empty()
             });
+
+        // Collect every payload Type the enum carries (Homogeneous shared type,
+        // Heterogeneous per-variant payloads, struct-variant fields). Scalar
+        // enums carry none.
+        let mut payload_types: Vec<&Type> = Vec::new();
+        if let EnumKind::Homogeneous { payload_type } = &enum_decl.kind {
+            payload_types.push(payload_type);
+        }
+        for item in &enum_decl.items {
+            if let Some(pt) = &item.payload_type {
+                payload_types.push(pt);
+            }
+            for pt in &item.payload_types {
+                payload_types.push(pt);
+            }
+            for f in &item.fields {
+                payload_types.push(&f.field_type);
+            }
+        }
+
+        fn ty_has_float(ty: &Type) -> bool {
+            match ty {
+                Type::Float | Type::Double => true,
+                Type::List(inner) | Type::Result(inner) | Type::Option(inner) => ty_has_float(inner),
+                _ => false,
+            }
+        }
+        fn ty_has_map(ty: &Type) -> bool {
+            matches!(ty, Type::Map(_, _))
+                || matches!(ty, Type::Rust(source) if {
+                    let name = source.short_name();
+                    name.starts_with("HashMap") || name.starts_with("BTreeMap")
+                })
+        }
+        fn ty_has_enum(ty: &Type) -> bool {
+            match ty {
+                Type::Tag(_) | Type::Enum(_) => true,
+                Type::User(td) if !td.members.is_empty() || !td.generic_params.is_empty() => true,
+                Type::GenericInstance(inst) => inst.args.iter().any(ty_has_enum),
+                Type::List(inner) | Type::Result(inner) | Type::Option(inner) => ty_has_enum(inner),
+                _ => false,
+            }
+        }
+        let payload_is_eq_safe = payload_types
+            .iter()
+            .all(|ty| !ty_has_float(ty) && !ty_has_map(ty) && !ty_has_enum(ty));
+
         let derive_attrs = match &enum_decl.kind {
+            EnumKind::Scalar { repr_type: Some(_) } if payload_is_eq_safe => {
+                "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
+            }
             EnumKind::Scalar { repr_type: Some(_) } => "#[derive(Clone, Debug, PartialEq, Copy)]",
+            EnumKind::Scalar { repr_type: None } if payload_is_eq_safe => {
+                "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]"
+            }
             EnumKind::Scalar { repr_type: None } => "#[derive(Clone, Debug, PartialEq)]",
+            _ if all_variants_empty && payload_is_eq_safe => {
+                "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
+            }
             _ if all_variants_empty => "#[derive(Clone, Copy, Debug, PartialEq)]",
+            _ if payload_is_eq_safe => "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]",
             _ => "#[derive(Clone, Debug, PartialEq)]",
         };
         writeln!(sink.body, "{}", derive_attrs)?;
@@ -9587,10 +9720,19 @@ impl RustTrans {
                     Stmt::Expr(expr) => {
                         self.expr(expr, &mut sink.body)?;
                         // If return type is String and expr produces &str, add .to_string()
-                        if self.ret_type_needs_string_coercion()
-                            && self.expr_needs_string_coercion(expr)
-                        {
+                        let needs_to_string = self.ret_type_needs_string_coercion()
+                            && self.expr_needs_string_coercion(expr);
+                        if needs_to_string {
                             sink.body.write(b".to_string()")?;
+                        }
+                        // Plan 013 (B1/BUG2): tail-position `self.field` of an
+                        // owned non-Copy type in a &self method needs .clone()
+                        // (E0507 otherwise). Mirrors write_return_expr.
+                        if !needs_to_string
+                            && Self::is_self_dot(expr)
+                            && self.ret_type_is_owned_noncopy()
+                        {
+                            sink.body.write(b".clone()")?;
                         }
                         sink.body.write(b"\n")?;
                     }
@@ -11659,6 +11801,28 @@ impl Trans for RustTrans {
             }
         }
 
+        // Plan 013 (B1/BUG3): Pre-scan for ALL locally-declared type names
+        // (struct/enum/tag/union) so expression-position construction is never
+        // spuriously crate-prefixed. Must run before any emission so forward
+        // references (a type used before its declaration) resolve correctly.
+        for stmt in &ast.stmts {
+            match stmt {
+                Stmt::TypeDecl(td) => {
+                    self.local_struct_types.insert(td.name.clone());
+                }
+                Stmt::EnumDecl(ed) => {
+                    self.local_struct_types.insert(ed.name.clone());
+                }
+                Stmt::Tag(td) => {
+                    self.local_struct_types.insert(td.name.clone());
+                }
+                Stmt::Union(u) => {
+                    self.local_struct_types.insert(u.name.clone());
+                }
+                _ => {}
+            }
+        }
+
         // Pre-scan all function signatures for auto-borrow/auto-clone at call sites
         // Without this, functions declared after their callers won't have param type info
         for stmt in &ast.stmts {
@@ -11852,8 +12016,14 @@ impl Trans for RustTrans {
 
         // Plan 270: Insert a2r_std import at file header if any a2r_std symbols were used.
         // Must be done AFTER all transpilation so a2r_std_used is accurate.
+        // Plan 013 (B11): the import path depends on the output target. In
+        // merge_mode (transpiling auto_lang's own sources) the runtime lives at
+        // `auto_lang::a2r_std`. For standalone CLI output (the common case —
+        // e.g. plan 013's ported crates), emit the bare `a2r_std` path so the
+        // generated crate only needs `a2r-std` as a dependency, not all of
+        // auto_lang.
         if !self.merge_mode && self.a2r_std_used.get() {
-            let import = b"// a2r Standard Library (from crate)\n#[allow(unused_imports)]\nuse auto_lang::a2r_std;\nuse auto_lang::a2r_std::*;\n\n";
+            let import = b"// a2r Standard Library (from crate)\n#[allow(unused_imports)]\nuse a2r_std;\nuse a2r_std::*;\n\n";
             // Find the header boundary: after "#![allow]" line + blank line
             let body = &sink.body;
             let mut insert_pos = 0;
@@ -11914,6 +12084,8 @@ pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> 
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);
     transpiler.escape_results = escape_results;
+    // Plan 013 (B1/BUG3): local-type pre-scan lives in trans() so all entry
+    // points (single-file, project, CLI) benefit uniformly.
     transpiler.trans(ast, &mut out)?;
 
     // Apply post-processing fixes (replaces fix_transpiled.py)

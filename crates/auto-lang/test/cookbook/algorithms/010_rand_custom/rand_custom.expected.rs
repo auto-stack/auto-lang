@@ -2,7 +2,7 @@
 
 use rand;
 use rand::Rng;
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Color {
     Red = 0,
     Green = 1,
