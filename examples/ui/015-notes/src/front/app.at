@@ -66,7 +66,7 @@ widget App {
         .NewNoteInFolder(f) -> { store.NewNoteInFolder(f) }
         .SelectNote(i) -> { store.active_id = i }
         .SearchChanged -> { .search = .search }
-        .TogglePin -> { store.TogglePin(.store.notes[.store.active_id].id) }
+        .TogglePin -> { store.TogglePin(.active_id) }
         .DeleteActive -> {
             delete_note(.store.notes[.store.active_id].id)
             store.notes = list_notes()

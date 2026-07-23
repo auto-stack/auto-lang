@@ -56,6 +56,12 @@ store NotesStore {
             .active_id = .notes.len() - 1
         }
 
+        .NewNoteInFolder(folder) -> {
+            create_note("", "", folder)
+            .notes = list_notes()
+            .active_id = .notes.len() - 1
+        }
+
         .DeleteNote(id) -> {
             delete_note(id)
             .notes = list_notes()
@@ -64,9 +70,10 @@ store NotesStore {
             }
         }
 
-        .TogglePin(id) -> {
-            toggle_pin(id)
-            .notes = list_notes()
+        .TogglePin(idx) -> {
+            if idx < .notes.len() {
+                .notes[idx].pinned = !.notes[idx].pinned
+            }
         }
 
         .SetSort(mode) -> {

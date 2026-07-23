@@ -2346,6 +2346,21 @@ fn collect_module_imports(
                     out.push(stmt.clone());
                 }
             }
+            // Plan 370 D-GAP-4: StoreDecl (shared store composable).
+            // Dedup by store name so transitive imports don't double-declare.
+            crate::ast::Stmt::StoreDecl(sd) => {
+                let key = format!("__storedecl:{}", sd.name);
+                if seen.insert(key) {
+                    out.push(stmt.clone());
+                }
+            }
+            // Plan 367 P2-3: ViewFragmentDecl. Dedup by fragment name.
+            crate::ast::Stmt::ViewFragmentDecl(vf) => {
+                let key = format!("__fragment:{}", vf.name);
+                if seen.insert(key) {
+                    out.push(stmt.clone());
+                }
+            }
             _ => {}
         }
     }
@@ -2445,11 +2460,39 @@ fn run_file_dynamic_ui_inner(
             if use_stmt.is_c_import || use_stmt.is_rust_import {
                 continue;
             }
-            // Locate the module source file. A dotted module path maps to a
-            // filesystem path: `back.api` → `back/api.at`, `calendar_util` →
-            // `calendar_util.at`. Per the module rules (CLAUDE.md) a module is
-            // either `{path}.at` or `{path}/mod.at`; try both.
+            // Locate the module source file.
             let module_path = resolve_module_path(base_dir, &use_stmt.module);
+            // Plan 370 D-GAP-4: for `use store: Name`, the module is "store"
+            // but the actual file is e.g. notes_store.at. If resolve_module_path
+            // fails, scan all .at files in the directory for the StoreDecl.
+            let module_path = module_path.or_else(|| {
+                if use_stmt.module == "store" {
+                    // Search sibling .at files for a StoreDecl matching the items
+                    if let Ok(entries) = std::fs::read_dir(base_dir) {
+                        for entry in entries.flatten() {
+                            let path = entry.path();
+                            if path.extension().map_or(false, |e| e == "at") {
+                                if let Ok(code) = std::fs::read_to_string(&path) {
+                                    let session = CompilerSession::ui();
+                                    let mut parser = Parser::from(code.as_str()).with_session(session);
+                                    if let Ok(ast) = parser.parse() {
+                                        for stmt in &ast.stmts {
+                                            if let crate::ast::Stmt::StoreDecl(sd) = stmt {
+                                                if use_stmt.items.is_empty()
+                                                    || use_stmt.items.iter().any(|i| i == sd.name.as_str())
+                                                {
+                                                    return Some(path);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                None
+            });
             let Some(module_path) = module_path else {
                 continue;
             };
@@ -2468,13 +2511,26 @@ fn run_file_dynamic_ui_inner(
                                     || use_stmt.items.is_empty()
                                     || use_stmt.items.iter().any(|s| s == &child_widget.name)
                                 {
-                                    // PR-3b Step 4: collect the child WidgetDecl
-                                    // alongside the AuraWidget so the decl-based
-                                    // synthesis path can compile child handlers.
                                     child_decls.push(decl.clone());
                                     registry.register(child_widget);
                                 }
                             }
+                        }
+                        // Plan 370 D-GAP-4: also collect StoreDecl from use store: modules
+                        if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+                            let fake_widget = crate::ast::ui::WidgetDecl {
+                                name: store_decl.name.clone(),
+                                messages: store_decl.messages.clone(),
+                                model: store_decl.model.clone(),
+                                computed: store_decl.computed.clone(),
+                                view: None,
+                                on: store_decl.on.clone(),
+                                bind: None,
+                                props: Vec::new(),
+                                routes: None,
+                                lifecycle: Vec::new(),
+                            };
+                            child_decls.push(fake_widget);
                         }
                     }
                 }
