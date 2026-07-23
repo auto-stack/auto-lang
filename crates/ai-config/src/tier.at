@@ -65,7 +65,7 @@ ext ModelTier {
     /// instead of maintaining its own match table (review-003 M8).
     /// Accepted aliases (beyond the snake_case enum names):
     /// "light" → Lite, "large" → Pro, "heavy" → Max.
-    static fn parse_name(s str) ?ModelTier {
+    pub static fn parse_name(s str) ?ModelTier {
         let lower = s.trim().to_ascii_lowercase()
         is lower {
             "min" -> Some(ModelTier.Min),
@@ -97,7 +97,7 @@ ext ModelDefinition {
     /// The display name defaults to empty (matches Rust tier.rs:97-103, where
     /// `name: String::new()`). Use [display_name] to get a user-facing name
     /// that falls back to the id when name is empty.
-    static fn new(id str, tier ModelTier) ModelDefinition {
+    pub static fn new(id str, tier ModelTier) ModelDefinition {
         return ModelDefinition(id: id, name: "", tier: tier)
     }
 

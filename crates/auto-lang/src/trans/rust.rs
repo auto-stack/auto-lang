@@ -99,6 +99,12 @@ pub struct RustTrans {
     // `use.rust <crate>` import is present. Mirrors tag_types/known_enum_names.
     local_struct_types: HashSet<AutoStr>,
 
+    // Plan 013 (B16): identifiers bound inside `is` patterns for bridge-crate
+    // enum variants (e.g. `auto_val.Kid.Node(child)` binds `child: Box<Node>`).
+    // When such an ident is auto-cloned at a call site, emit `(*x).clone()` so
+    // the inner value is cloned, not the Box wrapper.
+    bridge_pattern_bound_idents: HashSet<AutoStr>,
+
     // Plan 310 Phase 0.2: Cache for union type names (to rewrite construction
     // and field-access into safe accessor methods, since Rust union fields
     // require `unsafe`).
@@ -246,6 +252,7 @@ impl RustTrans {
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
             local_struct_types: HashSet::new(),
+            bridge_pattern_bound_idents: HashSet::new(),
             union_types: HashSet::new(),
             warnings: Vec::new(),
             escape_results: HashMap::new(),
@@ -303,6 +310,7 @@ impl RustTrans {
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
             local_struct_types: HashSet::new(),
+            bridge_pattern_bound_idents: HashSet::new(),
             union_types: HashSet::new(),
             warnings: Vec::new(),
             escape_results: HashMap::new(),
@@ -1830,6 +1838,24 @@ impl RustTrans {
                         let key = (tag_cover.kind.clone(), tag_cover.tag.clone());
                         let is_struct = self.enum_struct_variants.contains_key(&key);
                         let tuple_arity = self.enum_tuple_variants.get(&key).copied();
+
+                        // Plan 013 (B16): record non-wildcard bindings so a
+                        // later call-site auto-clone can deref a Box<T> before
+                        // cloning. Only Kid.Node and Atom.Node carry Box<T> in
+                        // the auto_val/auto_atom API; other variants (Value.Obj,
+                        // Value.Str, ...) hold plain values, so deref'ing them
+                        // is an error (E0614). Gate on the known Box variants.
+                        let is_box_variant = matches!(
+                            (tag_cover.kind.as_str(), tag_cover.tag.as_str()),
+                            ("Kid", "Node") | ("Atom", "Node")
+                        );
+                        if is_box_variant {
+                            for b in &tag_cover.bindings {
+                                if b != "_" {
+                                    self.bridge_pattern_bound_idents.insert(b.clone());
+                                }
+                            }
+                        }
 
                         // Bare variant check (no bindings): Enum::Variant
                         if tag_cover.bindings.iter().all(|b| b.as_str() == "_") {
@@ -6198,9 +6224,24 @@ impl RustTrans {
                 write!(out, "&mut ")?;
             }
 
-            self.arg(arg, out)?;
-            if needs_clone {
-                write!(out, ".clone()")?;
+            // Plan 013 (B16): if the ident was bound inside an `is` pattern for
+            // a bridge-crate variant (e.g. `Kid.Node(child)`), it's a Box<T> in
+            // Rust — emit `(*ident).clone()` so the inner value is cloned, not
+            // the Box wrapper. Handle this before self.arg() writes the ident.
+            let bridge_box_ident = if needs_clone {
+                if let Arg::Pos(Expr::Ident(name)) = arg {
+                    if self.bridge_pattern_bound_idents.contains(name) {
+                        Some(name.clone())
+                    } else { None }
+                } else { None }
+            } else { None };
+            if let Some(name) = bridge_box_ident {
+                write!(out, "(*{}).clone()", Self::rust_ident(name.as_str()))?;
+            } else {
+                self.arg(arg, out)?;
+                if needs_clone {
+                    write!(out, ".clone()")?;
+                }
             }
 
             // After expression: add .as_str() for String→&str conversion
@@ -7976,6 +8017,15 @@ impl RustTrans {
                                     self.expr(pat, &mut sink.body)?;
                                 }
                             } else {
+                                // Plan 013 (B16): a variant pattern like
+                                // `auto_val.Kid.Node(child)` binds `child` to a
+                                // Box<T> in Rust. Record bare-ident args so the
+                                // call-site auto-clone can deref before cloning.
+                                for arg in &call.args.args {
+                                    if let Arg::Pos(Expr::Ident(name)) = arg {
+                                        self.bridge_pattern_bound_idents.insert(name.clone());
+                                    }
+                                }
                                 self.expr(pat, &mut sink.body)?;
                             }
                         } else if let Expr::OptionPattern(oc) = pat {
@@ -7993,6 +8043,10 @@ impl RustTrans {
                                 }
                             }
                         } else {
+                            // Plan 013 (B16): record bare-ident args in any
+                            // remaining pattern shape (e.g. a Dot-chain variant
+                            // `auto_val.Kid.Node(child)`), so call-site auto-
+                            // clone can deref Box<T> before cloning.
                             self.expr(pat, &mut sink.body)?;
                         }
                     }
@@ -10282,6 +10336,38 @@ impl RustTrans {
 
     fn is_self_dot(expr: &Expr) -> bool {
         matches!(expr, Expr::Dot(obj, _) if matches!(obj.as_ref(), Expr::Ident(name) if name == "self"))
+    }
+
+    /// Plan 013 (B16): collect bare-identifier names used as variant-pattern
+    /// arguments (e.g. the `child` in `Kid.Node(child)`), so a later auto-clone
+    /// at a call site can deref a Box<T> before cloning. Recurses into nested
+    /// calls so multi-field variants are covered too.
+    fn collect_pattern_idents(expr: &Expr, out: &mut HashSet<AutoStr>) {
+        match expr {
+            Expr::Call(call) => {
+                for arg in &call.args.args {
+                    if let Arg::Pos(e) = arg {
+                        Self::collect_pattern_idents(e, out);
+                    }
+                }
+            }
+            Expr::Ident(name) => {
+                out.insert(name.clone());
+            }
+            // Plan 013 (B16): `Type.Variant(binding)` patterns parse as
+            // Cover(Tag(TagCover { bindings })). Collect those bindings — they
+            // bind to Box<T> for bridge-crate variants like Kid.Node(child).
+            Expr::Cover(cover) => {
+                if let crate::ast::Cover::Tag(tc) = cover {
+                    for b in &tc.bindings {
+                        if b != "_" {
+                            out.insert(b.clone());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Plan 163: Check if an expression contains await

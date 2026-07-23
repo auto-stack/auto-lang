@@ -270,7 +270,7 @@ fn provider_keys(node Node) List<str> {
             auto_val.Kid.Node(child) -> {
                 let pc_kind = opt_str(child, "kind")
                 if pc_kind.is_empty() == false {
-                    names.push(child.name)
+                    names.push(child.name.to_string())
                 }
             },
             else -> {}
@@ -305,7 +305,7 @@ fn parse_provider_blocks(node Node) Map<str, ProviderConfig> {
                         max_concurrency: opt_uint_opt(child, "max_concurrency"),
                         auth_required: auth
                     )
-                    providers.set(child.name, pc)
+                    providers.set(child.name.to_string(), pc)
                 }
             },
             else -> {}
@@ -373,10 +373,10 @@ fn parse_candidates(val Value) List<TierRouteCandidate> {
 fn opt_str(node Node, key str) str {
     let val = node.get_prop_of(key)
     is val {
-        auto_val.Value.Str(s) -> return s,
-        auto_val.Value.String(s) -> return s,
+        auto_val.Value.Str(s) -> return s.to_string(),
+        auto_val.Value.String(s) -> return s.to_string(),
         auto_val.Value.Nil -> return "",
-        else -> return val.to_astr()
+        else -> return val.to_astr().to_string()
     }
 }
 
@@ -384,10 +384,10 @@ fn opt_str(node Node, key str) str {
 fn opt_str_opt(node Node, key str) ?str {
     let val = node.get_prop_of(key)
     is val {
-        auto_val.Value.Str(s) -> return Some(s),
-        auto_val.Value.String(s) -> return Some(s),
+        auto_val.Value.Str(s) -> return Some(s.to_string()),
+        auto_val.Value.String(s) -> return Some(s.to_string()),
         auto_val.Value.Nil -> return None,
-        else -> return Some(val.to_astr())
+        else -> return Some(val.to_astr().to_string())
     }
 }
 
@@ -459,7 +459,7 @@ fn opt_models(node Node, key str) List<ModelDefinition> {
                     },
                     auto_val.Value.Str(s) -> {
                         // bare string → Mid default
-                        out.push(ModelDefinition.new(s, ModelTier.Mid))
+                        out.push(ModelDefinition.new(s.to_string(), ModelTier.Mid))
                     },
                     else -> {}
                 }
@@ -501,8 +501,8 @@ fn obj_get_str(o Obj, key str) str {
     is o.get(key) {
         Some(v) -> {
             is v {
-                auto_val.Value.Str(s) -> return s,
-                auto_val.Value.String(s) -> return s,
+                auto_val.Value.Str(s) -> return s.to_string(),
+                auto_val.Value.String(s) -> return s.to_string(),
                 else -> return ""
             }
         },
@@ -513,7 +513,7 @@ fn obj_get_str(o Obj, key str) str {
 /// Extract the str payload from a ValueKey::Str, else "".
 fn valuekey_to_str(k ValueKey) str {
     is k {
-        auto_val.ValueKey.Str(s) -> return s,
+        auto_val.ValueKey.Str(s) -> return s.to_string(),
         else -> return ""
     }
 }
