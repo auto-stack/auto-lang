@@ -5,6 +5,96 @@
 
 use super::{Style, StyleClass, SizeValue, Color};
 
+// Plan 370 D-GAP-2/D-GAP-5: thread-local theme state for dark mode + accent.
+// Set by the iced renderer before each render pass from VmBridge state.
+thread_local! {
+    static DARK_MODE: std::cell::Cell<bool> = std::cell::Cell::new(false);
+    static ACCENT_NAME: std::cell::RefCell<String> = std::cell::RefCell::new("indigo".to_string());
+}
+
+/// Set the global dark mode flag (called by renderer before rendering).
+pub fn set_dark_mode(dark: bool) {
+    DARK_MODE.with(|d| d.set(dark));
+}
+
+/// Set the global accent color name (called by renderer before rendering).
+pub fn set_accent_name(name: &str) {
+    ACCENT_NAME.with(|n| *n.borrow_mut() = name.to_string());
+}
+
+/// HSL → RGB conversion (for accent palettes).
+fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (u8, u8, u8) {
+    let h = h as f64 / 360.0;
+    let s = s as f64 / 100.0;
+    let l = l as f64 / 100.0;
+    if s == 0.0 {
+        let v = (l * 255.0) as u8;
+        return (v, v, v);
+    }
+    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let p = 2.0 * l - q;
+    let hue_to_rgb = |p: f64, q: f64, mut t: f64| -> f64 {
+        if t < 0.0 { t += 1.0; }
+        if t > 1.0 { t -= 1.0; }
+        if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
+        if t < 1.0 / 2.0 { return q; }
+        if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+        p
+    };
+    let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
+    let g = hue_to_rgb(p, q, h);
+    let b = hue_to_rgb(p, q, h - 1.0 / 3.0);
+    ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+}
+
+/// Accent palette (HSL triplets, aligned with Vue ACCENT_PALETTES + auto-forge).
+fn accent_hsl(name: &str) -> Option<(u16, u8, u8)> {
+    match name {
+        "indigo" => Some((239, 84, 67)),
+        "coral"  => Some((350, 75, 64)),
+        "ocean"  => Some((217, 91, 60)),
+        "sage"   => Some((160, 84, 39)),
+        "amber"  => Some((38, 92, 50)),
+        _ => None,
+    }
+}
+
+/// Resolve a semantic color to RGB, considering dark mode and accent.
+fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
+    let is_dark = DARK_MODE.with(|d| d.get());
+    match color {
+        Color::Primary => {
+            // Accent-driven: look up current accent name
+            let name = ACCENT_NAME.with(|n| n.borrow().clone());
+            let (h, s, l) = accent_hsl(&name).unwrap_or((239, 84, 67));
+            // Dark mode: boost lightness +4% for contrast
+            let l_adjusted = if is_dark { (l + 4).min(85) } else { l };
+            Some(hsl_to_rgb(h, s, l_adjusted))
+        }
+        Color::Secondary => {
+            if is_dark { Some((129, 140, 248)) } else { Some((99, 102, 241)) } // indigo-400/500
+        }
+        Color::Background => {
+            if is_dark { Some((17, 24, 39)) } else { Some((255, 255, 255)) } // gray-900/white
+        }
+        Color::Surface => {
+            if is_dark { Some((31, 41, 55)) } else { Some((249, 250, 251)) } // gray-800/50
+        }
+        Color::Error => Some((239, 68, 68)),
+        Color::Warning => Some((234, 179, 8)),
+        Color::Success => Some((34, 197, 94)),
+        Color::Info => Some((59, 130, 246)),
+        Color::OnPrimary | Color::OnSecondary => Some((255, 255, 255)),
+        Color::OnBackground => {
+            if is_dark { Some((229, 231, 235)) } else { Some((17, 24, 39)) } // gray-200/900
+        }
+        Color::OnSurface => {
+            if is_dark { Some((156, 163, 175)) } else { Some((107, 114, 128)) } // gray-400/500
+        }
+        _ => None,
+    }
+}
+
 /// Iced style representation
 ///
 /// Iced has a more traditional style system with separate Style, Theme, and layout objects.
@@ -736,13 +826,19 @@ fn convert_color(color: &Color) -> iced::Color {
             let r = ((value >> 16) & 0xFF) as f32 / 255.0;
             let g = ((value >> 8) & 0xFF) as f32 / 255.0;
             let b = (value & 0xFF) as f32 / 255.0;
-            // 8-digit hex: AARRGGBB, 6-digit hex: RRGGBB (alpha = 1.0)
             let a = if *value > 0xFFFFFF {
                 ((value >> 24) & 0xFF) as f32 / 255.0
             } else {
                 1.0
             };
             iced::Color::from_rgba(r, g, b, a)
+        }
+        // Plan 370 D-GAP-2/D-GAP-5: semantic colors use dark-mode + accent-aware RGB
+        Color::Primary | Color::Secondary | Color::Background | Color::Surface
+        | Color::Error | Color::Warning | Color::Success | Color::Info
+        | Color::OnPrimary | Color::OnSecondary | Color::OnBackground | Color::OnSurface => {
+            let (r, g, b) = resolve_semantic_rgb(color).unwrap_or((128, 128, 128));
+            iced::Color::from_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
         }
         _ => {
             let (r, g, b) = color.to_rgb8();

@@ -3446,6 +3446,23 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         }
     }
 
+    // Plan 370 D-GAP-2/D-GAP-5: sync dark mode + accent to iced_adapter thread_locals
+    // so semantic colors (bg-primary, text-foreground, etc.) resolve correctly.
+    if let Ok(dark_val) = state.component.read_state("dark_mode") {
+        let is_dark = match dark_val {
+            auto_val::Value::Bool(b) => b,
+            _ => false,
+        };
+        crate::ui::style::iced_adapter::set_dark_mode(is_dark);
+    }
+    if let Ok(accent_val) = state.component.read_state("accent_color") {
+        let name = match accent_val {
+            auto_val::Value::Str(s) => s.as_str().to_string(),
+            _ => "indigo".to_string(),
+        };
+        crate::ui::style::iced_adapter::set_accent_name(&name);
+    }
+
     // Resolve pending hover messages: pick the smallest counter (= deepest element).
     // This handles the case where nested mouse_areas both fire on_move — child has
     // smaller counter, so it wins. When mouse leaves child, only parent fires on_move,

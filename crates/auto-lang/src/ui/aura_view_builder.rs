@@ -650,6 +650,10 @@ impl<'a> AuraViewBuilder<'a> {
             "button" | "btn" => self.convert_button(props, events, bindings),
             "input" => self.convert_input(props, events, bindings),
             "textarea" => self.convert_textarea(props, events, bindings),
+            // Plan 370 D-GAP-3: AutoDownEditor → textarea (plain-text degradation)
+            "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" => {
+                self.convert_textarea(props, events, bindings)
+            }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
             "img" | "image" => self.convert_image(props),
             "progress" => self.convert_progress(props),
@@ -1134,6 +1138,10 @@ impl<'a> AuraViewBuilder<'a> {
             // Input widgets
             "input" => self.convert_input(props, events, bindings),
             "textarea" => self.convert_textarea(props, events, bindings),
+            // Plan 370 D-GAP-3: AutoDownEditor → textarea (plain-text degradation)
+            "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" => {
+                self.convert_textarea(props, events, bindings)
+            }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
             "container" | "div" => self.convert_container(props, children, bindings),
 

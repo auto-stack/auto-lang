@@ -82,11 +82,34 @@ impl Color {
     }
 
     /// Parse a color from a Tailwind color name (e.g., "red-500", "blue", "white")
+    /// or a semantic token name (e.g., "primary", "foreground", "background").
     pub fn from_tailwind(name: &str) -> Result<Self, String> {
         match name {
             "white" => Ok(Color::White),
             "black" => Ok(Color::Black),
             "transparent" => Ok(Color::Rgba { r: 0, g: 0, b: 0, a: 0 }),
+            // Plan 370 D-GAP-1: semantic token names (shadcn-style)
+            "primary" => Ok(Color::Primary),
+            "secondary" => Ok(Color::Secondary),
+            // "foreground" / "text" → text color on background
+            "foreground" | "text" => Ok(Color::OnBackground),
+            // "background" / "card" / "surface" / "popover" → surface colors
+            "background" | "card" | "surface" | "popover" => Ok(Color::Background),
+            // "muted" → slightly darker surface
+            "muted" => Ok(Color::Surface),
+            "muted-foreground" => Ok(Color::OnSurface),
+            // "accent" → interactive highlight surface
+            "accent" => Ok(Color::Secondary),
+            "accent-foreground" => Ok(Color::OnSecondary),
+            "primary-foreground" => Ok(Color::OnPrimary),
+            "secondary-foreground" => Ok(Color::OnSecondary),
+            "destructive" | "danger" | "error" => Ok(Color::Error),
+            "destructive-foreground" => Ok(Color::OnPrimary), // white text on red
+            "success" => Ok(Color::Success),
+            "warning" => Ok(Color::Warning),
+            "info" => Ok(Color::Info),
+            // "border" / "input" / "ring" → subtle surface
+            "border" | "input" | "ring" => Ok(Color::Surface),
             _ => {
                 // Try to parse "color-shade" format
                 if let Some(pos) = name.find('-') {
@@ -152,6 +175,18 @@ impl Color {
             Color::Orange(s) => tailwind_orange(*s),
             Color::Cyan(s) => tailwind_cyan(*s),
             Color::Teal(s) => tailwind_teal(*s),
+            // Plan 370 D-GAP-1: semantic colors with hardcoded light-mode RGB
+            Color::Primary => (99, 102, 241),       // indigo-500
+            Color::Secondary => (139, 92, 246),      // violet-500
+            Color::Background => (255, 255, 255),    // white
+            Color::Surface => (249, 250, 251),       // gray-50
+            Color::Error => (239, 68, 68),           // red-500
+            Color::Warning => (234, 179, 8),         // yellow-500
+            Color::Success => (34, 197, 94),         // green-500
+            Color::Info => (59, 130, 246),           // blue-500
+            Color::OnPrimary | Color::OnSecondary => (255, 255, 255),   // white
+            Color::OnBackground => (17, 24, 39),     // near-black
+            Color::OnSurface => (107, 114, 128),     // gray-500
             _ => (128, 128, 128),
         }
     }
