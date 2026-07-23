@@ -972,6 +972,55 @@ impl PythonTrans {
                 | "isinstance" | "hasattr" | "getattr" | "setattr" => {
                     return self.emit_plain_call(call, sink);
                 }
+                // Plan 369 Task 12: py_call(obj, "method", args...) → obj.method(args...)
+                "py_call" => {
+                    // py_call(obj, "method_name", arg1, arg2, ...)
+                    // → obj.method_name(arg1, arg2, ...)
+                    if call.args.args.len() >= 2 {
+                        // Emit obj
+                        if let Some(Arg::Pos(obj_expr)) = call.args.args.first() {
+                            self.expr(obj_expr, sink)?;
+                        }
+                        sink.body.write(b".")?;
+                        // Emit method name (must be a string literal)
+                        if let Some(Arg::Pos(Expr::Str(method))) = call.args.args.get(1) {
+                            sink.body.write(method.as_bytes())?;
+                        } else {
+                            // Fallback: getattr + call
+                            sink.body.write(b"__call__")?;
+                        }
+                        sink.body.write(b"(")?;
+                        // Emit remaining args
+                        let mut first = true;
+                        for arg in call.args.args.iter().skip(2) {
+                            if !first {
+                                sink.body.write(b", ")?;
+                            }
+                            first = false;
+                            self.arg(arg, sink)?;
+                        }
+                        sink.body.write(b")")?;
+                        return Ok(());
+                    }
+                    return self.emit_plain_call(call, sink);
+                }
+                // Plan 369 Task 12: py_getattr(obj, "attr") → obj.attr
+                "py_getattr" => {
+                    if call.args.args.len() == 2 {
+                        if let Some(Arg::Pos(obj_expr)) = call.args.args.first() {
+                            self.expr(obj_expr, sink)?;
+                        }
+                        sink.body.write(b".")?;
+                        if let Some(Arg::Pos(Expr::Str(attr))) = call.args.args.get(1) {
+                            sink.body.write(attr.as_bytes())?;
+                        } else {
+                            // Fallback to Python getattr()
+                            sink.body.write(b"__getattr__")?;
+                        }
+                        return Ok(());
+                    }
+                    return self.emit_plain_call(call, sink);
+                }
                 // type_name(x) → type(x).__name__
                 "type_name" => {
                     sink.body.write(b"type(")?;

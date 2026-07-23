@@ -3982,7 +3982,10 @@ impl Codegen {
     /// codegen treats them as py-FFI calls (emitting CALL_PY with runtime arg
     /// count). Idempotent.
     fn register_py_object_builtins(&mut self) {
-        use crate::py_ffi::{NATIVE_PY_CALL, NATIVE_PY_GETATTR};
+        // Use fixed IDs directly to avoid importing py_ffi (which is feature-gated).
+        // NATIVE_PY_CALL = 450, NATIVE_PY_GETATTR = 451 (defined in py_ffi.rs).
+        const NATIVE_PY_CALL: u16 = 450;
+        const NATIVE_PY_GETATTR: u16 = 451;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
