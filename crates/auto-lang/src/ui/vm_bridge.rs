@@ -296,10 +296,25 @@ impl VmBridge {
         let mut field_values = Vec::with_capacity(model_fields.len());
         for field in model_fields {
             field_names.push(field.name.to_string());
-            // PR-3b/Phase 3: field.init is now a base crate::ast::Expr (Phase 1-2
-            // changed the AuraStateDef field type). Evaluate it directly to a
-            // runtime Value.
             field_values.push(eval_expr_to_value(&field.init));
+        }
+
+        // Plan 370 D-GAP-4: merge store state fields into root state object.
+        // Store fields are merged so that `store.X` (rewritten to `__state.X`)
+        // resolves correctly at runtime.
+        for child in child_decls {
+            if child.view.is_none() {
+                // This is a store (view-less child widget)
+                if let Some(store_model) = &child.model {
+                    for sf in &store_model.fields {
+                        let name = sf.name.to_string();
+                        if !field_names.contains(&name) {
+                            field_names.push(name.clone());
+                            field_values.push(eval_expr_to_value(&sf.init));
+                        }
+                    }
+                }
+            }
         }
 
         let mono_name = format!("{}_State", widget_name);
