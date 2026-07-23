@@ -225,6 +225,13 @@ pub struct Parser<'a> {
     pending_docs: Vec<AutoStr>,
     /// Track imported module names from `use` statements for check_symbol
     use_imports: Vec<AutoStr>,
+    /// Plan 369 P4: Track item names imported via `use.py module: a, b` so the
+    /// symbol checker treats bare references to py-imported constants/functions
+    /// (e.g. `NAMESPACE_DNS`, `pi`, `uuid5`) as defined. Without this, py
+    /// constants only resolve in method-call position (`pi.to(str)`) and fail
+    /// with "undefined variable" in argument or assignment position
+    /// (`uuid5(NAMESPACE_DNS, ...)`). See Task 13.
+    py_item_imports: Vec<AutoStr>,
 }
 
 impl<'a> Parser<'a> {
@@ -273,6 +280,7 @@ impl<'a> Parser<'a> {
             file_attrs: Vec::new(), // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
+            py_item_imports: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -337,6 +345,7 @@ impl<'a> Parser<'a> {
             file_attrs: Vec::new(), // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
+            py_item_imports: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -384,6 +393,7 @@ impl<'a> Parser<'a> {
             file_attrs: Vec::new(), // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
+            py_item_imports: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -842,6 +852,15 @@ impl<'a> Parser<'a> {
 
         // 从 InferenceContext 查找变量绑定
         if self.infer_ctx.lookup_type(&Name::from(name)).is_some() {
+            return true;
+        }
+
+        // Plan 369 P4 (Task 13): py-imported items (`use.py m: a, b`) are
+        // resolved at runtime as native shims (py.<name>), so the symbol
+        // checker must treat them as defined — otherwise bare references to
+        // py constants/functions fail with "undefined variable" outside
+        // method-call position (e.g. `uuid5(NAMESPACE_DNS, ...)`).
+        if self.py_item_imports.iter().any(|n| n.as_str() == name) {
             return true;
         }
 
@@ -5204,6 +5223,19 @@ impl<'a> Parser<'a> {
 
         // Parse items after colon: use.py math: sqrt, pow
         let (items, is_wildcard) = self.parse_use_items()?;
+
+        // Plan 369 P4 (Task 13): record each imported item name so the symbol
+        // checker (check_symbol / exists) treats bare references to py-imported
+        // constants and functions (e.g. NAMESPACE_DNS, pi, uuid5) as defined.
+        // Without this, py constants only resolve in method-call position
+        // (`pi.to(str)`) and fail with "undefined variable" when used as a call
+        // argument or assignment RHS (`uuid5(NAMESPACE_DNS, ...)`).
+        for it in &items {
+            let name = it.as_str();
+            if !self.py_item_imports.iter().any(|n| n.as_str() == name) {
+                self.py_item_imports.push(name.into());
+            }
+        }
 
         let uses = Use {
             kind: UseKind::Py,

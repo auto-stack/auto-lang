@@ -42,32 +42,32 @@ descriptive test names; the root `.gitignore` excludes `test*.at`). The Python
 oracle keeps the standard `test_*.py` pytest convention. Test names inside the
 files must match because the parity comparator joins backends by test name.
 
-## Known AutoVM divergences (excluded from the skeleton)
+## History: previously excluded, now resolved
 
-Two `math` functions were candidates for the skeleton but currently diverge in
-the AutoVM and are therefore NOT included, so the P0 baseline stays green:
+Earlier phases excluded some `math` features as known AutoVM divergences so the
+baseline stayed green. They have since been fixed and are covered by the test
+suite (Plan 369 P3 fixed multi-arg calls; P4 Task 13 fixed constant imports):
 
-- `gcd(a, b)` — the AutoVM prints a stray value to stdout and returns the wrong
-  result for the two-argument call (e.g. `gcd(12, 8)` emits `128` and fails).
-  This corrupts the TAP stream. `lcm` and `perm` exhibit the same symptom;
-  `comb` does not, so the bug is not uniform across two-argument FFI calls.
-- `fabs(x)` — Python returns a `float`; the FFI marshals it to the string `"5"`,
-  so `fabs(-5) == 5` (int) is false in the AutoVM. a2py and the oracle both
-  pass, correctly classifying this as an AutoVM bug.
+- `gcd(a, b)` / `lcm(a, b)` — previously the two-argument FFI call printed a
+  stray value to stdout and returned the wrong result. Multi-arg calls now work
+  via the CALL_PY opcode, so `gcd(12, 8) == 4` and `lcm(4, 6) == 12` pass on
+  all three backends.
+- `math.pi` / `math.e` (module constants) — now importable via
+  `use.py math: pi, e`. They marshal to their string representation
+  (`"3.141592653589793"`, `"2.718281828459045"`), which is deterministic for
+  IEEE-754 doubles, so the tests compare the exact string form. Note: a
+  non-integral float constant is not recoverable as an Auto int
+  (`pi.to(int) == 0`); only the string form is reliable, so pi/e are asserted by
+  string equality rather than via `.to(int)`.
 
-Both are real findings worth re-enabling once the FFI marshalling / call
-handling is fixed; they are intentionally omitted here so the skeleton proves
-the framework with a clean 100% baseline.
+Still excluded from the test set:
 
-A third candidate was evaluated in P1 and excluded:
-
-- `math.pi` / `math.e` (module constants) — the AutoVM returns `0` for
-  module-attribute access (e.g. `math.pi`), so `int(math.pi) == 3` is false
-  while a2py and the oracle both pass. Unlike `gcd`/`fabs`, this does not
-  corrupt the TAP stream; it is omitted purely to keep the baseline green.
-  This points at a PyFFI gap: constant (non-callable) attribute access is not
-  marshalled, only function calls registered via `use.py m: f`.
+- `fabs(x)` — Python returns a `float`; the FFI marshals an integral result
+  (`fabs(-5)` → `5.0`) such that the string form is `"5"` and `.to(int)` works,
+  but the value is not tagged as a Python float. This is a marshalling
+  limitation rather than a TAP-corrupting bug; it is omitted to keep the
+  baseline clean. It can be re-enabled once float tagging is improved.
 
 ## Known divergences
 
-(none in the current test set)
+(none — the suite is 100% consistent across AutoVM, a2py, and the oracle)

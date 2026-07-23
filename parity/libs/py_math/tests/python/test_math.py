@@ -51,9 +51,12 @@ if __name__ == "__main__":
         tap_not_ok(7, "test_pow_int", "got {}".format(math.pow(2, 10)))
     # Plan 369 P1: expanded coverage. Float-returning functions are converted
     # to int for comparison (int(log2(8)) == 3); boolean-returning predicates
-    # are compared against 1/0 (isfinite(5) == 1). Constants math.pi / math.e
-    # are intentionally omitted: the AutoVM returns 0 for module-attribute
-    # access (a known FFI limitation), so a constant test would diverge.
+    # are compared against 1/0 (isfinite(5) == 1).
+    #
+    # Plan 369 P4 (Task 15): added gcd/lcm (multi-arg, fixed in P3) and the
+    # pi/e constants. The AutoVM marshals constants to their string form, so
+    # pi/e are asserted by exact string equality (str(math.pi)), matching the
+    # Auto test.
     if int(math.log2(8)) == 3:
         tap_ok(8, "test_log2")
     else:
@@ -82,3 +85,29 @@ if __name__ == "__main__":
         tap_ok(14, "test_cos_zero")
     else:
         tap_not_ok(14, "test_cos_zero", "got {}".format(math.cos(0)))
+    # Plan 369 P4 (Task 15): gcd/lcm multi-arg and pi/e constants.
+    if math.gcd(12, 8) == 4:
+        tap_ok(15, "test_gcd_two_arg")
+    else:
+        tap_not_ok(15, "test_gcd_two_arg", "got {}".format(math.gcd(12, 8)))
+    if math.gcd(48, 36) == 12:
+        tap_ok(16, "test_gcd_larger")
+    else:
+        tap_not_ok(16, "test_gcd_larger", "got {}".format(math.gcd(48, 36)))
+    if math.lcm(4, 6) == 12:
+        tap_ok(17, "test_lcm_two_arg")
+    else:
+        tap_not_ok(17, "test_lcm_two_arg", "got {}".format(math.lcm(4, 6)))
+    if math.lcm(3, 4) == 12:
+        tap_ok(18, "test_lcm_coprime")
+    else:
+        tap_not_ok(18, "test_lcm_coprime", "got {}".format(math.lcm(3, 4)))
+    # Constants asserted by exact string form (matches the Auto test).
+    if str(math.pi) == "3.141592653589793":
+        tap_ok(19, "test_pi_constant")
+    else:
+        tap_not_ok(19, "test_pi_constant", "got {}".format(math.pi))
+    if str(math.e) == "2.718281828459045":
+        tap_ok(20, "test_e_constant")
+    else:
+        tap_not_ok(20, "test_e_constant", "got {}".format(math.e))

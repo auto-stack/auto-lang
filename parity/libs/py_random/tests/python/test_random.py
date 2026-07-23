@@ -30,6 +30,16 @@ Expected values were captured from CPython 3 `random.seed(n); random.randint(a, 
     seed(42)  randint(0, 5)     -> 5
     seed(0)   randint(1, 1000)  -> 865
 
+Plan 369 P4 (Task 16) added choice and uniform. choice is exercised over a
+string sequence (deterministic single-character result); uniform returns a
+float, asserted by its shortest round-tripping string form (deterministic for
+IEEE-754 doubles):
+    seed(42)  choice("abcde")   -> "a"
+    seed(42)  choice("abcdef")  -> "f"
+    seed(7)   choice("abcdef")  -> "c"
+    seed(42)  uniform(1.0, 10.0)-> 6.754841186120954
+    seed(42)  uniform(0.0, 1.0) -> 0.6394267984578837
+
 `random.randrange` is intentionally omitted: its 1- and 3-argument forms hit
 the same multi-argument FFI corruption as `math.gcd`/`lcm`/`perm` (a stray
 value leaks to stdout and the return value is wrong), which would corrupt the
@@ -102,3 +112,40 @@ if __name__ == "__main__":
         tap_ok(8, "test_seed0_randint")
     else:
         tap_not_ok(8, "test_seed0_randint", "got {}".format(v))
+
+    # Plan 369 P4 (Task 16): seeded choice (string sequence) and uniform.
+    random.seed(42)
+    v = random.choice("abcde")
+    if v == "a":
+        tap_ok(9, "test_seed_choice_str")
+    else:
+        tap_not_ok(9, "test_seed_choice_str", "got {}".format(v))
+
+    random.seed(42)
+    v = random.choice("abcdef")
+    if v == "f":
+        tap_ok(10, "test_seed_choice_str2")
+    else:
+        tap_not_ok(10, "test_seed_choice_str2", "got {}".format(v))
+
+    random.seed(7)
+    v = random.choice("abcdef")
+    if v == "c":
+        tap_ok(11, "test_seed7_choice_str")
+    else:
+        tap_not_ok(11, "test_seed7_choice_str", "got {}".format(v))
+
+    # uniform returns a float; compare its shortest round-tripping string form.
+    random.seed(42)
+    v = random.uniform(1.0, 10.0)
+    if str(v) == "6.754841186120954":
+        tap_ok(12, "test_seed_uniform")
+    else:
+        tap_not_ok(12, "test_seed_uniform", "got {}".format(v))
+
+    random.seed(42)
+    v = random.uniform(0.0, 1.0)
+    if str(v) == "0.6394267984578837":
+        tap_ok(13, "test_seed_uniform_01")
+    else:
+        tap_not_ok(13, "test_seed_uniform_01", "got {}".format(v))
