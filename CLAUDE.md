@@ -176,6 +176,8 @@ This rule applies especially to files outside the primary task scope (e.g., webs
 
 ALL plan files with sequential numbers MUST be created in `docs/plans/` folder with consecutive numbering (e.g., `006-my-plan.md`) and kebab-case naming.
 
+**Number allocation MUST go through `scripts/new-plan.sh <slug>`** (run on the master checkout, NOT inside a plan worktree). It reads the central counter `docs/plans/.next-id`, creates the plan skeleton, and bumps the counter — commit both before opening the plan worktree. Never estimate the next number by scanning the directory: concurrent worktrees have caused duplicate numbers in the past (see `scripts/spec-lint.py`).
+
 ### ⚠️ CRITICAL: Use a Dedicated Worktree per Plan
 
 **Every new plan MUST be developed in its own git worktree, NOT on the main working tree's current branch.** This keeps the main checkout (typically `master`) stable for other sessions/agents that may have uncommitted work in flight.

@@ -123,3 +123,6 @@ test_temp.txt
 
 # Windows MSVC debug symbols (program database)
 *.pdb
+
+# Local migration backups (pre-spec-migration snapshots)
+/.backup/
