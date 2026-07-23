@@ -7541,6 +7541,17 @@ impl Codegen {
                             Type::Int | Type::I64 => ObjectType::Int,
                             _ => ObjectType::NestedObject,
                         };
+                    } else {
+                        // Plan 368 W8: native instance methods (e.g. s.upper(),
+                        // s.replace(...), s.split(...)) reach here as a CALL with
+                        // a reloc name like "str.upper" that is NOT in
+                        // fn_return_types (native shims aren't registered there).
+                        // Without this fallback, last_expr_type keeps the stale
+                        // value left by compiling the receiver+args (often Void),
+                        // so `return s.method()` / `f(s.method())` drop the result.
+                        // infer_native_return_type knows the str/char method types.
+                        self.last_expr_type = self.infer_native_return_type(&reloc_name);
+                        self.last_was_native_void = matches!(self.last_expr_type, ObjectType::Void);
                     }
                     } // close else (non-generator CALL)
                 }
