@@ -11,7 +11,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Cost/performance tier for model selection.
-enum ModelTier {
+pub enum ModelTier {
     Min
     Lite
     Mid
@@ -43,7 +43,11 @@ ext ModelTier {
     }
 
     /// Weakest→strongest ordering: Min=0 … Max=4.
-    fn order() byte {
+    /// Returns `int` (not `byte`): the gap arithmetic in resolve_model_id
+    /// subtracts orders, and Auto/Rust don't auto-widen byte(u8) to int(i32)
+    /// in a typed `let`. Using int keeps both the VM and the a2r→Rust path
+    /// clean without explicit casts. (Plan 013 B13.)
+    fn order() int {
         is self {
             ModelTier.Min -> 0,
             ModelTier.Lite -> 1,
@@ -82,7 +86,7 @@ ext ModelTier {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// A concrete model entry in a provider's config, tagged with its tier.
-type ModelDefinition {
+pub type ModelDefinition {
     id str
     name str
     tier ModelTier
@@ -132,20 +136,21 @@ pub fn resolve_model_id(desired ModelTier, models List<ModelDefinition>) ?str {
     if models.len() == 0 {
         return None
     }
-    // 1. Exact tier match.
-    for m in models {
-        if m.tier.order() == desired.order() {
-            return Some(m.id)
-        }
-    }
-    // 2. Closest available: prefer the nearest tier at-or-above desired, else
-    //    the highest below. Pick the model minimizing the gap key.
+    // Single pass: track the exact match (returned immediately) and, in
+    // parallel, the closest-by-gap fallback. A single pass avoids moving
+    // `models` twice (Auto iterates by value; Rust's a2r output would consume
+    // the Vec on the first `for m in models`). (Plan 013 B15.)
     var best ?ModelDefinition = None
     var best_key int = 0
     var first = true
-    let desired_order int = desired.order()
+    let desired_order = desired.order()
     for m in models {
-        let m_order int = m.tier.order()
+        // 1. Exact tier match — return on the first one found.
+        if m.tier.order() == desired_order {
+            return Some(m.id)
+        }
+        // 2. Track closest-by-gap for the fallback.
+        let m_order = m.tier.order()
         let gap = m_order - desired_order
         // Prefer non-negative gaps (at-or-above) by treating them as cheaper.
         let key = if gap >= 0 { gap } else { 1000 + (0 - gap) }

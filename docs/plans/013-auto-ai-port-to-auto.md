@@ -241,7 +241,29 @@ pipeline/driver 均未开始。
 
 1. **先修 A 类真实错误**（A1/A4 安全与正确性优先）——本计划后续提交。
 2. B 类中，**B1（a2r 过 cargo check）** 是验收标准的硬阻塞，需 a2r 侧改进；
-   待 auto-lang 的 a2r 修好对应问题后回归验证。
+   待 auto-lang 的 a2r 修好对应问题后回归验证。**B1 已修 4 个核心 bug + B11–
+   B15，见下。**
 3. B2/B3（ContentBlock 序列化）影响线上互操作，优先级高但受 B3 阻塞——
    需 AutoVM 实现 struct 变体解构后才能用 struct 变体还原 tag。
 4. 阶段 3 剩余 20 文件在 A 类修复后再继续，避免在新文件里重复同类错误。
+
+### B11–B15 修复进展（worktree `plan-013-a2r-fixes`）
+
+在 B1 的 4 个核心 bug（enum derive / self.field clone / local-type prefix /
+for-loop borrow）基础上，继续修了 5 个新发现的 a2r 缺口（B11–B15）：
+
+| # | 问题 | 修复方式 | 验证 |
+|---|---|---|---|
+| B11 | a2r 生成 `use auto_lang::a2r_std::*`（假定 workspace） | 非 merge_mode 时改发 `use a2r_std::*`（裸路径，独立 crate 可用） | 16 golden 更新 |
+| B12 | struct/enum 跨模块缺 `pub` | **Auto 源码侧**：移植的 .at 用 `pub type`/`pub enum`（非 a2r 无条件 pub，避免破坏单文件测试） | tier+provider 过 cargo check |
+| B13 | `byte(u8)` 赋 `int(i32)` 无提升 | tier.at `order()` 返回类型 `byte`→`int`（源码侧，order 值 0-4 用 int 安全） | resolve_model_id 5 用例通过 |
+| B14 | bridge 类型 Value/Node/Kid/Atom/Obj 未 import | a2r 对 `auto_val`/`auto_atom` 加 glob `use <crate>::*;` | loader.at 缺类型错从 33→0 |
+| B15 | `for b in self.content`（迭代 &self 字段）+ Vec 二次迭代 | resolve_model_id 重构为单 pass（消除二次迭代） | tier+provider 过 cargo check |
+
+**成果**：tier+provider（无桥接）**完全通过 cargo check**（0 错误）。loader.at
+（桥接）从 70 错降到 35 错——剩余的是桥接类型更深层的 API 集成问题（无参变体
+的 `auto_val::Value.Nil` 应为 `::Nil`、HashMap.get 返回 Option 需 unwrap、
+`?` 误用于非 Result 类型等），属 B14 的延伸，记为后续工作。
+
+a2r golden 套件：283 passed，仅 4 个预存失败（与并行 agent 的 codegen 工作有
+关，非本改动）。

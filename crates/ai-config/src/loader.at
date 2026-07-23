@@ -53,7 +53,7 @@ use tier: ModelDefinition, ModelTier
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Configuration error.
-enum ConfigError {
+pub enum ConfigError {
     Parse(str)
 }
 
@@ -75,7 +75,7 @@ ext ConfigError {
 /// `provider_names` is an insertion-ordered list of keys kept in parallel
 /// with `providers` because Auto's VM Map exposes no iteration API. Consumers
 /// walk `provider_names` and reach each provider via `providers.get(name)`.
-type ClientConfig {
+pub type ClientConfig {
     providers Map<str, ProviderConfig>
     provider_names List<str>
     default_provider str
@@ -99,7 +99,7 @@ ext ClientConfig {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Daemon-side view: client config + daemon-only operational fields.
-type DaemonConfig {
+pub type DaemonConfig {
     listen_addr str
     idle_timeout_min uint
     log_level str
@@ -131,7 +131,7 @@ ext DaemonConfig {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// A single tier routing candidate: provider + model.
-type TierRouteCandidate {
+pub type TierRouteCandidate {
     provider str
     model str
 }
@@ -144,7 +144,7 @@ type TierRouteCandidate {
 ///
 /// Note: the field is named `entries`, not `routes` — `routes` is a reserved
 /// keyword in Auto (routing/navigation) and cannot be used as a field name.
-type TierRouting {
+pub type TierRouting {
     entries Map<str, List<TierRouteCandidate>>
     tier_names List<str>
 }

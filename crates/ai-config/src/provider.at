@@ -20,7 +20,7 @@ use tier: ModelDefinition
 /// `models` are [ModelDefinition]s (each tagged with a [tier.ModelTier]),
 /// not bare strings — so a profession's tier can be resolved to a concrete
 /// model at request time. `max_concurrency` is only meaningful to the daemon.
-type ProviderConfig {
+pub type ProviderConfig {
     /// Provider type: "anthropic" | "openai" | "zhipu".
     kind str
     /// API base URL.
