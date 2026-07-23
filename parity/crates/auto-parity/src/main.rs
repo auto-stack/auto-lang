@@ -101,8 +101,9 @@ fn main() {
             // Verified phases included in the dashboard. P1/P2 are the Plan
             // 355 core; D1/D2 are Plan 358 additions; P4's tokio is L1 (reqwest
             // is auto-skipped if absent). P3 (sha2/rusqlite) stays L3 roadmap.
-            // D5 is Plan 367 consumer-mode parity (Auto as library consumer).
-            let phases = ["p1", "p2", "d1", "d2", "d4", "d5", "p4"];
+            // D5/D6 are Plan 368 consumer-mode parity (Auto as library consumer);
+            // D6 libs need a live mock server (Layer 2 HTTP).
+            let phases = ["p1", "p2", "d1", "d2", "d4", "d5", "d6", "p4"];
             let mut reports = Vec::new();
             for phase in &phases {
                 let libs = discover_libraries_by_phase(&root, phase);
