@@ -1,0 +1,168 @@
+/// Conversation memory for an [agent.Agent].
+///
+/// A thin ring buffer over [wire.Message] that keeps the system message(s)
+/// plus the most recent turns, trimming older history once the Role's
+/// `memory_limit` is exceeded.
+///
+/// Auto port of crates/auto-ai-agent/src/memory.rs (auto-ai v0.4.0).
+
+use wire: Message
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Memory
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Bounded conversation history.
+///
+/// "Turns" are counted as user+assistant message pairs (a tool round-trip is
+/// two messages but counts as one turn). [Memory.trim] enforces the limit,
+/// always preserving leading system messages.
+pub type Memory {
+    messages List<Message>
+    limit ?uint
+}
+
+ext Memory {
+    /// Create memory with an optional turn limit (None = unbounded).
+    pub static fn new(limit ?uint) Memory {
+        return Memory(messages: [], limit: limit)
+    }
+
+    /// Append a message built from role + plain text.
+    pub mut fn add(role str, content str) void {
+        is role {
+            "assistant" -> self.add_message(Message.assistant(content)),
+            "system" -> self.add_message(Message.system(content)),
+            else -> self.add_message(Message.user(content))
+        }
+    }
+
+    /// Append an already-constructed message (used for tool-use / tool-result
+    /// blocks that aren't plain text).
+    pub mut fn add_message(msg Message) void {
+        self.messages.push(msg)
+        self.trim()
+    }
+
+    /// Pre-load a sequence of (role, content) turns from a prior conversation.
+    /// Used to rebuild an agent's context across stateless HTTP requests.
+    /// (Plan 008.)
+    pub mut fn extend_pairs(pairs List<(str, str)>) void {
+        for pair in pairs {
+            self.add(pair[0], pair[1])
+        }
+    }
+
+    /// All messages currently held (in order).
+    pub fn messages() List<Message> {
+        return self.messages
+    }
+
+    /// Owned snapshot, suitable for handing to the client.
+    pub fn to_messages() List<Message> {
+        return self.messages
+    }
+
+    /// Current number of stored messages.
+    pub fn len() uint {
+        return self.messages.len()
+    }
+
+    pub fn is_empty() bool {
+        return self.messages.len() == 0
+    }
+
+    /// Number of non-system messages currently held.
+    fn non_system_count() uint {
+        var count uint = 0
+        for m in self.messages {
+            if m.role != "system" {
+                count = count + 1
+            }
+        }
+        return count
+    }
+
+    /// Drop the oldest non-system messages until we're within the turn limit.
+    /// System messages are always kept.
+    ///
+    /// Trimming is **pairing-aware** (review-003 S1): an assistant message
+    /// containing `ToolUse` and the subsequent user-role `ToolResult` messages
+    /// are treated as an atomic "conversation unit" and removed together.
+    /// Splitting them would leave an orphan ToolResult (no matching ToolUse)
+    /// or an unanswered ToolUse, both of which make providers return 400.
+    ///
+    /// NOTE: Auto's `is`-pattern branches don't accept multi-statement block
+    /// bodies, and `||` isn't accepted in conditions. The limit is extracted
+    /// via `??` and range checks use nested if/else. (Plan 013 VM limits.)
+    pub mut fn trim() void {
+        // No limit → unbounded, nothing to trim.
+        if self.limit.is_none() {
+            return
+        }
+        let limit = self.limit ?? 0
+        if limit == 0 {
+            // Keep only system messages.
+            var kept List<Message> = []
+            for m in self.messages {
+                if m.role == "system" {
+                    kept.push(m)
+                }
+            }
+            self.messages = kept
+            return
+        }
+        // Count non-system messages; if over 2*limit, drop oldest unit(s).
+        let max_non_system = limit * 2
+        for self.non_system_count() > max_non_system {
+            // Find the start of the oldest non-system conversation unit.
+            let start = self.first_non_system_index()
+            if start < 0 {
+                break
+            }
+            let s = start
+            // The unit extends to include that message plus any immediately
+            // following user-role messages (ToolResults answering an assistant
+            // ToolUse).
+            var end = s + 1
+            if self.messages[s].role == "assistant" {
+                for end < self.messages.len() && self.messages[end].role == "user" {
+                    end = end + 1
+                }
+            }
+            // Remove [start, end) as one atomic unit.
+            self.messages = self.remove_range(s, end)
+        }
+    }
+
+    /// Index of the first non-system message, or -1 if none.
+    fn first_non_system_index() int {
+        var i = 0
+        for m in self.messages {
+            if m.role != "system" {
+                return i
+            }
+            i = i + 1
+        }
+        return -1
+    }
+
+    /// Return a copy of `messages` with the half-open range [from, to) removed.
+    fn remove_range(from int, to int) List<Message> {
+        var out List<Message> = []
+        var i = 0
+        for m in self.messages {
+            // Keep messages OUTSIDE [from, to). (Auto's parser doesn't accept
+            // `||` in conditions; use nested if/else.)
+            if i < from {
+                out.push(m)
+            } else {
+                if i >= to {
+                    out.push(m)
+                }
+            }
+            i = i + 1
+        }
+        return out
+    }
+}

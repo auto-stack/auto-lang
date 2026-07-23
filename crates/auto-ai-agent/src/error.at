@@ -1,0 +1,65 @@
+/// Error types for the agent layer.
+///
+/// [AgentError] is the top-level error returned by [agent.Agent] and
+/// [workflow]. It wraps the Layer-2 client error, tool-execution errors, and
+/// configuration/parse errors.
+///
+/// Auto port of crates/auto-ai-agent/src/error.rs (auto-ai v0.4.0).
+
+use auto_ai_client: ClientError
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ToolError
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Errors raised while executing a tool.
+pub enum ToolError {
+    /// The tool's arguments were missing/invalid.
+    Args(str)
+    /// The tool ran but failed (e.g. IO error, non-zero exit).
+    Exec(str)
+}
+
+ext ToolError {
+    /// Human-readable message (mirrors Rust's Display impl).
+    pub fn message() str {
+        is self {
+            ToolError.Args(msg) -> return f"invalid tool arguments: ${msg}",
+            ToolError.Exec(msg) -> return f"tool execution failed: ${msg}"
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AgentError
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The unified error type for the agent layer.
+pub enum AgentError {
+    /// Propagated from the Layer-2 LLM client.
+    Client(ClientError)
+    /// Propagated from a tool invocation.
+    Tool(ToolError)
+    /// A requested tool was not registered.
+    ToolNotFound(str)
+    /// The ReAct loop exceeded its turn budget without finishing.
+    MaxTurnsExceeded(uint)
+    /// The loop detected a tool being called identically in a tight cycle.
+    LoopDetected(str)
+    /// A Role or Workflow configuration was malformed.
+    Config(str)
+}
+
+ext AgentError {
+    /// Human-readable message (mirrors Rust's Display impl).
+    pub fn message() str {
+        is self {
+            AgentError.Client(e) -> return f"client error: ${e.message()}",
+            AgentError.Tool(e) -> return f"tool error: ${e.message()}",
+            AgentError.ToolNotFound(name) -> return f"tool not found: ${name}",
+            AgentError.MaxTurnsExceeded(n) -> return f"max turns (${n}) exceeded without completion",
+            AgentError.LoopDetected(name) -> return f"loop detected: tool '${name}' called with identical args repeatedly",
+            AgentError.Config(msg) -> return f"config error: ${msg}"
+        }
+    }
+}

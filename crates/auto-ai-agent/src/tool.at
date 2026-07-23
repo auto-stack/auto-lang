@@ -1,0 +1,126 @@
+/// The [Tool] spec and [ToolRegistry].
+///
+/// Apps register concrete tools (file IO, shell, search, ...) and the
+/// [agent.Agent] exposes them to the model as callable functions. A
+/// [role_def.Role] can restrict which tools are visible via allowed_tools().
+///
+/// Auto port of crates/auto-ai-agent/src/tool.rs (auto-ai v0.4.0).
+///
+/// Adaptations:
+/// - `Arc<dyn Tool>` → `Arc(Tool)` (Auto `spec` is dynamically dispatched).
+/// - `async fn execute` → `fn execute ~...` (plan 013 async decision).
+/// - ToolRegistry stores a parallel `names List<str>` because Auto's VM Map
+///   has no iteration API (plan 013 gotcha B5). Fields are `pub` (B12).
+
+use wire: ToolDefinition, JsonValue
+use error: ToolError
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tool spec
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A callable tool the agent can hand to the LLM.
+///
+/// Implementors supply the metadata the model sees (name/description/
+/// parameters) and an async execute.
+pub spec Tool {
+    /// Tool name (must be unique within a registry).
+    fn name() str
+
+    /// Human/LLM-facing description — the model uses this to decide whether to
+    /// call the tool.
+    fn description() str
+
+    /// JSON-Schema fragment describing the tool's `input` object.
+    fn parameters() JsonValue {
+        return json.parse("{\"type\":\"object\",\"properties\":{}}").unwrap()
+    }
+
+    /// Run the tool with the model-supplied arguments, returning a string
+    /// result that is fed back to the model.
+    fn execute(args JsonValue) ~Result<str, ToolError>
+}
+
+/// Convert a [Tool] into the Layer-2 [ToolDefinition] the client sends.
+pub fn tool_to_definition(tool Tool) ToolDefinition {
+    return ToolDefinition.new(tool.name(), tool.description(), tool.parameters())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ToolRegistry
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Registry of tools keyed by name.
+///
+/// Stores tools as `Tool` (Auto's spec type; a2r renders this as
+/// `Box<dyn Tool>` in Rust — equivalent to the Rust original's `Arc<dyn Tool>`
+/// for single-owner registry use). Carries a parallel `names List<str>` for
+/// iteration (Auto VM Map has no keys()/entries()).
+pub type ToolRegistry {
+    tools Map<str, Tool>
+    names List<str>
+}
+
+ext ToolRegistry {
+    pub static fn new() ToolRegistry {
+        return ToolRegistry(tools: Map.new(), names: [])
+    }
+
+    /// Register a tool (overwrites an existing tool with the same name).
+    /// Single insertion path so `names` stays in sync.
+    pub mut fn register(tool Tool) void {
+        let n = tool.name()
+        if self.tools.contains(n) == false {
+            self.names.push(n)
+        }
+        self.tools.set(n, tool)
+    }
+
+    /// Look up a tool by name.
+    pub fn get(name str) ?Tool {
+        if self.tools.contains(name) {
+            return Some(self.tools.get(name))
+        }
+        return None
+    }
+
+    /// All registered tool names.
+    pub fn names() List<str> {
+        return self.names
+    }
+
+    /// Number of registered tools.
+    pub fn len() uint {
+        return self.names.len()
+    }
+
+    pub fn is_empty() bool {
+        return self.names.len() == 0
+    }
+
+    /// All tools whose name is in `filter`. If `filter` is empty, returns all
+    /// tools (matches the Role allowed_tools() "empty = all" rule).
+    pub fn filter(filter List<str>) List<Tool> {
+        var out List<Tool> = []
+        if filter.len() == 0 {
+            for n in self.names {
+                out.push(self.tools.get(n))
+            }
+            return out
+        }
+        for n in filter {
+            if self.tools.contains(n) {
+                out.push(self.tools.get(n))
+            }
+        }
+        return out
+    }
+
+    /// Run a tool by name, returning its string output.
+    pub fn execute(name str, args JsonValue) ~Result<str, ToolError> {
+        is self.get(name) {
+            Some(tool) -> return tool.execute(args).await,
+            None -> return Err(ToolError.Exec(f"tool not found: ${name}"))
+        }
+    }
+}

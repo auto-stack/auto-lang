@@ -1,0 +1,24 @@
+/// The [RelayTarget] abstraction (design doc §6.2).
+///
+/// A RelayTarget is something an agent can delegate a sub-task to and get a
+/// string result back.
+///
+/// **Status note (review-003 M1):** the previous `impl RelayTarget for Agent`
+/// used a nested tokio runtime (`block_on`) to run the agent's async loop from
+/// a sync trait method — a nested-runtime hazard with no production callers.
+/// The impl and its test were removed; the spec is kept so a future,
+/// properly-async delegation mechanism can implement it.
+///
+/// Auto port of crates/auto-ai-agent/src/relay.rs (auto-ai v0.4.0).
+
+use error: AgentError
+
+/// Something that can receive a delegated task and return a result.
+///
+/// Currently has no implementations (see module docs). A future async variant
+/// of this spec is expected to replace the sync method. Auto's `spec` is
+/// automatically dynamically dispatched (no `dyn` keyword needed).
+pub spec RelayTarget {
+    /// Receive a task and return its textual result.
+    fn delegate(task str) Result<str, AgentError>
+}

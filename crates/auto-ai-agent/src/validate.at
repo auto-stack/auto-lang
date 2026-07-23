@@ -1,0 +1,70 @@
+/// Runtime model validation for Professions.
+///
+/// A Role names a model (e.g. "glm-4.6") that the daemon must be able to
+/// serve. [validate_role_model] loads the client config
+/// (`~/.config/autoos/ai-client.at`) and checks the Role's model exists in
+/// some provider, failing fast with a clear message instead of a confusing
+/// daemon 404 at run time.
+///
+/// Auto port of crates/auto-ai-agent/src/validate.rs (auto-ai v0.4.0).
+///
+/// a2r-FIRST NOTE: `dirs::home_dir()` and `std::fs::read_to_string` bridge to
+/// the Rust `dirs`/`std` crates; the auto_atom-backed `parse_client_config`
+/// is itself a2r-first (see ai-config/loader.at). So this file's runtime path
+/// runs under cargo, not the pure AutoVM.
+
+use error: AgentError
+use role_def: Role
+use ai_config
+
+/// Validate that a Role's model() is configured in the client config.
+///
+/// Reads `~/.config/autoos/ai-client.at` (single-root `client { … }` format),
+/// parses it via ai-config, and checks model against every provider's models
+/// list.
+pub fn validate_role_model(role Role) Result<None, AgentError> {
+    is load_client_config() {
+        Ok(cfg) -> {
+            is ai_config.validate_model_exists(cfg, role.model()) {
+                Ok(_) -> return Ok(None),
+                Err(msg) -> return Err(AgentError.Config(msg))
+            }
+        }
+        Err(e) -> return Err(e)
+    }
+}
+
+/// Load the client config from the standard path. Errors if the file is
+/// missing or malformed — callers may downgrade to a warning.
+pub fn load_client_config() Result<ai_config.ClientConfig, AgentError> {
+    is home_dir() {
+        Some(home) -> {
+            let path = path.join(home, ".config/autoos/ai-client.at")
+            is read_file_text(path) {
+                Ok(content) -> {
+                    is ai_config.parse_client_config(content) {
+                        Ok(cfg) -> return Ok(cfg),
+                        Err(e) -> return Err(AgentError.Config(e.message()))
+                    }
+                }
+                Err(msg) -> return Err(AgentError.Config(f"read ${path}: ${msg}"))
+            }
+        }
+        None -> return Err(AgentError.Config("cannot determine home directory"))
+    }
+}
+
+// ─── bridged helpers ────────────────────────────────────────────────────────
+// dirs::home_dir() and std::fs::read_to_string have no Auto-VM equivalent;
+// these wrap the Rust calls (a2r resolves them to dirs::home_dir /
+// std::fs::read_to_string).
+
+/// The user's home directory, or None if it can't be determined.
+fn home_dir() ?str {
+    return dirs.home_dir()
+}
+
+/// Read a file's full contents as a string.
+fn read_file_text(path str) Result<str, str> {
+    return fs.read_to_string(path)
+}

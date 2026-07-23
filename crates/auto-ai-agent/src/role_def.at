@@ -1,0 +1,106 @@
+/// The [Role] spec (design doc §3.1).
+///
+/// A Role bundles the *personality* of an agent: its system prompt (the tuned
+/// "soul") plus a model **tier** + temperature/turn-budget/tool policy.
+/// Built-in Professions live in [builtin_roles]; `.at`-config Professions
+/// build on top.
+///
+/// **Model selection via tier** (ported from auto-forge): a Role declares the
+/// capability tier it needs ([Role.model_tier]); the daemon resolves that tier
+/// to a concrete model at request time. This decouples "what capability" from
+/// "which model id" — swap models by editing config, not code. [Role.model] is
+/// an optional concrete-id override (empty = use the tier).
+///
+/// Auto port of crates/auto-ai-agent/src/role_def.rs (auto-ai v0.4.0).
+///
+/// Note: in Rust this is `pub trait Role: Send + Sync`. Auto's `spec` is
+/// automatically dynamically-dispatched (plan 013 decision #1), so
+/// `Arc<dyn Role>` becomes `Arc(Role)` with no `dyn` keyword. Default methods
+/// translate directly — `spec` supports them.
+
+use ai_config: ModelTier
+
+/// A Role describes how an agent should behave.
+///
+/// Only [Role.name] and [Role.system_prompt] are required; every other method
+/// has a sensible default that an implementor overrides.
+pub spec Role {
+    /// Role name ("coder", "reviewer", ...).
+    fn name() str
+
+    /// The full system prompt (the tuned essence of the role).
+    fn system_prompt() str
+
+    /// The capability tier this role needs (Min/Lite/Mid/Pro/Max). The daemon
+    /// resolves this to a concrete model id. Default: [ModelTier.Mid].
+    fn model_tier() ModelTier {
+        return ModelTier.Mid
+    }
+
+    /// Optional concrete model id override. Empty (default) = "resolve via
+    /// model_tier". Set this only when a role must pin a specific model.
+    fn model() str {
+        return ""
+    }
+
+    /// Generation temperature (creativity vs determinism).
+    fn temperature() float {
+        return 0.3
+    }
+
+    /// Max ReAct turns (guards against infinite loops).
+    fn max_turns() uint {
+        return 10
+    }
+
+    /// Names of tools this role may use, drawn from the app's registered set.
+    /// Empty = all tools allowed.
+    fn allowed_tools() List<str> {
+        return []
+    }
+
+    /// Optional memory constraint (e.g. keep only the last N turns).
+    fn memory_limit() ?uint {
+        return Some(20)
+    }
+
+    /// Tiers a role may run at, as a constraint on mode/agent tier selection.
+    /// Empty (default) = no restriction. (Plan 004 — Agent Roles.)
+    fn allowed_tiers() List<ModelTier> {
+        return []
+    }
+
+    /// Optional per-role token budget (cumulative across the run). None
+    /// (default) = unbounded. Stored only as of Plan 004; not yet enforced.
+    fn token_budget() ?uint {
+        return None
+    }
+
+    /// Per-role skill whitelist. Empty (default) = no constraint. (Plan 004.)
+    fn skills() List<str> {
+        return []
+    }
+
+    // ── Orchestration fields (Plan 008 Phase 4) ────────────────────────────
+
+    /// Roles this role can hand off the baton to. Empty = no restriction.
+    fn handoff_to() List<str> {
+        return []
+    }
+
+    /// Roles this role can dispatch sub-tasks to. Empty = no dispatch allowed.
+    fn dispatchable_to() List<str> {
+        return []
+    }
+
+    /// Handoff targets that require human approval. Empty = all automatic.
+    fn approval_gates() List<str> {
+        return []
+    }
+
+    /// Preferred provider for this role's LLM requests. None = use the
+    /// daemon's tier_routing. (Multi-Provider Model Routing — Phase 3)
+    fn preferred_provider() ?str {
+        return None
+    }
+}
