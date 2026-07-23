@@ -19,7 +19,12 @@
 // multi-argument FFI corruption as math.gcd/lcm/perm (stray value leaks to
 // stdout, return value wrong), which would corrupt the TAP stream. The 2-arg
 // randint path works cleanly and is what this suite exercises.
-use.py random: seed, randint
+//
+// Plan 369 P4 (Task 16): added choice (seeded, over a string sequence) and
+// uniform (seeded, asserted by exact float string match). choice returns a
+// single-character string; uniform returns a float that marshals to its
+// shortest round-tripping string form (deterministic for IEEE-754 doubles).
+use.py random: seed, randint, choice, uniform
 
 fn tap_ok(n int, name str) {
     print("ok " + n.to(str) + " - " + name)
@@ -53,4 +58,26 @@ fn main() {
 
     seed(0)
     if randint(1, 1000) == 865 { tap_ok(8, "test_seed0_randint") } else { tap_not_ok(8, "test_seed0_randint", "got " + randint(1, 1000).to(str)) }
+
+    // Plan 369 P4 (Task 16): seeded choice (over a string sequence) and uniform.
+    seed(42)
+    var c1 = choice("abcde")
+    if c1 == "a" { tap_ok(9, "test_seed_choice_str") } else { tap_not_ok(9, "test_seed_choice_str", "got " + c1.to(str)) }
+
+    seed(42)
+    var c2 = choice("abcdef")
+    if c2 == "f" { tap_ok(10, "test_seed_choice_str2") } else { tap_not_ok(10, "test_seed_choice_str2", "got " + c2.to(str)) }
+
+    seed(7)
+    var c3 = choice("abcdef")
+    if c3 == "c" { tap_ok(11, "test_seed7_choice_str") } else { tap_not_ok(11, "test_seed7_choice_str", "got " + c3.to(str)) }
+
+    // uniform returns a float; compare its shortest round-tripping string form.
+    seed(42)
+    var u1 = uniform(1.0, 10.0)
+    if u1.to(str) == "6.754841186120954" { tap_ok(12, "test_seed_uniform") } else { tap_not_ok(12, "test_seed_uniform", "got " + u1.to(str)) }
+
+    seed(42)
+    var u2 = uniform(0.0, 1.0)
+    if u2.to(str) == "0.6394267984578837" { tap_ok(13, "test_seed_uniform_01") } else { tap_not_ok(13, "test_seed_uniform_01", "got " + u2.to(str)) }
 }

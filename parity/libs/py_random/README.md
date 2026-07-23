@@ -25,8 +25,14 @@ The Auto test imports these symbols from `use.py random`:
 
 - `seed(n) -> None` — sets the RNG state
 - `randint(a, b) -> int` — inclusive random integer in `[a, b]`
-
-`random.randrange` is **not** exercised (see Known AutoVM divergences below).
+- `choice(seq) -> item` — seeded choice over a sequence. The Auto suite uses a
+  string sequence (e.g. `choice("abcde")`); Auto list literals do not marshal to
+  a Python list, so a list argument fails with "object of type 'int' has no
+  len()". A string works because it marshals directly to a Python `str`, which
+  is a valid sequence.
+- `uniform(a, b) -> float` — seeded float in `[a, b]`. The result marshals to
+  its shortest round-tripping string form, so the test asserts the exact string
+  (deterministic for IEEE-754 doubles).
 
 ## Test layout
 
@@ -67,17 +73,23 @@ If AutoVM reproduces the seeded value it is `consistent`; a wrong value yields
 | 42   | randint(0, 5)     | 5        |
 | 0    | randint(1, 1000)  | 865      |
 
-## Known AutoVM divergences (excluded from the suite)
+## History: previously excluded, now resolved
 
-`random.randrange` (1- and 3-argument forms) hits the same multi-argument FFI
-corruption seen in `math.gcd` / `math.lcm` / `math.perm`: a stray argument
-value leaks to stdout and the return value is wrong. For example
-`randrange(0, 100, 5)` prints nothing on the value line and a stray `100` (the
-last arg) appears elsewhere, corrupting the TAP stream. The 2-argument
-`randint(a, b)` path is unaffected and is what this suite exercises. This is
-the same underlying bug class documented in `py_math`'s README; re-enabling
-`randrange` should wait for the FFI call-handling fix.
+`random.randrange` (1- and 3-argument forms) was previously excluded because it
+hit the same multi-argument FFI corruption seen in `math.gcd` / `math.lcm` /
+`math.perm`: a stray argument value leaked to stdout and the return value was
+wrong. Plan 369 P3 fixed multi-arg calls via the CALL_PY opcode, so
+`randrange(0, 100, 5)` and friends now return the correct seeded value
+(e.g. `seed(42); randrange(0, 100, 5)` → `15`). The 2-argument `randint(a, b)`
+path was always unaffected and remains the primary integer case.
+
+## Known limitations
+
+- `choice` over an Auto list literal (e.g. `choice([1, 2, 3])`) fails: Auto list
+  literals do not marshal to a Python `list`, so Python raises "object of type
+  'int' has no len()". The suite exercises `choice` over a string sequence
+  instead, which marshals correctly.
 
 ## Known divergences
 
-(none in the current test set)
+(none — the suite is 100% consistent across AutoVM, a2py, and the oracle)
