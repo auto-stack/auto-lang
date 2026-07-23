@@ -34,7 +34,7 @@
 /// - `Text(text)`
 /// - `ToolUse(id, name, input)`
 /// - `ToolResult(tool_use_id, content, is_error)`
-enum ContentBlock {
+pub enum ContentBlock {
     Text(str)
     ToolUse(str, str, JsonValue)
     ToolResult(str, str, bool)
@@ -58,7 +58,7 @@ ext ContentBlock {
 /// results (user). The convenience constructors [user], [assistant], [system]
 /// wrap a single Text block; use [tool_result] when feeding a tool's output
 /// back to the model.
-type Message {
+pub type Message {
     role str
     content List<ContentBlock>
 }
@@ -118,7 +118,7 @@ ext Message {
 ///
 /// `parameters` is a JSON-schema fragment (the `parameters` field of an
 /// OpenAI function definition, or the `input_schema` of an Anthropic tool).
-type ToolDefinition {
+pub type ToolDefinition {
     name str
     description str
     parameters JsonValue
@@ -135,7 +135,7 @@ ext ToolDefinition {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// A tool invocation the model emitted in its response.
-type ToolCall {
+pub type ToolCall {
     id str
     name str
     input JsonValue
@@ -146,7 +146,7 @@ type ToolCall {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Token usage statistics.
-type Usage {
+pub type Usage {
     input_tokens uint
     output_tokens uint
 }
@@ -163,7 +163,7 @@ ext Usage {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// A completion request (provider-agnostic).
-type CompletionRequest {
+pub type CompletionRequest {
     model str
     messages List<Message>
     max_tokens ?uint
@@ -220,7 +220,7 @@ ext CompletionRequest {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// A completion response.
-type CompletionResponse {
+pub type CompletionResponse {
     /// The full text response (all chunks joined for streaming).
     content str
     /// Tool invocations the model requested, if any.

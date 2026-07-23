@@ -8211,6 +8211,12 @@ impl RustTrans {
                         ("percent_encoding", "use percent_encoding::{percent_encode, NON_ALPHANUMERIC};"),
                         ("urlencoding", "use urlencoding::encode;"),
                         ("hex", "use hex;"),
+                        // Plan 013 (B14): bridge crates whose many types are
+                        // referenced unqualified in the Auto source (e.g.
+                        // `auto_val.Value.Str` → a2r emits bare `Value::Str`).
+                        // A glob import resolves all of them without enumerating.
+                        ("auto_val", "use auto_val::*;"),
+                        ("auto_atom", "use auto_atom::*;"),
                     ];
 
                     let already_emitted = self.uses.contains(full_path.as_str());
@@ -12010,8 +12016,14 @@ impl Trans for RustTrans {
 
         // Plan 270: Insert a2r_std import at file header if any a2r_std symbols were used.
         // Must be done AFTER all transpilation so a2r_std_used is accurate.
+        // Plan 013 (B11): the import path depends on the output target. In
+        // merge_mode (transpiling auto_lang's own sources) the runtime lives at
+        // `auto_lang::a2r_std`. For standalone CLI output (the common case —
+        // e.g. plan 013's ported crates), emit the bare `a2r_std` path so the
+        // generated crate only needs `a2r-std` as a dependency, not all of
+        // auto_lang.
         if !self.merge_mode && self.a2r_std_used.get() {
-            let import = b"// a2r Standard Library (from crate)\n#[allow(unused_imports)]\nuse auto_lang::a2r_std;\nuse auto_lang::a2r_std::*;\n\n";
+            let import = b"// a2r Standard Library (from crate)\n#[allow(unused_imports)]\nuse a2r_std;\nuse a2r_std::*;\n\n";
             // Find the header boundary: after "#![allow]" line + blank line
             let body = &sink.body;
             let mut insert_pos = 0;

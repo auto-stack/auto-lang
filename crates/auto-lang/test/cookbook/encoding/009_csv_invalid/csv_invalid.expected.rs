@@ -2,8 +2,8 @@
 
 // a2r Standard Library (from crate)
 #[allow(unused_imports)]
-use auto_lang::a2r_std;
-use auto_lang::a2r_std::*;
+use a2r_std;
+use a2r_std::*;
 
 fn main() {
     let data: String = "name,age\nAlice,30\nBob,twenty-five\nCharlie,35".to_string();
