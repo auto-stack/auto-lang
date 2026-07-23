@@ -1099,3 +1099,107 @@ git commit -m "docs(parity): Python parity known-divergences (Plan 369 complete)
 - `run_a2py(config) -> Result<Vec<TapResult>, String>` 签名一致 ✓
 - `ParityMode` 枚举在 main.rs 中定义和使用一致 ✓
 - `TestCaseComparison` 字段重映射（vm/a2r/rust → AutoVM/a2py/Python oracle）在 classify 中不变 ✓
+
+---
+
+# 执行状态与剩余工作
+
+## 已完成
+
+| Task | 内容 | 结果 |
+|------|------|------|
+| P0 (Task 1-4) | auto-parity Python backend + py_math 骨架 | py_math 14/14 (100%) |
+| P1 (Task 5-6) | py_math 扩展 + py_random | py_random 8/8 (100%) |
+| P2 (Task 7-9) | py_struct + py_datetime(stub) + py_uuid(stub) | py_struct 8/8 (100%) |
+
+**30/30 测试用例 100% 三方一致。**
+
+---
+
+## 阶段 P3: PyFFI 限制修复（3 个 bug）
+
+以下 3 个 PyFFI 限制阻碍了 py_datetime 和 py_uuid 的测试。根因已深入调查，解决方案如下。
+
+### Task 10: DIV-PY-MULTIARG-1 — 多参数 Python 调用只传第一个参数
+
+**根因:** `py_ffi.rs:200` `inspect_param_count` 中，`inspect.signature()` 对 C 内建函数（如 `datetime.date`、`struct.pack`）抛出 `ValueError`，静默回退到 `default_count=1`。参数数量被硬编码进 shim（`py_ffi.rs:83`），导致只 pop 1 个参数。
+
+**为什么 2-arg 的 `randint(1,100)` 工作:** `random.randint` 有可用的 `inspect.signature()`，返回正确的 count=2。
+
+**修复方案:** 让 shim 在运行时获取参数数量，而非编译时硬编码。
+
+具体步骤：
+1. **codegen 侧**（`codegen.rs` ~6985）: 在 `CALL_NAT` 指令后，对 py-FFI native（id ≥ 400）额外 emit 1 字节 arg_count
+2. **engine 侧**（`engine.rs` CALL_NAT handler ~5239）: 对 py native id，读取额外 1 字节 arg_count，存入 `task.pending_py_arg_count`
+3. **shim 侧**（`py_ffi.rs` register_function ~85）: 将 `for pt in param_types.iter().rev()` 改为 `for _ in 0..task.pending_py_arg_count`，始终用 `pop_auto_py_arg`
+
+**备选方案（更简单）:** 改进 `inspect_param_count` 的回退逻辑：
+- 尝试 `__text_signature__` 属性
+- 如果仍然失败，对 C 内建函数尝试调用并捕获 `TypeError` 来推断参数数（不可靠，不推荐）
+- **最简单的可行方案**：让用户在 `use.py` 时显式指定参数数：`use.py datetime: date(3)` 表示 3 参数。修改 parser 支持这种语法。
+
+**推荐方案:** 运行时 arg_count 方案（方案一）。它从根本上解决问题，不依赖 Python 内省。
+
+**验证:** `date(2026, 1, 1)` 返回正确的 date 对象；`pack(">I", 258)` 返回正确的 bytes。
+
+**影响:** py_datetime 可以测试 `date(y,m,d)`；py_struct 可以测试 `pack`/`unpack`；py_random 可以测试 `randrange(a,b,c)`。
+
+---
+
+### Task 11: DIV-PY-CONST-1 — 模块常量不可通过 use.py 导入
+
+**根因:** 三处代码都假设导入的是 callable：
+1. `codegen.rs:3956-3967` — 每个导入项无条件插入 `py_native_map`（按函数处理）
+2. `lib.rs:528-590` — 对每个导入项调用 `inspect_param_count` + `register_function`
+3. `py_ffi.rs:266` — `discover_module_callables` 用 `member.is_callable()` 过滤，常量被丢弃
+
+**修复方案:** 新增常量导入路径。
+
+具体步骤：
+1. **`PyFfiBridge` 新增 `register_constant` 方法**（`py_ffi.rs`）: 创建一个零参数 getter shim，执行 `mod_ref.getattr(name)` + `py_auto_marshal_return`，push 结果
+2. **`init_py_ffi` / `resolve_py_imports`**: 对每个命名导入，先用 `getattr(name).is_callable()` 检查是否 callable。如果不是，调用 `register_constant` 而非 `register_function`
+3. **codegen `handle_py_import`**: 新增 `py_constants` map。对常量标识符的裸引用（`Expr::Ident`），emit `CALL_NAT`（零参数 getter）；对 dot-access（`math.pi`），在 `py_modules` 分支中识别常量并 emit getter
+
+**验证:** `use.py math: pi` 后 `pi` 返回 3.14159...；`use.py uuid: NAMESPACE_DNS` 后可用作 `uuid5` 的参数。
+
+**影响:** py_uuid 可以测试 `uuid5`；py_math 可以直接测试 `math.pi`/`math.e`。
+
+---
+
+### Task 12: Python 对象方法调用不支持
+
+**根因:** `py_ffi.rs:481-491` `py_auto_marshal_return` 的 fallback 分支将 Python 对象 stringify（`format!("{:?}", ...)`），丢弃了原始 `Py<PyAny>` 引用。没有 opaque handle 机制。
+
+**修复方案:** 新增 `PythonObject` heap 类型 + 方法调用分发。
+
+具体步骤：
+1. **新增 `PythonObject` 类型**（`vm/ffi/rust_stdlib.rs` 或新文件）: 持有 `Py<PyAny>` 引用，实现 `HeapObject` trait
+2. **`py_auto_marshal_return` fallback 分支**（`py_ffi.rs:481`）: 改为将 `Py<PyAny>` 包装为 `PythonObject`，存入 heap，push opaque handle（而非 stringify）
+3. **新增 native shims**: `py.object.getattr(handle, name)` 和 `py.object.callmethod(handle, method, *args)`
+4. **codegen 方法调用分发**: 检测接收者是 `PythonObject` 时，路由 `obj.method(args)` 到 `callmethod` shim
+
+**验证:** `var d = date(2026, 1, 1); d.isoformat()` 返回 `"2026-01-01"`；`d.year` 返回 2026。
+
+**影响:** py_datetime 可以测试 `d.isoformat()`、`d.year`、`d + timedelta(days=30)` 等。
+
+**复杂度:** Hard — 涉及 heap 对象系统、类型标记、marshalling、codegen 方法调用分发。这是三个 bug 中最大的。
+
+**依赖关系:** Task 12 依赖 Task 10（多参数支持），因为 `date(2026,1,1)` 需要 3-arg FFI 才能创建 date 对象，然后才能测试方法调用。
+
+---
+
+### 实施顺序与优先级
+
+| 顺序 | Task | 复杂度 | 依赖 | 影响 |
+|------|------|--------|------|------|
+| 1 | Task 10 (multi-arg) | Medium | 无 | 解锁 py_datetime/py_struct 的核心 API |
+| 2 | Task 11 (constants) | Medium-Hard | 无 | 解锁 py_uuid/py_math 常量 |
+| 3 | Task 12 (object methods) | Hard | Task 10 | 解锁 py_datetime 对象方法 |
+
+### 验证目标
+
+完成全部 3 个 Task 后：
+- py_datetime 从 stub 扩展为完整测试（5-10 用例），三方一致率 ≥80%
+- py_uuid 从 stub 扩展为完整测试（3-5 用例），三方一致率 100%
+- py_struct 扩展 `pack`/`unpack` 测试
+- 现有 py_math/py_random/py_struct 100% 不退化
