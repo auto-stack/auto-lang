@@ -5,35 +5,25 @@
 /// 的行为，与 Rust oracle（std::fs + str::replace/trim/to_lowercase）三方一致。
 ///
 /// 消费者模式：调库能力（fs.read_text / fs.write_text）+ 字符串方法做应用。
-///
-/// 实现注记（VM 怪癖规避）：文本变换结果都先存进局部变量再返回
-/// （`return <方法调用>` 在 VM 里会丢值——同 string_utils/Plan 359 C2 家族，
-///  仍是未修的 VM bug，与 a2r 无关）。
 use auto.fs
 
 /// 读文件、把 `old` 替换成 `new`、写回、读回返回。
 fn transform_replace(path str, old str, new str) str {
     var content = fs.read_text(path)
-    var changed = content.replace(old, new)
-    fs.write_text(path, changed)
-    var back = fs.read_text(path)
-    return back
+    fs.write_text(path, content.replace(old, new))
+    return fs.read_text(path)
 }
 
 /// 读文件、trim 两端空白、写回、读回返回。
 fn transform_trim(path str) str {
     var content = fs.read_text(path)
-    var changed = content.trim()
-    fs.write_text(path, changed)
-    var back = fs.read_text(path)
-    return back
+    fs.write_text(path, content.trim())
+    return fs.read_text(path)
 }
 
 /// 读文件、转小写、写回、读回返回。
 fn transform_lower(path str) str {
     var content = fs.read_text(path)
-    var changed = content.lower()
-    fs.write_text(path, changed)
-    var back = fs.read_text(path)
-    return back
+    fs.write_text(path, content.lower())
+    return fs.read_text(path)
 }
