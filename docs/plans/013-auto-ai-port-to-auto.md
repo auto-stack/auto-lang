@@ -311,3 +311,25 @@ a2r golden 套件：283 passed，仅 4 个预存失败（与并行 agent 的 cod
 Rust 下仍解析为 Box<Node> 的克隆语义、`Err(e)` 重抛 Box<ConfigError>、
 HashMap.get 返回 Option 需 unwrap、tier_name move 等），逐个需查 auto_val
 真实签名——回报递减，且该文件本就是"桥接临时方案、未来自举后替换"。
+
+#### B16 完成 — loader.at cargo check 全过（0 错误）
+
+继续啃完最后 20 个 loader.at 桥接错误。a2r codegen 4 处改动 + Auto 源码调整：
+
+a2r（rust.rs）：
+- 双重 deref：`*(*child).clone()`（Rust autoref 让 `(*x).clone()` 回退到
+  `Box::<T>::clone`）
+- `Err(e)` 重抛不套 Box（Result<_,Concrete> 里的 ident 已是具体错误）
+- `Some(i)` 返回 `?uint` 时加 `as u32`
+- `Map.get` 自动借用：仅对**owned-String** 参数（局部/字段）加 `&`，跳过
+  str 参数（已是 &str）和 Int（Vec::get 取 usize）
+- 结构体字段 standalone 输出加 `pub`（Auto 字段本就公开）
+
+Auto 源码（loader.at）：
+- `Value.Nil` 模式 → else 分支
+- HashMap.get 返回 Option：改用 `Some(p)` 解构、`.clone()` 取值
+- `ModelDefinition.new` 借用 String
+- `var` 修饰可变局部（providers/routing）；`tier_name.clone()` 防二次 move
+
+**成果**：loader.at 从 70 错 → **0 错**。**tier + provider + loader 全部通过
+cargo check**（0 错误，仅警告）。**a2r→Rust 验收标准对阶段 1 ai-config 达成。**
