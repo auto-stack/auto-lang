@@ -15,7 +15,8 @@
 //! introduce, and replaces the bespoke mini-compiler + AST tree-walker that
 //! stalled mid-Plan-205-migration.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
+use std::cell::RefCell;
 
 use crate::ast::{
     Arg, Body, Branch, Expr, Fn, FnKind, If, Member, Name, Param, Stmt, Type, TypeDecl,
@@ -24,6 +25,25 @@ use crate::ast::{
 use crate::aura::{AuraWidget, LogicPayload};
 use crate::vm::codegen::Codegen;
 use crate::vm::loader::Module;
+
+// Plan 370 D-GAP-4: thread-local store context for rewrite.
+// Set during synthesize_from_decl when processing root widget handlers.
+thread_local! {
+    static STORE_FIELDS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+    static STORE_WIDGET_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+/// Set the store context for the current synthesis pass.
+pub fn set_store_context(fields: HashMap<String, Vec<String>>, names: HashMap<String, String>) {
+    STORE_FIELDS.with(|s| *s.borrow_mut() = fields);
+    STORE_WIDGET_NAMES.with(|s| *s.borrow_mut() = names);
+}
+
+/// Clear the store context after synthesis.
+pub fn clear_store_context() {
+    STORE_FIELDS.with(|s| s.borrow_mut().clear());
+    STORE_WIDGET_NAMES.with(|s| s.borrow_mut().clear());
+}
 
 /// The synthesized receiver parameter name holding the widget-state heap id.
 const STATE_PARAM: &str = "__state";
@@ -79,6 +99,40 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
 }
 
 fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
+    // Plan 370 D-GAP-4 Phase 0: store.X rewriting.
+    // store.Method(args) → handler_StoreName_Method(__state, args)
+    if let Expr::Call(call) = e {
+        if let Expr::Dot(obj, method) = call.name.as_ref() {
+            if let Expr::Ident(alias) = obj.as_ref() {
+                let has_store = STORE_WIDGET_NAMES.with(|s| s.borrow().contains_key(alias.as_str()));
+                if has_store {
+                    let store_name = STORE_WIDGET_NAMES.with(|s| s.borrow().get(alias.as_str()).cloned()).unwrap_or_default();
+                    let handler_fn = format!("handler_{}_{}", store_name, method);
+                    let mut new_args = vec![crate::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
+                    new_args.extend(call.args.args.iter().cloned());
+                    *e = Expr::Call(crate::ast::Call {
+                        name: Box::new(Expr::Ident(Name::from(handler_fn))),
+                        args: crate::ast::Args { args: new_args },
+                        ret: Type::Void,
+                        type_args: Vec::new(),
+                        pos: None,
+                    });
+                    return;
+                }
+            }
+        }
+    }
+    // store.field → __state.field
+    if let Expr::Dot(obj, _field) = e {
+        if let Expr::Ident(alias) = obj.as_ref() {
+            let is_store = STORE_FIELDS.with(|s| s.borrow().contains_key(alias.as_str()));
+            if is_store {
+                *obj = Box::new(Expr::Ident(Name::from(STATE_PARAM)));
+                return;
+            }
+        }
+    }
+
     // Phase 1: decide whether THIS node is a state reference that needs replacing.
     // Compute the replacement without holding a mutable borrow into `e`, so the
     // reassignment below type-checks.
@@ -706,6 +760,23 @@ fn synthesize_handler_fn_from_decl(
     event_pattern: &str,
     body_stmts: &[Stmt],
 ) -> Stmt {
+    synthesize_handler_fn_from_decl_with_store(
+        decl, widget_name, state_type, state_fields, event_pattern, body_stmts,
+        &HashMap::new(), &HashMap::new(),
+    )
+}
+
+/// Plan 370 D-GAP-4: synthesize handler with store field rewriting support.
+fn synthesize_handler_fn_from_decl_with_store(
+    decl: &crate::ast::WidgetDecl,
+    widget_name: &str,
+    state_type: &TypeDecl,
+    state_fields: &HashSet<String>,
+    event_pattern: &str,
+    body_stmts: &[Stmt],
+    store_fields: &HashMap<String, Vec<String>>,
+    store_widget_names: &HashMap<String, String>,
+) -> Stmt {
     let bare = handler_fn_name(event_pattern)
         .strip_prefix("handler_")
         .map(|s| s.to_string())
@@ -733,7 +804,7 @@ fn synthesize_handler_fn_from_decl(
         }
     }
 
-    // Clone + rewrite the body.
+    // Clone + rewrite the body (Plan 370 D-GAP-4: store context is in thread_local).
     let mut stmts: Vec<Stmt> = body_stmts.to_vec();
     rewrite_state_refs_stmts(&mut stmts, state_fields);
 
@@ -894,35 +965,52 @@ pub fn synthesize_from_decl(
         .chain(child_decls.iter())
         .collect();
 
+    // Plan 370 D-GAP-4: build store alias → field names map AND alias → widget name map.
+    let mut store_fields_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut store_widget_names: HashMap<String, String> = HashMap::new();
+    for d in &all_decls {
+        if d.view.is_none() {
+            let fields: Vec<String> = d.model
+                .as_ref()
+                .map(|m| m.fields.iter().map(|f| f.name.to_string()).collect())
+                .unwrap_or_default();
+            if !fields.is_empty() {
+                store_fields_map.insert("store".to_string(), fields.clone());
+                store_widget_names.insert("store".to_string(), d.name.to_string());
+            }
+        }
+    }
+
+    // Set thread-local store context so rewrite_expr can access it.
+    set_store_context(store_fields_map.clone(), store_widget_names.clone());
+
     for d in &all_decls {
         let d_tick = extract_tick_interval_from_decl(d);
-        let d_state_fields: HashSet<String> = {
+        let mut d_state_fields: HashSet<String> = {
             let mut s: HashSet<String> = d
                 .model
                 .as_ref()
                 .map(|m| m.fields.iter().map(|f| f.name.to_string()).collect())
                 .unwrap_or_default();
-            // Filter out "interval" when tick scheduling is active.
             if d_tick.is_some() {
                 s.retain(|n| n != "interval");
             }
             s
         };
+        // Plan 370 D-GAP-4: merge store fields into root widget's state_fields
+        if d.name == decl.name {
+            for (_, fields) in &store_fields_map {
+                for f in fields {
+                    d_state_fields.insert(f.clone());
+                }
+            }
+        }
         let d_state_type = synthesize_state_type_from_decl(d, d_tick);
 
         if let Err(e) = codegen.compile_stmt(&Stmt::TypeDecl(d_state_type.clone())) {
             log::warn!("handler_codegen: {} state type failed: {}", d.name, e);
         }
 
-        // Build the combined handlers + lifecycle list, mirroring the merge
-        // extract_widget_from_decl performs: `.Init`/`.Destroy` handlers in the
-        // `on` block are treated as lifecycle (moved out of the handlers map in
-        // the AuraWidget path), and the separate `lifecycle {}` block methods
-        // are appended. Here both sources compile to the same handler-fn shape,
-        // so we collect them into one sorted list. Note: in a well-formed
-        // WidgetDecl, `.Init`/`.Destroy` live in `decl.on` while named lifecycle
-        // methods (e.g. aboutToAppear) live in `decl.lifecycle` — they are
-        // disjoint sources, so no dedup is needed.
         let mut d_handlers: Vec<(String, Vec<Stmt>)> = Vec::new();
         if let Some(on) = &d.on {
             for h in &on.handlers {
@@ -935,13 +1023,15 @@ pub fn synthesize_from_decl(
         d_handlers.sort_by(|a, b| handler_fn_name(&a.0).cmp(&handler_fn_name(&b.0)));
 
         for (event_pattern, body_stmts) in &d_handlers {
-            let handler_fn = synthesize_handler_fn_from_decl(
+            let handler_fn = synthesize_handler_fn_from_decl_with_store(
                 d,
                 &d.name.to_string(),
                 &d_state_type,
                 &d_state_fields,
                 event_pattern,
                 body_stmts,
+                &store_fields_map,
+                &store_widget_names,
             );
             if let Err(e) = codegen.compile_stmt(&handler_fn) {
                 log::warn!(
@@ -953,6 +1043,7 @@ pub fn synthesize_from_decl(
     }
 
     let registry = std::mem::take(&mut codegen.generic_registry);
+    clear_store_context();
     Ok((codegen.finish(decl.name.to_string()), registry))
 }
 
