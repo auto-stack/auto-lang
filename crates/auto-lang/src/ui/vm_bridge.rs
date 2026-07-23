@@ -843,9 +843,20 @@ impl VmBridge {
 
     /// Check if a handler exists for the given event name.
     ///
-    /// A handler exists iff the synthesized `handler_<Name>` function is present
-    /// in the module exports.
+    /// A handler exists iff a synthesized handler function is present in the
+    /// module exports. Plan 320 synthesizes handlers under *namespaced* names
+    /// (`handler_<WidgetName>_<Event>`) so multiple widgets coexist in one VM;
+    /// legacy non-namespaced names (`handler_<Event>`) are kept as a fallback.
+    /// This must mirror [`call_handler`]'s lookup, otherwise `has_handler`
+    /// returns false for handlers that `call_handler` would dispatch fine.
     pub fn has_handler(&self, event_name: &str) -> bool {
+        // Plan 320: try namespaced first (handler_<WidgetName>_<Event>),
+        // then fall back to legacy (handler_<Event>) for backward compat.
+        let namespaced =
+            crate::ui::handler_codegen::namespaced_handler_fn_name(&self.widget_name, event_name);
+        if self.vm.flash.exports_by_name.contains_key(&namespaced) {
+            return true;
+        }
         let fn_name = format!("handler_{}", extract_handler_name(event_name));
         self.vm.flash.exports_by_name.contains_key(&fn_name)
     }
@@ -1647,15 +1658,28 @@ mod tests {
         );
 
         // The non-imported callees MUST be present (the bug was their absence).
+        // Plan 339: collected Fns are renamed to `<module>.<name>` (e.g.
+        // `calendar_util.build_month_grid`), so match by the qualified suffix
+        // rather than the bare name.
         let names: std::collections::HashSet<String> = import_stmts
             .iter()
             .filter_map(|s| crate::stmt_symbol_name(s))
             .collect();
-        for required in ["build_month_grid", "weekday_of", "days_in_month", "format_date", "is_leap"] {
+        let module_prefix = "calendar_util.";
+        for required in [
+            "build_month_grid",
+            "weekday_of",
+            "days_in_month",
+            "format_date",
+            "is_leap",
+        ] {
+            let present = names.iter().any(|n| {
+                n == required || n.strip_prefix(module_prefix) == Some(required)
+            });
             assert!(
-                names.contains(required),
-                "recursive import collection must include `{}` (callee of build_month_grid not named in the use clause)",
-                required
+                present,
+                "recursive import collection must include `{}` (callee of build_month_grid not named in the use clause). collected = {:?}",
+                required, names
             );
         }
 

@@ -2310,15 +2310,15 @@ mod tests {
     fn test_view_builder_chainable() {
         let view: TestView = View::row()
             .style("gap-4")
-            .style("p-4")  // Note: Second style call replaces first
+            .style("p-4") // style() merges classes (commit 5311183d: style merge)
             .child(View::text("Child"))
             .build();
         match view {
             View::Row { style, .. } => {
                 assert!(style.is_some());
-                // Last style wins
-                let classes = &style.unwrap().classes;
-                assert_eq!(classes.len(), 1);
+                // Both style calls' classes are kept (merge semantics).
+                let classes = &style.as_ref().unwrap().classes;
+                assert!(classes.len() >= 2, "expected merged classes, got {:?}", classes);
             }
             _ => panic!("Expected View::Row"),
         }
@@ -2404,12 +2404,11 @@ mod tests {
     }
 
     // ========== Task 4.1: Test style parsing errors ==========
-
-    #[test]
-    #[should_panic(expected = "Invalid style")]
-    fn test_invalid_style_string_panics() {
-        let _ = View::<TestMsg>::text_styled("Hello", "invalid-class-name-12345");
-    }
+    // NOTE: a `should_panic` test for unknown style classes was removed — it
+    // conflicted with the StyleParser design (commit f016f674: "Unknown classes
+    // are silently skipped", guarded by style/parser.rs::test_parse_invalid_class).
+    // Tailwind's class space is open-ended, so parse() returns Ok with unknown
+    // classes filtered out rather than panicking.
 
     // ========== Task 4.1: Test complex nested views with styles ==========
 
