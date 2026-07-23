@@ -6,11 +6,62 @@
 
 use crate::py_ffi_types::{PySignature, PyType};
 use crate::vm::engine::{AutoVM, VMError};
+use crate::vm::heap_object::{HeapObject, TypeTag};
 use crate::vm::native::NativeInterface;
 use crate::vm::task::AutoTask;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyList, PyString, PyTuple};
 use std::collections::HashMap;
+
+// ============================================================================
+// Plan 369 Task 12: Opaque Python object handle
+// ============================================================================
+
+/// Opaque wrapper around a Python object (`Py<PyAny>`) stored in the VM heap.
+///
+/// When a py-FFI call returns a Python object that doesn't map to a native VM
+/// scalar/list/dict (e.g. `datetime.date`, a custom class instance), we wrap it
+/// in `PyObjectHandle` and push its heap ID onto the stack instead of stringifying
+/// it. Later `py_call` / `py_getattr` built-ins resolve the handle back to the
+/// live Python object and dispatch attribute/method access through CPython.
+///
+/// # Thread safety
+/// `Py<PyAny>` is `Send + Sync` in PyO3 0.29 (the owned, reference-counted handle
+/// is independent of the GIL). Accessing the underlying object still requires
+/// acquiring the GIL via `Python::attach`, which every shim does.
+pub struct PyObjectHandle {
+    /// Type name from `type(obj).__name__` (captured at creation for debugging).
+    pub type_name: String,
+    /// The owned Python object reference. Safe to store across threads; GIL
+    /// required to dereference.
+    pub obj: Py<PyAny>,
+}
+
+impl PyObjectHandle {
+    pub fn new(type_name: String, obj: Py<PyAny>) -> Self {
+        Self { type_name, obj }
+    }
+}
+
+impl HeapObject for PyObjectHandle {
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::RustStdlib(format!("PyObj({})", self.type_name))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
+/// Native IDs reserved for the py-object built-in shims. These are assigned out
+/// of the PyFfiBridge id space (starting at 400) but are stable constants so the
+/// codegen can register them in `BIGVM_NATIVES` without consulting the bridge.
+pub const NATIVE_PY_CALL: u16 = 450;
+pub const NATIVE_PY_GETATTR: u16 = 451;
 
 pub struct PyFfiBridge {
     modules: HashMap<String, Py<PyModule>>,
@@ -201,6 +252,120 @@ impl PyFfiBridge {
         self.native_interface.register_static(native_id, shim);
 
         Ok(native_id)
+    }
+
+    /// Plan 369 Task 12: Register the `py_call(obj, method_name, ...args)` and
+    /// `py_getattr(obj, attr_name)` built-in shims. These enable method calls and
+    /// attribute access on opaque Python objects returned by earlier py-FFI calls
+    /// (wrapped as `PyObjectHandle` in the VM heap).
+    ///
+    /// Both shims use runtime arg-count detection (via `pending_native_arg_count`,
+    /// same mechanism as `CALL_PY`) so `py_call` can accept a variable number of
+    /// positional method args.
+    ///
+    /// Calling convention (args pushed left-to-right, popped TOS-first):
+    ///   py_call:   [obj, method_name, arg1, arg2, ...]
+    ///   py_getattr:[obj, attr_name]
+    ///
+    /// The return value is marshalled via `py_auto_marshal_return`, so a method
+    /// returning another Python object stays opaque (chainable).
+    pub fn register_object_shims(&mut self) {
+        // ---- py_call(obj, method_name, ...args) ----
+        let call_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                // Layout (TOS → bottom): argN ... arg1, method_name, obj
+                // pending_native_arg_count = total args including obj & method_name.
+                let n = task.pending_native_arg_count as usize;
+                // Defensive: need at least obj + method_name.
+                if n < 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_call needs at least 2 args (obj, method), got {}", n
+                    )));
+                }
+                let extra = n - 2; // method args between method_name and obj
+
+                // Pop method args (in TOS-first order).
+                let mut method_args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(extra);
+                for _ in 0..extra {
+                    method_args.push(pop_auto_py_arg(task, vm, py)?);
+                }
+                method_args.reverse();
+
+                // Pop method name (must be a string).
+                let method_py = pop_auto_py_arg(task, vm, py)?;
+                let method_name: String = method_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_call method name not string: {}", e))
+                })?;
+
+                // Pop obj (should be a PyObjectHandle).
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+
+                let result = if method_args.is_empty() {
+                    obj_py.call_method0(&method_name).map_err(|e| {
+                        VMError::FFI(format!(
+                            "Python method {}.{}() failed: {}",
+                            safe_type_name(&obj_py), method_name, e
+                        ))
+                    })?
+                } else {
+                    // pyo3 0.29: call_method1 takes a PyCallArgs tuple. Build a
+                    // PyTuple from the collected args so variadic method calls
+                    // (any arity) work without per-arity monomorphization.
+                    let args_tuple = PyTuple::new(py, &method_args).map_err(|e| {
+                        VMError::FFI(format!("Failed to build method args tuple: {}", e))
+                    })?;
+                    obj_py
+                        .call_method1(&method_name, args_tuple)
+                        .map_err(|e| {
+                            VMError::FFI(format!(
+                                "Python method {}.{}() failed: {}",
+                                safe_type_name(&obj_py), method_name, e
+                            ))
+                        })?
+                };
+
+                py_auto_marshal_return(&result, task, vm)?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_CALL, call_shim);
+
+        // ---- py_getattr(obj, attr_name) ----
+        let getattr_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                // Layout (TOS → bottom): attr_name, obj
+                let n = task.pending_native_arg_count as usize;
+                if n < 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_getattr needs 2 args (obj, attr), got {}", n
+                    )));
+                }
+                // Any surplus args beyond the first two are ignored (defensive).
+
+                // Pop attr name (string).
+                let attr_py = pop_auto_py_arg(task, vm, py)?;
+                let attr_name: String = attr_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_getattr attr name not string: {}", e))
+                })?;
+
+                // Pop obj (PyObjectHandle).
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+
+                let result = obj_py.getattr(&attr_name).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python getattr({}.{}) failed: {}",
+                        safe_type_name(&obj_py), attr_name, e
+                    ))
+                })?;
+
+                py_auto_marshal_return(&result, task, vm)?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_GETATTR, getattr_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -395,10 +560,18 @@ fn pop_auto_py_arg<'py>(
             Ok(py.None().into_bound(py))
         }
         5 => {
-            // TAG_OBJECT — heap object, try to convert RustStdlibObject<Obj> to Python dict
+            // TAG_OBJECT — heap object. Could be a RustStdlibObject<Obj> (Auto
+            // dict) or a PyObjectHandle (opaque live Python object).
             let obj_id = auto_val::decode_object(nv) as u64;
             if let Some(heap_obj) = vm.get_heap_object(obj_id) {
                 let guard = heap_obj.read().unwrap();
+                // Plan 369 Task 12: opaque Python object — clone out the owned
+                // `Py<PyAny>` and bind it to the current GIL scope.
+                if let Some(py_handle) = guard.as_any().downcast_ref::<PyObjectHandle>() {
+                    // Clone the Py<PyAny> (increments refcount) and bind under GIL.
+                    let owned = py_handle.obj.clone_ref(py);
+                    return Ok(owned.into_bound(py));
+                }
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
                     if let Some(obj) = rust_obj.downcast_ref::<auto_val::Obj>() {
                         let dict = PyDict::new(py);
@@ -449,6 +622,14 @@ fn pop_auto_py_arg<'py>(
             Ok(py.None().into_bound(py))
         }
     }
+}
+
+/// Best-effort Python type name for error messages. Returns "?" on failure.
+fn safe_type_name(obj: &Bound<'_, PyAny>) -> String {
+    obj.get_type()
+        .name()
+        .map(|n| n.to_string())
+        .unwrap_or_else(|_| "?".to_string())
 }
 
 /// Convert an AutoVal Value to a Python object (for passing VM values as Python args).
@@ -521,15 +702,22 @@ fn py_auto_marshal_return(
         })?;
         py_list_to_vm_heap(list, task, vm)?;
     } else {
-        // Fallback: convert to string repr
-        let s = format!("{:?}", py_val);
-        if let Ok(mut strings) = vm.strings.write() {
-            let idx = strings.len() as u32;
-            strings.push(s.into_bytes());
-            task.ram.push_str_idx(idx);
-        } else {
-            task.ram.push_i32(0);
-        }
+        // Plan 369 Task 12: opaque Python object. Keep the live Python object
+        // in the VM heap as a `PyObjectHandle` so later `py_call` / `py_getattr`
+        // can dispatch method/attribute access through CPython. Previously this
+        // stringified the object (e.g. `datetime.date(2026, 1, 1)`), making it
+        // impossible to call `.isoformat()` or read `.year` afterwards.
+        let type_name = py_val
+            .get_type()
+            .name()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+        // `py_val` is a `Bound<'_, PyAny>` borrow; `unbind()` produces an owned
+        // `Py<PyAny>` whose lifetime is independent of the current GIL scope.
+        let owned = py_val.clone().unbind();
+        let handle = PyObjectHandle::new(type_name, owned);
+        let id = vm.insert_heap_object(handle);
+        task.ram.push_nv(auto_val::encode_object(id as u32));
     }
     Ok(())
 }
@@ -754,5 +942,54 @@ mod tests {
             let back: String = py_val.extract().unwrap();
             assert_eq!(back, "hello");
         });
+    }
+
+    // ========================================================================
+    // Plan 369 Task 12: PyObjectHandle + py_call / py_getattr shim tests
+    // ========================================================================
+
+    #[test]
+    fn test_py_object_handle_send_sync_storage() {
+        // Py<PyAny> is Send + Sync in PyO3 0.29, so PyObjectHandle must satisfy
+        // the HeapObject bounds (Send + Sync + 'static). This is a compile-time
+        // check: if the bounds ever regress, this test stops compiling.
+        fn assert_send_sync<T: Send + Sync + 'static>() {}
+        assert_send_sync::<PyObjectHandle>();
+    }
+
+    #[test]
+    fn test_py_object_handle_wraps_and_recovers_object() {
+        // Round-trip a live Python object (datetime.date) through PyObjectHandle:
+        // store it, then bind it back under the GIL and verify it's the same
+        // object (method dispatch works, attribute access works).
+        Python::attach(|py| {
+            let datetime = py.import("datetime").unwrap();
+            let date = datetime.getattr("date").unwrap();
+            let d = date.call1((2026, 1, 1)).unwrap();
+            let type_name = d.get_type().name().unwrap().to_string();
+            assert_eq!(type_name, "date");
+
+            let owned: Py<PyAny> = d.clone().unbind();
+            let handle = PyObjectHandle::new(type_name, owned);
+
+            // Recover via clone_ref + bind.
+            let bound = handle.obj.clone_ref(py).into_bound(py);
+            let iso: String = bound.call_method0("isoformat").unwrap().extract().unwrap();
+            assert_eq!(iso, "2026-01-01");
+            let year: i32 = bound.getattr("year").unwrap().extract().unwrap();
+            assert_eq!(year, 2026);
+        });
+    }
+
+    #[test]
+    fn test_register_object_shims_assigns_fixed_ids() {
+        // register_object_shims must install shims at NATIVE_PY_CALL / NATIVE_PY_GETATTR
+        // so the codegen can resolve py.py_call / py.py_getattr without consulting
+        // the bridge at codegen time.
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_CALL).is_some(), "py_call shim not registered");
+        assert!(ni.get(NATIVE_PY_GETATTR).is_some(), "py_getattr shim not registered");
     }
 }

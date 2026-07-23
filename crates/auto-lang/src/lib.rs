@@ -600,6 +600,15 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         }
     }
 
+    // Plan 369 Task 12: register py_call / py_getattr built-ins so users can
+    // dispatch method calls and attribute access on opaque Python objects
+    // returned by earlier py-FFI calls (e.g. datetime.date.isoformat()).
+    bridge.register_object_shims();
+    if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+        registry.register_with_id("py.py_call", crate::py_ffi::NATIVE_PY_CALL);
+        registry.register_with_id("py.py_getattr", crate::py_ffi::NATIVE_PY_GETATTR);
+    }
+
     let mut native_interface = crate::vm::native::NativeInterface::new();
     native_interface.merge(bridge.native_interface());
 

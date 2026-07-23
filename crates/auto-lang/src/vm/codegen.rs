@@ -3969,6 +3969,45 @@ impl Codegen {
             // Plan 300: Bare module import (`use.py math`) — record for dot-call resolution
             self.py_modules.insert(module_path.to_string());
         }
+
+        // Plan 369 Task 12: seed the py-object built-ins (py_call, py_getattr)
+        // so calls like `py_call(d, "isoformat")` route through CALL_PY with the
+        // correct arg count. These resolve to fixed native IDs registered by
+        // init_py_ffi. Marking them in py_native_map also sets is_py_ffi_call,
+        // so the runtime arg-count byte is emitted.
+        self.register_py_object_builtins();
+    }
+
+    /// Plan 369 Task 12: register py_call / py_getattr in py_native_map so the
+    /// codegen treats them as py-FFI calls (emitting CALL_PY with runtime arg
+    /// count). Idempotent.
+    fn register_py_object_builtins(&mut self) {
+        use crate::py_ffi::{NATIVE_PY_CALL, NATIVE_PY_GETATTR};
+        // Insert placeholder entries; the (module, full_path) tuple is unused for
+        // dispatch since the native IDs are fixed constants. The qualified lookup
+        // below uses the entry's existence to set is_py_ffi_call = true.
+        if !self.py_native_map.contains_key("py_call") {
+            self.py_native_map.insert(
+                "py_call".to_string(),
+                ("__pyobj__".to_string(), "__pyobj__.py_call".to_string()),
+            );
+            self.py_return_types
+                .insert("py_call".to_string(), crate::py_ffi_types::PyType::Auto);
+            // Pin the fixed native ID so resolve_qualified() finds it without
+            // needing a runtime import.
+            if let Ok(mut reg) = BIGVM_NATIVES.lock() {
+                reg.register_with_id("py.py_call", NATIVE_PY_CALL);
+                reg.register_with_id("py.py_getattr", NATIVE_PY_GETATTR);
+            }
+        }
+        if !self.py_native_map.contains_key("py_getattr") {
+            self.py_native_map.insert(
+                "py_getattr".to_string(),
+                ("__pyobj__".to_string(), "__pyobj__.py_getattr".to_string()),
+            );
+            self.py_return_types
+                .insert("py_getattr".to_string(), crate::py_ffi_types::PyType::Auto);
+        }
     }
 
     pub fn compile_expr(&mut self, expr: &Expr) -> AutoResult<()> {
