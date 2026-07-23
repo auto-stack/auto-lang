@@ -7541,6 +7541,17 @@ impl Codegen {
                             Type::Int | Type::I64 => ObjectType::Int,
                             _ => ObjectType::NestedObject,
                         };
+                    } else {
+                        // Plan 368 W8: native instance methods (e.g. s.upper(),
+                        // s.replace(...), s.split(...)) reach here as a CALL with
+                        // a reloc name like "str.upper" that is NOT in
+                        // fn_return_types (native shims aren't registered there).
+                        // Without this fallback, last_expr_type keeps the stale
+                        // value left by compiling the receiver+args (often Void),
+                        // so `return s.method()` / `f(s.method())` drop the result.
+                        // infer_native_return_type knows the str/char method types.
+                        self.last_expr_type = self.infer_native_return_type(&reloc_name);
+                        self.last_was_native_void = matches!(self.last_expr_type, ObjectType::Void);
                     }
                     } // close else (non-generator CALL)
                 }
@@ -8961,8 +8972,43 @@ impl Codegen {
         if name == "auto.hashmap.get" {
             return ObjectType::NestedObject;
         }
+        // Plan 368 W5: Char.to_str returns String.
+        if Self::char_to_str_returns_string(name) {
+            return ObjectType::String;
+        }
+        // Plan 368 W8: string methods. infer_native_return_type is consulted by
+        // the native-call codegen path to set last_expr_type / last_was_native_void.
+        // Without these arms, a string method's return type defaulted to the stale
+        // last_expr_type (often Void after compiling the receiver+args), which made
+        // `return s.upper()` / `return s.replace(...)` drop the value. Match both
+        // "auto.str.X" and "str.X" forms. Keep in sync with infer_call_spec_return_type
+        // and the native_catalog str/Str entries.
+        let str_method = name
+            .strip_prefix("auto.str.")
+            .or_else(|| name.strip_prefix("str."))
+            .or_else(|| name.strip_prefix("Str."));
+        if let Some(m) = str_method {
+            match m {
+                "trim" | "replace" | "replace_first" | "to_upper" | "to_lower"
+                | "upper" | "lower" | "to_uppercase" | "to_lowercase"
+                | "substr" | "sub" | "slice" | "repeat" | "reverse" => return ObjectType::String,
+                "split" | "lines" | "split_once" => return ObjectType::Array,
+                "len" | "find" | "char_at" | "parse_int" | "match_count" => return ObjectType::Int,
+                "contains" | "starts_with" | "ends_with" | "is_empty" => return ObjectType::Bool,
+                "parse_float" => return ObjectType::Float,
+                _ => {}
+            }
+        }
         // Default: preserve current last_expr_type (no change)
         self.last_expr_type
+    }
+
+    /// Plan 368 W5: Char.to_str (codepoint → single-char String). Same purpose
+    /// as the str_method arms above — without this, the codegen treats
+    /// Char.to_str as returning the stale last_expr_type (Void after compiling
+    /// the codepoint arg), so its String result gets dropped on direct use.
+    fn char_to_str_returns_string(name: &str) -> bool {
+        matches!(name, "Char.to_str" | "auto.char.to_str" | "char.to_str")
     }
 
     /// Infer return type for CALL_SPEC based on method name.
