@@ -1681,6 +1681,15 @@ pub fn shim_char_to_upper(codepoint: i32) -> i32 {
     codepoint
 }
 
+/// Convert a Unicode codepoint to its single-character string.
+/// Plan 368 W5: `s.char_at(i)` returns the codepoint as `int`; this gives the
+/// ergonomic codepoint→1-char-str conversion (replaces the StringBuilder dance
+/// in c_process_app). Invalid codepoints yield the empty string.
+#[auto_macros::rust_fn("Char.to_str", "char.to_str", "auto.char.to_str")]
+pub fn shim_char_to_str(codepoint: i32) -> String {
+    char::from_u32(codepoint as u32).map(|c| c.to_string()).unwrap_or_default()
+}
+
 // ============================================================================
 // Option Functions (ID 1550-1559) — Plan 200 Task 2.4
 // ============================================================================

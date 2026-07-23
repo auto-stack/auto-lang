@@ -8961,6 +8961,10 @@ impl Codegen {
         if name == "auto.hashmap.get" {
             return ObjectType::NestedObject;
         }
+        // Plan 368 W5: Char.to_str returns String.
+        if Self::char_to_str_returns_string(name) {
+            return ObjectType::String;
+        }
         // Plan 368 W8: string methods. infer_native_return_type is consulted by
         // the native-call codegen path to set last_expr_type / last_was_native_void.
         // Without these arms, a string method's return type defaulted to the stale
@@ -8986,6 +8990,14 @@ impl Codegen {
         }
         // Default: preserve current last_expr_type (no change)
         self.last_expr_type
+    }
+
+    /// Plan 368 W5: Char.to_str (codepoint → single-char String). Same purpose
+    /// as the str_method arms above — without this, the codegen treats
+    /// Char.to_str as returning the stale last_expr_type (Void after compiling
+    /// the codepoint arg), so its String result gets dropped on direct use.
+    fn char_to_str_returns_string(name: &str) -> bool {
+        matches!(name, "Char.to_str" | "auto.char.to_str" | "char.to_str")
     }
 
     /// Infer return type for CALL_SPEC based on method name.

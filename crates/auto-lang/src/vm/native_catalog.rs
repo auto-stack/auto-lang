@@ -872,14 +872,18 @@ macro_rules! for_each_bigvm_native {
             ("auto.path.filename", 1403, Void),
             ("auto.path.canonicalize", 1404, Void),
 
-            // === Char (1600-1606) ===
-            ("auto.char.is_alpha", 1600, Void),
-            ("auto.char.is_digit", 1601, Void),
-            ("auto.char.is_alphanum", 1602, Void),
-            ("auto.char.is_whitespace", 1603, Void),
-            ("auto.char.is_ident", 1604, Void),
-            ("auto.char.to_lower", 1605, Void),
-            ("auto.char.to_upper", 1606, Void),
+            // === Char (1600-1607) — Plan 368 W8/W5: return types corrected
+            // (were all Void; same bug family as Str.*). is_alpha etc return
+            // Bool, to_lower/to_upper return Int (codepoint), to_str returns
+            // String (Plan 368 W5 codepoint→str primitive).
+            ("auto.char.is_alpha", 1600, Bool),
+            ("auto.char.is_digit", 1601, Bool),
+            ("auto.char.is_alphanum", 1602, Bool),
+            ("auto.char.is_whitespace", 1603, Bool),
+            ("auto.char.is_ident", 1604, Bool),
+            ("auto.char.to_lower", 1605, Int),
+            ("auto.char.to_upper", 1606, Int),
+            ("auto.char.to_str", 1607, String),
 
             // === Log (1800-1804) ===
             ("auto.log.debug", 1800, Void),
@@ -1624,6 +1628,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.char.is_ident", 1604),
     ("auto.char.to_lower", 1605),
     ("auto.char.to_upper", 1606),
+    ("auto.char.to_str", 1607),
     ("auto.log.debug", 1800),
     ("auto.log.info", 1801),
     ("auto.log.warn", 1802),
