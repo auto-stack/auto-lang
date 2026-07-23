@@ -161,7 +161,11 @@ ext TierRouting {
     /// Ordered candidates for a tier, or None if the tier isn't routed.
     fn candidates(tier str) ?List<TierRouteCandidate> {
         if self.entries.contains(tier) {
-            return Some(self.entries.get(tier))
+            // HashMap::get returns Option<&Vec>; extract and clone the Vec.
+            is self.entries.get(tier) {
+                Some(list) -> return Some(list.clone()),
+                None -> return None
+            }
         }
         return None
     }
@@ -228,9 +232,14 @@ pub fn parse_daemon_config(content str) Result<DaemonConfig, ConfigError> {
             }
             if cfg.default_model.is_empty() {
                 if cfg.providers.contains(cfg.default_provider) {
-                    let p = cfg.providers.get(cfg.default_provider)
-                    if p.models.len() > 0 {
-                        cfg.default_model = p.models[0].id
+                    // HashMap::get returns Option<&V>; pattern-match the ref.
+                    is cfg.providers.get(cfg.default_provider) {
+                        Some(p) -> {
+                            if p.models.len() > 0 {
+                                cfg.default_model = p.models[0].id.to_string()
+                            }
+                        },
+                        None -> {}
                     }
                 }
             }
@@ -282,7 +291,7 @@ fn provider_keys(node Node) List<str> {
 /// Walk a node's children, turning each `name { … }` block into a
 /// ProviderConfig. Returns a Map keyed by block name.
 fn parse_provider_blocks(node Node) Map<str, ProviderConfig> {
-    let providers Map<str, ProviderConfig> = Map.new()
+    var providers Map<str, ProviderConfig> = Map.new()
     for (_key, kid) in node.kids_iter() {
         is kid {
             auto_val.Kid.Node(child) -> {
@@ -316,7 +325,7 @@ fn parse_provider_blocks(node Node) Map<str, ProviderConfig> {
 
 /// Parse the `tier_routing { … }` child block from a daemon config.
 fn parse_tier_routing(node Node) TierRouting {
-    let routing = TierRouting.empty()
+    var routing = TierRouting.empty()
     for (_key, kid) in node.kids_iter() {
         is kid {
             auto_val.Kid.Node(tr_node) -> {
@@ -331,7 +340,9 @@ fn parse_tier_routing(node Node) TierRouting {
                         } else {
                             let cands = parse_candidates(tier_val)
                             if cands.len() > 0 {
-                                routing.entries.set(tier_name, cands)
+                                // tier_name is moved into set; clone on insert
+                                // so it's still available for tier_names.push.
+                                routing.entries.set(tier_name.clone(), cands)
                                 routing.tier_names.push(tier_name)
                             }
                         }
@@ -375,7 +386,7 @@ fn opt_str(node Node, key str) str {
     is val {
         auto_val.Value.Str(s) -> return s.to_string(),
         auto_val.Value.String(s) -> return s.to_string(),
-        auto_val.Value.Nil -> return "",
+        // Nil and any other type → to_astr() (Nil renders as "").
         else -> return val.to_astr().to_string()
     }
 }
@@ -386,8 +397,14 @@ fn opt_str_opt(node Node, key str) ?str {
     is val {
         auto_val.Value.Str(s) -> return Some(s.to_string()),
         auto_val.Value.String(s) -> return Some(s.to_string()),
-        auto_val.Value.Nil -> return None,
-        else -> return Some(val.to_astr().to_string())
+        // Nil → None; any other non-string type → its astr form.
+        else -> {
+            let s = val.to_astr().to_string()
+            if s.is_empty() {
+                return None
+            }
+            return Some(s)
+        }
     }
 }
 
@@ -458,8 +475,8 @@ fn opt_models(node Node, key str) List<ModelDefinition> {
                         }
                     },
                     auto_val.Value.Str(s) -> {
-                        // bare string → Mid default
-                        out.push(ModelDefinition.new(s.to_string(), ModelTier.Mid))
+                        // bare string → Mid default. s is AutoStr; new takes &str.
+                        out.push(ModelDefinition.new(s.to_string().as_str(), ModelTier.Mid))
                     },
                     else -> {}
                 }

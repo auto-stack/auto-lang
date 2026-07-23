@@ -1313,6 +1313,14 @@ impl RustTrans {
                 if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
                     write!(out, ".to_string()")?;
                 }
+                // Plan 013 (B16): when returning into Option<uint> and the
+                // payload is a bare ident bound to an Int variant (i32), cast
+                // to u32 — Rust won't auto-widen i32→u32 in Some(...).
+                if matches!(&self.current_fn_ret_type, Some(Type::Option(inner)) if matches!(inner.as_ref(), Type::Uint))
+                    && matches!(e.as_ref(), Expr::Ident(_))
+                {
+                    write!(out, " as u32")?;
+                }
                 write!(out, ")").map_err(Into::into)
             }
             Expr::None => write!(out, "None").map_err(Into::into),
@@ -1368,6 +1376,11 @@ impl RustTrans {
                 };
                 if self.current_fn_err_type.is_some() || is_concrete_enum_err {
                     // Concrete error type — no Box::new needed
+                    self.expr(e, out)?;
+                } else if self.current_fn_is_result && matches!(e.as_ref(), Expr::Ident(_)) {
+                    // Plan 013 (B16): re-throwing a matched error ident
+                    // (`Err(e) => return Err(e)`) in a Result<_, Concrete> fn —
+                    // the ident already holds the concrete error, no Box.
                     self.expr(e, out)?;
                 } else if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
                     self.expr(e, out)?;
@@ -5277,6 +5290,10 @@ impl RustTrans {
                 "split" => Some("split"),
                 // Type conversion
                 "to_string" => Some("to_string"),
+                // Plan 013 (B16): pass-through so Map.get() reaches the
+                // auto-borrow handler below (rust_method is otherwise None,
+                // skipping the get-borrow path).
+                "get" => Some("get"),
                 _ => contains_rust,
             };
 
@@ -5301,6 +5318,37 @@ impl RustTrans {
                                 self.current_fn_str_params.contains(name)
                             } else { false };
                         if !already_borrowed {
+                            write!(out, "&")?;
+                        }
+                        self.arg(arg, out)?;
+                        if i < call.args.args.len() - 1 {
+                            write!(out, ", ")?;
+                        }
+                    }
+                } else if rust_name == "get" {
+                    // Plan 013 (B16): Map.get(&Q) needs a reference for owned
+                    // String keys. Borrow only OWNED-String args (local vars /
+                    // field access). Skip: str params (already &str in Rust →
+                    // &&str would be wrong), and Int args (Vec::get takes usize).
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        let is_owned_string_arg = if let Arg::Pos(e) = arg {
+                            match e {
+                                Expr::Str(_) | Expr::CStr(_) => true,
+                                Expr::Ident(name) => {
+                                    // Owned String local, but NOT a str param
+                                    // (params declared `str` are &str in Rust).
+                                    !self.current_fn_str_params.contains(name)
+                                        && self.local_var_types.get(name)
+                                            .map(|ty| matches!(ty, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit))
+                                            .unwrap_or(false)
+                                }
+                                // Field access (cfg.default_provider) — a String
+                                // field; borrow it.
+                                Expr::Dot(_, _) => true,
+                                _ => false,
+                            }
+                        } else { false };
+                        if is_owned_string_arg {
                             write!(out, "&")?;
                         }
                         self.arg(arg, out)?;
@@ -6236,7 +6284,11 @@ impl RustTrans {
                 } else { None }
             } else { None };
             if let Some(name) = bridge_box_ident {
-                write!(out, "(*{}).clone()", Self::rust_ident(name.as_str()))?;
+                // Rust method resolution: `(*ident).clone()` on a Box<T> still
+                // autorefs back to `Box::<T>::clone()` → returns Box<T>, not T.
+                // The double-deref `*(*ident).clone()` unwraps the re-cloned
+                // Box, yielding T. (Plan 013 B16.)
+                write!(out, "*(*{}).clone()", Self::rust_ident(name.as_str()))?;
             } else {
                 self.arg(arg, out)?;
                 if needs_clone {
@@ -8670,10 +8722,15 @@ impl RustTrans {
                     write!(sink.body, "#[{}]\n", attr)?;
                 }
                 self.print_indent(&mut sink.body)?;
-                // Fields default to private (Rust semantics)
+                // Plan 013 (B16): Auto struct fields are public by design (no
+                // Rust-style private fields). In standalone output, emit `pub`
+                // so cross-module `p.models` field access works. (merge mode
+                // keeps fields private — all access is intra-file.)
+                let field_pub = if !self.merge_mode { "pub " } else { "" };
                 write!(
                     sink.body,
-                    "{}: {},",
+                    "{}{}: {},",
+                    field_pub,
                     member.name,
                     self.rust_type_name(&member.ty)
                 )?;
@@ -8683,9 +8740,11 @@ impl RustTrans {
             // Then, write delegation members
             for delegation in &type_decl.delegations {
                 self.print_indent(&mut sink.body)?;
+                let field_pub = if !self.merge_mode { "pub " } else { "" };
                 write!(
                     sink.body,
-                    "{}: {},",
+                    "{}{}: {},",
+                    field_pub,
                     delegation.member_name,
                     self.rust_type_name(&delegation.member_type)
                 )?;
