@@ -2476,19 +2476,16 @@ fn compile_at_to_vue(_at_path: &Path, content: &str, root_dir: &Path) -> Result<
             if is_api_use(use_stmt) {
                 api_imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
             }
-            // Plan 351: detect use store: Name
-            if use_stmt.paths.len() == 1 && use_stmt.paths[0].as_str() == "store" {
+            // Plan 351/370: detect store imports.
+            // Supports: use store: Name (legacy) and use notes_store: Name (unified)
+            let is_store = use_stmt.paths.len() == 1
+                && (use_stmt.paths[0].as_str() == "store"
+                    || use_stmt.paths[0].as_str().contains("store"))
+                || use_stmt.module_path.as_ref().map_or(false, |mp| {
+                    mp.display() == "store" || mp.display().contains("store")
+                });
+            if is_store {
                 store_deps.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
-            }
-            // Also check module_path for store (new-style use)
-            if let Some(ref mp) = use_stmt.module_path {
-                if mp.segments.len() == 1 && mp.segments[0].as_str() == "store" {
-                    let dep_name = use_stmt.items.first().map(|s| s.as_str().to_string())
-                        .unwrap_or_else(|| mp.segments[0].as_str().to_string());
-                    if !store_deps.contains(&dep_name) {
-                        store_deps.push(dep_name);
-                    }
-                }
             }
         }
     }

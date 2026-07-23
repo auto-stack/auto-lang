@@ -1,7 +1,7 @@
 // editor.at — EditorPanel (Plan 360: card-based modern UI).
 // Card wrapper + modern tag pills + unified button design language.
 
-use store: NotesStore
+use notes_store: NotesStore
 use back.api: update_note, delete_note, toggle_pin, update_tags
 
 widget EditorPanel(note: Note, on_delete: msg, on_toggle_pin: msg, on_tags_changed: msg) {

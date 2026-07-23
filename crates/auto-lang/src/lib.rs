@@ -4080,13 +4080,31 @@ fn is_api_use_stmt(use_stmt: &crate::ast::Use) -> bool {
     false
 }
 
-/// Check if a use statement targets `store` module (Plan 351).
+/// Check if a use statement targets a store module.
+/// Supports two syntaxes:
+/// - Legacy: `use store: Name` (module path = "store", resolved via directory scan)
+/// - Unified: `use notes_store: Name` (module path = "notes_store", resolved normally)
+/// For the unified syntax, we detect store imports by checking if the module
+/// path contains "store" as a substring (e.g. "notes_store", "user_store").
 fn is_store_use_stmt(use_stmt: &crate::ast::Use) -> bool {
+    // Legacy: exact match "store"
     if use_stmt.paths.len() == 1 && use_stmt.paths[0].as_str() == "store" {
         return true;
     }
     if let Some(ref mp) = use_stmt.module_path {
-        if mp.display() == "store" {
+        let display = mp.display();
+        if display == "store" {
+            return true;
+        }
+        // Unified syntax: module name contains "store" (e.g. notes_store)
+        if display.contains("store") {
+            return true;
+        }
+    }
+    // Also check paths for unified syntax
+    if use_stmt.paths.len() == 1 {
+        let path = use_stmt.paths[0].as_str();
+        if path.contains("store") {
             return true;
         }
     }

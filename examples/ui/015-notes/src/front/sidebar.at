@@ -1,7 +1,7 @@
 // sidebar.at — NavTree widget (Plan 360: card-based modern UI).
 // Full tree navigation: shortcuts, search, tag filter, folder-grouped notes.
 
-use store: NotesStore
+use notes_store: NotesStore
 
 // Plan 367 P2-3: view fragment for note list items — eliminates 15x copy-paste.
 view fn NoteRow(note: Note, active: bool, indent: str) {
