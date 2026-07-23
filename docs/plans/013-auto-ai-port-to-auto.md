@@ -291,3 +291,23 @@ a2r golden 套件：283 passed，仅 4 个预存失败（与并行 agent 的 cod
 
 **这些仅在 loader.at（唯一桥接文件）出现**，不阻塞其它文件。可作为后续
 专项任务。
+
+#### B16 继续修复（master，worktree plan-013-b16）
+
+继续啃 loader.at 的桥接错误。新增两处 a2r codegen 改动 + Auto 源码调整：
+
+- **a2r Expr::Cover 桥接绑定记录**：`Kid.Node(child)`/`Atom.Node(n)` 模式
+  记录其绑定到 `bridge_pattern_bound_idents` 集合（仅这两个变体在
+  auto_val/auto_atom 里是 `Box<T>`）。
+- **a2r 调用点 auto-clone deref**：当被 clone 的 ident 是桥接 Box<T> 绑定
+  时，发 `(*ident).clone()` 而非 `ident.clone()`（克隆内部值，不克隆 Box）。
+- **Auto 源码 AutoStr→String**：loader.at 的 `Value::Str(s)`/`child.name`/
+  `val.to_astr()` 等边界加 `.to_string()`（auto_val 用 AutoStr，非 String）。
+- **tier.at pub**：`ModelTier.parse_name`、`ModelDefinition.new` 加 `pub`
+  （loader.at 跨模块调用）。
+
+**成果**：loader.at cargo check 错误 **70→20**。tier+provider（无桥接）仍
+**0 错**。剩余 20 个仍是 loader.at 专属的桥接细节（`(*child).clone()` 在
+Rust 下仍解析为 Box<Node> 的克隆语义、`Err(e)` 重抛 Box<ConfigError>、
+HashMap.get 返回 Option 需 unwrap、tier_name move 等），逐个需查 auto_val
+真实签名——回报递减，且该文件本就是"桥接临时方案、未来自举后替换"。
