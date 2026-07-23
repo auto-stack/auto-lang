@@ -2481,12 +2481,39 @@ fn run_file_dynamic_ui_inner(
 
 
     // 3. Create DynamicComponent with registry + imported symbols
+    // Plan 370 D-GAP-4: collect StoreDecls and convert them to child WidgetDecls
+    // so their state + handlers get compiled into the single VM module.
+    // A store is isomorphic to a child widget minus a view — we give it an
+    // empty view so the existing child-widget synthesis machinery handles it.
+    let mut store_as_child_decls: Vec<crate::ast::WidgetDecl> = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+            // Convert StoreDecl → WidgetDecl with empty view
+            let fake_widget = crate::ast::ui::WidgetDecl {
+                name: store_decl.name.clone(),
+                messages: store_decl.messages.clone(),
+                model: store_decl.model.clone(),
+                computed: store_decl.computed.clone(),
+                view: None,  // stores have no view
+                on: store_decl.on.clone(),
+                bind: None,
+                props: Vec::new(),
+                routes: None,
+                lifecycle: Vec::new(),
+            };
+            store_as_child_decls.push(fake_widget);
+        }
+    }
+    // Merge store-as-child decls with actual child widget decls
+    let mut all_child_decls = child_decls.clone();
+    all_child_decls.extend(store_as_child_decls);
+
     // Plan 340: AUTO_VM_MERGE=0 (i.e. --no-merge) enables API-over-HTTP:
     // cross-module `#[api]` calls are rewritten at codegen time into HTTP
     // requests instead of in-process direct calls. Default (merge) keeps the
     // existing in-process behavior.
     let api_over_http = std::env::var("AUTO_VM_MERGE").as_deref() == Ok("0");
-    let mut comp = DynamicComponent::with_registry_and_imports_from_decls(&root_decl, &child_decls, &widget, registry, import_stmts, &import_aliases, api_over_http)
+    let mut comp = DynamicComponent::with_registry_and_imports_from_decls(&root_decl, &all_child_decls, &widget, registry, import_stmts, &import_aliases, api_over_http)
         .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
 
     // 3b. Set source path for hot-reload tracking
