@@ -173,7 +173,7 @@ ext TierRouting {
 
 /// Parse `ai-client.at` content (root must be `client { … }`).
 pub fn parse_client_config(content str) Result<ClientConfig, ConfigError> {
-    is root_node(content, "client").? {
+    is root_node(content, "client") {
         Ok(node) -> {
             let default_provider = opt_str(node, "default_provider")
             let default_model = opt_str(node, "default_model")
@@ -201,7 +201,7 @@ pub fn parse_client_config(content str) Result<ClientConfig, ConfigError> {
 
 /// Parse `daemon { … }` content (root must be `daemon { … }`).
 pub fn parse_daemon_config(content str) Result<DaemonConfig, ConfigError> {
-    is root_node(content, "daemon").? {
+    is root_node(content, "daemon") {
         Ok(node) -> {
             var cfg = DaemonConfig.default()
             let la = opt_str(node, "listen_addr")
