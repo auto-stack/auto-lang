@@ -2,7 +2,7 @@
 /// TAP output format. Names mirror the Rust oracle in
 /// tests/rust/tests/url.rs so the parity framework can compare three-way.
 ///
-/// Plan 359 cleanup: `parse()` now returns `Result[Url, str]`. The Ok cases
+/// Plan 348 cleanup: `parse()` now returns `Result[Url, str]`. The Ok cases
 /// read struct fields directly (exercising the B1 fix — a `Url` crosses the
 /// module boundary through `Ok(...)` with readable fields); the Err cases
 /// assert that parsing failed (DIV-URL-VM-2 still corrupts the Err string, so

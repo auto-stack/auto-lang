@@ -626,7 +626,7 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     execute_autovm_with_path(code, capture, None).await
 }
 
-/// Plan 327: execute_autovm with an optional source file path.
+/// Plan 317: execute_autovm with an optional source file path.
 /// When provided, the source directory is added to CompileSession.source_dirs
 /// so that `use db` can resolve db.at relative to the source file (true
 /// multi-module loading, not string flattening).
@@ -643,7 +643,7 @@ async fn execute_autovm_with_path(
 
     // Plan 085: Pre-process use statements to load dependencies
     let mut session = compile::CompileSession::new();
-    // Plan 327: seed source_dirs with the source file's directory so that
+    // Plan 317: seed source_dirs with the source file's directory so that
     // `use db` resolves db.at relative to the source, not the CWD.
     if let Some(p) = path {
         if let Some(dir) = std::path::Path::new(p).parent() {
@@ -703,7 +703,7 @@ async fn execute_autovm_with_path(
         codegen.emit_op(crate::vm::opcode::OpCode::RESERVE_STACK);
         codegen.emit_byte(n_locals as u8);
 
-        // Plan 327: Register module-level `var x = ...` as globals — but ONLY
+        // Plan 317: Register module-level `var x = ...` as globals — but ONLY
         // when this program has #[api] routes (HTTP server mode). In server
         // mode, #[api] handlers are separate fns that can't see the script
         // wrapper's locals, so module-level vars must be globals. In normal
@@ -756,7 +756,7 @@ async fn execute_autovm_with_path(
 /// length table so operand bytes are never misread as opcodes) and remaps the
 /// u16 string-pool index operand of every string-indexed opcode.
 ///
-/// Plan 355: this replaces an earlier naive byte-scan that (a) only read 1 byte
+/// Plan 347: this replaces an earlier naive byte-scan that (a) only read 1 byte
 /// per index and (b) could mistake operand bytes of other instructions for
 /// LOAD_STR/LOAD_GLOBAL/STORE_GLOBAL, silently corrupting dep-module bytecode.
 /// The corruption manifested in the sha2 library (large dep module with ~150
@@ -784,7 +784,7 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
     while i < code.len() {
         let op_byte = code[i];
         // Bail out of precise walking if we hit an unknown opcode byte;
-        // fall back to byte-by-byte (the pre-Plan-355 behaviour). This keeps
+        // fall back to byte-by-byte (the pre-Plan-347 behaviour). This keeps
         // the walker safe against future opcodes / data regions.
         if !OpCode::is_valid(op_byte) {
             i += 1;
@@ -867,7 +867,7 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
     }
 }
 
-/// Plan 359 B1: Remap CREATE_OBJ `key_index` (u16) operands in bytecode after
+/// Plan 348 B1: Remap CREATE_OBJ `key_index` (u16) operands in bytecode after
 /// the object_keys/object_types pools are merged across modules.
 ///
 /// When dep modules' object pools are appended to the main module's pool, every
@@ -987,11 +987,11 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
     let mut object_keys = codegen.object_keys.clone();
     let mut object_types = codegen.object_types.clone();
     for module in dep_modules.iter_mut() {
-        // Plan 355: remap string-pool indices. Done even if the module also has
+        // Plan 347: remap string-pool indices. Done even if the module also has
         // object pools; the two remaps are independent.
         if !module.strings.is_empty() {
             // Build remap table: old index → new index.
-            // Plan 355: indices are u16 (modules can have >256 string-pool entries).
+            // Plan 347: indices are u16 (modules can have >256 string-pool entries).
             let mut remap = vec![0u16; module.strings.len()];
             for (old_idx, s) in module.strings.iter().enumerate() {
                 // Check if string already exists in main pool (dedup).
@@ -1008,7 +1008,7 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
             remap_string_indices(&mut module.code, &remap);
         }
 
-        // Plan 359 B1: Merge object_keys/object_types pools AND remap every
+        // Plan 348 B1: Merge object_keys/object_types pools AND remap every
         // CREATE_OBJ key_index (u16) operand in the dep module's bytecode.
         //
         // The dep module's CREATE_OBJ instructions hold 0-based indices into
@@ -1055,7 +1055,7 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
     // Plan 197 Task 9: Extract generic registry before finish() consumes the codegen
     let mut generic_registry = std::mem::take(&mut codegen.generic_registry);
     generic_registry.merge(&session.dep_generic_registry.borrow());
-    // Plan 327 Phase 1: take task handler registry before finish() consumes codegen,
+    // Plan 317 Phase 1: take task handler registry before finish() consumes codegen,
     // so HANDLE_MSG opcode can find `task` `on { }` handlers at runtime.
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
@@ -1138,7 +1138,7 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
     };
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
-    vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
+    vm.load_task_handler_registry(task_handler_registry); // Plan 317 Phase 1
     // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
@@ -1233,7 +1233,7 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
                 let vm_ref: &AutoVM = unsafe {
                     &*(vm_addr_usize as *const AutoVM)
                 };
-                // Plan 327 Phase 4: concurrent server via tokio LocalSet.
+                // Plan 317 Phase 4: concurrent server via tokio LocalSet.
                 // LocalSet allows spawn_local with !Send futures (AutoVM is
                 // !Send). All connection-handler tasks run cooperatively on
                 // this single thread — Goroutine-style concurrency.
@@ -1319,7 +1319,7 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     let object_keys = codegen.object_keys.clone();
     let object_types = codegen.object_types.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
-    // Plan 327 Phase 1: take task handler registry before finish() consumes codegen,
+    // Plan 317 Phase 1: take task handler registry before finish() consumes codegen,
     // so HANDLE_MSG opcode can find `task` `on { }` handlers at runtime.
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
@@ -1341,7 +1341,7 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     let (mut vm, _output_buffer) = AutoVM::new_with_capture(flash, 8192);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
-    vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
+    vm.load_task_handler_registry(task_handler_registry); // Plan 317 Phase 1
     // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
@@ -2200,7 +2200,7 @@ fn resolve_module_path(
     if let Some(p) = probe(base_dir) {
         return Some(p);
     }
-    // Plan 327 Phase B: fall back to the parent directory so a sibling layout
+    // Plan 317 Phase B: fall back to the parent directory so a sibling layout
     // like src/{front,back}/ resolves. `app.at` in src/front/ imports
     // `back.api` (src/back/api.at); base_dir is src/front/, so the direct probe
     // misses it. Trying the parent (src/) finds src/back/api.at. This mirrors
@@ -2306,7 +2306,7 @@ fn collect_module_imports(
     //    Plan 339: prefix functions from back/ modules with the module name
     //    (e.g. db.at's create_note → db.create_note) so db.at and api.at's
     //    functions don't collide. This replaces the last-wins workaround
-    //    (Plan 338) since qualified names are unique.
+    //    (Plan 322) since qualified names are unique.
     for stmt in &ast.stmts {
         match stmt {
             crate::ast::Stmt::Fn(_) => {
@@ -2566,7 +2566,7 @@ pub fn run_file(path: &str) -> AutoResult<String> {
         return run_file_dynamic_ui(&code, Some(path));
     }
 
-    // Plan 327: True multi-module loading via CompileSession. The source
+    // Plan 317: True multi-module loading via CompileSession. The source
     // file's directory is added to source_dirs, so `use db` resolves db.at
     // relative to the source. No string flattening — modules are compiled
     // separately and linked by the Linker.
@@ -2664,7 +2664,7 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     let object_types = codegen.object_types.clone();
     let _result_type = codegen.last_expr_type.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
-    // Plan 327 Phase 1: take task handler registry before finish() consumes codegen,
+    // Plan 317 Phase 1: take task handler registry before finish() consumes codegen,
     // so HANDLE_MSG opcode can find `task` `on { }` handlers at runtime.
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
@@ -2709,7 +2709,7 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     let mut vm = AutoVM::new(flash, 1024);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
-    vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
+    vm.load_task_handler_registry(task_handler_registry); // Plan 317 Phase 1
     // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
@@ -2883,7 +2883,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     let object_types = codegen.object_types.clone();
     let result_type = codegen.last_expr_type.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
-    // Plan 327 Phase 1: take task handler registry before finish() consumes codegen,
+    // Plan 317 Phase 1: take task handler registry before finish() consumes codegen,
     // so HANDLE_MSG opcode can find `task` `on { }` handlers at runtime.
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
@@ -2929,7 +2929,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     let (mut vm, output_buffer) = AutoVM::new_with_capture(flash, 8192);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
-    vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
+    vm.load_task_handler_registry(task_handler_registry); // Plan 317 Phase 1
     // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
@@ -3185,7 +3185,7 @@ pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
     let object_types = configgen.base().object_types.clone();
     // Plan 197 Task 9: Extract generic registry for VM
     let generic_registry = std::mem::take(&mut configgen.base().generic_registry);
-    // Plan 327 Phase 1: take task handler registry for VM
+    // Plan 317 Phase 1: take task handler registry for VM
     let task_handler_registry = std::mem::take(&mut configgen.base().task_handler_registry);
 
     let rt = get_global_runtime();
@@ -3194,7 +3194,7 @@ pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
         let mut vm = AutoVM::new(flash, 4096); // 4KB RAM for config
         vm.load_strings(strings);
         vm.load_generic_registry(generic_registry);
-        vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
+        vm.load_task_handler_registry(task_handler_registry); // Plan 317 Phase 1
 
         // 5. Execute from entry point (default to 0 for config)
         let entry_point = exports.get("main").copied().unwrap_or(0) as usize;
@@ -3479,7 +3479,7 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
 
     trans.trans(ast, &mut sink)?;
 
-    // Plan 355: Apply the same post-processing fixes that the in-process
+    // Plan 347: Apply the same post-processing fixes that the in-process
     // `transpile_rust()` path applies. Without this, the `auto trans` CLI
     // emitted raw code with known-correctable defects (e.g. `return None;`
     // in void fns, double semicolons after `static` decls), so a2r test
@@ -4448,7 +4448,7 @@ mod unified_registry_tests;
 mod tests;
 
 #[cfg(test)]
-mod plan337_tests;
+mod plan320_tests;
 
 #[cfg(test)]
 mod plan339_tests;
@@ -4468,9 +4468,9 @@ mod plan352_tests;
 #[cfg(test)]
 mod plan353_tests;
 
-// Plan 359 Phase 5 (G1/G2/G3): Concurrency bug fixes (spawn, generic types, channels)
+// Plan 348 Phase 5 (G1/G2/G3): Concurrency bug fixes (spawn, generic types, channels)
 #[cfg(test)]
-mod plan359_concurrency_tests;
+mod plan348_concurrency_tests;
 
 // =============================================================================
 // Plan 015: AutoUI Core (feature-gated)

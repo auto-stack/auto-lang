@@ -99,7 +99,7 @@ fn main() {
         }
         Command::Report { output } => {
             // Verified phases included in the dashboard. P1/P2 are the Plan
-            // 355 core; D1/D2 are Plan 358 additions; P4's tokio is L1 (reqwest
+            // 347 core; D1/D2 are Plan 358 additions; P4's tokio is L1 (reqwest
             // is auto-skipped if absent). P3 (sha2/rusqlite) stays L3 roadmap.
             // D5/D6 are Plan 368 consumer-mode parity (Auto as library consumer);
             // D6 libs need a live mock server (Layer 2 HTTP).
@@ -320,7 +320,7 @@ fn discover_all_libraries(root: &PathBuf) -> Vec<String> {
 
 /// Return the library list for a given phase.
 ///
-/// Phase mapping per Plan 355:
+/// Phase mapping per Plan 347:
 /// - p0: `_dummy` (framework smoke test)
 /// - p1: `base64`, `url`
 /// - p2: `serde_json`, `regex`

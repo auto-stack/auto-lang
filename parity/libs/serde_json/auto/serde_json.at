@@ -11,13 +11,13 @@
 /// was believed to fail to parse, and `is` pattern arms were believed to not
 /// bind payload variables for user-defined enums.
 ///
-/// NOTE (Plan 359 D1 verification): both claims have been re-tested and are
+/// NOTE (Plan 348 D1 verification): both claims have been re-tested and are
 /// NO LONGER REPRODUCIBLE. A recursive `tag Tree { leaf(int); node(Tree, Tree) }`
 /// parses and runs, and `is t { Tree.leaf(v) -> v; Tree.node(l, r) -> ... }`
 /// correctly binds payload variables, including for variants whose payload is
 /// a generic collection (`arr(List<Value>)`). See the regression tests
-/// `test_plan359_d1_recursive_enum_is_pattern_binding` and
-/// `test_plan359_d1_recursive_enum_collection_payload` in
+/// `test_plan348_d1_recursive_enum_is_pattern_binding` and
+/// `test_plan348_d1_recursive_enum_collection_payload` in
 /// `crates/auto-lang/src/tests/vm_tests.rs`. This library could therefore be
 /// rewritten on top of a real recursive `Value` enum; the string-based
 /// representation is kept here because it works and the parser is unchanged
@@ -28,8 +28,8 @@
 /// Returning a StringBuilder-built string back through recursive call frames
 /// corrupts the value, and a module-level StringBuilder mutated during
 /// recursion reads back as garbage. This is the StringBuilder return-frame
-/// corruption bug (Plan 359 reference: C2), which is **NOT fixed** by
-/// Plan 359 — it is unrelated to the B1/B4/B5 fixes. So the output
+/// corruption bug (Plan 348 reference: C2), which is **NOT fixed** by
+/// Plan 348 — it is unrelated to the B1/B4/B5 fixes. So the output
 /// `StringBuilder` is created LOCALLY by the public entry point and passed as
 /// a PARAMETER to every recursive helper, which only appends to it. The
 /// complex value never crosses a return frame and is never stored in a module
@@ -37,13 +37,13 @@
 ///
 /// ## Other VM codegen bugs (now fixed: C3/C4)
 ///   * `break` inside a `for` loop whose condition references a module global
-///     used to emit invalid bytecode (Plan 359 C3/C4 fixed the accumulator-
+///     used to emit invalid bytecode (Plan 348 C3/C4 fixed the accumulator-
 ///     on-return and `for + break` codegen paths). Early exits here still use
 ///     `loop { if guard { ... return } }` rather than `for + break` — the
 ///     parser works fine as-is, so the shape was not changed. (Verified: a
 ///     standalone `for + break` now compiles and runs correctly.)
 ///
-/// Summary of Plan 359 status for the workarounds in this file:
+/// Summary of Plan 348 status for the workarounds in this file:
 ///   - Recursive `Value` enum + `is` payload binding (D1): fixed — verified.
 ///   - StringBuilder return-frame corruption (C2): NOT fixed — still load-bearing.
 ///   - loop+return / for+break bytecode (C3/C4): fixed — parser unchanged by choice.

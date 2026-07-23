@@ -92,10 +92,10 @@ pub struct AuraViewBuilder<'a> {
     /// Optional widget registry for child widget rendering
     widget_registry: Option<&'a crate::ui::widget_registry::WidgetRegistry>,
 
-    /// Plan 336: imported declarations shared with child widgets.
+    /// Plan 318: imported declarations shared with child widgets.
     import_stmts: Option<&'a [crate::ast::Stmt]>,
 
-    /// Plan 337: when rendering a child widget's view tree, this overrides the
+    /// Plan 320: when rendering a child widget's view tree, this overrides the
     /// bridge's root state_obj_id so read_state reads from the child's state
     /// object instead of the root widget's. None = use root state.
     override_state_obj_id: Option<u64>,
@@ -134,7 +134,7 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Create a builder with widget registry AND shared import declarations.
-    /// Plan 336: child widgets (EditorPanel) need back.api functions to be
+    /// Plan 318: child widgets (EditorPanel) need back.api functions to be
     /// available when their handlers are compiled; passing them here lets
     /// render_child_widget reuse the parent's loaded imports.
     pub fn with_registry_and_imports(
@@ -161,7 +161,7 @@ impl<'a> AuraViewBuilder<'a> {
         self.convert_node_with(node, &Bindings::new())
     }
 
-    /// Plan 337: read a state field. When override_state_obj_id is set (rendering
+    /// Plan 320: read a state field. When override_state_obj_id is set (rendering
     /// a child widget's view), reads from the child's state object. Otherwise
     /// reads from the root widget's state (legacy behavior).
     fn read_state(&self, field_name: &str) -> Result<auto_val::Value, String> {
@@ -174,7 +174,7 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
-    /// Plan 337: read a state field as Vec<Value> (override-aware).
+    /// Plan 320: read a state field as Vec<Value> (override-aware).
     fn read_state_as_vec(&self, field_name: &str) -> Result<Vec<auto_val::Value>, String> {
         if let Some(child_id) = self.override_state_obj_id {
             self.bridge.read_child_state_as_vec(child_id, field_name)
@@ -1189,7 +1189,7 @@ impl<'a> AuraViewBuilder<'a> {
     ///
     /// This resolves props from parent state, injects them as state fields,
     /// creates a child VmBridge, and recursively renders the child's view tree.
-    /// Plan 337: render a child widget WITHOUT creating a new VM.
+    /// Plan 320: render a child widget WITHOUT creating a new VM.
     /// Uses the same VmBridge (same VM), creates/updates the child's state
     /// object on the heap, and renders the child's view tree with an
     /// override_state_obj_id so read_state reads from the child's state.
@@ -1989,7 +1989,7 @@ impl<'a> AuraViewBuilder<'a> {
                 let field_str = field.as_str();
                 match obj {
                     Value::Obj(map) => map.get(field_str),
-                    // Plan 337: raw struct heap id from Index — materialize to Obj
+                    // Plan 320: raw struct heap id from Index — materialize to Obj
                     // so FieldAccess can read fields.
                     Value::Int(id) if id >= 4_000_000 => {
                         let raw = Value::Int(id);
@@ -2000,7 +2000,7 @@ impl<'a> AuraViewBuilder<'a> {
                             None
                         }
                     }
-                    // Plan 338: VmRef struct instances (from list rebuild after delete)
+                    // Plan 322: VmRef struct instances (from list rebuild after delete)
                     Value::VmRef(r) => {
                         let materialized = self.bridge.materialize_obj_ref(&Value::VmRef(r));
                         if let Value::Obj(map) = materialized {
@@ -2022,14 +2022,14 @@ impl<'a> AuraViewBuilder<'a> {
                         if idx < arr.len() { Some(arr[idx].clone()) } else { None }
                     }
                     (Value::Obj(map), Value::Str(key)) => map.get(key.as_str()),
-                    // Plan 336: index into a list/array stored as a VmRef or Int
+                    // Plan 318: index into a list/array stored as a VmRef or Int
                     // array_id (List<T> / Vec from `var x = []; x.push(...)`). The
                     // EditorPanel's `note: .notes[.active_id]` reads `.notes`
                     // (a VmRef to ListData) and indexes it. Deref to Vec<Value>
                     // first, then index. Use read_state_as_vec via a temp field
                     // name when the target is a StateRef; otherwise deref inline.
                     (Value::VmRef(r), Value::Int(i)) => {
-                        // Plan 336/337: return the raw element (struct heap id)
+                        // Plan 318/337: return the raw element (struct heap id)
                         // without materializing. View FieldAccess handles
                         // materialization via materialize_obj_ref; handler
                         // GET_FIELD needs the raw id to do heap_objects lookup.

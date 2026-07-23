@@ -1,8 +1,10 @@
 # 修复 Parity Workaround — Auto 编译器 Bug 修复计划
 
+> 原编号 359；2026-07-23 因编号冲突改为 348（原号保留给 359-auto-as-rust-script-rollout）
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** 逐个修复 Plan 355 parity 验证发现的 19 个 Auto VM/转译器 bug，使 parity 库的 workaround 可被移除或简化。
+**Goal:** 逐个修复 Plan 347 parity 验证发现的 19 个 Auto VM/转译器 bug，使 parity 库的 workaround 可被移除或简化。
 
 **Root cause source:** 根因分析来自对 `crates/auto-lang/src/` 的深度调查，详见本文档各 Task。
 
@@ -345,7 +347,7 @@
 
 ## 剩余工作
 
-以下 bug 在 Plan 359 中尝试修复但**不完整**，需要深入处理。清理过程中确认它们在特定上下文仍损坏。
+以下 bug 在 Plan 348 中尝试修复但**不完整**，需要深入处理。清理过程中确认它们在特定上下文仍损坏。
 
 ### 阶段 7: 修复不完整的 bug（3 个）
 
@@ -440,7 +442,7 @@ fn main() {
 
 **影响:** tokio 可添加真正的 spawn/join 测试
 
-**状态:** ✅ 已修复（Plan 359 Task 22）。
+**状态:** ✅ 已修复（Plan 348 Task 22）。
 
 实施细节：
 - `Expr::AsyncBlock` 的 codegen 现在将 body 编译为 out-of-line 函数（参照闭包模式：`LOAD_LOC` 推入捕获值 → `CREATE_FUTURE` 消费捕获 → `JMP` 跳过 body → 编译 body → 回填 JMP）。
@@ -455,7 +457,7 @@ fn main() {
 - `~{ 42 }.await` 返回 `42`。
 - 多个 `.go` 连续 spawn 不崩溃（G1 行为保持）。
 
-回归测试：`plan359_concurrency_tests.rs::test_task22_spawn_does_not_run_inline`、`test_task22_await_returns_body_value`、`test_task22_spawn_then_await_coexist`。
+回归测试：`plan348_concurrency_tests.rs::test_task22_spawn_does_not_run_inline`、`test_task22_await_returns_body_value`、`test_task22_spawn_then_await_coexist`。
 
 未解决（语言设计层面，非本 Task 范围）：
 - 真正的"共享可变状态"并发（需要 `Arc<Mutex<T>>` 或类似的共享通道），目前每个 spawned task 是 RAM 隔离的。

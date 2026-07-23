@@ -11,7 +11,7 @@
 /// return the same component as a primitive, preserving the historical API
 /// the Rust oracle mirrors.
 ///
-/// Plan 359 cleanup: the `Url` struct now crosses the module boundary through
+/// Plan 348 cleanup: the `Url` struct now crosses the module boundary through
 /// `Result Ok(...)` directly (Bug B1 — struct fields corrupted across the
 /// module boundary — is fixed). The struct payload is the primary API.
 ///

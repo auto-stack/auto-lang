@@ -26,7 +26,7 @@ pub struct Automan {
     cache: Option<AutoManCache>, // Optional cache for builds
     render_override: Option<String>, // --render CLI override
     root_dir: PathBuf, // Project root directory (from pac.at location)
-    vm_server_mode: bool, // Plan 327: --server=vm → AutoVM HTTP backend
+    vm_server_mode: bool, // Plan 317: --server=vm → AutoVM HTTP backend
     /// PR-6: --scene CLI override ("core"/"ui"/"shell"). None = use pac.at scene field.
     scene_override: Option<String>,
 }
@@ -297,7 +297,7 @@ impl Automan {
         self.render_override = Some(render);
     }
 
-    /// Plan 327: Enable AutoVM HTTP server backend (--server=vm).
+    /// Plan 317: Enable AutoVM HTTP server backend (--server=vm).
     pub fn set_vm_server_mode(&mut self, enabled: bool) {
         self.vm_server_mode = enabled;
     }
@@ -1273,7 +1273,7 @@ impl Automan {
             }
             auto_lang::config::BackendType::Vm => {
                 if self.vm_server_mode {
-                    // Plan 327: --server=vm → AutoVM HTTP server with module
+                    // Plan 317: --server=vm → AutoVM HTTP server with module
                     // flattening. Find back/api.at (or main entry), run via
                     // run_file which flattens use deps + starts serve_async.
                     let api_path = root_dir.join("src/back/api.at");

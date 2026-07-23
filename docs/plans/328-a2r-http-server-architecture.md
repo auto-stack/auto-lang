@@ -2,7 +2,7 @@
 
 > **Status**: 设计完成,待实施
 > **目标**: `auto build`(Rust backend)时,把 #[api] 函数转译成 Axum handler,生成完整可运行的编译期 HTTP server(无 VM)
-> **关联**: Plan 312(HTTP server MVP)、Plan 327(AutoVM HTTP server,路径 B)
+> **关联**: Plan 312(HTTP server MVP)、Plan 317(AutoVM HTTP server,路径 B)
 
 ## 背景
 

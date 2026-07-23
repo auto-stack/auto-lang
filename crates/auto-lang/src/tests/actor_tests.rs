@@ -1,4 +1,4 @@
-//! Plan 327 Phase 1: Task/Msg actor handler execution — regression tests.
+//! Plan 317 Phase 1: Task/Msg actor handler execution — regression tests.
 //!
 //! Before Phase 1, `task` definitions' `fn start()!{}` hooks and `on { }`
 //! message handlers never executed: AutoVM.task_handler_registry was empty,

@@ -8,7 +8,7 @@ use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIV
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 
-/// Plan 327: Check whether a function body contains a `yield` expression.
+/// Plan 317: Check whether a function body contains a `yield` expression.
 /// Used to avoid misclassifying wrapper functions like
 /// `fn get() ~Iter<int> { return counter() }` (no yield of their own) as
 /// generators — which would short-circuit them and skip the return. Matches
@@ -158,7 +158,7 @@ pub struct Codegen {
     /// Each scope has its own variable namespace
     pub scope_stack: Vec<HashMap<String, usize>>,
 
-    /// Plan 327: State fields of the task currently being compiled.
+    /// Plan 317: State fields of the task currently being compiled.
     /// Maps field name -> field_idx (for LOAD_STATE_FIELD/STORE_STATE_FIELD).
     /// Set while compiling a TaskDef's start hook + on handlers; cleared after.
     /// When set, bare identifier references to these names inside handlers
@@ -166,7 +166,7 @@ pub struct Codegen {
     /// instead of ordinary local variables.
     pub current_task_state_fields: HashMap<String, u8>,
 
-    /// Plan 327: Module-level global variables (top-level `var x = ...`).
+    /// Plan 317: Module-level global variables (top-level `var x = ...`).
     /// Names accessible from ANY function via LOAD_GLOBAL/STORE_GLOBAL.
     /// global_inits stores (name, init_expr) so main() can run initializers
     /// at startup (the script wrapper's top-level code isn't executed because
@@ -340,7 +340,7 @@ pub struct Codegen {
     /// Plan 300: Bare Python module names (from `use.py math` without items).
     /// Used to resolve `module.method()` dot-calls at compile time.
     py_modules: std::collections::HashSet<String>,
-    /// Plan 327: Auto modules imported via `use <module>` (e.g. db, api).
+    /// Plan 317: Auto modules imported via `use <module>` (e.g. db, api).
     /// When a method call's receiver matches one of these (e.g. db.func()),
     /// codegen generates a CALL with reloc symbol "<module>.<func>" which
     /// the linker resolves to the module's exported function (with prefix
@@ -400,9 +400,9 @@ impl Codegen {
             object_types: Vec::new(),
             locals: HashMap::new(),
             scope_stack,
-            current_task_state_fields: HashMap::new(), // Plan 327: actor state fields
-            global_vars: std::collections::HashSet::new(), // Plan 327: module-level vars
-            global_inits: Vec::new(), // Plan 327: global var initializers
+            current_task_state_fields: HashMap::new(), // Plan 317: actor state fields
+            global_vars: std::collections::HashSet::new(), // Plan 317: module-level vars
+            global_inits: Vec::new(), // Plan 317: global var initializers
             force_global_store: false, // Plan 333: set true inside __module_init
             current_module: String::new(), // Plan 345: module name for global qualification
             var_types: HashMap::new(), // Plan 080: variable type tracking
@@ -439,7 +439,7 @@ impl Codegen {
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
-            auto_modules: std::collections::HashSet::new(), // Plan 327: Auto modules
+            auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
         };
@@ -572,9 +572,9 @@ impl Codegen {
             object_types: Vec::new(),
             locals: HashMap::new(),
             scope_stack,
-            current_task_state_fields: HashMap::new(), // Plan 327
-            global_vars: std::collections::HashSet::new(), // Plan 327
-            global_inits: Vec::new(), // Plan 327
+            current_task_state_fields: HashMap::new(), // Plan 317
+            global_vars: std::collections::HashSet::new(), // Plan 317
+            global_inits: Vec::new(), // Plan 317
             force_global_store: false, // Plan 333
             current_module: String::new(), // Plan 345
             var_types: HashMap::new(),
@@ -611,7 +611,7 @@ impl Codegen {
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
-            auto_modules: std::collections::HashSet::new(), // Plan 327: Auto modules
+            auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
         };
@@ -745,7 +745,7 @@ impl Codegen {
                 // User-defined void functions (CALL+RET) leave a return value on the stack,
                 // so POP is needed. Native void shims (CALL_NAT) don't push return values,
                 // so POP must be skipped to avoid eating a value below.
-                // Plan 359 C4: a native void shim (last_was_native_void) NEVER pushes a
+                // Plan 348 C4: a native void shim (last_was_native_void) NEVER pushes a
                 // value, so we must never POP in that case regardless of last_expr_type.
                 // The previous `(!Void || !native_void)` OR-logic popped whenever the
                 // type was non-void even when a native shim left nothing on the stack,
@@ -791,7 +791,7 @@ impl Codegen {
             Stmt::If(if_stmt) => {
                 let mut jumps_to_end = Vec::new();
 
-                // Plan 359 C5: branch bodies are compiled directly in the
+                // Plan 348 C5: branch bodies are compiled directly in the
                 // ENCLOSING scope (via compile_body_inline, which does NOT wrap
                 // in Stmt::Block and therefore introduces no extra scope). This
                 // means a `var x = ...` declared inside an if-branch leaks to
@@ -971,7 +971,7 @@ impl Codegen {
                 // 3. Push new scope for function locals
                 self.push_scope();
 
-                // Plan 327: For `fn main`, emit module-level global var
+                // Plan 317: For `fn main`, emit module-level global var
                 // initializers at the very top of the body. execute_autovm
                 // spawns main directly (skipping the script wrapper's top-level
                 // code), so without this globals would never be initialized.
@@ -1255,17 +1255,17 @@ impl Codegen {
                 // - x = 7: reassignment (error if x was declared with let)
 
                 let name_str = store.name.to_string();
-                // Plan 338: auto-register top-level `var` as a global so it's
+                // Plan 322: auto-register top-level `var` as a global so it's
                 // visible from functions via LOAD_GLOBAL. Without this, script-path
                 // module-level vars are treated as locals (invisible to fns).
-                // Plan 359 E1: also admit top-level `const` so a module-level
+                // Plan 348 E1: also admit top-level `const` so a module-level
                 // const (e.g. `const MAX int = 42`) is stored in vm.globals and
                 // is visible across module boundaries via `use mod: MAX`. `let`
                 // intentionally stays local (mutable-in-scope semantics differ).
                 if matches!(store.kind, crate::ast::StoreKind::Var | crate::ast::StoreKind::Const)
                     && self.scope_stack.len() <= 1
                 {
-                    // Plan 359 Task 20: also record the initializer so `fn main`
+                    // Plan 348 Task 20: also record the initializer so `fn main`
                     // can run it. execute_autovm spawns main directly (skipping
                     // the script wrapper's top-level code), so without recording
                     // the init here, module-level var/const globals are never
@@ -1279,13 +1279,13 @@ impl Codegen {
                     }
                     self.global_vars.insert(name_str.clone());
                 }
-                // Plan 327: module-level global variable (top-level `var`).
+                // Plan 317: module-level global variable (top-level `var`).
                 // Compile the init expr and STORE_GLOBAL; skip local slot
                 // registration so the value lives in vm.globals (cross-fn).
                 // Plan 333: force_global_store (set inside __module_init) makes
                 // this apply even within a fn body, so module-level initializers
                 // wrapped in __module_init store globally rather than as locals.
-                // Plan 338: global_vars variables ALWAYS go through STORE_GLOBAL
+                // Plan 322: global_vars variables ALWAYS go through STORE_GLOBAL
                 // regardless of scope — a function that reassigns a module-level
                 // global (e.g. db.at's `notes = new_notes`) must update the global,
                 // not a local shadow. Without this, delete_note/create_note's
@@ -1591,7 +1591,7 @@ impl Codegen {
                         self.compile_expr(&store.expr)?;
                     }
                 } else {
-                    // Plan 359 A3: When a 64-bit integer literal (I64/U64) is stored
+                    // Plan 348 A3: When a 64-bit integer literal (I64/U64) is stored
                     // into a 32-bit Int/Uint variable, emit a truncated CONST_I32 so
                     // the stack stays 1-slot. Otherwise CONST_I64/CONST_U64 push 2
                     // slots while the Int store consumes only 1, corrupting the value
@@ -2744,7 +2744,7 @@ impl Codegen {
                     }
                     Iter::Cond => {
                         // Conditional for loop: for condition { ... } (like while)
-                        // Plan 359 C3: push_scope/pop_scope around the body, matching
+                        // Plan 348 C3: push_scope/pop_scope around the body, matching
                         // every other for-loop variant (Iter::Named, Iter::Indexed, ...).
                         // Without this, a `break` inside the body could leave the scope
                         // stack inconsistent with the emitted bytecode.
@@ -3331,7 +3331,7 @@ impl Codegen {
                 // Plan 127: Create handler table for this task type
                 let mut handler_table = crate::vm::task_handler::TaskHandlerTable::new(task_name.clone());
 
-                // Plan 327: Register state fields so bare identifier references
+                // Plan 317: Register state fields so bare identifier references
                 // inside hooks/handlers resolve to LOAD/STORE_STATE_FIELD. Each
                 // field gets a stable idx (0, 1, 2, ...).
                 self.current_task_state_fields.clear();
@@ -3344,7 +3344,7 @@ impl Codegen {
                 let has_handlers = !task_def.on_block.handlers.is_empty();
                 if let Some(ref start_hook) = task_def.start_hook {
                     let start_offset = self.code.len() as u32;
-                    // Plan 327: emit state field initializers at the very start
+                    // Plan 317: emit state field initializers at the very start
                     // of the start hook. spawn_task points the actor's ip here,
                     // so these run first and initialize state_vars before any
                     // handler can read them.
@@ -3361,7 +3361,7 @@ impl Codegen {
                         self.compile_stmt(stmt)?;
                     }
                     self.pop_scope();
-                    // Plan 327 Phase 1: if the task has message handlers, the
+                    // Plan 317 Phase 1: if the task has message handlers, the
                     // start hook does NOT simply RET — instead it parks the task
                     // in the message loop (TASK_LOOP sets in_message_loop + Waiting)
                     // so it can receive subsequent TaskHandle.send messages.
@@ -3453,13 +3453,13 @@ impl Codegen {
                 // The FFI shim_task_spawn function creates a TaskInstance and
                 // registers it in the TaskRegistry.
 
-                // Plan 327: clear state fields now that this TaskDef is compiled.
+                // Plan 317: clear state fields now that this TaskDef is compiled.
                 self.current_task_state_fields.clear();
             }
             Stmt::Node(node) => {
                 // Stmt::Node wraps an Expr::Node — compile the expression
                 self.compile_expr(&Expr::Node(node.clone()))?;
-                // Plan 359 C4: see Stmt::Expr — never POP when a native void shim
+                // Plan 348 C4: see Stmt::Expr — never POP when a native void shim
                 // left nothing on the stack.
                 let needs_pop = self.should_pop_expr_result && !self.last_was_native_void;
                 if needs_pop {
@@ -3521,7 +3521,7 @@ impl Codegen {
         Ok(())
     }
 
-    /// Plan 359 C5: Compile a `Body`'s statements inline (in the current scope),
+    /// Plan 348 C5: Compile a `Body`'s statements inline (in the current scope),
     /// WITHOUT introducing a new scope. This mirrors the inner loop of the
     /// `Stmt::Block` handler (SOURCE_LINE emission + should_pop_expr_result for
     /// non-last statements) but skips push_scope/pop_scope, so `var` bindings
@@ -3774,12 +3774,12 @@ impl Codegen {
             return;
         }
 
-        // Plan 327: Register the module name so codegen knows `db.func()`
+        // Plan 317: Register the module name so codegen knows `db.func()`
         // is a cross-module call (generates CALL with reloc "db.func").
         if !use_stmt.paths.is_empty() {
             self.auto_modules.insert(use_stmt.paths[0].to_string());
         }
-        // Plan 355: Also track the import qualifier (last path segment, e.g.
+        // Plan 347: Also track the import qualifier (last path segment, e.g.
         // "base64" from `use auto.base64`) so native-opaque-module routing can
         // be suppressed when the user has loaded a same-named Auto library.
         // Without this, `use auto.base64: decode` resolves `decode` to the
@@ -4023,7 +4023,7 @@ impl Codegen {
             }
             Expr::Bool(b) => {
                 self.last_expr_type = ObjectType::Bool;
-                // Plan 336: emit PUSH_BOOL so the value carries the bool nanbox tag
+                // Plan 318: emit PUSH_BOOL so the value carries the bool nanbox tag
                 // (not CONST_I32). Without this, `.editing = false` stores Int(0) and
                 // `.editing == false` comparisons in the view builder fail.
                 self.emit(OpCode::PUSH_BOOL);
@@ -4522,7 +4522,7 @@ impl Codegen {
                     self.last_expr_type = ObjectType::Int;
                 }
 
-                // Plan 327: actor state field read (inside task hooks/handlers).
+                // Plan 317: actor state field read (inside task hooks/handlers).
                 // Takes precedence over ordinary locals — state fields are the
                 // persistent per-actor storage accessed via LOAD_STATE_FIELD.
                 if let Some(&field_idx) = self.current_task_state_fields.get(&name_str) {
@@ -4540,10 +4540,10 @@ impl Codegen {
                         self.emit_load_loc(var_index + 1);
                     }
                 } else if self.global_vars.contains(&name_str) {
-                    // Plan 327: module-level global variable.
+                    // Plan 317: module-level global variable.
                     self.emit_global_load(&name_str);
                 } else if let Some(qualified) = self.import_scope.get(&name_str).cloned() {
-                    // Plan 359 E1: imported value name (e.g. `use auto.testlib: MAX`
+                    // Plan 348 E1: imported value name (e.g. `use auto.testlib: MAX`
                     // → import_scope["MAX"] = "testlib.MAX"). Emit LOAD_GLOBAL with
                     // the exact qualified name under which it was stored in
                     // vm.globals (no current_module prefix).
@@ -5036,7 +5036,7 @@ impl Codegen {
                     if let Expr::Ident(name) = lhs.as_ref() {
                         let name_str = name.to_string();
 
-                        // Plan 327: compound assignment to actor state field
+                        // Plan 317: compound assignment to actor state field
                         // (e.g., count += 1 inside a handler). LOAD_STATE_FIELD,
                         // compile RHS, op, DUP, STORE_STATE_FIELD.
                         if let Some(&field_idx) = self.current_task_state_fields.get(&name_str) {
@@ -5125,14 +5125,14 @@ impl Codegen {
                             }
                         }
 
-                        // Plan 327: actor state field assignment (inside task
+                        // Plan 317: actor state field assignment (inside task
                         // hooks/handlers). DUP keeps the value as the assignment
                         // expression's result, then STORE_STATE_FIELD persists it.
                         if let Some(&field_idx) = self.current_task_state_fields.get(&name_str) {
                             self.emit(OpCode::DUP);
                             self.emit(OpCode::STORE_STATE_FIELD);
                             self.code.push(field_idx);
-                        // Plan 327: module-level global variable (check BEFORE
+                        // Plan 317: module-level global variable (check BEFORE
                         // local lookup — otherwise top-level var would store to
                         // a script-wrapper local that fns can't see).
                         } else if self.global_vars.contains(&name_str) {
@@ -5168,7 +5168,7 @@ impl Codegen {
                                 self.emit_store_loc(var_index);
                             }
                         } else if self.global_vars.contains(&name_str) {
-                            // Plan 327: module-level global variable assignment.
+                            // Plan 317: module-level global variable assignment.
                             self.emit(OpCode::DUP);
                             self.emit_global_store(&name_str);
                         } else {
@@ -5656,7 +5656,7 @@ impl Codegen {
                 // IMPORTANT: Skip inline construction if the type has a user-defined new() method
                 let is_generic_constructor = if let Expr::Dot(obj, method) = call.name.as_ref() {
                     if method == "new" {
-                        // Plan 338: Handle both Ident("Type") and GenName("List<Item>")
+                        // Plan 322: Handle both Ident("Type") and GenName("List<Item>")
                         let type_name_opt: Option<&str> = match obj.as_ref() {
                             Expr::Ident(name) => Some(name.as_ref()),
                             Expr::GenName(full) => {
@@ -5666,7 +5666,7 @@ impl Codegen {
                             _ => None,
                         };
                         if let Some(type_name) = type_name_opt {
-                            // Plan 338: List<T>.new is NOT a generic constructor — it's
+                            // Plan 322: List<T>.new is NOT a generic constructor — it's
                             // a builtin that creates ListData, not GenericInstanceData.
                             // Let it fall through to the normal call path (shim_list_new).
                             if type_name == "List" || type_name == "Array" || type_name == "Map" {
@@ -6029,11 +6029,11 @@ impl Codegen {
                                 // or a module-level global variable, treat as instance method call
                                 // instead of module call. Without the global_vars check, an
                                 // uppercase-named global (e.g. `H0`) is misclassified as a static
-                                // type reference. See Plan 355 (sha2 global-var bitop bug).
+                                // type reference. See Plan 347 (sha2 global-var bitop bug).
                                 let is_local_var = self.var_types.contains_key(obj_name.as_ref())
                                     || self.global_vars.contains(obj_name.as_ref())
                                     || self.lookup_var(obj_name.as_str()).is_some()
-                                    // Plan 359 E1: an imported value name (e.g.
+                                    // Plan 348 E1: an imported value name (e.g.
                                     // `use testlib: MAX`) is a value global, so a
                                     // call like `MAX.to(str)` must treat MAX as
                                     // an instance (load the global) rather than a
@@ -6230,7 +6230,7 @@ impl Codegen {
                                 }
                             }
                             Expr::GenName(gen_name) => {
-                                // Plan 327: Generic type static method call, e.g.
+                                // Plan 317: Generic type static method call, e.g.
                                 // List<Note>.new([...]). GenName is "List<Note>".
                                 // Strip the type args to get the base type name,
                                 // then build func_name as "Type.method" so the
@@ -6722,7 +6722,7 @@ impl Codegen {
                         if let Some(id) = natives_id {
                             Some(id)
                         } else if let Some(qualified) = self.import_scope.get(name) {
-                            // Plan 355: a user-loaded Auto library must shadow a
+                            // Plan 347: a user-loaded Auto library must shadow a
                             // same-named native opaque module (e.g. `base64.encode`
                             // from `use auto.base64: encode`). If the qualified
                             // alias's module prefix is a known user Auto module
@@ -6844,7 +6844,7 @@ impl Codegen {
                                 // otherwise be misclassified as a static type reference,
                                 // causing the receiver to never be compiled (so the
                                 // method's `self` argument would pop garbage off the
-                                // stack). See Plan 355 (sha2 global-var bitop bug).
+                                // stack). See Plan 347 (sha2 global-var bitop bug).
                                 if self.lookup_var(obj_name.as_str()).is_some()
                                     || self.global_vars.contains(obj_name.as_str())
                                 {
@@ -7156,7 +7156,7 @@ impl Codegen {
                     // Also treat stdlib module names as static
                     let is_static_method = match obj.as_ref() {
                         Expr::Ident(obj_name) => {
-                            // Plan 359 Task 20: a module-level global var (or an
+                            // Plan 348 Task 20: a module-level global var (or an
                             // imported value name) is an INSTANCE receiver, never a
                             // static type — even when its name starts uppercase (e.g.
                             // `var PAT str = "hello"` then `PAT.len()`). Without this
@@ -7164,7 +7164,7 @@ impl Codegen {
                             // as a type reference, so the receiver is never loaded and
                             // the method dispatches against garbage (e.g. returning the
                             // length of the variable NAME instead of its value).
-                            // Mirrors the Plan 355 guard on the native-call path above.
+                            // Mirrors the Plan 347 guard on the native-call path above.
                             if self.lookup_var(obj_name.as_str()).is_some()
                                 || self.global_vars.contains(obj_name.as_str())
                                 || self.import_scope.contains_key(obj_name.as_ref())
@@ -7181,7 +7181,7 @@ impl Codegen {
                                     || self.is_type(obj_name)
                             }
                         }
-                        // Plan 338: GenName("List<Item>") is a static type name, not
+                        // Plan 322: GenName("List<Item>") is a static type name, not
                         // an instance. Without this, List<Item>.new([]) compiles the
                         // GenName as a receiver expression (creating an Item struct
                         // instance via CONSTRUCT_INSTANCE) instead of treating it as
@@ -7416,7 +7416,7 @@ impl Codegen {
                         // If alias exists but export not found, fall through to
                         // bare-name and prefix-strip resolution below.
                     }
-                    // Plan 327 Phase B: exact match in exports.
+                    // Plan 317 Phase B: exact match in exports.
                     if let Some(addr) = self.exports.get(name).copied() {
                         return Some(addr);
                     }
@@ -7470,7 +7470,7 @@ impl Codegen {
                             .unwrap_or(false)
                     } else { false }
                 } else { false };
-                // Plan 327: If this is an Auto module call (db.func()), generate
+                // Plan 317: If this is an Auto module call (db.func()), generate
                 // a CALL with reloc so the linker resolves it to the module's
                 // exported function. Don't fall through to CALL_SPEC.
                 let is_auto_module_call = func_name.as_ref()
@@ -7863,7 +7863,7 @@ impl Codegen {
                 self.emit(OpCode::CREATE_ERR);
             }
             // Plan 124: Async block - ~{ stmts }
-            // Plan 359 Task 22: compile the body OUT-OF-LINE (like a closure) and
+            // Plan 348 Task 22: compile the body OUT-OF-LINE (like a closure) and
             // hand CREATE_FUTURE a real bytecode address. This lets SPAWN_GO spawn
             // a genuine background task (rather than running the body inline) and
             // lets .await run the body on demand. Captured free variables are
@@ -8059,7 +8059,7 @@ impl Codegen {
                 // the single Future value and spawns it (fire-and-forget); it
                 // pushes nothing back, so the net stack effect is zero.
                 self.emit(OpCode::SPAWN_GO);
-                // Plan 359 G1: SPAWN_GO leaves nothing on the stack (void), so
+                // Plan 348 G1: SPAWN_GO leaves nothing on the stack (void), so
                 // the statement-level POP must be suppressed. Reuse the
                 // existing `last_was_native_void` signal so `needs_pop` is
                 // false and no stray POP eats a value below the stack,
@@ -8486,7 +8486,7 @@ impl Codegen {
                 self.emit_i32(0);
             }
             Expr::GenName(name) => {
-                // Plan 327: Generic type name as expression (e.g. List<Note>).
+                // Plan 317: Generic type name as expression (e.g. List<Note>).
                 // This appears as the receiver of List<Note>.new(...). In that
                 // case the Dot/Call path handles it (5493 GenName arm). If it
                 // reaches compile_expr directly, it's a type reference with no
@@ -8504,7 +8504,7 @@ impl Codegen {
     }
 
     pub fn finish(self, name: String) -> Module {
-        // Plan 359 E1: record whether this module declared any top-level
+        // Plan 348 E1: record whether this module declared any top-level
         // globals (var/const). The linker retains such modules even without
         // function exports so their STORE_GLOBAL init code runs.
         let has_globals = !self.global_vars.is_empty();
@@ -9633,7 +9633,7 @@ impl Codegen {
     /// Parameters: fn_scope_start <= index < fn_scope_start + n_args, stored at BP - n_args + (index - fn_scope_start)
     /// Locals: otherwise, stored at BP + 1 + (index - fn_scope_start - n_args)
     /// Uses dedicated opcodes for locals 0-2 for performance
-    /// Plan 327: Emit LOAD_GLOBAL for a module-level variable.
+    /// Plan 317: Emit LOAD_GLOBAL for a module-level variable.
     /// Plan 345: Qualify a global variable name with the current module prefix.
     /// When current_module is "db", "notes" becomes "db.notes".
     fn qualified_global_name(&self, name: &str) -> String {
@@ -9646,7 +9646,7 @@ impl Codegen {
 
     fn emit_global_load(&mut self, name: &str) {
         let qname = self.qualified_global_name(name);
-        // Plan 359 C1: intern the qualified name via add_string so the same
+        // Plan 348 C1: intern the qualified name via add_string so the same
         // global name always resolves to a single, deduplicated pool entry.
         // The previous direct `self.strings.push(...)` could push duplicate
         // copies of the same name at different indices, which after linker
@@ -9657,7 +9657,7 @@ impl Codegen {
         self.emit_u16(idx);
     }
 
-    /// Plan 359 E1: Emit LOAD_GLOBAL for an already-qualified name (e.g.
+    /// Plan 348 E1: Emit LOAD_GLOBAL for an already-qualified name (e.g.
     /// "testlib.MAX" resolved from `import_scope`). Unlike emit_global_load,
     /// this does NOT prepend `self.current_module` — the caller supplies the
     /// exact name under which the global was stored in `vm.globals`.
@@ -9667,10 +9667,10 @@ impl Codegen {
         self.emit_u16(idx);
     }
 
-    /// Plan 327: Emit STORE_GLOBAL for a module-level variable.
+    /// Plan 317: Emit STORE_GLOBAL for a module-level variable.
     fn emit_global_store(&mut self, name: &str) {
         let qname = self.qualified_global_name(name);
-        // Plan 359 C1: see emit_global_load — intern via add_string for dedup.
+        // Plan 348 C1: see emit_global_load — intern via add_string for dedup.
         let idx = self.add_string(&qname);
         self.emit(OpCode::STORE_GLOBAL);
         self.emit_u16(idx);

@@ -1,4 +1,6 @@
-# Plan 342：Coding Agent 可用的 AutoUI 调试工具链
+# Plan 330：Coding Agent 可用的 AutoUI 调试工具链
+
+> 原编号 342；2026-07-23 因编号冲突改为 330（原号保留给 342-block-tier-phase-a-package-foundation）
 
 > **For Claude:** 当前 AutoUI 的 MCP 服务（`autoui_snapshot`/`autoui_vtree`/`autoui_state` 等）是为人类开发者设计的可视化工具——需要 GUI 窗口运行、输出 AURA/Atom 格式、依赖视觉截图。Coding Agent（如 Claude）无法有效使用它们：① 缺少 CLI 入口；② 输出不标准（非 JSON）；③ 无 headless 模式；④ 不能诊查 VM 内部状态（heap_objects、globals、call_stack）。本计划设计一套 Agent 友好的 CLI 调试工具。
 

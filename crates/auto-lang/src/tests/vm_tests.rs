@@ -280,9 +280,9 @@ fn test_add_u8() {
 }
 
 // ============================================================================
-// Plan 359 D1: Recursive enum + is-pattern payload binding
+// Plan 348 D1: Recursive enum + is-pattern payload binding
 // ============================================================================
-// Regression guard for the two claims in Plan 359 Bug D1:
+// Regression guard for the two claims in Plan 348 Bug D1:
 //   1. A recursive enum variant (`node(Tree, Tree)`) must parse and run.
 //      The enum name is only registered AFTER parse_enum_body returns, but
 //      lookup_type() falls back to Type::User for unregistered names, so
@@ -293,7 +293,7 @@ fn test_add_u8() {
 // If either behaviour regresses, this test fails.
 
 #[test]
-fn test_plan359_d1_recursive_enum_is_pattern_binding() {
+fn test_plan348_d1_recursive_enum_is_pattern_binding() {
     let code = r#"
 tag Tree {
     leaf(int)
@@ -323,7 +323,7 @@ fn main() {
 // payload types containing the enum itself parse and that the bound payload
 // is usable in the branch body.
 #[test]
-fn test_plan359_d1_recursive_enum_collection_payload() {
+fn test_plan348_d1_recursive_enum_collection_payload() {
     let code = r#"
 tag Value {
     nul

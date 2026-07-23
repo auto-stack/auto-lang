@@ -282,13 +282,13 @@ pub struct AutoVM {
     pub futures: DashMap<u32, Arc<RwLock<FutureValue>>>,
     pub future_id_gen: AtomicU32,
 
-    // Plan 327 Phase 1: Per-task message queues for message-loop tasks.
+    // Plan 317 Phase 1: Per-task message queues for message-loop tasks.
     // Keyed by AutoVM task id (== the handle id returned by Task.spawn).
     // DashMap avoids the tokio Mutex blocking_lock panic that would occur if
     // pending_messages lived on AutoTask (which is behind tokio::sync::Mutex).
     pub task_mailboxes: DashMap<u64, std::sync::Mutex<Vec<auto_val::Value>>>,
 
-    // Plan 327: Global variables (module-level `var x = ...`).
+    // Plan 317: Global variables (module-level `var x = ...`).
     // String-keyed so any function can read/write them via LOAD_GLOBAL/
     // STORE_GLOBAL. DashMap for thread-safety (concurrent HTTP handlers).
     pub globals: DashMap<String, auto_val::NanoValue>,
@@ -322,7 +322,7 @@ pub struct FutureValue {
     pub result: Option<auto_val::Value>,
     /// Task ID that owns this future (for suspension/resumption)
     pub owner_task_id: TaskId,
-    /// Plan 359 Task 22: Captured free-variable environment for `~{ ... }`.
+    /// Plan 348 Task 22: Captured free-variable environment for `~{ ... }`.
     /// For SPAWN_GO the spawned task gets its own RAM, so captures cannot be
     /// read from the caller's stack. Instead we stash them here (keyed by the
     /// variable name) and expose them to the body via LOAD_CAPTURED by
@@ -417,8 +417,8 @@ impl AutoVM {
             // Plan 124: Future registry for async/await
             futures: DashMap::new(),
             future_id_gen: AtomicU32::new(1),
-            task_mailboxes: DashMap::new(), // Plan 327 Phase 1
-            globals: DashMap::new(), // Plan 327: module-level var storage
+            task_mailboxes: DashMap::new(), // Plan 317 Phase 1
+            globals: DashMap::new(), // Plan 317: module-level var storage
             // Plan 197 Task 9: Generic registry for runtime field name lookup
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(),
             // Plan 177: stdout capture (None = normal println)
@@ -528,7 +528,7 @@ impl AutoVM {
         self.generic_registry = registry;
     }
 
-    /// Plan 327 Phase 1: Load task handler registry from codegen.
+    /// Plan 317 Phase 1: Load task handler registry from codegen.
     ///
     /// Without this, `AutoVM.task_handler_registry` stays empty (initialized at
     /// engine.rs:370) and the HANDLE_MSG opcode (engine.rs:5449) can never find
@@ -538,7 +538,7 @@ impl AutoVM {
         self.task_handler_registry = registry;
     }
 
-    /// Plan 327 Phase 1: Find the bytecode offset of the handler for a message.
+    /// Plan 317 Phase 1: Find the bytecode offset of the handler for a message.
     ///
     /// Used by both HANDLE_MSG (opcode path) and run_task_loop (message wake
     /// path). Looks up the task type's handler table, matches the message
@@ -1127,11 +1127,11 @@ impl AutoVM {
 
     /// Plan 321: Check if a function body contains YIELD_VAL (0x8D) opcode.
     fn is_generator_fn(&self, addr: usize) -> bool {
-        // Plan 359 Task 21: Walk the bytecode instruction-by-instruction,
+        // Plan 348 Task 21: Walk the bytecode instruction-by-instruction,
         // decoding each opcode's operand stream via `OpCode::operand_size` so
         // that operand bytes are never mistaken for opcodes.
         //
-        // The previous implementation (Plan 355) bounded a raw byte scan at the
+        // The previous implementation (Plan 347) bounded a raw byte scan at the
         // first 0x71 (RET) byte. This stopped cross-function false positives
         // but was still vulnerable to *intra-function* false positives:
         // whenever a function's operand stream (e.g. a CONST_I32 immediate, a
@@ -1366,7 +1366,7 @@ impl AutoVM {
                     }
                 }
 
-                // Plan 327 Phase 1: wake a message-loop task that has pending
+                // Plan 317 Phase 1: wake a message-loop task that has pending
                 // messages. TASK_LOOP left it Waiting; TaskHandle.send pushed
                 // to its mailbox in vm.task_mailboxes. Drain one message, find
                 // its handler, set ip to the handler body_offset, and mark Ready
@@ -1402,7 +1402,7 @@ impl AutoVM {
                     }
                 }
 
-                // Plan 327 Phase 1: a Waiting message-loop task with an empty
+                // Plan 317 Phase 1: a Waiting message-loop task with an empty
                 // mailbox is idle — it won't self-wake. Don't count it as alive,
                 // so run_task_loop can exit when only such idle actors remain
                 // (otherwise it busy-loops on sleep forever). If a message
@@ -1489,7 +1489,7 @@ impl AutoVM {
                 // Run a chunk of instructions
                 match self.execute_task(&mut task) {
                     Ok(new_status) => {
-                        // Plan 327 Phase 1: a message-loop task that hits RET
+                        // Plan 317 Phase 1: a message-loop task that hits RET
                         // (handler finished, or start hook finished) must NOT
                         // terminate — it parks back in Waiting to receive the
                         // next message. Without this, the actor dies after its
@@ -2320,7 +2320,7 @@ impl AutoVM {
                         task.ram.push_nv(auto_val::encode_null());
                     }
                 }
-                // Plan 336: push a real bool (nanbox tag=3), not Int(0/1). Without
+                // Plan 318: push a real bool (nanbox tag=3), not Int(0/1). Without
                 // this, `.editing = false` stores Value::Int(0) and the view
                 // builder's `.editing == false` comparison fails ("0" != "false"),
                 // hiding conditional blocks (note.title/body). byte: 0=false, 1=true.
@@ -4321,7 +4321,7 @@ impl AutoVM {
                     vm_debug!("DEBUG CALL: Calling function at address 0x{:04x}", target);
                     task.ip += 4;
 
-                    // Plan 327: Generator short-circuit. If the callee is a
+                    // Plan 317: Generator short-circuit. If the callee is a
                     // generator function (contains YIELD_VAL), don't execute
                     // its body inline — create an Iterator::Generator and push
                     // its id, just like call_fn_by_name does. This makes
@@ -4790,7 +4790,7 @@ impl AutoVM {
                             }
                         }
                     } else if type_name == "List" {
-                        // Plan 337: receiver may be Int(heap_id) or VmRef(decode_object).
+                        // Plan 320: receiver may be Int(heap_id) or VmRef(decode_object).
                         // Try both to get the list_id.
                         let list_id = if auto_val::is_i32(receiver_nv) {
                             auto_val::decode_i32(receiver_nv) as u64
@@ -4804,7 +4804,7 @@ impl AutoVM {
                                     if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
                                         list.len() as i32
                                     } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
-                                        // Plan 337: ListData<Value> (struct lists)
+                                        // Plan 320: ListData<Value> (struct lists)
                                         list.len() as i32
                                     } else { 0 }
                                 } else { 0 };
@@ -4853,7 +4853,7 @@ impl AutoVM {
                                 } else {
                                     auto_val::Value::Int(auto_val::decode_i32(elem_nv))
                                 };
-                                // Plan 337: push into ListData<Value> or ListData<i32>.
+                                // Plan 320: push into ListData<Value> or ListData<i32>.
                                 if let Some(obj) = self.get_heap_object(list_id) {
                                     let mut guard = obj.write().unwrap();
                                     if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
@@ -5255,10 +5255,10 @@ impl AutoVM {
                             return Ok(StepResult::Yield);
                         }
                     } else if native_id == 2300 {
-                        // Plan 327 Phase 1: Task.spawn -> vm-aware (register AutoVM task)
+                        // Plan 317 Phase 1: Task.spawn -> vm-aware (register AutoVM task)
                         crate::vm::ffi::stdlib::shim_task_spawn_vm(task, self)?;
                     } else if native_id == 2301 {
-                        // Plan 327 Phase 1: TaskHandle.send -> vm-aware (push to pending_messages)
+                        // Plan 317 Phase 1: TaskHandle.send -> vm-aware (push to pending_messages)
                         crate::vm::ffi::stdlib::shim_task_send_vm(task, self)?;
                     } else if let Some(shim) = self.native_interface.get(native_id).cloned() {
                         let pre_call_ip = task.ip;
@@ -5813,7 +5813,7 @@ impl AutoVM {
                                     future.captures.clone(),
                                 )
                             };
-                            // Plan 359 Task 22: only spawn when the body offset
+                            // Plan 348 Task 22: only spawn when the body offset
                             // is a real, in-range bytecode address. The new
                             // out-of-line AsyncBlock codegen always supplies a
                             // non-zero address; the guard keeps us safe if a
@@ -5885,7 +5885,7 @@ impl AutoVM {
                             task.id, task_type);
                     }
 
-                    // Plan 327 Phase 1: yield immediately so the trailing RET
+                    // Plan 317 Phase 1: yield immediately so the trailing RET
                     // (bp==0 for a spawned task) doesn't terminate the task.
                     // run_task_loop will re-run this task when a message arrives
                     // (its ip still points at the RET after TASK_LOOP, but the
@@ -5905,7 +5905,7 @@ impl AutoVM {
                     let task_type = task.task_type_name.clone().unwrap_or_default();
                     let msg = auto_val::Value::Int(msg_value);
 
-                    // Plan 327 Phase 1: delegate to shared matcher (now also
+                    // Plan 317 Phase 1: delegate to shared matcher (now also
                     // covers the `else` fallback via exports).
                     if let Some((body_offset, has_context)) = self.find_handler_offset(&task_type, &msg) {
                         task.ram.push_i32(1); // true - handler found
@@ -5996,7 +5996,7 @@ impl AutoVM {
                 OpCode::LOAD_LOC_0 => {
                     task.ram.push_nv(task.ram.read_nv(task.bp + 1));
                 }
-                // Plan 327: Actor state field access (absolute, bp-independent).
+                // Plan 317: Actor state field access (absolute, bp-independent).
                 // state_vars is a Vec on AutoTask; field_idx is assigned by codegen.
                 OpCode::LOAD_STATE_FIELD => {
                     let field_idx = self.flash.read_u8(task.ip) as usize;
@@ -6014,7 +6014,7 @@ impl AutoVM {
                     }
                     task.state_vars[field_idx] = val_nv;
                 }
-                // Plan 327: Global variable access (module-level var).
+                // Plan 317: Global variable access (module-level var).
                 // name_idx: u16 indexes the string pool.
                 OpCode::LOAD_GLOBAL => {
                     let name_idx = self.flash.read_u16(task.ip) as usize;
@@ -6719,7 +6719,7 @@ impl AutoVM {
         body_offset: u32,
     ) -> Result<(), VMError> {
         const MAX_RECURSION_DEPTH: u32 = 64;
-        // Plan 359 Task 22: if the future carries captures, install a synthetic
+        // Plan 348 Task 22: if the future carries captures, install a synthetic
         // closure so LOAD_CAPTURED/STORE_CAPTURED inside the body can resolve.
         // The closure_id is saved/restored across the body execution below so
         // the caller's closure context is untouched on return.
@@ -6738,7 +6738,7 @@ impl AutoVM {
         result
     }
 
-    /// Plan 359 Task 22: register a synthetic Closure for a future's captures.
+    /// Plan 348 Task 22: register a synthetic Closure for a future's captures.
     /// Returns the closure_id (so the caller can wire it into the task's
     /// current_closure_id), or None if the future has no captures.
     fn install_future_captures(&self, future_id: u32, body_offset: u32) -> Option<u32> {

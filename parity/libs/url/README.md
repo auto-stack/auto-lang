@@ -65,7 +65,7 @@ cover. It is not a full WHATWG URL parser. Key, deliberate differences:
 
 ## a2r (transpiler) note
 
-The a2r transpiler was extended (Plan 355) to infer `Result<T, String>` return
+The a2r transpiler was extended (Plan 347) to infer `Result<T, String>` return
 types for un-annotated functions returning `Ok(...)`, where `T` is derived
 from the Ok payload (previously it always inferred `Result<String, String>`).
 This fix is exercised by the `parse` function and keeps the transpiled Rust

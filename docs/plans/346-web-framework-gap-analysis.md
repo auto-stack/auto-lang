@@ -1,5 +1,7 @@
 # Web Framework Gap Analysis：Auto HTTP 库 vs 成熟 Web Framework
 
+> 原编号 351；2026-07-23 因编号冲突改为 346（原号保留给 351-shared-store-rung4）
+
 > **状态**：调研文档
 > **基于**：v0.4.1 + Plan 349/350（截至 2026-07-02）
 > **对比目标**：Axum (Rust)、Spring Boot (Java)、Express (Node.js)、Django/FastAPI (Python)

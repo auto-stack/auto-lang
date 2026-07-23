@@ -327,11 +327,11 @@ edition = "2021"
 [dependencies]
 auto-lang = {{ path = "{auto_lang}" }}
 a2r-std = {{ path = "{a2r_std}" }}
-# Plan 355: the a2r transpiler emits `use once_cell::sync::Lazy;` (and
+# Plan 347: the a2r transpiler emits `use once_cell::sync::Lazy;` (and
 # `std::sync::Mutex`) for module-level `var` globals, so any a2r test binary
 # whose library uses globals needs once_cell on the dep list.
 once_cell = "1"
-# Plan 355 P4: async tests transpile to `async fn main()` with `#[tokio::main]`,
+# Plan 347 P4: async tests transpile to `async fn main()` with `#[tokio::main]`,
 # so the test binary needs tokio as a dependency.
 tokio = {{ version = "1", features = ["rt", "macros"] }}
 
@@ -355,7 +355,7 @@ path = "src/main.rs"
         // clause), so the library source must be wrapped in a matching
         // `pub mod <lib> { ... }` with public functions for the import to work.
         //
-        // Plan 355 P4: when the library name collides with an extern crate
+        // Plan 347 P4: when the library name collides with an extern crate
         // (e.g. `tokio`), wrapping as `pub mod tokio` shadows the tokio crate,
         // breaking `#[tokio::main]`. We wrap as `pub mod auto_<lib>` and
         // rewrite the test's `use crate::<lib>::` imports to match.
@@ -434,7 +434,7 @@ fn wrap_as_module(lib_name: &str, src: &str) -> String {
     // symbols are visible outside the module. Handles both `fn` and
     // `async fn` (the a2r transpiler emits `async fn` for `~T` functions).
     // Struct *fields* are also promoted to `pub`: in the AutoVM a returned
-    // user-defined struct's fields are readable from any module (Plan 359 B1),
+    // user-defined struct's fields are readable from any module (Plan 348 B1),
     // and the parity tests now exercise that (e.g. `u.scheme` on a `Url`
     // returned across the boundary), so the a2r module wrap must expose the
     // fields with matching visibility.

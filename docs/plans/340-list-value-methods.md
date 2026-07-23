@@ -11,14 +11,14 @@
 | 元素类型 | 存储对象 | id 段 | shim 支持 |
 |----------|---------|-------|----------|
 | 全 int | `heap_objects` → `ListData<i32>` | 4M | 所有方法 ✅ |
-| 含 struct/str | `heap_objects` → `ListData<Value>` | 4M | push/len ✅（Plan 338），其余 ❌ |
+| 含 struct/str | `heap_objects` → `ListData<Value>` | 4M | push/len ✅（Plan 322），其余 ❌ |
 
 ### 1.2 015-notes 中的 workaround
 
 `delete_note` 和 `update_note` 用 for-in 遍历 + push 重建列表，绕过不支持的 `filter` 方法：
 
 ```auto
-// 当前 workaround（Plan 338）
+// 当前 workaround（Plan 322）
 pub fn delete_note(id int) bool {
     var new_notes List<Note> = List<Note>.new([])
     var i int = 0
@@ -62,7 +62,7 @@ pub fn delete_note(id int) bool {
 
 **层 1：CALL_SPEC List 分支（已有部分修复）**
 
-当前 Plan 338 已修复 `count/len` 和 `push`。待修复：
+当前 Plan 322 已修复 `count/len` 和 `push`。待修复：
 - `get`（engine.rs:4599）：只查 `ListData<i32>`，需加 `ListData<Value>` 回退
 
 **层 2：原生 shim（需大量改造）**
@@ -167,7 +167,7 @@ pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 #### Phase 4 — 回归 + 验收
 
 - 015-notes：`delete_note` 和 `update_note` 可改为用 `filter`/`map`（可选，验证通过即可）
-- `plan337_tests`：新增 `test_list_filter`、`test_list_map` 测试
+- `plan320_tests`：新增 `test_list_filter`、`test_list_map` 测试
 - 016-calendar：回归正常
 
 ## 3. 范围

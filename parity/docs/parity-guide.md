@@ -19,7 +19,7 @@ cargo run -- --root . --auto-binary ../../target/debug/auto.exe run _dummy
 cargo run -- --root . --auto-binary ../../target/debug/auto.exe phase p0
 ```
 
-Phase mapping (Plan 355):
+Phase mapping (Plan 347):
 - `p0`: `_dummy` (framework smoke test)
 - `p1`: `base64`, `url`
 - `p2`: `serde_json`, `regex`

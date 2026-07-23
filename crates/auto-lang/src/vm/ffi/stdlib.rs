@@ -3532,7 +3532,7 @@ pub fn shim_http_response_html(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
-/// Plan 351: `http.response.redirect(url: String, status: int) -> response_handle`
+/// Plan 346: `http.response.redirect(url: String, status: int) -> response_handle`
 /// Create a redirect response (302 or 301).
 pub fn shim_http_response_redirect(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let status: i32 = task.ram.pop_i32();
@@ -5590,7 +5590,7 @@ pub fn shim_task_spawn(task_type: String, capacity: i32) -> i32 {
     handle_id as i32
 }
 
-/// Plan 327 Phase 1: VM-aware Task.spawn.
+/// Plan 317 Phase 1: VM-aware Task.spawn.
 ///
 /// Stack: [..., task_type_str_tag, capacity_i32] -> [..., handle_id_i32]
 ///
@@ -5644,7 +5644,7 @@ pub fn shim_task_spawn_vm(
     Ok(())
 }
 
-/// Plan 327 Phase 1: VM-aware TaskHandle.send.
+/// Plan 317 Phase 1: VM-aware TaskHandle.send.
 ///
 /// Stack: [..., handle_id_i32, msg_i32] -> [..., ok_i32]
 ///
@@ -5660,7 +5660,7 @@ pub fn shim_task_send_vm(
     let msg = task.ram.pop_i32();
     let handle_id = task.ram.pop_i32() as u64;
 
-    // Plan 327 Phase 1: use the DashMap mailbox (std Mutex, safe in sync native).
+    // Plan 317 Phase 1: use the DashMap mailbox (std Mutex, safe in sync native).
     // Lazily create the mailbox entry if missing.
     if let Some(mailbox) = vm.task_mailboxes.get(&handle_id) {
         if let Ok(mut q) = mailbox.lock() {
@@ -6176,7 +6176,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.response_text", shim_http_response_text);
     natives.register_shim_by_name("auto.http.response_html", shim_http_response_html);
     natives.register_shim_by_name("auto.http.response_bytes", shim_http_response_bytes);
-    // Plan 351: Redirect
+    // Plan 346: Redirect
     natives.register_shim_by_name("auto.http.response.redirect", shim_http_response_redirect);
     natives.register_shim_by_name("http.response.redirect", shim_http_response_redirect);
     // Plan 352: Session management

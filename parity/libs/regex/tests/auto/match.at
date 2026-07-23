@@ -4,7 +4,7 @@
 ///
 /// `is_match` returns `bool`. (It used to return `int` (1/0) because a `bool`
 /// returned across the Auto module boundary was corrupted by the VM; fixed by
-/// Plan 359 / B4 — `bool` now crosses safely, so the library yields a plain
+/// Plan 348 / B4 — `bool` now crosses safely, so the library yields a plain
 /// `bool` and the Rust oracle asserts bools too.)
 use auto.regex: is_match, find
 

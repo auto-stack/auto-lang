@@ -736,7 +736,7 @@ fn real_main(cli: Cli) -> Result<()> {
             if let Some(ref s) = scene {
                 am.set_scene(s.clone());
             }
-            // Plan 327: --server=vm uses AutoVM HTTP server (with module
+            // Plan 317: --server=vm uses AutoVM HTTP server (with module
             // flattening for use db), --server=rust (default) uses a2r.
             let vm_server_mode = server.as_deref() == Some("vm");
             if vm_server_mode {

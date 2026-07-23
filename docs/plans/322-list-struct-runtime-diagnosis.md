@@ -1,6 +1,8 @@
-# Plan 338：List<Struct> 运行时修复 — 排查总结 + 后续
+# Plan 322：List<Struct> 运行时修复 — 排查总结 + 后续
 
-> **For Claude:** 本文档是 Plan 337（单 VM widget 树）过程中对 List<Struct> 运行时问题的完整排查记录。目的是：(1) 记录根因和修复方向；(2) 总结 VM bug 排查方法论，以便优化未来类似问题的排查效率。
+> 原编号 338；2026-07-23 因编号冲突改为 322（原号保留给 338-extend-015-notes-m1-benchmark）
+
+> **For Claude:** 本文档是 Plan 320（单 VM widget 树）过程中对 List<Struct> 运行时问题的完整排查记录。目的是：(1) 记录根因和修复方向；(2) 总结 VM bug 排查方法论，以便优化未来类似问题的排查效率。
 
 ## 排查过程（时间线）
 
@@ -15,9 +17,9 @@
 **效率极低**——每个迭代 5-10 分钟，且无法精确控制。
 
 ### 第二阶段：VM 测试框架（高效）
-用 `plan337_tests.rs` 在 VM 层直接复现，不需要 UI：
+用 `plan320_tests.rs` 在 VM 层直接复现，不需要 UI：
 ```rust
-cargo test -p auto-lang --lib plan337_tests -- --nocapture
+cargo test -p auto-lang --lib plan320_tests -- --nocapture
 ```
 每个迭代降到 **10 秒以内**。可以自由加诊断、改测试代码、快速验证假设。
 
@@ -107,7 +109,7 @@ cargo test -p auto-lang --lib plan337_tests -- --nocapture
 
 ## 当前测试状态
 
-`plan337_tests.rs`（7 个测试）：
+`plan320_tests.rs`（7 个测试）：
 - ✅ `test_basic_print`
 - ✅ `test_basic_struct`
 - ✅ `test_list_struct_push`（push 后访问字段）

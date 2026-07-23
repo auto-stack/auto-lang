@@ -35,4 +35,4 @@ threads do not collide. ASCII-only inputs so Auto `lower()` and Rust
   by passing paths as string literals.
 * Text-transform results are bound to a local var before returning
   (`return <method-call>` drops the value in the VM — same family as
-  string_utils / Plan 359 C2).
+  string_utils / Plan 348 C2).

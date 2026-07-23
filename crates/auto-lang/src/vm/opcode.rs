@@ -266,7 +266,7 @@ pub enum OpCode {
                              // Non-blocking poll: check if future is ready
                              // Returns (true, value) if ready, (false, nil) if pending
 
-    // === Plan 327: Task actor state fields ===
+    // === Plan 317: Task actor state fields ===
     // Actor state fields persist across handler invocations on the actor's
     // AutoVM task. They are stored in a per-task region of task.ram at fixed
     // absolute offsets (allocated at spawn time, above the bp region). These
@@ -275,7 +275,7 @@ pub enum OpCode {
     LOAD_STATE_FIELD = 0xC3,  // field_idx: u8 -> value (load actor state field)
     STORE_STATE_FIELD = 0xC4, // field_idx: u8, value -> void (store actor state field)
 
-    // === Plan 327: Global variables (module-level var accessible from all fns) ===
+    // === Plan 317: Global variables (module-level var accessible from all fns) ===
     // String-keyed global storage on AutoVM.globals (DashMap). name_idx: u16
     // indexes into the string pool. Top-level `var x = ...` compiles to
     // STORE_GLOBAL; any fn reading/writing `x` compiles to LOAD/STORE_GLOBAL.
@@ -291,7 +291,7 @@ pub enum OpCode {
     PUSH_HANDLER = 0xFD, // handler_pc: u16 -> void
     POP_HANDLER = 0x8F,  // -> void (pop the most-recent catch frame)
     PUSH_NIL = 0xFB,    // -> nil marker (TAG_NULL in nanbox, i32::MIN+1 otherwise)
-    PUSH_BOOL = 0xFC,   // byte: 0|1 -> bool (Plan 336: true bool encoding, not Int)
+    PUSH_BOOL = 0xFC,   // byte: 0|1 -> bool (Plan 318: true bool encoding, not Int)
     HALT = 0xFF,
 }
 
@@ -346,7 +346,7 @@ impl OpCode {
         0xB8, 0xB9,
         // Async
         0xC0, 0xC1, 0xC2,
-        // Plan 327: Actor state fields + global variables
+        // Plan 317: Actor state fields + global variables
         0xC3, 0xC4, 0xC5, 0xC6,
         // Error/Option
         0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5,
@@ -738,7 +738,7 @@ impl OpCode {
         }
     }
 
-    /// Plan 359 Task 21: Return the fixed byte size of this opcode's operand
+    /// Plan 348 Task 21: Return the fixed byte size of this opcode's operand
     /// stream (the bytes immediately following the opcode byte), or `None` if
     /// the operand size is variable and cannot be determined from the opcode
     /// alone.

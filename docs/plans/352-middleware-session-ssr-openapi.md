@@ -1,12 +1,12 @@
 # Plan 352: Web Framework 四项缺失能力设计与实施计划
 
 > **状态**：设计文档
-> **前置**：Plan 351（Web Framework Gap Analysis 五阶段已完成）
+> **前置**：Plan 346（Web Framework Gap Analysis 五阶段已完成）
 > **目标**：中间件链、Session 管理、模板引擎（SSR）、OpenAPI 自动生成
 
 ## 现状
 
-Plan 351 五阶段完成后，Auto Web Framework 已具备 16/20 项核心能力。
+Plan 346 五阶段完成后，Auto Web Framework 已具备 16/20 项核心能力。
 本计划补齐剩余 4 项，使其与 Axum/Spring Boot/Express 全面对齐。
 
 ---
@@ -104,7 +104,7 @@ pub fn profile(meta str) str {
 
 5. **Session 存储**：`lazy_static Mutex<HashMap<String, serde_json::Value>>`（内存存储，进程重启后失效。后续可加 Redis/文件持久化）。
 
-6. **Cookie 集成**：handler 通过 `meta` 参数（已在 Plan 351 阶段4 实现）读取 `session_id` Cookie，调 `session.get()` 恢复会话。
+6. **Cookie 集成**：handler 通过 `meta` 参数（已在 Plan 346 阶段4 实现）读取 `session_id` Cookie，调 `session.get()` 恢复会话。
 
 **关键文件**：
 - `stdlib.rs` — 4 个 session native shim

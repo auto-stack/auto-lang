@@ -76,7 +76,7 @@ Coercions: `from_i64`, `from_i32`, `from_i16`, `from_i8`, `from_u32`, `from_u16`
 
 ### Why not `use.rust` FFI?
 
-The Plan-355 task brief explored calling rusqlite directly via `use.rust
+The Plan-347 task brief explored calling rusqlite directly via `use.rust
 rusqlite::Connection`. This is not viable in the current VM: `use.rust`
 `RustFfiBridge` can only marshal `VMConvertible` primitives, and
 `Connection`/`Statement` are opaque handles with no marshal path. The proven

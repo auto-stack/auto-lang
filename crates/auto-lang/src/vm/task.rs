@@ -57,7 +57,7 @@ pub struct AutoTask {
     pub task_type_name: Option<String>, // Task type name for handler lookup
     pub current_handler_has_context: bool, // Whether current handler has ctx parameter
     pub current_msg_context: Option<crate::vm::message_context::MessageContext>, // Current reply context
-    // Plan 327: Actor state fields (persist across handler invocations).
+    // Plan 317: Actor state fields (persist across handler invocations).
     // Indexed by field_idx (assigned by codegen per task type). Stored here
     // (not in ram) so they survive handler RET and are independent of bp.
     // Accessed via LOAD_STATE_FIELD / STORE_STATE_FIELD opcodes.
@@ -116,7 +116,7 @@ impl AutoTask {
             task_type_name: None,
             current_handler_has_context: false,
             current_msg_context: None,
-            state_vars: Vec::new(), // Plan 327: actor state fields
+            state_vars: Vec::new(), // Plan 317: actor state fields
             current_line: 0,
             current_source: None,
             call_stack: Vec::new(),

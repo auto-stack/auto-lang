@@ -209,7 +209,7 @@ pub struct Module {
     pub object_keys: Vec<Vec<auto_val::ValueKey>>,
     /// Plan 073: Object field types for runtime value conversion
     pub object_types: Vec<Vec<crate::vm::codegen::ObjectType>>,
-    /// Plan 359 E1: true if this module has top-level global initializers
+    /// Plan 348 E1: true if this module has top-level global initializers
     /// (module-level `var`/`const`). Such modules must be retained even when
     /// they export no functions, so their STORE_GLOBAL init code runs and the
     /// globals become visible across module boundaries.
@@ -280,12 +280,12 @@ impl Linker {
             let mut mod_code = module.code.clone();
 
             for reloc in &module.relocs {
-                // Find symbol. Plan 327 Phase B: after module flattening,
+                // Find symbol. Plan 317 Phase B: after module flattening,
                 // "db.all_notes" should resolve to the "all_notes" export.
                 // Try exact match first, then strip module prefix and retry.
                 let target_addr = global_symbols.get(&reloc.symbol_name)
                     .copied()
-                    // Plan 338: try module#name qualified lookup for dotted symbols.
+                    // Plan 322: try module#name qualified lookup for dotted symbols.
                     // E.g. db.create_note → db#create_note (resolves to db.at's
                     // version, not api.at's duplicate). This prevents infinite
                     // recursion when api.at's create_note calls db.create_note

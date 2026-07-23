@@ -1,9 +1,9 @@
-//! Plan 337: VM-level test for List<Struct>.push (reproduces create_note
+//! Plan 320: VM-level test for List<Struct>.push (reproduces create_note
 //! infinite recursion without UI). Run with:
-//!   cargo test -p auto-lang --lib plan337_tests -- --nocapture
+//!   cargo test -p auto-lang --lib plan320_tests -- --nocapture
 
 #[cfg(test)]
-mod plan337_tests {
+mod plan320_tests {
     use crate::run_with_capture;
 
     #[test]

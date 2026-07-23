@@ -27,7 +27,7 @@ front/app.at:  use back.api: create_note, delete_note, ...
 裸调用 `create_note` 是 `api.create_note` 还是 `db.create_note`？当前因 last-wins，解析为 `db.create_note`。
 
 #### 类型 D：widget handler 命名冲突
-Plan 337 通过 `handler_<Widget>_<Event>` 前缀解决了 handler 命名空间，但函数/变量的跨模块冲突仍未解决。
+Plan 320 通过 `handler_<Widget>_<Event>` 前缀解决了 handler 命名空间，但函数/变量的跨模块冲突仍未解决。
 
 ### 1.2 当前 workaround（都脆弱）
 
@@ -192,7 +192,7 @@ fn resolve_call(&self, name: &str) -> String {
 ### 5.1 回归（不破坏现有功能）
 - [ ] 015-notes vm：list、select、new、save、delete、search（全部通过）
 - [ ] 016-calendar vm：回归正常
-- [ ] `plan337_tests`：7/7 通过
+- [ ] `plan320_tests`：7/7 通过
 - [ ] `handler_codegen` 测试：不变
 
 ### 5.2 新能力
@@ -203,6 +203,6 @@ fn resolve_call(&self, name: &str) -> String {
 
 ## 6. 与后续计划的关系
 
-- **Plan 338（List shims）**：独立于本计划，可在之前或之后做
+- **Plan 322（List shims）**：独立于本计划，可在之前或之后做
 - **Plan 335（ListData\<Value\> 完整支持）**：部分依赖本计划（filter/map 需要正确的符号解析）
-- **Plan 337（单 VM widget 树）**：handler 命名空间是本计划的特殊情况（已通过前缀解决）
+- **Plan 320（单 VM widget 树）**：handler 命名空间是本计划的特殊情况（已通过前缀解决）

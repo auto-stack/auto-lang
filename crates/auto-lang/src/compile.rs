@@ -1,4 +1,4 @@
-﻿// =============================================================================
+// =============================================================================
 
 // Compile: New compilation API using AIE architecture
 
@@ -254,7 +254,7 @@ impl CompileSession {
 
     }
 
-    /// Plan 327: Add a source directory to the search path for module resolution.
+    /// Plan 317: Add a source directory to the search path for module resolution.
     /// Called by execute_autovm_with_path to seed the directory of the source file,
     /// so `use db` finds db.at relative to the source.
     pub fn add_source_dir(&mut self, dir: std::path::PathBuf) {
@@ -1039,7 +1039,7 @@ impl CompileSession {
     /// Plan 094: 鍚屾椂鍔犺浇 .at (root) 鍜?.vm.at (context) 鏂囦欢锛屽悎骞跺鐞嗐€?
 
     fn load_module(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
-        // Plan 327: If the module is already compiled (from a previous load or
+        // Plan 317: If the module is already compiled (from a previous load or
         // a different entry into a circular dependency), skip — don't recompile.
         // This allows legitimate circular deps (db use api: Note + api use db)
         // where types and functions cross-reference.
@@ -1359,7 +1359,7 @@ impl CompileSession {
             .unwrap_or_else(|_| root_path.to_string_lossy().to_string());
         if !self.compiled_module_paths.contains(&path_key) {
             let module_code = self.compile_module_to_bytecode(&module_source, &root_path.to_string_lossy())?;
-            // Plan 359 E1: retain a module if it exports functions OR declares
+            // Plan 348 E1: retain a module if it exports functions OR declares
             // top-level globals (var/const). Previously a const/var-only module
             // was dropped (empty exports), so its STORE_GLOBAL init code never
             // ran and the globals stayed invisible across module boundaries.
@@ -2962,7 +2962,7 @@ mod tests {
 
 
 
-        // Plan 327: circular deps are now allowed (skip, not error) —
+        // Plan 317: circular deps are now allowed (skip, not error) —
         // legitimate cross-references (db use api: Note + api use db) need
         // this. The module being loaded ("a") is already in loading_stack,
         // so load_module returns Ok(()) without re-loading.

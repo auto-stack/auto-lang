@@ -107,7 +107,7 @@ pub struct RustGenerator {
 // Plan 346: Thread-local store for the root widget's state field names + types.
 // Populated when the root widget (App) is generated; read by child widgets
 // (EditorPanel, etc.) so their structs include parent state fields for unified
-// state access (mirrors VM path's Plan 337 override_state_obj_id).
+// state access (mirrors VM path's Plan 320 override_state_obj_id).
 thread_local! {
     static ROOT_STATE_FIELDS: std::cell::RefCell<Vec<(String, String)>> =
         std::cell::RefCell::new(Vec::new());
@@ -530,7 +530,7 @@ impl RustGenerator {
         }
 
         // Plan 346: If this is a child widget (not App/root), add root state
-        // fields that it doesn't already have. This mirrors VM path's Plan 337
+        // fields that it doesn't already have. This mirrors VM path's Plan 320
         // unified state — child handlers can reference parent state fields.
         let is_root = widget.name == "App";
         if is_root {
@@ -1938,7 +1938,7 @@ impl RustGenerator {
             let name = &state.name;
             // Plan 346: include ALL parent state fields for child sync. The
             // child struct needs these fields so child handlers that reference
-            // parent state (via Plan 337 unified state in VM mode) can compile.
+            // parent state (via Plan 320 unified state in VM mode) can compile.
             fields.push(name.clone());
         }
         fields

@@ -1,4 +1,6 @@
-# Plan 336：List<Struct> 元素 ID 损坏 — nanbox tagging 修复
+# Plan 318：List<Struct> 元素 ID 损坏 — nanbox tagging 修复
+
+> 原编号 336；2026-07-23 因编号冲突改为 318（原号保留给 336-vue-gallery-autoui-widgets-showcase）
 
 > **For Claude:** 本计划源于 015-notes `--render=vm`:notes 列表项渲染不出来。Plan 335 修了两层 VmRef 解引用(read_state_as_vec + materialize_obj_ref),数据 len=3 到达视图层,但每个 note 项的 ID 被损坏,`note.title` 解析失败。本计划定位并修复上游的 nanbox tagging 损坏。
 
@@ -99,7 +101,7 @@ task.ram.push_nv(auto_val::encode_object(obj_id as u32));
 | `f21e7774` | `to_array()` identity | ✅(struct List 正确,int List 待 Phase 2) |
 | Plan 335 Phase 1(`92fc3ee8`) | `read_state_as_vec` VmRef deref | ✅(len=3 到达) |
 | `53b34c91` | `materialize_obj_ref` VmRef deref | ✅(必要,处理 GenericInstanceData VmRef) |
-| **本计划 Plan 336** | **上游 nanbox tagging(1M→3M 损坏)** | ⚠️ **当前渲染阻塞点** |
+| **本计划 Plan 318** | **上游 nanbox tagging(1M→3M 损坏)** | ⚠️ **当前渲染阻塞点** |
 
 前三个让数据流到视图层,但元素 ID 损坏导致 `materialize` 失败。本计划是打通渲染的最后一环。
 

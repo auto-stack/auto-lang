@@ -893,7 +893,7 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_22_generator_003_string_yields() { test_vm("22_generator/003_string_yields").unwrap(); }
 #[test] #[ignore] fn test_22_generator_004_indirect_return() { test_vm("22_generator/004_indirect_return").unwrap(); }
 
-// === 23_actor (Plan 327: Task/Msg actor handler execution + state) ===
+// === 23_actor (Plan 317: Task/Msg actor handler execution + state) ===
 #[test] #[ignore] fn test_23_actor_001_start_hook() { test_vm("23_actor/001_start_hook").unwrap(); }
 #[test] #[ignore] fn test_23_actor_002_message_handler() { test_vm("23_actor/002_message_handler").unwrap(); }
 #[test] #[ignore] fn test_23_actor_003_multi_message() { test_vm("23_actor/003_multi_message").unwrap(); }
@@ -901,7 +901,7 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_23_actor_005_state_write() { test_vm("23_actor/005_state_write").unwrap(); }
 #[test] #[ignore] fn test_23_actor_006_state_increment() { test_vm("23_actor/006_state_increment").unwrap(); }
 
-// === 24_generics (Plan 327: List<T> with custom struct elements) ===
+// === 24_generics (Plan 317: List<T> with custom struct elements) ===
 #[test] #[ignore] fn test_24_generics_001_list_struct() { test_vm("24_generics/001_list_struct").unwrap(); }
 #[test] #[ignore] fn test_24_generics_002_to_array() { test_vm("24_generics/002_to_array").unwrap(); }
 #[test] #[ignore] fn test_24_generics_003_filter() { test_vm("24_generics/003_filter").unwrap(); }

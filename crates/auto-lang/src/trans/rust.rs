@@ -908,7 +908,7 @@ impl RustTrans {
             _ => {}
         }
 
-        // Plan 355: The Auto VM exposes `StringBuilder` as a built-in type.
+        // Plan 347: The Auto VM exposes `StringBuilder` as a built-in type.
         // It has no Rust-native equivalent, so map it to the a2r-std runtime
         // implementation (`a2r_std::StringBuilder`). Emit it fully-qualified so
         // it resolves regardless of whether the glob `use a2r_std::*` import is
@@ -1034,7 +1034,7 @@ impl RustTrans {
         }
     }
 
-    /// Plan 355: Resolve the effective Rust type name for a function parameter,
+    /// Plan 347: Resolve the effective Rust type name for a function parameter,
     /// applying inferred types for untyped params. Untyped params default to
     /// `int` at parse time; if such a param is matched against `Ok`/`Err`
     /// patterns in the body (i.e. it is in `result_idents`), emit it as
@@ -1089,7 +1089,7 @@ impl RustTrans {
         }
     }
 
-    /// Plan 355: StringBuilder is the Auto VM's shared mutable output buffer.
+    /// Plan 347: StringBuilder is the Auto VM's shared mutable output buffer.
     /// When it is a function parameter, the transpiler must pass it by `&mut`
     /// reference (NOT by value + `.clone()`), because the parser threads a
     /// single accumulator through recursive calls whose appends must accumulate
@@ -1241,7 +1241,7 @@ impl RustTrans {
             Expr::CStr(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::Ident(name) => {
                 // Plan 151: Global variable access - add .lock().unwrap() pattern.
-                // Plan 355: reads must dereference the MutexGuard (`*G.lock()`)
+                // Plan 347: reads must dereference the MutexGuard (`*G.lock()`)
                 // so the value is usable in arithmetic, comparisons, indexing,
                 // and casts — otherwise Rust sees a `MutexGuard<i32>` and
                 // rejects `g + 1`, `g < n`, `g as usize`, etc. The assignment
@@ -1253,7 +1253,7 @@ impl RustTrans {
                 } else if let Some(rust_name) = Self::auto_type_to_rust(name.as_str()) {
                     write!(out, "{}", rust_name)
                 } else if name.as_str() == "StringBuilder" {
-                    // Plan 355: Auto VM `StringBuilder` type -> a2r-std runtime
+                    // Plan 347: Auto VM `StringBuilder` type -> a2r-std runtime
                     // type. Emitted fully-qualified so it resolves with or
                     // without the glob `use a2r_std::*` import (covers the
                     // `StringBuilder.new(...)` constructor call site).
@@ -1536,7 +1536,7 @@ impl RustTrans {
                                     Op::ModEq => "%=",
                                     _ => op.op(),
                                 };
-                                // Plan 355: emit the assignment as a block that
+                                // Plan 347: emit the assignment as a block that
                                 // binds the RHS to a local `let` BEFORE taking the
                                 // write lock. A `let` statement is a temporary
                                 // scope, so any MutexGuard the RHS creates (e.g.
@@ -3859,7 +3859,7 @@ impl RustTrans {
                             }
                             // Fall through — don't intercept, let later code handle it
                         }
-                        // Plan 355: Auto VM exposes integer bitwise operations as
+                        // Plan 347: Auto VM exposes integer bitwise operations as
                         // methods on int (`.and`, `.or`, `.xor`, `.shl`, `.shr`,
                         // `.sar`, `.not`). Rust has no inherent methods with these
                         // names on integers, so map them to the equivalent Rust
@@ -3923,7 +3923,7 @@ impl RustTrans {
                         }
                         "char_at" => {
                             // s.char_at(i) -> s.chars().nth((i) as usize).unwrap_or('\0') as i32
-                            // Plan 355: Auto's char_at returns the code point as
+                            // Plan 347: Auto's char_at returns the code point as
                             // an i32 (not a char), so the Rust equivalent must
                             // cast the char to i32. The index expression is also
                             // wrapped in parens before `as usize` because `as`
@@ -4163,7 +4163,7 @@ impl RustTrans {
                         }
                     }
                 }
-                // Plan 355: Auto VM exposes integer bitwise operations as
+                // Plan 347: Auto VM exposes integer bitwise operations as
                 // methods on int (`.and`, `.or`, `.xor`, `.shl`, `.shr`,
                 // `.sar`, `.not`). Rust has no inherent methods with these
                 // names on integers, so map them to the equivalent Rust
@@ -4233,7 +4233,7 @@ impl RustTrans {
                     write!(out, ")")?;
                     return Ok(());
                 }
-                // Plan 355: StringBuilder method dispatch. The a2r-std
+                // Plan 347: StringBuilder method dispatch. The a2r-std
                 // `StringBuilder` runtime type exposes methods with the same
                 // names as the Auto VM API (`append`, `append_char`, `build`),
                 // so we only need to bypass the generic name-remap table (which
@@ -4263,7 +4263,7 @@ impl RustTrans {
                 // non-trivial Rust output (not just a name remap).
                 "char_at" => {
                     // s.char_at(i) -> s.chars().nth((i) as usize).unwrap_or('\0') as i32
-                    // Plan 355: Auto's char_at returns the code point as an i32
+                    // Plan 347: Auto's char_at returns the code point as an i32
                     // (not a char), so the Rust equivalent must cast the char to
                     // i32. The index expression is wrapped in parens before
                     // `as usize` because `as` binds tighter than `+`, so
@@ -6028,7 +6028,7 @@ impl RustTrans {
             let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg)
                 && !self.is_str_slice_var(arg);
 
-            // Plan 355: Fallback auto-borrow for cross-module / imported
+            // Plan 347: Fallback auto-borrow for cross-module / imported
             // function calls. When the callee's parameter types are not in the
             // local cache (`str_flags` is None — typical for functions imported
             // via `use crate::<mod>:<fn>`), and the argument is a `String`-
@@ -6088,7 +6088,7 @@ impl RustTrans {
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
-            // Plan 355: StringBuilder params are passed by &mut reference. The
+            // Plan 347: StringBuilder params are passed by &mut reference. The
             // callee declares `sb: &mut a2r_std::StringBuilder`, so the caller
             // must pass `&mut sb` (never `sb.clone()` — that would break the
             // shared accumulator). This is independent of merge_mode.
@@ -6129,7 +6129,7 @@ impl RustTrans {
             if needs_mut_borrow {
                 write!(out, "&mut ")?;
             }
-            // Plan 355: StringBuilder params take &mut at the call site.
+            // Plan 347: StringBuilder params take &mut at the call site.
             if is_sb_param {
                 write!(out, "&mut ")?;
             }
@@ -7014,7 +7014,7 @@ impl RustTrans {
                         }
                     }
                 }
-                // Plan 359 H3: Auto-clone on plain identifier rebind of a
+                // Plan 348 H3: Auto-clone on plain identifier rebind of a
                 // non-Copy local (e.g. `var t = s` / `let t = s` where `s` is a
                 // String). Without this, a2r emits `let t = s;` — a Rust move —
                 // and any later use of `s` fails to compile (E0382: borrow of
@@ -7200,7 +7200,7 @@ impl RustTrans {
         // Parameters
         write!(sink.body, "(")?;
 
-        // Plan 355: Collect identifiers that are matched against Ok/Err
+        // Plan 347: Collect identifiers that are matched against Ok/Err
         // patterns inside this function body. Untyped params (which default to
         // `int` at parse time) that appear in this set are really `Result`
         // values, so emit them as `Result<String, String>`.
@@ -7245,7 +7245,7 @@ impl RustTrans {
                         self.rust_type_name(&param.ty)
                     )?;
                 } else if Self::is_sb_ref_type(&param.ty) {
-                    // Plan 355: StringBuilder params are shared mutable buffers
+                    // Plan 347: StringBuilder params are shared mutable buffers
                     // threaded through recursion — emit `mut sb: &mut a2r_std::StringBuilder`.
                     // The `mut` on the binding is required so the `&mut` reference
                     // can be re-borrowed (`&mut sb`) when forwarded to another
@@ -7321,7 +7321,7 @@ impl RustTrans {
         self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
 
         // Cache which params are Int type (need enum→i32 cast at call sites).
-        // Plan 355: exclude params whose effective type was inferred as Result
+        // Plan 347: exclude params whose effective type was inferred as Result
         // from Ok/Err pattern matching (they are not really Int).
         let int_param_flags: Vec<bool> = fn_decl.params.iter()
             .map(|p| {
@@ -7335,7 +7335,7 @@ impl RustTrans {
         // auto-wrap return type as Result<(), Box<dyn std::error::Error>>
         let fn_body_has_try = matches!(fn_decl.ret, Type::Void)
             && Self::has_error_propagate(&fn_decl.body.stmts);
-        // Plan 355: If a void-declared function body returns explicit
+        // Plan 347: If a void-declared function body returns explicit
         // `Ok(...)` / `Err(...)` values, infer a `Result<String, String>`
         // return type. This covers library functions written without an
         // explicit return-type annotation (e.g. `fn decode(...) { ... return Ok(s) }`).
@@ -7350,7 +7350,7 @@ impl RustTrans {
         let effective_ret_type = if fn_body_has_try {
             Type::Result(Box::new(Type::Void))
         } else if fn_body_returns_result {
-            // Plan 355: infer the Ok payload type from `return Ok(X)` in the
+            // Plan 347: infer the Ok payload type from `return Ok(X)` in the
             // body. Struct constructions (`Url { ... }`) produce
             // `Result<Url, String>`; string payloads fall back to the
             // historical `Result<String, String>`.
@@ -7364,7 +7364,7 @@ impl RustTrans {
         if fn_body_has_try {
             write!(sink.body, " -> Result<(), Box<dyn std::error::Error>>")?;
         } else if fn_body_returns_result {
-            // Plan 355: emit the inferred Ok type. rust_return_type_name maps
+            // Plan 347: emit the inferred Ok type. rust_return_type_name maps
             // Type::User(Url) -> "Url" and Type::StrOwned -> "String".
             let ok_ty = match &effective_ret_type {
                 Type::Result(inner) => inner.as_ref().clone(),
@@ -8046,7 +8046,7 @@ impl RustTrans {
                         // Single-file mode: bare module name (e.g., "types", "settings")
                         // Check if it's a known stdlib module or a local crate module.
                         //
-                        // NOTE (Plan 355): `regex` is intentionally NOT in this list.
+                        // NOTE (Plan 347): `regex` is intentionally NOT in this list.
                         // a2r_std has no `regex` module (the entry pointed at a phantom
                         // `a2r_std::regex`), so routing `use auto.regex` there always failed
                         // to compile. Treating `regex` like any other crate module lets the
@@ -9809,7 +9809,7 @@ impl RustTrans {
         false
     }
 
-    /// Plan 355: Detect whether a function body returns an explicit
+    /// Plan 347: Detect whether a function body returns an explicit
     /// `Ok(...)` / `Err(...)` value. The Auto source for some library
     /// functions (e.g. `fn decode(input str) { ... return Ok(...) }`) declares
     /// no return type but actually produces a `Result`. The transpiler must
@@ -9852,7 +9852,7 @@ impl RustTrans {
         false
     }
 
-    /// Plan 355 (url): Infer the Ok payload type for an un-annotated function
+    /// Plan 347 (url): Infer the Ok payload type for an un-annotated function
     /// whose body returns `Ok(...)` / `Err(...)`. Previously the inferred
     /// Result was always `Result<String, String>`, which miscompiles when the
     /// `Ok` payload is a struct (e.g. `fn parse(...) { return Ok(Url { ... }) }`
@@ -9951,7 +9951,7 @@ impl RustTrans {
         }
     }
 
-    /// Plan 355: Collect the names of identifiers that are used as the
+    /// Plan 347: Collect the names of identifiers that are used as the
     /// scrutinee of an `is`/`match` expression whose branches pattern-match on
     /// `Ok(...)` or `Err(...)`. Such identifiers must be `Result` values. This
     /// lets the transpiler infer a `Result` type for untyped function

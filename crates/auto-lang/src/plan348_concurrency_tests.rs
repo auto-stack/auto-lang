@@ -1,4 +1,4 @@
-//! Plan 359 Phase 5 (G1/G2/G3): Concurrency bug fixes.
+//! Plan 348 Phase 5 (G1/G2/G3): Concurrency bug fixes.
 //!
 //! - G1: `~{ ... }.go` (spawn) previously caused a stack underflow because the
 //!   `Expr::Go` codegen pushed a single Future value while the `SPAWN_GO`
@@ -9,7 +9,7 @@
 //!   accepted in type position, matching the existing `<T>` form.
 
 #[cfg(test)]
-mod plan359_concurrency_tests {
+mod plan348_concurrency_tests {
     use crate::run_with_capture;
 
     // ====================================================================

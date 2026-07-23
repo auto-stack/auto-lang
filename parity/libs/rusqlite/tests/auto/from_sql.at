@@ -78,7 +78,7 @@ fn check_str(n int, name str, status int, value str, expected str) {
 }
 
 /// Assert a bool coercion returned status 0 AND the expected bool value.
-/// (Plan 359 / B4 fixed bool crossing the module boundary, so the value
+/// (Plan 348 / B4 fixed bool crossing the module boundary, so the value
 /// accessor yields a plain bool; we compare bool == bool directly.)
 fn check_bool(n int, name str, status int, value bool, expected bool) {
     if status == 0 {

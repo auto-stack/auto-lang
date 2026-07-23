@@ -12,7 +12,7 @@
 /// `is_match(pattern, input)` returns `true` if `pattern` matches *anywhere* in
 /// `input` (unanchored search), else `false` — mirroring `regex::Regex::is_match`.
 /// (A `bool` crossing the Auto module boundary used to be corrupted by the VM,
-/// so this returned `int` (1/0); fixed by Plan 359 / B4 — `bool` now crosses
+/// so this returned `int` (1/0); fixed by Plan 348 / B4 — `bool` now crosses
 /// safely, including the `use auto.regex:` import used by the test driver.)
 /// `find(pattern, input)` returns the leftmost match as a string (or "" with
 /// no match), mirroring the matched text of `regex::Regex::find`.
@@ -39,10 +39,10 @@
 ///     success (mirroring serde_json's `POS`/`N`/`ERR` globals).
 ///  3. **`is_match` returns `bool`.** A `bool` crossing the module boundary to
 ///     the caller used to read back as a wrong value; that was fixed by Plan
-///     359 / B4, so the public entry point now returns a plain `bool`. (The
+///     348 / B4, so the public entry point now returns a plain `bool`. (The
 ///     Rust oracle asserts bools too, so both backends agree.)
 ///  4. **Control flow: nested if/else, accumulator vars, and `for + break`
-///     all work.** Plan 359 / C3/C4 fixed the VM bugs where an accumulator
+///     all work.** Plan 348 / C3/C4 fixed the VM bugs where an accumulator
 ///     `var` assigned inside an `if` could lose its assignment on return, and
 ///     where `for + break` miscompiled. `match_atom_against` now uses an
 ///     accumulator + single trailing return and `break`s out of its class
@@ -112,7 +112,7 @@ fn atom_len(pattern str, plen int, pp int) int {
 
 /// Test whether the atom at `pattern[pp]` matches a single char code `c`.
 /// Returns the atom end position on a match, or -1. Uses a single accumulator
-/// `result` assigned inside the branches and returned at the end (Plan 359 /
+/// `result` assigned inside the branches and returned at the end (Plan 348 /
 /// C3/C4 fixed the VM bug where an accumulator assigned in an `if` could lose
 /// its value on return, so we no longer need to return directly from each
 /// branch).

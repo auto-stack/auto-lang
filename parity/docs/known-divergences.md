@@ -18,7 +18,7 @@ Each entry has:
 
 ---
 
-## Current phase status (Plan 359, verified 2026-07)
+## Current phase status (Plan 348, verified 2026-07)
 
 The **L1-verified total is 241/241 (100%)** three-way consistent across eight
 real libraries: base64 (33), url (30), serde_json (56), regex (45), cli_app
@@ -58,7 +58,7 @@ all three backends); they shaped the API design.
   corrupted (field reads return the wrong value). Workaround: the url
   replication returns only `str`/`int` primitives across the module boundary
   (no `Url` record), so each accessor re-slices the raw URL string.~~
-  **Fixed in Plan 359 (Bug B1):** a `Url` struct now crosses the module
+  **Fixed in Plan 348 (Bug B1):** a `Url` struct now crosses the module
   boundary through `Result Ok(...)` with all fields readable. The url library
   was rewritten to return `Result[Url, str]` from `parse()`; the test reads
   struct fields (`u.scheme`) directly. The free-function accessors remain as
@@ -67,7 +67,7 @@ all three backends); they shaped the API design.
   - a2r: works (parity runner's `wrap_as_module` now promotes struct fields to
     `pub` so cross-module field reads compile)
   - Rust: n/a
-  - 状态: fixed (Plan 359 cleanup)
+  - 状态: fixed (Plan 348 cleanup)
 
 - **DIV-URL-VM-2 — `Err` string payload of a `Result` is corrupted when read
   via an `is`/`match` binding in the AutoVM.** The bound value comes back as a
@@ -85,7 +85,7 @@ all three backends); they shaped the API design.
   Workaround: the url replication uses free functions, not type methods.
   - 状态: documented (design avoids the path)
 
-### a2r transpiler (fixed in Plan 355)
+### a2r transpiler (fixed in Plan 347)
 
 - **DIV-URL-A2R-1 — `Result` Ok-type inference assumed `String`** for any
   un-annotated function returning `Ok(...)`, so `Ok(Url { ... })` produced
@@ -137,7 +137,7 @@ passes on all three backends); they shaped the scope and API design.
   primitives (i32, u32, bool, i64, u64, f64, String, Vec<...>, Option, tuples).
   `Connection` and `Statement` are opaque, stateful handles with no
   `VMConvertible` impl and no `RustStdlibObject` shim. Consequently the
-  Plan-355 brief's literal "call rusqlite via `use.rust`" path cannot work for
+  Plan-347 brief's literal "call rusqlite via `use.rust`" path cannot work for
   the connection/query types. The replication instead follows the proven
   parity-library pattern (base64 / url / serde_json / regex / sha2): a pure-Auto
   reimplementation of the deterministic slice, compared three-way against a

@@ -1,4 +1,4 @@
-//! Plan 327: Task actor state fields — regression tests.
+//! Plan 317: Task actor state fields — regression tests.
 //!
 //! State fields (`task T { count = 0 }`) persist across handler invocations
 //! on the actor's AutoVM task, accessed via LOAD_STATE_FIELD/STORE_STATE_FIELD.

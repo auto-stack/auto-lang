@@ -1021,7 +1021,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.http.response_text", 2213, Void),
             ("auto.http.response_html", 2214, Void),
             ("auto.http.response_bytes", 2215, Void),
-            // Plan 351: Redirect
+            // Plan 346: Redirect
             ("auto.http.response.redirect", 2219, Void),
             ("http.response.redirect", 2219, Void),
             // Plan 352: Session management

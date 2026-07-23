@@ -231,7 +231,7 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
                 }
             }
         }
-        // Plan 336: recurse into Dot's object so nested `self` refs rewrite.
+        // Plan 318: recurse into Dot's object so nested `self` refs rewrite.
         // E.g. `.note.title` = Dot(Dot(Ident("self"), "note"), "title"): the top
         // Dot doesn't match the Phase-1 self/state-field patterns (its object is a
         // Dot, not an Ident), so without recursing, the inner `self` survives and
@@ -266,7 +266,7 @@ pub fn handler_fn_name(pattern: &str) -> String {
     format!("handler_{}", bare)
 }
 
-/// Plan 337: namespaced handler fn name: `handler_<WidgetName>_<EventName>`.
+/// Plan 320: namespaced handler fn name: `handler_<WidgetName>_<EventName>`.
 /// E.g. `handler_App_SelectNote`, `handler_EditorPanel_Edit`.
 pub fn namespaced_handler_fn_name(widget_name: &str, pattern: &str) -> String {
     let full = handler_fn_name(pattern); // "handler_<Event>"
@@ -274,7 +274,7 @@ pub fn namespaced_handler_fn_name(widget_name: &str, pattern: &str) -> String {
     format!("handler_{}_{}", widget_name, bare)
 }
 
-/// Plan 337: state type name per widget: `<WidgetName>_State`.
+/// Plan 320: state type name per widget: `<WidgetName>_State`.
 pub fn state_type_name(widget_name: &str) -> String {
     format!("{}_State", widget_name)
 }
@@ -296,7 +296,7 @@ fn handler_param_type(widget: &AuraWidget, handler_bare: &str) -> Type {
 }
 
 /// Synthesize the widget's state `type <WidgetName>_State { ... }`.
-/// Plan 337: state type is namespaced by widget name so multiple widgets'
+/// Plan 320: state type is namespaced by widget name so multiple widgets'
 /// state types coexist in one module.
 fn synthesize_state_type(widget: &AuraWidget) -> TypeDecl {
     let members: Vec<Member> = widget
@@ -337,7 +337,7 @@ fn synthesize_state_type(widget: &AuraWidget) -> TypeDecl {
 }
 
 /// Synthesize a single widget handler as a real VM function statement.
-/// Plan 337: `widget_name` is used to namespace the handler fn name
+/// Plan 320: `widget_name` is used to namespace the handler fn name
 /// (handler_<WidgetName>_<EventName>) so multiple widgets coexist in one module.
 fn synthesize_handler_fn(
     widget_name: &str,
@@ -494,7 +494,7 @@ pub fn synthesize_widget_module(
 
     // 1. Imports (functions, types, enums) — declarations + module-level
     //    stores and use statements.
-    //    Order matters (Plan 336): Use → TypeDecl/EnumDecl → Store(__module_init)
+    //    Order matters (Plan 318): Use → TypeDecl/EnumDecl → Store(__module_init)
     //    → Fn/Ext.
     //    - Use first: registers auto_modules so `db.func()` calls generate
     //      linkable CALL relocs.
@@ -503,7 +503,7 @@ pub fn synthesize_widget_module(
     //      checks `generic_registry.has_template("Note")`; if Note isn't
     //      registered yet, it falls back to CREATE_NODE (node_id 3M) instead of
     //      CONSTRUCT_INSTANCE/CREATE_OBJ (object id 1M) — corrupting the element
-    //      id (Plan 336). Registering types first fixes that.
+    //      id (Plan 318). Registering types first fixes that.
     //    - Store wrapped in __module_init (Plan 333): runs module-level globals
     //      before Init.
     //    - Fn/Ext last: their bodies reference globals and types.
@@ -578,7 +578,7 @@ pub fn synthesize_widget_module(
     }
 
     // 2. Compile state types + handlers for ALL widgets (root + children).
-    //    Plan 337: single VM — all widgets' state types and handlers are compiled
+    //    Plan 320: single VM — all widgets' state types and handlers are compiled
     //    into one module. Handler fns are namespaced: handler_<Widget>_<Event>.
     //    State types are namespaced: <Widget>_State.
     //
@@ -634,7 +634,7 @@ pub fn synthesize_widget_module(
         }
     }
 
-    // Plan 336: return the codegen's populated generic_registry along with the
+    // Plan 318: return the codegen's populated generic_registry along with the
     // module. CONSTRUCT_INSTANCE (runtime) reads field_names from the VM's
     // generic_registry; if the widget VM doesn't inherit the registry that
     // compiled the types (Note), field_names fall back to "_unknown" and struct

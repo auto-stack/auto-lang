@@ -116,7 +116,7 @@ impl<'a> Disassembler<'a> {
                 let v = self.flash.read_u8(ip);
                 (format!("{}", v), 1)
             }
-            // Plan 336: PUSH_BOOL byte operand (0|1)
+            // Plan 318: PUSH_BOOL byte operand (0|1)
             OpCode::PUSH_BOOL => {
                 let v = self.flash.read_u8(ip);
                 (if v != 0 { "true".into() } else { "false".into() }, 1)
@@ -351,7 +351,7 @@ impl<'a> Disassembler<'a> {
             }
 
             // Async
-            // Plan 359 Task 22: CREATE_FUTURE now carries capture metadata:
+            // Plan 348 Task 22: CREATE_FUTURE now carries capture metadata:
             //   body_offset: u32, capture_count: u8, capture_name_idx: u16 *
             OpCode::CREATE_FUTURE => {
                 let offset_val = self.flash.read_u32(ip);

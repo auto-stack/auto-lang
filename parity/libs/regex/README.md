@@ -45,7 +45,7 @@ regex engine. Key, deliberate differences:
 ## Implementation notes (Auto VM workarounds)
 
 The current Auto VM has constraints this library works around (the same
-families hit by serde_json / url). Plan 359 fixed several of them; the
+families hit by serde_json / url). Plan 348 fixed several of them; the
 remaining load-bearing ones are:
 
 1. **Strings are passed as parameters, not module globals.** A module-level
@@ -62,7 +62,7 @@ remaining load-bearing ones are:
    on success — the same pattern serde_json uses with its `POS`/`N`/`ERR`
    globals.
 
-Plan 359 fixes that allowed workarounds to be dropped:
+Plan 348 fixes that allowed workarounds to be dropped:
 
 - **B4 — `is_match` now returns `bool`.** A `bool` crossing the module
   boundary to the caller used to read back as a wrong value; that is fixed,

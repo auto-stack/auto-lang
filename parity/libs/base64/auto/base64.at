@@ -6,7 +6,7 @@
 /// VM quirk workarounds used here:
 ///   * Bitwise *operator* syntax (`<<`, `&`, ...) is not supported; the VM
 ///     exposes them as int methods (`.shl`, `.and`, ...). (Chaining two methods
-///     in one expression used to miscompute, but that was fixed by Plan 359 /
+///     in one expression used to miscompute, but that was fixed by Plan 348 /
 ///     A1 — so `x.and(3).shl(4)` is now safe and used below.)
 ///   * `int.as(char)` does not produce a single-char string, so single
 ///     characters are built with `StringBuilder.new(n).append_char(code).build()`.
@@ -14,10 +14,10 @@
 ///     which is exactly what the encoder needs.
 ///   * Module-level `const` values are still not visible — a top-level
 ///     `const ALPHABET str = "..."` reads back as `0` even from within the same
-///     module (verified post-Plan-359: prints `0`, and `var str` globals suffer
+///     module (verified post-Plan-348: prints `0`, and `var str` globals suffer
 ///     the same failure — `.len()` returns the length of the *variable name*).
 ///     So the alphabet stays as a local `let` inside each function that needs
-///     it. (Plan 359 / E1 did NOT fix this in our build.)
+///     it. (Plan 348 / E1 did NOT fix this in our build.)
 
 /// Look up the alphabet index for a base64 character code, or -1 if the
 /// character is not a valid standard-alphabet digit. `=` (padding) returns -2.

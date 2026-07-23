@@ -2134,7 +2134,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             self.next(); // skip binary op
-            // Plan 327: Allow line continuation after || and && (and other
+            // Plan 317: Allow line continuation after || and && (and other
             // binary ops) so multi-line conditions work:
             //   if a.contains(x) ||
             //      b.contains(x) {
@@ -2912,7 +2912,7 @@ impl<'a> Parser<'a> {
             return self.group();
         }
 
-        // Plan 327: Anonymous function expression: fn(params) ret_type { body }
+        // Plan 317: Anonymous function expression: fn(params) ret_type { body }
         // Used as method args, e.g. notes.filter(fn(n Note) bool { n.id > 0 }).
         if self.is_kind(TokenKind::Fn) {
             self.next(); // consume 'fn'
@@ -2966,7 +2966,7 @@ impl<'a> Parser<'a> {
                     is_type = registry.borrow().is_type(&name);
                 }
             }
-            // Plan 327: Built-in container types (List, Array, Map) are always
+            // Plan 317: Built-in container types (List, Array, Map) are always
             // recognized as types so that List<Note>.new(...) parses as a
             // GenName generic instance rather than "List < Note" comparison.
             if !is_type && matches!(name.as_str(), "List" | "Array" | "Map") {
@@ -7862,7 +7862,7 @@ impl<'a> Parser<'a> {
             // This is a type alias: type List<T> = List<T, DefaultStorage>;
             self.next(); // Consume '='
 
-            // Plan 327: Record type alias: `type Note = { id: int; name: str }`
+            // Plan 317: Record type alias: `type Note = { id: int; name: str }`
             // The `=` is followed by `{` (record body), not a type name. Parse
             // the fields and create a UserType (same as `type Note { ... }`).
             if self.cur.kind == TokenKind::LBrace {
@@ -8328,7 +8328,7 @@ impl<'a> Parser<'a> {
         let name = self.parse_name()?;
         let name_pos = self.prev.pos;
 
-        // Plan 327: Support `name: Type` (colon-separated) in addition to
+        // Plan 317: Support `name: Type` (colon-separated) in addition to
         // `name Type` (space-separated). Record type aliases use colons.
         if self.is_kind(TokenKind::Colon) {
             self.next(); // consume ':'
@@ -8874,7 +8874,7 @@ impl<'a> Parser<'a> {
                         return self.parse_generic_instance(name);
                     }
                 }
-                // Plan 359 G2: Support square-bracket generic syntax in type
+                // Plan 348 G2: Support square-bracket generic syntax in type
                 // position (e.g., Handle[int], List[int], May[int]). This only
                 // applies when a `[` immediately follows a type-name identifier,
                 // so it does not conflict with array types (`[N]T`) which start
@@ -9015,7 +9015,7 @@ impl<'a> Parser<'a> {
         self.parse_generic_instance_delim(base_name, TokenKind::Lt, TokenKind::Gt)
     }
 
-    /// Plan 359 G2: Parse a generic type instance with an explicit delimiter
+    /// Plan 348 G2: Parse a generic type instance with an explicit delimiter
     /// pair. Supports both angle brackets `Ident<T>` and square brackets
     /// `Ident[T]` (e.g. `Handle[int]`, `List[int]`) in type position.
     fn parse_generic_instance_delim(

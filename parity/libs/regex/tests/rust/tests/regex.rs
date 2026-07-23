@@ -9,7 +9,7 @@
 //! simplified Auto matcher:
 //!   * `is_match` returns `bool`. (The Auto implementation used to return
 //!     `int` (1/0) because a `bool` crossing the Auto module boundary was
-//!     corrupted by the VM; fixed by Plan 359 / B4, so both backends now
+//!     corrupted by the VM; fixed by Plan 348 / B4, so both backends now
 //!     yield a plain `bool`.)
 //!   * `find` returns the matched text as a `String`, or `""` when there is no
 //!     match — matching the Auto `find`. An empty (zero-width) match also

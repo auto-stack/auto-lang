@@ -44,7 +44,7 @@ pub struct RouteMatch {
 /// Match a request (method, path) against a list of routes.
 /// Supports `:param` path parameter extraction (e.g. /api/notes/:id).
 pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<RouteMatch> {
-    // Plan 351: Split path and query string (e.g. /api/notes?page=1&size=10).
+    // Plan 346: Split path and query string (e.g. /api/notes?page=1&size=10).
     let (path_only, query_string) = match path.split_once('?') {
         Some((p, q)) => (p, q),
         None => (path, ""),
@@ -77,7 +77,7 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
             if let Some(param_name) = rs.strip_prefix(':') {
                 params.push((param_name.to_string(), ps.to_string()));
             } else if *rs == "*" || rs.starts_with('*') {
-                // Plan 351: Wildcard route — matches any remaining segments.
+                // Plan 346: Wildcard route — matches any remaining segments.
                 continue;
             } else if rs != ps {
                 matched = false;
@@ -95,7 +95,7 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
     None
 }
 
-/// Plan 351: Simple URL-decode (percent-encoding).
+/// Plan 346: Simple URL-decode (percent-encoding).
 fn url_decode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
@@ -653,7 +653,7 @@ fn echo_id(id int) int {{
         assert_eq!(body, "42", "int path param: full resp = {:?}", resp);
     }
 
-    /// Plan 327 Phase 3: SSE handler returning a generator (~Iter<int>).
+    /// Plan 317 Phase 3: SSE handler returning a generator (~Iter<int>).
     /// Each yield becomes an SSE data frame. Lazy evaluation means each
     /// next() runs only to the next yield (not the whole body upfront).
     #[test]
@@ -684,7 +684,7 @@ fn counter_handler() ~Iter<int> {{
         assert!(body.contains("data: 3"), "SSE frame 3: body={:?}", body);
     }
 
-    /// Plan 327 Phase 3 遗留: SSE handler that INDIRECTLY calls a generator
+    /// Plan 317 Phase 3 遗留: SSE handler that INDIRECTLY calls a generator
     /// (handler itself has no yield; it calls a generator fn). The handler
     /// returns the iter_id from the inner generator; SSE detection must still
     /// fire on that iter_id.
@@ -718,7 +718,7 @@ fn stream_handler() ~Iter<int> {{
         assert!(body.contains("data: 3"), "indirect SSE frame 3: body={:?}", body);
     }
 
-    /// Plan 327 Phase 4: concurrent SSE — two simultaneous connections to the
+    /// Plan 317 Phase 4: concurrent SSE — two simultaneous connections to the
     /// same streaming endpoint. Both must receive complete data. Under the old
     /// serial server, the second connection would block until the first's
     /// generator exhausted. With serve_async + spawn_local + yield_now, the
@@ -757,7 +757,7 @@ fn counter_handler() ~Iter<int> {{
             "conn2 incomplete: body={:?}", body2);
     }
 
-    /// Plan 327 Phase 4 validation: 015-notes-style CRUD on the async HTTP
+    /// Plan 317 Phase 4 validation: 015-notes-style CRUD on the async HTTP
     /// server. Exercises the same patterns as examples/ui/015-notes/src/back:
     ///   - list: returns []Note (array of structs → JSON array of objects)
     ///   - get:  :id path param + ?Note (Option → inner value or null)
@@ -826,7 +826,7 @@ fn create_note(title str, body str) Note {{
             "get title: body={:?}", body_get);
     }
 
-    /// Plan 327 final validation: 015-notes backend pattern with List<Note>
+    /// Plan 317 final validation: 015-notes backend pattern with List<Note>
     /// generic + module-level var + #[api] handler returning the list.
     /// This mirrors db.at's `var notes List<Note>` + `fn all_notes() []Note`.
     #[test]
@@ -1073,7 +1073,7 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
     }
 }
 
-/// Plan 327 Phase 4: Concurrent HTTP server using tokio async I/O.
+/// Plan 317 Phase 4: Concurrent HTTP server using tokio async I/O.
 ///
 /// Replaces the serial `serve_blocking_stdnet` for the Goroutine-style
 /// concurrency model. The tokio runtime is `worker_threads(1)` (lib.rs:14),
@@ -1178,7 +1178,7 @@ async fn handle_connection_async(
             if lower.starts_with("content-length:") {
                 content_length = lower[15..].trim().parse().unwrap_or(0);
             }
-            // Plan 351 stage 5: Request body size limit (default 10MB).
+            // Plan 346 stage 5: Request body size limit (default 10MB).
             const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
             if content_length > MAX_BODY_SIZE {
                 let resp = "HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: 27\r\nConnection: close\r\n\r\n{\"error\":\"body too large\"}";
@@ -1192,7 +1192,7 @@ async fn handle_connection_async(
             if lower.starts_with("content-type:") {
                 content_type = lower[13..].trim().to_string();
             }
-            // Plan 351 stage 4: Parse Cookie and Authorization headers.
+            // Plan 346 stage 4: Parse Cookie and Authorization headers.
             if lower.starts_with("cookie:") {
                 cookie_header = line[7..].trim().to_string();
             }
@@ -1378,7 +1378,7 @@ async fn handle_connection_async(
     }
 
     // Dispatch to handler via call_fn_by_name (synchronous VM execution).
-    // Plan 351 stage 2: Request logging + error handling.
+    // Plan 346 stage 2: Request logging + error handling.
     let request_start = std::time::Instant::now();
     let handler_task_id = vm.spawn_task(0, 65536);
     let n_args = build_handler_args(vm, handler_task_id, &route_match, &body, &content_type, &cookie_header, &auth_header);
@@ -1439,7 +1439,7 @@ async fn handle_connection_async(
             Err(e) => {
                 eprintln!("[HTTP] {} {} → 500 (handler '{}' error: {:?}, {}ms)",
                     req_method, req_path, route_match.fn_name, e, request_start.elapsed().as_millis());
-                // Plan 351 stage 2: Return a proper 500 JSON error response
+                // Plan 346 stage 2: Return a proper 500 JSON error response
                 // instead of silently dropping the connection.
                 let error_json = format!(
                     r#"{{"error":"internal server error","detail":"{}"}}"#,
@@ -1456,7 +1456,7 @@ async fn handle_connection_async(
 
     // Non-SSE: write JSON response.
     if let Some(result_json) = result_json {
-        // Plan 351 stage 2: Determine status code from response content.
+        // Plan 346 stage 2: Determine status code from response content.
         let is_error = result_json.starts_with("{\"error\":");
         let status = if is_error { "500 Internal Server Error" } else { "200 OK" };
         // Log successful request (non-SSE, non-error already logged above).
@@ -1523,7 +1523,7 @@ fn build_handler_args(
                 n_args += 1;
             }
 
-            // Plan 351: Push query params as a JSON object string if no body.
+            // Plan 346: Push query params as a JSON object string if no body.
             if !route_match.query_params.is_empty() && body.is_empty() {
                 let json_parts: Vec<String> = route_match.query_params.iter()
                     .map(|(k, v)| format!("\"{}\":\"{}\"", k.replace('"', "\\\""), v.replace('"', "\\\"")))
@@ -1539,7 +1539,7 @@ fn build_handler_args(
                 n_args += 1;
             }
 
-            // Plan 351: Push body.
+            // Plan 346: Push body.
             if !body.is_empty() {
                 let body_to_push = if content_type.contains("application/x-www-form-urlencoded") {
                     let pairs: Vec<String> = body.split('&')
@@ -1562,7 +1562,7 @@ fn build_handler_args(
                 n_args += 1;
             }
 
-            // Plan 351 stage 4: Push cookies + auth as a JSON metadata string.
+            // Plan 346 stage 4: Push cookies + auth as a JSON metadata string.
             // Format: {"cookies":{"key":"val"}, "auth":"Bearer xxx"}
             let cookies_json: String = if cookie_header.is_empty() {
                 "{}".to_string()

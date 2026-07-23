@@ -30,7 +30,7 @@
 ///
 /// ## Load-bearing VM workarounds (the same family as base64/regex/serde_json).
 ///
-/// Plan 359 fixed several VM bugs; one is taken advantage of here (A5: ints
+/// Plan 348 fixed several VM bugs; one is taken advantage of here (A5: ints
 /// now survive an extra call frame, so `append_hex_word` can delegate to
 /// `append_hex_byte`) and the others remain load-bearing in this build.
 ///
@@ -42,7 +42,7 @@
 ///     message schedule W are surfaced through accessor functions (`k_at`,
 ///     `w_at`) backed by module-level `var int` globals plus set/get helpers,
 ///     since the VM has no array/Vec type. (Const visibility was also a
-///     blocker historically; fixed in Plan 359 / E1.)
+///     blocker historically; fixed in Plan 348 / E1.)
 ///   * **`str.char_at(i)` returns the code point as `int`** (not a one-char
 ///     string), which is exactly what byte extraction from the message needs.
 ///   * **Strings are UTF-8.** `char_at` indexes code points; for ASCII inputs
@@ -732,7 +732,7 @@ fn append_hex_byte(sb StringBuilder, b int) {
 }
 
 /// Append the eight hex digits of 32-bit word w to sb (big-endian).
-/// Calls the `append_hex_byte` helper (Plan 359 / A5 fixed the call-frame
+/// Calls the `append_hex_byte` helper (Plan 348 / A5 fixed the call-frame
 /// corruption that originally forced this to be inlined byte-by-byte).
 fn append_hex_word(sb StringBuilder, w int) {
     var sh0 int = w.shr(24)

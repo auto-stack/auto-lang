@@ -95,7 +95,7 @@ pub struct DynamicComponent {
     /// Widget name, cached for efficient access.
     widget_name: String,
 
-    /// Plan 336: imported function/type declarations (back/api.at etc.) shared
+    /// Plan 318: imported function/type declarations (back/api.at etc.) shared
     /// with child widgets (EditorPanel needs delete_note/update_note from back.api).
     import_stmts: Vec<crate::ast::Stmt>,
 
@@ -210,7 +210,7 @@ impl DynamicComponent {
         let _logic = widget.logic();
 
         // 1. Create VmBridge from widget + imports + ALL child widgets.
-        //    Plan 337: single VM — child widgets' handlers compiled into the
+        //    Plan 320: single VM — child widgets' handlers compiled into the
         //    same module so they can be called when events fire.
         let child_widgets: Vec<crate::aura::AuraWidget> = registry.all().collect();
         let bridge = VmBridge::new_with_children(widget, &child_widgets, import_stmts.clone(), import_aliases, api_over_http)
@@ -720,7 +720,7 @@ impl DynamicComponent {
         self.on_with_input_for(&widget_name, event_name, input_value);
     }
 
-    /// Plan 337: dispatch event to a specific widget's handler in the single VM.
+    /// Plan 320: dispatch event to a specific widget's handler in the single VM.
     /// Resolves the widget's state_obj_id (root or child) and calls the
     /// namespaced handler fn (handler_<Widget>_<Event>).
     pub fn on_with_input_for(&mut self, widget_name: &str, event_name: &str, input_value: Option<String>) {
@@ -736,7 +736,7 @@ impl DynamicComponent {
             }
         }
 
-        // Plan 337: child widget handlers (EditorPanel.Edit) operate on parent
+        // Plan 320: child widget handlers (EditorPanel.Edit) operate on parent
         // state fields (editing, edit_title, edit_body defined in App's model).
         // The child's state_obj_id only carries props (note) for rendering.
         // So route ALL handlers to the ROOT state_obj_id so writes propagate to

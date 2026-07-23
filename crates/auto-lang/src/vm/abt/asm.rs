@@ -200,7 +200,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         }
 
         OpCode::SOURCE_LINE => 2,
-        // Plan 336: PUSH_BOOL has 1 byte operand (0|1)
+        // Plan 318: PUSH_BOOL has 1 byte operand (0|1)
         OpCode::PUSH_BOOL => 1,
     };
 
@@ -263,7 +263,7 @@ fn emit_operands(
         | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
         | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
         | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
-        | OpCode::PUSH_BOOL   // Plan 336: 1 byte operand (0|1)
+        | OpCode::PUSH_BOOL   // Plan 318: 1 byte operand (0|1)
             => {
                 let v = operand_u8(&instr.operands, 0)?;
                 bytecode.push(v);

@@ -62,7 +62,7 @@ use std::rc::Rc;
 pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
     match expr {
         // ========== 字面量表达式 ==========
-        // Plan 359 A3: I64/U64 literals must infer to their 64-bit types so that
+        // Plan 348 A3: I64/U64 literals must infer to their 64-bit types so that
         // downstream codegen stores them as 2-slot values. Previously both
         // collapsed to Int/Uint, which stranded the low word for large literals.
         Expr::Int(_) => Type::Int,

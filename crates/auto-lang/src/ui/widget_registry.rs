@@ -47,7 +47,7 @@ impl WidgetRegistry {
         self.widgets.is_empty()
     }
 
-    /// Plan 337: iterate all registered widgets (for single-VM compilation).
+    /// Plan 320: iterate all registered widgets (for single-VM compilation).
     pub fn all(&self) -> impl Iterator<Item = AuraWidget> + '_ {
         self.widgets.values().cloned()
     }

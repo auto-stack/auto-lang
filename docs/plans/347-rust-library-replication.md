@@ -1,5 +1,7 @@
 # Auto 语言 Rust 库复刻 Implementation Plan
 
+> 原编号 355；2026-07-23 因编号冲突改为 347（原号保留给 355-a2r-async-await-transpilation）
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 通过复刻 8 个常见 Rust 库（base64/url/serde_json/regex/sha2/rusqlite/reqwest/tokio），验证 AutoVM 脚本运行、a2r 转译发布、原始 Rust 三方行为一致性，将 Auto 的"脚本开发→转译发布"开发模式扩展到中等工程。

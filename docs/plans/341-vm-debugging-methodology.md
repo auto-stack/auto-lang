@@ -7,7 +7,7 @@
 ### 1.1 规模
 - **计划数量**：6 个 Plan（333-338）
 - **Commit 数**：~35 个
-- **排查层数**：最深达 6 层（Plan 338 的 List\<Struct\> runtime）
+- **排查层数**：最深达 6 层（Plan 322 的 List\<Struct\> runtime）
 - **总时长**：估计 8-12 小时（跨多个会话）
 
 ### 1.2 问题分类
@@ -38,12 +38,12 @@ auto run -r vm -B 3030
 # 分析...
 
 # 之后：<10 秒/迭代
-cargo test -p auto-lang --lib plan337_tests -- --nocapture
+cargo test -p auto-lang --lib plan320_tests -- --nocapture
 ```
 
 **效果**：迭代速度从 5-10 分钟降到 <10 秒，约 **30-60x 提升**。
 
-**关键**：UI 交互问题降级为纯 VM 测试问题是整个排查过程中最大的转折点。这个转折发生在 Plan 338 中期（用户建议"写一个模拟程序"）。
+**关键**：UI 交互问题降级为纯 VM 测试问题是整个排查过程中最大的转折点。这个转折发生在 Plan 322 中期（用户建议"写一个模拟程序"）。
 
 **改进方向**：**任何 UI bug 都应先尝试用 VM 脚本复现。** 如果 VM 脚本能复现，就永远不要在 UI 层排查。
 
@@ -101,7 +101,7 @@ eprintln!("call_depth={}", call_depth);
 
 #### ③ 错误假设导致错误方向
 
-**示例**：Plan 338 初期，假设 `to_array()` 是根因（修 identity），实际根因是 generic constructor 创建了错误的类型。
+**示例**：Plan 322 初期，假设 `to_array()` 是根因（修 identity），实际根因是 generic constructor 创建了错误的类型。
 
 **浪费**：至少 2 个迭代在错误方向上。
 

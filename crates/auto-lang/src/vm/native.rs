@@ -976,7 +976,7 @@ pub fn shim_assert_ne(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    // Plan 327: List.new([a, b, c]) receives ONE arg: an array_id (from
+    // Plan 317: List.new([a, b, c]) receives ONE arg: an array_id (from
     // CREATE_ARRAY). If all elements are Int, create ListData<i32> (backward
     // compat with existing List<int> tests). Otherwise (struct/string/etc),
     // store as Vec<Value> in arrays (supports any element type).
@@ -999,7 +999,7 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     if let Some(arr_ref) = vm.arrays.get(&(arg as u64)) {
         let arr = arr_ref.read().unwrap();
-        // Plan 337: empty lists default to ListData<Value> (not ListData<i32>)
+        // Plan 320: empty lists default to ListData<Value> (not ListData<i32>)
         // so struct pushes (List<Note>) work. Only use ListData<i32> when there
         // are actual int elements.
         if !arr.is_empty() && arr.iter().all(|v| matches!(v, Value::Int(_))) {
@@ -1010,7 +1010,7 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             let list_id = vm.insert_heap_object(list);
             task.ram.push_i32(list_id as i32);
         } else {
-            // Plan 337: use ListData<Value> for empty or mixed/struct lists.
+            // Plan 320: use ListData<Value> for empty or mixed/struct lists.
             let mut list: ListData<Value> = ListData::new();
             for v in arr.iter() {
                 list.push(v.clone());
@@ -1080,7 +1080,7 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             task.ram.push_i32(0);
             return Ok(());
         }
-        // Plan 337: ListData<Value> (struct element lists like List<Note>)
+        // Plan 320: ListData<Value> (struct element lists like List<Note>)
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
             list.push(elem_val);
             task.ram.push_i32(0);
@@ -1147,7 +1147,7 @@ pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             task.ram.push_i32(list.len() as i32);
             return Ok(());
         }
-        // Plan 337: ListData<Value> (struct element lists like List<Note>)
+        // Plan 320: ListData<Value> (struct element lists like List<Note>)
         if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
             task.ram.push_i32(list.len() as i32);
             return Ok(());
@@ -1806,7 +1806,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                         -1
                     }
                 } else if let Some(arr_ref) = vm.arrays.get(&list_iter.list_id) {
-                    // Plan 327: arrays fallback (Vec<Value> from List<T>.new or
+                    // Plan 317: arrays fallback (Vec<Value> from List<T>.new or
                     // [...] literals). Supports any element type (struct, str, etc).
                     let arr = arr_ref.read().unwrap();
                     if list_iter.current_index >= arr.len() as u32 {
@@ -2001,7 +2001,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 }
             }
             Iterator::Generator(gen_state) => {
-                // Plan 327 Phase 3: lazy generator next() driver.
+                // Plan 317 Phase 3: lazy generator next() driver.
                 //
                 // Each next() runs the generator task forward from its saved
                 // ip/bp/sp until the NEXT YIELD_VAL (or RET/Terminated). The

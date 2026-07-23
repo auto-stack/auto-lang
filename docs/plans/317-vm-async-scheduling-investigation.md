@@ -1,5 +1,6 @@
-# Plan 327: VM 真异步调度统一 — 调研报告 + 实施提案
+# Plan 317: VM 真异步调度统一 — 调研报告 + 实施提案
 
+> 原编号 327；2026-07-23 因编号冲突改为 317（原号保留给 327-015-notes-vm-render）
 > **Status**: 调研完成(2026-06-18);**Phase 1 已完成并合并**(actor handler 执行引擎,路径 B VM 内置调度);Phase 2-4 待实施
 > **背景**: 用户期望 `yield`/`~Iter`、`~{}`/`~T`/await、Task/Msg actor 三套异步机制能在 AutoVM 里统一工作,以支撑 HTTP 异步服务(SSE、并发)。本报告用最小 reproducer 敲定了每个机制的真实状态。
 > **关联**: Plan 312(HTTP server MVP,同步 std::net)、Plan 313(SSE Phase 3 未做)、Plan 321(yield/Iter,§5 明确不做异步)、Plan 121(Task/Msg 数据结构)、Plan 224(`~{}`/await codegen)

@@ -35,7 +35,7 @@
 /// constructors below and consumed only by the accessors in *this* module.
 /// Callers never read `Val` fields directly. (Historically this also sidestepped
 /// a VM bug where user-defined struct fields corrupted across module
-/// boundaries — DIV-URL-VM-1, **fixed in Plan 359 / Bug B1**. The struct
+/// boundaries — DIV-URL-VM-1, **fixed in Plan 348 / Bug B1**. The struct
 /// itself is still opaque by design, mirroring rusqlite's own encapsulation.)
 ///
 /// ## Result / error encoding
@@ -48,7 +48,7 @@
 ///       a `Result` payload still does not round-trip across the module
 ///       boundary. The status/value split below is therefore STILL needed for
 ///       the f64/f32 coercions.
-/// Plain (non-`Result`) returns — including `bool` (fixed in Plan 359 / Bug
+/// Plain (non-`Result`) returns — including `bool` (fixed in Plan 348 / Bug
 /// B4) and `int`/`str`/`float` — now cross the module boundary correctly, so
 /// each `_value` accessor returns its payload as the natural Auto type.
 /// The `_status`/`_value` split is kept for the FromSql coercions because of
@@ -280,7 +280,7 @@ fn from_f32_value(v Val) float {
 }
 
 // --- bool (`i64::column_result(value).map(|i| i != 0)`) -------------------
-// Returns true for truthy, false for falsy. (Plan 359 / B4 fixed bool crossing
+// Returns true for truthy, false for falsy. (Plan 348 / B4 fixed bool crossing
 // the Auto module boundary, so this yields a plain bool rather than 0/1 int.)
 
 fn from_bool_status(v Val) int {
@@ -335,7 +335,7 @@ fn from_option_status(v Val) int {
 }
 
 /// Convenience: true if this Value is Null, else false (mirrors `Option::is_none`).
-/// (Plan 359 / B4 fixed bool crossing the Auto module boundary, so this yields
+/// (Plan 348 / B4 fixed bool crossing the Auto module boundary, so this yields
 /// a plain bool rather than 0/1 int.)
 fn option_is_none(v Val) bool {
     if v.kind == 0 {
