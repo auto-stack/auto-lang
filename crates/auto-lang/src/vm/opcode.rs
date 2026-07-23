@@ -162,6 +162,12 @@ pub enum OpCode {
     RET = 0x71,
     CALL_NAT = 0x72,
     CALL_SPEC = 0x73,  // Dynamic dispatch: spec_name_idx:u16, method_name_idx:u16 -> call vtable
+    // Plan 369 Task 10: Python FFI native call with explicit runtime arg count.
+    // native_id:u16, arg_count:u8. Unlike CALL_NAT, this carries the call-site
+    // arg count so the Python shim pops the ACTUAL number of args — needed
+    // because C builtins (datetime.date, struct.pack) defeat inspect.signature
+    // and struct.pack is variadic. Only emitted for py-FFI natives.
+    CALL_PY = 0x5F,
 
     // === Concurrency ===
     SPAWN = 0x80,    // func_id: u32, arg_count: u8 -> task_id: u32
@@ -315,6 +321,7 @@ impl OpCode {
         0x5C, // SLICE
         0x5D, // CREATE_TUPLE
         0x5E, // GET_TUPLE_FIELD
+        0x5F, // CALL_PY (Plan 369 Task 10: py-FFI call with runtime arg count)
         // 64-bit integer arithmetic
         0x4C, 0x4D, 0x4E, 0x4F,
         // Control flow
@@ -488,6 +495,7 @@ impl OpCode {
             Self::RET => "ret",
             Self::CALL_NAT => "call.nat",
             Self::CALL_SPEC => "call.spec",
+            Self::CALL_PY => "call.py",
             Self::SPAWN => "spawn",
             Self::TASK_ID => "task.id",
             Self::YIELD_TASK => "yield.task",
@@ -671,6 +679,7 @@ impl OpCode {
             "ret" => Some(Self::RET),
             "call.nat" => Some(Self::CALL_NAT),
             "call.spec" => Some(Self::CALL_SPEC),
+            "call.py" => Some(Self::CALL_PY),
             "spawn" => Some(Self::SPAWN),
             "task.id" => Some(Self::TASK_ID),
             "yield.task" => Some(Self::YIELD_TASK),
@@ -803,7 +812,7 @@ impl OpCode {
             | Self::GET_FIELD | Self::PUSH_HANDLER => Some(2),
 
             // 3-byte operand (u16 + u8)
-            Self::CREATE_OBJ => Some(3),
+            Self::CREATE_OBJ | Self::CALL_PY => Some(3),
 
             // 2-byte operand (FN_PROLOG: n_args:u8, n_locals:u8)
             Self::FN_PROLOG => Some(2),

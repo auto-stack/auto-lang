@@ -79,37 +79,21 @@ impl PyFfiBridge {
                     VMError::FFI(format!("Python function '{}' not found: {}", func_name, e))
                 })?;
 
-                // Build Python argument tuple by popping from stack in reverse
-                let n = param_types.len();
+                // Build Python argument tuple by popping from stack in reverse.
+                // Plan 369 Task 10: use the ACTUAL call-site arg count stashed on
+                // the task by the CALL_PY handler, rather than the param_types count
+                // baked in at registration. The registration-time count comes from
+                // inspect.signature(), which fails for C builtins (datetime.date,
+                // struct.pack) and is wrong for variadics (struct.pack). All py-FFI
+                // params use Auto-type marshalling (NanoValue tag detection), so each
+                // arg is popped via pop_auto_py_arg regardless of the declared type.
+                let n = task.pending_native_arg_count as usize;
+                // Fallback for shims registered before CALL_PY existed (param count
+                // was baked into param_types). Prefer the runtime count when > 0.
+                let n = if n > 0 { n } else { param_types.len() };
                 let mut bound_args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(n);
-                for pt in param_types.iter().rev() {
-                    let py_val = match pt {
-                        PyType::Auto => pop_auto_py_arg(task, vm, py)?,
-                        PyType::Int => {
-                            let val = task.ram.pop_i32();
-                            val.into_pyobject(py).unwrap().into_any()
-                        }
-                        PyType::Float => {
-                            let val = task.ram.pop_f64();
-                            PyFloat::new(py, val).into_any()
-                        }
-                        PyType::Bool => {
-                            let val = task.ram.pop_i32();
-                            val.into_pyobject(py).unwrap().into_any()
-                        }
-                        PyType::String => {
-                            let str_idx = task.ram.pop_str_idx();
-                            let s = if let Ok(strings) = vm.strings.read() {
-                                strings.get(str_idx).cloned().unwrap_or_default()
-                            } else {
-                                Vec::new()
-                            };
-                            let s = String::from_utf8_lossy(&s).to_string();
-                            PyString::new(py, &s).into_any()
-                        }
-                        PyType::None => py.None().into_bound(py),
-                        _ => pop_auto_py_arg(task, vm, py)?, // List, Dict fallback to auto
-                    };
+                for _ in 0..n {
+                    let py_val = pop_auto_py_arg(task, vm, py)?;
                     bound_args.push(py_val);
                 }
                 bound_args.reverse();

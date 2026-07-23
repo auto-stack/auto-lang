@@ -6568,6 +6568,10 @@ impl Codegen {
                 }
 
                 // Check if it's a native function (either intrinsic or BIGVM_NATIVE)
+                // Plan 369 Task 10: track whether the resolved native is a py-FFI call,
+                // so the emit site can use CALL_PY (carrying runtime arg count) instead
+                // of CALL_NAT. Set true in the py_native_map / py_modules branches below.
+                let mut is_py_ffi_call = false;
                 let native_id = if let Some(name) = &func_name {
                     // Check intrinsics first (print, etc.)
                     if let Some(&id) = self.intrinsics.get(name) {
@@ -6603,10 +6607,12 @@ impl Codegen {
                         let mut reg = BIGVM_NATIVES.lock().unwrap();
                         if let Some(id) = reg.resolve_qualified(&qualified) {
                             drop(reg);
+                            is_py_ffi_call = true;
                             Some(id)
                         } else {
                             drop(reg);
                             let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
+                            is_py_ffi_call = true;
                             Some(id)
                         }
                     }
@@ -6632,10 +6638,12 @@ impl Codegen {
                         let mut reg = BIGVM_NATIVES.lock().unwrap();
                         if let Some(id) = reg.resolve_qualified(&qualified) {
                             drop(reg);
+                            is_py_ffi_call = true;
                             Some(id)
                         } else {
                             drop(reg);
                             let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
+                            is_py_ffi_call = true;
                             Some(id)
                         }
                     }
@@ -6982,8 +6990,19 @@ impl Codegen {
                         id
                     };
 
-                    self.emit(OpCode::CALL_NAT);
-                    self.code.extend_from_slice(&resolved_id.to_le_bytes());
+                    // Plan 369 Task 10: py-FFI calls use CALL_PY which carries the
+                    // call-site arg count as an extra byte, so the Python shim pops
+                    // the ACTUAL number of args (count cannot be introspected for
+                    // C builtins like datetime.date, and struct.pack is variadic).
+                    if is_py_ffi_call {
+                        self.emit(OpCode::CALL_PY);
+                        self.code.extend_from_slice(&resolved_id.to_le_bytes());
+                        let py_arg_count = call.args.args.len().min(255) as u8;
+                        self.code.push(py_arg_count);
+                    } else {
+                        self.emit(OpCode::CALL_NAT);
+                        self.code.extend_from_slice(&resolved_id.to_le_bytes());
+                    }
 
                     // Track return type for type-aware dispatch (e.g., print choosing STR vs I32)
                     if let Some(ref name) = func_name {

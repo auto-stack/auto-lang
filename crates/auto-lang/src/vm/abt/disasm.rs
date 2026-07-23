@@ -256,7 +256,7 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
 
         OpCode::SPAWN => 5,
 
-        OpCode::CREATE_OBJ => 3,
+        OpCode::CREATE_OBJ | OpCode::CALL_PY => 3,
 
         OpCode::CREATE_NODE => 5,
 
@@ -466,6 +466,13 @@ fn decode_operands(
             let key_index = flash.read_u16(ip);
             let field_count = flash.read_u8(ip + 2);
             (vec![AbtOperand::ImmU16(key_index), AbtOperand::ImmU8(field_count)], 3)
+        }
+
+        // Plan 369 Task 10: py-FFI call: u16 native_id + u8 arg_count
+        OpCode::CALL_PY => {
+            let native_id = flash.read_u16(ip);
+            let arg_count = flash.read_u8(ip + 2);
+            (vec![AbtOperand::NatIdx(native_id), AbtOperand::ImmU8(arg_count)], 3)
         }
 
         OpCode::BUILD_FSTR => {

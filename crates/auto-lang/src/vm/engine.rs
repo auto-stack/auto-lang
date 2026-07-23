@@ -5273,6 +5273,24 @@ impl AutoVM {
                         return Err(VMError::MissingNative(native_id));
                     }
                 }
+                // Plan 369 Task 10: Python FFI native call with explicit arg count.
+                // Reads native_id:u16, arg_count:u8. The arg_count is stashed on
+                // the task so the Python shim pops the ACTUAL number of args pushed
+                // at this call site (count cannot be baked into the shim because
+                // C builtins defeat inspect.signature and struct.pack is variadic).
+                OpCode::CALL_PY => {
+                    let native_id = self.flash.read_u16(task.ip);
+                    task.ip += 2;
+                    let arg_count = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+                    task.pending_native_arg_count = arg_count;
+
+                    if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                        shim(task, self)?;
+                    } else {
+                        return Err(VMError::MissingNative(native_id));
+                    }
+                }
                 OpCode::RET => {
                     // Spec: RET n_args
                     let n_args = self.flash.read_u8(task.ip) as usize;

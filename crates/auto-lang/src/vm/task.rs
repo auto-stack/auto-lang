@@ -76,6 +76,12 @@ pub struct AutoTask {
     // the catch handler's absolute instruction pointer; when a runtime error
     // is raised, the top frame is popped and execution jumps to its pc.
     pub handler_stack: Vec<HandlerFrame>,
+    // Plan 369 Task 10: Number of args pushed for the in-progress CALL_PY.
+    // Set by the engine's CALL_PY handler from the call-site arg-count byte so
+    // the Python shim pops the ACTUAL number of args at runtime — the count
+    // cannot be baked into the shim because C builtins (datetime.date,
+    // struct.pack) defeat inspect.signature and struct.pack is variadic.
+    pub pending_native_arg_count: u8,
 }
 
 /// Plan 010 (MS3-A): An entry on the task's try/catch handler stack.
@@ -117,6 +123,7 @@ impl AutoTask {
             waiting_sse_stream_id: None,
             waiting_http_request_id: None,
             handler_stack: Vec::new(),
+            pending_native_arg_count: 0, // Plan 369 Task 10: runtime arg count for py-FFI shims
         }
     }
 }

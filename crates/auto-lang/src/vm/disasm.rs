@@ -206,6 +206,12 @@ impl<'a> Disassembler<'a> {
                 let v = self.flash.read_u16(ip);
                 (format!("nat#{}", v), 2)
             }
+            // Plan 369 Task 10: py-FFI call: native_id:u16 + arg_count:u8
+            OpCode::CALL_PY => {
+                let v = self.flash.read_u16(ip);
+                let n = self.flash.read_u8(ip + 2);
+                (format!("py.nat#{}/{}", v, n), 3)
+            }
             OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED => {
                 let v = self.flash.read_u16(ip);
                 (format!("str[{}]", v), 2)
