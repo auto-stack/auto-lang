@@ -384,3 +384,94 @@ Plan 366 的 §2.1 提到的 `ui.click(.note_titled("Shopping List"))` 抽象选
 3. **Rust 模式（a2r）的 MCP 缺失**：`run_app_devtools`（静态组件）不启动 UI MCP server。如果需要 MCP 测 Rust 模式，需要给它也加 MCP 支持——这是额外工作。
 
 4. **CI 环境**：Headless 测试不需要显示服务器（纯 Rust 进程），适合 CI。MCP 测试需要 iced 窗口（需要 display server 或 virtual framebuffer）。
+
+---
+
+## 8. D-GAP 深入调研结果 + 修复方案（Phase 4）
+
+基于代码级深入调研，5 个 gap 的根因和修复方案如下。
+
+### 修复优先级和依赖关系
+
+```
+D-GAP-1 (semantic token) ←── D-GAP-2 (dark mode) ←── D-GAP-5 (accent)
+         │                                                    ↑
+         └────────────────────────────────────────────────────┘
+D-GAP-3 (AutoDownEditor) — 独立
+D-GAP-4 (store composable) — 独立，但影响最大
+```
+
+### D-GAP-1: 语义 CSS token — 修复难度：低
+
+**根因**：两处缺陷，都在 `ui/style/color.rs`：
+- `from_tailwind("primary")` 返回 Err（没有 semantic 名字匹配），导致 `bg-primary` class 被 `parser.rs:22` 静默丢弃
+- `Color::Primary.to_rgb8()` 走 `_ => (128,128,128)` fallback → 灰色
+
+**修复**（`color.rs` 两处编辑）：
+1. `from_tailwind` 加 semantic 名字匹配：`"primary" => Color::Primary` 等
+2. `to_rgb8` 给 semantic 变体硬编码 RGB：`Primary => (99,102,241)` 等
+
+### D-GAP-2: dark mode — 修复难度：中
+
+**根因**：`ui/` 下没有任何代码读 `dark_mode` 状态。颜色在 `iced_adapter::convert_color` 阶段已固化为 RGB。
+
+**修复**（`iced_adapter.rs` + `renderer.rs`）：
+1. 加 `static DARK_MODE: AtomicBool` thread_local
+2. `convert_color` 对 semantic 颜色根据 dark flag 选 light/dark RGB
+3. `renderer.rs` 渲染前从 VmBridge 读 `dark_mode` 状态设置 flag
+
+### D-GAP-3: AutoDownEditor — 修复难度：低
+
+**根因**：`aura_view_builder.rs` 没有 `autodown_editor` match arm，走 fallback → `View::Empty`。
+
+**修复**（`aura_view_builder.rs` 一行）：
+- 加 `"autodown_editor" | "autodown" => self.convert_textarea(props, events, bindings)`
+- iced renderer 已有 `View::Textarea → text_editor`（renderer.rs:1047），降级为纯文本编辑
+
+### D-GAP-4: store composable — 修复难度：高
+
+**根因**：VmBridge 不处理 `use store:` 声明。Store 的 state/handler 从未编译进 widget 的 VM。
+- `handler_codegen.rs:852-867` 过滤 import_stmts 只处理 `Stmt::Store`（局部变量），完全忽略 `Stmt::StoreDecl`
+- `vm_bridge.rs:284-303` 只从 `decl.model.fields` 构建状态，不含 store 字段
+
+**修复**（多文件，扩展现有 child widget 机制）：
+1. VmBridge `new_from_decls` 加 `stores: &[StoreDecl]` 参数
+2. `synthesize_from_decl` 扩展为编译 StoreDecl 的 handler（命名空间化）
+3. store state 字段合并到 root widget 的状态对象
+
+### D-GAP-5: accent 主题色 — 修复难度：中
+
+**根因**：依赖 D-GAP-1（semantic RGB）+ D-GAP-2（dark flag）。
+
+**修复**（`color.rs` + `iced_adapter.rs`）：
+1. 移植 `ACCENT_PALETTES` + `hsl_to_rgb` 到 `color.rs`
+2. `convert_color` 对 `Color::Primary` 查 thread_local accent name → 动态 RGB
+3. renderer 渲染前从 VmBridge 读 `accent_color` 设置 thread_local
+
+---
+
+## 9. 实施路线（Phase 4: D-GAP 修复）
+
+### 阶段 4a: D-GAP-1 semantic token + D-GAP-3 AutoDownEditor（1 天）
+- [ ] color.rs: from_tailwind 加 semantic 名字
+- [ ] color.rs: to_rgb8 给 semantic 变体 RGB 值
+- [ ] aura_view_builder.rs: autodown_editor → convert_textarea
+- [ ] 验证：简单 widget 在 VM 模式下有颜色 + 有编辑器
+
+### 阶段 4b: D-GAP-2 dark mode（1 天）
+- [ ] iced_adapter.rs: 加 DARK_MODE thread_local
+- [ ] convert_color: semantic 颜色双调色板（light/dark）
+- [ ] renderer.rs: 读 dark_mode 状态设 flag
+
+### 阶段 4c: D-GAP-5 accent 色（1 天）
+- [ ] color.rs: ACCENT_PALETTES + hsl_to_rgb
+- [ ] iced_adapter.rs: ACCENT_NAME thread_local
+- [ ] convert_color: Color::Primary → 动态 RGB
+- [ ] renderer.rs: 读 accent_color 设 flag
+
+### 阶段 4d: D-GAP-4 store composable（3-5 天）
+- [ ] vm_bridge.rs: new_from_decls 加 stores 参数
+- [ ] handler_codegen.rs: synthesize_from_decl 编译 StoreDecl
+- [ ] vm_bridge.rs: store state 合并到 root 状态对象
+- [ ] aura_view_builder.rs: .store.X 绑定解析
+- [ ] 验证：015-notes 在 VM 模式下启动成功
