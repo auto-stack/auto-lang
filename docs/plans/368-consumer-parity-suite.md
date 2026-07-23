@@ -305,26 +305,19 @@ git commit -m "feat(parity): add c_fs_app to d5 phase (Plan 367 F1)"
 >    **FU-1 已修复全部 4 个解析缺口**，`use auto.json`（及 http/net/async/llm）
 >    现在能成功加载。
 >
-> 2. **运行时层阻塞（FU-1 未解，新发现）**：即便能 `use auto.json`，VM 的
->    json 运行时**只是占位实现**——`json.parse(s)` 原样返回输入串（不解析），
+> 2. **运行时层阻塞（有正确修复方案，见 §"剩余任务实施方案" R-JSON）**：
+>    VM 的 json 运行时**只是占位实现**——`json.parse(s)` 原样返回输入串（不解析），
 >    每个 `json.get`/`as_string`/`as_int` 都重新解析文本串。VM 里**没有真正的
->    `JsonValue`/`serde_json::Value`**，方法形式 `v.get(k).as_string()` 完全
->    没接线（会 dispatch 成字符串方法）。而 a2r 用真正的 `serde_json::Value`。
->    实测：`json.as_int(json.get(v,"n"))` 对 `{"n":42}` 在 VM 返回 **0**（get 返回
->    带引号的 `"42"`，as_int 期望裸数字），在 a2r 返回 **42**——**三端发散**。
->    `json.type_of` 在 a2r 无映射；`json.len`/`has_key` 在 a2r 会生成不存在的
->    `len_str`/`has_key_str`（编译失败）。
+>    `JsonValue`/`serde_json::Value`**。而 a2r 用真正的 `serde_json::Value`。
+>    实测：`json.as_int(json.get(v,"n"))` 对 `{"n":42}` 在 VM 返回 **0**，在 a2r 返回 **42**——三端发散。
 >
->    **结论**：靠 `auto.json` 做三方一致目前**不可行**——VM 运行时是占位
->    string-roundtrip，与 a2r/native 的真 Value 语义根本不一致。这不是调用约定
->    问题，是 VM json shim 实现不完整（需把 `json.parse` 改成真正返回
->    `serde_json::Value` 并接线方法 dispatch，或改 VM 用 opaque handle）。
+>    **正确修复方案（R-JSON）**：照搬已有的 regex/url **opaque-handle 模式**（Plan 212），
+>    把 12 个 json shim 改成真 `serde_json::Value` 句柄实现——`json.parse` 返回堆句柄（i32），
+>    `json.get`/`as_int` 等在句柄上操作。基础设施（`RustStdlibObject` + 堆对象表 +
+>    opaque dispatch）已存在且经过验证，~250-350 行机械式翻译。**不是 workaround，
+>    是补齐缺失的运行时实现。**
 >
->    **可选出路**（本计划不做）：照搬 `parity/libs/serde_json` 的纯 Auto 手写
->    parser（不调 `auto.json`）——但那是"实现者模式"，失去 F2"消费者"意义。
->
->    **F2 状态：搁置**，等 VM json 运行时补齐（独立工作）。FU-1 已让 http/net
->    等模块可加载，对后续 http 消费者（如果 VM http 运行时是完整的）仍有价值。
+>    **F2 状态：待实施**（R-JSON 完成后即可做 c_json_app）。
 
 **目标：** 验证 Auto 通过 `auto.json` 调 serde_json 能力（parse/encode/查询）的应用，与 Rust serde_json 行为三方一致。
 
@@ -716,13 +709,196 @@ workaround 已全部去除（见下"已修的 bug"）。下表保留作历史记
 
 > **教训**：W6/W7 的"现象"大多是 W8 值丢失的次生表现，或工具输出误读。真正的根因是 W8（一处 CALL 返回类型查找漏了 native 兜底）。修 W8 后大部分 workaround 自动消失。
 
-#### 残留待修：W4-残差（跨模块 list 元素返回）
+#### 残留待修：W4-残差（跨模块用户函数返回类型查找）— 根因已定位，见 §R-W4
 
-- **现象**：被跨模块调用的函数里，`var p = parts[i]`（`parts` 是 `str.split` 的返回）
-  后 `p` 经返回路径回到调用方时变空。但 `parts[i].len()`（直接调方法、返回 int）正常，
-  `parts[0]` 单文件也正常——仅"跨模块 + list 元素 + 字符串返回"这条窄路径有问题。
-- **c_process_app 影响**：`parse_nth` 用逐字符 StringBuilder 绕过；`parse_count` 正常用
-  split。等此残留修好后，`parse_nth` 可改回自然 split 写法。
-- **优先级**：低（只影响这一个用例的写法美观，不影响正确性/覆盖）。
+- **现象**：被跨模块调用的函数（`use auto.<lib>: fn`）里，返回字符串元素时调用方拿到空值。
+  `parse_count`（返回 int）恰好"对"，`parse_nth`（返回 str from list）"错"——但两者返回类型
+  标记其实**都错**，只是 int 的情况恰好被后续表达式掩盖。
+- **根因（已精确定位）**：跨模块 CALL 的返回类型查找（`codegen.rs:7611`）用限定名
+  `reloc_name`（如 `c_process_app.parse_nth`）查 `fn_return_types` 表，但该表用**裸名**
+  （`parse_nth`）做 key（由 `enrich_fn_return_types_from_type_store` + `import_items` 填入）。
+  查不到 → 走 W8 的 `else` 兜底 → `infer_native_return_type` 也不认识用户函数 →
+  `last_expr_type` 残留参数编译后的旧值（常 Int/Void）→ 下游类型相关 emitter（POP、
+  PRINT 选择、RET 提升）错误 dispatch，丢值或打印错。
+- **正确修复（R-W4）**：CALL 返回类型查找加**裸名 fallback**——`fn_return_types.get(&reloc_name)
+  .or_else(|| reloc_name.rsplit('.').next().and_then(|bare| self.fn_return_types.get(bare)))`。
+  和 W8 同一家族、数据驱动（查 parser 已记录的权威返回类型），不是 workaround。
+- **修好后**：c_process_app 的 `parse_nth` 可改回自然 `str.split` + 循环内 return + 返回 ""。
 
 #### 已修的 bug（对照，确认仍在位）
+
+---
+
+## 剩余任务实施方案（2026-07-23，正确修复 — 无 workaround）
+
+> 本节是剩余未完成任务的**根因分析 + 正确解决方案 + 实施步骤**。
+> 所有方案都是修编译器/VM/stdlib 的根本问题，不用源码侧 workaround。
+
+### 实施顺序与依赖
+
+```
+R-W4 (跨模块返回类型) ─┐
+                       ├─→ R-COV (补覆盖用例)
+R-JSON (json 运行时) ──┼─→ F2 c_json_app
+                       └─→ R-F6GET (c_http_get + last_status)
+```
+
+R-W4 和 R-JSON 互不依赖，可先做 R-W4（小、快），再做 R-JSON（大、解锁多）。
+
+---
+
+### R-W4：修跨模块用户函数 CALL 返回类型查找
+
+**根因（精确定位）**：跨模块用户函数调用（`use auto.<lib>: fn`）后，codegen 查返回类型
+用限定 reloc 名（`c_process_app.parse_nth`）查 `fn_return_types`，但该表用裸名（`parse_nth`）
+做 key → 查不到 → `last_expr_type` 残留旧值 → 值被错误 dispatch。
+
+**正确修复（~5 行，单文件 `crates/auto-lang/src/vm/codegen.rs`）**：
+
+在 CALL 返回类型查找处（`codegen.rs:7611`，`if let Some(ret_ty) = self.fn_return_types.get(&reloc_name)`），
+把单次查找改成"先限定名，再裸名 fallback"：
+
+```rust
+let ret_ty = self.fn_return_types.get(&reloc_name)
+    .or_else(|| {
+        reloc_name.rsplit('.').next()
+            .filter(|bare| !bare.is_empty() && *bare != reloc_name.as_str())
+            .and_then(|bare| self.fn_return_types.get(bare))
+    });
+if let Some(ret_ty) = ret_ty {
+    // ... 原有 match ...
+} else {
+    // W8 的 native 兜底（infer_native_return_type）保持不变
+}
+```
+
+- `reloc_name.rsplit('.').next()` 从 `c_process_app.parse_nth` 取 `parse_nth`，
+  从 `str.upper` 取 `upper`（后者裸名也不在 fn_return_types，正确走 native 兜底）。
+- 裸名查 `fn_return_types` 命中（parser 已从共享 type_store 填入）→ 正确设置 `last_expr_type`。
+- **不是 workaround**：修的是类型推断源头（数据驱动，查权威返回类型），和 W8 对称。
+
+**验证**：
+- 把 `parity/libs/c_process_app/auto/c_process_app.at` 的 `parse_nth` 改回自然写法
+  （`var parts = s.split(" "); ...; return parts[i]` + 循环内 return + 返回 ""），
+  `auto-parity run c_process_app` 应 9/9。
+- 测试 `basic.at` 的越界用例期望改回 ""（去掉 `<none>` 占位）。
+- Rust oracle 的 `parse_nth` 返回 `String::new()`。
+- 全量 d5 不回归。
+
+**实施步骤**：
+1. 改 `codegen.rs` CALL 返回类型查找（加裸名 fallback）。
+2. `cargo build -p auto --release` + 跑 `parse_nth` 自然写法 standalone 验证。
+3. 改 `c_process_app.at`（自然 split + 循环内 return + ""）。
+4. 改 `basic.at`（"<none>"→""）+ Rust oracle。
+5. `auto-parity run c_process_app` 9/9 + 全量 d5。
+6. Commit。
+
+---
+
+### R-JSON：实现 json opaque-handle 运行时（解锁 F2）
+
+**根因**：`json.parse(s)`（`stdlib.rs:1947`）是占位——原样返回输入串。所有 `json.get`/
+`as_int` 等（`stdlib.rs:2230-2361`）都重新解析文本串。VM 里没有真 `JsonValue`，
+与 a2r 的真 `serde_json::Value` 语义根本不一致。
+
+**正确修复（照搬 Plan 212 的 regex/url opaque-handle 模式，~250-350 行）**：
+
+基础设施**已存在且经验证**：
+- `RustStdlibObject { type_name, value: Box<dyn Any> }`（`vm/ffi/rust_stdlib.rs:10`）
+- 堆对象表 `vm.insert_heap_object` / `vm.get_heap_object`（`engine.rs:596/619`）
+- opaque dispatch 表 `lookup_opaque_dispatch`（`native_catalog.rs:424`）
+- codegen 返回类型推断（`codegen.rs:9014+`）
+
+**改动清单**：
+1. **`crates/auto-lang/src/vm/native.rs`**：新增 12 个 `shim_json_opaque_*`（在 semver 块后），
+   照搬 `shim_re_opaque_*`/`shim_url_opaque_*` 模式。关键 shim：
+   - `shim_json_opaque_parse`：`serde_json::from_str` → 存 `Mutex<Value>` 句柄 → `push_i32(id)`
+   - `shim_json_opaque_get(handle, key)`：`val.get(key).cloned()` → 新句柄（miss → `Value::Null` 句柄）
+   - `shim_json_opaque_as_int(handle)`：`val.as_i64().unwrap_or(0)`
+   - `shim_json_opaque_as_string(handle)`：`val.as_str().unwrap_or("")`
+   - `shim_json_opaque_type_of(handle)`：match variant → "object"/"array"/...
+   - `shim_json_opaque_keys(handle)`：object keys → `ListData<i32>`
+   - 其余 `get_at`/`as_number`/`as_bool`/`is_null`/`has_key`/`len` 类似。
+2. **`crates/auto-lang/src/vm/native_catalog.rs`**：
+   - 加 12 个 `(27xx, NATIVE_JSON_OPAQUE_*, shim_*, "auto.json_opaque.*")` 条目。
+   - 加 `OPAQUE_DISPATCH_JSON` + `OPAQUE_DISPATCH_JSON_METHODS` + dispatch 查找 arm。
+3. **`crates/auto-lang/src/vm/ffi/stdlib.rs`**：删除 12 个占位 `#[rust_fn] shim_json_*`
+   （`1947-1951` parse + `2230-2361` get/as_*）。保留 `encode`/`prettify`/`minify`/`is_valid`
+   （这些是文本操作，不需句柄）。
+4. **`crates/auto-lang/src/vm/codegen.rs`**：加 `auto.json_opaque.*` 返回类型 arm
+   （parse/get/get_at/keys → NestedObject；as_int/len → Int；as_string/type_of → String；
+   as_number → Float；as_bool/is_null/has_key → Bool）。
+5. **`crates/auto-lang/src/vm/native.rs` `format_rust_stdlib_obj`（732）**：加
+   `"serde_json::Value"` arm → `serde_json::to_string(&val)`（让 `print(json_value)` 渲染）。
+6. **a2r 语义对齐**：a2r-std `len` 返回 0（非 -1），`get` miss → `Value::Null`，
+   `parse` error → `Value::Null`（不 panic）。VM 新实现必须匹配。
+
+**测试**：
+- 更新 `test/ffi_dual/003_json_encode_parse/`、`008_json_array/`、`009_json_keys/` 的
+  expected_output（`print(json.get(...))` 现在渲染 compact JSON 而非带引号文本）。
+- 新增 ffi_dual 用例：`as_int(get(obj,"n"))` 对 `{n:42}` 返回 42（之前 VM 返回 0）。
+- 实现 F2 c_json_app（见下）。
+
+**实施步骤**：
+1. 先实现 `parse` + `get` + `as_int` + `as_string`（最小可用，能跑 `as_int(get(v,"n"))`）。
+2. 验证 VM `as_int(get(parse('{"n":42}'),"n"))` 返回 42（之前 0）。
+3. 补齐其余 8 个 shim + catalog + dispatch + codegen arm + display。
+4. 更新 ffi_dual expected + 新增用例。
+5. 实现 F2 c_json_app（parity 三方）。
+6. Commit。
+
+**风险**：`print(json_value)` 的渲染会变（从带引号文本 → compact JSON），需更新 ffi_dual
+expected。但这是**正确行为**（匹配 a2r 的 `Value::Display`）。
+
+---
+
+### F2 c_json_app（R-JSON 解锁后）
+
+R-JSON 完成后，按原 F2 Task 描述实现：
+- `parity/libs/c_json_app/`：auto app + tests + Rust oracle + README
+- 消费者函数：`parse_get_field(s, key) str`、`parse_as_int(s, key) int`、
+  `parse_type(s) str`、`parse_keys(s) str`、`parse_array_elem(s, idx) str`
+- 用模块形式 `json.parse`/`json.get`/`json.as_int` 等（W8 修复后方法形式也行，
+  但模块形式更稳）。
+- ~10-14 用例，`auto-parity run c_json_app` 100%。
+- 加入 phase d5（或新 d7）。
+
+---
+
+### R-F6GET：补 c_http_get + last_status 断言
+
+**现状**：http_client_sync 只测 POST（3/3，固定 body）。GET 没测，`last_status` 状态码
+从没断言（HTTP parity 的核心语义缺口）。
+
+**正确方案**：
+1. **扩展 mock-server**：加一个 GET 路由（如 `GET /data` → 200 + 固定 body）。
+2. **c_http_get lib**（新 `parity/libs/c_http_get/`）：`fn fetch_body(url) str { return http.get(url).body() }`。
+   注意：`http.get` 返回 Response 句柄，需 `.body()` 取 body。验证 VM/a2r 都支持。
+3. **last_status 断言**：在 http_client_sync 的测试里加 `http.last_status()` 断言（应 200）。
+4. mock-server 加一个 `GET /notfound` → 404，测 last_status 404 路径。
+- 加入 phase d6。
+
+---
+
+### R-COV：补覆盖用例
+
+审计指出的高价值覆盖缺口（修完 R-W4/R-JSON 后补）：
+
+| 领域 | 缺口 | 新增用例 |
+|------|------|---------|
+| fs | `read_bytes`/`write_bytes`（`[]int` 列表跨边界）、`size`（i64 64位返回）、`delete`/`copy` | 加到 c_fs_app |
+| env | `env.remove`（set 的逆操作） | 加到 c_env_app |
+| text | 链式调用 `s.trim().lower().replace(...)`、`upper` | 加到 c_text_app |
+| json | parse/get/as_int/type_of/keys/array（R-JSON 后） | c_json_app 全覆盖 |
+
+每个新增用例都要有 Rust oracle 镜像 + 三方 parity 验证。
+
+---
+
+### 执行说明
+
+- 用 worktree `plan-368-remaining` 实施。
+- 顺序：R-W4（快）→ R-JSON（大）→ F2 → R-F6GET → R-COV。
+- 每个 R-* 先修根因，再把对应 lib 改回自然写法（去 workaround），最后补用例。
+- 全程无 workaround：任何失败都回去修编译器/VM，不在 `.at` 源码里绕。
+- 每步 commit + 全量 d5/d6 验证不回归。
