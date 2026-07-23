@@ -1334,7 +1334,31 @@ impl RustTrans {
             }
             Expr::Err(e) => {
                 write!(out, "Err(")?;
-                if self.current_fn_err_type.is_some() {
+                // Plan 013 (B14-followup): a concrete error enum variant
+                // (Type.Variant(...) where Type is a known enum/tag) must NOT
+                // be wrapped in Box::new — the function returns Result<_, E>
+                // with a concrete E, and Box<E> is a type mismatch. Detect this
+                // even when current_fn_err_type wasn't inferred (timing/order).
+                let is_concrete_enum_err = match e.as_ref() {
+                    Expr::Call(call) => {
+                        if let Expr::Dot(obj, _) = call.name.as_ref() {
+                            if let Expr::Ident(type_name) = obj.as_ref() {
+                                self.tag_types.contains(type_name)
+                                    || self.known_enum_names.contains(type_name)
+                                    || self.local_struct_types.contains(type_name)
+                            } else { false }
+                        } else { false }
+                    }
+                    Expr::Dot(obj, _) => {
+                        if let Expr::Ident(type_name) = obj.as_ref() {
+                            self.tag_types.contains(type_name)
+                                || self.known_enum_names.contains(type_name)
+                                || self.local_struct_types.contains(type_name)
+                        } else { false }
+                    }
+                    _ => false,
+                };
+                if self.current_fn_err_type.is_some() || is_concrete_enum_err {
                     // Concrete error type — no Box::new needed
                     self.expr(e, out)?;
                 } else if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
