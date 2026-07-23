@@ -7607,8 +7607,24 @@ impl Codegen {
                         source_pos: call.pos,
                     });
 
-                    // Plan 118 Phase 4: Function return type inference
-                    if let Some(ret_ty) = self.fn_return_types.get(&reloc_name) {
+                    // Plan 118 Phase 4: Function return type inference.
+                    // Plan 368 R-W4: try the reloc name first (intra-module calls,
+                    // native names, method relocs). For `use auto.<lib>: fn` imports
+                    // the reloc name is module-qualified ("c_process_app.parse_nth")
+                    // but the user fn's return type is registered under its BARE name
+                    // ("parse_nth") by enrich_fn_return_types_from_type_store (which
+                    // reads the shared type_store), so fall back to the last path
+                    // segment. Without this, cross-module user-fn calls mis-tag
+                    // last_expr_type with the stale value left by arg compilation,
+                    // dropping/mis-dispatching the returned value (W4 residual; same
+                    // family as the W8 native-method fix below).
+                    let ret_ty = self.fn_return_types.get(&reloc_name)
+                        .or_else(|| {
+                            reloc_name.rsplit('.').next()
+                                .filter(|bare| !bare.is_empty() && *bare != reloc_name.as_str())
+                                .and_then(|bare| self.fn_return_types.get(bare))
+                        });
+                    if let Some(ret_ty) = ret_ty {
                         self.last_expr_type = match ret_ty {
                             Type::Void => ObjectType::Void,
                             Type::Float => ObjectType::Float,
