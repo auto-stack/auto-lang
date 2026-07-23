@@ -327,3 +327,35 @@ bug is worked around in-source:
     to i32, mirroring the VM).
   - 状态: open (L3, Plan 359 Phase E Task E5). Fix plan in
     `docs/plans/359-auto-as-rust-script-rollout.md` §"Task E5".
+
+## Python Parity Divergences
+
+### DIV-PY-FLOAT-1: Python float return values are stringified
+
+- **库**: py_math, py_random, py_struct
+- **状态**: open
+- **原因**: `py_ffi.rs:666-682` stores floats as strings in the string pool (codegen allocates 1 slot, f64 needs 2). All float tests use `.to(int)` or exact string comparison as workaround.
+
+### DIV-PY-EXCEPT-1: Python exceptions not catchable in Auto
+
+- **库**: all py_* libraries
+- **状态**: open (language limitation)
+- **原因**: Python exceptions propagate as `FFI("Python call ... failed: ValueError: ...")` VM errors. There is no Auto-side try/catch mechanism for PyFFI errors. A Python exception crashes the AutoVM task.
+
+### DIV-PY-ITER-1: Manual iteration works but no for-loop over Python iterables
+
+- **库**: py_list
+- **状态**: open (language limitation)
+- **原因**: `py_call(lst, "__iter__")` + `py_call(iter, "__next__")` works for manual iteration. But Auto's `for x in py_list` does not work because Python lists are opaque handles, not Auto-native iterables.
+
+### DIV-PY-KWARGS-1: No keyword argument syntax
+
+- **库**: py_datetime, py_random
+- **状态**: open (language limitation)
+- **原因**: Auto has no `func(key=value)` syntax. All Python calls must use positional arguments. `timedelta(days=30)` → use `timedelta(30)` instead.
+
+### DIV-PY-AUTOLIST-1: Auto list literals don't marshal to Python list
+
+- **库**: py_random
+- **状态**: open
+- **原因**: `[1, 2, 3]` in Auto is a VM-internal list, not a Python list. `choice([1,2,3])` fails. Workaround: use Python functions that return lists (sorted, list), or pass strings as iterables.
