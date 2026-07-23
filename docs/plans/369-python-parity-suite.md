@@ -1203,3 +1203,135 @@ git commit -m "docs(parity): Python parity known-divergences (Plan 369 complete)
 - py_uuid 从 stub 扩展为完整测试（3-5 用例），三方一致率 100%
 - py_struct 扩展 `pack`/`unpack` 测试
 - 现有 py_math/py_random/py_struct 100% 不退化
+
+### P3 执行结果（已完成）
+
+| Task | 结果 |
+|------|------|
+| Task 10 (multi-arg) | ✅ CALL_PY opcode + 运行时 arg_count |
+| Task 11 (constants) | ✅ register_constant + is_callable 检查 |
+| Task 12 (object methods) | ✅ PyObjectHandle + py_call/py_getattr + a2py 映射 |
+
+py_datetime: 5/5 (100%), py_math: 14/14, py_random: 8/8, py_struct: 8/8 — 共 35/35 (100%)。
+
+**关键发现：** PyFFI 的多参数、常量导入、对象方法都已修复，但多个库的测试和 README 未更新——存在 stale workaround。
+
+---
+
+## 阶段 P4: 扩展已修复能力的测试（优先级 A+B）
+
+以下扩展利用 P3 已修复的 PyFFI 能力和已实现但未验证的 marshalling。无需新调研，直接实现。
+
+### Task 13: 更新 stale README + 激活 py_uuid
+
+**问题：** py_struct/py_uuid/py_datetime 的 README 描述了已修复的限制。
+
+- [ ] 更新 py_struct README：移除 "pack/unpack 不可用" 描述
+- [ ] 更新 py_uuid README：移除 "常量不可导入" 描述
+- [ ] 更新 py_datetime README：移除 "a2py 不支持 py_call" 描述
+- [ ] 激活 py_uuid：用 `use.py uuid: uuid5, NAMESPACE_DNS` + `uuid5(NAMESPACE_DNS, "example.com")` 实现完整测试（3-5 用例）
+- [ ] 运行 parity 验证
+
+### Task 14: py_struct 扩展 — pack/unpack 测试
+
+**前提：** 多参数 FFI 已修复（Task 10）。
+**挑战：** `struct.pack` 返回 `bytes`，需验证 PyFFI 如何 marshal bytes。
+
+- [ ] 探索：测试 `pack(">I", 258)` 在 AutoVM 中返回什么类型
+- [ ] 如果 bytes 被转为字符串：设计 hex 比较测试
+- [ ] 添加 3-5 个 pack/unpack 测试用例
+- [ ] 运行 parity 验证
+
+### Task 15: py_math 扩展 — 常量 + 更多函数
+
+**前提：** register_constant 已实现（Task 11）。
+
+- [ ] 添加 `math.pi`/`math.e` 常量测试（`.to(int)` 取整比较）
+- [ ] 添加 `math.gcd(12,8)`/`math.lcm(4,6)` 多参数测试（验证 Task 10 修复）
+- [ ] 运行 parity 验证
+
+### Task 16: py_random 扩展 — choice/uniform/shuffle
+
+- [ ] 添加 `random.choice(list)` 测试（返回 list 元素）
+- [ ] 添加 `random.uniform(a,b)` 测试（float→int workaround）
+- [ ] 尝试 `random.randrange(start,stop,step)` 3-arg 测试
+- [ ] 运行 parity 验证
+
+### Task 17: 新增 py_list — Python list 返回验证
+
+**目的：** 验证 PyFFI 的 `py_list_to_vm_heap` 是否正确工作。
+**Python 函数：** `sorted()`, `list()`, `range()` 等。
+
+- [ ] 探索：测试 `use.py builtins: sorted` 后 `sorted([3,1,2])` 返回什么
+- [ ] 如果 list 正确 marshal：添加索引、长度、遍历测试
+- [ ] 如果不正确：记录 divergence
+- [ ] 运行 parity 验证
+
+### Task 18: 新增 py_string — Python 字符串方法
+
+**目的：** 验证 Python 字符串方法通过 `py_call` 是否工作。
+
+- [ ] 测试 `py_call("hello", "upper")` → `"HELLO"`
+- [ ] 测试 `py_call("hello world", "split", " ")` → list
+- [ ] 测试 `py_call("hello", "replace", "l", "L")` → `"heLLo"`
+- [ ] 运行 parity 验证
+
+---
+
+## 阶段 P5: 新能力验证（优先级 C — 需要简单调研）
+
+以下能力需要新的 PyFFI 机制或验证现有机制是否足够。每个 Task 先探索，再决定是否可实现。
+
+### Task 19: float 返回值修复
+
+**问题：** `py_ffi.rs:666-682` 将 float 字符串化存入 string pool，而非用 `push_f64`（2-slot）。
+
+**根因：** codegen 对 py-FFI 返回值只分配 1 个 slot，但 f64 需要 2 slot。
+**方案：** 让 py-FFI 返回值为 float 时用 2-slot 编码，或将 float 以 int*100 存储后除回。
+
+- [ ] 调研 codegen 中 py-FFI 返回类型的 slot 分配
+- [ ] 实现修复或设计 workaround
+- [ ] 添加非整数 float 测试到 py_math
+- [ ] 运行 parity 验证
+
+### Task 20: 异常处理探索
+
+**目的：** 调研 Auto 能否捕获 Python 异常。
+
+- [ ] 测试：Python 函数抛出异常时，AutoVM 收到什么错误
+- [ ] 调研：Auto 的 `try`/`catch`（或 `is Result { Err(e) => ...}`）能否捕获 PyFFI 错误
+- [ ] 如果可行：设计异常处理测试
+- [ ] 如果不可行：记录为 known-divergence
+
+### Task 21: 迭代器探索
+
+**目的：** 调研 Auto 能否迭代 Python 可迭代对象。
+
+- [ ] 测试：`py_call(obj, "__iter__")` + `py_call(iter, "__next__")` 是否可手动迭代
+- [ ] 如果可行：设计手动迭代测试
+- [ ] 如果不可行：记录为 known-divergence
+
+### Task 22: 关键字参数探索
+
+**目的：** 调研 Auto 能否传递关键字参数给 Python。
+
+- [ ] 调研：`py_call` 是否支持 kwargs
+- [ ] 测试：`py_call(timedelta_type, "__call__")` with kwargs
+- [ ] 记录结果
+
+---
+
+## P4-P5 验证目标
+
+完成 P4 后：
+- py_uuid 从 stub 扩展为 3-5 用例（100%）
+- py_struct 扩展 pack/unpack（≥80%）
+- py_math 扩展常量+多参数（新增 4-6 用例）
+- py_random 扩展 choice/uniform（新增 3-4 用例）
+- py_list 新建（如果 marshalling 可用）
+- py_string 新建（如果 py_call 对 str 可用）
+- 所有 stale README 更新
+
+完成 P5 后（探索性）：
+- float 返回值修复或有文档化 workaround
+- 异常处理、迭代器、kwargs 的可行性明确记录
