@@ -2512,15 +2512,15 @@ fn run_file_dynamic_ui_inner(
     // A store is isomorphic to a child widget minus a view — we give it an
     // empty view so the existing child-widget synthesis machinery handles it.
     let mut store_as_child_decls: Vec<crate::ast::WidgetDecl> = Vec::new();
-    // Collect StoreDecls from both the main AST and imported modules
-    for stmt in ast.stmts.iter().chain(import_stmts.iter()) {
+    for stmt in &ast.stmts {
         if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+            // Convert StoreDecl → WidgetDecl with empty view
             let fake_widget = crate::ast::ui::WidgetDecl {
                 name: store_decl.name.clone(),
                 messages: store_decl.messages.clone(),
                 model: store_decl.model.clone(),
                 computed: store_decl.computed.clone(),
-                view: None,
+                view: None,  // stores have no view
                 on: store_decl.on.clone(),
                 bind: None,
                 props: Vec::new(),
@@ -2532,18 +2532,7 @@ fn run_file_dynamic_ui_inner(
     }
     // Merge store-as-child decls with actual child widget decls
     let mut all_child_decls = child_decls.clone();
-    let store_count = store_as_child_decls.len();
     all_child_decls.extend(store_as_child_decls);
-        store_count, child_decls.len(), import_stmts.len(), ast.stmts.len());
-    for (i, stmt) in import_stmts.iter().enumerate() {
-        let kind = match stmt {
-            crate::ast::Stmt::StoreDecl(_) => "StoreDecl",
-            crate::ast::Stmt::WidgetDecl(_) => "WidgetDecl",
-            crate::ast::Stmt::Use(_) => "Use",
-            crate::ast::Stmt::Fn(_) => "Fn",
-            _ => "other",
-        };
-    }
 
     // Plan 340: AUTO_VM_MERGE=0 (i.e. --no-merge) enables API-over-HTTP:
     // cross-module `#[api]` calls are rewritten at codegen time into HTTP
