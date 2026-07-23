@@ -202,20 +202,25 @@ pipeline/driver 均未开始。
 
 ### A. 真实移植错误（必须修复）
 
-| # | 文件 | 缺陷 | Rust 行为 | Auto 当前行为 | 严重度 |
+> ✅ = 已修复（2026-07-23，见提交 "fix plan-013 A-class defects"）。
+> 验证：tier.at 全部 5 个 resolve_model_id 用例 + all_tiers + name 默认值通过；
+> error.at/daemon.at 行为测试通过。loader.at/lib.at/client 为 a2r-first，语法
+> 验证通过，运行期行为待 a2r→cargo 路径。
+
+| # | 文件 | 缺陷 | Rust 行为 | Auto 修复前 | 状态 |
 |---|---|---|---|---|---|
-| A1 | `tier.at` | `resolve_model_id` 缺 nearest-tier 回退 | 精确匹配→否则最近的"≥tier"→否则最高"<tier" | 仅精确匹配，否则 None | **高**（3/4 Rust 测试会失败） |
-| A2 | `tier.at` | 缺 `all_tiers()` 函数 | 返回 5 个 tier 的有序数组 | 完全缺失 | 中（lib.at 还引用了它） |
-| A3 | `tier.at` | `ModelDefinition.new` 的 name 默认值 | `name = ""`（空） | `name = id` | 中（影响 display） |
-| A4 | `loader.at` | `auth_required` 丢了 `unwrap_or(true)` | 默认 true（缺 key 则 fail-fast） | 赋了 `?bool` 给 `bool`，默认 false | **高（安全相关）** |
-| A5 | `loader.at` | `parse_tier` 默认值 | `unwrap_or_default()`=**Min**（注释自相矛盾说 Mid） | 显式 Mid | 中（忠实了注释而非代码） |
-| A6 | `client/lib.at` | 缺 `Default` for AiClient | `with_url(daemon_url())`（honors $AAID_URL） | 无 | 中（公开 API 缺失） |
-| A7 | `client/lib.at` | 缺 wire 类型 re-export | `pub use ai_config::{Message,...}` | 仅 `use error/daemon` | 中（公开 API 缺失） |
-| A8 | `client/lib.at` | HTTP 传输错误未映射为 ClientError | `.map_err(ClientError::from)?` | `.send()` 无错误包装 | 中（错误不可表示） |
-| A9 | `client/lib.at` | `complete()` 重复读 body | 错误分支读 text，成功分支用 json | 两个分支都 `body_bytes()` | 低-中（若消费式读取则第二次为空） |
-| A10 | `client/error.at` | 缺 `From<reqwest::Error>` | `.into()` / `?` 依赖此转换 | 无 | 中（A8 的根因之一） |
-| A11 | `ai-config/lib.at` | re-export 是注释非代码 | `pub use ...` | `//` 注释罗列 | 中（A2 使其中一处还引用了不存在的符号） |
-| A12 | 全部文件 | 未移植任何 Rust 测试 | 37+ 测试（ai-config）+ 客户端测试 | 0 个 `#[test]` 移植 | 中（行为靠手测，无回归保护） |
+| A1 | `tier.at` | `resolve_model_id` 缺 nearest-tier 回退 | 精确匹配→否则最近的"≥tier"→否则最高"<tier" | 仅精确匹配，否则 None | ✅ 补全 gap-key 算法，5 用例通过 |
+| A2 | `tier.at` | 缺 `all_tiers()` 函数 | 返回 5 个 tier 的有序数组 | 完全缺失 | ✅ 已补，测试通过 |
+| A3 | `tier.at` | `ModelDefinition.new` 的 name 默认值 | `name = ""`（空） | `name = id` | ✅ 改为空，display_name 回退 id |
+| A4 | `loader.at` | `auth_required` 丢了 `unwrap_or(true)` | 默认 true（缺 key 则 fail-fast） | 赋了 `?bool` 给 `bool`，默认 false | ✅ 补 `is opt_bool {...; None->true}` |
+| A5 | `loader.at` | `parse_tier` 默认值 | `unwrap_or_default()`=**Min** | 显式 Mid | ✅ 改为 Min（忠实代码非注释） |
+| A6 | `client/lib.at` | 缺 `Default` for AiClient | `with_url(daemon_url())`（honors $AAID_URL） | 无 | ✅ 补 `static fn default()` |
+| A7 | `client/lib.at` | 缺 wire 类型 re-export | `pub use ai_config::{Message,...}` | 仅 `use error/daemon` | ✅ 补 `use ai_config: ...` |
+| A8 | `client/lib.at` | HTTP 传输错误未映射为 ClientError | `.map_err(ClientError::from)?` | `.send()` 无错误包装 | ✅ status==0 → ClientError.Http |
+| A9 | `client/lib.at` | `complete()` 重复读 body | 错误分支读 text，成功分支用 json | 两个分支都 `body_bytes()` | ✅ 注释说明各读一次（Auto 无 resp.json） |
+| A10 | `client/error.at` | 缺 `From<reqwest::Error>` | `.into()` / `?` 依赖此转换 | 无 | ✅ 补 `static fn from_http_error(msg)` |
+| A11 | `ai-config/lib.at` | re-export 是注释非代码 | `pub use ...` | `//` 注释罗列 | ✅ 改为 `use <module>: <symbols>` |
+| A12 | 全部文件 | 未移植任何 Rust 测试 | 37+ 测试（ai-config）+ 客户端测试 | 0 个 `#[test]` 移植 | ⏳ 部分：tier/provider/wire/client 的行为已用手写冒烟测试验证（未落库为 `#[test]`）；正式 #[test] 移植待 Auto test harness 接入 |
 
 ### B. VM/a2r 平台限制（记档，待平台改进）
 
@@ -229,8 +234,8 @@ pipeline/driver 均未开始。
 | B6 | 跨文件用户模块在独立 VM 运行不可见 | 只能 a2r 或内联测试 | 全部多文件 crate |
 | B7 | `pub const` 不支持 | 用公开函数替代 | daemon |
 | B8 | `use <stdlib>` 触发 stdlib 解析错误 | 全局直接调用，不 import | 全部 |
-| B9 | `daemon.at` Windows 检测用 `env OS` 而非 `cfg!(windows)` | 标准环境正确，精简环境脆弱 | daemon |
-| B10 | `daemon.at` `spawn` 未设 stdio=null | 守护进程可能继承父进程 stdio | daemon |
+| B9 | `daemon.at` Windows 检测用 `env OS` 而非 `cfg!(windows)` | 标准环境正确，精简环境脆弱 | daemon（已改进：`is_windows()` 检查 OS+ComSpec+PATH 分隔符三信号，更鲁棒；仍是运行期启发） |
+| B10 | `daemon.at` `spawn` 未设 stdio=null | 守护进程可能继承父进程 stdio | daemon（已文档化；`process.spawn` API 不支持 stdio 重定向，待平台扩展） |
 
 ### 补救优先级
 

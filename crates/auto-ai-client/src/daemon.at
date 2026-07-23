@@ -134,7 +134,7 @@ fn find_aaid_binary() ?str {
     }
 
     // 2. PATH lookup.
-    let exe_name = if env.get("OS").contains("Windows") || path_sep() == ";" {
+    let exe_name = if is_windows() {
         "aaid.exe"
     } else {
         "aaid"
@@ -160,13 +160,35 @@ fn find_aaid_binary() ?str {
     return None
 }
 
+/// Whether the current platform is Windows.
+///
+/// Auto's VM has no `cfg!(windows)` compile-time check, so this inspects
+/// several runtime signals (B9 robustness): the `OS` env var (Windows shells
+/// set `OS=Windows_NT`), the `ComSpec`/`COMSPEC` env var (points at cmd.exe),
+/// and the PATH separator convention. Any one of these suffices — the
+/// multi-signal approach is robust to stripped environments where a single
+/// signal (e.g. `OS`) may be unset.
+fn is_windows() bool {
+    if env.get("OS").contains("Windows") {
+        return true
+    }
+    let comspec = env.get("ComSpec")
+    if comspec.is_empty() == false {
+        if comspec.contains("cmd.exe") || comspec.contains("COMMAND.COM") {
+            return true
+        }
+    }
+    // PATH separator convention: Windows uses ';', Unix ':'.
+    let path = env.get("PATH")
+    if path.contains(";") && path.contains(":") == false {
+        return true
+    }
+    return false
+}
+
 /// The PATH separator (`;` on Windows, `:` elsewhere).
 fn path_sep() str {
-    // env.get("PATH") is universal; the separator is inferred from OS. We use
-    // a crude Windows check via the COMSPEC/OS env var since Auto has no
-    // cfg!(windows) equivalent in the VM.
-    let os = env.get("OS")
-    if os.contains("Windows") {
+    if is_windows() {
         return ";"
     }
     return ":"
@@ -186,7 +208,7 @@ fn which(exe str) ?str {
             let candidate = path.join(dir, exe)
             if fs.exists(candidate) {
                 // On Windows, also try with .exe if not already suffixed.
-                if candidate.ends_with(".exe") == false && path_sep() == ";" {
+                if candidate.ends_with(".exe") == false && is_windows() {
                     let with_exe = candidate + ".exe"
                     if fs.exists(with_exe) {
                         return Some(with_exe)
@@ -200,6 +222,13 @@ fn which(exe str) ?str {
 }
 
 /// Spawn the daemon binary as a detached background process.
+///
+/// PLATFORM LIMIT (B10): Rust detaches the daemon's stdio via
+/// `.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())`
+/// (daemon.rs:177-179). Auto's `process.spawn` takes only an arg list and
+/// exposes no stdio redirection, so the daemon may inherit the parent's
+/// stdout/stderr. The a2r→Rust path restores the null-stdio detachment; the
+/// pure-VM path leaves this to Auto's process.spawn defaults.
 fn spawn_daemon(aaid_path str) bool {
     // process.spawn returns a pid (>0) on success, <=0 on failure. Auto's
     // spawn takes an arg list; the daemon reads its own config, so no args.

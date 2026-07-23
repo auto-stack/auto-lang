@@ -25,4 +25,14 @@ ext ClientError {
             ClientError.Api(e) -> return f"API error: ${e}"
         }
     }
+
+    /// Construct a [ClientError.Http] from a reqwest error message.
+    ///
+    /// Mirrors Rust's `impl From<reqwest::Error> for ClientError`
+    /// (error.rs:30-34: `Self::Http(e.to_string())`). Auto has no `impl From`,
+    /// so callers wrap transport failures via this factory instead of `?` /
+    /// `.into()`. (plan-013 A10 fix.)
+    static fn from_http_error(msg str) ClientError {
+        return ClientError.Http(msg)
+    }
 }

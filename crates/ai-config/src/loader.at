@@ -288,6 +288,14 @@ fn parse_provider_blocks(node Node) Map<str, ProviderConfig> {
             auto_val.Kid.Node(child) -> {
                 let kind = opt_str(child, "kind")
                 if kind.is_empty() == false {
+                    // auth_required defaults to true when absent/unrecognized
+                    // (provider.rs:40 + loader.rs:240). Security-relevant: a
+                    // missing key then fails fast (resolve_key → None) instead
+                    // of yielding a "no-key-needed" placeholder.
+                    let auth = is opt_bool(child, "auth_required") {
+                        Some(b) -> b,
+                        None -> true
+                    }
                     let pc = ProviderConfig(
                         kind: kind,
                         base_url: opt_str(child, "base_url"),
@@ -295,7 +303,7 @@ fn parse_provider_blocks(node Node) Map<str, ProviderConfig> {
                         key_env: opt_str_opt(child, "key_env"),
                         models: opt_models(child, "models"),
                         max_concurrency: opt_uint_opt(child, "max_concurrency"),
-                        auth_required: opt_bool(child, "auth_required")
+                        auth_required: auth
                     )
                     providers.set(child.name, pc)
                 }
@@ -474,11 +482,15 @@ fn opt_models(node Node, key str) List<ModelDefinition> {
 
 /// Parse a tier name → ModelTier. Accepts snake_case ("max", "mid"), display
 /// ("Max", "Mid"), and auto-forge aliases ("large"=Pro, "heavy"=Max).
-/// Unknown → Mid (sane default).
+///
+/// Unknown → Min. NOTE: loader.rs:315 comments "unknown names default to Mid"
+/// but the code is `parse_name(s).unwrap_or_default()`, and ModelTier's
+/// `#[default]` is Min (tier.rs:18) — so the actual Rust behavior is Min.
+/// This port matches the **code** (Min), not the (self-contradictory) comment.
 fn parse_tier(s str) ModelTier {
     is ModelTier.parse_name(s) {
         Some(t) -> return t,
-        None -> return ModelTier.Mid
+        None -> return ModelTier.Min
     }
 }
 

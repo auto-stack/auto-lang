@@ -90,37 +90,73 @@ type ModelDefinition {
 
 ext ModelDefinition {
     /// Construct a new model definition with the given id and tier.
-    /// The display name defaults to the id.
+    /// The display name defaults to empty (matches Rust tier.rs:97-103, where
+    /// `name: String::new()`). Use [display_name] to get a user-facing name
+    /// that falls back to the id when name is empty.
     static fn new(id str, tier ModelTier) ModelDefinition {
-        return ModelDefinition(id: id, name: id, tier: tier)
+        return ModelDefinition(id: id, name: "", tier: tier)
     }
 
-    /// Construct with an explicit display name.
-    static fn with_name(id str, name str, tier ModelTier) ModelDefinition {
-        return ModelDefinition(id: id, name: name, tier: tier)
-    }
-
-    /// The display name (falls back to the id if empty).
+    /// The display name (falls back to the id if name is empty). Convenience
+    /// helper; the Rust original has no equivalent but it is a safe addition.
     fn display_name() str {
         if self.name.is_empty() {
-            self.id
-        } else {
-            self.name
+            return self.id
         }
+        return self.name
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// all_tiers
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// All five tiers in weakest→strongest order (Min, Lite, Mid, Pro, Max).
+pub fn all_tiers() List<ModelTier> {
+    return [ModelTier.Min, ModelTier.Lite, ModelTier.Mid, ModelTier.Pro, ModelTier.Max]
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Tier resolution helper
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Resolve a [ModelTier] to a concrete model id from a list of models.
-/// Returns the first model whose tier matches, or None if no match.
-pub fn resolve_model_id(tier ModelTier, models List<ModelDefinition>) ?str {
+/// Resolve a desired tier to a concrete model id from a list of available
+/// models. Exact-tier match first; else the **nearest** available tier,
+/// preferring at-or-above (so a Pro request still gets served when only Max is
+/// configured, and a Mid request with Lite+Pro gets Pro).
+///
+/// Faithful port of tier.rs:121-140. The fallback picks the model minimizing a
+/// gap key: non-negative gaps (at-or-above) sort by their own value; negative
+/// gaps (below) are pushed below all non-negative ones via `1000 + |gap|`.
+pub fn resolve_model_id(desired ModelTier, models List<ModelDefinition>) ?str {
+    if models.len() == 0 {
+        return None
+    }
+    // 1. Exact tier match.
     for m in models {
-        if m.tier.order() == tier.order() {
+        if m.tier.order() == desired.order() {
             return Some(m.id)
         }
     }
-    None
+    // 2. Closest available: prefer the nearest tier at-or-above desired, else
+    //    the highest below. Pick the model minimizing the gap key.
+    var best ?ModelDefinition = None
+    var best_key int = 0
+    var first = true
+    let desired_order int = desired.order()
+    for m in models {
+        let m_order int = m.tier.order()
+        let gap = m_order - desired_order
+        // Prefer non-negative gaps (at-or-above) by treating them as cheaper.
+        let key = if gap >= 0 { gap } else { 1000 + (0 - gap) }
+        if first || key < best_key {
+            best = Some(m)
+            best_key = key
+            first = false
+        }
+    }
+    is best {
+        Some(m) -> return Some(m.id),
+        None -> return None
+    }
 }

@@ -27,6 +27,7 @@
 
 use error: ClientError
 use daemon
+use ai_config: CompletionRequest, CompletionResponse, ContentBlock, Message, ToolCall, ToolDefinition, Usage
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AiClient
@@ -58,6 +59,13 @@ ext AiClient {
         return AiClient(url: url)
     }
 
+    /// Default: honor `$AAID_URL` instead of hardcoding the default port, so
+    /// tests and callers that set the env var aren't surprised (plan 011 L6).
+    /// Mirrors Rust's `impl Default for AiClient` (lib.rs:210-216).
+    static fn default() AiClient {
+        return AiClient.with_url(daemon.daemon_url())
+    }
+
     /// The daemon URL this client talks to.
     fn url() str {
         return self.url
@@ -81,11 +89,20 @@ ext AiClient {
             .send()
 
         let status = resp.status_code()
+        // A failed connect/transport yields a non-2xx (or error) response here;
+        // map transport failures to ClientError.Http, non-2xx bodies to Api.
         if status < 200 || status >= 300 {
+            if status == 0 {
+                return Err(ClientError.Http(f"request to ${endpoint} failed"))
+            }
+            // Read the body ONCE (A9 fix — Rust reads text only in the error
+            // branch and uses resp.json() for success; Auto has no json() on
+            // Response, so we read bytes once and reuse).
             let text = bytes_to_str(resp.body_bytes())
             return Err(ClientError.Api(f"daemon ${status}: ${text}"))
         }
 
+        // Success: read the body once and parse it.
         let text = bytes_to_str(resp.body_bytes())
         is json.decode[CompletionResponse](text) {
             Ok(parsed) -> return Ok(parsed),
@@ -119,6 +136,12 @@ ext AiClient {
         var model = ""
         var error_msg ?str = None
 
+        // Read the SSE stream chunk by chunk. NOTE: Auto's HTTPStream.next()
+        // returns str (not Result), so per-chunk transport errors (which Rust
+        // maps to ClientError::Http at lib.rs:132) cannot be surfaced here —
+        // a failed chunk arrives as an empty string and is skipped. This is a
+        // platform limit (B-class); the a2r→Rust path restores full error
+        // handling via futures::StreamExt.
         for stream.is_done() == 0 {
             let chunk = stream.next()
             if chunk.is_empty() == false {
