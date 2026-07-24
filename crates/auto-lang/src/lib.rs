@@ -2403,6 +2403,14 @@ fn run_file_dynamic_ui_inner(
     let ast = parser.parse()?;
 
     // 2. Extract first AuraWidget (and keep its WidgetDecl — PR-3b Step 4).
+    // Plan 367 P2-3: register the root module's `view fn` fragments before
+    // extracting the root widget's view tree, so fragment calls inline-expand.
+    crate::aura::extract::clear_view_fragments();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            crate::aura::extract::register_view_fragment(frag);
+        }
+    }
     let mut root_decl: Option<crate::ast::WidgetDecl> = None;
     let mut widget = None;
     for stmt in &ast.stmts {
@@ -2461,6 +2469,18 @@ fn run_file_dynamic_ui_inner(
                 let mod_session = CompilerSession::ui();
                 let mut mod_parser = Parser::from(module_code.as_str()).with_session(mod_session);
                 if let Ok(mod_ast) = mod_parser.parse() {
+                    // Plan 367 P2-3: register this module's `view fn` fragments
+                    // BEFORE extracting any widget view trees below. A widget in
+                    // the same module (e.g. NavTree in sidebar.at) calls a
+                    // fragment (e.g. NoteItem); extract_widget_from_decl inlines
+                    // those calls only if the fragment is in the VIEW_FRAGMENTS
+                    // thread_local. Without this the call stays as an unexpanded
+                    // component node and renders empty in VM mode.
+                    for stmt in &mod_ast.stmts {
+                        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+                            crate::aura::extract::register_view_fragment(frag);
+                        }
+                    }
                     for stmt in &mod_ast.stmts {
                         if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                             if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
