@@ -660,7 +660,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Leaf/atom widgets with no AuraNode children — fall back to the
             // untracked converter. They have no nested text to probe (Task 9
             // scope is text interpolation only).
-            "button" | "btn" => self.convert_button(props, events, bindings),
+            "button" | "btn" => self.convert_button(props, events, children, bindings),
             "input" => self.convert_input(props, events, bindings),
             "textarea" => self.convert_textarea(props, events, bindings),
             // Plan 370 D-GAP-3: AutoDownEditor → textarea (plain-text degradation)
@@ -1143,7 +1143,7 @@ impl<'a> AuraViewBuilder<'a> {
             "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
                 self.convert_text_element(tag, props, children, bindings)
             }
-            "button" | "btn" => self.convert_button(props, events, bindings),
+            "button" | "btn" => self.convert_button(props, events, children, bindings),
 
             // Layout wrappers
             "center" => self.convert_center(props, children, bindings),
@@ -1686,10 +1686,12 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let label = self.extract_string_with(props, "text", bindings)
             .or_else(|| self.extract_string_with(props, "label", bindings))
+            .or_else(|| self.extract_children_text(children, bindings))
             .unwrap_or_else(|| "Button".to_string());
 
         // `variant` selects a base style preset (Tailwind classes); the user's
@@ -2449,6 +2451,27 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Extract a string property with loop variable bindings support.
+    /// Extract text content from child nodes (for elements like button whose
+    /// label comes from inner `text` children rather than a primary prop).
+    /// Walks children, resolving each text element's "text"/literal content
+    /// with the given bindings, and joins them. Returns None if no text found.
+    fn extract_children_text(&self, children: &[AuraNode], bindings: &Bindings) -> Option<String> {
+        let parts: Vec<String> = children.iter().filter_map(|c| match c {
+            AuraNode::Element { tag, props, .. }
+                if matches!(tag.as_str(), "text" | "label" | "h1" | "h2" | "h3" | "p" | "span") =>
+            {
+                self.extract_string_with(props, "text", bindings)
+                    .or_else(|| self.extract_string_with(props, "label", bindings))
+            }
+            AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
+            AuraNode::Text(AuraTextContent::Interpolated { template, bindings: tpl_bindings }) => {
+                Some(self.resolve_interpolation_with(template, tpl_bindings, bindings))
+            }
+            _ => None,
+        }).collect();
+        if parts.is_empty() { None } else { Some(parts.join(" ")) }
+    }
+
     fn extract_string_with(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -2625,6 +2648,50 @@ mod tests {
                 assert_eq!(content, "Hello World");
             }
             _ => panic!("Expected View::Text"),
+        }
+    }
+
+    /// REGRESSION: a button whose label comes from inner `text` children
+    /// (not a primary prop) must render those children's text as its label.
+    ///
+    /// This is the NoteItem pattern from 015-notes (sidebar.at):
+    ///   button { text note.title { ... } text note.time { ... } }
+    /// Before the fix, convert_button ignored children entirely, so the note
+    /// title never appeared in the rendered sidebar.
+    #[test]
+    fn test_button_label_from_children() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        // button with a text child (literal string as the "text" prop)
+        let text_child = AuraNode::Element {
+            tag: "text".to_string(),
+            props: {
+                let mut m = HashMap::new();
+                m.insert("text".to_string(), AuraPropValue::Expr(Expr::Str("Welcome".into())));
+                m
+            },
+            events: HashMap::new(),
+            children: Vec::new(),
+            span: None,
+            debug_id: None,
+        };
+        let button = AuraNode::Element {
+            tag: "button".to_string(),
+            props: HashMap::new(), // no "text"/"label" prop — label must come from children
+            events: HashMap::new(),
+            children: vec![text_child],
+            span: None,
+            debug_id: None,
+        };
+
+        let view = builder.build(&button);
+        match view {
+            View::Button { label, .. } => {
+                assert_eq!(label, "Welcome", "button label should come from children");
+            }
+            other => panic!("Expected View::Button, got {:?}", other),
         }
     }
 
