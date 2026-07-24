@@ -32,7 +32,7 @@ use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::mcp_types::{ActionResult, UiActionType};
 use crate::ui::snapshot_builder::SnapshotBuilder;
-use crate::ui::vnode::{VTree, VNodeId};
+use crate::ui::vnode::{VNode, VNodeProps, VTree, VNodeId};
 use crate::ui::view::View;
 use crate::ui::vtree_atom::{VTreeAtomBuilder, VTreeAtomOptions};
 
@@ -716,6 +716,17 @@ fn tool_snapshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
 
     let shared = shared.lock().unwrap();
 
+    // Plan: prefer the RENDERED VTree snapshot (styled_vtree) — it reflects
+    // the actual on-screen tree with child widgets inlined and `for` loops
+    // expanded. Fall back to the raw view_template only when no rendered
+    // frame is available yet (e.g. before first paint).
+    if let Some(snap) = shared.clone_styled_vtree() {
+        let layout_bounds = if include_bounds { shared.get_layout_bounds().clone() } else { HashMap::new() };
+        let output = build_aura_from_styled_vtree(&snap, include_status, include_bounds, &layout_bounds);
+        return text_result(output);
+    }
+
+    // Fallback: raw view_template (pre-render AURA source-style snapshot).
     match &shared.view_template {
         Some(t) => {
             let template = &t.0;
@@ -1448,6 +1459,137 @@ fn tool_vtree(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
              DevTools/MCP capture active. Retry after the window has painted.",
         ),
     }
+}
+
+/// Build an AURA-style snapshot string from the RENDERED VTree (styled_vtree),
+/// which reflects the actual on-screen component tree — including inlined
+/// child widgets and expanded `for` loops. This is the source of truth for
+/// what the window actually shows, unlike the raw view_template which leaves
+/// child-widget calls unexpanded.
+///
+/// Format mirrors AuraSnapshotBuilder's output (tag #id @rect [for] { props
+/// events children }) so AI agents see a familiar structure, but every node
+/// comes from the live render.
+fn build_aura_from_styled_vtree(
+    snap: &StyledNodeSnapshot,
+    include_status: bool,
+    include_bounds: bool,
+    layout_bounds: &HashMap<String, (f32, f32, f32, f32)>,
+) -> String {
+    let mut out = String::new();
+    out.push_str("AURA Snapshot v2 (rendered)\n");
+    out.push_str(&format!("widget: \"{}\"\n", snap.widget_name));
+    out.push_str("\ntree:\n");
+    if let Some(root) = snap.vtree.root() {
+        aura_vtree_node(root, &snap.vtree, &snap.computed, include_status, include_bounds, layout_bounds, 0, &mut out);
+    }
+    out
+}
+
+/// Recursive helper: emit one VNode as AURA-style text.
+fn aura_vtree_node(
+    node: &VNode,
+    vtree: &VTree,
+    computed: &HashMap<VNodeId, ComputedNodeLite>,
+    include_status: bool,
+    include_bounds: bool,
+    layout_bounds: &HashMap<String, (f32, f32, f32, f32)>,
+    indent: usize,
+    out: &mut String,
+) {
+    use crate::ui::vnode::kind_keyword;
+    let pad = "  ".repeat(indent);
+    let tag = kind_keyword(node.kind);
+    let id_str = format!(" #vnode_{}", node.id.as_u64());
+
+    // Extract label from props (text content / button label).
+    let label = match &node.props {
+        VNodeProps::Text { content } => Some(content.clone()),
+        VNodeProps::Button { label } => Some(label.clone()),
+        VNodeProps::Checkbox { label, .. } => Some(label.clone()),
+        VNodeProps::Radio { label, .. } => Some(label.clone()),
+        _ => None,
+    };
+
+    // Computed metadata (class, events, bounds, for-context).
+    let comp = computed.get(&node.id);
+    let raw_class = comp.and_then(|c| c.raw_class.as_deref());
+    let events = comp.map(|c| c.events.as_slice()).unwrap_or(&[]);
+    let for_ctx = comp.and_then(|c| c.for_context.as_ref());
+
+    // Suffix: @rect + [for: ...]
+    let mut suffix = String::new();
+    if include_bounds {
+        if let Some(c) = comp {
+            if let Some((x, y, w, h)) = c.bounds {
+                suffix.push_str(&format!(" @rect({},{},{},{})", x.round() as i32, y.round() as i32, w.round() as i32, h.round() as i32));
+            }
+        }
+    }
+    if let Some((var, idx, val)) = for_ctx {
+        let idx_str = idx.map(|i| i.to_string()).unwrap_or_else(|| "_".to_string());
+        suffix.push_str(&format!(" [for: {}, {} = {}]", var, idx_str, val));
+    }
+
+    let has_body = !node.children.is_empty() || !events.is_empty() || raw_class.map_or(false, |c| !c.is_empty());
+
+    // Opening line
+    if let Some(lbl) = &label {
+        if has_body {
+            out.push_str(&format!("{}{}{} \"{}\"{} {{\n", pad, tag, id_str, lbl, suffix));
+        } else {
+            out.push_str(&format!("{}{}{} \"{}\"{}\n", pad, tag, id_str, lbl, suffix));
+            return;
+        }
+    } else if has_body {
+        out.push_str(&format!("{}{}{}{} {{\n", pad, tag, id_str, suffix));
+    } else {
+        out.push_str(&format!("{}{}{}\n", pad, tag, id_str));
+        return;
+    }
+
+    // style (raw class string)
+    if let Some(cls) = raw_class {
+        if !cls.is_empty() {
+            out.push_str(&format!("{}style: \"{}\"\n", "  ".repeat(indent + 1), cls));
+        }
+    }
+
+    // Special props for inputs etc.
+    match &node.props {
+        VNodeProps::Input { placeholder, value, .. } => {
+            if !placeholder.is_empty() {
+                out.push_str(&format!("{}placeholder: \"{}\"\n", "  ".repeat(indent + 1), placeholder));
+            }
+            out.push_str(&format!("{}value: \"{}\"\n", "  ".repeat(indent + 1), value));
+        }
+        VNodeProps::Textarea { placeholder, value, .. } => {
+            out.push_str(&format!("{}value: \"{}\"\n", "  ".repeat(indent + 1), value));
+            if !placeholder.is_empty() {
+                out.push_str(&format!("{}placeholder: \"{}\"\n", "  ".repeat(indent + 1), placeholder));
+            }
+        }
+        VNodeProps::Checkbox { is_checked, .. } => {
+            out.push_str(&format!("{}checked: {}\n", "  ".repeat(indent + 1), is_checked));
+        }
+        _ => {}
+    }
+
+    // events (sorted for determinism)
+    let mut ev_sorted: Vec<&(String, String)> = events.iter().collect();
+    ev_sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    for (ev, handler) in ev_sorted {
+        out.push_str(&format!("{}{}: {}\n", "  ".repeat(indent + 1), ev, handler));
+    }
+
+    // children
+    for cid in &node.children {
+        if let Some(child) = vtree.get(*cid) {
+            aura_vtree_node(child, vtree, computed, include_status, include_bounds, layout_bounds, indent + 1, out);
+        }
+    }
+
+    out.push_str(&format!("{}}}\n", pad));
 }
 
 fn text_result(text: String) -> serde_json::Value {
