@@ -940,23 +940,35 @@ impl AutovmReplSession {
                 break;
             }
         }
-        let local_idx = local_idx?;
 
-        // Read NaN-boxed value from raw_nv at bp + 1 + local_idx
-        let task_arc = self.vm.tasks.get(&self.main_task_id)?;
-        let task = task_arc.blocking_lock();
+        if let Some(local_idx) = local_idx {
+            // Read NaN-boxed value from raw_nv at bp + 1 + local_idx
+            let task_arc = self.vm.tasks.get(&self.main_task_id)?;
+            let task = task_arc.blocking_lock();
 
-        let bp = task.bp;
-        let stack_pos = bp + 1 + local_idx;
+            let bp = task.bp;
+            let stack_pos = bp + 1 + local_idx;
 
-        if stack_pos >= task.ram.raw_nv.len() {
-            return None;
+            if stack_pos >= task.ram.raw_nv.len() {
+                return None;
+            }
+
+            let nv = task.ram.raw_nv[stack_pos];
+            drop(task); // Release lock before further lookups
+
+            return Some(self.decode_nv_value(nv));
         }
 
-        let nv = task.ram.raw_nv[stack_pos];
-        drop(task); // Release lock before further lookups
+        // Fallback: top-level `var`/`const` are stored via STORE_GLOBAL into
+        // vm.globals (not the local stack). In script/REPL mode
+        // (current_module == "") the global key equals the raw variable name.
+        // Without this, `$name` interpolation in `>` shell lines can't read
+        // top-level `var` declarations (the script-var-persistence bug).
+        if let Some(kv) = self.vm.globals.get(name) {
+            return Some(self.decode_nv_value(*kv.value()));
+        }
 
-        Some(self.decode_nv_value(nv))
+        None
     }
 
     /// Get all local variable names and their string values.
@@ -976,6 +988,12 @@ impl AutovmReplSession {
                     vars.insert(name.clone(), self.decode_nv_value(nv));
                 }
             }
+        }
+        drop(task);
+
+        // Also include top-level `var`/`const` globals (STORE_GLOBAL path).
+        for kv in &self.vm.globals {
+            vars.insert(kv.key().clone(), self.decode_nv_value(*kv.value()));
         }
 
         vars
@@ -1339,5 +1357,43 @@ mod tests {
         println!("DEBUG: after second 'a', last_result={:?}", session.last_result);
         let val = session.last_result.expect("a should produce a result");
         assert_eq!(val, 3, "a should be 3 after let rebinding");
+    }
+
+    #[test]
+    fn test_get_var_string_reads_toplevel_var() {
+        // Top-level `var` goes through STORE_GLOBAL (vm.globals), not the
+        // local stack. get_var_string must fall back to globals to read it.
+        // This is the fix for the script-var-persistence bug ($name
+        // interpolation in `>` shell lines couldn't read top-level `var`).
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("var name = \"alice\"");
+        assert_eq!(
+            session.get_var_string("name").as_deref(),
+            Some("alice"),
+            "get_var_string must read top-level var via globals fallback"
+        );
+    }
+
+    #[test]
+    fn test_get_var_string_reads_toplevel_let() {
+        // `let` uses the local stack path; ensure it still works after the
+        // globals-fallback change (no regression).
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("let count = 42");
+        assert_eq!(
+            session.get_var_string("count").as_deref(),
+            Some("42"),
+            "get_var_string must still read top-level let via scope_stack"
+        );
+    }
+
+    #[test]
+    fn test_get_all_vars_includes_toplevel_var() {
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("var g = \"x\"");
+        let _ = session.run("let l = 7");
+        let all = session.get_all_vars();
+        assert_eq!(all.get("g").map(String::as_str), Some("x"), "globals var in get_all_vars");
+        assert_eq!(all.get("l").map(String::as_str), Some("7"), "local let in get_all_vars");
     }
 }
