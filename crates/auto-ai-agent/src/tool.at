@@ -52,12 +52,12 @@ pub fn tool_to_definition(tool Tool) ToolDefinition {
 
 /// Registry of tools keyed by name.
 ///
-/// Stores tools as `Tool` (Auto's spec type; a2r renders this as
-/// `Box<dyn Tool>` in Rust — equivalent to the Rust original's `Arc<dyn Tool>`
-/// for single-owner registry use). Carries a parallel `names List<str>` for
+/// Stores tools as `Arc<Tool>` (Auto spec → a2r renders `Arc<Box<dyn Tool>>`).
+/// The Arc matches the Rust original's `Arc<dyn Tool>` for shared ownership
+/// across agents / workflow steps. Carries a parallel `names List<str>` for
 /// iteration (Auto VM Map has no keys()/entries()).
 pub type ToolRegistry {
-    tools Map<str, Tool>
+    tools Map<str, Arc<Tool>>
     names List<str>
 }
 
@@ -66,9 +66,9 @@ ext ToolRegistry {
         return ToolRegistry(tools: Map.new(), names: [])
     }
 
-    /// Register a tool (overwrites an existing tool with the same name).
-    /// Single insertion path so `names` stays in sync.
-    pub mut fn register(tool Tool) void {
+    /// Register a tool from an Arc (overwrites an existing tool with the same
+    /// name). Single insertion path so `names` stays in sync.
+    pub mut fn register_shared(tool Arc<Tool>) void {
         let n = tool.name()
         if self.tools.contains(n) == false {
             self.names.push(n)
@@ -77,7 +77,7 @@ ext ToolRegistry {
     }
 
     /// Look up a tool by name.
-    pub fn get(name str) ?Tool {
+    pub fn get(name str) ?Arc<Tool> {
         if self.tools.contains(name) {
             return Some(self.tools.get(name))
         }
@@ -100,8 +100,8 @@ ext ToolRegistry {
 
     /// All tools whose name is in `filter`. If `filter` is empty, returns all
     /// tools (matches the Role allowed_tools() "empty = all" rule).
-    pub fn filter(filter List<str>) List<Tool> {
-        var out List<Tool> = []
+    pub fn filter(filter List<str>) List<Arc<Tool>> {
+        var out List<Arc<Tool>> = []
         if filter.len() == 0 {
             for n in self.names {
                 out.push(self.tools.get(n))
