@@ -5969,9 +5969,20 @@ impl AutoVM {
                         // Parameter: decode parameter index
                         let param_idx = idx - 0x80;
                         let n_args = task.current_fn_n_args;
-                        let offset = n_args - param_idx;
-                        let actual_offset = offset + 1;
-                        task.ram.push_nv(task.ram.read_nv(task.bp - actual_offset));
+                        // Guard against param_idx > n_args (corrupt frame) and
+                        // bp underflow. Returning Nil avoids a panic that would
+                        // crash the whole UI; the caller sees an unset param.
+                        if param_idx >= n_args {
+                            task.ram.push_nv(auto_val::encode_null());
+                        } else {
+                            let offset = n_args - param_idx;
+                            let actual_offset = offset + 1;
+                            if actual_offset > task.bp {
+                                task.ram.push_nv(auto_val::encode_null());
+                            } else {
+                                task.ram.push_nv(task.ram.read_nv(task.bp - actual_offset));
+                            }
+                        }
                     } else {
                         // Local variable: load from bp+1+idx
                         task.ram.push_nv(task.ram.read_nv(task.bp + 1 + idx));

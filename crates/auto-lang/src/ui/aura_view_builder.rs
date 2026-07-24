@@ -2385,18 +2385,20 @@ impl<'a> AuraViewBuilder<'a> {
     /// dispatch in the iced renderer.
     fn event_to_message_with(&self, event: &AuraEvent, bindings: &Bindings) -> DynamicMessage {
         let event_name = extract_handler_name(&event.handler).to_string();
-        // Resolve each declared parameter from the loop bindings (e.g.
-        // `onclick: .SelectDay(cell.date)` → resolve `cell.date` against the
-        // current iteration's bindings) and carry the values in `args`. The
-        // dispatcher (DynamicComponent::on) forwards `args` to
-        // `call_handler`, so a handler declared `.SelectDay(date) ->` receives
-        // the value as its `date` parameter. (Previously the value was
-        // string-encoded into `event_name` as `name:value`, which the dispatch
-        // path never parsed — so payload onclicks silently no-op'd.)
+        // Resolve each declared parameter. A param can be:
+        //   - a loop-variable reference (e.g. `i`, `note.id`) → resolve from
+        //     bindings;
+        //   - a literal (e.g. `"indigo"`, `42`) → use directly.
+        // Previously only binding references were resolved; literals like
+        // `onclick: .SetAccent("indigo")` were dropped (param not in bindings
+        // → args empty → handler received no arg → no-op / stack mismatch).
         let mut args: Vec<Value> = Vec::with_capacity(event.params.len());
-        for param_name in &event.params {
-            if let Some(val) = self.resolve_binding_path(param_name, bindings) {
+        for param in &event.params {
+            if let Some(val) = self.resolve_binding_path(param, bindings) {
                 args.push(val);
+            } else {
+                // Not a binding — treat as a literal value.
+                args.push(parse_event_param_literal(param));
             }
         }
         DynamicMessage::Typed {
@@ -2587,6 +2589,32 @@ fn extract_handler_name(pattern: &str) -> &str {
     } else {
         name
     }
+}
+
+/// Parse an event-handler parameter that is NOT a loop-variable binding into
+/// a literal Value. The parser stores onclick args as raw strings; a quoted
+/// string like `"indigo"` (with the quotes preserved) becomes a Str, a number
+/// becomes Int, anything else is treated as a bare string identifier.
+fn parse_event_param_literal(param: &str) -> Value {
+    let trimmed = param.trim();
+    // Quoted string literal: "indigo" → Str("indigo")
+    if (trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2)
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2)
+    {
+        return Value::Str(trimmed[1..trimmed.len() - 1].into());
+    }
+    // Integer literal: 42 → Int(42)
+    if let Ok(i) = trimmed.parse::<i32>() {
+        return Value::Int(i);
+    }
+    // Boolean literal
+    match trimmed {
+        "true" => return Value::Bool(true),
+        "false" => return Value::Bool(false),
+        _ => {}
+    }
+    // Fallback: treat as a bare string (identifier-like)
+    Value::Str(trimmed.into())
 }
 
 /// Convert a Value to a display string suitable for UI rendering.
