@@ -311,7 +311,11 @@ impl<'a> AuraViewBuilder<'a> {
                         if views.is_empty() {
                             None
                         } else if views.len() == 1 {
-                            Some(views.into_iter().next().unwrap())
+                            // Plan 370 (Issue 1): if the single body view is
+                            // Empty (e.g. a false `if` inside the loop), skip
+                            // it so the loop doesn't emit a text("") spacer.
+                            let v = views.into_iter().next().unwrap();
+                            if matches!(v, View::Empty) { None } else { Some(v) }
                         } else {
                             Some(View::Column {
                                 children: views,
@@ -498,7 +502,11 @@ impl<'a> AuraViewBuilder<'a> {
                             })
                             .collect();
                         if views.is_empty() { None }
-                        else if views.len() == 1 { Some(views.into_iter().next().unwrap()) }
+                        else if views.len() == 1 {
+                            // Plan 370 (Issue 1): skip Empty body views (see convert_node_with ForLoop).
+                            let v = views.into_iter().next().unwrap();
+                            if matches!(v, View::Empty) { None } else { Some(v) }
+                        }
                         else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None }) }
                     })
                     .collect();
@@ -732,6 +740,8 @@ impl<'a> AuraViewBuilder<'a> {
                 path.pop();
                 v
             })
+            // Plan 370 (Issue 1): drop View::Empty spacers (see convert_column).
+            .filter(|v| !matches!(v, View::Empty))
             .collect();
 
         let mut builder = View::<DynamicMessage>::col()
@@ -904,6 +914,10 @@ impl<'a> AuraViewBuilder<'a> {
             builder = builder.with_style(s);
         }
         for child in child_views {
+            // Plan 370 (Issue 1): drop View::Empty spacers (see convert_column).
+            if matches!(child, View::Empty) {
+                continue;
+            }
             builder = builder.child(child);
         }
         builder.build()
@@ -1286,6 +1300,13 @@ impl<'a> AuraViewBuilder<'a> {
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
             .map(|n| self.convert_node_with(n, bindings))
+            // Plan 370 (Issue 1): drop View::Empty children. False `if`
+            // branches and non-matching `for` iterations yield View::Empty,
+            // which the renderer turns into text("") — a one-line-tall spacer.
+            // Stacking several of these produced large blank gaps in the
+            // NavTree. An Empty view has no visible content, so skipping it
+            // is safe and recovers the intended compact layout.
+            .filter(|v| !matches!(v, View::Empty))
             .collect();
 
         let mut builder = View::<DynamicMessage>::col()
@@ -1340,6 +1361,10 @@ impl<'a> AuraViewBuilder<'a> {
         }
 
         for child in child_views {
+            // Plan 370 (Issue 1): drop View::Empty spacers (see convert_column).
+            if matches!(child, View::Empty) {
+                continue;
+            }
             builder = builder.child(child);
         }
 
@@ -1387,7 +1412,9 @@ impl<'a> AuraViewBuilder<'a> {
                 if views.is_empty() {
                     None
                 } else if views.len() == 1 {
-                    Some(views.into_iter().next().unwrap())
+                    // Plan 370 (Issue 1): skip Empty body views (see convert_node_with ForLoop).
+                    let v = views.into_iter().next().unwrap();
+                    if matches!(v, View::Empty) { None } else { Some(v) }
                 } else {
                     Some(View::Column { children: views, spacing: 0, padding: 0, style: None })
                 }
