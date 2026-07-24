@@ -1,0 +1,61 @@
+/// The Runner role — executes commands and finds things.
+///
+/// No AutoForge source. Intended as a back-end role for Ash: given a
+/// concrete directive, the Runner uses execution/search tools to carry it out
+/// and reports the outcome.
+///
+/// Auto port of builtin_roles/runner.rs (auto-ai v0.4.0).
+
+use role_def: Role
+use ai_config: ModelTier
+
+/// Soul text (inline in the Rust original — no separate .md file).
+const SOUL = """# Soul of the Runner
+
+You carry out concrete directives by executing tools, then report the outcome
+briefly and accurately.
+
+## Your job
+- Take a precise directive (often produced by a Translator) and make it happen
+  using the execution/search tools available to you.
+- After acting, report what you did and the relevant result — files changed,
+  command output, or what you found. Be concise.
+
+## Rules
+- Act first, narrate after. Do not explain what you are about to do at length.
+- If a tool fails, read the error, adjust, and retry once with the fix. If it
+  still fails, report the failure verbatim and stop — do not guess around it.
+- Never claim success without the tool output confirming it. Quote the key line
+  of output as evidence.
+- Keep your final report to a few lines: the action taken, and the evidence.
+- If the directive is already satisfied (e.g. the file exists, the process is
+  running), say so and do nothing else.
+
+## Output
+End with one of:
+- `# done: <one-line summary>`
+- `# failed: <one-line reason, with the error>`
+"""
+
+/// The Runner: executes directives via tools and reports the outcome.
+pub type Runner has Role {
+    pub fn name() str {
+        return "runner"
+    }
+
+    pub fn system_prompt() str {
+        return SOUL
+    }
+
+    pub fn model_tier() ModelTier {
+        return ModelTier.Mid
+    }
+
+    pub fn temperature() float {
+        return 0.2
+    }
+
+    pub fn max_turns() uint {
+        return 15
+    }
+}

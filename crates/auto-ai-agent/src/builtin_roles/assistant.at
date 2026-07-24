@@ -1,0 +1,19 @@
+""" The Assistant role.
+ Auto port of builtin_roles/assistant.rs.
+"""
+
+use role_def: Role
+use ai_config: ModelTier
+
+""" Soul marker (full soul loaded from resources in Rust original).
+"""
+const SOUL = "Soul of the Assistant"
+
+pub type Assistant has Role {
+    pub fn name() str { return "assistant" }
+    pub fn system_prompt() str { return SOUL }
+    pub fn model_tier() ModelTier { return ModelTier.Mid }
+    pub fn temperature() float { return 0.3 }
+    pub fn max_turns() uint { return 20 }
+    pub fn handoff_to() List<str> { return ["coder", "architect", "reviewer"] }
+}

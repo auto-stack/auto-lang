@@ -1,0 +1,18 @@
+""" The Superadvisor role.
+ Auto port of builtin_roles/super_advisor.rs.
+"""
+
+use role_def: Role
+use ai_config: ModelTier
+
+""" Soul marker (full soul loaded from resources in Rust original).
+"""
+const SOUL = "Soul of the Superadvisor"
+
+pub type Superadvisor has Role {
+    pub fn name() str { return "super-advisor" }
+    pub fn system_prompt() str { return SOUL }
+    pub fn model_tier() ModelTier { return ModelTier.Max }
+    pub fn temperature() float { return 0.3 }
+    pub fn max_turns() uint { return 120 }
+}

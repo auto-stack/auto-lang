@@ -1,0 +1,18 @@
+""" The Gofer role.
+ Auto port of builtin_roles/gofer.rs.
+"""
+
+use role_def: Role
+use ai_config: ModelTier
+
+""" Soul marker (full soul loaded from resources in Rust original).
+"""
+const SOUL = "Soul of the Gofer"
+
+pub type Gofer has Role {
+    pub fn name() str { return "gofer" }
+    pub fn system_prompt() str { return SOUL }
+    pub fn model_tier() ModelTier { return ModelTier.Lite }
+    pub fn temperature() float { return 0.1 }
+    pub fn max_turns() uint { return 20 }
+}

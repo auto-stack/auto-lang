@@ -1,0 +1,18 @@
+""" The Advisor role.
+ Auto port of builtin_roles/advisor.rs.
+"""
+
+use role_def: Role
+use ai_config: ModelTier
+
+""" Soul marker (full soul loaded from resources in Rust original).
+"""
+const SOUL = "Soul of the Advisor"
+
+pub type Advisor has Role {
+    pub fn name() str { return "advisor" }
+    pub fn system_prompt() str { return SOUL }
+    pub fn model_tier() ModelTier { return ModelTier.Max }
+    pub fn temperature() float { return 0.3 }
+    pub fn max_turns() uint { return 40 }
+}

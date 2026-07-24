@@ -1,0 +1,57 @@
+/// Built-in Role library.
+///
+/// System prompts are ported from AutoForge's `relay/souls/*.md` (the tuned
+/// "souls"). Each built-in Role embeds its prompt as a const string and
+/// overrides the model/temperature/max_turns defaults.
+///
+/// Auto port of builtin_roles/mod.rs (auto-ai v0.4.0).
+
+use role_def: Role
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Registry functions
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// All built-in role names, in a stable order.
+pub fn builtin_names() List<str> {
+    return [
+        "assistant",
+        "coder",
+        "architect",
+        "tester",
+        "reviewer",
+        "documenter",
+        "translator",
+        "runner",
+        "advisor",
+        "planner",
+        "gofer",
+        "super-advisor",
+        "super-coder",
+        "super-tester"
+    ]
+}
+
+/// Look up a built-in Role by its lowercase name.
+///
+/// Returns None for unknown names. Phase 4's .at loader uses this to resolve
+/// an `inherit:` base.
+pub fn load_builtin(name str) ?Role {
+    is name {
+        "assistant" -> return Some(Assistant()),
+        "coder" -> return Some(Coder()),
+        "architect" -> return Some(Architect()),
+        "tester" -> return Some(Tester()),
+        "reviewer" -> return Some(Reviewer()),
+        "documenter" -> return Some(Documenter()),
+        "translator" -> return Some(Translator()),
+        "runner" -> return Some(Runner()),
+        "advisor" -> return Some(Advisor()),
+        "planner" -> return Some(Planner()),
+        "gofer" -> return Some(Gofer()),
+        "super-advisor" -> return Some(SuperAdvisor()),
+        "super-coder" -> return Some(SuperCoder()),
+        "super-tester" -> return Some(SuperTester()),
+        else -> return None
+    }
+}

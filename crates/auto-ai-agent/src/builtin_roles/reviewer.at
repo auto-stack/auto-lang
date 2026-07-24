@@ -1,0 +1,18 @@
+""" The Reviewer role.
+ Auto port of builtin_roles/reviewer.rs.
+"""
+
+use role_def: Role
+use ai_config: ModelTier
+
+""" Soul marker (full soul loaded from resources in Rust original).
+"""
+const SOUL = "Soul of the Reviewer"
+
+pub type Reviewer has Role {
+    pub fn name() str { return "reviewer" }
+    pub fn system_prompt() str { return SOUL }
+    pub fn model_tier() ModelTier { return ModelTier.Pro }
+    pub fn temperature() float { return 0.2 }
+    pub fn max_turns() uint { return 50 }
+}

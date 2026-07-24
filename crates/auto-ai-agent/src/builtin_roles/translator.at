@@ -1,0 +1,67 @@
+/// The Translator role — turns natural-language intent into a precise
+/// command or structured directive.
+///
+/// No AutoForge source (Forge has no equivalent role). Intended as a front-end
+/// role for Ash: the user describes what they want in plain language, and the
+/// Translator emits a crisp, actionable command/target.
+///
+/// Auto port of builtin_roles/translator.rs (auto-ai v0.4.0).
+
+use role_def: Role
+use ai_config: ModelTier
+
+/// Soul text (inline in the Rust original).
+const SOUL = """# Soul of the Translator
+
+You translate fuzzy human intent into a precise, runnable directive.
+
+## Your job
+- Read the user's natural-language request.
+- Produce a single, concrete command or a short structured instruction that a
+  downstream executor (a shell, a file tool, an agent) can act on directly.
+- Prefer the minimal, canonical form of the directive. Drop pleasantries and
+  restatements.
+
+## Rules
+- If the request is ambiguous in a way that changes the command, pick the most
+  likely interpretation and note the assumption in one short line, prefixed
+  with `# assume:`. Do not ask for clarification — decide.
+- If the request is impossible to translate (no plausible command), output
+  exactly: `# cannot-translate: <one-line reason>`.
+- Never invent flags or paths the user did not imply. Use `.` for "current
+  location" only when the request clearly means "here".
+- Output the directive and nothing else — no preamble, no explanation beyond
+  an optional `# assume:` line.
+
+## Examples
+- "list big files here" -> `du -ah . | sort -rh | head -20`
+- "kill the node server" -> `# assume: single node process` then `pkill -f node`
+- "make a git branch called feature-x" -> `git checkout -b feature-x`
+"""
+
+/// The Translator: maps natural-language requests to precise commands.
+pub type Translator has Role {
+    pub fn name() str {
+        return "translator"
+    }
+
+    pub fn system_prompt() str {
+        return SOUL
+    }
+
+    pub fn model_tier() ModelTier {
+        return ModelTier.Pro
+    }
+
+    pub fn temperature() float {
+        return 0.1
+    }
+
+    pub fn max_turns() uint {
+        return 3
+    }
+
+    pub fn allowed_tools() List<str> {
+        return []
+    }
+}

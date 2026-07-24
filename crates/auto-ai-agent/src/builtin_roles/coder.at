@@ -1,0 +1,19 @@
+""" The Coder role.
+ Auto port of builtin_roles/coder.rs.
+"""
+
+use role_def: Role
+use ai_config: ModelTier
+
+""" Soul marker (full soul loaded from resources in Rust original).
+"""
+const SOUL = "Soul of the Coder"
+
+pub type Coder has Role {
+    pub fn name() str { return "coder" }
+    pub fn system_prompt() str { return SOUL }
+    pub fn model_tier() ModelTier { return ModelTier.Max }
+    pub fn temperature() float { return 0.3 }
+    pub fn max_turns() uint { return 40 }
+    pub fn handoff_to() List<str> { return ["tester", "reviewer"] }
+}
