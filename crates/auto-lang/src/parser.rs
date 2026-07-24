@@ -11070,7 +11070,20 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
+        // Plan 367 P2-3 fix: register params in a fresh scope so the body can
+        // reference them. Without this, `check_symbol` flags a parameter used
+        // as a bare `if` condition (e.g. `style: if active {..}`) as an
+        // undefined variable, which (after error recovery) surfaces as
+        // "Expected term, got RBrace" and makes the whole module fail to parse.
+        self.enter_scope();
+        for (pname, _) in &params {
+            self.infer_ctx.bind_var(
+                crate::ast::Name::from(pname.as_str()),
+                crate::ast::Type::Unknown,
+            );
+        }
         let body = self.parse_view_node()?;
+        self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
         Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body }))
