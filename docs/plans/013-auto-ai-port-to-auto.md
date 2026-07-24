@@ -178,22 +178,24 @@ Rust 路径。已验证可翻译，且 `fn ... ~Result<T,E>` 正确译为
 |---|---|---|
 | `error.rs` | `error.at` | ✅ 已移植 |
 | `role_def.rs` | `role_def.at` | ✅ 已移植（Role spec） |
-| `relay.rs` | `relay.at` | ✅ 已移植（RelayTarget spec） |
+| `relay.rs` | `relay.at` | ✅ 已移植（RelayTarget spec；2026-07-24 修 `task` 保留字） |
 | `tool.rs` | `tool.at` | ✅ 已移植（Tool spec + ToolRegistry） |
-| `memory.rs` | `memory.at` | ✅ 已移植（含配对感知 trim） |
+| `memory.rs` | `memory.at` | ⚠️ 已移植但 transpile 失败（`&&` 条件，见 B17；AutoVM 可运行） |
 | `validate.rs` | `validate.at` | ✅ 已移植 |
-| `lib.rs` | `lib.at` | ⏳ 待做 |
-| `roles.rs` (395) | `roles.at` | ⏳ 待做 |
-| `skill.rs` (476) | `skill.at` | ⏳ 待做 |
-| `role_def` 之上的 15 个 `builtin_roles/*` | `builtin_roles/*.at` | ⏳ 待做 |
-| `config/role_config.rs` (712) | `config/role_config.at` | ⏳ 待做 |
-| `workflow.rs` (1181) | `workflow.at` | ⏳ 待做（标记 deprecated） |
-| `workflow_validator.rs` (192) | `workflow_validator.at` | ⏳ 待做 |
-| `orchestration/*` (5 文件, ~1487) | `orchestration/*.at` | ⏳ 待做 |
+| `lib.rs` | `lib.at` | ✅ 已移植（2026-07-24，re-export，排除 workflow） |
+| `roles.rs` (395) | `roles.at` | ✅ 已移植（2026-07-24，a2r-first） |
+| `skill.rs` (476) | `skill.at` | ✅ 已移植（2026-07-24，a2r-first） |
+| `role_def` 之上的 15 个 `builtin_roles/*` | `builtin_roles/*.at` | ✅ 已移植 |
+| `config/role_config.rs` (712) | `config/role_config.at` | ✅ 已移植 |
+| `workflow.rs` (1181) | `workflow.at` | ⏳ 占位（2026-07-24，已弃用模块推迟移植） |
+| `workflow_validator.rs` (192) | `workflow_validator.at` | ✅ 已移植（2026-07-24） |
+| `orchestration/*` (5 文件, ~1487) | `orchestration/*.at` | ✅ 已移植（2026-07-24：budget/flow/handoff/pipeline/driver/mod） |
+| `agent.rs` (918) | `agent.at` | ⚠️ 部分移植（2026-07-24：类型层+stub；ReAct 循环阻塞于平台限制） |
 
-**阶段 3 仅完成 6/26 文件**（基础层：错误、Role/Tool spec、memory、validate）。
-核心的 ReAct 循环（`agent.rs` 918 行）、workflow 引擎、orchestration
-pipeline/driver 均未开始。
+**阶段 3 进度**：基础层 6 文件 ✅；本批新增 roles/skill/workflow_validator/
+orchestration×6/lib ✅；agent（部分）⚠️；workflow（占位）⏳。
+核心 ReAct 循环（`agent.rs`）本体未移植，阻塞于闭包/dyn-Fn/泛型方法等
+解析器限制（详见 013-handoff-for-new-session.md「本轮新发现的 Auto 语法限制」）。
 
 ## 已知不足与补救路径
 

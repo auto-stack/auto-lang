@@ -20,5 +20,9 @@ use error: AgentError
 /// automatically dynamically dispatched (no `dyn` keyword needed).
 pub spec RelayTarget {
     /// Receive a task and return its textual result.
-    fn delegate(task str) Result<str, AgentError>
+    ///
+    /// NOTE: the Rust param is named `task`, but `task` is a reserved keyword
+    /// in Auto (task/actor syntax), so the param is named `task_msg` here
+    /// (behavioral parity; the spec has no implementors yet — review-003 M1).
+    fn delegate(task_msg str) Result<str, AgentError>
 }

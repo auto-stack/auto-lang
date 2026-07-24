@@ -1,5 +1,12 @@
 # Plan 013 交接摘要（用于新会话续开发）
 
+> **2026-07-24 续作更新**：阶段 3 又完成 **roles / skill / workflow_validator /
+> orchestration/{budget,flow,handoff,pipeline,driver,mod} / agent（部分） /
+> workflow（占位）/ lib.at** 共 12 个文件。全部 `auto trans ... rust` 通过。
+> 当前阶段 3 剩余：**agent.at 的 ReAct 循环本体**（被若干解析器限制阻塞，
+> 见下「本轮新发现的 Auto 语法限制」）与 **workflow.at 的实际移植**（已弃用
+> 模块，已占位推迟）。详见文末「2026-07-24 续作进度」。
+
 ## 一句话状态
 
 将 auto-ai 的 3 个 Rust crate 用 Auto 语言复刻。阶段 1（ai-config）+ 阶段 2（auto-ai-client）**全部完成并通过 cargo check**；阶段 3（auto-ai-agent）已完成 **24/26 文件**，剩余 agent.rs(918行) + workflow.rs(1181行) + roles.rs + skill.rs + workflow_validator.rs + orchestration/*(5文件) + lib.at/mod.at 共 **~4500 行待移植**。
@@ -163,3 +170,133 @@ use.rust auto_val
 6. 建议先做 roles.rs(中) 和 skill.rs(中)，再做 orchestration/*，最后做 agent.rs(高) + workflow.rs(高)
 7. 完成后写 lib.at 收尾
 8. 全部完成后提交，更新计划文档状态
+
+---
+
+## 2026-07-24 续作进度（阶段 3 第二批）
+
+### 已完成（全部 `auto trans ... rust` 通过）
+
+| 文件 | 说明 | 备注 |
+|---|---|---|
+| `roles.at` | RoleRegistry（Map+并行 names 键表）+ RoleSummary/RoleDetail + load/resolve/list/get/save/delete | a2r-first（桥接 dirs/std::fs/std::path） |
+| `skill.at` | Skill / SkillRegistry / SkillTool(has Tool) + frontmatter 解析 | a2r-first（桥接 fs/serde_json） |
+| `workflow_validator.at` | Validator 枚举（tuple 变体）+ check/check_all/check_any | 纯 Auto，无桥接 |
+| `orchestration/budget.at` | TokenBudget/BudgetStrategy/BudgetAction + BudgetTracker | 纯 Auto |
+| `orchestration/flow.at` | FlowSpec/FlowStep/GateType/ExitRouting/GateDecision | 纯 Auto（struct 变体→tuple） |
+| `orchestration/handoff.at` | HandoffDocument + 子记录 + render() | 纯 Auto（`to` 字段→`target`） |
+| `orchestration/pipeline.at` | PipelineEngine 状态机（advance/submit_handoff/resolve_gate 等） | 纯 Auto（struct 变体→tuple，类型前置定义） |
+| `orchestration/driver.at` | PipelineDriver + AgentFactory spec + drive 循环 | a2r-first（依赖 agent.at；泛型类型→spec 字段；闭包→命名函数） |
+| `orchestration/mod.at` | 模块导出 | 无 `as` 别名（flow.GateDecision 直出） |
+| `agent.at` | **部分**：Client spec / StreamEvent / AgentResult / ToolCallRecord / Agent 结构 + 访问器；run/run_stream 为 stub | a2r-first；ReAct 循环本体未移植（见下） |
+| `workflow.at` | **占位**（已弃用模块，推迟移植） | 见文末「未完成与阻塞」 |
+| `lib.at` | crate 根 re-export（排除 workflow） | |
+
+附带修复：`relay.at` 的 `delegate(task str)` 中 `task` 是保留字→改名 `task_msg`。
+
+### 本轮新发现的 Auto 语法限制（补充到上面的 15 条规则之后）
+
+> 这些都是 `auto trans ... rust` 实际踩到的解析器/类型检查器限制，非移植
+> 错误。每条都给出触发条件与规避方法。
+
+16. **`task` / `to` 等保留字不能做参数名/字段名**
+    - `fn f(task str)` / `HandoffDocument { to str }` 都会触发解析级联失败
+      （报诡异的 "Expected term, got RBrace" / "field type mismatch"）。
+    - 规避：改名（`task_msg`、`target`），在注释里标注 Rust 原名。
+    - 已知受影响：`task`（task/actor 语法）、`to`（range 语法）、`routes`/`route`。
+
+17. **方法调用不能直接做 `is` 的匹配对象**（条件性）
+    - `is path.extension() { Some(x) -> return x == "at", ... }` 会让解析器
+      误终止当前块、吞掉后续函数。但 `is path.len() { 0 -> ... }`（分支体是
+      字面量返回）有时又能过——不稳定。
+    - 规避（稳妥）：先把方法调用结果赋给局部变量，再 `is` 该变量：
+      `let ext = path.extension(); is ext { ... }`。roles.at / skill.at /
+      pipeline.at 全部采用此规避。
+
+18. **构造体不能直接作为深层方法调用的参数**（类型检查器）
+    - `self.step_history.push(StepRecord(...))` 报 "field type mismatch"。
+    - 规避：先 `let rec = StepRecord(...)` 再 `push(rec)`。
+    - pipeline.at 的 submit_handoff、driver.at 的 on_event(X.Y(...)) 都踩到。
+
+19. **`if/else` 表达式不能作为结构体字段值**
+    - `RoleConfig(tools: if t.is_empty() { None } else { Some(t) })` 失败。
+    - 规避：先算到局部 `var`，再赋给字段。
+
+20. **泛型类型定义不支持 spec 约束**：`type X<F has AgentFactory>` 报
+    "Expected Gt, but found has"。
+    - 规避：用 spec 类型字段做动态分发（`factory AgentFactory`），等价于
+      `Box<dyn AgentFactory>`。driver.at 采用。
+
+21. **函数不能声明返回 `fn(...)` 类型**，也不能在函数体内构造闭包
+    - `fn build_cb() fn(StreamEvent) { ... }` 失败；`let cb = (ev) => {...}` 失败。
+    - 规避：把回调存为结构体字段（`on_event fn(PipelineEvent)`，字段是允许
+      的），或用命名函数引用做 no-op 默认值。driver.at 采用。
+
+22. **方法的 `fn(...)` 类型参数后不能再跟其它参数**（不稳定）
+    - `fn drive(task str, on_event fn(PipelineEvent))` 失败；单独
+      `fn drive(on_event fn(PipelineEvent))` 可过。自由函数似乎不受此限。
+    - 规避：把回调移到字段（driver.at 把 on_event 存为字段）。
+
+23. **`.await?` 应写作 `.await.?`**（点号分隔）：`x.run_stream(...).await.?`。
+
+24. **`let _ = expr`（下划线丢弃绑定）不支持**：解析器不认 `_` 作变量名。
+    规避：直接不引用该参数（注释说明），或命名后不用。
+
+25. **`use` 语句不支持 `as` 别名**：`use flow: GateDecision as FlowGateDecision`
+    失败。规避：直出原名，或调用处用全限定 `flow.GateDecision`。
+
+26. **自由函数需先定义后引用**（无前向引用）：在 `new()` 里引用的 no-op
+    默认函数必须在文件靠前定义。driver.at 把 noop_event_handler /
+    noop_stream_handler 提到顶部。
+
+27. **条件里 `&&` 不可用**（与已记录的 `||`/`or` 同）——见 memory.at 既存
+    问题（见下「未完成与阻塞」B17）。
+
+### 未完成与阻塞
+
+#### A. agent.at 的 ReAct 循环本体（阻塞于平台限制，plan 013 class B）
+
+`agent.rs` 的 `run` / `run_stream` / `run_inner` / `build_request` 重度依赖：
+- 泛型方法 `fn new<P: Role>(role P, ...)`（规则 20 同源）；
+- `Arc<dyn Fn(StreamEvent)>` 回调参数（规则 21/22）；
+- 函数体内的闭包（`move |ev| {...}`、`cancelled` 闭包，规则 21）；
+- 每轮 `on_event(StreamEvent::Delta{text})` 深层构造（规则 18）。
+
+当前 agent.at 只移植了**可移植的类型层**（Client spec 的 complete、
+StreamEvent/AgentResult/ToolCallRecord、Agent 结构 + 访问器 +
+truncate_tool_result），run/run_stream 为返回空结果的 stub。**恢复完整循环
+需先在 a2r/解析器侧支持上述构造**（特别是闭包与 dyn-Fn 参数）。
+
+建议的恢复路径（平台支持后）：
+1. `Client` spec 补 `complete_stream`（dyn-Fn 参数）；
+2. `run_inner` 把 `on_event` / `cancelled` / `seen` 做成字段或命名函数，
+   规避闭包；
+3. 每个 `on_event(X.Y(...))` 先 `let ev = X.Y(...)` 再发（规则 18）；
+4. 取消检查用命名函数替代闭包。
+
+#### B. workflow.at（已弃用，推迟）
+
+`workflow.rs`（~1181 行，Plan 008 标记 deprecated，建议改用 PipelineEngine）
+依赖 auto_atom/auto_val 桥接 + 未移植的 Agent 循环，且同样踩闭包/async 限制。
+**因收益最低、已弃用**，本轮仅留占位文件（说明推迟原因）。恢复时机：
+agent.at 循环移植完成后 + Auto 自举出原生 Atom 解析器后。
+
+#### B17（新）. memory.at 既存回归——transpile 失败
+
+交接摘要原称 memory.at「已移植、AutoVM 可运行」，但本轮 `auto trans` 发现
+**transpile 失败**（offset 5958 "Expected term, got RBrace"）。根因疑为
+trim() 里 `for end < self.messages.len() && self.messages[end].role == "user"`
+的 `&&`（规则 27）——AutoVM 能跑但 a2r 不能译。**这是既存问题，非本轮引入**，
+记档待修（与 A 类缺陷同性质，可单独修）。
+
+### 下一步建议（新会话）
+
+1. **平台侧**：在 auto-lang 的 a2r/解析器上补「闭包构造」「dyn-Fn 参数」
+   「泛型方法」「`&&` 条件」支持——这是 agent.at 循环与 workflow.at 的共同
+   硬阻塞。
+2. **移植侧**（平台支持后）：按上面「恢复路径」补完 agent.at 的 ReAct 循环。
+3. **既存修复**：memory.at 的 `&&` 条件（B17）可立即改为嵌套 `if`。
+4. **回归验证**：全部完成后建一个临时 workspace crate（含 ai-config /
+   auto-val 等依赖）跑 `cargo check`，把阶段 3 推进到与阶段 1 同等的
+   「a2r→Rust 过 cargo check」验收线。
+

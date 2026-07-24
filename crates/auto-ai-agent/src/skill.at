@@ -1,0 +1,462 @@
+/// Skill system — a "skill" is a markdown prompt fragment the model loads
+/// on demand by calling the SkillTool.
+///
+/// A skill is a prompt fragment (SKILL.md) with two metadata fields
+/// (name, description) that the model loads when it decides the skill applies,
+/// then follows as best-effort instructions. There is no enforced procedure —
+/// the ordering, gates, and checklists all live inside the prompt text.
+///
+/// Discovery: SkillRegistry.scan walks a directory for `*/SKILL.md` files,
+/// parses the frontmatter, and stores {name -> Skill}.
+///
+/// Auto port of crates/auto-ai-agent/src/skill.rs (auto-ai v0.4.0).
+///
+/// a2r-FIRST NOTE: this bridges `std::fs` / `std::path` (read_dir,
+/// read_to_string, is_file/is_dir, join) and `serde_json::Value`. The pure
+/// AutoVM cannot resolve the bridged types or list a filesystem directory, so
+/// the runtime path runs under cargo (a2r->Rust). The public API
+/// (Skill / SkillRegistry / SkillTool) is stable.
+///
+/// PARSER NOTE: Auto's `is`-pattern matcher must not match a *method call*
+/// directly (e.g. `is raw.strip_prefix(...) {...}`): the parser mis-terminates
+/// the block and swallows following code. Bind the call result to a local var
+/// first, then match the var. All Option-returning string/path calls below
+/// follow this rule. (Plan 013 gotcha.)
+
+use.rust std::path::PathBuf
+use.rust std::fs
+use.rust std::sync::Arc
+use.rust serde_json
+use.rust serde_json::Value
+
+use error: ToolError
+use tool: Tool
+use wire: JsonValue
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Skill
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// One skill: a name, a trigger description, and the full prompt body.
+pub type Skill {
+    /// Skill name (unique in a registry). From frontmatter name:.
+    name str
+    /// When to use this skill (third-person). From frontmatter description:.
+    /// This is the trigger — the model reads it to decide whether to call.
+    description str
+    /// The full SKILL.md body (everything after the frontmatter --- block).
+    content str
+    /// Path to the source SKILL.md (for diagnostics).
+    path PathBuf
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SkillRegistry
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Registry of skills keyed by name, built by scanning a directory.
+///
+/// NOTE (plan 013 gotcha B5): Auto's VM Map has no iteration API, so a parallel
+/// `names List<str>` is kept alongside `skills` for ordering/listing. Fields
+/// are `pub` (B12).
+pub type SkillRegistry {
+    skills Map<str, Skill>
+    names List<str>
+}
+
+ext SkillRegistry {
+    /// Empty registry (no skills configured).
+    pub static fn new() SkillRegistry {
+        return SkillRegistry(skills: Map.new(), names: [])
+    }
+
+    /// Scan `dir` for `<skill-name>/SKILL.md` files and load them.
+    ///
+    /// Fault-tolerant: a directory whose SKILL.md is missing or fails to parse
+    /// is skipped (logged at warn), not fatal — one broken skill shouldn't
+    /// disable the whole registry.
+    pub static fn scan(dir PathBuf) SkillRegistry {
+        var skills Map<str, Skill> = Map.new()
+        var names List<str> = []
+        is fs.read_dir(dir) {
+            Ok(entries) -> {
+                for entry in entries {
+                    scan_one_entry(entry, skills, names)
+                }
+            },
+            Err(_e) -> {
+                // directory not found: empty registry
+            }
+        }
+        return SkillRegistry(skills: skills, names: names)
+    }
+
+    /// Look up a skill by name.
+    pub fn get(name str) ?Skill {
+        if self.skills.contains(name) {
+            return Some(self.skills.get(name))
+        }
+        return None
+    }
+
+    /// Keep only skills whose name is in `whitelist` (in place). Used by the
+    /// Plan 004 Roles feature: a role's skills whitelist restricts which
+    /// installed skills are exposed to an agent.
+    pub mut fn retain(whitelist List<str>) void {
+        var kept Map<str, Skill> = Map.new()
+        var kept_names List<str> = []
+        for name in self.names {
+            if whitelist.contains(name) {
+                let s = self.skills.get(name)
+                kept.set(name, s)
+                kept_names.push(name)
+            }
+        }
+        self.skills = kept
+        self.names = kept_names
+    }
+
+    /// All skill names (no order guarantee).
+    pub fn names() List<str> {
+        return self.names
+    }
+
+    /// (name, description) pairs for all skills — sorted by name. Used to build
+    /// the `<available_skills>` bootstrap block injected into the system prompt.
+    pub fn descriptions() List<(str, str)> {
+        var out List<(str, str)> = []
+        for name in self.names {
+            let s = self.skills.get(name)
+            out.push((s.name, s.description))
+        }
+        out.sort_by_key((pair) => pair[0])
+        return out
+    }
+
+    /// Number of loaded skills.
+    pub fn len() uint {
+        return self.names.len()
+    }
+
+    pub fn is_empty() bool {
+        return self.names.len() == 0
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// scan() helpers (mutate the passed-in registry; never fatal)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Handle one read_dir entry: skip non-directories, and for each subdirectory
+/// try to load its SKILL.md.
+fn scan_one_entry(entry DirEntry, skills Map<str, Skill>, names List<str>) void {
+    let sub = entry.path()
+    let is_dir = sub.is_dir()
+    if is_dir == false {
+        return
+    }
+    let skill_md = sub.join("SKILL.md")
+    let is_file = skill_md.is_file()
+    if is_file == false {
+        return
+    }
+    is parse_skill_file(skill_md) {
+        Ok(skill) -> {
+            if skill.name.is_empty() == false {
+                if skills.contains(skill.name) == false {
+                    names.push(skill.name)
+                }
+                skills.set(skill.name, skill)
+            }
+        },
+        Err(_e) -> {
+            // skipping <skill_md>: parse error — not fatal
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Frontmatter parsing
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Parse a single SKILL.md file into a Skill.
+///
+/// Expects a leading YAML-ish frontmatter block delimited by `---` lines.
+/// Only name and description are extracted; everything after the closing
+/// `---` is the body. No full YAML parser — these are two string fields.
+fn parse_skill_file(path PathBuf) Result<Skill, str> {
+    is fs.read_to_string(path) {
+        Err(e) -> return Err(f"read: ${e}"),
+        Ok(raw) -> {
+            let parsed = parse_frontmatter(raw)
+            if parsed.name.is_empty() {
+                return Err("frontmatter is missing 'name:'")
+            }
+            return Ok(Skill(
+                name: parsed.name,
+                description: parsed.description,
+                content: parsed.content,
+                path: path
+            ))
+        }
+    }
+}
+
+/// The parsed frontmatter result.
+type Frontmatter {
+    name str
+    description str
+    content str
+}
+
+/// Split a SKILL.md into (name, description, body).
+///
+/// - If a leading `---\n...\n---` block exists, parse name:/description: from
+///   it; the body is everything after the closing `---`.
+/// - If no frontmatter, name is empty (caller falls back to the dir name),
+///   description is empty, and the whole file is the body.
+fn parse_frontmatter(raw str) Frontmatter {
+    // Strip a UTF-8 BOM if present (common when editors save as "UTF-8 with
+    // BOM"); otherwise the `---` prefix won't match.
+    let stripped = strip_bom(raw)
+    let open = stripped.strip_prefix("---\n")
+    is open {
+        None -> {
+            // No frontmatter: empty name/desc, whole file is the body.
+            return Frontmatter(name: "", description: "", content: stripped)
+        },
+        Some(after_open) -> return parse_frontmatter_body(after_open)
+    }
+}
+
+/// Parse the body after the opening `---\n`.
+fn parse_frontmatter_body(after_open str) Frontmatter {
+    let close_idx = find_close_marker(after_open)
+    is close_idx {
+        None -> {
+            // no closing --- : treat it all as frontmatter, empty body.
+            let name = extract_field(after_open, "name")
+            let desc = extract_field(after_open, "description")
+            return Frontmatter(name: name, description: desc, content: "")
+        },
+        Some(idx) -> {
+            let lines = after_open.lines()
+            let fm = take_lines_joined(lines, idx)
+            let body_start = body_offset(after_open, idx)
+            let body = slice_and_trim(after_open, body_start)
+            let name = extract_field(fm, "name")
+            let desc = extract_field(fm, "description")
+            return Frontmatter(name: name, description: desc, content: body)
+        }
+    }
+}
+
+/// Strip a leading UTF-8 BOM (\u{feff}) if present.
+fn strip_bom(raw str) str {
+    let p = raw.strip_prefix("\u{feff}")
+    is p {
+        Some(rest) -> return rest,
+        None -> return raw
+    }
+}
+
+/// Index of the line (within `after_open`) whose trimmed content is `---`, or
+/// None if no such line exists.
+fn find_close_marker(after_open str) ?uint {
+    var i uint = 0
+    for line in after_open.lines() {
+        if line.trim_end() == "---" {
+            return Some(i)
+        }
+        i = i + 1
+    }
+    return None
+}
+
+/// Join the first `count` lines of `lines` with newlines.
+fn take_lines_joined(lines List<str>, count uint) str {
+    var out List<str> = []
+    var i uint = 0
+    for line in lines {
+        if i < count {
+            out.push(line)
+        }
+        i = i + 1
+    }
+    return out.join("\n")
+}
+
+/// Byte offset of the line just past the closing `---` (the start of the body).
+fn body_offset(after_open str, close_idx uint) uint {
+    var acc uint = 0
+    var i uint = 0
+    for line in after_open.lines() {
+        if i <= close_idx {
+            // +1 for the newline that terminated this line.
+            acc = acc + line.len() + 1
+        }
+        i = i + 1
+    }
+    return acc
+}
+
+/// Return the substring of `s` starting at `start`, leading whitespace trimmed.
+/// Clamped to s length.
+fn slice_and_trim(s str, start uint) str {
+    let end = s.len()
+    var lo uint = start
+    if lo > end {
+        lo = end
+    }
+    let slice = s.substring(lo, end)
+    return slice.trim_start()
+}
+
+/// Extract a `key: value` field from frontmatter text. Handles quoted values
+/// ("..."/'...') and strips a trailing comment. Returns "" if absent.
+fn extract_field(frontmatter str, key str) str {
+    let prefix = f"${key}:"
+    for line in frontmatter.lines() {
+        let trimmed = line.trim()
+        let rest = trimmed.strip_prefix(prefix)
+        is rest {
+            Some(r) -> return clean_field_value(r.trim()),
+            None -> {}
+        }
+    }
+    return ""
+}
+
+/// Strip surrounding quotes (if any) from a frontmatter value.
+fn clean_field_value(val str) str {
+    if val.starts_with('"') && val.ends_with('"') {
+        return unquote(val)
+    }
+    if val.starts_with("'") && val.ends_with("'") {
+        return unquote(val)
+    }
+    return val
+}
+
+/// Remove the first and last character (used after the quote-pair check).
+fn unquote(val str) str {
+    let end = val.len() - 1
+    return val.substring(1, end)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SkillTool — exposes skills to the model as a Tool
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The tool that exposes skills to the model. The model calls
+/// `skill(skill_name=...)` to load a skill's content on demand.
+///
+/// Its description() is built once at construction (from the registry) so the
+/// model sees a directory of available skills + their triggers every turn.
+pub type SkillTool has Tool {
+    registry Arc<SkillRegistry>
+    /// Cached description (built from the registry; stable for the tool's life).
+    description_cache str
+    /// Cached parameters schema (includes the skill-name enum).
+    parameters_cache JsonValue
+
+    pub fn name() str {
+        return "skill"
+    }
+
+    pub fn description() str {
+        return self.description_cache
+    }
+
+    pub fn parameters() JsonValue {
+        return self.parameters_cache
+    }
+
+    /// Load a skill's content by name. Errors if the skill isn't registered.
+    pub fn execute(args JsonValue) ~Result<str, ToolError> {
+        let v = args.get("skill_name").as_string()
+        if v.is_empty() {
+            return Err(ToolError.Args("missing 'skill_name' argument"))
+        }
+        let name = v
+        is self.registry.get(name) {
+            Some(skill) -> {
+                return Ok(f"# Skill: ${skill.name}\n\n${skill.content}")
+            },
+            None -> {
+                let available = self.registry.names().join(", ")
+                return Err(ToolError.Exec(
+                    f"skill '${name}' not found; available: ${available}"
+                ))
+            }
+        }
+    }
+}
+
+ext SkillTool {
+    /// Build a SkillTool over a shared registry. Caches the description and the
+    /// parameters schema (which embeds the skill-name enum) for the tool's life.
+    pub static fn new(registry Arc<SkillRegistry>) SkillTool {
+        return SkillTool(
+            registry: registry,
+            description_cache: build_description(registry),
+            parameters_cache: build_parameters(registry)
+        )
+    }
+
+    /// A read-only view of the registry (for bootstrap injection).
+    pub fn registry() SkillRegistry {
+        return self.registry
+    }
+
+    /// Build the `<available_skills>` block appended to the system prompt so the
+    /// model knows what skills it can invoke.
+    pub fn available_skills_block() str {
+        let descs = self.registry.descriptions()
+        if descs.is_empty() {
+            return ""
+        }
+        var out = "\n\n<available_skills>\n"
+        out = out + "You have access to skills — reusable techniques you load on demand.\n"
+        out = out + "To use a skill, call the `skill` tool with its name; its content will be\n"
+        out = out + "returned to you, and you follow its instructions directly.\n\n"
+        for pair in descs {
+            out = out + f"- ${pair[0]}: ${pair[1]}\n"
+        }
+        out = out + "\nInvoke a skill whenever its trigger applies, even slightly.\n"
+        out = out + "</available_skills>"
+        return out
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Description / parameters builders
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Build the tool description string from the registry's skill list.
+fn build_description(registry SkillRegistry) str {
+    let descs = registry.descriptions()
+    if descs.is_empty() {
+        return "Load a skill's instructions. No skills are currently configured."
+    }
+    var out = "Load a skill's instructions by name. Call this whenever a skill's trigger applies.\n\nAvailable skills:\n"
+    for pair in descs {
+        out = out + f"- ${pair[0]}: ${pair[1]}\n"
+    }
+    return out
+}
+
+/// Build the parameters JSON schema, embedding the registry's skill names as
+/// the `skill_name` enum. Uses json.parse over a stringified schema (the
+/// Auto VM's generic json.encode[T] is unreliable — plan 013 gotcha B4).
+fn build_parameters(registry SkillRegistry) JsonValue {
+    var enum_parts List<str> = []
+    for n in registry.names() {
+        enum_parts.push(f"\"${n}\"")
+    }
+    let enum_list = enum_parts.join(", ")
+    // Build the JSON with concatenation so the literal braces aren't read as
+    // f-string interpolation.
+    let schema = "{\"type\":\"object\",\"properties\":{\"skill_name\":{\"type\":\"string\",\"description\":\"Name of the skill to load\",\"enum\":[" + enum_list + "]}},\"required\":[\"skill_name\"]}"
+    return json.parse(schema)
+}

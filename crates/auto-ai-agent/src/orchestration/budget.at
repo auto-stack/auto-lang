@@ -1,0 +1,192 @@
+/// Token Budgeting — tracks and enforces per-step and per-run token spend.
+///
+/// Makes cost a first-class constraint, not a surprise bill.
+/// (Plan 008 Phase 1 — moved from musk relay/budget.rs, no changes needed.)
+///
+/// Auto port of crates/auto-ai-agent/src/orchestration/budget.rs (auto-ai v0.4.0).
+
+use.rust std::collections::HashMap
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BudgetStrategy
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// How to react when a budget threshold is crossed.
+pub enum BudgetStrategy {
+    /// Halt step and request human decision.
+    HardStop
+    /// Switch to a cheaper model for the remainder.
+    EscalateModel
+    /// Aggressively compress context.
+    SummarizeContext
+    /// Skip non-critical work.
+    SkipOptional
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TokenBudget
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Token budget with limit, warning threshold, and enforcement strategy.
+pub type TokenBudget {
+    limit uint
+    warning_at uint
+    strategy BudgetStrategy
+}
+
+ext TokenBudget {
+    /// Very high default — budget is for monitoring/logging, not for blocking
+    /// tasks. The agent should run to completion (or until the user
+    /// interrupts). Set a finite number to catch pathological runaway (e.g. an
+    /// infinite retry loop burning tokens).
+    pub static fn default() TokenBudget {
+        return TokenBudget.new(100000000)
+    }
+
+    /// Build a budget with a HardStop strategy. The warning threshold is 70% of
+    /// the limit.
+    pub static fn new(limit uint) TokenBudget {
+        return TokenBudget(
+            limit: limit,
+            warning_at: warn_threshold(limit),
+            strategy: BudgetStrategy.HardStop
+        )
+    }
+
+    /// Build a budget with an explicit strategy.
+    pub static fn with_strategy(limit uint, strategy BudgetStrategy) TokenBudget {
+        return TokenBudget(
+            limit: limit,
+            warning_at: warn_threshold(limit),
+            strategy: strategy
+        )
+    }
+}
+
+/// 70% warning threshold (kept as a helper so new()/with_strategy() share it).
+fn warn_threshold(limit uint) uint {
+    let scaled = limit.to_float() * 0.7
+    return scaled.to_uint()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BudgetAction
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Action the pipeline should take after a budget check.
+///
+/// Note: as of the Plan 008 recheck, the pipeline treats LimitReached as
+/// advisory — it logs a warning but does not halt the run (the default 100M
+/// token limit is a runaway guard, not a billing control). If hard-stop
+/// behavior is needed, the pipeline consumer must enforce it based on this
+/// signal.
+///
+/// Tuple variant: Warning(remaining) — Rust used a struct variant
+/// { remaining }, Auto can't destructure struct variants (plan 013 gotcha B3).
+pub enum BudgetAction {
+    /// Spend within limits — proceed.
+    None
+    /// Approaching a limit — warn but continue.
+    Warning(uint)
+    /// Limit reached. Whether to halt is decided by the consumer; the default
+    /// pipeline implementation treats this as advisory (logs, continues).
+    LimitReached
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BudgetTracker
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Tracks token usage across a run, per step and cumulatively.
+///
+/// NOTE (plan 013 gotcha B5): Auto's VM Map has no iteration API, so parallel
+/// `step_names`/`per_step_names` key lists are kept alongside the step maps.
+pub type BudgetTracker {
+    run_budget TokenBudget
+    step_budgets Map<str, TokenBudget>
+    step_names List<str>
+    cumulative uint
+    per_step Map<str, uint>
+    per_step_names List<str>
+}
+
+ext BudgetTracker {
+    pub static fn new(run_budget TokenBudget) BudgetTracker {
+        return BudgetTracker(
+            run_budget: run_budget,
+            step_budgets: Map.new(),
+            step_names: [],
+            cumulative: 0,
+            per_step: Map.new(),
+            per_step_names: []
+        )
+    }
+
+    /// Record token usage from an API response.
+    pub mut fn record(step str, input uint, output uint) void {
+        let total = input + output
+        self.cumulative = self.cumulative + total
+        if self.per_step.contains(step) == false {
+            self.per_step_names.push(step)
+            self.per_step.set(step, total)
+        } else {
+            let prev = self.per_step.get(step)
+            self.per_step.set(step, prev + total)
+        }
+    }
+
+    /// Check whether current spend triggers any budget action.
+    pub fn check(step str) BudgetAction {
+        let step_used = self.step_used(step)
+
+        // Step budget first (tighter constraint).
+        is self.step_budgets.get(step) {
+            Some(step_budget) -> {
+                let action = check_budget(step_used, step_budget)
+                if action.is_some() {
+                    return action.unwrap()
+                }
+            },
+            None -> {}
+        }
+
+        // Then the run-wide budget.
+        let action = check_budget(self.cumulative, self.run_budget)
+        if action.is_some() {
+            return action.unwrap()
+        }
+        return BudgetAction.None
+    }
+
+    /// Set a per-step budget.
+    pub mut fn set_step_budget(step str, budget TokenBudget) void {
+        if self.step_budgets.contains(step) == false {
+            self.step_names.push(step)
+        }
+        self.step_budgets.set(step, budget)
+    }
+}
+
+// ─── BudgetTracker helpers ──────────────────────────────────────────────────
+
+ext BudgetTracker {
+    /// Token usage recorded for a step so far (0 if none).
+    fn step_used(step str) uint {
+        is self.per_step.get(step) {
+            Some(n) -> return n,
+            None -> return 0
+        }
+    }
+}
+
+/// Check `used` against a budget's limit + warning threshold. Returns
+/// Some(BudgetAction) when a threshold is crossed, None when spend is fine.
+fn check_budget(used uint, budget TokenBudget) ?BudgetAction {
+    if used >= budget.limit {
+        return Some(BudgetAction.LimitReached)
+    }
+    if used >= budget.warning_at {
+        return Some(BudgetAction.Warning(budget.limit - used))
+    }
+    return None
+}

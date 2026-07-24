@@ -1,0 +1,22 @@
+/// The Workflow engine (design doc §5–6).
+///
+/// DEPRECATED (Plan 008): Prefer orchestration.PipelineEngine, which is a
+/// strict superset (real gate enforcement, budget tracking, loop caps,
+/// pause/resume/rerun, handoff auto-correction). This Workflow module is kept
+/// for backward compatibility but should not be used for new code.
+///
+/// STATUS — NOT YET PORTED (plan 013):
+/// The Rust original (crates/auto-ai-agent/src/workflow.rs, ~1181 lines) chains
+/// Agents into a multi-step plan via relays + topological ordering. It depends
+/// on the auto_atom/auto_val bridge (parsing `workflow { … }` blocks) AND on
+/// the not-yet-ported Agent ReAct loop, and it leans on the same constructs the
+/// Auto parser currently rejects (closures, async loops, `dyn`-trait fields).
+/// Because the module is deprecated in favor of PipelineEngine (which IS
+/// ported — see orchestration/pipeline.at), porting it has the lowest payoff
+/// and is deferred until (a) the Agent loop is ported and (b) Auto has a native
+/// Atom parser. This file is a placeholder so the crate root compiles; the
+/// public types (Workflow / WorkflowStep / WorkflowContext / WorkflowResult /
+/// WorkflowEvent / RetrySpec / ToolGuard / Gate / parse_at_workflow) are not
+/// re-exported yet.
+///
+/// Auto port of crates/auto-ai-agent/src/workflow.rs (auto-ai v0.4.0).

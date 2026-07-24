@@ -1,0 +1,26 @@
+/// Multi-agent orchestration primitives — shared across all AutoOS apps.
+///
+/// (Plan 008 — Orchestration Down)
+///
+/// This module provides the generic building blocks for multi-agent pipelines:
+/// - handoff.HandoffDocument — structured inter-agent message (token-efficient)
+/// - budget.BudgetTracker — per-step + per-run token budget enforcement
+/// - flow — FlowSpec / FlowStep / ExitRouting / GateType definitions
+/// - pipeline.PipelineEngine — deterministic state machine (advance/gate/pause)
+/// - driver — PipelineDriver + AgentFactory spec (parameterized orchestration loop)
+///
+/// Apps (musk, auto-ai-cli, future) consume these to run multi-role pipelines
+/// without reimplementing the state machine, budget, or handoff logic.
+///
+/// Auto port of crates/auto-ai-agent/src/orchestration/mod.rs (auto-ai v0.4.0).
+
+use budget: BudgetAction, BudgetStrategy, BudgetTracker, TokenBudget
+use driver: AgentFactory, PipelineDriver, PipelineEvent
+use flow: ExitRouting, FlowSpec, FlowStep, GateType
+// NOTE: Rust re-exports flow.GateDecision as `FlowGateDecision` (to disambiguate
+// from pipeline.GateDecision). Auto's `use` has no `as` alias, so flow's
+// GateDecision is exported under its own name; callers wanting the flow flavor
+// should reference it as `flow.GateDecision` explicitly.
+use flow: GateDecision
+use handoff: ContextPointers, Decision, HandoffDocument, Question, TokenUsage, WorkProduct
+use pipeline: AdvanceResult, PendingGate, PipelineEngine, PipelineMode, PipelineStatus, StepRecord

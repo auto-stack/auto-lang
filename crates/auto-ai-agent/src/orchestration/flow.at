@@ -1,0 +1,167 @@
+/// Flow Specification — declarative pipeline definitions.
+///
+/// A flow is an ordered list of steps that the PipelineEngine executes. The
+/// orchestrator is pure Rust state-machine code — zero LLM tokens are spent
+/// deciding what to do next.
+///
+/// (Plan 008 Phase 2 — moved from musk relay/flow.rs. The type definitions are
+/// generic; app-specific built-in flow instances stay in the app.)
+///
+/// Auto port of crates/auto-ai-agent/src/orchestration/flow.rs (auto-ai v0.4.0).
+///
+/// VARIANT NOTE: the Rust ExitRouting.Loop and GateDecision.Reject are
+/// struct-style variants; Auto models them as tuple variants (plan 013 gotcha
+/// B3). Field order:
+/// - ExitRouting.Loop(target_step_id, max_iterations)
+/// - GateDecision.Reject(feedback)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GateType
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Gate type controlling whether a step needs human approval.
+pub enum GateType {
+    /// Proceed automatically.
+    Auto
+    /// Pause for human approval before executing.
+    Human
+}
+
+ext GateType {
+    /// The default gate is Auto.
+    pub static fn default() GateType {
+        return GateType.Auto
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ExitRouting
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Routing logic after a step completes.
+///
+/// Tuple variant Loop(target_step_id, max_iterations) — Rust used a struct
+/// variant { target_step_id, max_iterations } (plan 013 gotcha B3).
+pub enum ExitRouting {
+    /// Go to the next step in sequence.
+    Next
+    /// Loop back to a target step (e.g., coder->tester iteration). Fields:
+    /// (target_step_id, max_iterations before breaking to next or Paused).
+    Loop(str, uint)
+}
+
+ext ExitRouting {
+    /// The default exit is Next.
+    pub static fn default() ExitRouting {
+        return ExitRouting.Next
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GateDecision (flow-local)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Decision a human makes at a gate. (The pipeline re-exports this as
+/// FlowGateDecision.)
+///
+/// Tuple variant Reject(feedback) — Rust used { feedback } (plan 013 gotcha B3).
+pub enum GateDecision {
+    /// Approve — continue to next step.
+    Approve
+    /// Reject — redraft the same step with feedback.
+    Reject(str)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FlowStep
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A single step in a flow.
+pub type FlowStep {
+    id str
+    /// Which role/profession executes this step (e.g. "coder", "reviewer").
+    role_id str
+    /// Gate type controlling whether a step needs human approval.
+    gate GateType
+    /// Max LLM turns before forced handoff (overrides role default).
+    max_turns ?uint
+    /// How to route after this step completes.
+    exit ExitRouting
+    /// Optional per-step token budget (overrides role default).
+    token_budget ?uint
+}
+
+ext FlowStep {
+    pub static fn new(id str, role_id str) FlowStep {
+        return FlowStep(
+            id: id,
+            role_id: role_id,
+            gate: GateType.Auto,
+            max_turns: None,
+            exit: ExitRouting.Next,
+            token_budget: None
+        )
+    }
+
+    /// Builder: set the gate type.
+    pub fn with_gate(gate GateType) FlowStep {
+        self.gate = gate
+        return self
+    }
+
+    /// Builder: set the exit routing.
+    pub fn with_exit(exit ExitRouting) FlowStep {
+        self.exit = exit
+        return self
+    }
+
+    /// Builder: set a per-step token budget.
+    pub fn with_budget(budget uint) FlowStep {
+        self.token_budget = Some(budget)
+        return self
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FlowSpec
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A flow is an ordered list of steps with routing logic.
+pub type FlowSpec {
+    id str
+    steps List<FlowStep>
+}
+
+ext FlowSpec {
+    pub static fn new(id str) FlowSpec {
+        return FlowSpec(id: id, steps: [])
+    }
+
+    /// Append a step (builder-style).
+    pub mut fn add_step(step FlowStep) FlowSpec {
+        self.steps.push(step)
+        return self
+    }
+
+    /// Find a step by id.
+    pub fn get_step(step_id str) ?FlowStep {
+        for s in self.steps {
+            if s.id == step_id {
+                return Some(s)
+            }
+        }
+        return None
+    }
+
+    /// Index of a step by id, or None if absent.
+    pub fn get_step_index(step_id str) ?uint {
+        var i uint = 0
+        for s in self.steps {
+            if s.id == step_id {
+                return Some(i)
+            }
+            i = i + 1
+        }
+        return None
+    }
+}

@@ -1,0 +1,519 @@
+/// Agent Role registry — user-configurable, persistable roles that generalize
+/// the compiled-in [Role] library.
+///
+/// A Role is the same idea as a built-in Role (soul prompt + tier + tools +
+/// temperature + …) but **editable at runtime**: roles live as role { … }
+/// blocks in ~/.config/autoos/roles/<name>.at, with an optional sidecar Soul
+/// markdown file (<name>.soul.md). Built-in professions act as read-only
+/// defaults and as inherit: bases for user roles.
+///
+/// (Plan 004 — Agent Roles.)
+///
+/// Auto port of crates/auto-ai-agent/src/roles.rs (auto-ai v0.4.0).
+///
+/// a2r-FIRST NOTE: like validate.at, this bridges dirs::home_dir() and the
+/// std::fs / std::path crates. The pure AutoVM cannot resolve the bridged
+/// types or list a filesystem directory, so the runtime path runs under cargo
+/// (a2r→Rust). The public API (RoleRegistry.load / resolve_role / list / get /
+/// save / delete + RoleSummary / RoleDetail) is stable; when Auto gains native
+/// fs support, drop the use.rust lines and swap the bridged calls.
+
+use.rust std::path::PathBuf
+use.rust std::fs
+use.rust std::sync::Arc
+
+use ai_config: ModelTier
+use role_def: Role
+use error: AgentError
+use builtin_roles: builtin_names, load_builtin
+use config: RoleConfig, parse_at_role, serialize_at_role, load_role, config_role_new
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Path helpers (bridged to dirs::home_dir + std::path)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Directory holding user roles: ~/.config/autoos/roles/. None when the home
+/// directory can't be determined.
+fn roles_dir() ?PathBuf {
+    is dirs.home_dir() {
+        Some(h) -> return Some(h.join(".config/autoos/roles")),
+        None -> return None
+    }
+}
+
+/// A role's .at file path: <roles_dir>/<name>.at. None when home is
+/// unknown.
+fn role_at_path(name str) ?PathBuf {
+    is roles_dir() {
+        Some(d) -> return Some(d.join(f"${name}.at")),
+        None -> return None
+    }
+}
+
+/// A role's sidecar Soul markdown path: <roles_dir>/<name>.soul.md.
+fn role_soul_path(name str) ?PathBuf {
+    is roles_dir() {
+        Some(d) -> return Some(d.join(f"${name}.soul.md")),
+        None -> return None
+    }
+}
+
+// ── summary / detail: what the API/UI consumes ───────────────────────────────
+
+/// A flat summary of a role, for listing. Built-in roles are flagged so the UI
+/// can render them read-only.
+pub type RoleSummary {
+    name str
+    description str
+    tier ModelTier
+    allowed_tiers List<ModelTier>
+    skills List<str>
+    token_budget ?uint
+    is_builtin bool
+}
+
+ext RoleSummary {
+    static fn empty() RoleSummary {
+        return RoleSummary(
+            name: "", description: "", tier: ModelTier.Mid,
+            allowed_tiers: [], skills: [], token_budget: None, is_builtin: false
+        )
+    }
+}
+
+/// Full detail of a single role, including the Soul markdown body (loaded from
+/// the sidecar file when present, else the inline system_prompt).
+pub type RoleDetail {
+    summary RoleSummary
+    /// The Soul / system-prompt markdown in full.
+    soul str
+    /// Whether the Soul came from a sidecar .soul.md (vs inline).
+    soul_from_file bool
+    /// The raw parsed config (for the editor to bind to form fields).
+    config RoleConfig
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// profession_to_config — read a built-in Role's trait methods back into a config
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Read a built-in [Role]'s trait methods back into a config struct, so the
+/// UI/API can present built-ins uniformly alongside user roles.
+///
+/// (Ports the private profession_to_config helper from roles.rs.)
+fn profession_to_config(prof Role) RoleConfig {
+    let t = prof.allowed_tools()
+    let at = prof.allowed_tiers()
+    let s = prof.skills()
+    var tools ?List<str> = None
+    if t.is_empty() == false {
+        tools = Some(t)
+    }
+    var tiers ?List<ModelTier> = None
+    if at.is_empty() == false {
+        tiers = Some(at)
+    }
+    var skills ?List<str> = None
+    if s.is_empty() == false {
+        skills = Some(s)
+    }
+    return RoleConfig(
+        name: Some(prof.name()),
+        description: None,
+        model: Some(prof.model()),
+        model_tier: Some(prof.model_tier()),
+        temperature: Some(prof.temperature()),
+        max_turns: Some(prof.max_turns()),
+        system_prompt: Some(prof.system_prompt()),
+        system_prompt_append: None,
+        tools: tools,
+        tools_append: None,
+        inherit: None,
+        memory_limit: prof.memory_limit(),
+        allowed_tiers: tiers,
+        skills: skills,
+        token_budget: prof.token_budget(),
+        soul_file: None
+    )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RoleRegistry
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Registry of roles: built-in professions (read-only) + user .at roles
+/// (which may override a same-named built-in). Mirrors ModeRegistry's shape.
+///
+/// NOTE (plan 013 gotcha B5): Auto's VM Map has no iteration API, so a parallel
+/// names List<str> is kept alongside roles for ordering/listing. Fields are
+/// pub (B12).
+pub type RoleRegistry {
+    /// name -> detail. Built-ins are flagged is_builtin = true in the detail.
+    roles Map<str, RoleDetail>
+    /// Parallel key list (kept in sync with roles) so we can iterate.
+    names List<str>
+}
+
+ext RoleRegistry {
+    /// Empty registry (Default).
+    pub static fn new() RoleRegistry {
+        return RoleRegistry(roles: Map.new(), names: [])
+    }
+
+    /// Load all roles: built-in professions first, then user .at files (which
+    /// override same-named built-ins). Single-role parse failures are warned +
+    /// skipped — never fatal (mirrors ModeRegistry).
+    pub static fn load() RoleRegistry {
+        var roles Map<str, RoleDetail> = Map.new()
+        var names List<str> = []
+
+        // 1. Built-in professions (compiled-in defaults, read-only).
+        for name in builtin_names() {
+            load_one_builtin(name, roles, names)
+        }
+
+        // 2. User roles from ~/.config/autoos/roles/*.at (override built-ins).
+        load_user_roles(roles, names)
+
+        return RoleRegistry(roles: roles, names: names)
+    }
+
+    /// Resolve a role by name into a live Role (for agent building).
+    /// User-defined roles (.at files) take precedence over compiled-in
+    /// built-ins with the same name, so ~/.config/autoos/roles/assistant.at
+    /// can override the built-in assistant role's model_tier and other fields.
+    pub fn resolve_role(name str) ?Arc<Role> {
+        // 1. User override (.at file) takes precedence — even when it shares
+        //    the same name as a built-in. load_role resolves the inherit:
+        //    chain internally so the override gets the built-in's prompt/etc.
+        if self.roles.contains(name) {
+            let detail = self.roles.get(name)
+            if detail.summary.is_builtin == false {
+                let src = serialize_at_role(detail.config)
+                is load_role(src) {
+                    Ok(_cfg) -> {
+                        // load_role re-parses the serialized .at to validate it;
+                        // build a live ConfigRole from the original config and
+                        // wrap it in an Arc (ConfigRole has Role).
+                        let role = config_role_new(detail.config)
+                        return Some(Arc(role))
+                    },
+                    Err(_e) -> {
+                        // Parse failure: warn and fall through to built-in.
+                    }
+                }
+            }
+        }
+        // 2. No user override → compiled built-in.
+        is load_builtin(name) {
+            Some(b) -> return Some(Arc(b)),
+            None -> return None
+        }
+    }
+
+    /// List all role summaries (built-in + user), sorted: user roles first
+    /// (alphabetical), then built-ins (alphabetical). Mirrors Rust's
+    /// sort_by with b.is_builtin.cmp(&a.is_builtin).then(name.cmp).
+    pub fn list() List<RoleSummary> {
+        var user_list List<RoleSummary> = []
+        var builtin_list List<RoleSummary> = []
+        for name in self.names {
+            let d = self.roles.get(name)
+            if d.summary.is_builtin {
+                builtin_list.push(d.summary)
+            } else {
+                user_list.push(d.summary)
+            }
+        }
+        user_list.sort_by_key((s) => s.name)
+        builtin_list.sort_by_key((s) => s.name)
+        var out List<RoleSummary> = []
+        for s in user_list {
+            out.push(s)
+        }
+        for s in builtin_list {
+            out.push(s)
+        }
+        return out
+    }
+
+    /// Full detail for one role.
+    pub fn get(name str) ?RoleDetail {
+        if self.roles.contains(name) {
+            return Some(self.roles.get(name))
+        }
+        return None
+    }
+
+    /// Save (create or overwrite) a user role. Writes the .at and, when
+    /// soul_md is Some, the sidecar .soul.md. Built-in roles cannot be
+    /// overwritten — returns an error.
+    pub fn save(name str, cfg RoleConfig, soul_md ?str) Result<None, AgentError> {
+        if load_builtin(name).is_some() {
+            return Err(AgentError.Config(
+                f"cannot overwrite built-in role '${name}'; choose a different name or use inherit"
+            ))
+        }
+        // Ensure the name field is set so the file is self-describing.
+        var out = cfg
+        out.name = Some(name)
+
+        is roles_dir() {
+            None -> return Err(AgentError.Config(
+                "could not determine home directory for roles"
+            )),
+            Some(dir) -> {
+                is fs.create_dir_all(dir) {
+                    Err(e) -> return Err(AgentError.Config(
+                        f"failed to create roles dir ${dir.display()}: ${e}"
+                    )),
+                    Ok(_) -> {}
+                }
+
+                // Write the sidecar Soul when provided (and link it from .at).
+                is soul_md {
+                    Some(md) -> {
+                        let soul_path = dir.join(f"${name}.soul.md")
+                        is fs.write(soul_path, md) {
+                            Err(e) -> return Err(AgentError.Config(
+                                f"failed to write ${soul_path.display()}: ${e}"
+                            )),
+                            Ok(_) -> {}
+                        }
+                        out.soul_file = Some(f"${name}.soul.md")
+                    },
+                    None -> {}
+                }
+
+                // Write the .at.
+                let at_path = dir.join(f"${name}.at")
+                let src = serialize_at_role(out)
+                is fs.write(at_path, src) {
+                    Err(e) -> return Err(AgentError.Config(
+                        f"failed to write ${at_path.display()}: ${e}"
+                    )),
+                    Ok(_) -> return Ok(None)
+                }
+            }
+        }
+    }
+
+    /// Delete a user role (.at + sidecar .soul.md). Built-in roles cannot be
+    /// deleted — returns an error.
+    pub fn delete(name str) Result<None, AgentError> {
+        if load_builtin(name).is_some() {
+            return Err(AgentError.Config(f"cannot delete built-in role '${name}'"))
+        }
+        is role_at_path(name) {
+            None -> return Err(AgentError.Config(
+                "could not determine home directory"
+            )),
+            Some(at_path) -> {
+                let existed = at_path.exists()
+                if existed {
+                    is fs.remove_file(at_path) {
+                        Err(e) -> return Err(AgentError.Config(
+                            f"failed to delete ${at_path.display()}: ${e}"
+                        )),
+                        Ok(_) -> {}
+                    }
+                }
+                // Best-effort soul removal.
+                is role_soul_path(name) {
+                    Some(p) -> {
+                        let _ = fs.remove_file(p)
+                    },
+                    None -> {}
+                }
+                if existed == false {
+                    return Err(AgentError.Config(f"role '${name}' not found"))
+                }
+                return Ok(None)
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// load() helpers (mutate the passed-in registry maps; never fatal)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Load one built-in profession into the registry (step 1 of load()).
+/// Unknown names are silently skipped.
+fn load_one_builtin(name str, roles Map<str, RoleDetail>, names List<str>) void {
+    is load_builtin(name) {
+        Some(prof) -> {
+            let cfg = profession_to_config(prof)
+            let summary = RoleSummary(
+                name: prof.name(),
+                description: "",
+                tier: prof.model_tier(),
+                allowed_tiers: prof.allowed_tiers(),
+                skills: prof.skills(),
+                token_budget: prof.token_budget(),
+                is_builtin: true
+            )
+            let detail = RoleDetail(
+                summary: summary,
+                soul: prof.system_prompt(),
+                soul_from_file: false,
+                config: cfg
+            )
+            roles.set(name, detail)
+            names.push(name)
+        },
+        None -> {}
+    }
+}
+
+/// Load all user .at roles from the roles directory (step 2 of load()).
+/// Missing/unreadable directory → no user roles (not fatal).
+fn load_user_roles(roles Map<str, RoleDetail>, names List<str>) void {
+    is roles_dir() {
+        Some(dir) -> scan_roles_dir(dir, roles, names),
+        None -> {}
+    }
+}
+
+/// Iterate one roles directory, loading each *.at entry.
+fn scan_roles_dir(dir PathBuf, roles Map<str, RoleDetail>, names List<str>) void {
+    is fs.read_dir(dir) {
+        Ok(entries) -> {
+            for entry in entries {
+                handle_dir_entry(entry, roles, names)
+            }
+        },
+        Err(_e) -> {
+            // directory missing/unreadable: no user roles
+        }
+    }
+}
+
+/// Handle one read_dir result: skip errors, load .at files.
+fn handle_dir_entry(entry DirEntry, roles Map<str, RoleDetail>, names List<str>) void {
+    let path = entry.path()
+    if is_at_file(path) {
+        load_user_at_file(path, roles, names)
+    }
+}
+
+/// True when path's extension is exactly "at".
+fn is_at_file(path PathBuf) bool {
+    let ext = path.extension()
+    is ext {
+        Some(e) -> return e == "at",
+        None -> return false
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// User-role loading (one file — mutates the passed-in registry maps)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Read + parse one user .at role file, inserting it into roles/names
+/// (overriding any same-named built-in). Parse/read failures are warned +
+/// skipped — never fatal. (Mirrors the inline body of Rust's load() loop.)
+fn load_user_at_file(path PathBuf, roles Map<str, RoleDetail>, names List<str>) void {
+    is fs.read_to_string(path) {
+        Err(_e) -> {
+            // role: failed to read <path> — skip
+        },
+        Ok(content) -> {
+            is parse_at_role(content) {
+                Err(_e) -> {
+                    // role: failed to parse <path> — skip
+                },
+                Ok(cfg) -> {
+                    // Name: cfg.name if set, else the file stem, else "unnamed".
+                    var name str = ""
+                    is cfg.name {
+                        Some(n) -> name = n,
+                        None -> {
+                            is path.file_stem() {
+                                Some(stem) -> {
+                                    is stem.to_str() {
+                                        Some(s) -> name = s,
+                                        None -> name = "unnamed"
+                                    }
+                                },
+                                None -> name = "unnamed"
+                            }
+                        }
+                    }
+                    // Resolve the Soul: sidecar file if present, else inline
+                    // system_prompt.
+                    let soul = resolve_soul(cfg, path)
+                    let summary = RoleSummary(
+                        name: name,
+                        description: cfg.description ?? "",
+                        tier: cfg.model_tier ?? ModelTier.Mid,
+                        allowed_tiers: cfg.allowed_tiers ?? [],
+                        skills: cfg.skills ?? [],
+                        token_budget: cfg.token_budget,
+                        is_builtin: false
+                    )
+                    let detail = RoleDetail(
+                        summary: summary,
+                        soul: soul.markdown,
+                        soul_from_file: soul.from_file,
+                        config: cfg
+                    )
+                    if roles.contains(name) == false {
+                        names.push(name)
+                    }
+                    roles.set(name, detail)
+                }
+            }
+        }
+    }
+}
+
+/// The result of resolving a role's Soul markdown.
+type SoulResolve {
+    markdown str
+    from_file bool
+}
+
+/// Resolve a role's Soul markdown: sidecar file first (if soul_file set and
+/// exists), else the inline system_prompt, else empty. Returns
+/// (markdown, came_from_file).
+fn resolve_soul(cfg RoleConfig, at_path PathBuf) SoulResolve {
+    is cfg.soul_file {
+        Some(rel) -> {
+            // sidecar path is relative to the .at's directory.
+            is at_path.parent() {
+                Some(d) -> {
+                    let sidecar = d.join(rel)
+                    is fs.read_to_string(sidecar) {
+                        Ok(md) -> return SoulResolve(markdown: md, from_file: true),
+                        Err(_e) -> {
+                            // soul_file not found — fall back to inline prompt.
+                            return SoulResolve(
+                                markdown: cfg.system_prompt ?? "",
+                                from_file: false
+                            )
+                        }
+                    }
+                },
+                None -> {
+                    let sidecar = PathBuf.from(rel)
+                    is fs.read_to_string(sidecar) {
+                        Ok(md) -> return SoulResolve(markdown: md, from_file: true),
+                        Err(_e) -> return SoulResolve(
+                            markdown: cfg.system_prompt ?? "",
+                            from_file: false
+                        )
+                    }
+                }
+            }
+        },
+        None -> return SoulResolve(
+            markdown: cfg.system_prompt ?? "",
+            from_file: false
+        )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Role construction helper for resolve_role
+// ═══════════════════════════════════════════════════════════════════════════

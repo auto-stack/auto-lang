@@ -1,0 +1,425 @@
+/// Pipeline Driver — the orchestration loop that bridges PipelineEngine and
+/// Agent.
+///
+/// Apps implement AgentFactory to tell the driver how to build an agent for
+/// each step (with their own tools, context, safety rules). The driver then:
+/// 1. Advances the pipeline engine.
+/// 2. On ExecuteStep -> builds an agent via the factory -> runs it -> builds a
+///    HandoffDocument from the result -> submits it to the engine.
+/// 3. On WaitForHuman -> emits a gate event (the app decides how to handle it).
+/// 4. Loops until Completed / Failed / Paused.
+///
+/// (Plan 008 Phase 5)
+///
+/// Auto port of crates/auto-ai-agent/src/orchestration/driver.rs (auto-ai v0.4.0).
+///
+/// a2r-FIRST NOTE: depends on crate::agent::{Agent, AgentResult, StreamEvent}
+/// (ported in agent.at), std::sync::Arc/atomic, and `Fn(...)` closure types
+/// carried as fields. The pure AutoVM cannot resolve these; the runtime path is
+/// a2r->Rust (cargo).
+///
+/// VARIANT NOTE: all struct-style enum variants below are modeled as tuple
+/// variants (plan 013 gotcha B3). Field order:
+/// - PipelineEvent.StepStarted(step_id, role_id)
+/// - PipelineEvent.Delta(text)
+/// - PipelineEvent.Tool(tool, result)
+/// - PipelineEvent.StepCompleted(step_id, handoff)
+/// - PipelineEvent.GateWaiting(step_id)
+/// - PipelineEvent.Failed(error)
+/// - PipelineEvent.Paused(step_id, reason)
+/// - PipelineEvent.BudgetWarning(remaining)
+///
+/// Note: the Rust field `handoff.to` is `handoff.target` in Auto (reserved
+/// word, see handoff.at). The driver leaves target empty ("engine decides").
+
+use.rust std::sync::Arc
+use.rust std::sync::atomic::AtomicBool
+
+use flow: FlowSpec
+use handoff: HandoffDocument, WorkProduct
+use pipeline: AdvanceResult, GateDecision, PipelineEngine
+use budget: BudgetAction
+use agent: Agent, AgentResult, StreamEvent
+use error: AgentError
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DriveOutcome (drive()'s internal continue/stop signal)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// What drive() should do after dispatching one advance() result.
+enum DriveOutcome {
+    /// Loop again (e.g. gate resolved).
+    Continue
+    /// Terminate the run successfully (Completed / Paused).
+    Done
+    /// Terminate with an error.
+    Fail(AgentError)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PipelineEvent
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Events emitted by the pipeline driver during execution.
+pub enum PipelineEvent {
+    /// A step started executing. (step_id, role_id)
+    StepStarted(str, str)
+    /// A text delta from the current step's agent (streaming). (text)
+    Delta(str)
+    /// A tool call result from the current step's agent. (tool, result)
+    Tool(str, str)
+    /// A step completed and its handoff was submitted. (step_id, handoff)
+    StepCompleted(str, HandoffDocument)
+    /// A human gate is waiting for approval. (step_id)
+    GateWaiting(str)
+    /// The pipeline completed successfully.
+    Completed
+    /// The pipeline failed. (error)
+    Failed(str)
+    /// A loop reached max iterations — paused. (step_id, reason)
+    Paused(str, str)
+    /// Token budget warning. (remaining)
+    BudgetWarning(uint)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// No-op callback defaults (defined early — Auto requires a function be
+// defined before it's referenced; both are used in new()/drive_step).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A no-op event handler — the default PipelineDriver.on_event until drive()
+/// installs the real sink. (Auto has no `fn` literal default; this named
+/// function reference is the equivalent of Rust's `|_| {}`.)
+fn noop_event_handler(_ev PipelineEvent) void {
+    return
+}
+
+/// A no-op stream-event handler used as the agent's stream callback.
+///
+/// LIMITATION (plan 013): Auto's parser cannot declare a function that returns
+/// a `fn(...)` type, nor build a closure inside a function body. The Rust
+/// driver builds an inline closure that captures accumulators + forwards
+/// events; the Auto port instead passes this no-op handler and reads the
+/// accumulated text back from agent_result.content after the run. Event
+/// forwarding during streaming is therefore not wired here (the driver still
+/// emits StepStarted/StepCompleted/Completed/etc. around each step).
+fn noop_stream_handler(_ev StreamEvent) void {
+    return
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AgentFactory spec
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Factory spec: apps implement this to build agents for each pipeline step.
+///
+/// The factory receives the role name (e.g. "coder") and the previous step's
+/// handoff (if any). It returns a fully-configured Agent ready to run.
+pub spec AgentFactory {
+    /// Build an agent for the given role, optionally seeded with the previous
+    /// step's handoff. Errors as a string message.
+    fn build_agent(role_id str, handoff ?HandoffDocument) Result<Agent, str>
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PipelineDriver
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The orchestration driver. Owns a PipelineEngine + an AgentFactory.
+///
+/// NOTE: the Rust `PipelineDriver<F: AgentFactory>` is generic over the factory
+/// type. Auto's `type` definitions don't support generic type params with spec
+/// bounds (`type X<F has S>` is a parse error), so the Auto port stores the
+/// factory as a spec-typed field (`factory AgentFactory`) — Auto's `spec` is
+/// automatically dynamically dispatched, giving the equivalent of
+/// `Box<dyn AgentFactory>`. Callers pass any concrete AgentFactory implementor.
+pub type PipelineDriver {
+    engine PipelineEngine
+    factory AgentFactory
+    /// Optional gate handler. When a human gate is encountered, this is called
+    /// to decide the gate outcome. None = auto-approve.
+    gate_handler ?fn(str) GateDecision
+    /// Event sink, stashed for the duration of a drive() run so the helper
+    /// methods don't need to carry it as a parameter (Auto's parser rejects a
+    /// fn(...) parameter that shares a signature with other params — plan 013
+    /// gotcha).
+    on_event fn(PipelineEvent)
+}
+
+ext PipelineDriver {
+    /// Create a new driver from a flow spec, a factory, and a task.
+    /// (The task is the "user message" for the first step; the factory receives
+    /// role_id + handoff=None for step 0 and should use the task directly.)
+    pub static fn new(flow FlowSpec, factory AgentFactory, task_msg str) PipelineDriver {
+        let run_id = f"pipeline-${now_secs()}"
+        let engine = PipelineEngine.new(flow, run_id)
+        // task is the "user message" for step 0; the factory receives
+        // role_id + handoff=None and should use the task directly. It's kept
+        // as a parameter for API parity with the Rust original.
+        // on_event is a no-op until drive() installs the real sink.
+        return PipelineDriver(
+            engine: engine,
+            factory: factory,
+            gate_handler: None,
+            on_event: noop_event_handler
+        )
+    }
+
+    /// Set a custom gate handler (builder-style). When a human gate is
+    /// encountered during drive(), the handler is called with the step_id to
+    /// decide Approve / Reject(feedback). If no handler is set, gates are
+    /// auto-approved.
+    pub fn with_gate_handler(handler fn(str) GateDecision) PipelineDriver {
+        self.gate_handler = Some(handler)
+        return self
+    }
+
+    /// Run the pipeline to completion (or until a gate/pause/failure).
+    ///
+    /// on_event receives pipeline events for the app to display/log. task is
+    /// the user's original request, passed to the first agent.
+    pub fn drive(task_msg str, on_event fn(PipelineEvent)) ~Result<None, AgentError> {
+        self.on_event = on_event
+        var last_handoff ?HandoffDocument = None
+        loop {
+            let result = self.engine.advance()
+            let outcome = self.dispatch(result, task_msg, last_handoff)
+            is outcome {
+                DriveOutcome.Continue -> {
+                    last_handoff = self.last_handoff_after(result, last_handoff)
+                },
+                DriveOutcome.Done -> return Ok(None),
+                DriveOutcome.Fail(e) -> return Err(e)
+            }
+        }
+    }
+
+    /// Dispatch one advance() result. Drives a step to completion (submitting
+    /// its handoff) and returns whether drive() should continue, terminate ok,
+    /// or terminate with an error.
+    fn dispatch(result AdvanceResult, task_msg str, last_handoff ?HandoffDocument) ~DriveOutcome {
+        is result {
+            AdvanceResult.ExecuteStep(step_id, role_id) -> {
+                return self.drive_step(task_msg, step_id, role_id, last_handoff)
+            },
+            AdvanceResult.Completed -> {
+                self.on_event(PipelineEvent.Completed)
+                return DriveOutcome.Done
+            },
+            AdvanceResult.Failed(error) -> {
+                let ev = PipelineEvent.Failed(error)
+                self.on_event(ev)
+                return DriveOutcome.Fail(AgentError.Config(error))
+            },
+            AdvanceResult.Paused(step_id, reason) -> {
+                let ev = PipelineEvent.Paused(step_id, reason)
+                self.on_event(ev)
+                return DriveOutcome.Done
+            },
+            AdvanceResult.WaitForHuman(step_id) -> {
+                let ev = PipelineEvent.GateWaiting(step_id)
+                self.on_event(ev)
+                let gr = self.resolve_gate_auto(step_id)
+                is gr {
+                    Ok(_) -> return DriveOutcome.Continue,
+                    Err(e) -> return DriveOutcome.Fail(e)
+                }
+            }
+        }
+    }
+
+    /// After a Continue outcome, update last_handoff for the next iteration.
+    fn last_handoff_after(result AdvanceResult, last_handoff ?HandoffDocument) ?HandoffDocument {
+        return last_handoff
+    }
+
+    /// Access the underlying engine (for pause/resume/rerun).
+    pub fn engine() PipelineEngine {
+        return self.engine
+    }
+
+    pub fn engine_mut() PipelineEngine {
+        return self.engine
+    }
+}
+
+// ─── PipelineDriver private helpers (split out of drive() to stay shallow) ──
+
+ext PipelineDriver {
+    /// Run one ExecuteStep: build the agent, stream it, build a handoff,
+    /// submit it, and handle the engine's next result. Returns Ok(None) to
+    /// continue the loop, or Err/Ok to terminate drive().
+    fn drive_step(task_msg str, step_id str, role_id str, last_handoff ?HandoffDocument) ~Result<None, AgentError> {
+        let started = PipelineEvent.StepStarted(step_id, role_id)
+        self.on_event(started)
+
+        // Build the agent for this step.
+        let agent = is self.factory.build_agent(role_id, last_handoff) {
+            Ok(a) -> a,
+            Err(msg) -> return Err(AgentError.Config(msg))
+        }
+
+        // Construct the input: original task for step 0, else the handoff render.
+        let input = build_step_input(task_msg, last_handoff)
+
+        // Forward the agent's stream events to the driver's event sink. The
+        // Rust original builds an inline closure capturing accumulators; Auto
+        // doesn't support closures inside function bodies, so we pass the
+        // driver's own on_event-bound stream handler. (Text/tool accumulation
+        // is read back from agent_result.content after the run.)
+        let stream_cb = noop_stream_handler
+
+        // Pipelines run to completion — pass a never-cancel dummy.
+        let no_cancel = Arc.new(AtomicBool.new(false))
+        let agent_result = agent.run_stream(input, stream_cb, no_cancel).await.?
+
+        // Build the handoff from the result + the agent's text output.
+        let content = agent_result.content
+        let handoff = self.build_handoff(role_id, agent_result, content)
+        let completed = PipelineEvent.StepCompleted(step_id, handoff)
+        self.on_event(completed)
+        last_handoff = Some(handoff)
+
+        // Submit to the engine — it routes to the next step.
+        let submitted = self.engine.submit_handoff(handoff)
+        // Surface budget warnings (review-003: re-check the engine's advisory
+        // signal here so the UI gets it alongside the step outcome).
+        emit_budget_warning(self.engine, last_handoff, self.on_event)
+        return self.handle_after_submit(submitted)
+    }
+
+    /// Resolve a gate, honoring the optional handler (else auto-approve).
+    /// Errors when the engine reports a failure resolving the gate.
+    fn resolve_gate_auto(step_id str) ~Result<None, AgentError> {
+        let decision = is self.gate_handler {
+            Some(handler) -> handler(step_id),
+            None -> GateDecision.Approve
+        }
+        let gate_result = self.engine.resolve_gate(decision)
+        is gate_result {
+            AdvanceResult.Failed(_e) -> return Err(AgentError.Config("gate resolution failed")),
+            else -> return Ok(None)
+        }
+    }
+
+    /// Construct a HandoffDocument from an agent's result.
+    ///
+    /// Generic-layer limitation: a role-agnostic driver can't parse every
+    /// role's output format, so the handoff is lossy — summary is a 200-char
+    /// truncation of the text output, and work products are inferred from
+    /// write_file/edit_file tool calls by reading their path arg. Apps wanting
+    /// richer handoffs should pass a custom factory.
+    fn build_handoff(role_id str, result AgentResult, content str) HandoffDocument {
+        // target is left empty — the engine fills it during submit_handoff
+        // ("engine decides"); an empty target doesn't emit an auto-correction.
+        let h = HandoffDocument.new(role_id, "")
+        h.summary = truncate_chars(content, 200)
+        for tc in result.tool_calls {
+            if tc.tool == "write_file" {
+                let p = extract_path(tc.args)
+                // Bind the record to a local first (plan 013 gotcha: don't
+                // construct directly as a deep method-call argument).
+                let wp = WorkProduct(
+                    path: p, description: tc.tool, lines: None
+                )
+                h.work_product.push(wp)
+            } else {
+                if tc.tool == "edit_file" {
+                    let p = extract_path(tc.args)
+                    let wp = WorkProduct(
+                        path: p, description: tc.tool, lines: None
+                    )
+                    h.work_product.push(wp)
+                }
+            }
+        }
+        h.token_usage.step_tokens = result.total_tokens
+        return h
+    }
+
+    /// Handle the engine's result after submitting a handoff (the second half
+    /// of the ExecuteStep branch). Terminates drive() on terminal results.
+    fn handle_after_submit(next AdvanceResult) ~Result<None, AgentError> {
+        is next {
+            AdvanceResult.Completed -> {
+                self.on_event(PipelineEvent.Completed)
+                return Ok(None)
+            },
+            AdvanceResult.Failed(error) -> {
+                let ev = PipelineEvent.Failed(error)
+                self.on_event(ev)
+                return Err(AgentError.Config(error))
+            },
+            AdvanceResult.Paused(step_id, reason) -> {
+                let ev = PipelineEvent.Paused(step_id, reason)
+                self.on_event(ev)
+                // Paused is not an error — app can resume.
+                return Ok(None)
+            },
+            AdvanceResult.WaitForHuman(step_id) -> {
+                let ev = PipelineEvent.GateWaiting(step_id)
+                self.on_event(ev)
+                let gr = self.resolve_gate_auto(step_id)
+                is gr {
+                    Ok(_) -> return Ok(None),
+                    Err(e) -> return Err(e)
+                }
+            },
+            AdvanceResult.ExecuteStep(_sid, _rid) -> {
+                // Engine already advanced to the next step — continue loop.
+                return Ok(None)
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Free helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Current UNIX timestamp in seconds (bridged to std::time::SystemTime).
+fn now_secs() uint {
+    let now = std.time.SystemTime.now()
+    let dur = now.duration_since(std.time.UNIX_EPOCH)
+    return dur.as_secs()
+}
+
+/// The step input: the previous handoff's render, or (for step 0) the task.
+fn build_step_input(task_msg str, last_handoff ?HandoffDocument) str {
+    is last_handoff {
+        Some(h) -> return h.render(),
+        None -> return task_msg
+    }
+}
+
+/// If the engine's budget check reports a Warning, emit a BudgetWarning event.
+fn emit_budget_warning(engine PipelineEngine, last_handoff ?HandoffDocument, on_event fn(PipelineEvent)) void {
+    let role_for_budget = is last_handoff {
+        Some(h) -> h.from,
+        None -> ""
+    }
+    let action = engine.budget_tracker.check(role_for_budget)
+    is action {
+        BudgetAction.Warning(remaining) -> on_event(PipelineEvent.BudgetWarning(remaining)),
+        else -> {}
+    }
+}
+
+/// Take up to `max` characters from `s` (best-effort; Auto has no char-range
+/// slice, so this is a byte-truncation approximation — adequate for a summary).
+fn truncate_chars(s str, max uint) str {
+    let end = s.len()
+    if end <= max {
+        return s
+    }
+    return s.substring(0, max)
+}
+
+/// Extract the `path` field from a tool-call args JSON value, or "?" if absent.
+fn extract_path(args JsonValue) str {
+    let p = args.get("path").as_string()
+    if p.is_empty() {
+        return "?"
+    }
+    return p
+}

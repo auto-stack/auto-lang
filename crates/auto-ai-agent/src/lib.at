@@ -1,0 +1,39 @@
+/// AutoOS AI agent layer (Layer 3 + 4 of the AI stack).
+///
+/// Built on top of auto_ai_client (Layer 2 — provider/daemon plumbing and
+/// native tool-calling). This crate adds:
+/// - agent — an autonomous ReAct loop that drives an LLM to a goal by
+///   interleaving reasoning and tool calls (PARTIAL — see agent.at).
+/// - builtin_roles — a library of "Roles" (system prompts + model/temperature/
+///   tool policy), ported from AutoForge's relay souls.
+/// - workflow — a multi-step orchestration engine (DEPRECATED, NOT YET PORTED —
+///   see workflow.at; use orchestration.PipelineEngine instead).
+///
+/// `.at` (Atom) config files for custom Professions/Workflows are parsed with
+/// the shared auto_atom parser (see config).
+///
+/// Auto port of crates/auto-ai-agent/src/lib.rs (auto-ai v0.4.0).
+///
+/// Re-exports mirror Rust's `pub use` block (lib.rs:35-61), expressed as
+/// selective `use <module>: <symbols>` imports that bring the symbols into the
+/// crate root. workflow's symbols are omitted (module not yet ported).
+
+use agent: Agent, AgentResult, Client, StreamEvent, ToolCallRecord
+use config: load_role, parse_at_role, parse_tier_field, serialize_at_role, ConfigRole, RoleConfig
+use error: AgentError, ToolError
+use memory: Memory
+use role_def: Role
+// Re-export ModelTier so downstream crates can name the tier type without
+// depending on ai_config directly.
+use ai_config: ModelTier
+use builtin_roles: load_builtin, builtin_names, Assistant, Architect, Coder, Documenter, Reviewer, Runner, Tester, Translator
+use roles: RoleDetail, RoleRegistry, RoleSummary
+use skill: Skill, SkillRegistry, SkillTool
+use tool: Tool, ToolRegistry
+use validate: load_client_config, validate_role_model
+use orchestration: BudgetAction, BudgetStrategy, BudgetTracker, TokenBudget
+use orchestration: ContextPointers, Decision, HandoffDocument, Question, TokenUsage, WorkProduct
+use orchestration: FlowSpec, FlowStep, GateType, ExitRouting
+use orchestration: GateDecision, PipelineEngine, PipelineStatus, PipelineMode
+use orchestration: AdvanceResult, StepRecord
+use orchestration: AgentFactory, PipelineDriver, PipelineEvent

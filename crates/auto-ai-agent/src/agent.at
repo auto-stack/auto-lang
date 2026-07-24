@@ -1,0 +1,268 @@
+/// The autonomous agent (Layer 3 core).
+///
+/// An Agent binds a Role (personality), a ToolRegistry (capabilities), a Memory
+/// (conversation), and a Client (LLM transport) into a single ReAct loop in
+/// Agent.run.
+///
+/// The LLM transport is abstracted behind the Client spec so the loop can be
+/// driven by the real auto_ai_client.AiClient in production OR a deterministic
+/// mock in tests.
+///
+/// Auto port of crates/auto-ai-agent/src/agent.rs (auto-ai v0.4.0).
+///
+/// STATUS — PARTIAL / a2r-first (plan 013):
+/// This file ports the portable type surface (Client spec, StreamEvent,
+/// AgentResult, ToolCallRecord, the Agent struct, truncate_tool_result, and the
+/// public Agent accessors). The ReAct loop itself (run / run_stream / run_inner
+/// / build_request) is NOT yet ported because the Rust original leans on
+/// several constructs the Auto parser currently rejects (confirmed during the
+/// orchestration port):
+///   - generic methods:  `fn new<P: Role>(role P, ...)`  → parse error
+///     (same root cause as `type PipelineDriver<F has AgentFactory>`).
+///   - `dyn Fn(...)` parameters sharing a signature with other params
+///     (complete_stream(req, on_event: Arc<dyn Fn(Value)>)).
+///   - closures built inside a function body (`move |ev| { ... }`, the
+///     `cancelled` helper closure).
+///   - functions returning a `fn(...)` type, and `let x = (ev) => {...}`.
+/// These are platform limits (plan 013 class B), not port errors; they need
+/// parser/VM-side support before the loop can be faithfully ported. The loop
+/// body is left as a documented stub (run/run_stream return a placeholder) so
+/// the file parses + transpiles and the public types resolve for callers
+/// (driver.at references Agent/AgentResult/StreamEvent).
+///
+/// VARIANT NOTE: StreamEvent's struct-style variants are modeled as tuple
+/// variants (plan 013 gotcha B3). Field order:
+/// - StreamEvent.Delta(text)
+/// - StreamEvent.ToolStart(tool, args)
+/// - StreamEvent.Warning(text)
+/// - StreamEvent.Tool(tool, args, result)
+/// - StreamEvent.Done(result)
+/// - StreamEvent.Cancelled(result)
+/// - StreamEvent.Error(message)
+
+use.rust std::sync::Arc
+use.rust std::sync::atomic::AtomicBool
+
+use auto_ai_client: ClientError, CompletionRequest, CompletionResponse, Message
+use error: AgentError
+use memory: Memory
+use role_def: Role
+use tool: ToolRegistry, tool_to_definition
+use wire: ContentBlock, JsonValue
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Constants (Auto has no `pub const`; exposed via functions)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// After how many identical (tool, args) repeats the loop bails out as a cycle.
+fn loop_detect_threshold() uint {
+    return 3
+}
+
+/// Maximum chars of a tool result stored in memory (~5k tokens). Tool outputs
+/// longer than this are truncated (with a notice) so a single read_file of a
+/// huge file can't blow out the context window for the rest of the run.
+fn max_tool_result_chars() uint {
+    return 20000
+}
+
+/// Truncate a tool result to max_tool_result_chars(), appending a notice when
+/// truncation happened. Returns the (possibly truncated) string.
+pub fn truncate_tool_result(s str) str {
+    let cap = max_tool_result_chars()
+    let count = s.len()
+    if count <= cap {
+        return s
+    }
+    let kept = s.substring(0, cap)
+    let dropped = count - cap
+    return f"${kept}\n…[truncated ${dropped} more chars]"
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Client spec (the LLM transport)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The LLM transport an Agent talks to.
+///
+/// Abstracts auto_ai_client.AiClient so the ReAct loop can be unit-tested with
+/// a deterministic mock.
+///
+/// NOTE: the Rust `complete_stream` default method takes an
+/// `Arc<dyn Fn(serde_json::Value)>` callback. Auto's parser rejects a `fn(...)`
+/// parameter alongside other params, so the streaming variant is NOT in this
+/// spec yet (platform limit — see file header). Callers that need streaming
+/// call the transport's own complete_stream directly (the real AiClient adapter
+/// does this in driver.at).
+pub spec Client {
+    /// One non-streaming completion request.
+    fn complete(req CompletionRequest) ~Result<CompletionResponse, ClientError>
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// StreamEvent
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Events emitted by Agent.run_stream as the ReAct loop progresses.
+/// Tuple variants (plan 013 gotcha B3) — see file header for field order.
+pub enum StreamEvent {
+    /// A chunk of the model's text output. (text)
+    Delta(str)
+    /// A tool is about to be executed. (tool, args)
+    ToolStart(str, JsonValue)
+    /// A non-fatal advisory message (e.g. the near-turn-cap warning). (text)
+    Warning(str)
+    /// A tool was called and produced a result. (tool, args, result)
+    Tool(str, JsonValue, str)
+    /// The loop finished successfully (carries the full result). (result)
+    Done(AgentResult)
+    /// The run was cancelled by the user. (result)
+    Cancelled(AgentResult)
+    /// The loop failed. (message)
+    Error(str)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ToolCallRecord / AgentResult
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A record of one tool call made during a run (for diagnostics/results).
+pub type ToolCallRecord {
+    tool str
+    args JsonValue
+    result str
+}
+
+/// The outcome of Agent.run.
+pub type AgentResult {
+    /// The agent's final textual answer.
+    output str
+    /// How many ReAct turns the loop ran.
+    turns uint
+    /// Every tool call the agent made, in order.
+    tool_calls List<ToolCallRecord>
+    /// Total tokens consumed (if the transport reports usage).
+    total_tokens uint
+}
+
+ext AgentResult {
+    pub static fn default() AgentResult {
+        return AgentResult(output: "", turns: 0, tool_calls: [], total_tokens: 0)
+    }
+
+    /// The accumulated text content (alias used by the driver for handoff
+    /// summaries). Mirrors the Rust driver's `collected` buffer.
+    pub fn content() str {
+        return self.output
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Agent
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// An autonomous agent that drives an LLM toward a goal via a ReAct loop.
+///
+/// NOTE: `role` and `client` are spec-typed fields (Auto `spec` is dynamically
+/// dispatched, equivalent to Rust's `Arc<dyn Role>` / `Arc<dyn Client>`). The
+/// Rust `new<P: Role + 'static>(role P, ...)` generic constructor is not
+/// portable to Auto (generic methods are a parse error) — construction goes
+/// through Agent.new_shared (takes spec values) instead.
+pub type Agent {
+    role Role
+    tools ToolRegistry
+    memory Memory
+    client Client
+    /// Bootstrap block listing available skills (injected into the system
+    /// prompt so the model knows what it can invoke). Set by
+    /// register_skill_tool.
+    skills_block ?str
+    /// Project context (e.g. contents of .musk.md / CLAUDE.md). Prepended to
+    /// the system prompt so the agent starts with project knowledge.
+    context_block ?str
+}
+
+ext Agent {
+    /// Build a new agent from an already-shared Role + Client spec value, and
+    /// the Role's memory-limit preference. (Non-generic substitute for Rust's
+    /// `new<P: Role>(role P, client)`.)
+    pub static fn new_shared(role Role, client Client) Agent {
+        let limit = role.memory_limit()
+        return Agent(
+            role: role,
+            tools: ToolRegistry.new(),
+            memory: Memory.new(limit),
+            client: client,
+            skills_block: None,
+            context_block: None
+        )
+    }
+
+    /// Inject project context (e.g. the contents of .musk.md or CLAUDE.md) into
+    /// the system prompt. Prepended before the role's soul.
+    pub fn with_context(context str) Agent {
+        let ctx = context.trim()
+        if ctx.is_empty() == false {
+            self.context_block = Some(context)
+        }
+        return self
+    }
+
+    /// Register a tool the agent may call (takes a spec value).
+    pub mut fn register_shared(tool Arc<tool.Tool>) void {
+        self.tools.register_shared(tool)
+    }
+
+    /// Borrow the shared tool registry (the workflow/driver share tools across
+    /// agents via this).
+    pub fn tools() ToolRegistry {
+        return self.tools
+    }
+
+    /// The Role this agent embodies.
+    pub fn role() Role {
+        return self.role
+    }
+
+    /// Snapshot of the current conversation memory (for session persistence).
+    pub fn memory_messages() List<Message> {
+        return self.memory.messages()
+    }
+
+    /// Current conversation memory.
+    pub fn history() List<Message> {
+        return self.memory.messages()
+    }
+
+    /// Underlying transport.
+    pub fn client() Client {
+        return self.client
+    }
+
+    // ── ReAct loop (STUBS — see file header) ──────────────────────────────
+    //
+    // run / run_stream / run_inner / build_request are NOT yet implemented:
+    // the Rust loop depends on closures, `dyn Fn` callbacks, and per-turn
+    // streaming that the Auto parser can't currently express. These stubs
+    // keep the public API present (callers compile) while returning an empty
+    // result. Restoring the full loop is pending parser/VM support (plan 013
+    // class B).
+
+    /// Run the ReAct loop against `task`, returning the agent's final answer.
+    /// (STUB — returns an empty AgentResult; real loop pending platform support.)
+    pub fn run(task_msg str) ~Result<AgentResult, AgentError> {
+        return Ok(AgentResult.default())
+    }
+
+    /// Like run, but streams events as the loop progresses. (STUB — returns an
+    /// empty AgentResult; real loop pending platform support.)
+    ///
+    /// NOTE: the real signature takes `on_event: Arc<dyn Fn(StreamEvent)>` +
+    /// `cancel: Arc<AtomicBool>`. Auto's parser rejects a `fn(...)` parameter
+    /// alongside another param, so the stub keeps only the cancel handle; the
+    /// event sink will be wired once the loop is implemented (likely as a
+    /// field, per the driver.at workaround).
+    pub fn run_stream(task_msg str, cancel Arc<AtomicBool>) ~Result<AgentResult, AgentError> {
+        return Ok(AgentResult.default())
+    }
+}

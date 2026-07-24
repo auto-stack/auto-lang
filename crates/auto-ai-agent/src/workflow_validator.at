@@ -1,0 +1,95 @@
+/// Workflow output validators — quality gates for step outputs.
+///
+/// Ported-of-spirit from auto-forge's relay/flow.rs StepValidator. A validator
+/// checks a step's textual output and passes/fails it. Validators compose with
+/// Validator.All / Validator.Any.
+///
+/// Used by the workflow engine: when a step finishes, its validators run; if
+/// any fail (and the step has an on_fail retry), the engine loops back.
+///
+/// Auto port of crates/auto-ai-agent/src/workflow_validator.rs (auto-ai v0.4.0).
+///
+/// VARIANT NOTE: the Rust original uses struct-style enum variants
+/// (`OutputContains { pattern }`, `All { validators }`). Auto's AutoVM does not
+/// yet implement destructuring of struct-style variants (plan 013 gotcha B3),
+/// so the Auto port models them as tuple variants with positional fields
+/// (pattern/validators carried positionally). Construction is
+/// `Validator.OutputContains("OK")`; matching is `Validator.OutputContains(p)`.
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Validator
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A validator that checks a step's output.
+///
+/// Field order (positional tuple variants):
+/// - OutputContains(pattern)        — output must contain pattern.
+/// - OutputNotContains(pattern)     — output must NOT contain pattern.
+/// - OutputMinLength(min)           — output must be at least min chars.
+/// - All(validators)                — all inner validators must pass.
+/// - Any(validators)                — at least one inner validator must pass.
+pub enum Validator {
+    OutputContains(str)
+    OutputNotContains(str)
+    OutputMinLength(uint)
+    All(List<Validator>)
+    Any(List<Validator>)
+}
+
+ext Validator {
+    /// Run this validator against `output`. Returns Ok(None) on pass,
+    /// Err(message) on fail (message explains what failed).
+    pub fn check(output str) Result<None, str> {
+        is self {
+            Validator.OutputContains(pattern) -> {
+                if output.contains(pattern) {
+                    return Ok(None)
+                }
+                return Err(f"output must contain '${pattern}' (it doesn't)")
+            },
+            Validator.OutputNotContains(pattern) -> {
+                if output.contains(pattern) == false {
+                    return Ok(None)
+                }
+                return Err(f"output must NOT contain '${pattern}' (it does)")
+            },
+            Validator.OutputMinLength(min) -> {
+                if output.len() >= min {
+                    return Ok(None)
+                }
+                return Err(f"output is ${output.len()} chars, must be at least ${min}")
+            },
+            Validator.All(validators) -> return check_all(validators, output),
+            Validator.Any(validators) -> return check_any(validators, output)
+        }
+    }
+}
+
+/// Run a list of validators against `output`. Passes only if ALL pass.
+/// Returns the first failure message, or Ok if all pass.
+pub fn check_all(validators List<Validator>, output str) Result<None, str> {
+    for v in validators {
+        is v.check(output) {
+            Ok(_) -> {},
+            Err(msg) -> return Err(msg)
+        }
+    }
+    return Ok(None)
+}
+
+/// Run a list of validators against `output`. Passes if AT LEAST ONE passes.
+/// Returns Err only when every validator fails.
+pub fn check_any(validators List<Validator>, output str) Result<None, str> {
+    var failures uint = 0
+    for v in validators {
+        is v.check(output) {
+            Ok(_) -> return Ok(None),
+            Err(_msg) -> failures = failures + 1
+        }
+    }
+    if failures < validators.len() {
+        // at least one passed (handled above); unreachable but kept for parity
+        return Ok(None)
+    }
+    return Err(f"none of ${validators.len()} validators passed")
+}

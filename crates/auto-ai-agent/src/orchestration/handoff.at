@@ -1,0 +1,208 @@
+/// Handoff Document — the token-efficiency mechanism for multi-agent pipelines.
+///
+/// When an agent finishes its step, its work is compressed into a structured
+/// HandoffDocument — NOT raw chat history — which the next agent consumes.
+/// This keeps context bounded as the pipeline grows.
+///
+/// (Plan 008 Phase 1 — moved from musk relay/handoff.rs, generic version:
+/// dropped forge-specific fields: spec_updates, generated_report,
+/// arch_change_flag, checkpoint_id, run_id.)
+///
+/// Auto port of crates/auto-ai-agent/src/orchestration/handoff.rs (auto-ai v0.4.0).
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sub-records
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A decision made during a pipeline step.
+pub type Decision {
+    title str
+    status str
+    rationale str
+}
+
+/// An open question for the next agent or user.
+pub type Question {
+    text str
+    assigned_to ?str
+}
+
+/// A file or artifact produced by a step.
+pub type WorkProduct {
+    path str
+    description str
+    lines ?uint
+}
+
+/// Pointers to help the next agent.
+pub type ContextPointers {
+    files_to_read List<str>
+    /// Files the previous agent wrote/edited that should be tested.
+    files_to_test List<str>
+    warnings List<str>
+}
+
+ext ContextPointers {
+    pub static fn default() ContextPointers {
+        return ContextPointers(files_to_read: [], files_to_test: [], warnings: [])
+    }
+}
+
+/// Token usage for a step.
+pub type TokenUsage {
+    step_tokens uint
+    cumulative uint
+    budget_remaining uint
+}
+
+ext TokenUsage {
+    pub static fn default() TokenUsage {
+        return TokenUsage(step_tokens: 0, cumulative: 0, budget_remaining: 0)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HandoffDocument
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A structured handoff between agents.
+///
+/// RESERVED-WORD NOTE: the Rust field `to` is renamed `target` here because
+/// `to` is a reserved keyword in Auto (range syntax). This is a faithful
+/// behavioral port; the rename is the only API divergence (plan 013 gotcha,
+/// same workaround as TierRouting.routes -> entries).
+pub type HandoffDocument {
+    /// Source role name (e.g. "architect").
+    from str
+    /// Target role name (e.g. "coder"). (Rust: `to`.)
+    target str
+    /// One-sentence summary of the work done.
+    summary str
+    /// Key decisions made during this step.
+    decisions List<Decision>
+    /// Questions left open for the next agent or user.
+    open_questions List<Question>
+    /// Files or artifacts produced.
+    work_product List<WorkProduct>
+    /// Pointers to help the next agent get started.
+    context_for_next ContextPointers
+    /// Token usage for this step + cumulative.
+    token_usage TokenUsage
+}
+
+ext HandoffDocument {
+    /// Create a new handoff document between two roles.
+    pub static fn new(from str, target str) HandoffDocument {
+        return HandoffDocument(
+            from: from,
+            target: target,
+            summary: "",
+            decisions: [],
+            open_questions: [],
+            work_product: [],
+            context_for_next: ContextPointers.default(),
+            token_usage: TokenUsage.default()
+        )
+    }
+
+    /// Render as markdown for the next agent's consumption.
+    pub fn render() str {
+        var lines List<str> = []
+        // Each non-trivial string is built into a local first, then pushed —
+        // Auto's parser is brittle with multi-term concatenation or arrow
+        // characters inside a method-call argument (plan 013 gotcha).
+        // Build the header with an f-string (no "->" arrow — that token breaks
+        // f-strings; use the word "to" instead of the arrow glyph).
+        let header = f"# Handoff: ${self.from} to ${self.target}"
+        lines.push(header)
+        lines.push("")
+
+        lines.push("## Summary")
+        lines.push(self.summary)
+        lines.push("")
+
+        if self.decisions.is_empty() == false {
+            lines.push("## Decisions Made")
+            for d in self.decisions {
+                let line = f"- **${d.status}**: ${d.title}"
+                lines.push(line)
+                if d.rationale.is_empty() == false {
+                    let rat = f"  - Rationale: ${d.rationale}"
+                    lines.push(rat)
+                }
+            }
+            lines.push("")
+        }
+
+        if self.open_questions.is_empty() == false {
+            lines.push("## Open Questions")
+            for q in self.open_questions {
+                lines.push(f"- ${q.text}")
+            }
+            lines.push("")
+        }
+
+        if self.work_product.is_empty() == false {
+            lines.push("## Work Product")
+            for wp in self.work_product {
+                let size = format_size(wp.lines)
+                let line = f"- \`${wp.path}\`${size}${wp.description}"
+                lines.push(line)
+            }
+            lines.push("")
+        }
+
+        let ctx = self.context_for_next
+        if ctx_has_content(ctx) {
+            lines.push("## Context for Next Agent")
+            if ctx.files_to_read.is_empty() == false {
+                lines.push("\n### Files to Read")
+                for f in ctx.files_to_read {
+                    lines.push(f"- ${f}")
+                }
+            }
+            if ctx.files_to_test.is_empty() == false {
+                lines.push("\n### Files to Test")
+                for f in ctx.files_to_test {
+                    lines.push(f"- \`${f}\`")
+                }
+            }
+            if ctx.warnings.is_empty() == false {
+                lines.push("\n### Warnings")
+                for w in ctx.warnings {
+                    lines.push(f"- ⚠️ ${w}")
+                }
+            }
+            lines.push("")
+        }
+
+        let spend = f"## Token Spend\n- This step: ${self.token_usage.step_tokens} tokens\n- Cumulative: ${self.token_usage.cumulative} tokens\n"
+        lines.push(spend)
+
+        return lines.join("\n")
+    }
+}
+
+// ─── render() helpers (kept out of the loop body for readability) ───────────
+
+/// " (N lines)" when lines is Some(n), else "".
+fn format_size(lines ?uint) str {
+    is lines {
+        Some(n) -> return f" (${n} lines)",
+        None -> return ""
+    }
+}
+
+/// True when any of the context pointer lists is non-empty.
+fn ctx_has_content(ctx ContextPointers) bool {
+    if ctx.files_to_read.is_empty() == false {
+        return true
+    }
+    if ctx.files_to_test.is_empty() == false {
+        return true
+    }
+    if ctx.warnings.is_empty() == false {
+        return true
+    }
+    return false
+}
