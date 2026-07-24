@@ -4491,8 +4491,16 @@ mod plan341_tests;
 #[cfg(test)]
 mod plan349_tests;
 
+// Plan 370 shared test support: builds the real 015-notes DynamicComponent.
+// Must precede the plan370_* test modules that depend on it.
+#[cfg(test)]
+mod plan370_test_support;
+
 #[cfg(test)]
 mod plan370_store_vm_tests;
+
+#[cfg(test)]
+mod plan370_015_behavior_tests;
 
 #[cfg(test)]
 mod plan352_tests;

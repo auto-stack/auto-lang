@@ -209,13 +209,23 @@
 - **影响**: 桌面无富文本编辑
 - **修复方向**: 在 iced 渲染器或 a2r 中映射 `autodown_editor` → iced `text_editor`
 
-### D-GAP-4: store composable
+### D-GAP-4: store composable  ✅ 已修复 (Plan 370)
 - **Web**: `use store: NotesStore` → Vue reactive composable，跨组件共享
-- **Desktop VM**: `use store:` 不被处理；handler 引用 `store.X` 报 `Undefined variable: store`
-- **Desktop Rust**: a2r 不生成 store 代码
-- **影响**: **015-notes App 无法在 VM 模式下运行**（所有 handler 都用 store）
-- **根因**: VmBridge 和 a2r 都不处理 `use store:` 声明
-- **修复方向**: VmBridge 在合成时把 store 的 state/handler 合并到 root widget；a2r 生成 store 模块
+- **Desktop VM**: ✅ 已修复。store 的 state 字段（notes/active_id/active_folder/...）
+  合并进 root widget 的状态对象；store 方法调用（`store.NewNote()`、
+  `store.TogglePin(id)`、`store.SetAccent(name)` 等，含带参）经 codegen rewrite 为
+  `handler_<StoreName>_<Method>` 并在合并 VM 中执行。VmRef 列表字段在 MCP
+  snapshot/state 工具中 materialize 为内联 Array。
+  - 验证：`plan370_store_vm_tests`（数据层：notes=6 种子数据）、
+    `plan370_015_behavior_tests`（D1-D9 handler 行为：NewNote/SelectNote/
+    TogglePin/SetAccent 等 8 项全绿）、`desktop_mcp.py`（真实 iced 窗口：点 New →
+    notes 6→7，13 passed/0 failed）。
+- **Desktop Rust**: ⚠️ a2r 仍不生成 store 代码（未在本计划范围）。
+- **遗留限制（独立于 D-GAP-4）**: NavTree 侧边栏（sidebar.at）声明了顶层
+  `view fn NoteRow/NoteItem` 片段；其解析路径不完整，导致 sidebar.at 整体解析
+  失败、NavTree 在 VM 模式渲染为 FALLBACK（笔记列表项不显示）。这不影响 store
+  数据层与 handler（App 的笔记编辑区、New 按钮、所有 handler 均正常），仅影响
+  侧边栏列表渲染。已记录为新问题，待独立修复。
 
 ### D-GAP-5: accent 主题色
 - **Web**: applyAccent 写 CSS 变量 + localStorage 持久化
