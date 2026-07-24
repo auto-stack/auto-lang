@@ -302,16 +302,22 @@ impl VmBridge {
         // Plan 370 D-GAP-4: merge store state fields into root state object.
         // Store fields are merged so that `store.X` (rewritten to `__state.X`)
         // resolves correctly at runtime.
+        //
+        // Plan 370 (Issue 2): ALSO merge model fields from view-having child
+        // widgets (e.g. EditorPanel's `editing`, `edit_title`). In VM merged
+        // mode there is a single unified state object — `ensure_child_state`
+        // writes props into ROOT state and returns root_id, so child widget
+        // model vars must live there too, or `read_state("editing")` fails
+        // and `eval_condition_with` short-circuits to false (rendering the
+        // wrong branch). The `contains` guard deduplicates against root +
+        // store fields.
         for child in child_decls {
-            if child.view.is_none() {
-                // This is a store (view-less child widget)
-                if let Some(store_model) = &child.model {
-                    for sf in &store_model.fields {
-                        let name = sf.name.to_string();
-                        if !field_names.contains(&name) {
-                            field_names.push(name.clone());
-                            field_values.push(eval_expr_to_value(&sf.init));
-                        }
+            if let Some(child_model) = &child.model {
+                for sf in &child_model.fields {
+                    let name = sf.name.to_string();
+                    if !field_names.contains(&name) {
+                        field_names.push(name.clone());
+                        field_values.push(eval_expr_to_value(&sf.init));
                     }
                 }
             }
