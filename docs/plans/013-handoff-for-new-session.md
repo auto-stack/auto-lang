@@ -526,5 +526,22 @@ aaid daemon 契约）。全栈自举（选项 B：扩 a2r-std http + Auto 重写
 - 组装架构（F.2）已验证可行，无需重做；剩余纯 a2r 保真度工作。
 - 选项 B（全栈自举：扩 a2r-std http + Auto 重写 complete）是更远期的独立路线。
 
+#### F.5 ★ 根因已定位 → 详见 plan 371
+
+后续 344 错误的根因已全部定位到 `trans/rust.rs` / `parser.rs` 的具体行号，
+并写成独立计划：**`docs/plans/371-a2r-rust-correctness-fixes.md`**。
+
+3 个 a2r 缺陷（均为 a2r 的错，非 .at 源码问题）：
+- **A（最高杠杆）**：spec 跨模块/乱序解析 → `Type::User`（应 `Type::Spec`）。
+  修法：Phase 1.5 预注册 spec（`rust.rs:12951-12961`，与 struct 同机制）。
+- **B**：Option(?T) 方法调用未做 optional dispatch（`args.get().as_string()`）。
+  助手 `as_string_opt` 已存在（`a2r_std.rs:322`）但从没被 emit。修法：
+  `Expr::Dot` 分发加 Option-aware 守卫（`rust.rs:4214`）。
+- **C（最孤立、风险最低）**：self-方法的 `i+1` auto-borrow 把 `.as_str()` 错加
+  到 enum/struct 参数（`rust.rs:5791-5794`）。修法：改成类型感知的 str 参数检查。
+
+**下次会话直接按 plan 371 实施**（顺序 C→B→A），每修一个 re-transpile + cargo
+check 看错误下降。最终验收：`cargo check` 0 错 → `cargo run` 打印真实 LLM 回答。
+
 
 
