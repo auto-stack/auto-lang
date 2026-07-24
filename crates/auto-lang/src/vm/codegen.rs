@@ -7098,9 +7098,7 @@ impl Codegen {
                                 Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
                                 Type::Byte => ObjectType::Byte,
                                 Type::Bool => ObjectType::Bool,
-                                Type::Int => ObjectType::Int,
-                                // Plan 034 Bug 1: I64 is 2-slot like U64, not 1-slot like Int.
-                                Type::I64 => ObjectType::Uint,
+                                Type::Int | Type::I64 => ObjectType::Int,
                                 _ => ObjectType::NestedObject,
                             };
                         } else {
@@ -8856,32 +8854,6 @@ impl Codegen {
                 .get(name.as_ref())
                 .map(|t| matches!(t, Type::U64))
                 .unwrap_or(false),
-            // Plan 034 Bug 1: Method calls that return I64 (2-slot).
-            // Check if the method name is a known I64-returning native.
-            Expr::Dot(_, method) => Self::is_i64_returning_method(method.as_ref()),
-            // Also handle direct calls to I64-returning functions
-            Expr::Call(call) => self.call_returns_u64(call),
-            _ => false,
-        }
-    }
-
-    /// Plan 034 Bug 1: Check if a method name is known to return I64/U64
-    /// (a 2-slot value). This list is derived from native_catalog.rs
-    /// entries tagged with I64 return type. If a method isn't listed here,
-    /// it's assumed to return I32 (1-slot), which is the safe default.
-    fn is_i64_returning_method(method: &str) -> bool {
-        matches!(method, "to_uint" | "to_usize" | "to_i64")
-    }
-
-    /// Check if a Call expression returns a U64/I64 type.
-    fn call_returns_u64(&self, call: &crate::ast::Call) -> bool {
-        match call.name.as_ref() {
-            Expr::Ident(fn_name) => {
-                self.fn_return_types.get(fn_name.as_ref())
-                    .map(|t| matches!(t, Type::U64 | Type::I64 | Type::USize | Type::Uint))
-                    .unwrap_or(false)
-            }
-            Expr::Dot(_, method) => Self::is_i64_returning_method(method.as_ref()),
             _ => false,
         }
     }
@@ -8910,16 +8882,13 @@ impl Codegen {
                 Type::U64 | Type::I64 | Type::USize | Type::Uint),
             Expr::Ident(name) => self.var_types.get(name.as_ref())
                 .map(|t| matches!(t, Type::U64 | Type::I64)).unwrap_or(false),
-            Expr::Dot(_, method) => Self::is_i64_returning_method(method.as_ref()),
             Expr::Call(call) => {
-                match call.name.as_ref() {
-                    Expr::Ident(fn_name) => {
-                        self.fn_return_types.get(fn_name.as_ref())
-                            .map(|t| matches!(t, Type::U64 | Type::I64 | Type::USize | Type::Uint))
-                            .unwrap_or(false)
-                    }
-                    Expr::Dot(_, method) => Self::is_i64_returning_method(method.as_ref()),
-                    _ => false,
+                if let Expr::Ident(fn_name) = call.name.as_ref() {
+                    self.fn_return_types.get(fn_name.as_ref())
+                        .map(|t| matches!(t, Type::U64 | Type::I64 | Type::USize | Type::Uint))
+                        .unwrap_or(false)
+                } else {
+                    false
                 }
             }
             Expr::Bina(lhs, _, rhs) => self.contains_u64(lhs) || self.contains_u64(rhs),
@@ -9039,13 +9008,6 @@ impl Codegen {
             || name == "str.index_of" || name == "auto.str.index_of"
         {
             return ObjectType::Int;
-        }
-        // Plan 034 Bug 1: I64-returning method calls (2-slot values).
-        // These must be tracked as Uint (2-slot) so print/arithmetic
-        // select the correct native (PRINT_I32 handles 2-slot via the
-        // Uint path, ADD_U64 for arithmetic).
-        if name.ends_with(".to_uint") || name.ends_with(".to_usize") || name.ends_with(".to_i64") {
-            return ObjectType::Uint;
         }
         // Math functions return f64
         if name.starts_with("auto.math.") {
