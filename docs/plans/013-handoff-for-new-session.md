@@ -454,4 +454,77 @@ D:/autostack/auto-coder/coder/
   runtime/{agent,context,session,permission}.at       # 运行时
 ```
 
+### F. 跑通 ReAct 问答的尝试与阻塞（2026-07-24，分支 plan-013/react-runnable）
+
+目标：让 Auto 移植的 agent（ReAct 循环是 Auto 源、a2r 译来）对一个简单问题
+真实跑通。结论：**组装架构验证可行，但卡在 a2r codegen 保真度（~344 错误），
+属 B1 类、需 a2r 侧改进，非逐文件手修的合理范围。**
+
+#### F.1 关键架构决策：选 A（HTTP 用真 Rust，agent 层用 Auto）
+
+调研发现 a2r-std 的 `http` 只有 `post_sync`（硬编码 Anthropic 头，不匹配本地
+aaid daemon 契约）。全栈自举（选项 B：扩 a2r-std http + Auto 重写 complete）是
+独立工作。故走选项 A：agent 的 ReAct 循环是 Auto，HTTP 层用手写 Rust
+（`impl Client for AiClient` 委托真 auto-ai-client）。**B 留作路线图后续。**
+
+纯 AutoVM 跑不通真实问答（client 是 a2r-first + 跨文件依赖 VM 不可见），故验收
+走 a2r→Rust→cargo。
+
+#### F.2 已完成（分支 plan-013/react-runnable，已 checkpoint 提交）
+
+- **memory.at**：修保留字 `to`→`up_to`（规则 16），现可 transpile。
+- **rust/ 组装 crate**（`crates/auto-ai-agent/rust/`，照搬 auto-coder/coder/rust/
+  已验证的模式）：
+  - `Cargo.toml`：依赖真 auto-ai-client/ai-config（path 跨仓库）+ a2r-std/
+    auto-atom/auto-val；`[workspace]` 隔离避免父 workspace 冲突；path 全指向
+    主 auto-lang checkout（避免 package collision）。
+  - `lib.rs`：**扁平模块布局**（关键——a2r 假设所有模块在 crate 根，子目录
+    文件 config/orchestration/builtin_roles 全部提升到根）+ extern-crate 垫片
+    （`pub mod auto_ai_client { pub use ::auto_ai_client::*; }` 等）+
+    `JsonValue = serde_json::Value` 别名 + config.rs/orchestration.rs 聚合器。
+  - `client_impl.rs`：手写 `#[async_trait] impl Client for AiClient`（HTTP 桥）。
+  - `main.rs`：ReAct 问答入口（Assistant role + AiClient::with_url + run）。
+  - `agent.rs`：Client trait 改 `#[async_trait]`（a2r 译出未定义的 `Future` 返回）。
+- **依赖全部解析、结构正确**（这是本次主要成果——证明了组装架构可行）。
+
+#### F.3 阻塞：~344 个 cargo 错误（a2r codegen 保真度，B1 类）
+
+`cargo check` 报 344 错误，全是 a2r 生成的 Rust 不够正确，**非组装错误**：
+
+| 错误码 | 数量 | 性质 |
+|---|---|---|
+| E0308 | 146 | 类型不匹配（杂项） |
+| E0599 | 37 | 方法找不到（`Option` 当有 `.as_string()`、enum 当有 `.as_str()`——a2r 对 `?str`/Auto 方法分发的 lowering 错） |
+| E0277 | 36 | trait 未实现 |
+| E0422/E0425 | 27 | 名字找不到（级联） |
+| E0614 | 13 | 对非值类型取字段（`?str`/Option lowering） |
+| E0507 | 13 | 借用/move |
+| E0573 | 10 | 期望 item 名（aggregator 残留问题） |
+| E0782 | 9 | **spec 当裸类型用**：a2r 把 `Role` 当字段类型，该是 `Box<dyn Role>` |
+
+**系统性根因**（修一类的杠杆点）：
+- a2r 对 spec 的 lowering 不一致：`Arc<Tool>`→`Arc<Box<dyn Tool>>`（有 dyn），
+  但裸 `Role` 字段→`Role`（缺 `Box<dyn>`，E0782）。
+- a2r 对 `?T`（Option）的方法调用 lowering 错：把 Auto 的 `.foo`（Option 上）
+  直译成 Rust `Option.foo`（不存在）。
+- a2r 对 enum 的方法调用直译（enum 上调 `.as_str()`）。
+- 杂项 `.clone()`/借用/move（E0308/E0507）。
+
+**这些不是几行能改完的**——本质是弥补 a2r 应自己生成的代码。auto-coder 用一个
+31KB 的 `fix_transpiled.py` 修同类问题。两条出路（待定）：
+1. **写本项目专属的 fix 脚本**（扫系统性模式批量修）+ 手修零散；
+2. **修 a2r 根因**（trans/rust.rs：spec→trait-object lowering、?T 方法分发、
+   enum 方法分发）——从源头修好，所有未来 a2r 输出受益。
+
+#### F.4 给下次会话的建议
+
+- 优先级判断：若目标是"尽快看到问答跑起来"，**修 a2r 根因（出 2）性价比更高**
+  ——修好 spec→Box<dyn> 和 ?T 方法分发这两类，预计能消掉大半错误。
+- 若想先有"能跑的最小子集"：把 main 缩到只调 `Agent.run`（无工具、单轮），
+  临时桩化/排除 tool/roles/orchestration 等 unused 模块，只让 agent+client+
+  memory 过 check。放弃全 crate cargo check。
+- 组装架构（F.2）已验证可行，无需重做；剩余纯 a2r 保真度工作。
+- 选项 B（全栈自举：扩 a2r-std http + Auto 重写 complete）是更远期的独立路线。
+
+
 
