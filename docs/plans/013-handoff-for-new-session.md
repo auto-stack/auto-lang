@@ -196,6 +196,11 @@ use.rust auto_val
 
 ### 本轮新发现的 Auto 语法限制（补充到上面的 15 条规则之后）
 
+> ⚠️ **注意：本节若干条目已被文末「2026-07-24 解析器根因分析 + auto-coder
+> 参考」纠错**——尤其规则 3（`\|\|` 其实可用）、规则 17（常是规则 16 的伪装）、
+> 规则 21（根因已定位、可修）、规则 27（`&&` 可用，整条删除）。读本节时请
+> 对照文末纠错表。原始记录保留以备追溯。
+
 > 这些都是 `auto trans ... rust` 实际踩到的解析器/类型检查器限制，非移植
 > 错误。每条都给出触发条件与规避方法。
 
@@ -299,4 +304,154 @@ trim() 里 `for end < self.messages.len() && self.messages[end].role == "user"`
 4. **回归验证**：全部完成后建一个临时 workspace crate（含 ai-config /
    auto-val 等依赖）跑 `cargo check`，把阶段 3 推进到与阶段 1 同等的
    「a2r→Rust 过 cargo check」验收线。
+
+---
+
+## 2026-07-24 解析器根因分析 + auto-coder 参考（重要纠正）
+
+> 本节是对前面「本轮新发现的 Auto 语法限制」若干条目的**纠错**，以及一个
+> 改变 agent.at 结论的重大发现。**读这份文档前请先读本节。**
+
+### A. 三条事实性纠错（前面文档里的错误）
+
+经最小复现 + parser.rs 源码追踪，前面记录的限制里有三条是错的：
+
+| 原记录 | 纠错 | 证据 |
+|---|---|---|
+| 规则 3：`||`/`or` 在 if/for 条件里不可用 | **过时/错误**：当前 parser 支持 `if a=="x" \|\| b=="y"` | `auto-coder/coder/relay/turn.at:196` 就这么用；最小复现通过 |
+| 规则 27：条件里 `&&` 不可用 | **错误**：`for a<10 && b<10 {...}` 合法 | 最小复现 `auto trans` 通过 |
+| B17：memory.at transpile 失败因 `&&` | **误诊**：真因是 `remove_range(from int, to int)` 的参数名 `to` 是保留字（规则 16 同类） | 把 `to` 改名（如 `up_to`）后 memory.at transpile 通过；`&&` 无辜 |
+
+**唯一真正普遍的坑是规则 16（保留字 `to`/`task`/`routes` 等做参数名/字段名）**，
+而且它的报错极具迷惑性（"Expected term, got RBrace" / "field type mismatch"），
+且**上下文相关、不稳定**（同代码换个无关变量名就过）——极易误判为别的根因。
+本轮 relay/memory/driver/agent/handoff 至少 5 处都栽在这一个根因上。
+
+### B. parser 限制的真根因（已定位到源码行）
+
+| 规则 | 真根因 | 可修性 |
+|---|---|---|
+| 16（保留字做标识符） | 保留字在复杂位置被 lexer 当关键字 token，parser 期待 term 拿到关键字→级联报错 | **lexer/parser 可修**：至少把报错精确化（"to 是保留字"），低成本高收益 |
+| 21（`fn(...)` 不能做返回类型/type alias） | `parse_type`→`parse_fn_type`（parser.rs:9399）对**字段/参数**位置生效；但**函数返回类型**与 **type alias RHS** 走了不识别 `Fn` 的路径 | **明确的 parser 缺陷，局部可修**（让那两处复用 `parse_type`）。`field fn(int)int` 与 `param fn(int)int` 都能过，唯独 `return fn(int)int` / `alias = fn(int)int` 失败 |
+| 20（泛型类型不支持 `<F has S>`） | 设计性，"Expected Gt, but found has" | 改动较大 |
+| 其余 17/18/19/22–26 | 多为 16/21 的伪装或小改 | 见前表 |
+
+修复优先级建议（auto-lang 仓库）：① 规则 16 报错精确化（最高性价比）
+② 规则 21 返回类型复用 `parse_fn_type`（解锁回调式 API）。
+
+### C. 重大发现：agent.at 其实**可移植**——参考 auto-coder
+
+前面文档说「agent.at ReAct 循环被闭包/dyn-Fn/泛型方法等平台限制阻塞」——
+**这个判断被推翻了**。
+
+**`D:/autostack/auto-coder/coder/relay/` 是一整套能跑的 Auto agent 引擎**
+（auto-forge→auto-code-rs 的 Auto 化翻译，较 auto-ai 早一代）。实测
+`relay/turn.at`（394 行，含完整 ReAct 循环）**在当前 parser 下 transpile 通过**。
+它的架构选择恰好绕开了所有我误以为"不可逾越"的限制：
+
+| auto-ai Rust 原版（我移植卡住的） | auto-coder Auto 版（能跑） |
+|---|---|
+| `complete_stream(req, on_event: Arc<dyn Fn(StreamEvent)>>` 回调式 | **`client.chat_turn(req) -> ToolChatResult{events: List<ToolChatEvent>}`**，循环 `for e<events.len()` 遍历——回调→事件列表轮询 |
+| `move \|ev\|{...}` async 闭包 | 无闭包 |
+| `tool.execute(args) ~Result<str,ToolError>` + `.await.?` | **`tool.execute(args_json) str`**——同步、返回 str |
+| `is self.client.complete_stream(...)` | `is event {...}` 匹配局部变量（天然合规） |
+
+**结论：不需要改 auto-lang parser，把 agent.at 的 API 从「回调推送」改成
+「事件轮询」就能移植 ReAct 循环。** 这是架构适配，不是平台阻塞。
+
+### D. 路线决策：先轮询跑起来，后增量演进到真流式（已定）
+
+> 决策（2026-07-24）：走「先轮询、后流式」的增量路线。理由见下，不再
+> "待定"。两条原始候选（套用 auto-coder / 先改 parser）合并进下面的阶段。
+
+#### D.1 为什么回调式是"对的长期方向"（不要永久回退）
+
+这不是口味之争。auto-ai 的流式是**真实产品需求**驱动的：
+- daemon 确实是 **SSE 逐 token 推送**（`auto-ai-client/src/lib.rs:121` 的
+  `resp.bytes_stream()` + 每个 delta 调一次 `on_event`）。
+- 对一个 AI 编程助手，"边想边显示"vs"等 30 秒整段蹦出"是**可用性质变**，
+  长答案场景尤其明显。所以 Rust 原版的回调式/流式是正确演进方向。
+
+#### D.2 为什么短期可以先轮询——关键洞察
+
+**真正的流式发生在 Layer 2（auto-ai-client），不在 Layer 3（agent）。**
+agent.rs 的 `Arc<dyn Fn(StreamEvent)>` 只是把 client 的 SSE 流"穿透"给上层
+UI。问题**只在穿透这一步**用了 Auto 暂不支持的 `dyn Fn`/闭包。
+
+而且**轮询与回调之间只差一层缓冲带，不是推倒重来**：
+- 轮询 = 事件追加进 `List<StreamEvent>`，跑完返回；
+- 回调 = 事件到达即推送。
+两者的事件种类、产生时机、ReAct 循环主体**完全相同**，变的只是"事件怎么
+从循环内部传到外部"这一个接口。
+
+**另一关键点**：轮询只影响**事件流**，不强制工具也退回同步。auto-coder 用
+`execute(args str) str`（同步）是那代的局限；auto-ai 的
+`execute(args JsonValue) ~Result<str, ToolError>`（async）在轮询路线下**可
+保持不变**——`.await.?` 已验证可用。所以短期路线对工具层零改动。
+
+#### D.3 三阶段路线图（每步都是增量，不重写）
+
+**阶段 1 — 轮询式（✅ 已实施 2026-07-24，功能正确优先）**
+- agent.at 的 `run`/`run_stream`/`run_inner` 已移植：收集事件到局部
+  `List<StreamEvent>`（`events.push(ev)` 替代 `on_event(ev)`），跑完返回
+  `AgentResult`。ReAct 循环主体（build_request、tool 执行 async、handoff、
+  循环控制、loop-detect、max-turns、3 个 cancel 检查点）照 Rust 原版移植。
+- API 形态：`Client` spec 的 `complete(req) ~Result<CompletionResponse,...>`
+  保留；**未引入** `complete_stream`（需 dyn-Fn）。循环用 `complete`（非流式）。
+- 验收：✅ `auto trans crates/auto-ai-agent/src/agent.at rust` 通过（16 fragments，
+  仅有已知的 unbalanced-parentheses 假警告）。生成代码含完整的 run/run_stream/
+  run_inner/build_request + is_cancelled/bump_seen/exec_tool 等辅助函数，
+  `client.complete(req).await?` / `tools.execute(name,args).await` 正确译出。
+- 已知限制：事件列表收集后未上抛给调用方（UI 不流式，整段显示）。
+
+**阶段 2 — 事件队列（过渡）**
+- 把 `List<StreamEvent>` 换成可追加的队列/通道（队列 = 带 push 的 List 或
+  Auto 原生 channel），UI 侧循环拉取。首字节延迟降低（不必等整轮跑完）。
+- ReAct 循环主体仍不变。
+
+**阶段 3 — 真流式（长期）**
+- 两条任选其一：
+  - (a) auto-lang parser 修好规则 21（返回类型复用 `parse_fn_type`）+ 闭包
+    支持，切回 Rust 原版的回调式 API（与原版完全一致）；
+  - (b) 用 Auto 原生 `task`/`actor` + 消息传递（skill 文档的并发原语）替代
+    dyn-Fn 回调——actor 之间天然是流式消息，且是 Auto 自举的正路。
+- 选 (a) 还是 (b) 届时再定（取决于 parser 演进 vs actor 成熟度）。
+
+#### D.4 技术债记账（明确"这是临时的"）
+
+| 项 | 阶段 1 状态 | 目标（阶段 3） |
+|---|---|---|
+| 事件流 | 轮询（整段返回） | 真·流式（逐 token） |
+| `Client.complete_stream` | 暂不移植 | 移植（dyn-Fn 或 actor） |
+| UI 首字节延迟 | 高（=非流式） | 低 |
+| 取消（cancel） | 只能在整轮间 | delta 间隙可取消 |
+| 工具执行 | async（保持） | async（不变） |
+
+**这表本身就是技术债清单**——阶段 1 完成后逐项核对，确保"临时"不被遗忘。
+
+#### D.5 实施前的小准备（建议）
+
+动手补 agent.at 前，建议先花一刻钟把 auto-coder 的 `relay/registry.at`、
+`relay/profession.at`、`tools/*.at`（尤其 `execute str→str` 的契约）扫一眼，
+做一份最小的「auto-coder → auto-ai 概念映射」：
+`Profession→Role`、`ToolRegistry→ToolRegistry`、`chat_turn→complete`、
+`ToolChatEvent→StreamEvent`、`TurnResult→AgentResult`。映射清楚后，阶段 1 的
+移植基本是把 turn.at 的 `run_sync` 套进 auto-ai 的类型名。
+
+### E. auto-coder 关键文件索引（供下次会话）
+
+```
+D:/autostack/auto-coder/coder/
+  relay/agent.at        # AgentInstance（prompt 组装，无循环）
+  relay/turn.at         # ★ ReAct 循环本体（run_sync），最关键参考
+  relay/pipeline.at     # 编排状态机（与 orchestration/pipeline.at 同构）
+  relay/handoff.at      # HandoffDocument
+  relay/budget.at       # 预算跟踪
+  relay/profession.at   # Role 的对应物
+  relay/registry.at     # 工具/职业注册
+  types.at              # ToolChatRequest/ToolChatEvent/ChatMessage
+  tools/{bash,file_*,grep,mod,registry,spec_test}.at  # 工具实现（execute str→str）
+  runtime/{agent,context,session,permission}.at       # 运行时
+```
+
 

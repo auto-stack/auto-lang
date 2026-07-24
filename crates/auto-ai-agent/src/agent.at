@@ -10,25 +10,29 @@
 ///
 /// Auto port of crates/auto-ai-agent/src/agent.rs (auto-ai v0.4.0).
 ///
-/// STATUS — PARTIAL / a2r-first (plan 013):
-/// This file ports the portable type surface (Client spec, StreamEvent,
-/// AgentResult, ToolCallRecord, the Agent struct, truncate_tool_result, and the
-/// public Agent accessors). The ReAct loop itself (run / run_stream / run_inner
-/// / build_request) is NOT yet ported because the Rust original leans on
-/// several constructs the Auto parser currently rejects (confirmed during the
-/// orchestration port):
-///   - generic methods:  `fn new<P: Role>(role P, ...)`  → parse error
-///     (same root cause as `type PipelineDriver<F has AgentFactory>`).
-///   - `dyn Fn(...)` parameters sharing a signature with other params
-///     (complete_stream(req, on_event: Arc<dyn Fn(Value)>)).
-///   - closures built inside a function body (`move |ev| { ... }`, the
-///     `cancelled` helper closure).
-///   - functions returning a `fn(...)` type, and `let x = (ev) => {...}`.
-/// These are platform limits (plan 013 class B), not port errors; they need
-/// parser/VM-side support before the loop can be faithfully ported. The loop
-/// body is left as a documented stub (run/run_stream return a placeholder) so
-/// the file parses + transpiles and the public types resolve for callers
-/// (driver.at references Agent/AgentResult/StreamEvent).
+/// STATUS — ReAct loop ported (polling-style, Stage 1 of the streaming roadmap):
+/// This file ports the full type surface (Client spec, StreamEvent, AgentResult,
+/// ToolCallRecord, the Agent struct, truncate_tool_result, public accessors)
+/// AND the ReAct loop (run / run_stream / run_inner / build_request).
+///
+/// ARCHITECTURE ADAPTATION (Auto side; see 013-handoff §D): the Rust original
+/// drives events via an `Arc<dyn Fn(StreamEvent)>` callback (true streaming, fed
+/// by the client's SSE deltas). Auto's parser currently rejects `dyn Fn`
+/// parameters + closures-inside-function-bodies, so this port uses a
+/// **polling-style** loop instead: events are collected into a local
+/// `List<StreamEvent>` (inspired by the working auto-coder/coder/relay/turn.at
+/// engine). The loop is functionally correct (tool calls, handoff, loop-detect,
+/// max-turns, cancel checkpoints) but NOT streaming yet — the event list isn't
+/// surfaced to a caller. Stages 2 (event queue) → 3 (true streaming via parser
+/// fix or Auto actors) incrementally restore streaming; the loop body itself
+/// won't change. Tool execution stays async (`execute ~Result<str,ToolError>`).
+///
+/// Other Auto-side adaptations (none affect behavior):
+///   - generic `fn new<P: Role>(role P, ...)` → `new_shared(role Role, ...)` with
+///     a spec-typed field (Auto `spec` is auto-dyn, equivalent to Arc<dyn Role>).
+///   - `complete_stream` on the Client spec is NOT ported (needs dyn-Fn); only
+///     `complete` is. The loop uses complete (non-streaming) — another reason
+///     this is Stage-1 polling.
 ///
 /// VARIANT NOTE: StreamEvent's struct-style variants are modeled as tuple
 /// variants (plan 013 gotcha B3). Field order:
@@ -239,30 +243,279 @@ ext Agent {
         return self.client
     }
 
-    // ── ReAct loop (STUBS — see file header) ──────────────────────────────
+    // ── ReAct loop (polling-style — see file header + handoff §D.3) ─────────
     //
-    // run / run_stream / run_inner / build_request are NOT yet implemented:
-    // the Rust loop depends on closures, `dyn Fn` callbacks, and per-turn
-    // streaming that the Auto parser can't currently express. These stubs
-    // keep the public API present (callers compile) while returning an empty
-    // result. Restoring the full loop is pending parser/VM support (plan 013
-    // class B).
+    // Stage 1 of the streaming roadmap: events are collected into a local
+    // List<StreamEvent> (not pushed via a callback). The loop is functionally
+    // correct (tool calls, handoff, loop-detect, max-turns) but NOT streaming
+    // — the event list isn't surfaced to a caller yet (Stage 2 wires a queue,
+    // Stage 3 true streaming). Tool execution stays async.
 
     /// Run the ReAct loop against `task`, returning the agent's final answer.
-    /// (STUB — returns an empty AgentResult; real loop pending platform support.)
+    /// Non-streaming, non-cancellable (delegates to run_inner with cancel=None).
     pub fn run(task_msg str) ~Result<AgentResult, AgentError> {
-        return Ok(AgentResult.default())
+        return self.run_inner(task_msg, None)
     }
 
-    /// Like run, but streams events as the loop progresses. (STUB — returns an
-    /// empty AgentResult; real loop pending platform support.)
-    ///
-    /// NOTE: the real signature takes `on_event: Arc<dyn Fn(StreamEvent)>` +
-    /// `cancel: Arc<AtomicBool>`. Auto's parser rejects a `fn(...)` parameter
-    /// alongside another param, so the stub keeps only the cancel handle; the
-    /// event sink will be wired once the loop is implemented (likely as a
-    /// field, per the driver.at workaround).
+    /// Like run, but honors a cancellation flag at the turn boundaries. The
+    /// Rust original also takes an `on_event` callback; this polling-style
+    /// port drops the callback (events are collected internally — Stage 1 of
+    /// the streaming roadmap; see 013-handoff §D).
     pub fn run_stream(task_msg str, cancel Arc<AtomicBool>) ~Result<AgentResult, AgentError> {
-        return Ok(AgentResult.default())
+        return self.run_inner(task_msg, Some(cancel))
+    }
+
+    /// Unified ReAct loop backing run + run_stream.
+    ///
+    /// Each turn: build a request from memory + role, ask the model, execute
+    /// any tool calls, feed results back. Stops when the model replies with
+    /// plain text (no tool calls), a tool-call cycle is detected
+    /// (LOOP_DETECT_THRESHOLD), or the hard safety cap (max_turns * 5) is hit.
+    /// The Role's max_turns is a SOFT target — the agent may exceed it while
+    /// still making progress; the hard cap is 5x the soft target.
+    pub fn run_inner(task_msg str, cancel ?Arc<AtomicBool>) ~Result<AgentResult, AgentError> {
+        // Stage-1 event buffer (not surfaced yet; Stage 2 will turn this into a
+        // queue the UI drains).
+        var events List<StreamEvent> = []
+
+        self.memory.add("user", task_msg)
+        let soft_limit = self.role.max_turns()
+        let hard_limit = soft_limit * 5
+        var result = AgentResult.default()
+        // Loop detection: count recurrences of each (tool, args) pair.
+        var seen Map<str, uint> = Map.new()
+        var seen_names List<str> = []
+
+        var turn uint = 0
+        for turn < hard_limit {
+            // Cancel checkpoint 1: before starting a new turn.
+            if is_cancelled(cancel) {
+                let ce = cancelled_event(result)
+                events.push(ce)
+                return Ok(result)
+            }
+            turn = turn + 1
+            result.turns = turn
+
+            // Near hard cap: warn the model to wrap up (transient, not stored).
+            let remaining = hard_limit - turn
+            if remaining <= 5 {
+                if remaining > 1 {
+                    let w = StreamEvent.Warning(f"${remaining - 1} turns until the hard stop — wrap up now.")
+                    events.push(w)
+                }
+            }
+
+            let req = self.build_request()
+            let resp = self.client.complete(req).await.?
+
+            // Cancel checkpoint 2: after the LLM responded, before consuming.
+            if is_cancelled(cancel) {
+                record_usage(result, resp)
+                let ce = cancelled_event(result)
+                events.push(ce)
+                return Ok(result)
+            }
+
+            // Business-level error carried in a 200 response.
+            is resp.error {
+                Some(err) -> {
+                    let ev = StreamEvent.Error(err)
+                    events.push(ev)
+                    return Err(AgentError.Config(err))
+                },
+                None -> {}
+            }
+            record_usage(result, resp)
+
+            if resp.wants_tool() {
+                // Cancel checkpoint 3: before recording/executing tool calls.
+                if is_cancelled(cancel) {
+                    let ce = cancelled_event(result)
+                    events.push(ce)
+                    return Ok(result)
+                }
+                // Record the assistant's tool-use turn so the next request
+                // carries it (some providers require tool_use before its
+                // tool_result).
+                var blocks List<ContentBlock> = []
+                if resp.content.is_empty() == false {
+                    let tb = ContentBlock.Text(resp.content)
+                    blocks.push(tb)
+                }
+                var tc_idx uint = 0
+                for tc in resp.tool_calls {
+                    let ub = ContentBlock.ToolUse(tc.id, tc.name, tc.input)
+                    blocks.push(ub)
+                    tc_idx = tc_idx + 1
+                }
+                if blocks.is_empty() == false {
+                    let am = Message(role: "assistant", content: blocks)
+                    self.memory.add_message(am)
+                }
+
+                // Execute each tool call, record results, feed back to memory.
+                var keep_going = true
+                for tc in resp.tool_calls {
+                    let key = f"${tc.name}::${tc.input}"
+                    let count = bump_seen(seen, seen_names, key)
+                    if count >= loop_detect_threshold() {
+                        let ev = StreamEvent.Error(f"loop detected on '${tc.name}'")
+                        events.push(ev)
+                        return Err(AgentError.LoopDetected(tc.name))
+                    }
+                    // ToolStart: signal this tool is about to run.
+                    let ts = StreamEvent.ToolStart(tc.name, tc.input)
+                    events.push(ts)
+                    let outcome = exec_tool(self.tools, tc.name, tc.input)
+                    let rec = ToolCallRecord(
+                        tool: tc.name, args: tc.input, result: outcome
+                    )
+                    result.tool_calls.push(rec)
+                    let tev = StreamEvent.Tool(tc.name, tc.input, outcome)
+                    events.push(tev)
+                    // Truncate before storing so one big output can't blow the
+                    // context window.
+                    let tr = Message.tool_result(tc.id, truncate_tool_result(outcome))
+                    self.memory.add_message(tr)
+                }
+                // Loop continues: ask the model again with the tool results.
+            } else {
+                // No tool calls → final answer.
+                result.output = resp.content
+                self.memory.add("assistant", resp.content)
+                let done = StreamEvent.Done(clone_result(result))
+                events.push(done)
+                return Ok(result)
+            }
+        }
+
+        // Exceeded hard safety cap without a plain-text answer.
+        let err = StreamEvent.Error(f"hard turn cap (${hard_limit}) exceeded (soft limit was ${soft_limit})")
+        events.push(err)
+        return Err(AgentError.MaxTurnsExceeded(hard_limit))
+    }
+
+    /// Build the completion request for the current turn: system prompt from
+    /// the Role, the role's tier/model, the full memory, and the tools the
+    /// Role allows.
+    pub fn build_request() CompletionRequest {
+        let allowed = self.role.allowed_tools()
+        let visible = self.tools.filter(allowed)
+        var tool_defs List<ToolDefinition> = []
+        for t in visible {
+            tool_defs.push(tool_to_definition(t))
+        }
+
+        // Model selection: a pinned concrete id wins; else emit a tier token
+        // ("tier:<tier>") the daemon resolves.
+        let pinned = self.role.model()
+        let model = build_model_id(pinned, self.role.model_tier())
+
+        let system_prompt = build_system_prompt(
+            self.context_block, self.role.system_prompt(), self.skills_block
+        )
+
+        return CompletionRequest(
+            model: model,
+            messages: self.memory.to_messages(),
+            max_tokens: None,
+            temperature: Some(self.role.temperature()),
+            system_prompt: Some(system_prompt),
+            tools: tool_defs,
+            stream: false
+        )
     }
 }
+
+// ─── run_inner / build_request helpers (free fns; defined before use) ───────
+
+/// True when the caller has requested cancellation (cancel flag set + true).
+fn is_cancelled(cancel ?Arc<AtomicBool>) bool {
+    is cancel {
+        None -> return false,
+        Some(c) -> {
+            // Bridge to std::sync::atomic::AtomicBool::load (SeqCst).
+            let v = c.load()
+            return v != 0
+        }
+    }
+}
+
+/// Increment the recurrence count for a (tool, args) key, returning the new
+/// count. Keeps the parallel `seen_names` key list in sync (Auto's VM Map has
+/// no iteration API — plan 013 gotcha B5).
+fn bump_seen(seen Map<str, uint>, seen_names List<str>, key str) uint {
+    var prev uint = 0
+    if seen.contains(key) {
+        prev = seen.get(key)
+    } else {
+        seen_names.push(key)
+    }
+    let next = prev + 1
+    seen.set(key, next)
+    return next
+}
+
+/// Add a response's usage (if any) to the result's running token total.
+fn record_usage(result AgentResult, resp CompletionResponse) void {
+    is resp.usage {
+        Some(u) -> result.total_tokens = result.total_tokens + u.total_tokens(),
+        None -> {}
+    }
+}
+
+/// A Cancelled event carrying a snapshot of the current result.
+fn cancelled_event(result AgentResult) StreamEvent {
+    return StreamEvent.Cancelled(clone_result(result))
+}
+
+/// Copy an AgentResult (used for event payloads, so the returned result stays
+/// independent of the running accumulator).
+fn clone_result(result AgentResult) AgentResult {
+    return AgentResult(
+        output: result.output,
+        turns: result.turns,
+        tool_calls: result.tool_calls,
+        total_tokens: result.total_tokens
+    )
+}
+
+/// Execute a tool by name; on error, return a human-readable "[tool error: …]"
+/// string instead of propagating (mirrors Rust's `format!("[tool error: {}]")`
+/// fallback so the loop keeps going and the model sees the failure).
+fn exec_tool(tools ToolRegistry, name str, args JsonValue) str {
+    is tools.execute(name, args).await {
+        Ok(out) -> return out,
+        Err(e) -> return f"[tool error: ${e.message()}]"
+    }
+}
+
+/// Build the model id: a pinned id if set, else a "tier:<tier>" token.
+fn build_model_id(pinned str, tier ModelTier) str {
+    if pinned.is_empty() == false {
+        return pinned
+    }
+    return f"tier:${tier.display_name()}"
+}
+
+/// Assemble the system prompt: optional project context + role soul + optional
+/// skills directory block.
+fn build_system_prompt(context_block ?str, soul str, skills_block ?str) str {
+    var prompt = ""
+    is context_block {
+        Some(ctx) -> {
+            if ctx.trim().is_empty() == false {
+                prompt = ctx + "\n\n---\n\n"
+            }
+        },
+        None -> {}
+    }
+    prompt = prompt + soul
+    is skills_block {
+        Some(block) -> prompt = prompt + block,
+        None -> {}
+    }
+    return prompt
+}
+
