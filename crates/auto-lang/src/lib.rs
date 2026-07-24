@@ -4493,16 +4493,18 @@ mod plan349_tests;
 
 // Plan 370 shared test support: builds the real 015-notes DynamicComponent.
 // Must precede the plan370_* test modules that depend on it.
-#[cfg(test)]
+// These require the `ui-iced` feature (crate::ui::* imports), so gate them
+// to avoid breaking lib-test compilation without that feature.
+#[cfg(all(test, feature = "ui-iced"))]
 mod plan370_test_support;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "ui-iced"))]
 mod plan370_store_vm_tests;
 
 #[cfg(test)]
 mod plan367_viewfn_tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "ui-iced"))]
 mod plan370_015_behavior_tests;
 
 #[cfg(test)]
