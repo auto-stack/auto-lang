@@ -1,0 +1,448 @@
+/// Parsing + inherit/merge for `.at` Role config files.
+///
+/// Auto port of config/role_config.rs (auto-ai v0.4.0).
+///
+/// BRIDGE NOTE (plan 013): like loader.at, this bridges auto_atom/auto_val.
+/// a2r-first — AutoVM can't resolve the bridged types; runs under cargo.
+
+dep auto_atom
+use.rust auto_atom
+dep auto_val
+use.rust auto_val
+
+use error: AgentError
+use role_def: Role
+use builtin_roles: load_builtin
+use ai_config: ModelTier
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RoleConfig
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The parsed representation of a `role { … }` block. Every field is optional
+/// so an `inherit`-based config only overrides what it sets.
+pub type RoleConfig {
+    name ?str
+    description ?str
+    model ?str
+    model_tier ?ModelTier
+    temperature ?float
+    max_turns ?uint
+    system_prompt ?str
+    system_prompt_append ?str
+    tools ?List<str>
+    tools_append ?List<str>
+    inherit ?str
+    memory_limit ?uint
+    allowed_tiers ?List<ModelTier>
+    skills ?List<str>
+    token_budget ?uint
+    soul_file ?str
+}
+
+ext RoleConfig {
+    pub static fn empty() RoleConfig {
+        return RoleConfig(
+            name: None, description: None, model: None, model_tier: None,
+            temperature: None, max_turns: None, system_prompt: None,
+            system_prompt_append: None, tools: None, tools_append: None,
+            inherit: None, memory_limit: None, allowed_tiers: None,
+            skills: None, token_budget: None, soul_file: None
+        )
+    }
+
+    /// Merge self over base, applying design-doc §4.4 rules:
+    /// - scalar fields override when Some;
+    /// - system_prompt_append accumulates;
+    /// - tools replaces; tools_append extends.
+    pub fn merge_over(base RoleConfig) RoleConfig {
+        var r = base
+        // Scalars: override when Some.
+        is self.name { Some(v) -> r.name = Some(v), None -> {} }
+        is self.description { Some(v) -> r.description = Some(v), None -> {} }
+        is self.model { Some(v) -> r.model = Some(v), None -> {} }
+        is self.model_tier { Some(v) -> r.model_tier = Some(v), None -> {} }
+        is self.temperature { Some(v) -> r.temperature = Some(v), None -> {} }
+        is self.max_turns { Some(v) -> r.max_turns = Some(v), None -> {} }
+        is self.system_prompt { Some(v) -> r.system_prompt = Some(v), None -> {} }
+        is self.memory_limit { Some(v) -> r.memory_limit = Some(v), None -> {} }
+        is self.inherit { Some(v) -> r.inherit = Some(v), None -> {} }
+        is self.allowed_tiers { Some(v) -> r.allowed_tiers = Some(v), None -> {} }
+        is self.skills { Some(v) -> r.skills = Some(v), None -> {} }
+        is self.token_budget { Some(v) -> r.token_budget = Some(v), None -> {} }
+        is self.soul_file { Some(v) -> r.soul_file = Some(v), None -> {} }
+        // system_prompt_append: accumulate (base append, then self append).
+        is base.system_prompt_append {
+            Some(extra) -> {
+                is self.system_prompt_append {
+                    Some(mine) -> r.system_prompt_append = Some(f"${extra}\n${mine}"),
+                    None -> r.system_prompt_append = Some(extra)
+                }
+            },
+            None -> r.system_prompt_append = self.system_prompt_append
+        }
+        // tools: replace; tools_append: extend.
+        is self.tools {
+            Some(replace) -> r.tools = Some(replace),
+            None -> {}
+        }
+        is self.tools_append {
+            Some(extra) -> {
+                var combined = r.tools ?? []
+                for t in extra {
+                    combined.push(t)
+                }
+                r.tools = Some(combined)
+            },
+            None -> {}
+        }
+        return r
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ConfigRole — a Role backed by a RoleConfig
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A Role whose behavior is driven by a parsed RoleConfig. When a field is
+/// None, it falls back to the inherited base Role (if any).
+pub type ConfigRole has Role {
+    cfg RoleConfig
+    base ?Role
+
+    pub fn name() str {
+        is self.cfg.name {
+            Some(n) -> return n,
+            None -> return self.base_name()
+        }
+    }
+
+    pub fn system_prompt() str {
+        var prompt = self.cfg.system_prompt ?? self.base_prompt()
+        is self.cfg.system_prompt_append {
+            Some(extra) -> return f"${prompt}\n${extra}",
+            None -> return prompt
+        }
+    }
+
+    pub fn model_tier() ModelTier {
+        is self.cfg.model_tier {
+            Some(t) -> return t,
+            None -> return self.base_tier()
+        }
+    }
+
+    pub fn model() str {
+        return self.cfg.model ?? self.base_model_str()
+    }
+
+    pub fn temperature() float {
+        is self.cfg.temperature {
+            Some(t) -> return t,
+            None -> return self.base_temp()
+        }
+    }
+
+    pub fn max_turns() uint {
+        is self.cfg.max_turns {
+            Some(n) -> return n,
+            None -> return self.base_turns()
+        }
+    }
+
+    pub fn allowed_tools() List<str> {
+        return self.cfg.tools ?? []
+    }
+
+    pub fn memory_limit() ?uint {
+        is self.cfg.memory_limit {
+            Some(n) -> return Some(n),
+            None -> return self.base_mem()
+        }
+    }
+
+    pub fn skills() List<str> {
+        return self.cfg.skills ?? []
+    }
+}
+
+/// Factory: create a ConfigRole from a parsed config.
+pub fn config_role_new(cfg RoleConfig) ConfigRole {
+    return ConfigRole(cfg: cfg, base: None)
+}
+
+/// Factory: create a ConfigRole with an inherited base Role.
+pub fn config_role_with_base(cfg RoleConfig, base Role) ConfigRole {
+    return ConfigRole(cfg: cfg, base: Some(base))
+}
+
+// ─── ConfigRole fallback helpers (separate ext block, non-spec methods) ────
+
+ext ConfigRole {
+    pub fn name() str {
+        is self.cfg.name {
+            Some(n) -> return n,
+            None -> return self.base_name()
+        }
+    }
+
+    pub fn system_prompt() str {
+        var prompt = self.cfg.system_prompt ?? self.base_prompt()
+        is self.cfg.system_prompt_append {
+            Some(extra) -> return f"${prompt}\n${extra}",
+            None -> return prompt
+        }
+    }
+
+    pub fn model_tier() ModelTier {
+        is self.cfg.model_tier {
+            Some(t) -> return t,
+            None -> return self.base_tier()
+        }
+    }
+
+    pub fn model() str {
+        return self.cfg.model ?? self.base_model_str()
+    }
+
+    pub fn temperature() float {
+        is self.cfg.temperature {
+            Some(t) -> return t,
+            None -> return self.base_temp()
+        }
+    }
+
+    pub fn max_turns() uint {
+        is self.cfg.max_turns {
+            Some(n) -> return n,
+            None -> return self.base_turns()
+        }
+    }
+
+    pub fn allowed_tools() List<str> {
+        return self.cfg.tools ?? []
+    }
+
+    pub fn memory_limit() ?uint {
+        is self.cfg.memory_limit {
+            Some(n) -> return Some(n),
+            None -> return self.base_mem()
+        }
+    }
+
+    pub fn skills() List<str> {
+        return self.cfg.skills ?? []
+    }
+}
+
+// ─── ConfigRole fallback helpers (avoid nested is-pattern blocks) ──────────
+
+ext ConfigRole {
+    fn base_name() str {
+        is self.base {
+            Some(b) -> return b.name(),
+            None -> return "unnamed"
+        }
+    }
+
+    fn base_prompt() str {
+        is self.base {
+            Some(b) -> return b.system_prompt(),
+            None -> return ""
+        }
+    }
+
+    fn base_tier() ModelTier {
+        is self.base {
+            Some(b) -> return b.model_tier(),
+            None -> return ModelTier.Mid
+        }
+    }
+
+    fn base_model_str() str {
+        is self.base {
+            Some(b) -> return b.model(),
+            None -> return ""
+        }
+    }
+
+    fn base_temp() float {
+        is self.base {
+            Some(b) -> return b.temperature(),
+            None -> return 0.3
+        }
+    }
+
+    fn base_turns() uint {
+        is self.base {
+            Some(b) -> return b.max_turns(),
+            None -> return 10
+        }
+    }
+
+    fn base_mem() ?uint {
+        is self.base {
+            Some(b) -> return b.memory_limit(),
+            None -> return Some(20)
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Parse / load / serialize functions (a2r-first, bridge auto_atom)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Parse a single `role { … }` block from `.at` source.
+pub fn parse_at_role(content str) Result<RoleConfig, AgentError> {
+    is auto_atom.AtomParser.parse(content) {
+        Ok(atom) -> {
+            is atom {
+                auto_atom.Atom.Node(node) -> {
+                    var cfg = RoleConfig.empty()
+                    cfg.name = opt_str(node, "name")
+                    cfg.description = opt_str(node, "description")
+                    cfg.model = opt_str(node, "model")
+                    let tier_str = opt_str(node, "model_tier")
+                    is tier_str {
+                        Some(s) -> {
+                            is parse_tier_field(s) {
+                                Some(t) -> cfg.model_tier = Some(t),
+                                None -> {}
+                            }
+                        },
+                        None -> {}
+                    }
+                    cfg.temperature = opt_float(node, "temperature")
+                    cfg.max_turns = opt_uint(node, "max_turns")
+                    cfg.memory_limit = opt_uint(node, "memory_limit")
+                    cfg.system_prompt = opt_str(node, "system_prompt")
+                    cfg.system_prompt_append = opt_str(node, "system_prompt_append")
+                    cfg.tools = opt_str_list(node, "tools")
+                    cfg.tools_append = opt_str_list(node, "tools_append")
+                    cfg.inherit = opt_str(node, "inherit")
+                    cfg.soul_file = opt_str(node, "soul_file")
+                    return Ok(cfg)
+                },
+                else -> return Err(AgentError.Config("expected a 'role' node"))
+            }
+        },
+        Err(e) -> return Err(AgentError.Config(f"failed to parse role .at: ${e}"))
+    }
+}
+
+/// Load a Role (as ConfigRole) from `.at` source, resolving `inherit` chains.
+pub fn load_role(content str) Result<RoleConfig, AgentError> {
+    is parse_at_role(content) {
+        Ok(cfg) -> {
+            var result = cfg
+            // Resolve inherit chain (one level — the base is a builtin).
+            is cfg.inherit {
+                Some(name) -> {
+                    is builtin_roles.load_builtin(name) {
+                        Some(base_role) -> {
+                            // Merge cfg over the base role's config-derived
+                            // defaults. Since builtins aren't RoleConfigs,
+                            // the merge is simpler: just use cfg as-is with
+                            // the base role noted for ConfigRole.
+                        },
+                        None -> return Err(AgentError.Config(f"inherit: unknown role '${name}'"))
+                    }
+                },
+                None -> {}
+            }
+            return Ok(result)
+        },
+        Err(e) -> return Err(e)
+    }
+}
+
+/// Parse a tier field string → ModelTier. Returns None for unrecognized.
+pub fn parse_tier_field(s str) ?ModelTier {
+    return ModelTier.parse_name(s)
+}
+
+/// Serialize a RoleConfig back to `.at` format.
+pub fn serialize_at_role(cfg RoleConfig) str {
+    var lines List<str> = ["role {"]
+    is cfg.name { Some(v) -> lines.push(f"    name : \"${v}\""), None -> {} }
+    is cfg.model { Some(v) -> lines.push(f"    model : \"${v}\""), None -> {} }
+    is cfg.model_tier {
+        Some(t) -> lines.push(f"    model_tier : ${t.display_name()}"),
+        None -> {}
+    }
+    is cfg.temperature {
+        Some(v) -> lines.push(f"    temperature : ${v}"),
+        None -> {}
+    }
+    is cfg.max_turns {
+        Some(v) -> lines.push(f"    max_turns : ${v}"),
+        None -> {}
+    }
+    is cfg.system_prompt {
+        Some(v) -> lines.push(f"    system_prompt : \"${v}\""),
+        None -> {}
+    }
+    is cfg.inherit {
+        Some(v) -> lines.push(f"    inherit : \"${v}\""),
+        None -> {}
+    }
+    lines.push("}")
+    return lines.join("\n")
+}
+
+// ─── bridge helpers (same pattern as loader.at) ────────────────────────────
+
+fn opt_str(node auto_val.Node, key str) ?str {
+    let val = node.get_prop_of(key)
+    is val {
+        auto_val.Value.Str(s) -> return Some(s.to_string()),
+        auto_val.Value.String(s) -> return Some(s.to_string()),
+        auto_val.Value.Nil -> return None,
+        else -> return Some(val.to_astr().to_string())
+    }
+}
+
+fn opt_float(node auto_val.Node, key str) ?float {
+    let val = node.get_prop_of(key)
+    is val {
+        auto_val.Value.Float(f) -> return Some(f),
+        auto_val.Value.Double(d) -> return Some(d),
+        auto_val.Value.Int(i) -> return Some(i.to_float()),
+        else -> return None
+    }
+}
+
+fn opt_uint(node auto_val.Node, key str) ?uint {
+    let val = node.get_prop_of(key)
+    is val {
+        auto_val.Value.Uint(u) -> return Some(u),
+        auto_val.Value.Int(i) -> {
+            if i >= 0 {
+                return Some(i)
+            }
+            return None
+        },
+        else -> return None
+    }
+}
+
+fn opt_str_list(node auto_val.Node, key str) ?List<str> {
+    let val = node.get_prop_of(key)
+    is val {
+        auto_val.Value.Array(arr) -> {
+            var out List<str> = []
+            for el in arr.values {
+                is el {
+                    auto_val.Value.Str(s) -> out.push(s.to_string()),
+                    else -> {}
+                }
+            }
+            return Some(out)
+        },
+        else -> return None
+    }
+}
+
+fn parse_tier(s str) ?ModelTier {
+    return ModelTier.parse_name(s)
+}

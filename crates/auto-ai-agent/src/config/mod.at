@@ -1,0 +1,6 @@
+/// `.at` (Atom) configuration parsing for Roles, using the shared `auto_atom`
+/// parser (the same one AutoForge uses).
+///
+/// Auto port of config/mod.rs (auto-ai v0.4.0).
+
+use role_config: ConfigRole, RoleConfig, load_role, parse_at_role, parse_tier_field, serialize_at_role
