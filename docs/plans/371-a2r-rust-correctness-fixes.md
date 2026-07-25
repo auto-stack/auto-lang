@@ -1,10 +1,39 @@
 # Plan 371: a2r → Rust 正确性修复（解锁 Auto 版 auto-ai-agent 跑通）
 
-> **状态**：待实施（2026-07-24 起，分支 `plan-013/react-runnable` 上发现）
+> **状态**：部分实施（2026-07-25，分支 `plan-013/react-runnable`）
 > **来源**：plan-013（auto-ai 移植）阶段 6 的真实阻断——组装好的 rust/ crate
 > 有 ~344 个 cargo 错误，经最小复现 + 源码追踪，定位到 **3 个系统性 a2r 缺陷**。
 > **目标**：修好这 3 个 a2r 根因，让 `crates/auto-ai-agent/rust/` 通过
 > `cargo check` 并跑通一个真实 ReAct 问答。修复对所有未来 a2r 输出都生效。
+
+## 实施进度（2026-07-25）
+
+| 缺陷 | 状态 | 验证 |
+|---|---|---|
+| **C**（i+1 auto-borrow） | ✅ 已修已验证 | driver.a2r.rs 的 `result.as_str()`/`agent_result.as_str()`（enum/struct 参数错加的）消除；真 String→&str 的 `.as_str()` 保留 |
+| **A**（spec 跨模块解析） | ⚠️ 已修但**仅 project-merged 路径生效** | Phase 1.5 预注册 spec 后，同文件 spec（如 `client Client`→`Box<dyn Client>`）正确；但 **`auto trans --path <file>` 单文件入口不走 Phase 1.5**，跨模块 spec（如 `use role_def: Role` 后的 `role Role`）仍解析为裸 `Role` |
+| **B**（Option 方法） | ⏳ 未做 | — |
+
+### ⚠️ 关键发现：缺陷 A 的修复受限于"调用模型"
+
+`auto trans --path X.at rust`（单文件入口，`rust.rs:12217 transpile_rust()`）用空
+`TypeStore` 起 parser，**完全不经过 Phase 1.5 预注册**（Phase 1.5 只在
+`transpile_rust_project_merged` / `auto build -r rust` 路径里）。所以单文件 transpile
+时，任何跨模块 spec（`use role_def: Role`）都解析为 `Type::User`（裸名），缺陷 A 的
+Phase 1.5 修复帮不上。
+
+我的 rust/ 组装用的是"逐文件 transpile + 手工拼接"，因此踩到这个限制。两条出路：
+1. **改用项目级入口**：给 auto-ai-agent 加 `pac.at`，用 `auto build -r rust`
+   （auto-coder 的做法）——这样 Phase 1.5 生效，跨模块 spec 正确解析。但 `build`
+   生成自己的文件结构，我手写的 lib.rs/Cargo.toml/client_impl.rs/main.rs 就不适用了。
+2. **补单文件路径的 spec 预注册**：在 `transpile_rust()`（`rust.rs:12217`）和
+   `trans_rust_with_session()`（`lib.rs:3472`）里，transpile 前用
+   `compile.rs:1434 parse_module_to_type_store`（已在 1468-1470 注册 spec）把
+   同目录/依赖文件的 spec 填进 parser 的 `type_store`。这样单文件 transpile 也能
+   解析跨模块 spec，我的逐文件组装就能用。
+
+**下次会话建议先做出路 2**（补单文件 spec 预注册），改动局部、不动调用模型，最直接
+解锁我现有的 rust/ 组装。然后再做缺陷 B。
 
 ## 背景与触发
 

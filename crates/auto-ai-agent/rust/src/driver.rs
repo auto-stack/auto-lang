@@ -143,7 +143,7 @@ impl PipelineDriver {
         let mut last_handoff: Option<HandoffDocument> = None;
         loop {
             let result = self.engine.advance();
-            let outcome = self.dispatch(result.as_str(), task_msg, last_handoff);
+            let outcome = self.dispatch(result, task_msg.as_str(), last_handoff);
             match outcome {
                 DriveOutcome::Continue => last_handoff = self.last_handoff_after(result, last_handoff),
                 DriveOutcome::Done => return Ok(None),
@@ -153,7 +153,7 @@ impl PipelineDriver {
     }
     pub async fn dispatch(&self, result: AdvanceResult, task_msg: &str, last_handoff: Option<HandoffDocument>) -> DriveOutcome {
         match result {
-            AdvanceResult::ExecuteStep(step_id, role_id) => return self.drive_step(task_msg, step_id.as_str(), role_id.as_str(), last_handoff),
+            AdvanceResult::ExecuteStep(step_id, role_id) => return self.drive_step(task_msg.as_str(), step_id, role_id, last_handoff),
             AdvanceResult::Completed => {
                 self.on_event(PipelineEvent::Completed);
                 return DriveOutcome::Done;
@@ -171,7 +171,7 @@ impl PipelineDriver {
             AdvanceResult::WaitForHuman(step_id) => {
                 let ev = PipelineEvent::GateWaiting(step_id);
                 self.on_event(ev);
-                let gr = self.resolve_gate_auto(step_id.as_str());
+                let gr = self.resolve_gate_auto(step_id);
                 match gr {
                     Ok(_) => return DriveOutcome::Continue,
                     Err(e) => return DriveOutcome::Fail(e),
@@ -211,7 +211,7 @@ impl PipelineDriver {
 
 
         let content = agent_result.content.clone();
-        let handoff = self.build_handoff(role_id, agent_result.as_str(), content.as_str());
+        let handoff = self.build_handoff(role_id.as_str(), agent_result, content);
         let completed = PipelineEvent::StepCompleted(step_id.to_string(), handoff);
         self.on_event(completed);
         last_handoff = Some(handoff);
@@ -276,7 +276,7 @@ impl PipelineDriver {
             AdvanceResult::WaitForHuman(step_id) => {
                 let ev = PipelineEvent::GateWaiting(step_id);
                 self.on_event(ev);
-                let gr = self.resolve_gate_auto(step_id.as_str());
+                let gr = self.resolve_gate_auto(step_id);
                 match gr {
                     Ok(_) => return Ok(None),
                     Err(e) => return Err(Box::new(e)),

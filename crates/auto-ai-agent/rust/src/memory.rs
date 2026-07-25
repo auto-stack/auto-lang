@@ -36,7 +36,7 @@ impl Memory {
     }
     pub fn extend_pairs(&mut self, pairs: Vec<(String, String)>) {
         for pair in pairs {
-            self.add(pair[0].as_str(), pair[1].as_str());
+            self.add(pair[0].clone(), pair[1].clone());
         }
     }
     pub fn messages(&self) -> Vec<Message> {

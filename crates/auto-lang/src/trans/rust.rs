@@ -5793,9 +5793,25 @@ impl RustTrans {
                                 .copied()
                                 .unwrap_or(false)
                         };
+                        // Plan 371 (defect C): the i+1 lookahead above reads the
+                        // NEXT param's flag, which wrongly flags enum/struct args
+                        // as str params. Guard: only auto-borrow when the arg is
+                        // genuinely a string-like value (a str literal, or a local
+                        // var whose type is a str variant). Enum/struct/int args
+                        // are skipped regardless of the flag.
+                        let arg_is_str_like = matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                            || self.is_str_slice_var(arg)
+                            || if let Expr::Ident(name) = expr {
+                                self.local_var_types.get(name).map(|ty| matches!(
+                                    ty,
+                                    Type::StrFixed(_) | Type::StrSlice | Type::StrOwned
+                                )).unwrap_or(false)
+                            } else {
+                                false
+                            };
                         if is_str_param
-                            && !matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_, _))
-                            && !self.is_str_slice_var(arg)
+                            && arg_is_str_like
+                            && !matches!(expr, Expr::Int(_) | Expr::Float(_, _))
                             && !Self::is_int_var(arg, &self.local_var_types)
                         {
                             write!(out, ".as_str()")?;
@@ -12366,10 +12382,14 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     ("pub type ", &trimmed[9..])
                 } else if trimmed.starts_with("pub enum ") {
                     ("pub enum ", &trimmed[9..])
+                } else if trimmed.starts_with("pub spec ") {
+                    ("pub spec ", &trimmed[9..])
                 } else if trimmed.starts_with("type ") {
                     ("type ", &trimmed[5..])
                 } else if trimmed.starts_with("enum ") {
                     ("enum ", &trimmed[5..])
+                } else if trimmed.starts_with("spec ") {
+                    ("spec ", &trimmed[5..])
                 } else {
                     continue;
                 };
@@ -12409,6 +12429,14 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     };
                     store.register_enum_decl(enum_decl);
                     all_enum_names.insert(AutoStr::from(name));
+                } else if prefix.contains("spec ") {
+                    // Plan 371 (defect A): pre-register specs so cross-module /
+                    // out-of-order `use`s resolve to Type::Spec (→ Box<dyn X>)
+                    // instead of the Type::User placeholder. Only the name is
+                    // needed for lookup_type to pick the right branch; the full
+                    // SpecDecl (with methods) is filled in during Phase 2 parse.
+                    let spec_decl = SpecDecl::new(name.into(), Vec::new());
+                    store.register_spec_decl(&spec_decl);
                 }
             }
         }
@@ -12952,10 +12980,14 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                     ("pub type ", &trimmed[9..])
                 } else if trimmed.starts_with("pub enum ") {
                     ("pub enum ", &trimmed[9..])
+                } else if trimmed.starts_with("pub spec ") {
+                    ("pub spec ", &trimmed[9..])
                 } else if trimmed.starts_with("type ") {
                     ("type ", &trimmed[5..])
                 } else if trimmed.starts_with("enum ") {
                     ("enum ", &trimmed[5..])
+                } else if trimmed.starts_with("spec ") {
+                    ("spec ", &trimmed[5..])
                 } else {
                     continue;
                 };
@@ -12987,6 +13019,14 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                     };
                     store.register_enum_decl(enum_decl);
                     all_enum_names.insert(AutoStr::from(name));
+                } else if prefix.contains("spec ") {
+                    // Plan 371 (defect A): pre-register specs so cross-module /
+                    // out-of-order `use`s resolve to Type::Spec (→ Box<dyn X>)
+                    // instead of the Type::User placeholder. Only the name is
+                    // needed for lookup_type to pick the right branch; the full
+                    // SpecDecl (with methods) is filled in during Phase 2 parse.
+                    let spec_decl = SpecDecl::new(name.into(), Vec::new());
+                    store.register_spec_decl(&spec_decl);
                 }
             }
         }

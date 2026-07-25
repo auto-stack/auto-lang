@@ -99,7 +99,7 @@ impl ToolRegistry {
     }
     pub async fn execute(&self, name: &str, args: JsonValue) -> Result<String, ToolError> {
         match self.get(name) {
-            Some(tool) => return tool.execute(args.as_str()).await,
+            Some(tool) => return tool.execute(args).await,
             None => return Err(Box::new(ToolError::Exec(format!("tool not found: {}", name)))),
         }
     }

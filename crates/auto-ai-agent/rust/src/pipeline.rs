@@ -255,8 +255,8 @@ impl PipelineEngine {
                 h.token_usage.budget_remaining = saturating_sub(limit, self.cumulative_tokens.clone());
                 
 
-                let iteration = self.loop_count(step_id.as_str());
-                let iteration = self.loop_count(step_id.as_str());
+                let iteration = self.loop_count(step_id);
+                let iteration = self.loop_count(step_id);
                 
 
 
@@ -269,7 +269,7 @@ impl PipelineEngine {
                 log_budget_advisory(self.budget_tracker.check(role_id));
                 
 
-                return self.advance_after_step(step_id.as_str(), exit);
+                return self.advance_after_step(step_id, exit);
             },
             None => {
                 self.status = PipelineStatus::Failed("submit_handoff called but no step is running".to_string());
@@ -289,7 +289,7 @@ impl PipelineEngine {
                         return self.advance();
                     },
                     GateDecision::Reject(feedback) => {
-                        self.push_gate_feedback(pending.step_id, feedback.as_str());
+                        self.push_gate_feedback(pending.step_id, feedback);
                         self.gate_resolved_for_step = Some(pending.step_id);
                         self.status = PipelineStatus::Idle;
                         return self.advance();
@@ -310,7 +310,7 @@ impl PipelineEngine {
             return None;
         }
         for step in self.flow.steps {
-            self.set_loop_counter(step.id.as_str(), 0);
+            self.set_loop_counter(step.id, 0);
         }
         if self.current_step < (self.flow.steps.len() as u32) {
             let step = self.flow.steps[(self.current_step) as usize].clone();
@@ -328,8 +328,8 @@ impl PipelineEngine {
             return None;
         }
         let step_id = self.flow.steps[(self.current_step) as usize].clone().id;
-        self.set_loop_counter(step_id.as_str(), 0);
-        self.remove_gate_feedback(step_id.as_str());
+        self.set_loop_counter(step_id, 0);
+        self.remove_gate_feedback(step_id);
         self.gate_resolved_for_step = None;
         self.status = PipelineStatus::Idle;
         return Some(self.advance());
@@ -397,13 +397,13 @@ impl PipelineEngine {
         self.gate_feedback_names = kept_names;
     }
     pub fn bump_loop_counter(&mut self, step_id: &str) -> u32 {
-        let prev = self.loop_count(step_id);
+        let prev = self.loop_count(step_id.as_str());
         let next: i32 = prev + 1;
-        self.set_loop_counter(step_id, next);
+        self.set_loop_counter(step_id.as_str(), next);
         return next;
     }
     pub fn advance_after_step(&mut self, step_id: &str, exit: ExitRouting) -> AdvanceResult {
-        match self.resolve_next_step(step_id, exit) {
+        match self.resolve_next_step(step_id.as_str(), exit) {
             NextStep::Index(idx) => {
                 self.current_step = idx;
                 return self.advance();
@@ -438,7 +438,7 @@ impl PipelineEngine {
                 return NextStep::Index(next);
             },
             ExitRouting::Loop(target_step_id, max_iterations) => {
-                let count = self.bump_loop_counter(step_id);
+                let count = self.bump_loop_counter(step_id.as_str());
                 if count >= max_iterations {
                     return NextStep::Pause(format!("Loop max ({}) reached at '{}'", max_iterations, step_id), target_step_id);
                 }
@@ -483,7 +483,7 @@ fn correct_handoff_target(eng: PipelineEngine, h: HandoffDocument, step_id: &str
                 h.target = expected
             } else {
                 if cur != expected {
-                    eng.push_gate_feedback(step_id, format!("[AUTO-CORRECTION] target '{}' corrected to '{}'.", cur, expected).as_str());
+                    eng.push_gate_feedback(step_id.as_str(), format!("[AUTO-CORRECTION] target '{}' corrected to '{}'.", cur, expected));
                     h.target = expected
                 }            }
 

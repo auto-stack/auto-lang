@@ -128,7 +128,7 @@ impl BudgetTracker {
 
     }
     pub fn check(&self, step: &str) -> BudgetAction {
-        let step_used = self.step_used(step);
+        let step_used = self.step_used(step.as_str());
 
 
         match self.step_budgets.get(step) {

@@ -69,7 +69,7 @@ impl Validator {
 
 pub fn check_all(validators: Vec<Validator>, output: &str) -> Result<None, String> {
     for v in validators {
-        match v.check(output) {
+        match v.check(output.as_str()) {
             Ok(_) => {},
             Err(msg) => return Err(msg),
         }
@@ -80,7 +80,7 @@ pub fn check_all(validators: Vec<Validator>, output: &str) -> Result<None, Strin
 pub fn check_any(validators: Vec<Validator>, output: &str) -> Result<None, String> {
     let mut failures: u32 = 0;
     for v in validators {
-        match v.check(output) {
+        match v.check(output.as_str()) {
             Ok(_) => return Ok(None),
             Err(_msg) => failures = failures + 1,
         }

@@ -201,10 +201,10 @@ impl Agent {
         return self.client.clone();
     }
     pub async fn run(&self, task_msg: &str) -> Result<AgentResult, AgentError> {
-        return self.run_inner(task_msg, None);
+        return self.run_inner(task_msg.as_str(), None);
     }
     pub async fn run_stream(&self, task_msg: &str, cancel: Arc<AtomicBool>) -> Result<AgentResult, AgentError> {
-        return self.run_inner(task_msg, Some(cancel));
+        return self.run_inner(task_msg.as_str(), Some(cancel));
     }
     pub async fn run_inner(&self, task_msg: &str, cancel: Option<Arc<AtomicBool>>) -> Result<AgentResult, AgentError> {
 
