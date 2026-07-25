@@ -213,6 +213,15 @@ pub struct Codegen {
     /// For iterator/collection loops, this points to the next-iteration check
     pub loop_continue_positions: Vec<usize>,
 
+    /// Continue placeholder tracking (like loop_exits but for continue).
+    /// Each nested loop has a Vec of JMP placeholders emitted by `continue`
+    /// statements in the body. After the body is compiled and the continue
+    /// target (increment/next-iteration) position is known, these are patched.
+    /// This fixes the continue-infinite-loop bug where body-compiled continue
+    /// statements jumped to offset 0 (the placeholder default) instead of the
+    /// increment step.
+    pub loop_continues: Vec<Vec<usize>>,
+
     /// Plan 073: Type registry for TypeDecl support
     /// Maps type name -> TypeInfo (member names, etc.)
     pub types: HashMap<String, TypeInfo>,
@@ -410,6 +419,7 @@ impl Codegen {
             captured_vars_stack: Vec::new(),
             loop_exits: Vec::new(),
             loop_continue_positions: Vec::new(),
+            loop_continues: Vec::new(),
             types: HashMap::new(),
             generics: GenericTable::new(), // Plan 076 Phase 1
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
@@ -582,6 +592,7 @@ impl Codegen {
             captured_vars_stack: Vec::new(),
             loop_exits: Vec::new(),
             loop_continue_positions: Vec::new(),
+            loop_continues: Vec::new(),
             types: HashMap::new(),
             generics: GenericTable::new(),
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(),
@@ -2119,8 +2130,9 @@ impl Codegen {
             // Plan 073: For statement support
             Stmt::For(for_stmt) => {
                 vm_debug!("DEBUG FOR: Compiling for loop");
-                // Push new loop exit tracking
+                // Push new loop exit + continue tracking
                 self.loop_exits.push(Vec::new());
+                self.loop_continues.push(Vec::new());
                 self.loop_continue_positions.push(0); // placeholder, will be set per variant
 
                 // Handle range-based for loops: for x in start..end { ... }
@@ -2206,6 +2218,11 @@ impl Codegen {
                             for exit_placeholder in exits {
                                 self.patch_jump(exit_placeholder);
                             }
+                            // Patch all continue statements to the increment position
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, continue_pos);
+                            }
                             self.loop_continue_positions.pop();
                         } else if let Expr::Call(_call) = &for_stmt.range {
                             // Plan 073: Iterator-based for loop: for x in list.iter() { ... }
@@ -2286,6 +2303,7 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
+                            let _ = self.loop_continues.pop();
                         } else {
                             // Plan 089: Array-based for loop: for x in expr { ... }
                             // Supports any iterable expression: variable, field access, call, etc.
@@ -2418,6 +2436,7 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
+                            let _ = self.loop_continues.pop();
                         }
                     }
                     Iter::Indexed(index_name, iter_name) => {
@@ -2502,6 +2521,7 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
+                            let _ = self.loop_continues.pop();
                         } else if let Expr::Ident(_) = &for_stmt.range {
                             // Plan 089: Indexed array iteration: for i, x in array_var { ... }
                             let index_str = index_name.to_string();
@@ -2612,6 +2632,7 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
+                            let _ = self.loop_continues.pop();
                         } else {
                             // For now, only support range and array identifier expressions
                             self.loop_exits.pop();
@@ -2741,6 +2762,7 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
+                        let _ = self.loop_continues.pop();
                     }
                     Iter::Cond => {
                         // Conditional for loop: for condition { ... } (like while)
@@ -2800,6 +2822,7 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
+                        let _ = self.loop_continues.pop();
                     }
                     Iter::Ever => {
                         // Infinite loop: for ever { ... }
@@ -2830,6 +2853,7 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
+                        let _ = self.loop_continues.pop();
                     }
                     Iter::Call(call) => {
                         // Plan 073: Iterator-based for loop: for x in list.iter() { ... }
@@ -2909,6 +2933,7 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
+                        let _ = self.loop_continues.pop();
                     }
                 }
             }
@@ -2928,12 +2953,33 @@ impl Codegen {
                 }
             }
             Stmt::Continue => {
-                // Continue statement: jump to loop continue target
-                if let Some(&continue_pos) = self.loop_continue_positions.last() {
+                // Continue statement: emit a JMP placeholder, to be patched
+                // to the loop's continue target (increment/next-iteration) after
+                // the body is compiled. This mirrors how break uses loop_exits.
+                // The old code read loop_continue_positions directly, but that
+                // value is 0 (placeholder) during body compilation → jump to
+                // offset 0 → infinite loop.
+                if self.loop_continues.last().map_or(false, |v| !v.is_empty())
+                    || self.loop_continues.last().is_some()
+                {
+                    // New placeholder-based path (range-for and any variant
+                    // that pushed loop_continues).
                     self.emit(OpCode::JMP);
-                    let current_pos = self.code.len() as i16;
-                    let offset = continue_pos as i16 - current_pos - 2;
-                    self.emit_i16(offset);
+                    let continue_placeholder = self.emit_placeholder_i16();
+                    self.loop_continues.last_mut().unwrap().push(continue_placeholder);
+                } else if let Some(&continue_pos) = self.loop_continue_positions.last() {
+                    if continue_pos > 0 {
+                        // Legacy path for variants that set loop_continue_positions
+                        // before body compilation (rare; most set it after → bug).
+                        self.emit(OpCode::JMP);
+                        let current_pos = self.code.len() as i16;
+                        let offset = continue_pos as i16 - current_pos - 2;
+                        self.emit_i16(offset);
+                    } else {
+                        return Err(AutoError::Msg(
+                            "Continue statement in unsupported loop variant".to_string(),
+                        ));
+                    }
                 } else {
                     return Err(AutoError::Msg(
                         "Continue statement outside of loop".to_string(),
@@ -9546,6 +9592,21 @@ impl Codegen {
             panic!("Jump offset too large: {}", offset);
         }
 
+        let bytes = (offset as i16).to_le_bytes();
+        self.code[placeholder_idx] = bytes[0];
+        self.code[placeholder_idx + 1] = bytes[1];
+    }
+
+    /// Patch a jump placeholder to jump to a specific target position
+    /// (not necessarily the current code position). Used by continue to
+    /// jump to the increment step which is before the current position.
+    fn patch_jump_to(&mut self, placeholder_idx: usize, target: usize) {
+        let anchor = placeholder_idx + 2;
+        let offset = (target as isize) - (anchor as isize);
+        self.jump_targets.push((placeholder_idx, target));
+        if offset > i16::MAX as isize || offset < i16::MIN as isize {
+            panic!("Jump offset too large: {}", offset);
+        }
         let bytes = (offset as i16).to_le_bytes();
         self.code[placeholder_idx] = bytes[0];
         self.code[placeholder_idx + 1] = bytes[1];
