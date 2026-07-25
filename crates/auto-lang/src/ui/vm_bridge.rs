@@ -458,6 +458,12 @@ impl VmBridge {
         None
     }
 
+    /// Plan 370 (Issue 2): return ALL elements of a heap array (ListData),
+    /// used by `for` loops over a dotted prop path like `.note.tags`.
+    pub fn index_list_all(&self, id: usize) -> Vec<Value> {
+        self.vmref_to_vec(id).unwrap_or_default()
+    }
+
     fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {        // Path 1: heap_objects (4000000+) — ListData<Value> or ListData<i32>.
         if let Some(obj) = self.vm.get_heap_object(id as u64) {
             let guard = obj.read().unwrap();

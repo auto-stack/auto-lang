@@ -198,6 +198,55 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+    /// Plan 370 (Issue 2): resolve a `for`-loop iterable that may be a
+    /// dotted path like `.note.tags` or `.store.notes`. Simple field names
+    /// (`.notes`) go through `read_state`/`read_state_as_vec`; dotted paths
+    /// (`.note.tags`) are resolved field-by-field via `resolve_expr_to_value`
+    /// so that a prop object's sub-fields (e.g. a Note's tags array stored
+    /// as a heap-id Int) can be iterated.
+    fn resolve_iterable(&self, iterable: &str, bindings: &Bindings) -> Option<Vec<auto_val::Value>> {
+        // Simple state field (no interior dot after stripping the leading '.')
+        let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
+        let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+        if !has_inner_dot {
+            // Delegate to existing state-read helpers.
+            if let Ok(arr) = self.read_state_as_vec(stripped) {
+                return Some(arr);
+            }
+            return None;
+        }
+        // Dotted path — build an Expr and resolve. `.note.tags` →
+        // Dot(Dot(Ident("."), "note"), "tags").
+        let expr = Self::parse_dot_path_to_expr(iterable)?;
+        let val = self.resolve_expr_to_value(&expr, bindings)?;
+        match val {
+            auto_val::Value::Array(arr) => Some(arr.iter().cloned().collect()),
+            auto_val::Value::Int(id) if id >= 2_000_000 => {
+                // Heap array id — deref via bridge
+                Some(self.bridge.index_list_all(id as usize))
+            }
+            auto_val::Value::VmRef(r) => {
+                Some(self.bridge.index_list_all(r.id))
+            }
+            _ => None,
+        }
+    }
+
+    /// Build a chained Dot expr from a dotted path string like `.note.tags`.
+    fn parse_dot_path_to_expr(path: &str) -> Option<Expr> {
+        let parts: Vec<&str> = path.split('.').filter(|p| !p.is_empty()).collect();
+        if parts.is_empty() {
+            return None;
+        }
+        // First segment is the root (e.g. "" from leading '.', or "note").
+        // For `.note.tags`, parts = ["note", "tags"].
+        let mut expr = Expr::Ident(parts[0].into());
+        for part in &parts[1..] {
+            expr = Expr::Dot(Box::new(expr), part.to_string().into());
+        }
+        Some(expr)
+    }
+
     /// Build a `View<DynamicMessage>` with debug sideband data (Plan 274 / 307 Task 9).
     ///
     /// Returns `(View, DebugIdMap, BuildProbe)` where:
@@ -255,8 +304,19 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
                 let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+                // Plan 370 (Issue 2): for dotted prop paths like `.note.tags`,
+                // resolve via resolve_iterable (handles field-by-field deref).
+                // For simple state fields, use read_state/read_state_as_vec.
+                let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
+                let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+                let array: auto_val::Array = if has_inner_dot {
+                    match self.resolve_iterable(iterable, bindings) {
+                        Some(elems) => auto_val::Array::from(elems),
+                        None => return View::Empty,
+                    }
+                } else {
                 // Read the iterable array from VmBridge state
-                let array = match self.read_state(state_name) {
+                match self.read_state(state_name) {
                     Ok(Value::Array(arr)) => arr,
                     Ok(_other) => {
                         // Try read_state_as_vec for Value::Int(array_id) refs
@@ -291,6 +351,7 @@ impl<'a> AuraViewBuilder<'a> {
                     Err(_) => {
                         return View::Empty;
                     }
+                }
                 };
 
                 let children: Vec<View<DynamicMessage>> = array.iter().enumerate()
@@ -439,17 +500,28 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
                 let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+                // Plan 370 (Issue 2): for dotted prop paths like `.note.tags`,
+                // resolve via resolve_iterable (handles field-by-field deref).
+                let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
+                let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+                let array: Vec<Value> = if has_inner_dot {
+                    match self.resolve_iterable(iterable, bindings) {
+                        Some(v) => v,
+                        None => return View::Empty,
+                    }
+                } else {
                 // Read the iterable. `read_state_as_vec` handles BOTH an inline
                 // `Value::Array` and a `Value::Int(array_id)` heap-array reference
                 // (the latter is how `var x = []; x.push(...)` arrays are stored —
                 // e.g. 016-calendar's `.days`). A bare `read_state` + `Value::Array`
                 // match misses the heap-id form and silently renders an empty loop.
-                let array: Vec<Value> = match self.read_state_as_vec(state_name) {
+                match self.read_state_as_vec(state_name) {
                     Ok(v) => v,
                     Err(e) => {
                         log::warn!("view_builder: read_state_as_vec('{}') failed: {}", state_name, e);
                         return View::Empty;
                     }
+                }
                 };
                 let child_views: Vec<View<DynamicMessage>> = array.iter().enumerate()
                     .filter_map(|(i, item)| {
@@ -1232,10 +1304,7 @@ impl<'a> AuraViewBuilder<'a> {
         for (prop_name, prop_value) in props {
             if let AuraPropValue::Expr(expr) = prop_value {
                 if let Some(val) = self.resolve_expr_to_value(expr, bindings) {
-                    if prop_name == "note" {
-                    }
                     resolved_props.insert(prop_name.clone(), val);
-                } else if prop_name == "note" {
                 }
             }
         }
@@ -1816,7 +1885,11 @@ impl<'a> AuraViewBuilder<'a> {
         let placeholder = self.extract_string_with(props, "placeholder", bindings)
             .unwrap_or_default();
 
-        let value = self.extract_string_with(props, "value", bindings).unwrap_or_default();
+        // Plan 370: autodown_editor uses `content:` for its text; standard
+        // inputs use `value:`. Accept either so editor bodies render.
+        let value = self.extract_string_with(props, "value", bindings)
+            .or_else(|| self.extract_string_with(props, "content", bindings))
+            .unwrap_or_default();
 
         let style = self.extract_style(props);
         let height = self.extract_u16(props, "height");
@@ -2039,6 +2112,15 @@ impl<'a> AuraViewBuilder<'a> {
                 // Also handle bare "store.X" (Ident("store") Dot field)
                 if let Expr::Ident(name) = object.as_ref() {
                     if name.as_str() == "store" {
+                        return self.read_state(field.as_str()).ok();
+                    }
+                    // Plan 370 (Issue 2): handle single-level self-reference
+                    // `.field` (parsed as Dot(Ident("."), field)). Without this,
+                    // `.note` in a child widget (e.g. EditorPanel's `text note.title`)
+                    // falls through to resolve_expr_to_value(Ident(".")) which
+                    // reads state field "" and fails → note resolves to None →
+                    // the entire panel renders empty.
+                    if name.as_str() == "." || name.as_str() == "self" {
                         return self.read_state(field.as_str()).ok();
                     }
                 }
@@ -2265,8 +2347,21 @@ impl<'a> AuraViewBuilder<'a> {
         } else if let Some(pos) = cond.find(" <= ") {
             (&cond[..pos], "<=", cond[pos + 4..].trim())
         } else if cond.starts_with('.') {
-            // Bare state ref — truthy check
-            return self.read_state(&cond[1..])
+            // Bare state ref — truthy check.
+            // Plan 370 (Issue 2): dotted prop paths like `.note.pinned`
+            // need field-by-field resolution (read_state only looks up a
+            // single field name, so `read_state("note.pinned")` fails).
+            let path = &cond[1..];
+            let has_inner_dot = path.contains('.') && !path.starts_with("store.");
+            if has_inner_dot {
+                if let Some(expr) = Self::parse_dot_path_to_expr(cond) {
+                    return self.resolve_expr_to_value(&expr, bindings)
+                        .map(|v| v.as_bool())
+                        .unwrap_or(false);
+                }
+                return false;
+            }
+            return self.read_state(path)
                 .map(|v| v.as_bool())
                 .unwrap_or(false);
         } else {
