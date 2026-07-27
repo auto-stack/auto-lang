@@ -894,7 +894,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
             AbstractView::Empty => {
-                text("").into()
+                // Plan 370 (Issue 1): render Empty as a zero-height Space
+                // instead of text(""). A text("") still reserves one line of
+                // vertical height in iced, so stacking several Empty views
+                // (from false `if` branches / non-matching `for` iterations)
+                // produced large blank gaps. A zero-height Space collapses.
+                iced::widget::Space::new()
+                    .width(iced::Length::Shrink)
+                    .height(iced::Length::Fixed(0.0))
+                    .into()
             }
 
             AbstractView::Text { content, style } => {
@@ -3166,117 +3174,21 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                     sync_todos_to_vm(&state.todos, &mut state.component);
                 }
-                // Notes app: handle SelectNote:N / NewNote / DeleteNote
-                "SelectNote" => {
-                    if let Some(i) = idx {
-                        let _ = state.component.write_state("active_id", auto_val::Value::Int(i as i32));
-                        let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
-                    }
-                }
-                "NewNote" => {
-                    // Read current notes, append new note, write back
-                    // Plan 289: Use read_state_as_vec/write_state_vec to handle both
-                    // Value::Array and Value::Int(array_id) from [...] literals
-                    if let Ok(mut notes) = state.component.read_state_as_vec("notes") {
-                        let mut note = auto_val::Obj::new();
-                        note.set("title", auto_val::Value::str(""));
-                        note.set("body", auto_val::Value::str(""));
-                        note.set("time", auto_val::Value::str("Just now"));
-                        notes.push(auto_val::Value::Obj(note));
-                        let new_len = notes.len() as i32;
-                        let _ = state.component.write_state_vec("notes", notes);
-                        let _ = state.component.write_state("active_id", auto_val::Value::Int(new_len - 1));
-                        let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
-                        let _ = state.component.write_state("edit_title", auto_val::Value::str(""));
-                        let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
-                        let _ = state.component.write_state("search", auto_val::Value::str(""));
-                    }
-                }
-                "DeleteNote" => {
-                    // Read active_id and notes, remove the note at active_id, write back
-                    // Plan 289: Use read_state_as_vec/write_state_vec to handle both
-                    // Value::Array and Value::Int(array_id) from [...] literals
-                    if let (Ok(mut notes), Ok(active_val)) = (
-                        state.component.read_state_as_vec("notes"),
-                        state.component.read_state("active_id"),
-                    ) {
-                        let active = active_val.as_int() as usize;
-                        if !notes.is_empty() {
-                            let del_idx = if active < notes.len() { active } else { 0 };
-                            notes.remove(del_idx);
-                            let new_active = if notes.is_empty() { 0 } else { del_idx.min(notes.len() - 1) };
-                            let _ = state.component.write_state_vec("notes", notes);
-                            let _ = state.component.write_state("active_id", auto_val::Value::Int(new_active as i32));
-                        }
-                    }
-                    let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
-                }
-                "EditNote" | "Edit" => {
-                    // Load current note title and body into edit state
-                    if let (Ok(notes), Ok(active_val)) = (
-                        state.component.read_state_as_vec("notes"),
-                        state.component.read_state("active_id"),
-                    ) {
-                        let active = active_val.as_int() as usize;
-                        if active < notes.len() {
-                            if let auto_val::Value::Obj(ref note) = notes[active] {
-                                let title = note.get("title").map(|v| v.as_str().to_string()).unwrap_or_default();
-                                let body = note.get("body").map(|v| v.as_str().to_string()).unwrap_or_default();
-                                let _ = state.component.write_state("edit_title", auto_val::Value::str(&title));
-                                let _ = state.component.write_state("edit_body", auto_val::Value::str(&body));
-                                state.input_values.remove("EditTitle");
-                                state.input_values.remove("EditBody");
-                            }
-                        }
-                    }
-                    let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
-                }
-                "SaveEdit" | "Save" => {
-                    // Write edit_title and edit_body back to notes[active_id]
-                    if let (Ok(mut notes), Ok(active_val)) = (
-                        state.component.read_state_as_vec("notes"),
-                        state.component.read_state("active_id"),
-                    ) {
-                        let active = active_val.as_int() as usize;
-                        if active < notes.len() {
-                            if let auto_val::Value::Obj(ref mut note) = notes[active] {
-                                // Read edit_title from state (synced by EditTitle handler)
-                                if let Ok(title_val) = state.component.read_state("edit_title") {
-                                    note.set("title", title_val);
-                                }
-                                // Read edit_body from state (synced by EditBody handler)
-                                if let Ok(body_val) = state.component.read_state("edit_body") {
-                                    note.set("body", body_val);
-                                }
-                                // Update time stamp
-                                note.set("time", auto_val::Value::str("Just now"));
-                            }
-                            let _ = state.component.write_state_vec("notes", notes);
-                        }
-                    }
-                    let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
-                    let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
-                    let _ = state.component.write_state("edit_title", auto_val::Value::str(""));
-                    // Clear stale input_values so next Edit sees correct note content
-                    state.input_values.remove("EditBody");
+                // Notes app: VM handlers now manage all state correctly.
+                // The previous hardcoded state-sync (read notes as Value::Obj,
+                // write edit_title/edit_body) is removed because notes elements
+                // are raw Int(heap_id) in VM mode, not Value::Obj — the if-let
+                // always failed. The VM handler_EditorPanel_Edit etc. handle
+                // everything via GET_FIELD/SET_FIELD on the unified state.
+                // We only clear stale input_values caches here so the next
+                // render reflects handler-set state, not old typed text.
+                "Edit" => {
                     state.input_values.remove("EditTitle");
-                }
-                "CancelEdit" | "Cancel" => {
-                    let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
-                    let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
-                    // Clear stale input_values so next Edit sees correct note body
                     state.input_values.remove("EditBody");
                 }
-                // Child widget input handlers — sync typed text back to parent state
-                "EditTitle" => {
-                    if let Some(text) = state.input_values.get("EditTitle") {
-                        let _ = state.component.write_state("edit_title", auto_val::Value::str(text));
-                    }
-                }
-                "EditBody" => {
-                    if let Some(text) = state.input_values.get("EditBody") {
-                        let _ = state.component.write_state("edit_body", auto_val::Value::str(text));
-                    }
+                "Save" | "Cancel" => {
+                    state.input_values.remove("EditTitle");
+                    state.input_values.remove("EditBody");
                 }
                 _ => {}
             }

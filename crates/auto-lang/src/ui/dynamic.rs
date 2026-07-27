@@ -764,7 +764,16 @@ impl DynamicComponent {
         }
 
         // Run the handler via VM. call_handler_for looks up the namespaced fn.
-        let args: Vec<auto_val::Value> = payload.into_iter().collect();
+        let mut args: Vec<auto_val::Value> = payload.into_iter().collect();
+        // Plan 370 (Issue 4): input events (oninput/onupdate) carry the typed
+        // text in `input_value`. If there are no payload-encoded args, pass the
+        // input_value as a string argument so handlers like
+        // `.EditTitle(t) -> { .edit_title = t }` receive it as parameter `t`.
+        if args.is_empty() {
+            if let Some(text) = &input_value {
+                args.push(auto_val::Value::Str(text.clone().into()));
+            }
+        }
         let is_trace = clean_name == "DeleteNote" || clean_name == "SaveNote" || clean_name == "NewNote" || clean_name == "SelectNote";
         if is_trace {
             let _pre_notes = self.bridge.read_state_as_vec("notes").map(|v| v.len()).unwrap_or(999);

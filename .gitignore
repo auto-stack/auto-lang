@@ -126,3 +126,4 @@ test_temp.txt
 
 # Local migration backups (pre-spec-migration snapshots)
 /.backup/
+*.json

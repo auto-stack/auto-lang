@@ -812,8 +812,8 @@ impl<'a> AuraViewBuilder<'a> {
                 path.pop();
                 v
             })
-            // Plan 370 (Issue 1): drop View::Empty spacers (see convert_column).
-            .filter(|v| !matches!(v, View::Empty))
+            // Plan 370 (Issue 1): drop visually-empty spacers (see convert_column).
+            .filter(|v| !is_visually_empty(v))
             .collect();
 
         let mut builder = View::<DynamicMessage>::col()
@@ -987,7 +987,7 @@ impl<'a> AuraViewBuilder<'a> {
         }
         for child in child_views {
             // Plan 370 (Issue 1): drop View::Empty spacers (see convert_column).
-            if matches!(child, View::Empty) {
+            if is_visually_empty(&child) {
                 continue;
             }
             builder = builder.child(child);
@@ -1369,13 +1369,12 @@ impl<'a> AuraViewBuilder<'a> {
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
             .map(|n| self.convert_node_with(n, bindings))
-            // Plan 370 (Issue 1): drop View::Empty children. False `if`
-            // branches and non-matching `for` iterations yield View::Empty,
-            // which the renderer turns into text("") — a one-line-tall spacer.
-            // Stacking several of these produced large blank gaps in the
-            // NavTree. An Empty view has no visible content, so skipping it
-            // is safe and recovers the intended compact layout.
-            .filter(|v| !matches!(v, View::Empty))
+            // Plan 370 (Issue 1): drop visually-empty children (View::Empty
+            // or View::Text with blank content). False `if` branches and
+            // non-matching `for` iterations yield these, and the renderer
+            // turns them into text("") — a one-line-tall spacer. Stacking
+            // several produced large blank gaps in the NavTree.
+            .filter(|v| !is_visually_empty(v))
             .collect();
 
         let mut builder = View::<DynamicMessage>::col()
@@ -1431,7 +1430,7 @@ impl<'a> AuraViewBuilder<'a> {
 
         for child in child_views {
             // Plan 370 (Issue 1): drop View::Empty spacers (see convert_column).
-            if matches!(child, View::Empty) {
+            if is_visually_empty(&child) {
                 continue;
             }
             builder = builder.child(child);
@@ -1898,6 +1897,8 @@ impl<'a> AuraViewBuilder<'a> {
             .or_else(|| events.get("change"))
             .or_else(|| events.get("oninput"))
             .or_else(|| events.get("input"))
+            .or_else(|| events.get("onupdate"))
+            .or_else(|| events.get("update"))
             .map(|event| self.event_to_message(&event.handler));
 
         let mut builder = View::<DynamicMessage>::textarea(placeholder).value(value);
@@ -2021,6 +2022,16 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // Field access: object.field → Dot(object, field)
             Expr::Dot(object, field) => {
+                // Plan 370 (Issue 4): single-level self-ref `.field` (parsed as
+                // Dot(Ident("."), field)) — read directly from state, mirroring
+                // the fix in resolve_expr_to_value. Without this, `.edit_title`
+                // falls through to resolve_expr_to_value(Ident(".")) which reads
+                // state field "" and returns None → empty string.
+                if let Expr::Ident(name) = object.as_ref() {
+                    if name.as_str() == "." || name.as_str() == "self" {
+                        return self.read_state_as_string_with(field.as_str(), bindings);
+                    }
+                }
                 let obj_val = self.resolve_expr_to_value(object, bindings);
                 let field_str = field.as_str();
                 match obj_val {
@@ -2697,6 +2708,18 @@ impl<'a> AuraViewBuilder<'a> {
 // ============================================================================
 // Free helper functions
 // ============================================================================
+
+/// Plan 370 (Issue 1): returns true for views that carry no visible content
+/// and should be dropped from layouts to avoid spurious blank space. Covers
+/// `View::Empty` and `View::Text { content: "", .. }` (the latter renders as
+/// a one-line-tall `text("")` spacer in iced).
+fn is_visually_empty(v: &View<DynamicMessage>) -> bool {
+    match v {
+        View::Empty => true,
+        View::Text { content, .. } => content.is_empty(),
+        _ => false,
+    }
+}
 
 /// Extract a clean handler name from an event pattern.
 ///

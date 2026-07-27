@@ -261,4 +261,45 @@ mod plan370_015_behavior_tests {
             "store.SetAccent(coral) should update accent_color"
         );
     }
+
+    // ── D10: EditorPanel.Edit fills edit_title/edit_body from note ──────────
+    // The .Edit handler does `.edit_title = .note.title; .edit_body = .note.body`.
+    // This requires .note (a prop holding a raw heap-id Int) to be readable in
+    // the handler, and .note.title/.note.body to deref correctly.
+
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn d10_edit_fills_edit_fields() {
+        let mut dc = match build_015_component() {
+            Some(c) => c,
+            None => {
+                eprintln!("plan370: SKIPPED — app.at not found");
+                return;
+            }
+        };
+        // Precondition: editing is false, edit fields empty.
+        assert_eq!(state_str(&dc, "editing"), "false", "initial editing");
+        assert_eq!(state_str(&dc, "edit_title"), "", "initial edit_title");
+
+        // The note prop is normally written by ensure_child_state during view
+        // build. In headless mode (no render), simulate it: write notes[0] as
+        // the `note` prop so the handler can read .note.title.
+        let notes = dc.read_state_as_vec("notes").expect("notes");
+        let note0 = notes[0].clone(); // Int(heap_id)
+        if dc.bridge_mut().write_state("note", note0).is_err() {
+            // Field may not exist in state_field_names; add it via ensure_child_state.
+            let mut props = std::collections::HashMap::new();
+            props.insert("note".to_string(), notes[0].clone());
+            dc.bridge_mut().ensure_child_state("EditorPanel", &[], &props);
+        }
+
+        // Trigger EditorPanel's .Edit handler.
+        dc.on_with_input_for("EditorPanel", "Edit", None);
+
+        // After Edit: editing=true, edit_title=note's title, edit_body=note's body.
+        assert_eq!(state_str(&dc, "editing"), "true", "editing after Edit");
+        let title = state_str(&dc, "edit_title");
+        eprintln!("d10: edit_title after Edit = {:?}", title);
+        assert!(!title.is_empty(), "edit_title should be filled from note.title");
+    }
 }
