@@ -156,3 +156,79 @@ fn test_a2ts(case: &str) -> AutoResult<()> {
 
 // === 18_ts_interop ===
 #[test] #[ignore] fn test_18_ts_interop_001_for_each() { test_a2ts("18_ts_interop/001_for_each").unwrap(); }
+
+// ============================================================================
+// Inline-source regression tests (AutoDown Phase 0 findings)
+// ============================================================================
+
+fn transpile_inline(name: &str, src: &str) -> String {
+    let _scope = crate::scope_manager::ScopeManager::new();
+    let mut parser = Parser::from(src);
+    let ast = parser.parse().expect("parse failed");
+    let mut sink = Sink::new(name.into());
+    let mut trans = TypeScriptTrans::new(name.into());
+    trans.trans(ast, &mut sink).expect("trans failed");
+    let bytes = sink.done().expect("sink failed");
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// `List<int?>` must map to `(number | null)[]`, not `number | null[]`
+/// (the latter means "number OR array-of-null").
+#[test]
+fn test_nullable_list_element_is_parenthesized() {
+    let out = transpile_inline(
+        "nullable_list",
+        "fn first(xs List<int?>) int? {\n    return xs[0]\n}\n",
+    );
+    assert!(out.contains("(number | null)[]"), "output:\n{}", out);
+    assert!(!out.contains("number | null[]"), "output:\n{}", out);
+}
+
+/// Top-level functions and type declarations get `export` so the emitted
+/// module is usable as a library.
+#[test]
+fn test_top_level_decls_are_exported() {
+    let out = transpile_inline(
+        "export_decls",
+        "type P {\n    x int\n}\n\nfn make() int {\n    return 1\n}\n",
+    );
+    assert!(out.contains("export class P"), "output:\n{}", out);
+    assert!(out.contains("export function make("), "output:\n{}", out);
+}
+
+/// The user-defined `main` function is emitted and called, but NOT exported.
+#[test]
+fn test_main_is_not_exported() {
+    let out = transpile_inline(
+        "main_not_exported",
+        "fn helper() int {\n    return 1\n}\n\nfn main() {\n    print(helper())\n}\n",
+    );
+    assert!(out.contains("function main()"), "output:\n{}", out);
+    assert!(!out.contains("export function main"), "output:\n{}", out);
+    assert!(out.contains("main();"), "output:\n{}", out);
+}
+
+/// Top-level `const` stays at module scope (not swallowed into a synthesized
+/// `main()` where other functions cannot see it), and no empty `main()`
+/// trailer is emitted when there are no top-level statements.
+#[test]
+fn test_top_level_const_stays_at_top_level() {
+    let out = transpile_inline(
+        "top_const",
+        "const BASE int = 2\n\nfn double(x int) int {\n    return x * BASE\n}\n",
+    );
+    assert!(out.contains("const BASE: number = 2;"), "output:\n{}", out);
+    assert!(out.contains("return x * BASE;"), "output:\n{}", out);
+    // No top-level statements -> no synthesized main() wrapper or call.
+    assert!(!out.contains("function main"), "output:\n{}", out);
+    assert!(!out.contains("main();"), "output:\n{}", out);
+}
+
+/// Top-level statements still get wrapped in a synthesized main() that is
+/// called (existing behavior preserved).
+#[test]
+fn test_main_synthesis_for_top_level_statements() {
+    let out = transpile_inline("synth_main", "print(\"hi\")\n");
+    assert!(out.contains("function main(): void"), "output:\n{}", out);
+    assert!(out.contains("main();"), "output:\n{}", out);
+}

@@ -41,6 +41,11 @@ pub struct TypeScriptTrans {
     scalar_enums: HashSet<AutoStr>,
     /// Counter for generating unique temporary variable names in `is` statements.
     is_counter: usize,
+    /// When true, the next top-level declaration is emitted with an `export`
+    /// prefix. Set by `trans()` around declaration emission so the generated
+    /// module is usable as a library. Never set for the synthesized or
+    /// user-defined `main` function.
+    pub emit_export: bool,
 }
 
 impl TypeScriptTrans {
@@ -53,6 +58,7 @@ impl TypeScriptTrans {
             indent: 0,
             scalar_enums: HashSet::new(),
             is_counter: 0,
+            emit_export: false,
         }
     }
 
@@ -95,6 +101,15 @@ impl TypeScriptTrans {
         self.runtime_path = path.into();
         self
     }
+
+    /// Whether a top-level declaration should be emitted with `export`.
+    /// `use` imports, `ext` prototype assignments, stores, and trivia are
+    /// top-level declarations but are not exported.
+    fn is_exportable_decl(stmt: &Stmt) -> bool {
+        matches!(stmt,
+            Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_)
+            | Stmt::TypeAlias(_) | Stmt::Union(_) | Stmt::Tag(_) | Stmt::SpecDecl(_))
+    }
 }
 
 impl Trans for TypeScriptTrans {
@@ -119,8 +134,19 @@ impl Trans for TypeScriptTrans {
                 continue;
             }
 
-            // Check if this is a declaration (type, enum, or function)
-            if matches!(stmt, Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Fn(_)) {
+            // Check if this is a top-level declaration. Besides types/enums/
+            // functions this includes:
+            // - `use` imports (must stay at module top level)
+            // - `const`/`let`/`var` stores (must stay at module scope so other
+            //   functions can reference them — wrapping them in a synthesized
+            //   main() would make them block-scoped and invisible)
+            // - comments/empty lines (trivia — must not trigger main synthesis)
+            if matches!(stmt,
+                Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Fn(_)
+                | Stmt::TypeAlias(_) | Stmt::Union(_) | Stmt::Tag(_)
+                | Stmt::SpecDecl(_) | Stmt::Ext(_) | Stmt::Use(_)
+                | Stmt::Store(_) | Stmt::Comment(_) | Stmt::EmptyLine(_))
+            {
                 decls.push((stmt, line));
             } else {
                 main_stmts.push((stmt, line));
@@ -128,20 +154,42 @@ impl Trans for TypeScriptTrans {
         }
 
         // Generate declarations first
-        for (i, (decl, line)) in decls.iter().enumerate() {
-            sink.record();
-            sink.set_source_line(*line);
-            self.stmt(decl, sink)?;
-            if i < decls.len() - 1 {
+        let mut emitted_any = false;
+        for (decl, line) in decls.iter() {
+            // Skip top-level empty-line trivia — declaration separators
+            // already provide spacing.
+            if matches!(decl, Stmt::EmptyLine(_)) {
+                continue;
+            }
+            if emitted_any {
                 sink.body.write(b"\n\n")?;
             }
+            sink.record();
+            sink.set_source_line(*line);
+            self.emit_export = Self::is_exportable_decl(decl);
+            self.stmt(decl, sink)?;
+            self.emit_export = false;
+            emitted_any = true;
         }
         sink.record();
 
         // Generate main function or wrap statements
         if let Some((ref main_stmt, main_line)) = main_func {
+            // Statements left over alongside an explicit `fn main` (rare):
+            // emit them at top level so they are not silently dropped.
+            for (stmt, line) in &main_stmts {
+                if emitted_any {
+                    sink.body.write(b"\n\n")?;
+                }
+                sink.record();
+                sink.set_source_line(*line);
+                self.stmt(stmt, sink)?;
+                emitted_any = true;
+            }
+            sink.record();
+
             // Output the main function
-            if !decls.is_empty() {
+            if emitted_any {
                 sink.body.write(b"\n\n")?;
             }
             sink.record();
@@ -153,7 +201,7 @@ impl Trans for TypeScriptTrans {
             sink.body.write(b"\n\nmain();\n")?;
         } else if !main_stmts.is_empty() {
             // Wrap statements in a main function
-            if !decls.is_empty() {
+            if emitted_any {
                 sink.body.write(b"\n\n")?;
             }
             sink.body.write(b"function main(): void")?;

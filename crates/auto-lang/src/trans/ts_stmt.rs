@@ -164,6 +164,9 @@ impl TypeScriptTrans {
     pub fn fn_decl(&mut self, func: &Fn, sink: &mut Sink) -> AutoResult<()> {
 
         let out = &mut sink.body;
+        if self.emit_export {
+            sink.body.write(b"export ")?;
+        }
         // Detect async: functions returning ~T (Handle/Future) are async in TypeScript
         let is_async_fn = Self::has_await_expr(&func.body.stmts)
             || matches!(func.ret, Type::Handle { .. })
@@ -776,6 +779,9 @@ impl TypeScriptTrans {
     /// Generate TypeScript class for type declaration
     pub fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
+        if self.emit_export {
+            sink.body.write(b"export ")?;
+        }
         sink.body.write(b"class ")?;
         sink.body.write_all(type_decl.name.as_bytes())?;
 
@@ -921,6 +927,9 @@ impl TypeScriptTrans {
     /// Generate TypeScript `interface` for spec declaration
     pub fn spec_decl(&mut self, spec_decl: &SpecDecl, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
+        if self.emit_export {
+            sink.body.write(b"export ")?;
+        }
         sink.body.write(b"interface ")?;
         sink.body.write_all(spec_decl.name.as_bytes())?;
 
@@ -1005,10 +1014,12 @@ impl TypeScriptTrans {
     pub fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
 
         let out = &mut sink.body;
+        let export: &[u8] = if self.emit_export { b"export " } else { b"" };
         match &enum_decl.kind {
             EnumKind::Scalar { .. } => {
                 self.scalar_enums.insert(enum_decl.name.clone().into());
                 // C-style scalar enum: emit TypeScript const enum
+                sink.body.write(export)?;
                 sink.body.write(b"const enum ")?;
                 sink.body.write_all(enum_decl.name.as_bytes())?;
                 self.open_block(sink)?;
@@ -1032,6 +1043,7 @@ impl TypeScriptTrans {
             }
             EnumKind::Homogeneous { .. } | EnumKind::Heterogeneous { .. } => {
                 // Generate TS discriminated union: type Name = { _tag: "V1", value: T } | ...
+                sink.body.write(export)?;
                 sink.body.write(b"type ")?;
                 sink.body.write_all(enum_decl.name.as_bytes())?;
                 sink.body.write(b" =\n")?;
@@ -1050,6 +1062,7 @@ impl TypeScriptTrans {
                 sink.body.write(b";\n\n")?;
 
                 // Factory object
+                sink.body.write(export)?;
                 sink.body.write(b"const ")?;
                 sink.body.write_all(enum_decl.name.as_bytes())?;
                 sink.body.write(b" =")?;
@@ -1082,6 +1095,9 @@ impl TypeScriptTrans {
     pub fn type_alias(&mut self, type_alias: &TypeAlias, sink: &mut Sink) -> AutoResult<()> {
 
         let out = &mut sink.body;
+        if self.emit_export {
+            sink.body.write(b"export ")?;
+        }
         sink.body.write(b"type ")?;
         sink.body.write_all(type_alias.name.as_bytes())?;
         
@@ -1103,6 +1119,9 @@ impl TypeScriptTrans {
     pub fn union_decl(&mut self, union: &Union, sink: &mut Sink) -> AutoResult<()> {
 
         let out = &mut sink.body;
+        if self.emit_export {
+            sink.body.write(b"export ")?;
+        }
         // C-like unions are represented as objects with optional fields
         sink.body.write(b"interface ")?;
         sink.body.write_all(union.name.as_bytes())?;
@@ -1125,7 +1144,9 @@ impl TypeScriptTrans {
     pub fn tag_decl(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
 
         let out = &mut sink.body;
+        let export: &[u8] = if self.emit_export { b"export " } else { b"" };
         // TS algebraic data types: type Name = { type: "Option1", value: T } | ...
+        sink.body.write(export)?;
         sink.body.write(b"type ")?;
         sink.body.write_all(tag.name.as_bytes())?;
 
@@ -1157,6 +1178,7 @@ impl TypeScriptTrans {
         sink.body.write(b";\n\n")?;
 
         // Generate a const object with factory functions
+        sink.body.write(export)?;
         sink.body.write(b"const ")?;
         sink.body.write_all(tag.name.as_bytes())?;
         sink.body.write(b" =")?;
