@@ -29,6 +29,8 @@ pub struct Automan {
     vm_server_mode: bool, // Plan 317: --server=vm → AutoVM HTTP backend
     /// PR-6: --scene CLI override ("core"/"ui"/"shell"). None = use pac.at scene field.
     scene_override: Option<String>,
+    /// --gen-only CLI flag: stop after code generation, skip npm/gradle steps.
+    gen_only: bool,
 }
 
 // Static API
@@ -236,6 +238,7 @@ impl Automan {
             root_dir,
             vm_server_mode: false,
             scene_override: None,
+            gen_only: false,
         })
     }
 
@@ -319,6 +322,12 @@ impl Automan {
     /// Accepts "core", "ui", or "shell". Overrides pac.at scene field.
     pub fn set_scene(&mut self, scene: String) {
         self.scene_override = Some(scene);
+    }
+
+    /// Set --gen-only mode: build stops after code generation, skipping
+    /// npm/gradle install+build steps (used by CI to gate generation only).
+    pub fn set_gen_only(&mut self, gen_only: bool) {
+        self.gen_only = gen_only;
     }
 
     /// PR-6: Resolve the effective parser scenario as a CompilerSession.
@@ -881,8 +890,14 @@ impl Automan {
     fn build_backend(&mut self, backend: &auto_lang::config::BackendType) -> AutoResult<()> {
         match backend {
             auto_lang::config::BackendType::Vue => {
-                println!("Building Vue project (backend: vue)");
-                self.build_vue()?;
+                if self.gen_only {
+                    let root_dir = std::env::current_dir()
+                        .map_err(|e| format!("Failed to get current directory: {}", e))?;
+                    crate::vue::gen_vue_project(&root_dir)?;
+                } else {
+                    println!("Building Vue project (backend: vue)");
+                    self.build_vue()?;
+                }
             }
             auto_lang::config::BackendType::Tauri => {
                 println!("Building Tauri project (backend: tauri)");

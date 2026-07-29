@@ -2017,14 +2017,66 @@ export default router
 /// Build Vue project (auto build command)
 ///
 /// Steps:
-/// 1. Generate project structure if not exists
+/// 1. Generate/regenerate project sources (see `prepare_vue_sources`)
 /// 2. npm install
 /// 3. Install shadcn-vue components
 /// 4. Copy public assets
 /// 5. npm run build
 pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "Building Vue project (backend: vue)".bright_cyan());
+    let project = prepare_vue_sources(root_dir)?;
 
+    // Step 3: npm install
+    println!();
+    println!("▶ Installing dependencies...");
+    project.npm_install()?;
+
+    // Step 4: Install shadcn-vue components
+    println!();
+    println!("▶ Installing shadcn-vue components...");
+    project.install_shadcn_components()?;
+
+    // Step 5: Copy public assets
+    println!();
+    println!("▶ Copying public assets...");
+    project.copy_public_assets()?;
+
+    // Step 6: npm run build
+    println!();
+    println!("▶ Building Vue project...");
+    project.npm_build()?;
+
+    Ok(())
+}
+
+/// Generate-only build for the Vue backend (`auto build --gen-only`).
+///
+/// Runs the full .at → Vue SFC generation pipeline (parse, ui_gen,
+/// post-generation validators, style/use-block asset copies) but stops
+/// before any npm/pnpm step. Used by CI to regression-guard the generator
+/// without paying for npm install + vite build per example.
+pub fn gen_vue_project(root_dir: &Path) -> AutoResult<()> {
+    println!(
+        "{}",
+        "Generating Vue project (backend: vue, gen-only)".bright_cyan()
+    );
+    let project = prepare_vue_sources(root_dir)?;
+    println!(
+        "{}",
+        format!(
+            "✓ Generation complete ({} component(s)); npm steps skipped (--gen-only)",
+            project.components.len()
+        )
+        .bright_green()
+    );
+    Ok(())
+}
+
+/// Shared generation phase of the Vue build: compile all .at sources into
+/// SFCs (running the ui_gen validators), write/regenerate the project
+/// sources under gen/front/vue, and copy handmade/style/use-block assets.
+/// Returns the loaded project so callers can continue with npm steps.
+fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
     // Pre-load API function names BEFORE creating VueProject (which instantiates VueGenerator)
     let api_fns_path = root_dir.join("dist").join(".api_functions");
     if api_fns_path.exists() {
@@ -2051,26 +2103,20 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     }
 
     // Step 1: Generate project structure if not exists, or regenerate source files if exists
-    let total_steps = if project.exists() { 5 } else { 6 };
-    let mut current_step = 0;
-
     if !project.exists() {
-        current_step += 1;
         println!();
-        println!("▶ Step {}/{}: Generating Vue project...", current_step, total_steps);
+        println!("▶ Generating Vue project...");
         project.generate()?;
     } else {
         // Regenerate source files even if project exists
-        current_step += 1;
         println!();
-        println!("▶ Step {}/{}: Regenerating source files...", current_step, total_steps);
+        println!("▶ Regenerating source files...");
         project.regenerate_source_files()?;
     }
 
     // Step 2: Generate API client code (if api.at exists)
-    current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Generating API client...", current_step, total_steps);
+    println!("▶ Generating API client...");
     if let Err(e) = crate::api_gen::generate_api(root_dir, "vue") {
         // API generation is optional - only warn on failure
         println!("  ⚠ API generation skipped: {}", e);
@@ -2199,31 +2245,7 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
         }
     }
 
-    // Step 3: npm install
-    current_step += 1;
-    println!();
-    println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
-    project.npm_install()?;
-
-    // Step 3: Install shadcn-vue components
-    current_step += 1;
-    println!();
-    println!("▶ Step {}/{}: Installing shadcn-vue components...", current_step, total_steps);
-    project.install_shadcn_components()?;
-
-    // Step 4: Copy public assets
-    current_step += 1;
-    println!();
-    println!("▶ Step {}/{}: Copying public assets...", current_step, total_steps);
-    project.copy_public_assets()?;
-
-    // Step 5: npm run build
-    current_step += 1;
-    println!();
-    println!("▶ Step {}/{}: Building Vue project...", current_step, total_steps);
-    project.npm_build()?;
-
-    Ok(())
+    Ok(project)
 }
 
 /// Run Vue dev server (auto run command)

@@ -313,6 +313,8 @@ enum Commands {
         render: Option<String>,
         #[arg(long, help = "Parser scenario: core, ui, or shell (overrides pac.at scene)")]
         scene: Option<String>,
+        #[arg(long, help = "Stop after code generation; skip npm/gradle install and build (vue backend)")]
+        gen_only: bool,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
@@ -640,7 +642,7 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== Build & Run ==========
-        Some(Commands::Build { dir, port, back_port, front_port, render, scene }) => {
+        Some(Commands::Build { dir, port, back_port, front_port, render, scene, gen_only }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -669,6 +671,7 @@ fn real_main(cli: Cli) -> Result<()> {
             if let Some(ref s) = scene {
                 am.set_scene(s.clone());
             }
+            am.set_gen_only(gen_only);
             // Plan 330: bake ports into generated artifacts the same way `run`
             // does, for symmetry (so `build` then manual run matches).
             if let Some(p) = &back_port {
