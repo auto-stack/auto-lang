@@ -127,3 +127,6 @@ test_temp.txt
 # Local migration backups (pre-spec-migration snapshots)
 /.backup/
 *.json
+__pycache__/
+*.pyc
+.worktree/
