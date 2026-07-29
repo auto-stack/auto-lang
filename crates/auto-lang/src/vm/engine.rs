@@ -1867,7 +1867,20 @@ impl AutoVM {
                         let is_nil = nv == auto_val::encode_i32(-2147483647);
                         if !is_nil {
                             let value = if auto_val::is_string(nv) {
-                                auto_val::Value::Int(auto_val::decode_i32(nv))
+                                // Plan 370 (Issue 2 tags): decode the string tag
+                                // to its pool index and look up the actual bytes,
+                                // mirroring CREATE_OBJ's ObjectType::String arm.
+                                // Previously this called decode_i32, which returns
+                                // the raw negative tag (e.g. -4) — so []str array
+                                // elements rendered as numbers like "-4".
+                                let str_idx = auto_val::decode_string(nv) as usize;
+                                let strings = self.strings.read().unwrap();
+                                if let Some(str_bytes) = strings.get(str_idx) {
+                                    let s = String::from_utf8_lossy(str_bytes).to_string();
+                                    auto_val::Value::Str(s.into())
+                                } else {
+                                    auto_val::Value::Nil
+                                }
                             } else if auto_val::is_object(nv) {
                                 auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
                             } else if auto_val::is_null(nv) {
@@ -5999,9 +6012,20 @@ impl AutoVM {
                         // Parameter: decode parameter index
                         let param_idx = idx - 0x80;
                         let n_args = task.current_fn_n_args;
-                        let offset = n_args - param_idx;
-                        let actual_offset = offset + 1;
-                        task.ram.push_nv(task.ram.read_nv(task.bp - actual_offset));
+                        // Guard against param_idx > n_args (corrupt frame) and
+                        // bp underflow. Returning Nil avoids a panic that would
+                        // crash the whole UI; the caller sees an unset param.
+                        if param_idx >= n_args {
+                            task.ram.push_nv(auto_val::encode_null());
+                        } else {
+                            let offset = n_args - param_idx;
+                            let actual_offset = offset + 1;
+                            if actual_offset > task.bp {
+                                task.ram.push_nv(auto_val::encode_null());
+                            } else {
+                                task.ram.push_nv(task.ram.read_nv(task.bp - actual_offset));
+                            }
+                        }
                     } else {
                         // Local variable: load from bp+1+idx
                         task.ram.push_nv(task.ram.read_nv(task.bp + 1 + idx));

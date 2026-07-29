@@ -631,7 +631,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "properties": {
                     "key": {
                         "type": "string",
-                        "enum": ["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"],
+                        "enum": ["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", "F12"],
                         "description": "The key to press"
                     },
                     "modifiers": {
@@ -678,6 +678,62 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "openWorldHint": false
             }
         }),
+        // Plan 371 Task 7: search VTree for matching nodes
+        json!({
+            "name": "autoui_find",
+            "title": "Find Widgets in VTree",
+            "description": "Search the live rendered VTree for nodes matching given criteria. Returns each match as an Atom-format ancestor-chain subtree (root → ... → matched node), showing the matched node's position in the UI hierarchy. Use autoui_exists for a faster concise summary when you only need 'does it exist?'.\n\n## When to use\n- Understand WHERE a widget sits in the UI hierarchy\n- Find all buttons/inputs matching a label, with structural context\n- Debug UI structure after an action\n\n## Search criteria (all optional, combined with AND)\n- kind: node type (button, input, text, textarea, col, row, checkbox...)\n- label: substring match on label/content/value/placeholder\n- limit: max results (default 20)\n\n## Output\nAtom subtrees showing the ancestor chain for each match, e.g.:\ncol vnode_0 { ... col vnode_5 { ... row vnode_8 { button vnode_10 {label: \"Edit\"} } } }",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "description": "Filter by node kind (button, input, text, textarea, col, row, checkbox, slider, image...)"
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Substring match on the node's label, content, value, or placeholder text (case-insensitive)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "default": 20,
+                        "description": "Maximum number of matching nodes to return"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            }
+        }),
+        // Plan 371: quick existence check (concise summary, no Atom subtree)
+        json!({
+            "name": "autoui_exists",
+            "title": "Check Widget Exists",
+            "description": "Quick existence check — search the VTree and return a concise FOUND/NOT FOUND summary with match count and IDs. Faster than autoui_find when you only need to verify 'does this element exist?'\n\n## When to use\n- After an action, verify a widget appeared (e.g. 'is there a Save button now?')\n- Before an action, verify a widget is present\n- Assert-based test validation\n\n## Output\n'FOUND N match(es): kind=X, label~=Y\\n  button \"Save\"; button \"Cancel\"' or 'NOT FOUND (0 matches): ...'",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "description": "Filter by node kind (button, input, text, textarea, col, row...)"
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Case-insensitive substring match on label/content/value/placeholder"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            }
+        }),
     ]
 }
 
@@ -697,6 +753,8 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_type" => tool_type(shared, args),
         "autoui_keyboard" => tool_keyboard(shared, args),
         "autoui_vtree" => tool_vtree(shared, args),
+        "autoui_find" => tool_find(shared, args),
+        "autoui_exists" => tool_exists(shared, args),
         _ => error_result(format!("Unknown tool: {}", name)),
     }
 }
@@ -753,12 +811,59 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
         None => return error_result("Missing required parameter: element_id"),
     };
 
-    let element_id = match parse_aura_id(element_id_str) {
+    let element_id = match parse_element_id(element_id_str) {
         Some(id) => id,
-        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N'", element_id_str)),
+        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", element_id_str)),
     };
 
     let shared = shared.lock().unwrap();
+
+    // Plan 371: vnode_N path — inspect from styled VTree + View tree
+    if let ElementId::Vnode(vnode_id) = element_id {
+        let snap = match &shared.styled_vtree {
+            Some(s) => s,
+            None => return error_result("No styled VTree available yet"),
+        };
+        let vnode = match snap.vtree.get(vnode_id) {
+            Some(n) => n,
+            None => return error_result(format!("Element not found: vnode_{}", vnode_id.as_u64())),
+        };
+        let mut out = format!("Inspect vnode_{}\n", vnode_id.as_u64());
+        out.push_str(&format!("  kind: {}\n", vnode.kind));
+        // Show label/content from props
+        match &vnode.props {
+            crate::ui::vnode::VNodeProps::Text { content } => {
+                out.push_str(&format!("  text: {}\n", content));
+            }
+            crate::ui::vnode::VNodeProps::Button { label } => {
+                out.push_str(&format!("  label: {}\n", label));
+            }
+            crate::ui::vnode::VNodeProps::Input { value, placeholder, .. } => {
+                out.push_str(&format!("  value: {}\n", value));
+                out.push_str(&format!("  placeholder: {}\n", placeholder));
+            }
+            _ => {}
+        }
+        // Show events from the View tree
+        if let Some(view) = &shared.view {
+            if let Some(target) = find_view_by_path(view, &vnode.path) {
+                let events = collect_view_events(target);
+                if !events.is_empty() {
+                    out.push_str("  events:\n");
+                    for (ev, handler) in &events {
+                        out.push_str(&format!("    {} -> {}\n", ev, handler));
+                    }
+                }
+            }
+        }
+        return text_result(out);
+    }
+
+    // Legacy aura_N path
+    let element_id = match element_id {
+        ElementId::Aura(id) => id,
+        _ => unreachable!(),
+    };
 
     match &shared.view_template {
         Some(t) => {
@@ -793,6 +898,47 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
     }
 }
 
+/// Collect event handlers from a View as (event_type, handler_string) pairs.
+fn collect_view_events(view: &View<DynamicMessage>) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    match view {
+        View::Button { onclick, .. } => {
+            if let Some((w, e)) = extract_dyn_msg(onclick) {
+                out.push(("onclick".into(), format!("{}.{}", w, e)));
+            }
+        }
+        View::Input { on_change, on_submit, .. } => {
+            if let Some(m) = on_change {
+                if let Some((w, e)) = extract_dyn_msg(m) {
+                    out.push(("onchange".into(), format!("{}.{}", w, e)));
+                }
+            }
+            if let Some(m) = on_submit {
+                if let Some((w, e)) = extract_dyn_msg(m) {
+                    out.push(("onsubmit".into(), format!("{}.{}", w, e)));
+                }
+            }
+        }
+        View::Textarea { on_change, .. } => {
+            if let Some(m) = on_change {
+                if let Some((w, e)) = extract_dyn_msg(m) {
+                    out.push(("onchange".into(), format!("{}.{}", w, e)));
+                }
+            }
+        }
+        View::Checkbox { on_toggle, .. } => {
+            if let Some(m) = on_toggle {
+                if let Some((w, e)) = extract_dyn_msg(m) {
+                    out.push(("ontoggle".into(), format!("{}.{}", w, e)));
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+
 // ── Tool: autoui_action ──
 
 fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
@@ -806,9 +952,9 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         None => return error_result("Missing required parameter: action"),
     };
 
-    let element_id = match parse_aura_id(element_id_str) {
+    let element_id = match parse_element_id(element_id_str) {
         Some(id) => id,
-        None => return error_result(format!("Invalid element_id format: '{}'", element_id_str)),
+        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", element_id_str)),
     };
 
     let action_type = match action_str {
@@ -829,19 +975,26 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
 
         let before_state = shared.state.clone();
 
-        let (view, id_map) = match (&shared.view, &shared.id_map) {
-            (Some(v), Some(m)) => (v, m),
-            _ => return error_result("No UI available yet"),
+        // Plan 371: dual-path dispatch — vnode_N covers all elements,
+        // aura_N covers root-only (backward compat).
+        let result = match element_id {
+            ElementId::Vnode(vnode_id) => {
+                execute_action_vnode(&shared, vnode_id, action_type, value)
+            }
+            ElementId::Aura(aura_id) => {
+                let (view, id_map) = match (&shared.view, &shared.id_map) {
+                    (Some(v), Some(m)) => (v, m),
+                    _ => return error_result("No UI available yet"),
+                };
+                let snapshot = SnapshotBuilder::build(
+                    &shared.widget_name,
+                    &shared.state,
+                    view,
+                    id_map,
+                );
+                execute_action_on_shared(&shared, &snapshot.tree, aura_id, action_type, value)
+            }
         };
-
-        let snapshot = SnapshotBuilder::build(
-            &shared.widget_name,
-            &shared.state,
-            view,
-            id_map,
-        );
-
-        let result = execute_action_on_shared(&shared, &snapshot.tree, element_id, action_type, value);
         (before_state, result)
     };
 
@@ -1154,7 +1307,7 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
 // ── Tool: autoui_keyboard (Plan 299 Phase 3) ──
 
 fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
-    let _key = match args.get("key").and_then(|v| v.as_str()) {
+    let key = match args.get("key").and_then(|v| v.as_str()) {
         Some(k) => k,
         None => return error_result("Missing required parameter: key"),
     };
@@ -1163,22 +1316,28 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
 
-    // For now, keyboard events are forwarded as an action message.
-    // The iced renderer can intercept these via key_bindings in DynamicComponent.
     let shared = shared_handle.lock().unwrap();
     let widget_name = shared.widget_name.clone();
 
-    // Map common keys to handler names
-    let handler = format!("key_{}", _key.to_lowercase());
-
-    let msg = ActionMessage {
-        widget: widget_name,
-        event: handler,
-        input_value: Some(format!("{}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), _key)),
+    // Plan 371: F12 toggles DevTools directly (bypasses key_binding lookup).
+    let msg = if key == "F12" {
+        ActionMessage {
+            widget: String::new(),
+            event: "__toggle_debug".to_string(),
+            input_value: None,
+        }
+    } else {
+        // Other keys: forward as a key_binding action message.
+        let handler = format!("key_{}", key.to_lowercase());
+        ActionMessage {
+            widget: widget_name,
+            event: handler,
+            input_value: Some(format!("{}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), key)),
+        }
     };
 
     match shared.send_action(msg) {
-        Ok(()) => text_result(format!("Key sent: {}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), _key)),
+        Ok(()) => text_result(format!("Key sent: {}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), key)),
         Err(e) => error_result(format!("Failed to send key event: {}", e)),
     }
 }
@@ -1386,6 +1545,199 @@ fn parse_aura_id(s: &str) -> Option<AuraNodeId> {
         .map(AuraNodeId)
 }
 
+// ============================================================================
+// Plan 371: vnode_N support for action/inspect (unified ID system)
+// ============================================================================
+
+/// A unified element identifier — supports both legacy `aura_N` (root-only)
+/// and `vnode_N` (covers all rendered elements including child widget internals).
+enum ElementId {
+    Aura(AuraNodeId),
+    Vnode(VNodeId),
+}
+
+/// Parse either `aura_N` or `vnode_N` from a string.
+fn parse_element_id(s: &str) -> Option<ElementId> {
+    if let Some(n) = s.strip_prefix("aura_") {
+        return n.parse::<u32>().ok().map(|n| ElementId::Aura(AuraNodeId(n)));
+    }
+    if let Some(n) = s.strip_prefix("vnode_") {
+        return n.parse::<u64>().ok().map(|n| ElementId::Vnode(VNodeId::new(n)));
+    }
+    None
+}
+
+/// Navigate the View tree by a VNode's path (child-index sequence) to find the
+/// corresponding rendered View. Mirrors `extract_children` from vnode_converter.
+fn find_view_by_path<'a>(
+    view: &'a View<DynamicMessage>,
+    path: &[u16],
+) -> Option<&'a View<DynamicMessage>> {
+    let mut current = view;
+    for &idx in path {
+        let children: Vec<&View<DynamicMessage>> = match current {
+            View::Column { children, .. } | View::Row { children, .. } => {
+                children.iter().collect()
+            }
+            View::Grid { cells, .. } => cells.iter().collect(),
+            View::Container { child, .. } | View::Scrollable { child, .. } => vec![child.as_ref()],
+            View::List { items, .. } => items.iter().collect(),
+            _ => return None,
+        };
+        current = children.get(idx as usize)?;
+    }
+    Some(current)
+}
+
+/// Extract (widget_name, event_name) from a DynamicMessage.
+fn extract_dyn_msg(msg: &DynamicMessage) -> Option<(String, String)> {
+    match msg {
+        DynamicMessage::Typed { widget_name, event_name, .. } => {
+            Some((widget_name.clone(), event_name.clone()))
+        }
+        DynamicMessage::String(name) => Some((String::new(), name.clone())),
+    }
+}
+
+/// Extract the handler (widget_name, event_name) from a View for a given action.
+/// `action_name`: "press" / "type" / "toggle" / "select" / "set_value".
+fn extract_action_from_view(
+    view: &View<DynamicMessage>,
+    action_name: &str,
+) -> Option<(String, String)> {
+    match view {
+        View::Button { onclick, .. } if action_name == "press" => extract_dyn_msg(onclick),
+        View::Input { on_change, .. } | View::Textarea { on_change, .. }
+            if action_name == "type" =>
+        {
+            on_change.as_ref().and_then(|m| extract_dyn_msg(m))
+        }
+        View::Checkbox { on_toggle, .. } if action_name == "toggle" => {
+            on_toggle.as_ref().and_then(|m| extract_dyn_msg(m))
+        }
+        _ => None,
+    }
+}
+
+/// Get the VNodeKind string for a View (for action validation).
+fn view_kind_str(view: &View<DynamicMessage>) -> &'static str {
+    match view {
+        View::Button { .. } => "Button",
+        View::Input { .. } => "Input",
+        View::Textarea { .. } => "Textarea",
+        View::Checkbox { .. } => "Checkbox",
+        View::Slider { .. } => "Slider",
+        _ => "Other",
+    }
+}
+
+/// Execute an action on a vnode_N element: look up the VNode, find the View by
+/// path, extract the handler from the DynamicMessage, and dispatch.
+fn execute_action_vnode(
+    shared: &SharedState,
+    vnode_id: VNodeId,
+    action: UiActionType,
+    value: Option<auto_val::Value>,
+) -> Result<ActionResult, String> {
+    let snap = shared.styled_vtree.as_ref()
+        .ok_or_else(|| "No styled VTree available yet".to_string())?;
+    let vnode = snap.vtree.get(vnode_id)
+        .ok_or_else(|| format!("VNode not found: vnode_{}", vnode_id.as_u64()))?;
+
+    // Validate action type by VNode kind (works for both VM and Rust mode)
+    let action_name = match &action {
+        UiActionType::Press => "press",
+        UiActionType::TypeText | UiActionType::Clear => "type",
+        UiActionType::Toggle => "toggle",
+        UiActionType::SelectOption => "select",
+        UiActionType::SetValue => "set_value",
+    };
+    let vnode_kind_str = format!("{}", vnode.kind);
+    match &action {
+        UiActionType::Press if vnode_kind_str != "Button" =>
+            return Err(format!("Action 'press' not valid for component type '{}'", vnode_kind_str)),
+        UiActionType::TypeText if vnode_kind_str != "Input" && vnode_kind_str != "Textarea" =>
+            return Err(format!("Action 'type_text' not valid for component type '{}'", vnode_kind_str)),
+        UiActionType::Toggle if vnode_kind_str != "Checkbox" =>
+            return Err(format!("Action 'toggle' not valid for component type '{}'", vnode_kind_str)),
+        _ => {}
+    }
+
+    // Build input_value for type_text/clear
+    let input_value = match &action {
+        UiActionType::TypeText => Some(
+            value.as_ref()
+                .map(|v| match v {
+                    auto_val::Value::Str(s) => s.to_string(),
+                    other => other.to_string(),
+                })
+                .ok_or_else(|| "Action 'type_text' requires a value parameter".to_string())?
+        ),
+        UiActionType::Clear => Some(String::new()),
+        _ => None,
+    };
+
+    // Plan 371 Task 12: extract event name. For VM mode, the View tree
+    // carries DynamicMessage with explicit event names. For Rust mode
+    // (no shared.view), derive the event name from the VNode's label —
+    // the devtools_update handler matches by Debug-format substring.
+    let (widget, event) = if let Some(view) = shared.view.as_ref() {
+        // VM mode: extract from DynamicMessage
+        let target_view = find_view_by_path(view, &vnode.path)
+            .ok_or_else(|| format!("View not found at path {:?}", vnode.path))?;
+        let (widget_name, event_name) = extract_action_from_view(target_view, action_name)
+            .ok_or_else(|| format!("No '{}' handler found on vnode_{}", action_name, vnode_id.as_u64()))?;
+        let widget = if widget_name.is_empty() { shared.widget_name.clone() } else { widget_name };
+        (widget, event_name)
+    } else {
+        // Rust mode: derive event name from VNode label.
+        // For buttons: use the label as the event name (e.g. "+ New" → "NewNote").
+        // For inputs: use a generic "Changed" suffix.
+        let label = vnode_searchable_text(&vnode.props);
+        let event = derive_event_name_from_label(&label, &vnode_kind_str, action_name);
+        (shared.widget_name.clone(), event)
+    };
+
+    let msg = ActionMessage {
+        widget,
+        event: event.clone(),
+        input_value,
+    };
+    shared.send_action(msg)?;
+
+    Ok(ActionResult {
+        status: "ok".to_string(),
+        element_id: AuraNodeId(0),
+        action: action.to_string(),
+        handler: Some(format!(".{}", event)),
+        state_changes: vec![],
+    })
+}
+
+/// Plan 371: derive an event name from a VNode's label for Rust mode action dispatch.
+/// In Rust mode, the View tree uses strongly-typed C::Msg (not DynamicMessage),
+/// so we can't extract event names directly. Instead, we use the node's label
+/// to match against C::Msg's Debug format in devtools_update's find_msg_by_event_name.
+fn derive_event_name_from_label(label: &str, kind: &str, action_name: &str) -> String {
+    // In Rust mode, find_msg_by_event_name does a Debug-format substring
+    // match on C::Msg. The generated enum variants typically contain the
+    // meaningful words from the label (e.g. "New" matches AppMsg::NewNote).
+    // Skip common non-meaningful prefixes like "+", "×", "📌".
+    let clean: String = label
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ')
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if clean.is_empty() {
+        action_name.to_string()
+    } else {
+        // Use the first meaningful word.
+        clean.split_whitespace().next().unwrap_or(&clean).to_string()
+    }
+}
+
+
 /// Convert a JSON value to an Auto Value.
 fn json_value_to_auto_val(v: &serde_json::Value) -> Option<auto_val::Value> {
     match v {
@@ -1458,6 +1810,263 @@ fn tool_vtree(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
             "No live VTree snapshot yet — the UI has not rendered a frame with \
              DevTools/MCP capture active. Retry after the window has painted.",
         ),
+    }
+}
+
+// ── Tool: autoui_find (Plan 371 Task 7) ──
+
+fn tool_find(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let kind_filter = args.get("kind").and_then(|v| v.as_str());
+    let label_filter = args.get("label").and_then(|v| v.as_str());
+    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20) as usize;
+
+    let snap = shared.lock().unwrap().clone_styled_vtree();
+    let snap = match snap {
+        Some(s) => s,
+        None => return error_result("No live VTree snapshot yet — retry after the window has painted."),
+    };
+
+    let opts = VTreeAtomOptions {
+        scope: None,
+        depth: None,
+        include_box: false,
+        include_style: false,
+        include_events: false,
+        include_source: false,
+        include_props: true,
+    };
+
+    let kind_lower = kind_filter.map(|s| s.to_lowercase());
+    let label_lower = label_filter.map(|s: &str| s.to_lowercase());
+
+    // Find matching nodes
+    let matched_ids: Vec<VNodeId> = snap.vtree.nodes.iter()
+        .filter(|vnode| {
+            if let Some(ref kf) = kind_lower {
+                if format!("{}", vnode.kind).to_lowercase() != *kf {
+                    return false;
+                }
+            }
+            if let Some(ref lf) = label_lower {
+                if !vnode_searchable_text(&vnode.props).to_lowercase().contains(lf) {
+                    return false;
+                }
+            }
+            true
+        })
+        .map(|n| n.id)
+        .take(limit)
+        .collect();
+
+    if matched_ids.is_empty() {
+        let mut criteria = Vec::new();
+        if let Some(k) = kind_filter { criteria.push(format!("kind={}", k)); }
+        if let Some(l) = label_filter { criteria.push(format!("label~={}", l)); }
+        return text_result(format!("No nodes found matching: {}", criteria.join(", ")));
+    }
+
+    // Build ancestor-chain Atom subtrees for each match
+    let mut out = format!("Found {} node(s):\n\n", matched_ids.len());
+    for match_id in &matched_ids {
+        // Build the ancestor chain: root → ... → matched node
+        // Each ancestor shows its kind + vnode_N, with non-matched siblings collapsed.
+        let subtree = build_ancestor_subtree(&snap, *match_id, &opts);
+        out.push_str(&subtree);
+        out.push('\n');
+    }
+    text_result(out)
+}
+
+/// Build an Atom-format ancestor-chain subtree for a matched node.
+/// Shows the path from root to the matched node, with each ancestor's
+/// siblings collapsed to a count (only the ancestor on the path is expanded).
+fn build_ancestor_subtree(
+    snap: &StyledNodeSnapshot,
+    target_id: VNodeId,
+    opts: &VTreeAtomOptions,
+) -> String {
+    let target = match snap.vtree.get(target_id) {
+        Some(n) => n,
+        None => return format!("(node vnode_{} not found)\n", target_id.as_u64()),
+    };
+    let path = &target.path;
+
+    // Walk from root, following the path, building nested Atom text
+    let mut out = String::new();
+    let mut current_children: &[VNodeId] = match snap.vtree.root() {
+        Some(root) => {
+            // Root node itself
+            let root_atom = VTreeAtomBuilder::build_node_only(root, &snap.computed, opts);
+            out.push_str(&format!("{}", root_atom));
+            &root.children
+        }
+        None => return out,
+    };
+
+    for (depth, &idx) in path.iter().enumerate() {
+        let is_last = depth == path.len() - 1;
+        let child_id = match current_children.get(idx as usize) {
+            Some(id) => *id,
+            None => break,
+        };
+        let child = match snap.vtree.get(child_id) {
+            Some(n) => n,
+            None => break,
+        };
+
+        // Count siblings (for collapse annotation)
+        let sibling_count = current_children.len();
+
+        out.push_str(" {\n");
+        // Annotate collapsed siblings
+        if sibling_count > 1 {
+            out.push_str(&format!("  // {} sibling(s) collapsed\n", sibling_count - 1));
+        }
+
+        let child_atom = VTreeAtomBuilder::build_node_only(child, &snap.computed, opts);
+        out.push_str(&format!("  {}", child_atom));
+
+        if is_last {
+            // Show the matched node's direct children too (1 level)
+            if !child.children.is_empty() {
+                out.push_str(" {\n");
+                for cid in &child.children {
+                    if let Some(gc) = snap.vtree.get(*cid) {
+                        let gc_atom = VTreeAtomBuilder::build_node_only(gc, &snap.computed, opts);
+                        out.push_str(&format!("    {}\n", gc_atom));
+                    }
+                }
+                out.push_str("  }");
+            }
+            out.push('\n');
+            // Close all open braces
+            for _ in 0..=depth {
+                out.push_str(&"  ".repeat(depth - (path.len() - 1 - depth) + 1));
+                out.push_str("}\n");
+            }
+            break;
+        }
+
+        current_children = &child.children;
+    }
+
+    // Simplify: just return a clean ancestor chain
+    build_ancestor_chain(snap, target_id, opts)
+}
+
+/// Simpler approach: build a linear ancestor chain as nested Atom.
+fn build_ancestor_chain(
+    snap: &StyledNodeSnapshot,
+    target_id: VNodeId,
+    opts: &VTreeAtomOptions,
+) -> String {
+    let target = match snap.vtree.get(target_id) {
+        Some(n) => n,
+        None => return String::new(),
+    };
+    let path = &target.path;
+
+    // Collect ancestor nodes by walking the path from root
+    let mut chain: Vec<&VNode> = Vec::new();
+    let mut current = snap.vtree.root();
+    for &idx in path {
+        if let Some(node) = current {
+            chain.push(node);
+            current = node.children.get(idx as usize).and_then(|id| snap.vtree.get(*id));
+        }
+    }
+    // Add the target itself
+    chain.push(target);
+
+    // Build nested Atom text
+    let mut out = String::new();
+    for (i, node) in chain.iter().enumerate() {
+        let indent = "  ".repeat(i);
+        let atom = VTreeAtomBuilder::build_node_only(node, &snap.computed, opts);
+        if i > 0 {
+            out.push_str(" {\n");
+        }
+        out.push_str(&format!("{}{}", indent, atom));
+    }
+    // Close braces
+    for i in (0..chain.len()).rev() {
+        if i > 0 {
+            let indent = "  ".repeat(i - 1);
+            out.push_str(&format!("\n{}}}", indent));
+        }
+    }
+    out.push('\n');
+    out
+}
+
+/// Plan 371: Quick existence check — returns a concise summary (count + IDs),
+/// without the full Atom subtree. Faster than autoui_find for simple
+/// "does this element exist?" validation.
+fn tool_exists(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let kind_filter = args.get("kind").and_then(|v| v.as_str());
+    let label_filter = args.get("label").and_then(|v| v.as_str());
+
+    let snap = shared.lock().unwrap().clone_styled_vtree();
+    let snap = match snap {
+        Some(s) => s,
+        None => return error_result("No live VTree snapshot yet."),
+    };
+
+    let kind_lower = kind_filter.map(|s| s.to_lowercase());
+    let label_lower = label_filter.map(|s: &str| s.to_lowercase());
+
+    let matches: Vec<&VNode> = snap.vtree.nodes.iter()
+        .filter(|vnode| {
+            if let Some(ref kf) = kind_lower {
+                if format!("{}", vnode.kind).to_lowercase() != *kf {
+                    return false;
+                }
+            }
+            if let Some(ref lf) = label_lower {
+                if !vnode_searchable_text(&vnode.props).to_lowercase().contains(lf) {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
+
+    let mut criteria = Vec::new();
+    if let Some(k) = kind_filter { criteria.push(format!("kind={}", k)); }
+    if let Some(l) = label_filter { criteria.push(format!("label~={}", l)); }
+
+    if matches.is_empty() {
+        text_result(format!("NOT FOUND (0 matches): {}", criteria.join(", ")))
+    } else {
+        let ids: Vec<String> = matches.iter()
+            .map(|n| format!("vnode_{}", n.id.as_u64()))
+            .collect();
+        let labels: Vec<String> = matches.iter()
+            .map(|n| {
+                let txt = vnode_searchable_text(&n.props);
+                if txt.is_empty() { format!("{}", n.kind) } else { format!("{} \"{}\"", n.kind, txt) }
+            })
+            .collect();
+        text_result(format!(
+            "FOUND {} match(es): {}\n  {}",
+            matches.len(),
+            criteria.join(", "),
+            labels.join("; ")
+        ))
+    }
+}
+
+/// Extract searchable text from VNodeProps (label, content, value, placeholder).
+fn vnode_searchable_text(props: &crate::ui::vnode::VNodeProps) -> String {
+    use crate::ui::vnode::VNodeProps;
+    match props {
+        VNodeProps::Text { content } => content.clone(),
+        VNodeProps::Button { label } => label.clone(),
+        VNodeProps::Input { placeholder, value, .. } => format!("{} {}", placeholder, value),
+        VNodeProps::Textarea { placeholder, value } => format!("{} {}", placeholder, value),
+        VNodeProps::Checkbox { label, .. } => label.clone(),
+        VNodeProps::Radio { label, .. } => label.clone(),
+        _ => String::new(),
     }
 }
 

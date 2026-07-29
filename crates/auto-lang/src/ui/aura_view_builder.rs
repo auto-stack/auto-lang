@@ -198,6 +198,55 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+    /// Plan 370 (Issue 2): resolve a `for`-loop iterable that may be a
+    /// dotted path like `.note.tags` or `.store.notes`. Simple field names
+    /// (`.notes`) go through `read_state`/`read_state_as_vec`; dotted paths
+    /// (`.note.tags`) are resolved field-by-field via `resolve_expr_to_value`
+    /// so that a prop object's sub-fields (e.g. a Note's tags array stored
+    /// as a heap-id Int) can be iterated.
+    fn resolve_iterable(&self, iterable: &str, bindings: &Bindings) -> Option<Vec<auto_val::Value>> {
+        // Simple state field (no interior dot after stripping the leading '.')
+        let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
+        let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+        if !has_inner_dot {
+            // Delegate to existing state-read helpers.
+            if let Ok(arr) = self.read_state_as_vec(stripped) {
+                return Some(arr);
+            }
+            return None;
+        }
+        // Dotted path — build an Expr and resolve. `.note.tags` →
+        // Dot(Dot(Ident("."), "note"), "tags").
+        let expr = Self::parse_dot_path_to_expr(iterable)?;
+        let val = self.resolve_expr_to_value(&expr, bindings)?;
+        match val {
+            auto_val::Value::Array(arr) => Some(arr.iter().cloned().collect()),
+            auto_val::Value::Int(id) if id >= 2_000_000 => {
+                // Heap array id — deref via bridge
+                Some(self.bridge.index_list_all(id as usize))
+            }
+            auto_val::Value::VmRef(r) => {
+                Some(self.bridge.index_list_all(r.id))
+            }
+            _ => None,
+        }
+    }
+
+    /// Build a chained Dot expr from a dotted path string like `.note.tags`.
+    fn parse_dot_path_to_expr(path: &str) -> Option<Expr> {
+        let parts: Vec<&str> = path.split('.').filter(|p| !p.is_empty()).collect();
+        if parts.is_empty() {
+            return None;
+        }
+        // First segment is the root (e.g. "" from leading '.', or "note").
+        // For `.note.tags`, parts = ["note", "tags"].
+        let mut expr = Expr::Ident(parts[0].into());
+        for part in &parts[1..] {
+            expr = Expr::Dot(Box::new(expr), part.to_string().into());
+        }
+        Some(expr)
+    }
+
     /// Build a `View<DynamicMessage>` with debug sideband data (Plan 274 / 307 Task 9).
     ///
     /// Returns `(View, DebugIdMap, BuildProbe)` where:
@@ -255,8 +304,19 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
                 let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+                // Plan 370 (Issue 2): for dotted prop paths like `.note.tags`,
+                // resolve via resolve_iterable (handles field-by-field deref).
+                // For simple state fields, use read_state/read_state_as_vec.
+                let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
+                let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+                let array: auto_val::Array = if has_inner_dot {
+                    match self.resolve_iterable(iterable, bindings) {
+                        Some(elems) => auto_val::Array::from(elems),
+                        None => return View::Empty,
+                    }
+                } else {
                 // Read the iterable array from VmBridge state
-                let array = match self.read_state(state_name) {
+                match self.read_state(state_name) {
                     Ok(Value::Array(arr)) => arr,
                     Ok(_other) => {
                         // Try read_state_as_vec for Value::Int(array_id) refs
@@ -291,6 +351,7 @@ impl<'a> AuraViewBuilder<'a> {
                     Err(_) => {
                         return View::Empty;
                     }
+                }
                 };
 
                 let children: Vec<View<DynamicMessage>> = array.iter().enumerate()
@@ -311,7 +372,11 @@ impl<'a> AuraViewBuilder<'a> {
                         if views.is_empty() {
                             None
                         } else if views.len() == 1 {
-                            Some(views.into_iter().next().unwrap())
+                            // Plan 370 (Issue 1): if the single body view is
+                            // Empty (e.g. a false `if` inside the loop), skip
+                            // it so the loop doesn't emit a text("") spacer.
+                            let v = views.into_iter().next().unwrap();
+                            if matches!(v, View::Empty) { None } else { Some(v) }
                         } else {
                             Some(View::Column {
                                 children: views,
@@ -435,17 +500,28 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
                 let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+                // Plan 370 (Issue 2): for dotted prop paths like `.note.tags`,
+                // resolve via resolve_iterable (handles field-by-field deref).
+                let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
+                let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+                let array: Vec<Value> = if has_inner_dot {
+                    match self.resolve_iterable(iterable, bindings) {
+                        Some(v) => v,
+                        None => return View::Empty,
+                    }
+                } else {
                 // Read the iterable. `read_state_as_vec` handles BOTH an inline
                 // `Value::Array` and a `Value::Int(array_id)` heap-array reference
                 // (the latter is how `var x = []; x.push(...)` arrays are stored —
                 // e.g. 016-calendar's `.days`). A bare `read_state` + `Value::Array`
                 // match misses the heap-id form and silently renders an empty loop.
-                let array: Vec<Value> = match self.read_state_as_vec(state_name) {
+                match self.read_state_as_vec(state_name) {
                     Ok(v) => v,
                     Err(e) => {
                         log::warn!("view_builder: read_state_as_vec('{}') failed: {}", state_name, e);
                         return View::Empty;
                     }
+                }
                 };
                 let child_views: Vec<View<DynamicMessage>> = array.iter().enumerate()
                     .filter_map(|(i, item)| {
@@ -498,7 +574,11 @@ impl<'a> AuraViewBuilder<'a> {
                             })
                             .collect();
                         if views.is_empty() { None }
-                        else if views.len() == 1 { Some(views.into_iter().next().unwrap()) }
+                        else if views.len() == 1 {
+                            // Plan 370 (Issue 1): skip Empty body views (see convert_node_with ForLoop).
+                            let v = views.into_iter().next().unwrap();
+                            if matches!(v, View::Empty) { None } else { Some(v) }
+                        }
                         else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None }) }
                     })
                     .collect();
@@ -732,6 +812,8 @@ impl<'a> AuraViewBuilder<'a> {
                 path.pop();
                 v
             })
+            // Plan 370 (Issue 1): drop visually-empty spacers (see convert_column).
+            .filter(|v| !is_visually_empty(v))
             .collect();
 
         let mut builder = View::<DynamicMessage>::col()
@@ -904,6 +986,10 @@ impl<'a> AuraViewBuilder<'a> {
             builder = builder.with_style(s);
         }
         for child in child_views {
+            // Plan 370 (Issue 1): drop View::Empty spacers (see convert_column).
+            if is_visually_empty(&child) {
+                continue;
+            }
             builder = builder.child(child);
         }
         builder.build()
@@ -1218,10 +1304,7 @@ impl<'a> AuraViewBuilder<'a> {
         for (prop_name, prop_value) in props {
             if let AuraPropValue::Expr(expr) = prop_value {
                 if let Some(val) = self.resolve_expr_to_value(expr, bindings) {
-                    if prop_name == "note" {
-                    }
                     resolved_props.insert(prop_name.clone(), val);
-                } else if prop_name == "note" {
                 }
             }
         }
@@ -1286,6 +1369,12 @@ impl<'a> AuraViewBuilder<'a> {
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
             .map(|n| self.convert_node_with(n, bindings))
+            // Plan 370 (Issue 1): drop visually-empty children (View::Empty
+            // or View::Text with blank content). False `if` branches and
+            // non-matching `for` iterations yield these, and the renderer
+            // turns them into text("") — a one-line-tall spacer. Stacking
+            // several produced large blank gaps in the NavTree.
+            .filter(|v| !is_visually_empty(v))
             .collect();
 
         let mut builder = View::<DynamicMessage>::col()
@@ -1340,6 +1429,10 @@ impl<'a> AuraViewBuilder<'a> {
         }
 
         for child in child_views {
+            // Plan 370 (Issue 1): drop View::Empty spacers (see convert_column).
+            if is_visually_empty(&child) {
+                continue;
+            }
             builder = builder.child(child);
         }
 
@@ -1387,7 +1480,9 @@ impl<'a> AuraViewBuilder<'a> {
                 if views.is_empty() {
                     None
                 } else if views.len() == 1 {
-                    Some(views.into_iter().next().unwrap())
+                    // Plan 370 (Issue 1): skip Empty body views (see convert_node_with ForLoop).
+                    let v = views.into_iter().next().unwrap();
+                    if matches!(v, View::Empty) { None } else { Some(v) }
                 } else {
                     Some(View::Column { children: views, spacing: 0, padding: 0, style: None })
                 }
@@ -1789,7 +1884,11 @@ impl<'a> AuraViewBuilder<'a> {
         let placeholder = self.extract_string_with(props, "placeholder", bindings)
             .unwrap_or_default();
 
-        let value = self.extract_string_with(props, "value", bindings).unwrap_or_default();
+        // Plan 370: autodown_editor uses `content:` for its text; standard
+        // inputs use `value:`. Accept either so editor bodies render.
+        let value = self.extract_string_with(props, "value", bindings)
+            .or_else(|| self.extract_string_with(props, "content", bindings))
+            .unwrap_or_default();
 
         let style = self.extract_style(props);
         let height = self.extract_u16(props, "height");
@@ -1798,6 +1897,8 @@ impl<'a> AuraViewBuilder<'a> {
             .or_else(|| events.get("change"))
             .or_else(|| events.get("oninput"))
             .or_else(|| events.get("input"))
+            .or_else(|| events.get("onupdate"))
+            .or_else(|| events.get("update"))
             .map(|event| self.event_to_message(&event.handler));
 
         let mut builder = View::<DynamicMessage>::textarea(placeholder).value(value);
@@ -1921,6 +2022,16 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // Field access: object.field → Dot(object, field)
             Expr::Dot(object, field) => {
+                // Plan 370 (Issue 4): single-level self-ref `.field` (parsed as
+                // Dot(Ident("."), field)) — read directly from state, mirroring
+                // the fix in resolve_expr_to_value. Without this, `.edit_title`
+                // falls through to resolve_expr_to_value(Ident(".")) which reads
+                // state field "" and returns None → empty string.
+                if let Expr::Ident(name) = object.as_ref() {
+                    if name.as_str() == "." || name.as_str() == "self" {
+                        return self.read_state_as_string_with(field.as_str(), bindings);
+                    }
+                }
                 let obj_val = self.resolve_expr_to_value(object, bindings);
                 let field_str = field.as_str();
                 match obj_val {
@@ -2012,6 +2123,15 @@ impl<'a> AuraViewBuilder<'a> {
                 // Also handle bare "store.X" (Ident("store") Dot field)
                 if let Expr::Ident(name) = object.as_ref() {
                     if name.as_str() == "store" {
+                        return self.read_state(field.as_str()).ok();
+                    }
+                    // Plan 370 (Issue 2): handle single-level self-reference
+                    // `.field` (parsed as Dot(Ident("."), field)). Without this,
+                    // `.note` in a child widget (e.g. EditorPanel's `text note.title`)
+                    // falls through to resolve_expr_to_value(Ident(".")) which
+                    // reads state field "" and fails → note resolves to None →
+                    // the entire panel renders empty.
+                    if name.as_str() == "." || name.as_str() == "self" {
                         return self.read_state(field.as_str()).ok();
                     }
                 }
@@ -2238,8 +2358,21 @@ impl<'a> AuraViewBuilder<'a> {
         } else if let Some(pos) = cond.find(" <= ") {
             (&cond[..pos], "<=", cond[pos + 4..].trim())
         } else if cond.starts_with('.') {
-            // Bare state ref — truthy check
-            return self.read_state(&cond[1..])
+            // Bare state ref — truthy check.
+            // Plan 370 (Issue 2): dotted prop paths like `.note.pinned`
+            // need field-by-field resolution (read_state only looks up a
+            // single field name, so `read_state("note.pinned")` fails).
+            let path = &cond[1..];
+            let has_inner_dot = path.contains('.') && !path.starts_with("store.");
+            if has_inner_dot {
+                if let Some(expr) = Self::parse_dot_path_to_expr(cond) {
+                    return self.resolve_expr_to_value(&expr, bindings)
+                        .map(|v| v.as_bool())
+                        .unwrap_or(false);
+                }
+                return false;
+            }
+            return self.read_state(path)
                 .map(|v| v.as_bool())
                 .unwrap_or(false);
         } else {
@@ -2385,18 +2518,20 @@ impl<'a> AuraViewBuilder<'a> {
     /// dispatch in the iced renderer.
     fn event_to_message_with(&self, event: &AuraEvent, bindings: &Bindings) -> DynamicMessage {
         let event_name = extract_handler_name(&event.handler).to_string();
-        // Resolve each declared parameter from the loop bindings (e.g.
-        // `onclick: .SelectDay(cell.date)` → resolve `cell.date` against the
-        // current iteration's bindings) and carry the values in `args`. The
-        // dispatcher (DynamicComponent::on) forwards `args` to
-        // `call_handler`, so a handler declared `.SelectDay(date) ->` receives
-        // the value as its `date` parameter. (Previously the value was
-        // string-encoded into `event_name` as `name:value`, which the dispatch
-        // path never parsed — so payload onclicks silently no-op'd.)
+        // Resolve each declared parameter. A param can be:
+        //   - a loop-variable reference (e.g. `i`, `note.id`) → resolve from
+        //     bindings;
+        //   - a literal (e.g. `"indigo"`, `42`) → use directly.
+        // Previously only binding references were resolved; literals like
+        // `onclick: .SetAccent("indigo")` were dropped (param not in bindings
+        // → args empty → handler received no arg → no-op / stack mismatch).
         let mut args: Vec<Value> = Vec::with_capacity(event.params.len());
-        for param_name in &event.params {
-            if let Some(val) = self.resolve_binding_path(param_name, bindings) {
+        for param in &event.params {
+            if let Some(val) = self.resolve_binding_path(param, bindings) {
                 args.push(val);
+            } else {
+                // Not a binding — treat as a literal value.
+                args.push(parse_event_param_literal(param));
             }
         }
         DynamicMessage::Typed {
@@ -2574,6 +2709,18 @@ impl<'a> AuraViewBuilder<'a> {
 // Free helper functions
 // ============================================================================
 
+/// Plan 370 (Issue 1): returns true for views that carry no visible content
+/// and should be dropped from layouts to avoid spurious blank space. Covers
+/// `View::Empty` and `View::Text { content: "", .. }` (the latter renders as
+/// a one-line-tall `text("")` spacer in iced).
+fn is_visually_empty(v: &View<DynamicMessage>) -> bool {
+    match v {
+        View::Empty => true,
+        View::Text { content, .. } => content.is_empty(),
+        _ => false,
+    }
+}
+
 /// Extract a clean handler name from an event pattern.
 ///
 /// Patterns:
@@ -2587,6 +2734,32 @@ fn extract_handler_name(pattern: &str) -> &str {
     } else {
         name
     }
+}
+
+/// Parse an event-handler parameter that is NOT a loop-variable binding into
+/// a literal Value. The parser stores onclick args as raw strings; a quoted
+/// string like `"indigo"` (with the quotes preserved) becomes a Str, a number
+/// becomes Int, anything else is treated as a bare string identifier.
+fn parse_event_param_literal(param: &str) -> Value {
+    let trimmed = param.trim();
+    // Quoted string literal: "indigo" → Str("indigo")
+    if (trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2)
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2)
+    {
+        return Value::Str(trimmed[1..trimmed.len() - 1].into());
+    }
+    // Integer literal: 42 → Int(42)
+    if let Ok(i) = trimmed.parse::<i32>() {
+        return Value::Int(i);
+    }
+    // Boolean literal
+    match trimmed {
+        "true" => return Value::Bool(true),
+        "false" => return Value::Bool(false),
+        _ => {}
+    }
+    // Fallback: treat as a bare string (identifier-like)
+    Value::Str(trimmed.into())
 }
 
 /// Convert a Value to a display string suitable for UI rendering.

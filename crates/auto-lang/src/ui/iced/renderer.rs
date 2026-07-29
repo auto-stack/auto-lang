@@ -894,7 +894,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
             AbstractView::Empty => {
-                text("").into()
+                // Plan 370 (Issue 1): render Empty as a zero-height Space
+                // instead of text(""). A text("") still reserves one line of
+                // vertical height in iced, so stacking several Empty views
+                // (from false `if` branches / non-matching `for` iterations)
+                // produced large blank gaps. A zero-height Space collapses.
+                iced::widget::Space::new()
+                    .width(iced::Length::Shrink)
+                    .height(iced::Length::Fixed(0.0))
+                    .into()
             }
 
             AbstractView::Text { content, style } => {
@@ -2101,6 +2109,19 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
     }
 
     iced::event::listen_with(|event, status, _window_id| {
+        // F12 → DevTools toggle (always active, even when a widget has focus)
+        // Must be checked BEFORE the Captured guard, otherwise F12 is swallowed
+        // when a text input is focused (Plan 371: F12 reliability fix).
+        if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = &event {
+            if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
+                return Some(IcedMessage {
+                    widget: String::new(),
+                    event: DEBUG_TOGGLE_EVENT.to_string(),
+                    input_value: None,
+                });
+            }
+        }
+
         // Skip events already consumed by a focused widget (e.g., text input)
         if matches!(status, iced::event::Status::Captured) {
             return None;
@@ -2110,14 +2131,6 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
             iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                 key, modifiers, ..
             }) => {
-                // F12 → DevTools toggle (always active)
-                if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
-                    return Some(IcedMessage {
-                        widget: String::new(),
-                        event: DEBUG_TOGGLE_EVENT.to_string(),
-                        input_value: None,
-                    });
-                }
 
                 // Build key string for lookup
                 let key_str = match &key {
@@ -2640,6 +2653,8 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 *state.devtools_open.borrow_mut() = false;
                 state.pending_hovers.borrow_mut().clear();
             }
+            // Plan 371: force view rebuild so the DevTools panel appears/disappears.
+            *state.view_dirty.borrow_mut() = true;
             return iced::Task::none();
         }
         // Handle click-to-select: set selected element and open DevTools panel
@@ -3166,117 +3181,21 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                     let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                     sync_todos_to_vm(&state.todos, &mut state.component);
                 }
-                // Notes app: handle SelectNote:N / NewNote / DeleteNote
-                "SelectNote" => {
-                    if let Some(i) = idx {
-                        let _ = state.component.write_state("active_id", auto_val::Value::Int(i as i32));
-                        let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
-                    }
-                }
-                "NewNote" => {
-                    // Read current notes, append new note, write back
-                    // Plan 289: Use read_state_as_vec/write_state_vec to handle both
-                    // Value::Array and Value::Int(array_id) from [...] literals
-                    if let Ok(mut notes) = state.component.read_state_as_vec("notes") {
-                        let mut note = auto_val::Obj::new();
-                        note.set("title", auto_val::Value::str(""));
-                        note.set("body", auto_val::Value::str(""));
-                        note.set("time", auto_val::Value::str("Just now"));
-                        notes.push(auto_val::Value::Obj(note));
-                        let new_len = notes.len() as i32;
-                        let _ = state.component.write_state_vec("notes", notes);
-                        let _ = state.component.write_state("active_id", auto_val::Value::Int(new_len - 1));
-                        let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
-                        let _ = state.component.write_state("edit_title", auto_val::Value::str(""));
-                        let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
-                        let _ = state.component.write_state("search", auto_val::Value::str(""));
-                    }
-                }
-                "DeleteNote" => {
-                    // Read active_id and notes, remove the note at active_id, write back
-                    // Plan 289: Use read_state_as_vec/write_state_vec to handle both
-                    // Value::Array and Value::Int(array_id) from [...] literals
-                    if let (Ok(mut notes), Ok(active_val)) = (
-                        state.component.read_state_as_vec("notes"),
-                        state.component.read_state("active_id"),
-                    ) {
-                        let active = active_val.as_int() as usize;
-                        if !notes.is_empty() {
-                            let del_idx = if active < notes.len() { active } else { 0 };
-                            notes.remove(del_idx);
-                            let new_active = if notes.is_empty() { 0 } else { del_idx.min(notes.len() - 1) };
-                            let _ = state.component.write_state_vec("notes", notes);
-                            let _ = state.component.write_state("active_id", auto_val::Value::Int(new_active as i32));
-                        }
-                    }
-                    let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
-                }
-                "EditNote" | "Edit" => {
-                    // Load current note title and body into edit state
-                    if let (Ok(notes), Ok(active_val)) = (
-                        state.component.read_state_as_vec("notes"),
-                        state.component.read_state("active_id"),
-                    ) {
-                        let active = active_val.as_int() as usize;
-                        if active < notes.len() {
-                            if let auto_val::Value::Obj(ref note) = notes[active] {
-                                let title = note.get("title").map(|v| v.as_str().to_string()).unwrap_or_default();
-                                let body = note.get("body").map(|v| v.as_str().to_string()).unwrap_or_default();
-                                let _ = state.component.write_state("edit_title", auto_val::Value::str(&title));
-                                let _ = state.component.write_state("edit_body", auto_val::Value::str(&body));
-                                state.input_values.remove("EditTitle");
-                                state.input_values.remove("EditBody");
-                            }
-                        }
-                    }
-                    let _ = state.component.write_state("editing", auto_val::Value::Bool(true));
-                }
-                "SaveEdit" | "Save" => {
-                    // Write edit_title and edit_body back to notes[active_id]
-                    if let (Ok(mut notes), Ok(active_val)) = (
-                        state.component.read_state_as_vec("notes"),
-                        state.component.read_state("active_id"),
-                    ) {
-                        let active = active_val.as_int() as usize;
-                        if active < notes.len() {
-                            if let auto_val::Value::Obj(ref mut note) = notes[active] {
-                                // Read edit_title from state (synced by EditTitle handler)
-                                if let Ok(title_val) = state.component.read_state("edit_title") {
-                                    note.set("title", title_val);
-                                }
-                                // Read edit_body from state (synced by EditBody handler)
-                                if let Ok(body_val) = state.component.read_state("edit_body") {
-                                    note.set("body", body_val);
-                                }
-                                // Update time stamp
-                                note.set("time", auto_val::Value::str("Just now"));
-                            }
-                            let _ = state.component.write_state_vec("notes", notes);
-                        }
-                    }
-                    let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
-                    let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
-                    let _ = state.component.write_state("edit_title", auto_val::Value::str(""));
-                    // Clear stale input_values so next Edit sees correct note content
-                    state.input_values.remove("EditBody");
+                // Notes app: VM handlers now manage all state correctly.
+                // The previous hardcoded state-sync (read notes as Value::Obj,
+                // write edit_title/edit_body) is removed because notes elements
+                // are raw Int(heap_id) in VM mode, not Value::Obj — the if-let
+                // always failed. The VM handler_EditorPanel_Edit etc. handle
+                // everything via GET_FIELD/SET_FIELD on the unified state.
+                // We only clear stale input_values caches here so the next
+                // render reflects handler-set state, not old typed text.
+                "Edit" => {
                     state.input_values.remove("EditTitle");
-                }
-                "CancelEdit" | "Cancel" => {
-                    let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
-                    let _ = state.component.write_state("edit_body", auto_val::Value::str(""));
-                    // Clear stale input_values so next Edit sees correct note body
                     state.input_values.remove("EditBody");
                 }
-                // Child widget input handlers — sync typed text back to parent state
-                "EditTitle" => {
-                    if let Some(text) = state.input_values.get("EditTitle") {
-                        let _ = state.component.write_state("edit_title", auto_val::Value::str(text));
-                    }
-                }
-                "EditBody" => {
-                    if let Some(text) = state.input_values.get("EditBody") {
-                        let _ = state.component.write_state("edit_body", auto_val::Value::str(text));
-                    }
+                "Save" | "Cancel" => {
+                    state.input_values.remove("EditTitle");
+                    state.input_values.remove("EditBody");
                 }
                 _ => {}
             }
@@ -6362,10 +6281,23 @@ struct DevToolsState {
     devtools_panel_width: std::cell::RefCell<f32>,
     inspector_split_ratio: std::cell::RefCell<f32>,
     dragging_inner_divider: std::cell::RefCell<bool>,
+    // Plan 371 Task 11: MCP support for rust mode
+    mcp_shared: std::cell::RefCell<Option<crate::ui::mcp_server::SharedStateHandle>>,
+    mcp_widget_name: String,
 }
 
 impl Default for DevToolsState {
     fn default() -> Self {
+        // Plan 371 Task 11: start MCP server for rust mode
+        let port = crate::ui::mcp_server::mcp_port();
+        let widget_name = "App".to_string();
+        let (mcp_shared, mcp_action_rx) =
+            crate::ui::mcp_server::start_mcp_server(widget_name.clone(), port);
+        // Store the action receiver in the global for devtools_subscription to drain
+        {
+            let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
+            *guard.lock().unwrap() = Some(mcp_action_rx);
+        }
         DevToolsState {
             debug_mode: false,
             devtools_open: std::cell::RefCell::new(false),
@@ -6378,6 +6310,8 @@ impl Default for DevToolsState {
             devtools_panel_width: std::cell::RefCell::new(420.0),
             inspector_split_ratio: std::cell::RefCell::new(0.42),
             dragging_inner_divider: std::cell::RefCell::new(false),
+            mcp_shared: std::cell::RefCell::new(Some(mcp_shared)),
+            mcp_widget_name: widget_name,
         }
     }
 }
@@ -6730,6 +6664,18 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
             self.inner.view().map_msg(WrapperMsg::<C>::Inner),
             |_| None,
         );
+
+        // Plan 371 Task 11: sync VTree to MCP SharedState so MCP tools
+        // (snapshot/vtree/find/exists) work in rust mode.
+        if let Some(ref mcp_shared) = *self.dt.mcp_shared.borrow() {
+            let snap = crate::ui::mcp_server::StyledNodeSnapshot {
+                widget_name: self.dt.mcp_widget_name.clone(),
+                vtree: tree.clone(),
+                computed: std::collections::HashMap::new(),
+            };
+            mcp_shared.lock().unwrap().set_styled_vtree(snap);
+        }
+
         *self.dt.live_vtree.borrow_mut() = Some(tree);
 
         // Walk the view again to fill the inspector cache (style + insets).
@@ -6767,14 +6713,94 @@ fn devtools_view<C: Component + 'static>(w: &DevToolsWrapper<C>) -> iced::Elemen
 fn devtools_update<C: Component + 'static>(
     w: &mut DevToolsWrapper<C>,
     msg: WrapperMsg<C>,
-) -> iced::Task<WrapperMsg<C>> {
+) -> iced::Task<WrapperMsg<C>>
+where
+    C::Msg: Clone + Debug + Send + 'static,
+{
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
         WrapperMsg::Debug(s) => {
+            // Plan 371 Task 12: handle MCP actions by finding the matching
+            // C::Msg in the View tree and dispatching it to inner.on().
+            if let Some(rest) = s.strip_prefix("__mcp_action|") {
+                let parts: Vec<&str> = rest.splitn(2, '|').collect();
+                let event_name = parts.get(0).unwrap_or(&"");
+                let input_value = parts.get(1).filter(|v| !v.is_empty());
+
+                // Search the View tree for a node with a matching event handler.
+                let view = w.inner.view();
+                if let Some(msg) = find_msg_by_event_name::<C>(&view, event_name, input_value.copied()) {
+                    w.inner.on(msg);
+                }
+                return iced::Task::none();
+            }
             apply_debug_event(&mut w.dt, &s);
         }
     }
     iced::Task::none()
+}
+
+/// Plan 371 Task 12: search a View<C::Msg> tree for a button/input/textarea
+/// whose handler matches the given event name, and return the C::Msg to dispatch.
+/// For buttons: matches by Debug formatting of the msg (e.g. "Edit" in AppMsg::Edit).
+/// For inputs: returns the msg with input_value encoded.
+fn find_msg_by_event_name<C: Component + 'static>(
+    view: &AbstractView<C::Msg>,
+    event_name: &str,
+    _input_value: Option<&str>,
+) -> Option<C::Msg>
+where
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    // Walk the view tree looking for buttons/inputs whose handler matches.
+    fn walk<M: Clone + Debug>(
+        view: &AbstractView<M>,
+        event_name: &str,
+    ) -> Option<M> {
+        match view {
+            AbstractView::Button { onclick, .. } => {
+                let dbg = format!("{:?}", onclick);
+                if dbg.contains(event_name) {
+                    return Some(onclick.clone());
+                }
+            }
+            AbstractView::Input { on_change, .. } | AbstractView::Textarea { on_change, .. } => {
+                if let Some(msg) = on_change {
+                    let dbg = format!("{:?}", msg);
+                    if dbg.contains(event_name) {
+                        return Some(msg.clone());
+                    }
+                }
+            }
+            AbstractView::Checkbox { on_toggle, .. } => {
+                if let Some(msg) = on_toggle {
+                    let dbg = format!("{:?}", msg);
+                    if dbg.contains(event_name) {
+                        return Some(msg.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+        let children = extract_view_children(view);
+        for child in &children {
+            if let Some(msg) = walk(child, event_name) {
+                return Some(msg);
+            }
+        }
+        None
+    }
+    walk(view, event_name)
+}
+
+/// Extract children from a View (mirrors vnode_converter's extract_children).
+fn extract_view_children<M: Clone + Debug>(view: &AbstractView<M>) -> Vec<AbstractView<M>> {
+    match view {
+        AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => children.clone(),
+        AbstractView::Grid { cells, .. } => cells.clone(),
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => vec![(**child).clone()],
+        _ => Vec::new(),
+    }
 }
 
 /// iced `subscription` callback for `run_app_devtools`: forwards the inner
@@ -6786,6 +6812,29 @@ where
     C::Msg: Send + 'static,
 {
     let inner = w.inner.subscription().map(WrapperMsg::Inner);
+    // Plan 371 Task 13: drain MCP actions into WrapperMsg::Debug events.
+    // The MCP thread sends ActionMessage { widget, event, input_value };
+    // we encode as "__mcp_action|event|input_value" for devtools_update
+    // to resolve against the inner component's View tree.
+    let mcp = iced::time::every(std::time::Duration::from_millis(16)).filter_map(|_| {
+        let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
+        let mut lock = guard.lock().unwrap();
+        if let Some(rx) = lock.as_mut() {
+            match rx.try_recv() {
+                Ok(action) => {
+                    // Encode: __mcp_action|<event>|<input_value_or_empty>
+                    let payload = match &action.input_value {
+                        Some(v) => format!("__mcp_action|{}|{}", action.event, v),
+                        None => format!("__mcp_action|{}|", action.event),
+                    };
+                    Some(WrapperMsg::<C>::Debug(payload))
+                }
+                Err(_) => None,
+            }
+        } else {
+            None
+        }
+    });
     let f12 = iced::event::listen_with(|event, _status, _window_id| {
         if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = event {
             if matches!(
@@ -6809,7 +6858,7 @@ where
         }
         _ => None,
     });
-    iced::Subscription::batch(vec![inner, f12, win])
+    iced::Subscription::batch(vec![inner, f12, win, mcp])
 }
 
 /// Run a rust-mode Component with the F12 DevTools layer (Plan 311).

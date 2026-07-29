@@ -354,6 +354,26 @@ impl IcedStyle {
             iced_style.apply_class(class);
         }
 
+        // Plan 370 (Issue 1): post-process flex-1 height. During per-class
+        // application, flex-1 can't see overflow/min-h classes that appear
+        // later in the class list. Now that all classes are applied, if
+        // flex-1 set width=Fill AND a vertical-fill signal is present, also
+        // set height=Fill. Signals:
+        //   - overflow-x/overflow-y: scroll container that should fill
+        //   - min_height == 0.0 (min-h-0): CSS flexbox idiom pairing flex-1
+        //     with min-h-0 to allow the child to shrink — strongly implies
+        //     vertical fill intent. A non-zero min-height (min-h-64) does NOT
+        //     trigger this (e.g. a textarea that should be at least 64px, not
+        //     fill all space).
+        if iced_style.width == Some(IcedSize::Full)
+            && iced_style.height.is_none()
+            && (iced_style.overflow_x.is_some()
+                || iced_style.overflow_y.is_some()
+                || iced_style.min_height == Some(0.0))
+        {
+            iced_style.height = Some(IcedSize::Full);
+        }
+
         // margin_top is kept as-is — the renderer wraps the element in a container
         // with external top padding to simulate margin-top, separate from internal padding.
         // This avoids visual-wrap elements (gradient cards, bordered cols) absorbing
@@ -661,14 +681,15 @@ impl IcedStyle {
             }
             StyleClass::Flex1 => {
                 // flex-1: expand to fill available space along the main axis.
-                // In CSS Tailwind, flex-1 means flex-grow:1 flex-shrink:1 flex-basis:0%.
-                // Set both width and height to Fill so it works in both Row (horizontal)
-                // and Column (vertical) parent contexts. Only set when not already specified.
+                // In CSS Tailwind, flex-1 means flex-grow:1 flex-shrink:1
+                // flex-basis:0%. We set ONLY width=Fill here (Row main axis).
+                // height=Fill is added post-hoc in from_style() when a
+                // vertical-fill signal (overflow / min-height) is present,
+                // avoiding order-dependency between flex-1 and overflow-y-auto
+                // in the class list. This prevents Row children (tab buttons)
+                // from stretching vertically. (Plan 370 Issue 1.)
                 if self.width.is_none() {
                     self.width = Some(IcedSize::Full);
-                }
-                if self.height.is_none() {
-                    self.height = Some(IcedSize::Full);
                 }
             }
             StyleClass::ItemsCenter => {

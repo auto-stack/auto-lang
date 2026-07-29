@@ -321,16 +321,16 @@ fn _tls_skip_verify() -> bool {
 // Plan 349: File upload (multipart) + download utilities (a2r)
 
 fn upload_file(url: &str, file_path: &str) -> serde_json::Value {
+    let url = url.to_string();
+    let file_path = file_path.to_string();
     std::thread::spawn(move || {
-        let form = reqwest::blocking::multipart::Form::new()
-            .file("file", file_path)
-            .map_err(|e| e.to_string())?;
-        let resp = reqwest::blocking::Client::new()
-            .post(url)
-            .multipart(form)
-            .send()
-            .map_err(|e| e.to_string())?;
-        let text = resp.text().map_err(|e| e.to_string())?;
+        let form = match reqwest::blocking::multipart::Form::new().file("file", &file_path) {
+            Ok(f) => f, Err(_) => return serde_json::Value::Null
+        };
+        let resp = match reqwest::blocking::Client::new().post(&url).multipart(form).send() {
+            Ok(r) => r, Err(_) => return serde_json::Value::Null
+        };
+        let text = match resp.text() { Ok(t) => t, Err(_) => return serde_json::Value::Null };
         serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
     }).join().unwrap_or(serde_json::Value::Null)
 }
@@ -351,12 +351,10 @@ fn upload_file_with_fields(url: &str, file_path: &str, fields: &serde_json::Valu
         if let Ok(part) = reqwest::blocking::multipart::Part::file(&file_path) {
             form = form.part("file", part);
         }
-        let resp = reqwest::blocking::Client::new()
-            .post(&url)
-            .multipart(form)
-            .send()
-            .map_err(|e| e.to_string())?;
-        let text = resp.text().map_err(|e| e.to_string())?;
+        let resp = match reqwest::blocking::Client::new().post(&url).multipart(form).send() {
+            Ok(r) => r, Err(_) => return serde_json::Value::Null
+        };
+        let text = match resp.text() { Ok(t) => t, Err(_) => return serde_json::Value::Null };
         serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
     }).join().unwrap_or(serde_json::Value::Null)
 }

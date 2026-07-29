@@ -36,6 +36,10 @@ pub enum Color {
     Orange(u16),   // orange-50 to orange-900
     Cyan(u16),     // cyan-50 to cyan-900
     Teal(u16),     // teal-50 to teal-900
+    // Plan 370: extended families used by 015-notes theme swatches
+    Rose(u16),     // rose-50 to rose-900
+    Emerald(u16),  // emerald-50 to emerald-900
+    Amber(u16),    // amber-50 to amber-900
     White,
     Black,
 
@@ -133,6 +137,10 @@ impl Color {
                         "orange" => Ok(Color::Orange(shade)),
                         "cyan" => Ok(Color::Cyan(shade)),
                         "teal" => Ok(Color::Teal(shade)),
+                        // Plan 370: extended families for 015-notes swatches
+                        "rose" => Ok(Color::Rose(shade)),
+                        "emerald" => Ok(Color::Emerald(shade)),
+                        "amber" => Ok(Color::Amber(shade)),
                         _ => Err(format!("Unknown color name: {}", color_name)),
                     }
                 } else {
@@ -175,6 +183,9 @@ impl Color {
             Color::Orange(s) => tailwind_orange(*s),
             Color::Cyan(s) => tailwind_cyan(*s),
             Color::Teal(s) => tailwind_teal(*s),
+            Color::Rose(s) => tailwind_rose(*s),
+            Color::Emerald(s) => tailwind_emerald(*s),
+            Color::Amber(s) => tailwind_amber(*s),
             // Plan 370 D-GAP-1: semantic colors with hardcoded light-mode RGB
             Color::Primary => (99, 102, 241),       // indigo-500
             Color::Secondary => (139, 92, 246),      // violet-500
@@ -433,4 +444,46 @@ palette!(tailwind_teal, [
     700 => (15, 118, 110),
     800 => (17, 94, 89),
     900 => (19, 78, 74),
+]);
+
+// Tailwind Rose (rose-50 through rose-900) — used by 015-notes "coral" swatch
+palette!(tailwind_rose, [
+    50  => (255, 241, 242),
+    100 => (255, 228, 230),
+    200 => (254, 205, 211),
+    300 => (253, 164, 175),
+    400 => (251, 113, 133),
+    500 => (244, 63, 94),
+    600 => (225, 29, 72),
+    700 => (190, 18, 60),
+    800 => (159, 18, 57),
+    900 => (136, 19, 55),
+]);
+
+// Tailwind Emerald (emerald-50 through emerald-900) — "sage" swatch
+palette!(tailwind_emerald, [
+    50  => (236, 253, 245),
+    100 => (209, 250, 229),
+    200 => (167, 243, 208),
+    300 => (110, 231, 183),
+    400 => (52, 211, 153),
+    500 => (16, 185, 129),
+    600 => (5, 150, 105),
+    700 => (4, 120, 87),
+    800 => (6, 95, 70),
+    900 => (6, 78, 59),
+]);
+
+// Tailwind Amber (amber-50 through amber-900) — "amber" swatch
+palette!(tailwind_amber, [
+    50  => (255, 251, 235),
+    100 => (254, 243, 199),
+    200 => (253, 230, 138),
+    300 => (252, 211, 77),
+    400 => (251, 191, 36),
+    500 => (245, 158, 11),
+    600 => (217, 119, 6),
+    700 => (180, 83, 9),
+    800 => (146, 64, 14),
+    900 => (120, 53, 15),
 ]);
