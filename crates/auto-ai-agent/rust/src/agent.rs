@@ -6,8 +6,9 @@ use crate::auto_ai_client::{ClientError, CompletionRequest, CompletionResponse, 
 use crate::error::{AgentError};
 use crate::memory::{Memory};
 use crate::role_def::{Role};
+use crate::ai_config::{ModelTier};
 use crate::tool::{ToolRegistry, tool_to_definition};
-use crate::wire::{ContentBlock, JsonValue};
+use crate::wire::{ContentBlock, JsonValue, ToolDefinition};
 /// The autonomous agent (Layer 3 core).
 /// 
 /// An Agent binds a Role (personality), a ToolRegistry (capabilities), a Memory
@@ -67,18 +68,20 @@ fn max_tool_result_chars() -> u32 {
 
 pub fn truncate_tool_result(s: &str) -> String {
     let cap = max_tool_result_chars();
-    let count = (s.len() as i32);
+    let count = s.len() as u32;
     if count <= cap {
         return s.to_string();
     }
-    let kept = &s[0 as usize..cap as usize];
+    let kept = &s[0..cap as usize];
     let dropped = count - cap;
     return format!("{}
 …[truncated {} more chars]", kept, dropped);
 }
 
-pub trait Client {
-    fn complete(&self, req: CompletionRequest) -> Future<Result<CompletionResponse, ClientError>>;
+// NOTE (manual fix): async_trait for Box<dyn Client>
+#[async_trait::async_trait]
+pub trait Client: Send + Sync {
+    async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, ClientError>;
 }
 
 
@@ -171,21 +174,21 @@ impl Agent {
         let limit = role.memory_limit();
         return Agent { role: role, tools: ToolRegistry::new(), memory: Memory::new(limit), client: client, skills_block: None, context_block: None };
     }
-    pub fn with_context(&mut self, context: &str) -> Agent {
+    pub fn with_context(&mut self, context: &str) -> &Agent {
         let ctx = context.trim().to_string();
         if ctx.is_empty() == false {
-            self.context_block = Some(context.to_string())
+            self.context_block = Some(ctx);
         }
         return self;
     }
-    pub fn register_shared(&mut self, tool: Arc<tool::Tool>) {
+    pub fn register_shared(&mut self, tool: Arc<Box<dyn crate::tool::Tool>>) {
         self.tools.register_shared(tool);
     }
     pub fn tools(&self) -> ToolRegistry {
         return self.tools.clone();
     }
-    pub fn role(&self) -> Box<dyn Role> {
-        return self.role.clone();
+    pub fn role(&self) -> &dyn Role {
+        return &*self.role;
     }
     pub fn memory_messages(&self) -> Vec<Message> {
         return self.memory.messages();
@@ -193,30 +196,30 @@ impl Agent {
     pub fn history(&self) -> Vec<Message> {
         return self.memory.messages();
     }
-    pub fn client(&self) -> Box<dyn Client> {
-        return self.client.clone();
+    pub fn client(&self) -> &dyn Client {
+        return &*self.client;
     }
-    pub async fn run(&self, task_msg: &str) -> Result<AgentResult, AgentError> {
-        return self.run_inner(task_msg.as_str(), None);
+    pub async fn run(&mut self, task_msg: &str) -> Result<AgentResult, AgentError> {
+        return self.run_inner(task_msg, None).await;
     }
-    pub async fn run_stream(&self, task_msg: &str, cancel: Arc<AtomicBool>) -> Result<AgentResult, AgentError> {
-        return self.run_inner(task_msg.as_str(), Some(cancel));
+    pub async fn run_stream(&mut self, task_msg: &str, cancel: Arc<AtomicBool>) -> Result<AgentResult, AgentError> {
+        return self.run_inner(task_msg, Some(cancel)).await;
     }
-    pub async fn run_inner(&self, task_msg: &str, cancel: Option<Arc<AtomicBool>>) -> Result<AgentResult, AgentError> {
+    pub async fn run_inner(&mut self, task_msg: &str, cancel: Option<Arc<AtomicBool>>) -> Result<AgentResult, AgentError> {
 
 
         let mut events: Vec<StreamEvent> = vec![];
 
         self.memory.add("user", task_msg);
         let soft_limit = self.role.max_turns();
-        let hard_limit: i32 = soft_limit * 5;
+        let hard_limit: u32 = soft_limit * 5;
         let mut result = AgentResult::default();
 
         let mut seen: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
         let mut seen_names: Vec<String> = vec![];
 
         let mut turn: u32 = 0;
-        while turn < hard_limit as u32 {
+        while turn < hard_limit {
             
             if is_cancelled(cancel.clone()) {
                 let ce = cancelled_event(result.clone());
@@ -248,7 +251,7 @@ impl Agent {
 
             match resp.error {
                 Some(err) => {
-                    let ev = StreamEvent::Error(err);
+                    let ev = StreamEvent::Error(err.clone());
                     events.push(ev.clone());
                     return Err(AgentError::Config(err));
                 },
@@ -269,11 +272,11 @@ impl Agent {
 
                 let mut blocks: Vec<ContentBlock> = vec![];
                 if resp.content.is_empty() == false {
-                    let tb = ContentBlock::Text { text: resp.content };
+                    let tb = ContentBlock::Text { text: resp.content.clone() };
                     blocks.push(tb.clone());
                 }                let mut tc_idx: u32 = 0;
-                for tc in resp.tool_calls {
-                    let ub = ContentBlock::ToolUse { id: tc.id, name: tc.name, input: tc.input };
+                for tc in &resp.tool_calls {
+                    let ub = ContentBlock::ToolUse { id: tc.id.clone(), name: tc.name.clone(), input: tc.input.clone() };
                     blocks.push(ub.clone());
                     tc_idx = tc_idx + 1;
                 }
@@ -284,25 +287,25 @@ impl Agent {
 
 
                 let mut keep_going: bool = true;
-                for tc in resp.tool_calls {
+                for tc in &resp.tool_calls {
                     let key: String = format!("{}::{}", tc.name, tc.input);
-                    let count = bump_seen(seen.clone(), seen_names, key.as_str());
+                    let count = bump_seen(seen.clone(), &mut seen_names, key.as_str());
                     if count >= loop_detect_threshold() {
                         let ev = StreamEvent::Error(format!("loop detected on '{}'", tc.name));
                         events.push(ev.clone());
-                        return Err(AgentError::LoopDetected(tc.name));
+                        return Err(AgentError::LoopDetected(tc.name.clone()));
                     }
-                    
-                    let ts = StreamEvent::ToolStart(tc.name, tc.input);
-                    events.push(ts.clone());
-                    let outcome = exec_tool(self.tools.clone(), tc.name.as_str(), tc.input);
-                    let rec = ToolCallRecord { tool: tc.name.to_string(), args: tc.input, result: outcome.to_string() };
-                    result.tool_calls.push(rec.clone());
-                    let tev = StreamEvent::Tool(tc.name, tc.input, outcome);
-                    events.push(tev.clone());
-                    
 
-                    let tr = Message::tool_result(tc.id, truncate_tool_result(outcome.as_str()));
+                    let ts = StreamEvent::ToolStart(tc.name.clone(), tc.input.clone());
+                    events.push(ts.clone());
+                    let outcome = exec_tool(self.tools.clone(), tc.name.as_str(), tc.input.clone()).await;
+                    let rec = ToolCallRecord { tool: tc.name.clone(), args: tc.input.clone(), result: outcome.clone() };
+                    result.tool_calls.push(rec.clone());
+                    let tev = StreamEvent::Tool(tc.name.clone(), tc.input.clone(), outcome.clone());
+                    events.push(tev.clone());
+
+
+                    let tr = Message::tool_result(tc.id.clone(), truncate_tool_result(outcome.as_str()));
                     self.memory.add_message(tr);
                 }
                 
@@ -310,8 +313,8 @@ impl Agent {
             } else {
                 
 
-                result.output = resp.content;
-                self.memory.add("assistant", resp.content);
+                result.output = resp.content.clone();
+                self.memory.add("assistant", &resp.content);
                 let done = StreamEvent::Done(clone_result(result.clone()));
                 events.push(done.clone());
                 return Ok(result);
@@ -324,12 +327,13 @@ impl Agent {
         events.push(err.clone());
         return Err(AgentError::MaxTurnsExceeded(hard_limit));
     }
-    pub fn build_request(&self) -> CompletionRequest {
+    pub fn build_request(&mut self) -> CompletionRequest {
         let allowed = self.role.allowed_tools();
         let visible = self.tools.filter(allowed);
         let mut tool_defs: Vec<ToolDefinition> = vec![];
-        for t in visible {
-            tool_defs.push(tool_to_definition(t));
+        for t in visible.iter() {
+            let td: &Arc<Box<dyn crate::tool::Tool>> = t;
+            tool_defs.push(tool_to_definition(td.as_ref()));
         }
 
 
@@ -382,10 +386,10 @@ fn is_cancelled(cancel: Option<Arc<AtomicBool>>) -> bool {
     match cancel {
         None => return false,
         Some(c) => {
-            
 
-            let v = c.load();
-            return v != 0;
+
+            let v = c.load(std::sync::atomic::Ordering::Relaxed);
+            return v;
         },
     }
 }
@@ -393,21 +397,21 @@ fn is_cancelled(cancel: Option<Arc<AtomicBool>>) -> bool {
 /// Increment the recurrence count for a (tool, args) key, returning the new
 /// count. Keeps the parallel `seen_names` key list in sync (Auto's VM Map has
 /// no iteration API — plan 013 gotcha B5).
-fn bump_seen(seen: std::collections::HashMap<String, u32>, seen_names: Vec<String>, key: &str) -> u32 {
+fn bump_seen(mut seen: std::collections::HashMap<String, u32>, seen_names: &mut Vec<String>, key: &str) -> u32 {
     let mut prev: u32 = 0;
     if seen.contains_key(key) {
-        prev = seen.get(key)
+        prev = *seen.get(key).unwrap_or(&0);
     } else {
-        seen_names.push(key)
+        seen_names.push(key.to_string());
     }
 
-    let next: i32 = prev + 1;
+    let next: u32 = prev + 1;
     seen.insert(key.to_string(), next);
     return next;
 }
 
 /// Add a response's usage (if any) to the result's running token total.
-fn record_usage(result: AgentResult, resp: CompletionResponse) {
+fn record_usage(mut result: AgentResult, resp: CompletionResponse) {
     match resp.usage {
         Some(u) => result.total_tokens = result.total_tokens + u.total_tokens(),
         None => {},
@@ -428,7 +432,7 @@ fn clone_result(result: AgentResult) -> AgentResult {
 /// Execute a tool by name; on error, return a human-readable "[tool error: …]"
 /// string instead of propagating (mirrors Rust's `format!("[tool error: {}]")`
 /// fallback so the loop keeps going and the model sees the failure).
-fn exec_tool(tools: ToolRegistry, name: &str, args: JsonValue) -> String {
+async fn exec_tool(tools: ToolRegistry, name: &str, args: JsonValue) -> String {
     match tools.execute(name, args).await {
         Ok(out) => return out,
         Err(e) => return format!("[tool error: {}]", e.message()),

@@ -4,21 +4,23 @@
 #[allow(unused_imports)]
 use a2r_std;
 use a2r_std::*;
-use crate::error::ToolError;
-use crate::wire::JsonValue;
 
+use std::sync::Arc;
+use async_trait::async_trait;
 use crate::wire::{ToolDefinition, JsonValue};
 use crate::error::{ToolError};
+#[async_trait::async_trait]
 pub trait Tool {
     fn name(&self) -> String;
     fn description(&self) -> String;
     fn parameters(&self) -> JsonValue{
-        return a2r_std::json::parse("{\"type\":\"object\",\"properties\":{}}").unwrap();
-    }    fn execute(&self, args: JsonValue) -> Future<Result<String, ToolError>>;
+        return a2r_std::json::parse("{\"type\":\"object\",\"properties\":{}}");
+    }
+    async fn execute(&self, args: JsonValue) -> Result<String, ToolError>;
 }
 
 
-pub fn tool_to_definition(tool: Box<dyn Tool>) -> ToolDefinition {
+pub fn tool_to_definition(tool: &Box<dyn Tool>) -> ToolDefinition {
     return ToolDefinition::new(tool.name(), tool.description(), tool.parameters());
 }
 
@@ -53,6 +55,7 @@ pub fn tool_to_definition(tool: Box<dyn Tool>) -> ToolDefinition {
 /// across agents / workflow steps. Carries a parallel `names List<str>` for
 /// iteration (Auto VM Map has no keys()/entries()).
 #[allow(dead_code)]
+#[derive(Clone)]
 pub struct ToolRegistry {
     pub tools: std::collections::HashMap<String, Arc<Box<dyn Tool>>>,
     pub names: Vec<String>,
@@ -70,31 +73,30 @@ impl ToolRegistry {
         self.tools.insert(n, tool);
     }
     pub fn get(&self, name: &str) -> Option<Arc<Box<dyn Tool>>> {
-        if self.tools.contains_key(name) {
-            return Some(self.tools.get(name));
-        }
-        return None;
+        return self.tools.get(name).cloned();
     }
     pub fn names(&self) -> Vec<String> {
         return self.names.clone();
     }
     pub fn len(&self) -> u32 {
-        return (self.names.len() as i32);
+        return self.names.len() as u32;
     }
     pub fn is_empty(&self) -> bool {
         return (self.names.len() as i32) == 0;
     }
     pub fn filter(&self, filter: Vec<String>) -> Vec<Arc<Box<dyn Tool>>> {
         let mut out: Vec<Arc<Box<dyn Tool>>> = vec![];
-        if (filter.len() as i32) == 0 {
+        if filter.is_empty() {
             for n in &self.names {
-                out.push(self.tools[n as usize]);
+                if let Some(t) = self.tools.get(n) {
+                    out.push(t.clone());
+                }
             }
             return out;
         }
-        for n in filter {
-            if self.tools.contains_key(&n) {
-                out.push(self.tools[n as usize]);
+        for n in &filter {
+            if let Some(t) = self.tools.get(n) {
+                out.push(t.clone());
             }
         }
         return out;

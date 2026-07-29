@@ -99,17 +99,20 @@ impl FlowStep {
     pub fn new(id: &str, role_id: &str) -> FlowStep {
         return FlowStep { id: id.to_string(), role_id: role_id.to_string(), gate: GateType::Auto, max_turns: None, exit: ExitRouting::Next, token_budget: None };
     }
-    pub fn with_gate(&mut self, gate: GateType) -> FlowStep {
-        self.gate = gate;
-        return self;
+    pub fn with_gate(&self, gate: GateType) -> FlowStep {
+        let mut s = self.clone();
+        s.gate = gate;
+        return s;
     }
-    pub fn with_exit(&mut self, exit: ExitRouting) -> FlowStep {
-        self.exit = exit;
-        return self;
+    pub fn with_exit(&self, exit: ExitRouting) -> FlowStep {
+        let mut s = self.clone();
+        s.exit = exit;
+        return s;
     }
-    pub fn with_budget(&mut self, budget: u32) -> FlowStep {
-        self.token_budget = Some(budget.to_string());
-        return self;
+    pub fn with_budget(&self, budget: u32) -> FlowStep {
+        let mut s = self.clone();
+        s.token_budget = Some(budget);
+        return s;
     }
 }
 
@@ -134,12 +137,12 @@ impl FlowSpec {
     }
     pub fn add_step(&mut self, step: FlowStep) -> FlowSpec {
         self.steps.push(step.clone());
-        return self;
+        return self.clone();
     }
     pub fn get_step(&self, step_id: &str) -> Option<FlowStep> {
         for s in &self.steps {
             if s.id == step_id {
-                return Some(s);
+                return Some(s.clone());
             }
         }
         return None;

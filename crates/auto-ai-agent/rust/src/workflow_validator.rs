@@ -44,32 +44,32 @@ impl Validator {
     pub fn check(&self, output: &str) -> Result<(), String> {
         match self {
             Validator::OutputContains(pattern) => {
-                if a2r_std::str_contains(output, pattern.as_str()) {
+                if output.contains(pattern.as_str()) {
                     return Ok(());
                 }
-                return Err(Box::new(format!("output must contain '{}' (it doesn't)", pattern)));
+                return Err(format!("output must contain '{}' (it doesn't)", pattern));
             },
             Validator::OutputNotContains(pattern) => {
-                if a2r_std::str_contains(output, pattern.as_str()) == false {
+                if !output.contains(pattern.as_str()) {
                     return Ok(());
                 }
-                return Err(Box::new(format!("output must NOT contain '{}' (it does)", pattern)));
+                return Err(format!("output must NOT contain '{}' (it does)", pattern));
             },
             Validator::OutputMinLength(min) => {
-                if (output.len() as i32) >= min {
+                if (output.len() as u32) >= *min {
                     return Ok(());
                 }
-                return Err(Box::new(format!("output is {} chars, must be at least {}", (output.len() as i32), min)));
+                return Err(format!("output is {} chars, must be at least {}", (output.len() as u32), min));
             },
-            Validator::All(validators) => return check_all(validators, output),
-            Validator::Any(validators) => return check_any(validators, output),
+            Validator::All(validators) => return check_all(validators.to_vec(), output),
+            Validator::Any(validators) => return check_any(validators.to_vec(), output),
         }
     }
 }
 
 pub fn check_all(validators: Vec<Validator>, output: &str) -> Result<(), String> {
     for v in validators {
-        match v.check(output.as_str()) {
+        match v.check(output) {
             Ok(_) => {},
             Err(msg) => return Err(msg),
         }
@@ -78,17 +78,18 @@ pub fn check_all(validators: Vec<Validator>, output: &str) -> Result<(), String>
 }
 
 pub fn check_any(validators: Vec<Validator>, output: &str) -> Result<(), String> {
+    let total = validators.len() as u32;
     let mut failures: u32 = 0;
     for v in validators {
-        match v.check(output.as_str()) {
+        match v.check(output) {
             Ok(_) => return Ok(()),
             Err(_msg) => failures = failures + 1,
         }
     }
-    if failures < (validators.len() as u32) {
+    if failures < total {
         
 
         return Ok(());
     }
-    return Err(Box::new(format!("none of {} validators passed", (validators.len() as i32))));
+    return Err(format!("none of {} validators passed", total));
 }
