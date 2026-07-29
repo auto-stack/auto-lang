@@ -11,8 +11,13 @@
 | 缺陷 | 状态 | 验证 |
 |---|---|---|
 | **C**（i+1 auto-borrow） | ✅ 已修已验证 | driver.a2r.rs 的 `result.as_str()`/`agent_result.as_str()`（enum/struct 参数错加的）消除；真 String→&str 的 `.as_str()` 保留 |
-| **A**（spec 跨模块解析） | ⚠️ 已修但**仅 project-merged 路径生效** | Phase 1.5 预注册 spec 后，同文件 spec（如 `client Client`→`Box<dyn Client>`）正确；但 **`auto trans --path <file>` 单文件入口不走 Phase 1.5**，跨模块 spec（如 `use role_def: Role` 后的 `role Role`）仍解析为裸 `Role` |
-| **B**（Option 方法） | ⏳ 未做 | — |
+| **A**（spec 跨模块解析） | ✅ 已修已验证（两条路径） | Phase 1.5 预注册 spec（project-merged 路径）+ 单文件路径的 sibling 扫描 + `rust_type_name` 的 Type::User 守卫。`role Role`/`client Client` 现都正确译为 `Box<dyn Role>`/`Box<dyn Client>`。E0782 全消 |
+| **B**（Option 方法） | ✅ 已修已验证 | `args.get(key).as_string()` 译为 `a2r_std::json::as_string_opt(...)`（运行时助手已存在，现正确 emit）。最小复现 + driver.at/skill.at 验证通过 |
+
+**三个诊断出的系统性 a2r 缺陷全部修完。** 剩余 ~363 个 cargo 错误是 **B1 类
+codegen 细节问题**（int/uint 混用如 `u32 - i32`、缺 `#[derive(Clone)]`、trait
+bound 缺失等），是**另一类、逐个错误**的工作，不属本计划（371）的 3 个系统性
+缺陷。这类问题的修法见下「剩余工作」。
 
 ### ⚠️ 关键发现：缺陷 A 的修复受限于"调用模型"
 
