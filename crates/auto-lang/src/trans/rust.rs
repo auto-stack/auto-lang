@@ -6603,27 +6603,66 @@ impl RustTrans {
     fn needs_as_str(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Ident(name) => {
-                // Plan 368 FU-2: only function PARAMS declared `str` are truly
-                // &str in the generated Rust. A LOCAL declared `var x str = ...`
-                // renders to an owned String (rust_type_name maps StrSlice ->
-                // "String"), so it still needs .as_str() at &str use sites — and
-                // borrowing (instead of moving) lets it be reused (e.g. passed to
-                // both fs.write_text and fs.read_text). The old check (any
-                // StrSlice-tracked ident => false) caused E0382 use-of-moved-value
-                // and E0308 String-vs-&str mismatches.
                 if self.current_fn_str_params.contains(name) {
                     return false;
                 }
                 true
             }
-            Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => false, // literals are already &str
-            Expr::Int(_) | Expr::Float(_, _) => false, // numeric types don't have as_str
-            _ => true, // complex expressions (function calls, etc.) may return String
+            Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => false,
+            Expr::Int(_) | Expr::Float(_, _) => false,
+            // Plan 368 R-AREG: Dot access that returns &str
+            Expr::Dot(_, field) => {
+                let f = field.as_str();
+                f == "trim" || f == "trim_start" || f == "trim_end"
+                || f == "trim_matches" || f == "as_str"
+            }
+            // Plan 368 R-AREG: Method calls that return &str don't need .as_str()
+            // (calling .as_str() on &str triggers E0658 unstable str_as_str).
+            Expr::Call(call) => {
+                // Extract method name from Dot(obj, method) — get_name_text_safe
+                // only handles Ident, not Dot.
+                let method_name: Option<&str> = match call.name.as_ref() {
+                    Expr::Dot(_, method) => Some(method.as_str()),
+                    Expr::Ident(name) => Some(name.as_str()),
+                    _ => None,
+                };
+                if let Some(m) = method_name {
+                    // trim* methods and as_str return &str in Rust
+                    if m == "trim" || m == "trim_start" || m == "trim_end"
+                        || m == "trim_matches" || m == "trim_start_matches"
+                        || m == "trim_end_matches" || m == "as_str" {
+                        return false;
+                    }
+                }
+                true
+            }
+            _ => true,
         }
     }
 
     /// Emit an expression with .as_str() appended if needed for &str parameter.
     fn expr_as_str(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 368 R-AREG: For trim* methods, expr() appends .to_string() which
+        // makes it String. But we need &str here, so render to a temp buffer,
+        // strip the .to_string() suffix, and write the base (which is already &str).
+        let is_trim_method = if let Expr::Call(call) = expr {
+            if let Expr::Dot(_, m) = call.name.as_ref() {
+                let f = m.as_str();
+                f == "trim" || f == "trim_start" || f == "trim_end"
+                || f == "trim_matches" || f == "as_str"
+            } else { false }
+        } else { false };
+        if is_trim_method {
+            let mut buf: Vec<u8> = Vec::new();
+            self.expr(expr, &mut buf)?;
+            let mut buf_str = String::from_utf8_lossy(&buf).to_string();
+            // Strip the .to_string() that the trim handler appends
+            if buf_str.ends_with(".to_string()") {
+                buf_str.truncate(buf_str.len() - ".to_string()".len());
+            }
+            write!(out, "{}", buf_str)?;
+            return Ok(()); // trim() returns &str, no .as_str() needed
+        }
         self.expr(expr, out)?;
         if self.needs_as_str(expr) {
             write!(out, ".as_str()")?;
