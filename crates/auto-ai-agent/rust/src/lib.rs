@@ -38,6 +38,7 @@ pub mod relay;
 pub mod role_def;
 pub mod role_config;
 pub mod roles;
+pub mod echo_tool;
 pub mod skill;
 pub mod tool;
 pub mod validate;

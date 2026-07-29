@@ -6,17 +6,17 @@ use a2r_std;
 use a2r_std::*;
 
 use std::sync::Arc;
-use std::pin::Pin;
-use std::future::Future;
+use async_trait::async_trait;
 use crate::wire::{ToolDefinition, JsonValue};
 use crate::error::{ToolError};
+#[async_trait::async_trait]
 pub trait Tool {
     fn name(&self) -> String;
     fn description(&self) -> String;
     fn parameters(&self) -> JsonValue{
         return a2r_std::json::parse("{\"type\":\"object\",\"properties\":{}}");
     }
-    fn execute<'a>(&'a self, args: JsonValue) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + 'a>>;
+    async fn execute(&self, args: JsonValue) -> Result<String, ToolError>;
 }
 
 
