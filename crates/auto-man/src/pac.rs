@@ -1329,15 +1329,6 @@ fn path_depth(path: &AutoStr) -> u32 {
 }
 
 impl Pac {
-    fn has_target(&self, kind: TargetKind) -> bool {
-        for t in &self.targets {
-            if t.kind == kind {
-                return true;
-            }
-        }
-        false
-    }
-
     pub fn all_incs(&self) -> Vec<AutoStr> {
         let mut all_incs = HashSet::new();
         for target in &self.targets {
@@ -1354,27 +1345,39 @@ impl Pac {
         root.add_arg(Arg::Pos(Value::Str(self.name.clone())));
         root.set_prop("version", self.version.clone());
         let mut all_incs = self.all_incs();
+        // Plan 375: collect each target once, both as kids (preserving the tree
+        // shape) and grouped into plural-named arrays (apps/deps/devices/libs/
+        // bags/tests) so mold templates that do `@ for app in apps { ... }` can
+        // iterate them. Previously these props were only set to *empty* arrays
+        // as a fallback when the kind was absent, leaving eww-style templates
+        // with `UndefinedVariable: apps`.
+        let mut apps = Vec::new();
+        let mut deps = Vec::new();
+        let mut devices = Vec::new();
+        let mut libs = Vec::new();
+        let mut bags = Vec::new();
+        let mut tests = Vec::new();
         for target in &self.targets {
-            root.add_kid(target.to_node());
+            let node = target.to_node();
+            match target.kind {
+                TargetKind::App => apps.push(Value::Node(node.clone())),
+                TargetKind::Dep => deps.push(Value::Node(node.clone())),
+                TargetKind::Device => devices.push(Value::Node(node.clone())),
+                TargetKind::Lib => libs.push(Value::Node(node.clone())),
+                TargetKind::Bag => bags.push(Value::Node(node.clone())),
+                TargetKind::Test => tests.push(Value::Node(node.clone())),
+            }
+            root.add_kid(node);
         }
         all_incs.sort();
         root.set_prop("all_incs", Value::Array(Array::from_vec(all_incs)));
 
-        if !self.has_target(TargetKind::Dep) {
-            root.set_prop("deps", Value::Array(Array::new()));
-        }
-
-        if !self.has_target(TargetKind::Device) {
-            root.set_prop("devices", Value::Array(Array::new()));
-        }
-
-        if !self.has_target(TargetKind::Lib) {
-            root.set_prop("libs", Value::Array(Array::new()));
-        }
-
-        if !self.has_target(TargetKind::App) {
-            root.set_prop("apps", Value::Array(Array::new()));
-        }
+        root.set_prop("deps", Value::Array(Array::from_vec(deps)));
+        root.set_prop("devices", Value::Array(Array::from_vec(devices)));
+        root.set_prop("libs", Value::Array(Array::from_vec(libs)));
+        root.set_prop("apps", Value::Array(Array::from_vec(apps)));
+        root.set_prop("bags", Value::Array(Array::from_vec(bags)));
+        root.set_prop("tests", Value::Array(Array::from_vec(tests)));
 
         // root.set_prop("files", self.files_list());
         // root.set_prop("groups", self.group_list());
