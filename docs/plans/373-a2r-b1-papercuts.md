@@ -1,6 +1,6 @@
 # Plan 373: a2r B1 类 codegen 细节修复（让 auto-ai-agent rust/ crate 过 cargo check）
 
-> **状态**：待实施
+> **状态**：✅ 已完成（2026-07-29）— 343 → 0 cargo errors，`cargo run` 跑通 ReAct 问答
 > **仓库**：auto-lang（`D:/autostack/auto-lang`）
 > **前置**：plan 372（3 个系统性缺陷已修）、plan 013（移植 + rust/ 组装完成）
 > **目标**：修复剩余 343 个 cargo 错误，让 `crates/auto-ai-agent/rust/` 通过

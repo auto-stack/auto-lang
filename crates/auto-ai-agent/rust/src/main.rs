@@ -20,7 +20,7 @@ async fn main() {
     println!("[react] talking to daemon at {url}");
     let client = AiClient::with_url(&url);
     let role = Assistant {};
-    let agent = Agent::new_shared(Box::new(role), Box::new(client));
+    let mut agent = Agent::new_shared(Box::new(role), Box::new(client));
 
     let task = "你好，请用一句话介绍你自己。";
     println!("[react] task: {task}");

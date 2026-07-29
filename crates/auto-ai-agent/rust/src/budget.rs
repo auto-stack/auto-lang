@@ -71,8 +71,8 @@ impl TokenBudget {
 /// Build a budget with an explicit strategy.
 /// 70% warning threshold (kept as a helper so new()/with_strategy() share it).
 fn warn_threshold(limit: u32) -> u32 {
-    let scaled: f64 = limit.to_float() * 0.7;
-    return scaled.to_uint();
+    let scaled: f64 = (limit as f64) * 0.7;
+    return scaled as u32;
 }
 
 /// Action the pipeline should take after a budget check.
@@ -119,16 +119,16 @@ impl BudgetTracker {
         let total: u32 = input + output;
         self.cumulative = self.cumulative + total;
         if self.per_step.contains_key(step) == false {
-            self.per_step_names.push(step);
-            self.per_step.insert(step.to_string(), total)
+            self.per_step_names.push(step.to_string());
+            self.per_step.insert(step.to_string(), total);
         } else {
-            let prev = self.per_step.get(step);
-            self.per_step.insert(step.to_string(), prev + total)
+            let prev: u32 = self.per_step.get(step).copied().unwrap_or(0);
+            self.per_step.insert(step.to_string(), prev + total);
         }
 
     }
     pub fn check(&self, step: &str) -> BudgetAction {
-        let step_used = self.step_used(step.as_str());
+        let step_used = self.step_used(step);
 
 
         match self.step_budgets.get(step) {
@@ -150,13 +150,13 @@ impl BudgetTracker {
     }
     pub fn set_step_budget(&mut self, step: &str, budget: TokenBudget) {
         if self.step_budgets.contains_key(step) == false {
-            self.step_names.push(step);
+            self.step_names.push(step.to_string());
         }
         self.step_budgets.insert(step.to_string(), budget);
     }
     pub fn step_used(&self, step: &str) -> u32 {
         match self.per_step.get(step) {
-            Some(n) => return n,
+            Some(n) => return *n,
             None => return 0,
         }
     }

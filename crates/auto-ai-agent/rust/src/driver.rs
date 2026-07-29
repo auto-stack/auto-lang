@@ -12,6 +12,7 @@ use crate::handoff::{HandoffDocument, WorkProduct};
 use crate::pipeline::{AdvanceResult, GateDecision, PipelineEngine};
 use crate::budget::{BudgetAction};
 use crate::agent::{Agent, AgentResult, StreamEvent};
+use crate::wire::JsonValue;
 use crate::error::{AgentError};
 /// Pipeline Driver — the orchestration loop that bridges PipelineEngine and
 /// Agent.
@@ -50,7 +51,7 @@ use crate::error::{AgentError};
 /// Loop again (e.g. gate resolved).
 /// Terminate the run successfully (Completed / Paused).
 /// Terminate with an error.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug)]
 enum DriveOutcome {
     Continue,
     Done,
@@ -68,7 +69,7 @@ enum DriveOutcome {
 /// The pipeline failed. (error)
 /// A loop reached max iterations — paused. (step_id, reason)
 /// Token budget warning. (remaining)
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum PipelineEvent {
     StepStarted(String, String),
     Delta(String),
@@ -139,44 +140,49 @@ impl PipelineDriver {
 
         return PipelineDriver { engine: engine, factory: factory, gate_handler: None, on_event: noop_event_handler };
     }
-    pub fn with_gate_handler(&self, handler: fn(String) -> GateDecision) -> PipelineDriver {
+    pub fn with_gate_handler(&mut self, handler: fn(String) -> GateDecision) -> &mut PipelineDriver {
         self.gate_handler = Some(handler);
         return self;
     }
-    pub async fn drive(&self, task_msg: &str, on_event: fn(PipelineEvent) -> ()) -> Result<None, AgentError> {
+    pub async fn drive(&mut self, task_msg: &str, on_event: fn(PipelineEvent) -> ()) -> Result<(), AgentError> {
         self.on_event = on_event;
         let mut last_handoff: Option<HandoffDocument> = None;
         loop {
             let result = self.engine.advance();
-            let outcome = self.dispatch(result, task_msg.as_str(), last_handoff);
+            let outcome = self.dispatch(result.clone(), task_msg, last_handoff.clone()).await;
             match outcome {
                 DriveOutcome::Continue => last_handoff = self.last_handoff_after(result, last_handoff),
-                DriveOutcome::Done => return Ok(None),
-                DriveOutcome::Fail(e) => return Err(Box::new(e)),
+                DriveOutcome::Done => return Ok(()),
+                DriveOutcome::Fail(e) => return Err(e),
             }
         }
     }
-    pub async fn dispatch(&self, result: AdvanceResult, task_msg: &str, last_handoff: Option<HandoffDocument>) -> DriveOutcome {
+    pub async fn dispatch(&mut self, result: AdvanceResult, task_msg: &str, last_handoff: Option<HandoffDocument>) -> DriveOutcome {
         match result {
-            AdvanceResult::ExecuteStep(step_id, role_id) => return self.drive_step(task_msg.as_str(), step_id, role_id, last_handoff),
+            AdvanceResult::ExecuteStep(step_id, role_id) => {
+                match self.drive_step(task_msg, step_id.as_str(), role_id.as_str(), last_handoff).await {
+                    Ok(()) => return DriveOutcome::Continue,
+                    Err(e) => return DriveOutcome::Fail(e),
+                }
+            },
             AdvanceResult::Completed => {
-                self.on_event(PipelineEvent::Completed);
+                (self.on_event)(PipelineEvent::Completed);
                 return DriveOutcome::Done;
             },
             AdvanceResult::Failed(error) => {
-                let ev = PipelineEvent::Failed(error);
-                self.on_event(ev);
+                let ev = PipelineEvent::Failed(error.clone());
+                (self.on_event)(ev);
                 return DriveOutcome::Fail(AgentError::Config(error));
             },
             AdvanceResult::Paused(step_id, reason) => {
                 let ev = PipelineEvent::Paused(step_id, reason);
-                self.on_event(ev);
+                (self.on_event)(ev);
                 return DriveOutcome::Done;
             },
             AdvanceResult::WaitForHuman(step_id) => {
-                let ev = PipelineEvent::GateWaiting(step_id);
-                self.on_event(ev);
-                let gr = self.resolve_gate_auto(step_id);
+                let ev = PipelineEvent::GateWaiting(step_id.clone());
+                (self.on_event)(ev);
+                let gr = self.resolve_gate_auto(step_id.as_str()).await;
                 match gr {
                     Ok(_) => return DriveOutcome::Continue,
                     Err(e) => return DriveOutcome::Fail(e),
@@ -193,12 +199,12 @@ impl PipelineDriver {
     pub fn engine_mut(&self) -> PipelineEngine {
         return self.engine.clone();
     }
-    pub async fn drive_step(&self, task_msg: &str, step_id: &str, role_id: &str, last_handoff: Option<HandoffDocument>) -> Result<None, AgentError> {
+    pub async fn drive_step(&mut self, task_msg: &str, step_id: &str, role_id: &str, last_handoff: Option<HandoffDocument>) -> Result<(), AgentError> {
         let started = PipelineEvent::StepStarted(step_id.to_string(), role_id.to_string());
-        self.on_event(started);
+        (self.on_event)(started);
 
 
-        let agent = match self.factory.build_agent(role_id, last_handoff) { Ok(a) => a, Err(msg) => return Err(AgentError::Config(msg)), };
+        let mut agent = match self.factory.build_agent(role_id, last_handoff.clone()) { Ok(a) => a, Err(msg) => return Err(AgentError::Config(msg)), };
 
 
         let input = build_step_input(task_msg, last_handoff.clone());
@@ -212,28 +218,28 @@ impl PipelineDriver {
 
 
         let no_cancel = Arc::new(AtomicBool::new(false));
-        let agent_result = agent::run_stream(input, stream_cb, no_cancel).await?;
+        let agent_result = agent.run_stream(input.as_str(), no_cancel).await?;
 
 
-        let content = agent_result.content.clone();
-        let handoff = self.build_handoff(role_id.as_str(), agent_result, content);
-        let completed = PipelineEvent::StepCompleted(step_id.to_string(), handoff);
-        self.on_event(completed);
-        last_handoff = Some(handoff);
+        let content = agent_result.content();
+        let handoff = self.build_handoff(role_id, agent_result, content.as_str());
+        let completed = PipelineEvent::StepCompleted(step_id.to_string(), handoff.clone());
+        (self.on_event)(completed);
+        let mut last_handoff = Some(handoff.clone());
 
 
         let submitted = self.engine.submit_handoff(handoff);
 
 
         emit_budget_warning(self.engine.clone(), last_handoff.clone(), self.on_event.clone());
-        return self.handle_after_submit(submitted);
+        return self.handle_after_submit(submitted).await;
     }
-    pub async fn resolve_gate_auto(&self, step_id: &str) -> Result<None, AgentError> {
-        let decision = match self.gate_handler { Some(handler) => handler(step_id), None => GateDecision::Approve, };
+    pub async fn resolve_gate_auto(&mut self, step_id: &str) -> Result<(), AgentError> {
+        let decision = match self.gate_handler { Some(handler) => handler(step_id.to_string()), None => GateDecision::Approve, };
         let gate_result = self.engine.resolve_gate(decision);
         match gate_result {
-            AdvanceResult::Failed(_e) => return Err(AgentError::Config("gate resolution failed")),
-            _ => return Ok(None),
+            AdvanceResult::Failed(_e) => return Err(AgentError::Config("gate resolution failed".to_string())),
+            _ => return Ok(()),
         }
     }
     pub fn build_handoff(&self, role_id: &str, result: AgentResult, content: &str) -> HandoffDocument {
@@ -260,37 +266,37 @@ impl PipelineDriver {
         h.token_usage.step_tokens = result.total_tokens;
         return h;
     }
-    pub async fn handle_after_submit(&self, next: AdvanceResult) -> Result<None, AgentError> {
+    pub async fn handle_after_submit(&mut self, next: AdvanceResult) -> Result<(), AgentError> {
         match next {
             AdvanceResult::Completed => {
-                self.on_event(PipelineEvent::Completed);
-                return Ok(None);
+                (self.on_event)(PipelineEvent::Completed);
+                return Ok(());
             },
             AdvanceResult::Failed(error) => {
-                let ev = PipelineEvent::Failed(error);
-                self.on_event(ev);
+                let ev = PipelineEvent::Failed(error.clone());
+                (self.on_event)(ev);
                 return Err(AgentError::Config(error));
             },
             AdvanceResult::Paused(step_id, reason) => {
                 let ev = PipelineEvent::Paused(step_id, reason);
-                self.on_event(ev);
+                (self.on_event)(ev);
                 
 
-                return Ok(None);
+                return Ok(());
             },
             AdvanceResult::WaitForHuman(step_id) => {
-                let ev = PipelineEvent::GateWaiting(step_id);
-                self.on_event(ev);
-                let gr = self.resolve_gate_auto(step_id);
+                let ev = PipelineEvent::GateWaiting(step_id.clone());
+                (self.on_event)(ev);
+                let gr = self.resolve_gate_auto(step_id.as_str()).await;
                 match gr {
-                    Ok(_) => return Ok(None),
-                    Err(e) => return Err(Box::new(e)),
+                    Ok(_) => return Ok(()),
+                    Err(e) => return Err(e),
                 }
             },
             AdvanceResult::ExecuteStep(_sid, _rid) => {
                 
 
-                return Ok(None);
+                return Ok(());
             },
         }
     }
@@ -334,9 +340,9 @@ impl PipelineDriver {
 /// of the ExecuteStep branch). Terminates drive() on terminal results.
 /// Current UNIX timestamp in seconds (bridged to std::time::SystemTime).
 fn now_secs() -> u32 {
-    let now = std.time.SystemTime.now();
-    let dur = now.duration_since(std.time.UNIX_EPOCH);
-    return dur.as_secs();
+    let now = std::time::SystemTime::now();
+    let dur = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    return dur.as_secs() as u32;
 }
 
 /// The step input: the previous handoff's render, or (for step 0) the task.
@@ -349,8 +355,8 @@ fn build_step_input(task_msg: &str, last_handoff: Option<HandoffDocument>) -> St
 
 /// If the engine's budget check reports a Warning, emit a BudgetWarning event.
 fn emit_budget_warning(engine: PipelineEngine, last_handoff: Option<HandoffDocument>, on_event: fn(PipelineEvent) -> ()) {
-    let role_for_budget = match last_handoff { Some(h) => h.from, None => "", };
-    let action = engine.budget_tracker.check(role_for_budget);
+    let role_for_budget = match last_handoff { Some(h) => h.from, None => String::new(), };
+    let action = engine.budget_tracker.check(role_for_budget.as_str());
     match action {
         BudgetAction::Warning(remaining) => on_event(PipelineEvent::BudgetWarning(remaining)),
         _ => {},
@@ -360,16 +366,16 @@ fn emit_budget_warning(engine: PipelineEngine, last_handoff: Option<HandoffDocum
 /// Take up to `max` characters from `s` (best-effort; Auto has no char-range
 /// slice, so this is a byte-truncation approximation — adequate for a summary).
 fn truncate_chars(s: &str, max: u32) -> String {
-    let end = (s.len() as i32);
+    let end = s.len() as u32;
     if end <= max {
         return s.to_string();
     }
-    return s.substring(0, max);
+    return s[0..max as usize].to_string();
 }
 
 /// Extract the `path` field from a tool-call args JSON value, or "?" if absent.
 fn extract_path(args: JsonValue) -> String {
-    let p = a2r_std::json::as_string_opt(args.get(&"path"));
+    let p = a2r_std::json::as_string(args.get("path").unwrap_or(&serde_json::Value::Null));
     if p.is_empty() {
         return "?".to_string();
     }
