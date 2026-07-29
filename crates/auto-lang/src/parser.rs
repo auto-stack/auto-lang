@@ -11334,6 +11334,7 @@ impl<'a> Parser<'a> {
 
                 // Check if it's an event (onclick, etc.)
                 if key.starts_with("on") {
+                    let key = self.parse_event_modifiers(key)?;
                     self.expect(TokenKind::Colon)?;
                     // Parse handler with optional parameters: .Inc or .Delete(todo.id)
                     let (handler, params) = self.parse_event_handler()?;
@@ -11411,8 +11412,13 @@ impl<'a> Parser<'a> {
                     // Peek at next token to see if it's a colon
                     if let Ok(next_token) = self.lexer.next() {
                         let is_colon = next_token.kind == TokenKind::Colon;
+                        // Event modifiers: `onwheel.prevent:` — an `on*` key
+                        // followed by a dot also introduces an event prop.
+                        let is_event_modifier = !is_colon
+                            && next_token.kind == TokenKind::Dot
+                            && self.cur.text.starts_with("on");
                         self.lexer.push_token(next_token);
-                        is_colon
+                        is_colon || is_event_modifier
                     } else {
                         false
                     }
@@ -11424,6 +11430,13 @@ impl<'a> Parser<'a> {
                     // Parse as prop/event
                     let key = self.cur.text.to_string();
                     self.next();
+                    // Event modifiers (onwheel.prevent, onmousemove.window) are
+                    // dot-suffixed and must be consumed before the colon.
+                    let key = if key.starts_with("on") {
+                        self.parse_event_modifiers(key)?
+                    } else {
+                        key
+                    };
                     self.expect(TokenKind::Colon)?;
 
                     // Check if it's an event (onclick, etc.)
@@ -11858,6 +11871,37 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse event handler with optional parameters: .Inc or .Delete(todo.id) or nav("route", data)
+    /// Consume an optional `.modifier` chain after an `on*` event key.
+    ///
+    /// Supported modifier kinds (interpreted by the code generators):
+    /// - event modifiers: `prevent`, `stop`, `capture`, `once`, `self`, `passive`
+    /// - key modifiers: `enter`, `esc`/`escape`, `up`, `down`, `left`, `right`,
+    ///   `space`, `tab`, `del`/`delete`
+    /// - global targets: `window`, `document` (generator emits
+    ///   addEventListener/removeEventListener pairs instead of a template attr)
+    ///
+    /// Example: `onkeydown.up.prevent: .MoveUp`, `onwheel.document.capture: .Lock`
+    fn parse_event_modifiers(&mut self, mut key: String) -> AutoResult<String> {
+        while self.is_kind(TokenKind::Dot) {
+            self.next();
+            if !self.is_kind(TokenKind::Ident) && !self.cur_is_soft_ident() {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "expected event modifier after `{}.`, got `{}`",
+                        key, self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            let modifier = self.cur.text.to_string();
+            self.next();
+            key.push('.');
+            key.push_str(&modifier);
+        }
+        Ok(key)
+    }
+
     fn parse_event_handler(&mut self) -> AutoResult<(String, Vec<String>)> {
         // Handle dot-prefixed handlers like .Inc (meaning Msg::Inc in widget scope)
         if self.is_kind(TokenKind::Dot) {
@@ -11968,6 +12012,15 @@ impl<'a> Parser<'a> {
                     parts.push(format!("this.{}", name));
                 }
                 prev_was_ident = false;
+            } else if self.is_kind(TokenKind::FStrNote) {
+                // `$event` (and `$event.field`) — the DOM event object, mapped
+                // verbatim to Vue's `$event` template variable by the Vue
+                // generator. `$` lexes as FStrNote outside f-strings.
+                self.next();
+                let name = self.cur.text.to_string();
+                self.next();
+                parts.push(format!("${}", name));
+                prev_was_ident = true;
             } else if self.is_kind(TokenKind::Ident) || self.cur_is_soft_ident() {
                 // Plan 356: also accept soft keywords used as identifiers in
                 // argument position (e.g. a loop variable named `tag`, which
@@ -12409,6 +12462,56 @@ mod tests {
         let ast = parser.parse().unwrap();
         let last = ast.stmts.last().unwrap();
         assert!(matches!(last, Stmt::WidgetDecl(_)));
+    }
+
+    #[test]
+    fn test_view_event_modifiers_and_event_object() {
+        // Generic DOM events: dot-modifier chains (onkeydown.up.prevent,
+        // onwheel.document.capture) and the $event object parameter, in both
+        // paren and brace prop styles.
+        let code = concat!(
+            "widget App {\n",
+            "  model { var x int = 0 }\n",
+            "  view {\n",
+            "    col {\n",
+            "      input (value: .x, onkeydown.up.prevent: .Move($event))\n",
+            "      col { onwheel.document.capture: .Lock($event.key) }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let root = &widget.view.as_ref().unwrap().root;
+        let children = match root {
+            ViewNode::Element { children, .. } => children,
+            other => panic!("expected element root, got {:?}", other),
+        };
+        // Paren style: modifier chain preserved in the event name.
+        let input_events = match &children[0] {
+            ViewNode::Element { events, .. } => events,
+            other => panic!("expected input element, got {:?}", other),
+        };
+        assert_eq!(input_events[0].name, "onkeydown.up.prevent");
+        assert_eq!(input_events[0].handler, ".Move");
+        assert_eq!(input_events[0].params, vec!["$event".to_string()]);
+        // Brace style: window/document target modifier + $event field access.
+        let col_events = match &children[1] {
+            ViewNode::Element { events, .. } => events,
+            other => panic!("expected col element, got {:?}", other),
+        };
+        assert_eq!(col_events[0].name, "onwheel.document.capture");
+        assert_eq!(col_events[0].handler, ".Lock");
+        assert_eq!(col_events[0].params, vec!["$event.key".to_string()]);
     }
 
     #[test]
