@@ -26,13 +26,14 @@ store NotesStore {
         var accent_color str = "indigo"
     }
 
-    msg Msg { Init, Refresh, SelectNote(int), NewNote, DeleteNote(int),
+    msg Msg { Init, Refresh, SelectNote(int), NewNote, NewNoteInFolder(str), DeleteNote(int),
               TogglePin(int), SetSort(str), Search(str),
               UpdateTags(int), ToggleDarkMode, SetAccent(str),
               SelectFolder(str), SelectTag(str), MoveNote(int) }
 
     computed {
         pinned_notes => .notes.filter(n => n.pinned)
+        all_tags => []
     }
 
     on {

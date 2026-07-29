@@ -395,6 +395,16 @@ fn compile_at_file(
         }
     }
 
+    // Plan 374: Generate Rust type aliases from Auto type declarations.
+    // User-defined types (like Note) are aliased to serde_json::Value since
+    // the code generator uses Value-based dynamic field access (["field"]).
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::TypeDecl(type_decl) = stmt {
+            output.push_str(&generate_type_struct(type_decl));
+            output.push('\n');
+        }
+    }
+
     // NOTE: API stubs are NOT generated here — callers collect all imports
     // across files and generate stubs once to avoid duplicates.
 
@@ -1700,6 +1710,37 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     }
 }
 
+/// Generate a Rust type alias from an Auto TypeDecl.
+/// Uses serde_json::Value as the underlying type to maintain compatibility
+/// with the dynamic-typing code generator (field access via ["field"]).
+fn generate_type_struct(type_decl: &auto_lang::ast::TypeDecl) -> String {
+    format!("pub type {} = serde_json::Value;\n", type_decl.name)
+}
+
+/// Convert an Auto Type to a Rust type string (standalone, mirrors RustGenerator::auto_type_to_rust).
+fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
+    use auto_lang::ast::Type;
+    match ty {
+        Type::Int => "i32".to_string(),
+        Type::Uint => "u32".to_string(),
+        Type::I64 => "i64".to_string(),
+        Type::U64 => "u64".to_string(),
+        Type::Float => "f32".to_string(),
+        Type::Double => "f64".to_string(),
+        Type::Bool => "bool".to_string(),
+        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => "String".to_string(),
+        Type::Void => "()".to_string(),
+        Type::Array(arr) => format!("Vec<{}>", type_to_rust_str(&arr.elem)),
+        Type::RuntimeArray(arr) => format!("Vec<{}>", type_to_rust_str(&arr.elem)),
+        Type::List(inner) => format!("Vec<{}>", type_to_rust_str(inner)),
+        Type::Slice(sl) => format!("Vec<{}>", type_to_rust_str(&sl.elem)),
+        Type::Map(k, v) => format!("std::collections::HashMap<{}, {}>", type_to_rust_str(k), type_to_rust_str(v)),
+        Type::User(td) => td.name.to_string(),
+        Type::Unknown => "serde_json::Value".to_string(),
+        _ => "serde_json::Value".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1755,6 +1796,23 @@ pub struct Timer {
         fs::write(&pac_path, r#"name: "TestProject""#).ok();
         assert_eq!(parse_pac_name(&pac_path), Some("TestProject".to_string()));
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_gen_015_notes_rust() {
+        // Quick generation test for 015-notes Rust UI code
+        let project_dir = std::path::PathBuf::from(
+            env!("CARGO_MANIFEST_DIR")
+        ).join("..").join("..").join("examples").join("ui").join("015-notes");
+        if !project_dir.exists() {
+            eprintln!("Skipping: project dir not found at {:?}", project_dir);
+            return;
+        }
+        let result = super::generate_rust_ui(&project_dir, None, false);
+        match result {
+            Ok(()) => println!("Generation succeeded!"),
+            Err(e) => panic!("Generation failed: {}", e),
+        }
     }
 
     #[test]

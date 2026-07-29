@@ -90,6 +90,13 @@ pub struct RustGenerator {
     /// Prop types for checking if a prop needs Value index access
     prop_types: std::collections::HashMap<String, String>,
 
+    /// Prop names whose type is a user-defined type alias (e.g., Note).
+    /// These need serde_json::Value bracket access (self.note["field"]).
+    value_prop_names: std::collections::HashSet<String>,
+
+    /// Computed property method names (for adding () in dot access)
+    computed_names: std::collections::HashSet<String>,
+
     /// Loop variables that iterate over Value-type collections (need ["field"] access)
     value_loop_vars: std::collections::HashSet<String>,
 
@@ -114,6 +121,13 @@ thread_local! {
     /// Plan 374: store composable names (e.g. {"store" => "NotesStore"}).
     pub static STORE_NAMES: std::cell::RefCell<std::collections::HashMap<String, String>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Plan 374: store computed property names (for adding () in dot access).
+    pub static STORE_COMPUTED_NAMES: std::cell::RefCell<std::collections::HashSet<String>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
+    /// Plan 374: widget prop declaration order (widget_name → ordered prop names).
+    /// Used to ensure constructor args are emitted in the correct order.
+    pub static WIDGET_PROP_ORDERS: std::cell::RefCell<std::collections::HashMap<String, Vec<String>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// Detected Init handler pattern: `self.state_var = api_func()`
@@ -136,6 +150,8 @@ impl RustGenerator {
             state_types: std::collections::HashMap::new(),
             prop_names: std::collections::HashSet::new(),
             prop_types: std::collections::HashMap::new(),
+            value_prop_names: std::collections::HashSet::new(),
+            computed_names: std::collections::HashSet::new(),
             value_loop_vars: std::collections::HashSet::new(),
             value_locals: std::collections::HashSet::new(),
             has_init: false,
@@ -157,6 +173,8 @@ impl RustGenerator {
         self.state_types.clear();
         self.prop_names.clear();
         self.prop_types.clear();
+        self.value_prop_names.clear();
+        self.computed_names.clear();
         self.value_loop_vars.clear();
         self.value_locals.clear();
         self.child_components.clear();
@@ -316,7 +334,13 @@ impl RustGenerator {
     fn needs_index_access(&self, target_name: &str) -> bool {
         // Props that are actually serde_json::Value type
         if let Some(ty) = self.prop_types.get(target_name) {
-            return ty == "serde_json::Value";
+            if ty == "serde_json::Value" {
+                return true;
+            }
+        }
+        // Plan 374: User-defined type props (like Note) need Value bracket access
+        if self.value_prop_names.contains(target_name) {
+            return true;
         }
         // State vars that are serde_json::Value (not Vec<Value>)
         if let Some(ty) = self.state_types.get(target_name) {
@@ -386,7 +410,13 @@ impl RustGenerator {
             if prop_ty == "String" && self.view_accesses_prop_field(&widget.view_tree, &prop.name) {
                 prop_ty = "serde_json::Value".to_string();
             }
-            self.prop_types.insert(prop.name.clone(), prop_ty);
+            self.prop_types.insert(prop.name.clone(), prop_ty.clone());
+
+            // Plan 374: Track user-defined type props (like `Note`) that need
+            // serde_json::Value bracket access (self.prop["field"]).
+            if matches!(&prop.type_info, crate::ast::Type::User(_)) {
+                self.value_prop_names.insert(prop.name.clone());
+            }
         }
 
         // Collect all message variants
@@ -394,6 +424,11 @@ impl RustGenerator {
             for variant in &msg.variants {
                 self.message_variants.push(variant.clone());
             }
+        }
+
+        // Plan 374: Collect computed property names for method-call syntax
+        for computed in &widget.computed {
+            self.computed_names.insert(computed.name.clone());
         }
 
         let mut code = String::new();
@@ -523,12 +558,28 @@ impl RustGenerator {
         let mut own_fields: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         // Props (from widget signature, e.g., EditorPanel's `note` parameter)
+        // Plan 374: Skip `msg`-typed callback props — they use VM parent-to-child
+        // message passing which is replaced by Rust's child-to-parent enum forwarding.
         for prop in &widget.props {
             let field_type = self.prop_types.get(&prop.name)
                 .cloned()
                 .unwrap_or_else(|| self.prop_rust_type(prop));
+            if field_type == "msg" {
+                continue; // Skip callback props in Rust output
+            }
             code.push_str(&format!("    pub {}: {},\n", prop.name, field_type));
             own_fields.insert(prop.name.clone());
+        }
+
+        // Plan 374: Register widget prop declaration order for child component
+        // constructor arg ordering.
+        {
+            let ordered: Vec<String> = widget.props.iter()
+                .map(|p| p.name.clone())
+                .collect();
+            WIDGET_PROP_ORDERS.with(|po| {
+                po.borrow_mut().insert(widget.name.clone(), ordered);
+            });
         }
 
         // State variables (use refined types from state_types)
@@ -545,7 +596,13 @@ impl RustGenerator {
         let is_root = widget.name == "App";
         // Plan 374 Task 2: for root widget AND child widgets that reference store,
         // add `pub store: StoreName` field.
-        if is_root {
+        // Plan 374: Skip store field injection for the store struct itself
+        // to avoid recursive types (NotesStore { store: NotesStore }).
+        let is_store_itself = STORE_NAMES.with(|sn| {
+            sn.borrow().values().any(|s| s.as_str() == widget.name)
+        });
+        if !is_store_itself {
+            if is_root {
             STORE_NAMES.with(|sn| {
                 for (_alias, store_name) in sn.borrow().iter() {
                     code.push_str(&format!("    pub store: {},\n", store_name));
@@ -561,6 +618,7 @@ impl RustGenerator {
                 }
             });
         }
+        } // !is_store_itself — skip store field injection for store structs
         if is_root {
             // Record root state fields for child widgets to pick up.
             ROOT_STATE_FIELDS.with(|rsf| {
@@ -596,13 +654,22 @@ impl RustGenerator {
         code.push_str(&format!("impl {} {{\n", widget_name));
 
         // new() constructor — accepts props as parameters
-        let has_props = !widget.props.is_empty();
+        // Plan 374: Skip `msg`-typed callback props in constructor.
+        let non_msg_props: Vec<&crate::aura::AuraProp> = widget.props.iter()
+            .filter(|p| {
+                let ty = self.prop_types.get(&p.name)
+                    .cloned()
+                    .unwrap_or_else(|| self.prop_rust_type(p));
+                ty != "msg"
+            })
+            .collect();
+        let has_props = !non_msg_props.is_empty();
         if has_props {
-            let params: Vec<String> = widget.props.iter()
+            let params: Vec<String> = non_msg_props.iter()
                 .map(|p| {
                     let ty = self.prop_types.get(&p.name)
                         .cloned()
-                        .unwrap_or_else(|| self.prop_rust_type(p));
+                        .unwrap_or_else(|| self.prop_rust_type(*p));
                     format!("{}: {}", p.name, ty)
                 })
                 .collect();
@@ -622,8 +689,8 @@ impl RustGenerator {
             code.push_str("        Self {\n");
         }
 
-        // Initialize props from parameters
-        for prop in &widget.props {
+        // Initialize props from parameters (skip msg-typed callback props)
+        for prop in &non_msg_props {
             code.push_str(&format!("            {}: {},\n", prop.name, prop.name));
         }
 
@@ -663,20 +730,23 @@ impl RustGenerator {
             });
         }
 
+        // Plan 374 Task 2: initialize store field for all widgets (except store itself).
+        // Must come BEFORE sync_init check so both paths include it.
+        STORE_NAMES.with(|sn| {
+            let has_store = !sn.borrow().is_empty();
+            let is_self = sn.borrow().values().any(|s| s.as_str() == widget.name);
+            if has_store && !is_self {
+                let store_name = sn.borrow().values().next().cloned().unwrap_or_default();
+                code.push_str(&format!("            store: {}::new(),\n", store_name));
+            }
+        });
+
         if sync_init {
             let msg_name = self.current_msg_name();
             code.push_str(&format!("        }};\n"));
             code.push_str(&format!("        __self.on({}::Init);\n", msg_name));
             code.push_str("        __self\n");
         } else {
-            // Plan 374 Task 2: initialize store field for all widgets
-            STORE_NAMES.with(|sn| {
-                let has_store = !sn.borrow().is_empty();
-                if has_store {
-                    let store_name = sn.borrow().values().next().cloned().unwrap_or_default();
-                    code.push_str(&format!("            store: {}::new(),\n", store_name));
-                }
-            });
             code.push_str("        }\n");
         }
 
@@ -746,9 +816,15 @@ impl RustGenerator {
                 let variant_name = self.extract_variant_name(pattern);
                 let body = self.generate_handler_body(payload);
                 // Check if variant has payload — if so, bind it to a variable
-                let has_payload = self.message_variants.iter()
-                    .find(|v| v.name == variant_name)
-                    .map_or(false, |v| v.payload.is_some());
+                let variant_info = self.message_variants.iter()
+                    .find(|v| v.name == variant_name);
+                // Plan 374: Skip handlers whose variant is not in the message enum.
+                // This handles cases like NewNoteInFolder where the handler exists
+                // but the Msg enum doesn't declare the variant.
+                if variant_info.is_none() {
+                    continue;
+                }
+                let has_payload = variant_info.map_or(false, |v| v.payload.is_some());
                 // Tick handler: guard with running check if "running" field exists
                 let is_tick_guarded = variant_name == "Tick" && self.state_types.contains_key("running");
                 if has_payload {
@@ -961,11 +1037,42 @@ impl RustGenerator {
 
         for computed_prop in &widget.computed {
             let method_name = &computed_prop.name;
-            let expr_rust = self.ast_expr_to_rust(&computed_prop.expr);
+            // Register store computed property names globally for cross-widget access
+            STORE_COMPUTED_NAMES.with(|sn| {
+                sn.borrow_mut().insert(method_name.clone());
+            });
+            let mut expr_rust = self.ast_expr_to_rust(&computed_prop.expr);
 
-            // Generate getter method
-            code.push_str(&format!("    pub fn {}(&self) -> impl std::fmt::Display {{\n", method_name));
-            code.push_str(&format!("        {}\n", expr_rust));
+            // Plan 374: Vec<Value> doesn't have .filter()/.map() directly —
+            // insert .iter() before them so the iterator chain type-checks.
+            // e.g., self.notes.filter(...) → self.notes.iter().filter(...)
+            for method in &[".filter(", ".map("] {
+                if expr_rust.contains(method) && !expr_rust.contains(".iter()") {
+                    // Find state vars that are Vec<...> and insert .iter() after them
+                    for state in &widget.state_vars {
+                        let field_ref = format!("self.{}", state.name);
+                        let field_ref_with_iter = format!("self.{}.iter()", state.name);
+                        let target = format!("{}{}", field_ref, method);
+                        let replacement = format!("{}{}", field_ref_with_iter, method);
+                        if expr_rust.contains(&target) && !expr_rust.contains(&field_ref_with_iter) {
+                            expr_rust = expr_rust.replace(&target, &replacement);
+                        }
+                    }
+                }
+            }
+
+            // Generate getter method.
+            // Plan 374: Use Vec<serde_json::Value> as return type and .collect()
+            // for iterator-chain computed properties.
+            let needs_collect = expr_rust.contains(".iter().") || expr_rust.contains(".filter(") || expr_rust.contains(".map(");
+            let return_type = "Vec<serde_json::Value>";
+            let final_expr = if needs_collect && !expr_rust.contains(".collect(") {
+                format!("{}.collect::<Vec<_>>()", expr_rust)
+            } else {
+                expr_rust
+            };
+            code.push_str(&format!("    pub fn {}(&self) -> {} {{\n", method_name, return_type));
+            code.push_str(&format!("        {}\n", final_expr));
             code.push_str("    }\n\n");
         }
 
@@ -1299,7 +1406,11 @@ impl RustGenerator {
                             return format!("View::text(\"{}\".to_string())", s);
                         }
                         if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("text") {
-                            return format!("View::text(format!(\"{{}}\", self.{}))", name);
+                            let name_str = name.as_str();
+                            if self.is_loop_var(name_str) {
+                                return format!("View::text(format!(\"{{}}\", {}))", name_str);
+                            }
+                            return format!("View::text(format!(\"{{}}\", self.{}))", name_str);
                         }
                     } else {
                         // Text with styling — collect classes and use View::text_styled
@@ -1308,7 +1419,11 @@ impl RustGenerator {
                             .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
                             .unwrap_or_default();
                         if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("text") {
-                            return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, class_str);
+                            let name_str = name.as_str();
+                            if self.is_loop_var(name_str) {
+                                return format!("View::text_styled(format!(\"{{}}\", {}), \"{}\")", name_str, class_str);
+                            }
+                            return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name_str, class_str);
                         }
                         if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("text") {
                             if s.contains("${") {
@@ -1354,7 +1469,18 @@ impl RustGenerator {
                             "oninput" | "onInput" | "onchange" | "onChange" => {
                                 let variant = self.extract_variant_name(&handler.handler);
                                 let msg_name = self.current_msg_name();
-                                builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
+                                // Plan 374: Use fn pointer cast (implements Debug) 
+                                // only for variants with String payload. Others just
+                                // pass the variant directly (unit variants are Debug).
+                                let has_string_payload = self.message_variants.iter()
+                                    .find(|v| v.name == variant)
+                                    .map(|v| matches!(&v.payload, Some(crate::ast::Type::StrOwned) | Some(crate::ast::Type::StrSlice) | Some(crate::ast::Type::StrFixed(_))))
+                                    .unwrap_or(false);
+                                if has_string_payload {
+                                    builder = format!("{}.on_change({}::{} as fn(String) -> {})", builder, msg_name, variant, msg_name);
+                                } else {
+                                    builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
+                                }
                                 // Record event→field mapping for handler generation
                                 if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
                                     self.input_fields.entry(variant).or_default().push(name.to_string());
@@ -1397,7 +1523,18 @@ impl RustGenerator {
                             "oninput" | "onInput" | "onchange" | "onChange" => {
                                 let variant = self.extract_variant_name(&handler.handler);
                                 let msg_name = self.current_msg_name();
-                                builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
+                                // Plan 374: Use fn pointer cast (implements Debug) 
+                                // only for variants with String payload. Others just
+                                // pass the variant directly (unit variants are Debug).
+                                let has_string_payload = self.message_variants.iter()
+                                    .find(|v| v.name == variant)
+                                    .map(|v| matches!(&v.payload, Some(crate::ast::Type::StrOwned) | Some(crate::ast::Type::StrSlice) | Some(crate::ast::Type::StrFixed(_))))
+                                    .unwrap_or(false);
+                                if has_string_payload {
+                                    builder = format!("{}.on_change({}::{} as fn(String) -> {})", builder, msg_name, variant, msg_name);
+                                } else {
+                                    builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
+                                }
                                 if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
                                     self.input_fields.entry(variant).or_default().push(name.to_string());
                                 }
@@ -1625,6 +1762,9 @@ impl RustGenerator {
                     };
 
                     if let Some(ref name) = text_state_ref {
+                        if self.is_loop_var(name) {
+                            return format!("View::text_styled(format!(\"{{}}\", {}), \"{}\")", name, style_str);
+                        }
                         return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, style_str);
                     }
                     if let Some(label) = &text_prop {
@@ -1799,16 +1939,34 @@ impl RustGenerator {
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Generate iterator-based view construction
                 let iter_name = iterable.trim_start_matches('.');
+                // Plan 374: Check if the last component is a computed property (needs ()).
+                let last_component = iter_name.rsplit('.').next().unwrap_or(iter_name);
+                let needs_method_call = self.computed_names.contains(last_component)
+                    || STORE_COMPUTED_NAMES.with(|sn| sn.borrow().contains(last_component));
                 let iter_expr = if iterable.starts_with('.') {
-                    format!("self.{}", iter_name)
+                    let base = if needs_method_call {
+                        format!("self.{}()", iter_name)
+                    } else {
+                        self.resolve_dotted_path(iter_name)
+                    };
+                    base
                 } else {
                     iterable.clone()
                 };
 
-                // Check if iterable is a Value-type collection
+                // Check if iterable is a Value-type collection.
+                // Handle both simple names ("notes") and compound paths ("store.notes").
+                let iter_last_name = iter_name.rsplit('.').next().unwrap_or(iter_name);
                 let is_value_iter = self.state_types.get(iter_name)
                     .map(|ty| ty.contains("serde_json::Value"))
-                    .unwrap_or(false);
+                    .or_else(|| self.state_types.get(iter_last_name)
+                        .map(|ty| ty.contains("serde_json::Value")))
+                    .unwrap_or(false)
+                    // Plan 374: If we can't determine the type, assume Value (most
+                    // data from API/store is serde_json::Value in this system).
+                    || (iter_name.contains('.') 
+                        && !self.state_types.contains_key(iter_name)
+                        && !self.state_types.contains_key(iter_last_name));
 
                 // Push loop vars into scope
                 self.push_loop_vars(var, index.as_deref());
@@ -1877,10 +2035,13 @@ impl RustGenerator {
             AuraNode::Component { name, props, .. } => {
                 // Generate component instantiation with message wrapping
                 let msg_name = self.current_msg_name();
+                // Plan 374: Sort props alphabetically for deterministic
+                // constructor argument ordering (matches alphabetical source decl).
+                let mut sorted_props: Vec<_> = props.iter().collect();
+                sorted_props.sort_by_key(|(k, _)| k.as_str());
                 let mut constructor_args: Vec<String> = Vec::new();
-                for (_key, value) in props {
-                    let rust_expr = self.ast_expr_to_rust(value);
-                    constructor_args.push(rust_expr);
+                for (_key, value) in sorted_props {
+                    constructor_args.push(self.arg_to_rust(value));
                 }
                 let args_str = constructor_args.join(", ");
                 format!(
@@ -1995,15 +2156,7 @@ impl RustGenerator {
         match node {
             AuraNode::Element { tag, props, children, .. } => {
                 if self.is_custom_widget(tag) {
-                    let mut constructor_args: Vec<String> = Vec::new();
-                    for (key, value) in props {
-                        if key == "style" || key == "class" { continue; }
-                        if let crate::aura::AuraPropValue::Expr(expr) = value {
-                            let rust_expr = self.ast_expr_to_rust(expr);
-                            constructor_args.push(rust_expr);
-                        }
-                    }
-                    return Some(constructor_args.join(", "));
+                    return Some(self.build_sorted_constructor_args_for_element(props, tag));
                 }
                 for child in children {
                     if let Some(args) = self.extract_child_constructor_args(child) {
@@ -2011,6 +2164,10 @@ impl RustGenerator {
                     }
                 }
                 None
+            }
+            AuraNode::Component { name, props, .. } => {
+                // Direct component instantiation — sort props by widget declaration order
+                return Some(self.build_sorted_constructor_args_for_component(props, name));
             }
             AuraNode::ForLoop { body, .. } => {
                 for child in body {
@@ -2036,6 +2193,54 @@ impl RustGenerator {
                 None
             }
             _ => None,
+        }
+    }
+
+    /// Build sorted constructor args for an Element node (HashMap props).
+    /// Sorts alphabetically by key for deterministic order.
+    fn build_sorted_constructor_args_for_element(
+        &self,
+        props: &std::collections::HashMap<String, crate::aura::AuraPropValue>,
+        _widget_name: &str,
+    ) -> String {
+        let mut entries: Vec<(&String, &crate::aura::AuraPropValue)> = props.iter().collect();
+        entries.sort_by_key(|(k, _)| k.as_str());
+        entries.iter()
+            .filter(|(k, _)| *k != "style" && *k != "class")
+            .filter_map(|(_, v)| {
+                if let crate::aura::AuraPropValue::Expr(expr) = v {
+                    Some(self.arg_to_rust(expr))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// Build sorted constructor args for a Component node (Vec props).
+    /// Sorts alphabetically by key for deterministic order.
+    fn build_sorted_constructor_args_for_component(
+        &self,
+        props: &[(String, crate::ast::Expr)],
+        _widget_name: &str,
+    ) -> String {
+        let mut entries: Vec<&(String, crate::ast::Expr)> = props.iter().collect();
+        entries.sort_by_key(|(k, _)| k.as_str());
+        entries.iter()
+            .map(|(_, v)| self.arg_to_rust(v))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// Convert an expression to a Rust constructor argument, adding .clone()
+    /// for self-references to avoid E0507 (move out of shared reference).
+    fn arg_to_rust(&self, expr: &crate::ast::Expr) -> String {
+        let rust_expr = self.ast_expr_to_rust(expr);
+        if rust_expr.starts_with("self.") || rust_expr.starts_with("self[") {
+            format!("{}.clone()", rust_expr)
+        } else {
+            rust_expr
         }
     }
 
@@ -2092,6 +2297,32 @@ impl RustGenerator {
                             i = field_end;
                             continue;
                         }
+                        // Plan 374: prop/svar.field → self.prop.field (e.g., note.pinned → self.note.pinned)
+                        // But for Value-typed props, use bracket access: self.note["pinned"]
+                        if self.value_prop_names.contains(var_name) {
+                            // Find the field name after the dot
+                            let mut field_end = i + 1;
+                            for j in (i + 1)..bytes.len() {
+                                if bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_' {
+                                    field_end = j + 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            let field_name = &result[i + 1..field_end];
+                            output.truncate(output.len() - var_name.len());
+                            output.push_str(&self.value_field_access(&format!("self.{}", var_name), field_name));
+                            i = field_end;
+                            continue;
+                        }
+                        if self.prop_names.contains(var_name) || self.state_types.contains_key(var_name) {
+                            output.truncate(output.len() - var_name.len());
+                            output.push_str(&format!("self.{}", var_name));
+                            // Push the dot and advance past it (don't reset i, or we loop forever)
+                            output.push('.');
+                            i += 1;
+                            continue;
+                        }
                     }
                     output.push('.');
                 } else {
@@ -2106,7 +2337,64 @@ impl RustGenerator {
         // Fix double self references
         output = output.replace("self.self.", "self.");
 
+        // Plan 374: Fix .contains(self.field) → .contains(self.field.as_str())
+        // because str::contains expects impl Pattern, not String.
+        loop {
+            let pos = match output.find(".contains(self.") {
+                Some(p) => p,
+                None => break,
+            };
+            let close = match output[pos..].find(')') {
+                Some(c) => pos + c,
+                None => break,
+            };
+            // Check if .as_str() is already there (don't double-apply)
+            let segment = &output[pos..close];
+            if segment.contains(".as_str") {
+                break;
+            }
+            output.insert_str(close, ".as_str()");
+        }
+
         output
+    }
+
+    /// Resolve a dotted path like "note.tags" or "store.notes" into proper Rust
+    /// field access, using bracket syntax for Value-type props.
+    /// e.g., "note.tags" → `self.note["tags"]` if note is a Value prop
+    ///       "store.notes" → `self.store.notes` if store is not Value
+    fn resolve_dotted_path(&self, path: &str) -> String {
+        let parts: Vec<&str> = path.split('.').collect();
+        if parts.is_empty() {
+            return format!("self.{}", path);
+        }
+        // First component determines the base
+        let first = parts[0];
+        let mut result = if self.value_prop_names.contains(first) || self.needs_index_access(first) {
+            format!("self.{}", first)
+        } else {
+            format!("self.{}", first)
+        };
+        // Remaining components: use bracket access if base is Value, else dot access
+        for &part in &parts[1..] {
+            // Check if the current result refers to a Value type
+            let is_value = self.value_prop_names.contains(first)
+                || self.needs_index_access(first);
+            if is_value {
+                result = format!("{}[\"{}\"]", result, part);
+            } else {
+                // Check if this is a store field that's Vec<Value>
+                let store_check = format!("{}.{}", first, part);
+                if self.state_types.contains_key(part)
+                    && self.state_types.get(part).map(|t| t.starts_with("Vec<")).unwrap_or(false)
+                {
+                    result = format!("{}.{}", result, part);
+                } else {
+                    result = format!("{}.{}", result, part);
+                }
+            }
+        }
+        result
     }
 
     /// Check if a tag is a custom widget reference (uppercase first letter, not a known tag)
@@ -3028,6 +3316,25 @@ impl RustGenerator {
                         format!("println!({})", print_args.join(", "))
                     }
                     _ => {
+                        // Plan 374: Callback prop calls (on_delete, on_toggle_pin, etc.)
+                        // are no-ops in Rust — child-to-parent communication uses enum wrapping.
+                        if self.prop_types.get(fn_name.as_str()).map(|t| t == "msg").unwrap_or(false) {
+                            return "()".to_string();
+                        }
+                        // Plan 374: .contains(x) where x is a String needs .as_str()
+                        // because str::contains expects impl Pattern, not String.
+                        if fn_name.ends_with(".contains") && args.len() == 1 {
+                            let arg = &args[0];
+                            let fixed_arg = if arg.ends_with(".clone()") {
+                                format!("{}.as_str()", &arg[..arg.len() - ".clone()".len()])
+                            } else if arg.contains("\"") {
+                                arg.clone()
+                            } else {
+                                format!("({}).as_str()", arg)
+                            };
+                            let obj = &fn_name[..fn_name.len() - ".contains".len()];
+                            return format!("{}.contains({})", obj, fixed_arg);
+                        }
                         // findIndex(closure) → iter().position(closure).map(|i| i as i32).unwrap_or(-1)
                         if fn_name.ends_with(".findIndex") {
                             let obj = &fn_name[..fn_name.len() - ".findIndex".len()];
@@ -3155,6 +3462,53 @@ impl RustGenerator {
                 }
             }
             Expr::Nil | Expr::Null => "serde_json::Value::Null".to_string(),
+            Expr::None => "None".to_string(),
+            Expr::Some(e) => {
+                let inner = self.ast_expr_to_rust(e);
+                format!("Some({})", inner)
+            }
+            Expr::If(if_expr) => {
+                // Convert if-expression to Rust if/else expression.
+                // Used for conditional style values like: style: if active { "x" } else { "y" }
+                let cond = if let Some(branch) = if_expr.branches.first() {
+                    self.ast_expr_to_rust(&branch.cond)
+                } else {
+                    "true".to_string()
+                };
+                let then_body = if let Some(branch) = if_expr.branches.first() {
+                    branch.body.stmts.iter()
+                        .filter_map(|s| {
+                            if let crate::ast::Stmt::Expr(e) = s {
+                                Some(self.ast_expr_to_rust(e))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("")
+                } else {
+                    String::new()
+                };
+                let else_body = if let Some(else_b) = &if_expr.else_ {
+                    else_b.stmts.iter()
+                        .filter_map(|s| {
+                            if let crate::ast::Stmt::Expr(e) = s {
+                                Some(self.ast_expr_to_rust(e))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("")
+                } else {
+                    String::new()
+                };
+                if else_body.is_empty() {
+                    format!("if {} {{ {} }}", cond, then_body)
+                } else {
+                    format!("if {} {{ {} }} else {{ {} }}", cond, then_body, else_body)
+                }
+            }
             _ => format!("/* expr */"),
         }
     }

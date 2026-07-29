@@ -553,8 +553,8 @@ pub enum AuraNode {
         /// Component name
         name: String,
 
-        /// Properties passed to component
-        props: HashMap<String, crate::ast::Expr>,
+        /// Properties passed to component (Vec preserves insertion order)
+        props: Vec<(String, crate::ast::Expr)>,
 
         /// Event handlers
         events: HashMap<String, AuraEvent>,

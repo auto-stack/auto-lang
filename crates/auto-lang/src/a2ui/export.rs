@@ -375,7 +375,7 @@ fn export_element(
 
 fn export_component(
     _name: &str,
-    _props: &HashMap<String, Expr>,
+    _props: &Vec<(String, Expr)>,
     _events: &HashMap<String, AuraEvent>,
 ) -> Result<A2UIComponentBody, A2UIError> {
     // Component instances are not directly representable in A2UI v0.8.

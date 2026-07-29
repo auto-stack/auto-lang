@@ -30,7 +30,7 @@ view fn NoteItem(note: Note, active: bool, indent: str) {
     }
 }
 
-widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int) {
+widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str) {
     msg Msg {
         SelectAll, SelectPinned, SelectRecent,
         SelectTag(str), SelectNote(int),

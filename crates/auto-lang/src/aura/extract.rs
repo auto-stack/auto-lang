@@ -773,11 +773,11 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             }
 
             // Normal component (not a fragment) — extract as-is
-            let aura_props: HashMap<String, Expr> = props.iter()
+            let aura_props: Vec<(String, Expr)> = props.iter()
                 .filter_map(|p| {
                     match &p.value {
                         ViewPropValue::Expr(expr) => {
-                            Some(Ok((p.name.clone(), expr.clone())))
+                            Some((p.name.clone(), expr.clone()))
                         }
                         ViewPropValue::StyleBinding(_) => {
                             // Class bindings not supported for component props
@@ -785,7 +785,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                         }
                     }
                 })
-                .collect::<ExtractResult<_>>()?;
+                .collect();
 
             let aura_events: HashMap<String, AuraEvent> = events.iter()
                 .map(|e| {
@@ -1080,7 +1080,14 @@ fn extract_on_block(on: &OnBlock) -> ExtractResult<(HashMap<String, LogicPayload
     let mut handler_params = HashMap::new();
 
     for handler in &on.handlers {
-        let pattern = handler.pattern.clone();
+        // Plan 374: Embed parameter names in the pattern key so RustGenerator
+        // and other backends can extract them without a separate handler_params lookup.
+        // e.g., ".SelectTag(t)" instead of just ".SelectTag".
+        let pattern = if handler.params.is_empty() {
+            handler.pattern.clone()
+        } else {
+            format!("{}({})", handler.pattern, handler.params.join(", "))
+        };
         // Keep original AST stmts for a2ts delegation
         let original_stmts: Vec<crate::ast::Stmt> = handler.body.stmts.clone();
         handlers.insert(pattern.clone(), LogicPayload::AstStmts(original_stmts));

@@ -1931,7 +1931,7 @@ impl ArkGenerator {
     fn generate_component(
         &mut self,
         name: &str,
-        props: &HashMap<String, crate::ast::Expr>,
+        props: &Vec<(String, crate::ast::Expr)>,
         events: &HashMap<String, crate::aura::AuraEvent>,
     ) -> GenResult<String> {
         let mut lines = Vec::new();

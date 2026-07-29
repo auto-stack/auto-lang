@@ -1007,7 +1007,7 @@ fun {}Preview() {{
     fn component_to_compose(
         &mut self,
         name: &str,
-        props: &HashMap<String, crate::ast::Expr>,
+        props: &Vec<(String, crate::ast::Expr)>,
         events: &HashMap<String, AuraEvent>,
         indent: usize,
     ) -> GenResult<String> {
