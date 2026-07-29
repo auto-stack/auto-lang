@@ -325,24 +325,39 @@ P0 全部：
 - [ ] vue.rs 加 v-else-if 生成（~15 行）
 - [ ] 015-notes 用 else-if 改写 Pinned/Recent 分支
 
+> **状态（2026-07-30 复核）**：未实现。parser/vue.rs 中无 `v-else-if`/`else if peek`
+> 相关代码。view DSL 的 `else` 本身已支持（P1-2），但 `else if` 链式语法未做。
+
 ### 阶段 4: store computed（1 天）
 
-- [ ] 5 处加字段/分支（AST + parser + aura + extract + composable）
+- [x] 5 处加字段/分支（AST + parser + aura + extract + composable）
 - [ ] notes_store.at 加 filtered_notes/pinned_notes computed
 - [ ] sidebar.at 用 computed 替代模板内嵌 if
 
+> **状态（2026-07-30 复核）**：**基础设施已完成**（`ast/ui.rs:37`
+> `StoreDecl.computed` 字段 + parser 解析 + aura/extract + vue composable 生成）。
+> 但 015-notes 的 `notes_store.at`/`sidebar.at` **未实际使用 computed**
+> （sidebar.at 仍 337 行，目标 ~150）。
+
 ### 阶段 5: view fn 内联展开（2-3 天）
 
-- [ ] AST 加 ViewFragmentDecl + Stmt 变体
-- [ ] parser 加声明解析 + PascalCase 调用检测
-- [ ] aura extract 加片段收集 + 参数替换展开
+- [x] AST 加 ViewFragmentDecl + Stmt 变体
+- [x] parser 加声明解析 + PascalCase 调用检测
+- [x] aura extract 加片段收集 + 参数替换展开
 - [ ] sidebar.at 用 view fn 消除 15x 复制粘贴
+
+> **状态（2026-07-30 复核）**：**语法+解析+展开已完成**
+> （`parser.rs:11233-11290` parse_view_fragment_decl_body + aura extract 片段展开 +
+> `714b39e3` a2r 也支持）。但 015-notes 的 `sidebar.at` **未实际用 view fn 改写**
+> （仍 337 行）。
 
 ### 阶段 6: 验证
 
 - [ ] vue-tsc 严格模式通过
 - [ ] 16/17 测试通过（无回归）
 - [ ] sidebar.at 从 ~400 行降到 ~150 行
+
+> **状态**：sidebar.at 当前 337 行（目标 ~150），尚未用 computed/view fn 改写。
 
 ### 阶段 4: 语言级改进（1-2 周，长期）
 
