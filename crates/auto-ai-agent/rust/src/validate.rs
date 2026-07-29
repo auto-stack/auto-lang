@@ -4,6 +4,7 @@
 #[allow(unused_imports)]
 use a2r_std;
 use a2r_std::*;
+use crate::error::AgentError;
 
 use crate::error::{AgentError};
 use crate::role_def::{Role};
@@ -11,7 +12,7 @@ use crate::ai_config;
 pub fn validate_role_model(role: Box<dyn Role>) -> Result<(), AgentError> {
     match load_client_config() {
         Ok(cfg) => {
-            match ai_config::validate_model_exists(&cfg, role.model().as_str()) {
+            match ai_config::validate_model_exists(cfg, role.model()) {
                 Ok(_) => return Ok(()),
                 Err(msg) => return Err(AgentError::Config(msg)),
             }
@@ -23,16 +24,15 @@ pub fn validate_role_model(role: Box<dyn Role>) -> Result<(), AgentError> {
 pub fn load_client_config() -> Result<ai_config::ClientConfig, AgentError> {
     match home_dir() {
         Some(home) => {
-            let path = home.join(".config/autoos/ai-client.at");
-            let path_str = path.to_string_lossy().to_string();
-            match read_file_text(path_str.as_str()) {
+            let path = path.join(home, ".config/autoos/ai-client.at");
+            match read_file_text(path.as_str()) {
                 Ok(content) => {
-                    match ai_config::parse_client_config(content.as_str()) {
+                    match ai_config::parse_client_config(content) {
                         Ok(cfg) => return Ok(cfg),
-                        Err(e) => return Err(AgentError::Config(e.to_string())),
+                        Err(e) => return Err(AgentError::Config(e.message())),
                     }
                 },
-                Err(msg) => return Err(AgentError::Config(format!("read {}: {}", path.display(), msg))),
+                Err(msg) => return Err(AgentError::Config(format!("read {}: {}", path, msg))),
             }
         },
         None => return Err(AgentError::Config("cannot determine home directory".to_string())),
@@ -61,11 +61,11 @@ pub fn load_client_config() -> Result<ai_config::ClientConfig, AgentError> {
 /// Load the client config from the standard path. Errors if the file is
 /// missing or malformed — callers may downgrade to a warning.
 /// The user's home directory, or None if it can't be determined.
-fn home_dir() -> Option<std::path::PathBuf> {
-    return dirs::home_dir();
+fn home_dir() -> Option<String> {
+    return dirs.home_dir();
 }
 
 /// Read a file's full contents as a string.
 fn read_file_text(path: &str) -> Result<String, String> {
-    return Ok(a2r_std::fs::read_to_string(path));
+    return a2r_std::fs::read_to_string(path);
 }

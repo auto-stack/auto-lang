@@ -4,10 +4,11 @@
 #[allow(unused_imports)]
 use a2r_std;
 use a2r_std::*;
+use crate::error::ToolError;
+use crate::wire::JsonValue;
 
 use std::path::PathBuf;
 use std::fs;
-use std::fs::DirEntry;
 use std::sync::Arc;
 use serde_json;
 use serde_json::Value;
@@ -74,10 +75,7 @@ impl SkillRegistry {
         match fs::read_dir(dir) {
             Ok(entries) => {
                 for entry in entries {
-                    match entry {
-                        Ok(e) => scan_one_entry(e, &mut skills, &mut names),
-                        Err(_) => {},
-                    }
+                    scan_one_entry(entry.clone(), skills.clone(), names);
                 }
             },
             Err(_e) => {
@@ -88,17 +86,19 @@ impl SkillRegistry {
         return SkillRegistry { skills: skills, names: names };
     }
     pub fn get(&self, name: &str) -> Option<Skill> {
-        return self.skills.get(name).cloned();
+        if self.skills.contains_key(name) {
+            return Some(self.skills.get(name));
+        }
+        return None;
     }
     pub fn retain(&mut self, whitelist: Vec<String>) {
         let mut kept: std::collections::HashMap<String, Skill> = std::collections::HashMap::new();
         let mut kept_names: Vec<String> = vec![];
         for name in &self.names {
-            if whitelist.contains(name) {
-                if let Some(s) = self.skills.get(name) {
-                    kept.insert(name.clone(), s.clone());
-                    kept_names.push(name.clone());
-                }
+            if whitelist.contains(&name) {
+                let s = self.skills.get(name);
+                kept.insert(name, s);
+                kept_names.push(name.clone());
             }
         }
         self.skills = kept;
@@ -109,16 +109,15 @@ impl SkillRegistry {
     }
     pub fn descriptions(&self) -> Vec<(String, String)> {
         let mut out: Vec<(String, String)> = vec![];
-        for name in &self.names {
-            if let Some(s) = self.skills.get(name) {
-                out.push((s.name.clone(), s.description.clone()));
-            }
+        for name in self.names {
+            let s = self.skills.get(name);
+            out.push((s.name, s.description));
         }
-        out.sort_by_key(|pair| pair.0.clone());
+        out.sort_by_key(|pair| pair[0].clone());
         return out;
     }
     pub fn len(&self) -> u32 {
-        return self.names.len() as u32;
+        return (self.names.len() as i32);
     }
     pub fn is_empty(&self) -> bool {
         return (self.names.len() as i32) == 0;
@@ -141,7 +140,7 @@ impl SkillRegistry {
 /// Number of loaded skills.
 /// Handle one read_dir entry: skip non-directories, and for each subdirectory
 /// try to load its SKILL.md.
-fn scan_one_entry(entry: DirEntry, skills: &mut std::collections::HashMap<String, Skill>, names: &mut Vec<String>) {
+fn scan_one_entry(entry: DirEntry, skills: std::collections::HashMap<String, Skill>, names: Vec<String>) {
     let sub = entry.path();
     let is_dir = sub.is_dir();
     if is_dir == false {
@@ -156,9 +155,8 @@ fn scan_one_entry(entry: DirEntry, skills: &mut std::collections::HashMap<String
         Ok(skill) => {
             if skill.name.is_empty() == false {
                 if skills.contains_key(&skill.name) == false {
-                    names.push(skill.name.clone());
-                }                let sname = skill.name.clone();
-                skills.insert(sname, skill);
+                    names.push(skill.name);
+                }                skills.insert(skill.name, skill);
             }
         },
         Err(_e) => {
@@ -174,15 +172,16 @@ fn scan_one_entry(entry: DirEntry, skills: &mut std::collections::HashMap<String
 /// Only name and description are extracted; everything after the closing
 /// `---` is the body. No full YAML parser — these are two string fields.
 fn parse_skill_file(path: PathBuf) -> Result<Skill, String> {
-    let raw = a2r_std::fs::read_to_string(path.to_str().unwrap());
-    if raw.is_empty() {
-        return Err(format!("read: empty or missing skill file at {}", path.display()));
+    match a2r_std::fs::read_to_string(path.as_str()) {
+        Err(e) => return Err(format!("read: {}", e)),
+        Ok(raw) => {
+            let parsed = parse_frontmatter(raw.as_str());
+            if parsed.name.is_empty() {
+                return Err("frontmatter is missing 'name:'".into());
+            }
+            return Ok(Skill { name: parsed.name.to_string(), description: parsed.description.to_string(), content: parsed.content.to_string(), path: path });
+        },
     }
-    let parsed = parse_frontmatter(raw.as_str());
-    if parsed.name.is_empty() {
-        return Err("frontmatter is missing 'name:'".into());
-    }
-    return Ok(Skill { name: parsed.name.to_string(), description: parsed.description.to_string(), content: parsed.content.to_string(), path: path });
 }
 
 /// The parsed frontmatter result.
@@ -210,7 +209,7 @@ fn parse_frontmatter(raw: &str) -> Frontmatter {
 
             return Frontmatter { name: "".to_string(), description: "".to_string(), content: stripped.to_string() };
         },
-        Some(after_open) => return parse_frontmatter_body(after_open),
+        Some(after_open) => return parse_frontmatter_body(after_open.as_str()),
     }
 }
 
@@ -226,7 +225,7 @@ fn parse_frontmatter_body(after_open: &str) -> Frontmatter {
             return Frontmatter { name: name.to_string(), description: desc.to_string(), content: "".to_string() };
         },
         Some(idx) => {
-            let lines: Vec<String> = after_open.lines().map(|l| l.to_string()).collect();
+            let lines = after_open.lines();
             let fm = take_lines_joined(lines, idx);
             let body_start = body_offset(after_open, idx);
             let body = slice_and_trim(after_open, body_start);
@@ -239,9 +238,9 @@ fn parse_frontmatter_body(after_open: &str) -> Frontmatter {
 
 /// Strip a leading UTF-8 BOM (\u{feff}) if present.
 fn strip_bom(raw: &str) -> String {
-    let p = raw.strip_prefix('\u{feff}');
+    let p = raw.strip_prefix("\\u{feff}");
     match p {
-        Some(rest) => return rest.to_string(),
+        Some(rest) => return rest,
         None => return raw.to_string(),
     }
 }
@@ -280,7 +279,7 @@ fn body_offset(after_open: &str, close_idx: u32) -> u32 {
         if i <= close_idx {
             
 
-            acc = acc + (line.len() as u32) + 1;
+            acc = acc + (line.len() as i32) + 1
         }
         i = i + 1;
     }
@@ -290,13 +289,13 @@ fn body_offset(after_open: &str, close_idx: u32) -> u32 {
 /// Return the substring of `s` starting at `start`, leading whitespace trimmed.
 /// Clamped to s length.
 fn slice_and_trim(s: &str, start: u32) -> String {
-    let end = s.len() as u32;
+    let end = (s.len() as i32);
     let mut lo: u32 = start;
-    if lo > end {
-        lo = end;
+    if lo > end as u32 {
+        lo = end
     }
     let slice = &s[lo as usize..end as usize];
-    return slice.trim_start().to_string();
+    return slice.trim_start();
 }
 
 /// Extract a `key: value` field from frontmatter text. Handles quoted values
@@ -305,9 +304,9 @@ fn extract_field(frontmatter: &str, key: &str) -> String {
     let prefix: String = format!("{}:", key);
     for line in frontmatter.lines() {
         let trimmed = line.trim().to_string();
-        let rest = trimmed.strip_prefix(&prefix);
+        let rest = trimmed.strip_prefix(prefix);
         match rest {
-            Some(r) => return clean_field_value(r.trim()),
+            Some(r) => return clean_field_value(r.trim().as_str()),
             None => {},
         }
     }
@@ -316,7 +315,7 @@ fn extract_field(frontmatter: &str, key: &str) -> String {
 
 /// Strip surrounding quotes (if any) from a frontmatter value.
 fn clean_field_value(val: &str) -> String {
-    if val.starts_with('"') && a2r_std::str_ends_with(val, "\"") {
+    if val.starts_with(&'"') && a2r_std::str_ends_with(val, '"'.as_str()) {
         return unquote(val);
     }
     if val.starts_with("'") && a2r_std::str_ends_with(val, "'") {
@@ -327,10 +326,8 @@ fn clean_field_value(val: &str) -> String {
 
 /// Remove the first and last character (used after the quote-pair check).
 fn unquote(val: &str) -> String {
-    if val.len() <= 2 {
-        return val.to_string();
-    }
-    return val[1..val.len() - 1].to_string();
+    let end: i32 = (val.len() as i32) - 1;
+    return &val[1 as usize..end as usize];
 }
 
 /// The tool that exposes skills to the model. The model calls
@@ -338,9 +335,6 @@ fn unquote(val: &str) -> String {
 /// 
 /// Its description() is built once at construction (from the registry) so the
 /// model sees a directory of available skills + their triggers every turn.
-trait ToolTrait {
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct SkillTool {
     pub registry: Arc<SkillRegistry>,
@@ -348,26 +342,24 @@ pub struct SkillTool {
     pub parameters_cache: JsonValue,
 }
 
-impl ToolTrait for SkillTool {
-}
-
-impl SkillTool {
-    pub fn name(&self) -> String {
+#[async_trait::async_trait]
+impl crate::tool::Tool for SkillTool {
+    fn name(&self) -> String {
         return "skill".to_string();
     }
-    pub fn description(&self) -> String {
+    fn description(&self) -> String {
         return self.description_cache.clone();
     }
-    pub fn parameters(&self) -> JsonValue {
+    fn parameters(&self) -> JsonValue {
         return self.parameters_cache.clone();
     }
-    pub async fn execute(&self, args: JsonValue) -> Result<String, ToolError> {
-        let v = a2r_std::json::as_string(args.get("skill_name").unwrap_or(&Value::Null));
+    async fn execute(&self, args: JsonValue) -> Result<String, ToolError> {
+        let v = args.get(&"skill_name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         if v.is_empty() {
             return Err(ToolError::Args("missing 'skill_name' argument".to_string()));
         }
         let name = v.clone();
-        match self.registry.get(name.as_str()) {
+        match self.registry.get(name) {
             Some(skill) => return Ok(format!("# Skill: {}
 
 {}", skill.name, skill.content)),
@@ -377,11 +369,14 @@ impl SkillTool {
             },
         }
     }
+}
+
+impl SkillTool {
     pub fn new(registry: Arc<SkillRegistry>) -> SkillTool {
-        return SkillTool { registry: registry.clone(), description_cache: build_description(&registry), parameters_cache: build_parameters(&registry) };
+        return SkillTool { registry: registry, description_cache: build_description(registry.clone()).to_string(), parameters_cache: build_parameters(registry.clone()) };
     }
     pub fn registry(&self) -> SkillRegistry {
-        return (*self.registry).clone();
+        return self.registry.clone();
     }
     pub fn available_skills_block(&self) -> String {
         let descs = self.registry.descriptions();
@@ -394,7 +389,7 @@ impl SkillTool {
         out = format!("{}{}", out, "returned to you, and you follow its instructions directly.\n\n");
         for pair in descs {
             out = format!("{}{}", out, format!("- {}: {}
-", pair.0, pair.1));
+", pair[0].clone(), pair[1].clone()));
         }
         out = format!("{}{}", out, "\nInvoke a skill whenever its trigger applies, even slightly.\n");
         out = format!("{}{}", out, "</available_skills>");
@@ -411,7 +406,7 @@ impl SkillTool {
 /// Build the `<available_skills>` block appended to the system prompt so the
 /// model knows what skills it can invoke.
 /// Build the tool description string from the registry's skill list.
-fn build_description(registry: &SkillRegistry) -> String {
+fn build_description(registry: SkillRegistry) -> String {
     let descs = registry.descriptions();
     if descs.is_empty() {
         return "Load a skill's instructions. No skills are currently configured.".to_string();
@@ -419,7 +414,7 @@ fn build_description(registry: &SkillRegistry) -> String {
     let mut out: String = "Load a skill's instructions by name. Call this whenever a skill's trigger applies.\n\nAvailable skills:\n".to_string();
     for pair in descs {
         out = format!("{}{}", out, format!("- {}: {}
-", pair.0, pair.1));
+", pair[0].clone(), pair[1].clone()));
     }
     return out;
 }
@@ -427,7 +422,7 @@ fn build_description(registry: &SkillRegistry) -> String {
 /// Build the parameters JSON schema, embedding the registry's skill names as
 /// the `skill_name` enum. Uses json.parse over a stringified schema (the
 /// Auto VM's generic json.encode[T] is unreliable — plan 013 gotcha B4).
-fn build_parameters(registry: &SkillRegistry) -> JsonValue {
+fn build_parameters(registry: SkillRegistry) -> JsonValue {
     let mut enum_parts: Vec<String> = vec![];
     for n in registry.names() {
         enum_parts.push(format!("\"{}\"", n));
