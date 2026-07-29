@@ -502,21 +502,23 @@ mock-server 提供固定 HTML/JSON 页面（含已知链接）。测试（~10 �
 
 ## 全局验收
 
-- [x] **V1**: Layer 1 全部 100% consistent（F2 json 阻塞除外）。实际 +29 新 L1
-      用例（241→270）：c_fs_app 7 + c_env_app 7 + c_process_app 9 + c_text_app 6。
-      （预估 ~60 偏高——每个 lib 的用例数按"可靠三端一致的用例"收敛，未凑数。）
-      `auto-parity phase d5` 报 4/4 libs 全 100%。
-- [ ] **V2**: Layer 2（F6-F7）全部 100% consistent（需 E4 完成），累计 +40（→341）。
-- [ ] **V3**: mock-server runner hook 实现，http_client_sync 解锁（若 E4 已修）。
-- [x] **V4**: parity dashboard 配置已就绪——d5 阶段已加入 `main.rs` 的 report
-      phases 数组，运行 `auto-parity report` 会包含所有 c_* 消费者库。
-      ⚠️ 注意：dashboard HTML **尚未实际重新生成**（`report` 命令会全量重跑 13
-      个 lib 的三向对比，单次约 10+ 分钟，会话中未跑完）。`docs/parity-dashboard.html`
-      仍是旧版（不含 c_* 库）。需要时手动跑：
-      `cd parity && cargo run -p auto-parity -- --auto-binary ../target/release/auto.exe report --output docs/parity-dashboard.html`
-- [ ] **V5**: 消费者用例覆盖 fs/json/env/process/text/http 六大能力域。
-      当前覆盖 fs（F1）/env（F3）/process（F4）/text（F5）= 4/6；json（F2）阻塞于
-      VM stdlib json.at 解析；http（Layer 2）阻塞于 E4。
+> **进度复核（2026-07-29）**：Layer 1 的 4 个 lib 中，c_env_app/c_process_app 仍
+> 100% 一致，但 **c_fs_app 和 c_text_app 的 a2r 后端出现回归**（`fs.read_text(fullpath)`
+> 的 owned-String 参数未加 `.as_str()` → E0308）。根因疑似 R-W4 修复（返回类型查找
+> 改进）改变了 a2r 的 `needs_as_str` 判断路径。需修（见 §R-AREG）。
+
+- [~] **V1**: Layer 1（F2 json 阻塞除外）。
+      - c_fs_app 7/7 → **当前 0/8（a2r 回归，需修 R-AREG）**
+      - c_env_app 7/7 ✅
+      - c_process_app 9/9 ✅（仍有 StringBuilder workaround，待 W6-cross-domain 修）
+      - c_text_app 6/6 → **当前 0/7（a2r 回归，同 R-AREG）**
+      - `auto-parity phase d5` 当前 2/4 libs 100%。
+- [~] **V2**: Layer 2 部分。http_client_sync 3/3 ✅（POST），但 GET 未做。
+- [x] **V3**: mock-server runner hook 已实现 ✅。
+- [x] **V4**: parity dashboard 配置已就绪（d5+d6 在 report phases）。
+      ⚠️ dashboard HTML 尚未实际重新生成。
+- [ ] **V5**: 覆盖 4/6 领域（fs/env/process/text）。json（F2）阻塞于 VM json 运行时占位
+      （见 §R-JSON）；http 仅 POST（缺 GET + last_status 断言）。
 
 ---
 
@@ -737,17 +739,42 @@ workaround 已全部去除（见下"已修的 bug"）。下表保留作历史记
 ### 实施顺序与依赖
 
 ```
-R-W4 (跨模块返回类型) ─┐
-                       ├─→ R-COV (补覆盖用例)
-R-JSON (json 运行时) ──┼─→ F2 c_json_app
-                       └─→ R-F6GET (c_http_get + last_status)
+R-AREG (a2r 回归，紧急) ─→ 恢复 c_fs_app/c_text_app
+R-W4 (跨模块返回类型) ────┐ 已修，但暴露 W6-cross-domain
+                          ├─→ R-COV (补覆盖用例)
+W6-cross-domain (循环return跨模块) ─→ c_process_app 改自然 split
+R-JSON (json 运行时) ─────┼─→ F2 c_json_app
+                          └─→ R-F6GET (c_http_get + last_status)
 ```
 
-R-W4 和 R-JSON 互不依赖，可先做 R-W4（小、快），再做 R-JSON（大、解锁多）。
+**最高优先级：R-AREG（a2r 回归）**——c_fs_app/c_text_app 当前 a2r 后端坏掉，必须先修。
+R-W4 已修并合并。W6-cross-domain 和 R-JSON 是两个大任务，各自需要专门会话。
 
 ---
 
-### R-W4：修跨模块用户函数 CALL 返回类型查找
+### R-AREG（紧急）：修 a2r 的 `fs.read_text(owned_string)` 回归
+
+**现象**：c_fs_app 和 c_text_app 的 a2r 后端编译失败（E0308）——
+`a2r_std::fs::read_text(fullpath)` 传了 owned `String`，但函数要 `&str`。
+之前能用是因为 R-W4 修复前 `fullpath` 的类型被错误标记（StrSlice 当 &str），
+a2r 没加 `.as_str()`。R-W4 修好类型后暴露了这个问题。
+
+**根因**：a2r 转译器的 `fs.read_text` obj.method 分支（`trans/rust.rs` ~3291）
+对参数用了 `expr_as_str`，但 `expr_as_str` 对 StrSlice 登记的 ident 不加
+`.as_str()`（FU-2 的 `needs_as_str` 只对 `current_fn_str_params` 返回 false）。
+然而 R-W4 后变量类型正确是 String/StrOwned（不是 StrSlice），所以
+`needs_as_str` 应该返回 true 并加 `.as_str()`——需查为什么没加。
+
+**正确修复**：检查 `needs_as_str` 对 `var fullpath str = dir + "/" + filename`
+（登记为 StrSlice 但渲染为 String）的处理。要么在 `store()` 里把拼接赋值的
+str 变量登记为 StrOwned（匹配渲染），要么在 `needs_as_str` 里对 StrSlice
+局部变量（非参数）也返回 true。
+
+**验证**：`auto-parity run c_fs_app` 恢复 7/7，`auto-parity run c_text_app` 恢复 6/6。
+
+---
+
+### R-W4：修跨模块用户函数 CALL 返回类型查找（已完成 ✅）
 
 **根因（精确定位）**：跨模块用户函数调用（`use auto.<lib>: fn`）后，codegen 查返回类型
 用限定 reloc 名（`c_process_app.parse_nth`）查 `fn_return_types`，但该表用裸名（`parse_nth`）
