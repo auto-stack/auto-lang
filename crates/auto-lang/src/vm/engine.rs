@@ -4798,6 +4798,24 @@ impl AutoVM {
                                 // str.to_string() / str.to_str() / str.clone() — return self
                                 // No-op: receiver stays on stack as-is
                             }
+                            "to_int" | "parse_int" => {
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                                    .unwrap_or_default();
+                                let result = s.parse::<i32>().unwrap_or(0);
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(result)); }
+                            }
+                            "to_uint" => {
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                                    .unwrap_or_default();
+                                let result = s.parse::<i64>().unwrap_or(0) as i32;
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(result)); }
+                            }
                             _ => {
                                 // Unknown str method — fall through to other handlers below
                                 task.ram.push_nv(auto_val::encode_null());
