@@ -562,15 +562,28 @@ fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         json!({
             "name": "autoui_wait",
-            "title": "Wait for State Change",
-            "description": "Wait for a state field to change value. Polls at intervals until a change is detected or timeout.\n\n## Workflow\n1. Call with a state field name to watch\n2. The tool blocks until the field changes or timeout\n3. Returns the change details (before → after)",
+            "title": "Wait for Change",
+            "description": "Wait for a state field change OR an element to appear/disappear. Polls at intervals until the condition is met or timeout.\n\n## Modes\n1. State wait: pass `field` — blocks until the state field changes value.\n2. Element wait (Plan 371): pass `kind` + `label` + `condition` — blocks until a matching element appears or disappears.\n\n## Element wait examples\n- Wait for Save button to appear after clicking Edit:\n  {kind: 'button', label: 'Save', condition: 'appears'}\n- Wait for a loading spinner to disappear:\n  {kind: 'text', label: 'Loading', condition: 'disappears'}",
             "inputSchema": {
                 "type": "object",
-                "required": ["field"],
                 "properties": {
                     "field": {
                         "type": "string",
-                        "description": "State field name to watch for changes"
+                        "description": "State field name to watch for changes (state wait mode)"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "description": "Element kind to wait for (element wait mode): button, input, text, textarea..."
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Case-insensitive substring to match on element label/content (element wait mode)"
+                    },
+                    "condition": {
+                        "type": "string",
+                        "enum": ["appears", "disappears"],
+                        "default": "appears",
+                        "description": "Whether to wait for the element to appear or disappear"
                     },
                     "timeout_ms": {
                         "type": "integer",
@@ -1198,12 +1211,66 @@ fn tool_state(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
 // ── Tool: autoui_wait (Plan 299 Phase 2) ──
 
 fn tool_wait(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
-    let field = match args.get("field").and_then(|v| v.as_str()) {
-        Some(f) => f.to_string(),
-        None => return error_result("Missing required parameter: field"),
-    };
     let timeout_ms = args.get("timeout_ms").and_then(|v| v.as_u64()).unwrap_or(5000);
     let interval_ms = args.get("interval_ms").and_then(|v| v.as_u64()).unwrap_or(100);
+
+    // Plan 371 Task 9: element-level wait — poll autoui_exists until element
+    // appears (condition="appears") or disappears (condition="disappears").
+    let kind_filter = args.get("kind").and_then(|v| v.as_str());
+    let label_filter = args.get("label").and_then(|v| v.as_str());
+    let condition = args.get("condition").and_then(|v| v.as_str()).unwrap_or("appears");
+
+    if kind_filter.is_some() || label_filter.is_some() {
+        let want_found = condition == "appears";
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+        loop {
+            let shared = shared_handle.lock().unwrap();
+            let snap = match shared.clone_styled_vtree() {
+                Some(s) => s,
+                None => {
+                    drop(shared);
+                    std::thread::sleep(std::time::Duration::from_millis(interval_ms));
+                    if std::time::Instant::now() >= deadline {
+                        return error_result("Timeout: no VTree snapshot available");
+                    }
+                    continue;
+                }
+            };
+            let found = snap.vtree.nodes.iter().any(|vnode| {
+                if let Some(kf) = kind_filter {
+                    if format!("{}", vnode.kind).to_lowercase() != kf.to_lowercase() {
+                        return false;
+                    }
+                }
+                if let Some(lf) = label_filter {
+                    if !vnode_searchable_text(&vnode.props).to_lowercase().contains(&lf.to_lowercase()) {
+                        return false;
+                    }
+                }
+                true
+            });
+            drop(shared);
+
+            if found == want_found {
+                let state_str = if want_found { "appeared" } else { "disappeared" };
+                let crit: Vec<&str> = [kind_filter, label_filter].iter()
+                    .filter_map(|v| *v).collect();
+                return text_result(format!("Element {} ({}): {}", state_str, crit.join("/"), state_str));
+            }
+
+            if std::time::Instant::now() >= deadline {
+                let state_str = if want_found { "appear" } else { "disappear" };
+                return error_result(format!("Timeout waiting for element to {} (waited {}ms)", state_str, timeout_ms));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(interval_ms));
+        }
+    }
+
+    // Legacy: state field wait
+    let field = match args.get("field").and_then(|v| v.as_str()) {
+        Some(f) => f.to_string(),
+        None => return error_result("Missing required parameter: 'field' (for state wait) or 'kind'+'label' (for element wait)"),
+    };
 
     // Capture initial value
     let before_val = {
@@ -1831,7 +1898,7 @@ fn tool_find(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json:
         depth: None,
         include_box: false,
         include_style: false,
-        include_events: false,
+        include_events: true,
         include_source: false,
         include_props: true,
     };

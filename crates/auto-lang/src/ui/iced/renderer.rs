@@ -3589,13 +3589,21 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // the ForLoop single-body case), so `id_from_path` resolves to the
         // VNodeId the Computed tab selects by. Probe entries without a class
         // are skipped (no-op record_raw_class never created them).
+        //
+        // Plan 371 Task 8: ALSO merge `events` so autoui_vtree / autoui_find
+        // can show handler info per node (previously events were always empty
+        // in the live snapshot).
         if let Some(probe) = state.live_probe.borrow().as_ref() {
             for (path_u16, entry) in probe.snapshot() {
+                let vid = crate::ui::vnode::VNodeId::new(
+                    crate::ui::vnode::id_from_path(path_u16),
+                );
+                let node = cache.get_mut_or_default(vid);
                 if entry.raw_class.is_some() {
-                    let vid = crate::ui::vnode::VNodeId::new(
-                        crate::ui::vnode::id_from_path(path_u16),
-                    );
-                    cache.get_mut_or_default(vid).raw_class = entry.raw_class.clone();
+                    node.raw_class = entry.raw_class.clone();
+                }
+                if !entry.events.is_empty() {
+                    node.events = entry.events.clone();
                 }
             }
         }
