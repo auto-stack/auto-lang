@@ -1560,7 +1560,12 @@ impl Codegen {
                                         Expr::Dot(obj, method) => {
                                             if let Expr::Ident(obj_name) = obj.as_ref() {
                                                 let full_name = format!("{}.{}", obj_name, method);
-                                                if let Some(ty) = self.fn_return_types.get(&full_name) {
+                                                // Plan 368 W6-cross-domain: try qualified name,
+                                                // then fall back to bare method name (same as R-W4
+                                                // at the CALL reloc site, line 7894).
+                                                let ret_ty = self.fn_return_types.get(&full_name)
+                                                    .or_else(|| self.fn_return_types.get(method.as_str()));
+                                                if let Some(ty) = ret_ty {
                                                     ty.clone()
                                                 } else if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
                                                     let type_method = format!("{}.{}", type_name, method);
@@ -1583,7 +1588,10 @@ impl Codegen {
                                                 }
                                             } else {
                                                 let fn_name = format!("{}.{}", self.expr_to_name(obj.as_ref()), method.as_ref());
-                                                if let Some(ty) = self.fn_return_types.get(&fn_name) {
+                                                // Plan 368 W6-cross-domain: bare-name fallback
+                                                let ret_ty = self.fn_return_types.get(&fn_name)
+                                                    .or_else(|| self.fn_return_types.get(method.as_ref()));
+                                                if let Some(ty) = ret_ty {
                                                     ty.clone()
                                                 } else if let Some(type_name) = self.infer_user_type_name(obj.as_ref()) {
                                                     let type_method = format!("{}.{}", type_name, method.as_ref());
