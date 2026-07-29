@@ -152,7 +152,9 @@ vnode_N 路径：从 styled_vtree 查 VNode，返回其 kind/label/props。对�
 
 ## 4. 验证标准
 
-用 MCP 执行完整的 Edit 流程自动化验证：
+### 4.1 Edit 流程验证（已通过 ✅）
+
+用 MCP 执行完整的 Edit 流程自动化验证（零手动 UI 交互）：
 
 1. `autoui_snapshot` → 找到 Edit 按钮的 `vnode_N`
 2. `autoui_action(element_id="vnode_N", action="press")` → 点击 Edit
@@ -162,6 +164,28 @@ vnode_N 路径：从 styled_vtree 查 VNode，返回其 kind/label/props。对�
 6. `autoui_action(element_id="vnode_N", action="type_text", value="Modified Title")` → 输入文字
 7. `autoui_state(fields=["edit_title"])` → 验证 `edit_title="Modified Title"`
 
+### 4.2 全按钮点击验证（已通过 ✅）
+
+系统性测试了 UI 中所有 24 个按钮，覆盖全部组件层级：
+
+| # | 按钮类型 | 按钮 | handler | 状态变化 | 结果 |
+|---|---------|------|---------|---------|------|
+| 1 | **根组件** (App) | New | `.NewNote` | notes +1 | ✅ |
+| 2 | **NavTree 标签** | All/Pinned/Recent | `.SelectAll/Pinned/Recent` | active_folder 变化 | ✅ |
+| 3 | **NavTree 笔记项** | Welcome/Quick Ideas/... | `.SelectNote` | active_id 变化 | ✅ |
+| 4 | **NavTree 文件夹** | + (NewNoteInFolder) | `.NewNote` | notes +1 | ✅ |
+| 5 | **NavTree 主题色块** | 5 个色块 | `.SetAccent` | accent_color 变化 | ✅ |
+| 6 | **NavTree 暗黑模式** | 🌙 Dark / ☀ Light | `.ToggleDarkMode` | dark_mode 翻转 | ✅ |
+| 7 | **EditorPanel** | Edit | `.Edit` | editing→true, edit_title 填充 | ✅ |
+| 8 | **EditorPanel** | Delete | `.Delete` | 触发 on_delete 回调 | ✅ |
+
+**结论：通过 MCP vnode_N 可以点击任何按钮**，无论位于根组件还是子组件内部。
+
+### 4.3 已知注意事项
+
+- 点击后视图重建会导致 vnode_N 变化（路径结构变了）。连续操作需要在视图变化后重新 snapshot。
+- 同一元素的连续点击（视图不变时）vnode_N 是稳定的。
+
 ### 不在本次范围
 
 - 不改渲染器、不改 InspectorCache、不改 view builder
@@ -170,9 +194,31 @@ vnode_N 路径：从 styled_vtree 查 VNode，返回其 kind/label/props。对�
 
 ---
 
-## 5. 未来扩展（后续 Task）
+## 5. 后续改进
 
-- **Task 7+**: snapshot 工具统一输出 vnode_N（当前 v2 已是 vnode_N，但 v1 fallback 仍用 aura_N）
-- **Task 8+**: InspectorCache 合并 events 到 ComputedNodeLite（让 vtree 也能显示事件信息）
-- **Task 9+**: autoui_wait 支持 vnode_N 级别的等待（等特定元素出现）
-- **Task 10+**: 截图 + 视觉对比（回归测试）
+### Task 7: VTree 全量展示 + 变化检测（高优先级）
+
+**动机**：当前验证按钮点击效果需要反复 `autoui_snapshot` + `autoui_state`，效率低。更快的办法是直接通过 `autoui_vtree` 获取**完整渲染节点树**（VTree），根据节点树的变化判断页面是否变化。
+
+**要求**：整个 APP 的 VTree 要**全部展示出来**，包括所有 `use`/`import` 的子组件（EditorPanel、NavTree）的内部元素。当前 `autoui_vtree` 已经做到了这一点（vnode_N 覆盖全部渲染元素），但需要验证：
+
+- VTree 是否完整展开了所有层级（不截断、不折叠）
+- 子组件的 `view fn` fragment（如 NoteItem）是否内联展开
+- Agent 能否通过 diff 两次 VTree 快速判断哪些元素变化了
+
+**实现方向**：
+- `autoui_vtree` 已返回完整树，确认 `depth` 参数默认无限制
+- 考虑新增一个 `autoui_diff` 工具或增强 `autoui_vtree` 的变化高亮
+- 确保 snapshot（AURA 文本格式）也完整展开子组件（当前 v2 styled_vtree 路径已覆盖）
+
+### Task 8: InspectorCache 合并 events 到 ComputedNodeLite
+
+让 `autoui_vtree` 的输出也能显示每个元素的事件信息（当前 events 字段为空）。需要在渲染器的 probe→cache 合并中复制 events 数据。
+
+### Task 9: autoui_wait 支持 vnode_N 级别的等待
+
+等待特定元素出现/消失，而不是只等待 state 字段变化。
+
+### Task 10: 截图 + 视觉对比（回归测试）
+
+`autoui_screenshot` 已存在。增强为支持截图 diff（对比基线截图），用于回归测试。
