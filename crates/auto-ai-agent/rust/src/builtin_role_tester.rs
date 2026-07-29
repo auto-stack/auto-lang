@@ -4,6 +4,7 @@ use crate::role_def::{Role};
 use crate::ai_config::{ModelTier};
 const SOUL: &str = "Soul of the Tester";
 
+/// The Tester: produces tests, runs them, and reports failures precisely.
 trait RoleTrait {
 }
 
@@ -32,6 +33,6 @@ impl Tester {
 }
 
 fn main() {
-    " The Tester role.\r\n Auto port of builtin_roles/tester.rs.\r\n";
-    " Soul marker (full soul loaded from resources in Rust original).\r\n";
+    " The Tester role — writes/runs tests, verifies behavior.\n Auto port of builtin_roles/tester.rs.\n Soul ported verbatim from AutoForge's relay/souls/tester.md. Defaults\n (max_turns=40, mid-tier model, moderate temperature) follow AutoForge.\n";
+    " Soul marker (full soul loaded from resources in Rust original).\n";
 }

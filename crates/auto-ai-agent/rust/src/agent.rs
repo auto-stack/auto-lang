@@ -77,9 +77,7 @@ pub fn truncate_tool_result(s: &str) -> String {
 …[truncated {} more chars]", kept, dropped);
 }
 
-// NOTE (manual fix, plan 013 B1): a2r emitted `-> Future<Result<...>>` but
-// `Future` is never defined/imported, and the object-safe form for `Box<dyn
-// Client>` requires async_trait. Rewritten to use #[async_trait].
+// NOTE (manual fix): async_trait for Box<dyn Client>
 #[async_trait::async_trait]
 pub trait Client: Send + Sync {
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, ClientError>;
@@ -254,7 +252,7 @@ impl Agent {
                 Some(err) => {
                     let ev = StreamEvent::Error(err);
                     events.push(ev.clone());
-                    return Err(Box::new(AgentError::Config(err)));
+                    return Err(AgentError::Config(err));
                 },
                 None => {},
             }
@@ -294,7 +292,7 @@ impl Agent {
                     if count >= loop_detect_threshold() {
                         let ev = StreamEvent::Error(format!("loop detected on '{}'", tc.name));
                         events.push(ev.clone());
-                        return Err(Box::new(AgentError::LoopDetected(tc.name)));
+                        return Err(AgentError::LoopDetected(tc.name));
                     }
                     
                     let ts = StreamEvent::ToolStart(tc.name, tc.input);
@@ -326,7 +324,7 @@ impl Agent {
 
         let err = StreamEvent::Error(format!("hard turn cap ({}) exceeded (soft limit was {})", hard_limit, soft_limit));
         events.push(err.clone());
-        return Err(Box::new(AgentError::MaxTurnsExceeded(hard_limit)));
+        return Err(AgentError::MaxTurnsExceeded(hard_limit));
     }
     pub fn build_request(&self) -> CompletionRequest {
         let allowed = self.role.allowed_tools();

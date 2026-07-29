@@ -359,7 +359,7 @@ impl SkillTool {
     pub async fn execute(&self, args: JsonValue) -> Result<String, ToolError> {
         let v = a2r_std::json::as_string_opt(args.get(&"skill_name"));
         if v.is_empty() {
-            return Err(Box::new(ToolError::Args("missing 'skill_name' argument")));
+            return Err(ToolError::Args("missing 'skill_name' argument"));
         }
         let name = v.clone();
         match self.registry.get(name) {
@@ -368,7 +368,7 @@ impl SkillTool {
 {}", skill.name, skill.content)),
             None => {
                 let available = self.registry.names().join(", ");
-                return Err(Box::new(ToolError::Exec(format!("skill '{}' not found; available: {}", name, available))));
+                return Err(ToolError::Exec(format!("skill '{}' not found; available: {}", name, available)));
             },
         }
     }

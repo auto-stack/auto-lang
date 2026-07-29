@@ -203,17 +203,17 @@ impl RoleRegistry {
     }
     pub fn save(&self, name: &str, cfg: RoleConfig, soul_md: Option<String>) -> Result<None, AgentError> {
         if load_builtin(name).is_some() {
-            return Err(Box::new(AgentError::Config(format!("cannot overwrite built-in role '{}'; choose a different name or use inherit", name))));
+            return Err(AgentError::Config(format!("cannot overwrite built-in role '{}'; choose a different name or use inherit", name)));
         }
 
         let mut out: RoleConfig = cfg.clone();
         out.name = Some(name);
 
         match roles_dir() {
-            None => return Err(Box::new(AgentError::Config("could not determine home directory for roles"))),
+            None => return Err(AgentError::Config("could not determine home directory for roles")),
             Some(dir) => {
                 match fs::create_dir_all(dir) {
-                    Err(e) => return Err(Box::new(AgentError::Config(format!("failed to create roles dir {}: {}", dir.display(), e)))),
+                    Err(e) => return Err(AgentError::Config(format!("failed to create roles dir {}: {}", dir.display(), e))),
                     Ok(_) => {},
                 }
                 
@@ -223,7 +223,7 @@ impl RoleRegistry {
                     Some(md) => {
                         let soul_path = dir.join(format!("{}.soul.md", name));
                         match a2r_std::fs::write(soul_path.as_str(), md.as_str()) {
-                            Err(e) => return Err(Box::new(AgentError::Config(format!("failed to write {}: {}", soul_path.display(), e)))),
+                            Err(e) => return Err(AgentError::Config(format!("failed to write {}: {}", soul_path.display(), e))),
                             Ok(_) => {},
                         }
                         out.soul_file = Some(format!("{}.soul.md", name));
@@ -236,7 +236,7 @@ impl RoleRegistry {
                 let at_path = dir.join(format!("{}.at", name));
                 let src = serialize_at_role(out);
                 match a2r_std::fs::write(at_path.as_str(), src.as_str()) {
-                    Err(e) => return Err(Box::new(AgentError::Config(format!("failed to write {}: {}", at_path.display(), e)))),
+                    Err(e) => return Err(AgentError::Config(format!("failed to write {}: {}", at_path.display(), e))),
                     Ok(_) => return Ok(None),
                 }
             },
@@ -244,15 +244,15 @@ impl RoleRegistry {
     }
     pub fn delete(&self, name: &str) -> Result<None, AgentError> {
         if load_builtin(name).is_some() {
-            return Err(Box::new(AgentError::Config(format!("cannot delete built-in role '{}'", name))));
+            return Err(AgentError::Config(format!("cannot delete built-in role '{}'", name)));
         }
         match role_at_path(name) {
-            None => return Err(Box::new(AgentError::Config("could not determine home directory"))),
+            None => return Err(AgentError::Config("could not determine home directory")),
             Some(at_path) => {
                 let existed = at_path.exists();
                 if existed {
                     match fs::remove_file(at_path) {
-                        Err(e) => return Err(Box::new(AgentError::Config(format!("failed to delete {}: {}", at_path.display(), e)))),
+                        Err(e) => return Err(AgentError::Config(format!("failed to delete {}: {}", at_path.display(), e))),
                         Ok(_) => {},
                     }
                 }
@@ -265,7 +265,7 @@ impl RoleRegistry {
                     None => {},
                 }
                 if existed == false {
-                    return Err(Box::new(AgentError::Config(format!("role '{}' not found", name))));
+                    return Err(AgentError::Config(format!("role '{}' not found", name)));
                 }
                 return Ok(None);
             },

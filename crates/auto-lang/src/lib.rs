@@ -3529,6 +3529,14 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                                             trans.spec_decls_mut().insert(name, sd.methods.clone());
                                         }
                                     }
+                                    // Plan 372 follow-up: pre-populate enum names from
+                                    // sibling .at files so cross-module enum errors like
+                                    // `Err(AgentError::Config(...))` don't get wrongly
+                                    // Box::new'd (AgentError lives in error.at, not the
+                                    // file being transpiled).
+                                    crate::ast::Stmt::EnumDecl(ed) => {
+                                        trans.known_enum_names_mut().insert(ed.name.clone());
+                                    }
                                     _ => {}
                                 }
                             }

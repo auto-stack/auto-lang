@@ -13,7 +13,7 @@ pub fn validate_role_model(role: Box<dyn Role>) -> Result<None, AgentError> {
         Ok(cfg) => {
             match ai_config::validate_model_exists(cfg, role.model()) {
                 Ok(_) => return Ok(None),
-                Err(msg) => return Err(Box::new(AgentError::Config(msg))),
+                Err(msg) => return Err(AgentError::Config(msg)),
             }
         },
         Err(e) => return Err(e),
@@ -28,13 +28,13 @@ pub fn load_client_config() -> Result<ai_config::ClientConfig, AgentError> {
                 Ok(content) => {
                     match ai_config::parse_client_config(content) {
                         Ok(cfg) => return Ok(cfg),
-                        Err(e) => return Err(Box::new(AgentError::Config(e.message()))),
+                        Err(e) => return Err(AgentError::Config(e.message())),
                     }
                 },
-                Err(msg) => return Err(Box::new(AgentError::Config(format!("read {}: {}", path, msg)))),
+                Err(msg) => return Err(AgentError::Config(format!("read {}: {}", path, msg))),
             }
         },
-        None => return Err(Box::new(AgentError::Config("cannot determine home directory"))),
+        None => return Err(AgentError::Config("cannot determine home directory")),
     }
 }
 

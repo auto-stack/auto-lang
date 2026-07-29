@@ -372,6 +372,13 @@ impl RustTrans {
         &mut self.spec_decls
     }
 
+    /// Mutable access to known_enum_names (plan 372 follow-up: lets callers
+    /// pre-populate enum names from sibling files so cross-module enum errors
+    /// like `Err(AgentError::Config(...))` don't get wrongly Box::new'd).
+    pub fn known_enum_names_mut(&mut self) -> &mut std::collections::HashSet<AutoStr> {
+        &mut self.known_enum_names
+    }
+
     pub fn set_edition(&mut self, edition: RustEdition) {
         self.edition = edition;
     }
