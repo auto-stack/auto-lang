@@ -95,6 +95,11 @@ pub struct AuraWidget {
 
     /// API function names explicitly imported via `use back.api: ...`
     pub api_imports: Vec<String>,
+
+    /// Raw native CSS from the widget-level `style { ... }` block (verbatim).
+    /// Emitted into the component's `<style scoped>` by the Vue backend;
+    /// other backends ignore it.
+    pub style_css: Option<String>,
 }
 
 // ============================================================================
@@ -828,6 +833,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         assert_eq!(widget.name, "Counter");
@@ -926,6 +932,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         // logic 视图

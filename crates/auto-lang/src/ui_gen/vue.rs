@@ -1367,6 +1367,14 @@ impl VueGenerator {
         let script = self.generate_script(widget)?;
         let style = self.generate_style();
 
+        // Widget-level native CSS (`style { ... }` block) — captured verbatim
+        // by the lexer and emitted unchanged into a dedicated `<style scoped>`
+        // block. Never interpreted, never merged with the generated <style>.
+        let scoped_style = match &widget.style_css {
+            Some(css) => format!("\n<style scoped>\n{}</style>\n", css),
+            None => String::new(),
+        };
+
         // Plan 100: Add lang="ts" for TypeScript output
         let script_tag = if self.use_typescript {
             r#"<script setup lang="ts">"#
@@ -1387,8 +1395,8 @@ impl VueGenerator {
 <style>
 {}
 </style>
-"#,
-            widget.name, script_tag, script, template, style
+{}"#,
+            widget.name, script_tag, script, template, style, scoped_style
         );
 
         // Plan 361: Post-generation validation. Run all rules against the SFC
@@ -9219,6 +9227,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         }
 ;
 
@@ -9231,6 +9240,69 @@ mod tests {
         assert!(sfc.contains("const count = ref<number>(0)"));
         assert!(sfc.contains("<template>"));
         assert!(sfc.contains("<style>"));
+    }
+
+    /// Widget-level native CSS (`style { ... }` → `AuraWidget.style_css`) is
+    /// emitted verbatim into a dedicated `<style scoped>` block.
+    #[test]
+    fn test_widget_style_css_scoped_passthrough() {
+        let css = "\n.autodown-editor {\n  --ad-border: #333;\n}\n.autodown-editor:hover {\n  border-color: var(--ad-border);\n}\n@media (max-width: 768px) {\n  .autodown-editor {\n    font-size: 12px;\n  }\n}\n";
+        let widget = AuraWidget {
+            name: "Styled".to_string(),
+            state_vars: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col")
+                .with_child(AuraNode::text("hi")),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: Some(css.to_string()),
+        };
+
+        let mut gen = VueGenerator::new();
+        let sfc = gen.generate(&widget).unwrap();
+
+        assert!(sfc.contains("<style scoped>"), "sfc:\n{}", sfc);
+        // The CSS body is byte-for-byte identical inside the scoped block.
+        assert!(sfc.contains(css), "scoped css not verbatim in sfc:\n{}", sfc);
+        assert!(sfc.contains(".autodown-editor:hover"));
+        assert!(sfc.contains("@media (max-width: 768px) {"));
+        // The plain generated <style> block is still present.
+        assert!(sfc.contains("<style>"));
+    }
+
+    /// Without a style block, no `<style scoped>` is emitted.
+    #[test]
+    fn test_no_widget_style_css_no_scoped_block() {
+        let widget = AuraWidget {
+            name: "Plain".to_string(),
+            state_vars: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col")
+                .with_child(AuraNode::text("hi")),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+        };
+
+        let mut gen = VueGenerator::new();
+        let sfc = gen.generate(&widget).unwrap();
+        assert!(!sfc.contains("<style scoped>"), "sfc:\n{}", sfc);
     }
 
     /// Plan 354 Phase C: AutoDownEditor renders as a Vue component with
@@ -9270,6 +9342,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -9337,6 +9410,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -10204,6 +10278,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = VueGenerator::new_shadcn();
@@ -10235,6 +10310,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         }
     }
 

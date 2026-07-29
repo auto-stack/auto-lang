@@ -2192,6 +2192,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         }
 ;
 
@@ -2248,6 +2249,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2283,6 +2285,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2391,6 +2394,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2450,6 +2454,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2891,6 +2896,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2938,6 +2944,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2981,6 +2988,7 @@ mod tests {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -3135,6 +3143,7 @@ widget TestCardVariant {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -3198,6 +3207,7 @@ fn test_text_with_flex_style() {
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
             api_imports: vec![],
+            style_css: None,
     };
 
     let mut gen = JetGenerator::new();

@@ -582,6 +582,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         span_map,
         key_bindings: extract_key_bindings(&decl.bind),
         api_imports: Vec::new(),
+        style_css: decl.style.clone(),
     }
 )
 }
