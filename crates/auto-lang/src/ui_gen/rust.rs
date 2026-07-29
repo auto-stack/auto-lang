@@ -1067,7 +1067,12 @@ impl RustGenerator {
             let needs_collect = expr_rust.contains(".iter().") || expr_rust.contains(".filter(") || expr_rust.contains(".map(");
             let return_type = "Vec<serde_json::Value>";
             let final_expr = if needs_collect && !expr_rust.contains(".collect(") {
-                format!("{}.collect::<Vec<_>>()", expr_rust)
+                // .iter() produces &Value — add .cloned() to get owned Values
+                if expr_rust.contains(".iter().") {
+                    format!("{}.cloned().collect::<Vec<_>>()", expr_rust)
+                } else {
+                    format!("{}.collect::<Vec<_>>()", expr_rust)
+                }
             } else {
                 expr_rust
             };

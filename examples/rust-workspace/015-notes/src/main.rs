@@ -55,6 +55,19 @@ impl Component for App {
                 self.store.active_folder = "pinned".to_string();
                 self.store.active_tag = "".to_string()
             }
+            AppMsg::SelectRecent => {
+                self.store.active_folder = "recent".to_string();
+                self.store.active_tag = "".to_string()
+            }
+            AppMsg::NewNoteInFolder(f) => {
+                self.store.on(NotesStoreMsg::NewNoteInFolder(f))
+            }
+            AppMsg::ToggleDarkMode => {
+                self.store.on(NotesStoreMsg::ToggleDarkMode)
+            }
+            AppMsg::SelectTag(t) => {
+                self.store.active_tag = t
+            }
             AppMsg::SelectNote(i) => {
                 self.store.active_id = i
             }
@@ -63,37 +76,24 @@ impl Component for App {
                 self.store.notes = list_notes();
                 if self.store.notes.len() as i32 > 0 { self.store.active_id = 0 }
             }
-            AppMsg::SelectRecent => {
-                self.store.active_folder = "recent".to_string();
-                self.store.active_tag = "".to_string()
-            }
-            AppMsg::NewNoteInFolder(f) => {
-                self.store.on(NotesStoreMsg::NewNoteInFolder(f))
-            }
             AppMsg::TagsChanged => {
                 self.store.notes = list_notes()
+            }
+            AppMsg::SearchChanged => {
+                self.search = self.search.clone()
             }
             AppMsg::SelectAll => {
                 self.store.active_folder = "all".to_string();
                 self.store.active_tag = "".to_string()
             }
-            AppMsg::ToggleDarkMode => {
-                self.store.on(NotesStoreMsg::ToggleDarkMode)
+            AppMsg::ClearTag => {
+                self.store.active_tag = "".to_string()
             }
             AppMsg::TogglePin(i) => {
                 self.store.on(NotesStoreMsg::TogglePin(self.store.active_id))
             }
             AppMsg::NewNote => {
                 self.store.on(NotesStoreMsg::NewNote)
-            }
-            AppMsg::SearchChanged => {
-                self.search = self.search.clone()
-            }
-            AppMsg::ClearTag => {
-                self.store.active_tag = "".to_string()
-            }
-            AppMsg::SelectTag(t) => {
-                self.store.active_tag = t
             }
             AppMsg::Init => {
                 self.store.on(NotesStoreMsg::Init)
@@ -176,23 +176,32 @@ impl Component for EditorPanel {
             EditorPanelMsg::AddTag => {
                 if self.tag_input != "".to_string() { self.note["tags"].as_str().unwrap_or_default().to_string().push(self.tag_input.clone()); update_tags(self.note["id"].as_i64().unwrap_or(0) as i32, self.note["tags"].as_str().unwrap_or_default().to_string()); self.tag_input = "".to_string(); self.show_tag_input = false; () }
             }
-            EditorPanelMsg::TogglePin => {
+            EditorPanelMsg::Delete => {
                 ()
-            }
-            EditorPanelMsg::EditBody(md) => {
-                self.edit_body = md.to_string()
-            }
-            EditorPanelMsg::EditTitle(t) => {
-                self.edit_title = t.to_string()
             }
             EditorPanelMsg::Cancel => {
                 self.editing = false
             }
+            EditorPanelMsg::ShowTagInput => {
+                self.show_tag_input = true
+            }
+            EditorPanelMsg::Edit => {
+                self.edit_title = self.note["title"].as_str().unwrap_or_default().to_string().to_string();
+                self.edit_body = self.note["body"].as_str().unwrap_or_default().to_string().to_string();
+                self.tag_input = "".to_string();
+                self.editing = true
+            }
+            EditorPanelMsg::EditTitle(t) => {
+                self.edit_title = t.to_string()
+            }
             EditorPanelMsg::EditTagInput => {
                 
             }
-            EditorPanelMsg::ShowTagInput => {
-                self.show_tag_input = true
+            EditorPanelMsg::EditBody(md) => {
+                self.edit_body = md.to_string()
+            }
+            EditorPanelMsg::TogglePin => {
+                ()
             }
             EditorPanelMsg::RemoveTag(t) => {
                 let mut new_tags = vec![];
@@ -200,15 +209,6 @@ impl Component for EditorPanel {
                 self.note["tags"] = serde_json::json!(new_tags);
                 update_tags(self.note["id"].as_i64().unwrap_or(0) as i32, self.note["tags"].as_str().unwrap_or_default().to_string());
                 ()
-            }
-            EditorPanelMsg::Delete => {
-                ()
-            }
-            EditorPanelMsg::Edit => {
-                self.edit_title = self.note["title"].as_str().unwrap_or_default().to_string().to_string();
-                self.edit_body = self.note["body"].as_str().unwrap_or_default().to_string().to_string();
-                self.tag_input = "".to_string();
-                self.editing = true
             }
             EditorPanelMsg::Save => {
                 self.note["title"] = serde_json::json!(self.edit_title);
@@ -339,42 +339,38 @@ impl Component for NotesStore {
 
     fn on(&mut self, msg: Self::Msg) {
         match msg {
-            NotesStoreMsg::Refresh => {
-                self.notes = list_notes()
+            NotesStoreMsg::NewNoteInFolder(folder) => {
+                create_note("".to_string(), "".to_string(), folder);
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
             }
-            NotesStoreMsg::TogglePin(idx) => {
-                if idx < self.notes.len() as i32 { self.notes[idx as usize]["pinned"].as_bool().unwrap_or(false) = !(self.notes[idx as usize]["pinned"].as_bool().unwrap_or(false)) }
-            }
-            NotesStoreMsg::SetAccent(name) => {
-                self.accent_color = name.to_string()
-            }
-            NotesStoreMsg::SetSort(mode) => {
-                self.sort_mode = mode.to_string()
+            NotesStoreMsg::SelectNote(id) => {
+                self.active_id = id
             }
             NotesStoreMsg::NewNote => {
                 create_note("".to_string(), "".to_string(), "".to_string());
                 self.notes = list_notes();
                 self.active_id = self.notes.len() as i32 - 1
             }
-            NotesStoreMsg::Search(q) => {
-                self.search = q.to_string()
-            }
-            NotesStoreMsg::SelectFolder(folder) => {
-                self.active_folder = folder.to_string();
-                self.active_tag = "".to_string()
-            }
-            NotesStoreMsg::SelectTag(t) => {
-                self.active_tag = t.to_string()
-            }
             NotesStoreMsg::DeleteNote(id) => {
                 delete_note(id);
                 self.notes = list_notes();
                 if self.notes.len() as i32 > 0 { self.active_id = 0 }
             }
-            NotesStoreMsg::NewNoteInFolder(folder) => {
-                create_note("".to_string(), "".to_string(), folder);
-                self.notes = list_notes();
-                self.active_id = self.notes.len() as i32 - 1
+            NotesStoreMsg::ToggleDarkMode => {
+                self.dark_mode = !(self.dark_mode)
+            }
+            NotesStoreMsg::Search(q) => {
+                self.search = q.to_string()
+            }
+            NotesStoreMsg::Refresh => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::UpdateTags(id) => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::SetSort(mode) => {
+                self.sort_mode = mode.to_string()
             }
             NotesStoreMsg::MoveNote(id) => {
                 let mut note = None;
@@ -382,14 +378,18 @@ impl Component for NotesStore {
                 if note != None { update_note(id, note.title, note.body) };
                 self.notes = list_notes()
             }
-            NotesStoreMsg::UpdateTags(id) => {
-                self.notes = list_notes()
+            NotesStoreMsg::SetAccent(name) => {
+                self.accent_color = name.to_string()
             }
-            NotesStoreMsg::SelectNote(id) => {
-                self.active_id = id
+            NotesStoreMsg::TogglePin(idx) => {
+                if idx < self.notes.len() as i32 { self.notes[idx as usize]["pinned"].as_bool().unwrap_or(false) = !(self.notes[idx as usize]["pinned"].as_bool().unwrap_or(false)) }
             }
-            NotesStoreMsg::ToggleDarkMode => {
-                self.dark_mode = !(self.dark_mode)
+            NotesStoreMsg::SelectTag(t) => {
+                self.active_tag = t.to_string()
+            }
+            NotesStoreMsg::SelectFolder(folder) => {
+                self.active_folder = folder.to_string();
+                self.active_tag = "".to_string()
             }
             NotesStoreMsg::Init => {
                 self.loading = true;
@@ -406,7 +406,7 @@ impl Component for NotesStore {
 
 impl NotesStore {
     pub fn pinned_notes(&self) -> Vec<serde_json::Value> {
-        self.notes.iter().filter(|n| n["pinned"].as_bool().unwrap_or(false)).collect::<Vec<_>>()
+        self.notes.iter().filter(|n| n["pinned"].as_bool().unwrap_or(false)).cloned().collect::<Vec<_>>()
     }
 
     pub fn all_tags(&self) -> Vec<serde_json::Value> {
@@ -459,25 +459,12 @@ impl Component for NavTree {
 
     fn on(&mut self, msg: Self::Msg) {
         match msg {
-            NavTreeMsg::SelectAll => {
-                self.store.active_folder = "all".to_string();
-                self.store.active_tag = "".to_string()
-            }
-            NavTreeMsg::NewNoteInFolder(f) => {
-                self.store.on(NotesStoreMsg::NewNoteInFolder(f))
-            }
-            NavTreeMsg::SelectRecent => {
-                self.store.active_folder = "recent".to_string();
-                self.store.active_tag = "".to_string()
-            }
             NavTreeMsg::SelectTag(t) => {
                 self.store.active_tag = t
             }
-            NavTreeMsg::SelectNote(i) => {
-                self.store.active_id = i
-            }
-            NavTreeMsg::ToggleDarkMode => {
-                self.store.on(NotesStoreMsg::ToggleDarkMode)
+            NavTreeMsg::SelectPinned => {
+                self.store.active_folder = "pinned".to_string();
+                self.store.active_tag = "".to_string()
             }
             NavTreeMsg::SetAccent(name) => {
                 self.store.on(NotesStoreMsg::SetAccent(name))
@@ -485,8 +472,21 @@ impl Component for NavTree {
             NavTreeMsg::NewNote => {
                 self.store.on(NotesStoreMsg::NewNote)
             }
-            NavTreeMsg::SelectPinned => {
-                self.store.active_folder = "pinned".to_string();
+            NavTreeMsg::SelectAll => {
+                self.store.active_folder = "all".to_string();
+                self.store.active_tag = "".to_string()
+            }
+            NavTreeMsg::ToggleDarkMode => {
+                self.store.on(NotesStoreMsg::ToggleDarkMode)
+            }
+            NavTreeMsg::NewNoteInFolder(f) => {
+                self.store.on(NotesStoreMsg::NewNoteInFolder(f))
+            }
+            NavTreeMsg::SelectNote(i) => {
+                self.store.active_id = i
+            }
+            NavTreeMsg::SelectRecent => {
+                self.store.active_folder = "recent".to_string();
                 self.store.active_tag = "".to_string()
             }
         }
