@@ -3266,13 +3266,19 @@ impl RustTrans {
                                 }
                                 ("fs", "read_text") => {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_text(")?;
-                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    if let Some(arg) = call.args.args.first() {
+                                        if let Arg::Pos(a) = arg { self.expr_as_str(a, out)?; }
+                                        else { self.arg(arg, out)?; }
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("fs", "read_to_string") => {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_to_string(")?;
-                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    if let Some(arg) = call.args.args.first() {
+                                        if let Arg::Pos(a) = arg { self.expr_as_str(a, out)?; }
+                                        else { self.arg(arg, out)?; }
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
@@ -5084,16 +5090,11 @@ impl RustTrans {
                     ("fs", "read_to_string") | ("fs", "read_text") => {
                         let fn_name = method_name;
                         self.a2r_std_used.set(true); write!(out, "a2r_std::fs::{}(", fn_name)?;
+                        // Plan 368 R-AREG: use shared expr_as_str instead of stale
+                        // local_var_types/StrSlice check, so owned String locals
+                        // correctly get .as_str() appended.
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
-                            let needs_as_str = if let Expr::Ident(name) = a {
-                                !self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty, Type::StrSlice))
-                                    .unwrap_or(false)
-                            } else {
-                                !matches!(a, Expr::Str(_) | Expr::CStr(_))
-                            };
-                            self.expr(a, out)?;
-                            if needs_as_str { write!(out, ".as_str()")?; }
+                            self.expr_as_str(a, out)?;
                         }
                         write!(out, ")")?;
                         return Ok(());
