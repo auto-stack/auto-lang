@@ -4,10 +4,8 @@
 #[allow(unused_imports)]
 use a2r_std;
 use a2r_std::*;
-
-use crate::wire::JsonValue;
 use crate::error::ToolError;
-use async_trait::async_trait;
+use crate::wire::JsonValue;
 
 /// EchoTool — the simplest possible Tool, for testing the agent tool-calling loop.
 /// 
@@ -30,12 +28,10 @@ impl crate::tool::Tool for EchoTool {
         return a2r_std::json::parse("{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"]}");
     }
     async fn execute(&self, args: JsonValue) -> Result<String, ToolError> {
-        let v = &args["text"];
-        if v.is_null() || v.as_str().unwrap_or("").is_empty() {
+        let text = args.get(&"text").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        if text.is_empty() {
             return Err(ToolError::Args("missing 'text' argument".to_string()));
         }
-        let text = v.as_str().unwrap_or("");
-        return Ok(format!("ECHO: {}", text));
         return Ok(format!("ECHO: {}", text));
     }
 }

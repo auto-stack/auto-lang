@@ -4246,17 +4246,15 @@ impl RustTrans {
             // call `.as_string()` on a `JsonValue?` (None -> "", Some(v) -> v.as_string()).
             // Rust's Option has no such method. The common pattern is
             // `<json>.get(key).as_string()` where get returns Option<&Value>.
-            // Detect that and lower to the runtime helper as_string_opt.
-            // The receiver `args.get("path")` is an Expr::Call whose name is
-            // Expr::Dot(_, "get") — match on that.
+            // Detect that and emit a serde_json-compatible chain (the receiver
+            // `args.get("path")` returns Option<&serde_json::Value>, not
+            // auto_val::Value, so a2r_std::json::as_string_opt won't type-check).
             if method_name.as_str() == "as_string"
                 && call.args.args.is_empty()
                 && matches!(object.as_ref(), Expr::Call(c) if matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "get"))
             {
-                self.a2r_std_used.set(true);
-                write!(out, "a2r_std::json::as_string_opt(")?;
                 self.expr(object, out)?;
-                write!(out, ")")?;
+                write!(out, ".and_then(|v| v.as_str()).unwrap_or_default().to_string()")?;
                 return Ok(());
             }
             // Plan 162: Pointer intrinsic methods (only unique names that won't conflict)
@@ -8866,6 +8864,16 @@ impl RustTrans {
                         .collect();
                     self.spec_decls.insert(has_decl.name.clone(), method_names);
 
+                    // Plan 373 G2: if any method is async (~Result lowered to
+                    // Future<Result<...>>), the trait uses #[async_trait] and the
+                    // impl block must carry it too.
+                    let has_async = spec_has_methods.iter().any(|m| {
+                        matches!(&m.ret, Type::Result(_)) ||
+                        matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
+                    });
+                    if has_async {
+                        write!(sink.body, "\n#[async_trait::async_trait]")?;
+                    }
                     write!(sink.body, "\nimpl {}", trait_path)?;
                     // Add generic parameters from the type declaration
                     if !type_decl.generic_params.is_empty() {
@@ -10769,6 +10777,8 @@ impl RustTrans {
         Self::fix_result_none_unit(&mut content);
         Self::fix_fn_field_calls(&mut content);
         Self::fix_non_ord_derives(&mut content);
+        Self::fix_missing_trait_impl_uses(&mut content);
+        Self::fix_string_literal_enum_args(&mut content);
 
         if !content.ends_with('\n') {
             content.push('\n');
@@ -12236,6 +12246,42 @@ impl RustTrans {
                         pub_kw, kind_kw, name, body)
             }).to_string();
             if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 373 G2: fix string-literal args to enum variants that expect String.
+    /// e.g. `ToolError::Args("msg")` → `ToolError::Args("msg".to_string())`
+    /// Pattern: `Variant("...")` where Variant is Args, Exec, LoopDetected,
+    /// Config, Failed, or other common error variant names.
+    fn fix_string_literal_enum_args(content: &mut String) {
+        for variant in &["Args", "Exec", "Config", "LoopDetected", "Failed"] {
+            let pat = format!(r#"{}\("([^"]*)"\)"#, variant);
+            if let Some(re) = cached_regex(&pat) {
+                let var = *variant;
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let msg = caps.get(1).unwrap().as_str();
+                    format!("{}(\"{}\".to_string())", var, msg)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+        }
+    }
+
+    /// Plan 373 G2: add missing use imports for common crate types referenced
+    /// in trait impl blocks. Single-file transpile doesn't know about the
+    /// assembled crate's module layout.
+    fn fix_missing_trait_impl_uses(content: &mut String) {
+        for (type_name, use_stmt) in [
+            ("JsonValue", "use crate::wire::JsonValue;"),
+            ("ToolError", "use crate::error::ToolError;"),
+            ("AgentError", "use crate::error::AgentError;"),
+        ] {
+            if content.contains(type_name) && !content.contains(use_stmt) {
+                if let Some(pos) = content.find("use a2r_std::*;") {
+                    content.insert_str(pos + "use a2r_std::*;".len(),
+                        &format!("\n{}", use_stmt));
+                }
+            }
         }
     }
 }
