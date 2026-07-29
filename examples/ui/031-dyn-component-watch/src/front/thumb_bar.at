@@ -1,0 +1,26 @@
+widget ThumbBar(ratio: int) {
+    use {
+        fn: thumbHeight from "src/front/utils/menu.ts"
+    }
+
+    model {
+        var thumb_h int = 10
+    }
+
+    view {
+        col {
+            ref: "trackEl",
+            class: "w-2 h-32 bg-gray-200 rounded relative",
+            col {
+                class: "w-2 bg-gray-500 rounded",
+                style_obj: { height: f"${.thumb_h}px" }
+            }
+        }
+    }
+
+    watch {
+        // Prop change → recompute thumb height from the live DOM box.
+        // .trackEl is the template ref (trackEl.value!), .ratio the prop.
+        .ratio.immediate -> { .thumb_h = thumbHeight(.trackEl, .ratio) }
+    }
+}
