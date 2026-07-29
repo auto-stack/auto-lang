@@ -903,6 +903,29 @@ pub struct VueGenerator {
     /// Populated during template generation, consumed during script generation
     /// to emit `const menuEl = ref<HTMLElement | null>(null)` declarations.
     template_refs: Vec<String>,
+
+    /// External Vue components declared via the widget-level
+    /// `use { component: Name from "..." }` block. Keyed by every accepted
+    /// view tag form (exact name, snake_case, kebab-case) so `FancyBadge`,
+    /// `fancy_badge`, and `fancy-badge` all resolve to the component.
+    ext_components: HashMap<String, ExtComponent>,
+
+    /// Import lines from the widget `use { ... }` block, as
+    /// (imported symbol names, is_component, line). `is_component` entries
+    /// are dropped at emission time when the built-in registry already
+    /// imported the same symbol (avoids duplicate bindings).
+    ext_import_lines: Vec<(Vec<String>, bool, String)>,
+
+    /// Composables from `use { composable: ... }` to call once at
+    /// `<script setup>` top level: (local const name, callee name).
+    ext_composables: Vec<(String, String)>,
+}
+
+/// A Vue component declared in a widget-level `use { component: ... }` block.
+#[derive(Debug, Clone)]
+struct ExtComponent {
+    /// Component name as imported (e.g. "FancyBadge").
+    name: String,
 }
 
 /// A document/window-level event listener (Plan: generic DOM events).
@@ -1005,6 +1028,9 @@ impl VueGenerator {
             explicit_api_imports: false,
             global_listeners: Vec::new(),
             template_refs: Vec::new(),
+            ext_components: HashMap::new(),
+            ext_import_lines: Vec::new(),
+            ext_composables: Vec::new(),
         }
     }
 
@@ -1185,6 +1211,9 @@ impl VueGenerator {
         self.use_theme_toggle = false;
         self.global_listeners.clear();
         self.template_refs.clear();
+        self.ext_components.clear();
+        self.ext_import_lines.clear();
+        self.ext_composables.clear();
     }
 
     /// Convert kebab-case icon name to PascalCase Lucide component name
@@ -1198,6 +1227,116 @@ impl VueGenerator {
                 }
             })
             .collect()
+    }
+
+    // ====================================================================
+    // Widget `use { ... }` external TS/Vue imports (escape hatch)
+    // ====================================================================
+
+    /// True when a widget `use { ... }` import path refers to a
+    /// project-local file (copied into the generated project under
+    /// `src/ext/` by auto-man) rather than an npm package specifier.
+    fn ext_is_local_path(path: &str) -> bool {
+        path.starts_with('.')
+            || path.starts_with('/')
+            || path.ends_with(".vue")
+            || path.ends_with(".ts")
+            || path.ends_with(".tsx")
+            || path.ends_with(".js")
+            || path.ends_with(".mjs")
+    }
+
+    /// Map a declared import path to the specifier used in the generated
+    /// SFC. npm specifiers pass through unchanged; local files are copied
+    /// by auto-man into `src/ext/<path>` (preserving the
+    /// project-root-relative layout so sibling relative imports keep
+    /// working) and imported through the `@` alias. TypeScript/JavaScript
+    /// extensions are dropped (bundler resolution); `.vue` is kept.
+    fn ext_import_specifier(path: &str) -> String {
+        if !Self::ext_is_local_path(path) {
+            return path.to_string();
+        }
+        let rel = path.trim_start_matches("./").trim_start_matches('/');
+        let stem = rel
+            .strip_suffix(".tsx")
+            .or_else(|| rel.strip_suffix(".ts"))
+            .or_else(|| rel.strip_suffix(".mjs"))
+            .or_else(|| rel.strip_suffix(".js"))
+            .unwrap_or(rel);
+        format!("@/ext/{}", stem)
+    }
+
+    /// The view tag spellings accepted for an external component: the
+    /// declared name itself plus its snake_case and kebab-case forms
+    /// (`FancyBadge` → `FancyBadge`, `fancy_badge`, `fancy-badge`).
+    fn ext_tag_keys(name: &str) -> Vec<String> {
+        let mut snake = String::new();
+        for (i, c) in name.chars().enumerate() {
+            if c.is_ascii_uppercase() && i > 0 {
+                snake.push('_');
+            }
+            snake.push(c.to_ascii_lowercase());
+        }
+        let kebab = snake.replace('_', "-");
+        let mut keys = vec![name.to_string(), snake.clone()];
+        if kebab != snake {
+            keys.push(kebab);
+        }
+        keys
+    }
+
+    /// `useMenuBounds` → `menuBounds` (strip the `use` prefix, lowercase
+    /// the first letter) — the local const a composable's return value is
+    /// bound to at `<script setup>` top level.
+    fn ext_composable_local_name(callee: &str) -> String {
+        let base = callee.strip_prefix("use").unwrap_or(callee);
+        let mut chars = base.chars();
+        match chars.next() {
+            Some(first) => format!("{}{}", first.to_ascii_lowercase(), chars.as_str()),
+            None => base.to_string(),
+        }
+    }
+
+    /// Register a widget's `use { ... }` external imports: build the
+    /// tag → component lookup used while generating the view tree, the
+    /// import lines emitted into `<script setup>`, and the composable
+    /// call list. Called from `generate_sfc` before template generation.
+    fn register_ext_imports(&mut self, widget: &AuraWidget) {
+        for imp in &widget.ext_imports {
+            let specifier = Self::ext_import_specifier(&imp.path);
+            let symbols: Vec<String> = imp.symbols.iter().map(|s| s.as_str().to_string()).collect();
+            match imp.kind {
+                crate::ast::ExtImportKind::Fn | crate::ast::ExtImportKind::Composable => {
+                    self.ext_import_lines.push((
+                        symbols.clone(),
+                        false,
+                        format!("import {{ {} }} from '{}'\n", symbols.join(", "), specifier),
+                    ));
+                    if imp.kind == crate::ast::ExtImportKind::Composable {
+                        for sym in &symbols {
+                            self.ext_composables
+                                .push((Self::ext_composable_local_name(sym), sym.clone()));
+                        }
+                    }
+                }
+                crate::ast::ExtImportKind::Component => {
+                    for sym in &symbols {
+                        // Local `.vue` files are default-exported; everything
+                        // else (npm packages, .ts modules) uses named exports.
+                        let line = if imp.path.ends_with(".vue") {
+                            format!("import {} from '{}'\n", sym, specifier)
+                        } else {
+                            format!("import {{ {} }} from '{}'\n", sym, specifier)
+                        };
+                        self.ext_import_lines.push((vec![sym.clone()], true, line));
+                        let comp = ExtComponent { name: sym.clone() };
+                        for key in Self::ext_tag_keys(sym) {
+                            self.ext_components.insert(key, comp.clone());
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Get Tailwind color classes for category section
@@ -1293,6 +1432,9 @@ impl VueGenerator {
     pub fn generate_sfc(&mut self, widget: &AuraWidget) -> GenResult<String> {
         self.current_widget = Some(widget.name.clone());
         self.reset();
+        // Widget `use { ... }` external imports — must be registered before
+        // template generation so view tags resolve to external components.
+        self.register_ext_imports(widget);
 
         // Detect dark mode: check widget state vars, view tree, or handler names
         self.has_dark_mode = widget.state_vars.iter().any(|s| s.name == "isDark" || s.name == "dark_mode");
@@ -1531,6 +1673,37 @@ impl VueGenerator {
             let mut icons: Vec<String> = self.lucide_icons.iter().cloned().collect();
             icons.sort();
             script.push_str(&format!("import {{ {} }} from 'lucide-vue-next'\n", icons.join(", ")));
+            script.push('\n');
+        }
+
+        // Widget `use { ... }` external imports (hand-written TS/Vue escape
+        // hatch). Component imports already provided by the built-in widget
+        // registry are dropped to avoid duplicate symbol bindings.
+        if !self.ext_import_lines.is_empty() {
+            let mut lines: Vec<String> = self
+                .ext_import_lines
+                .iter()
+                .filter(|(names, is_component, _)| {
+                    !*is_component
+                        || !names.iter().any(|n| self.shadcn_components_used.contains(n))
+                })
+                .map(|(_, _, line)| line.clone())
+                .collect();
+            lines.sort();
+            lines.dedup();
+            for line in &lines {
+                script.push_str(line);
+            }
+            script.push('\n');
+        }
+
+        // Widget `use { composable: ... }` — call each composable once at
+        // <script setup> top level, binding the return value to a local
+        // const (`useMenuBounds` → `menuBounds`) reachable from handlers.
+        for (local, callee) in &self.ext_composables {
+            script.push_str(&format!("const {} = {}()\n", local, callee));
+        }
+        if !self.ext_composables.is_empty() {
             script.push('\n');
         }
 
@@ -2300,6 +2473,11 @@ impl VueGenerator {
                 // Check if this is a known sub-widget (custom component, not shadcn)
                 let is_known_sub_widget = self.known_sub_widgets.contains(tag);
 
+                // Check if this is an external component declared via the
+                // widget `use { component: ... }` block — bound generically
+                // like a sub-widget (all props v-bind, events as @emit).
+                let is_external_component = self.ext_components.contains_key(tag);
+
                 // Check if this is a shadcn-vue component
                 // Note: We need to check both the original tag and lowercase version because registry uses lowercase keys
                 let tag_lower = tag.to_lowercase();
@@ -2323,12 +2501,13 @@ impl VueGenerator {
                 //     tag, is_known_sub_widget, force_native, self.is_shadcn(),
                 //     self.widget_registry.is_backend_supported("vue", tag),
                 //     self.widget_registry.is_backend_supported("vue", &tag_lower));
-                let is_shadcn_component = !is_known_sub_widget && !force_native && self.is_shadcn() &&
+                let is_shadcn_component = !is_known_sub_widget && !is_external_component && !force_native && self.is_shadcn() &&
                     (self.widget_registry.is_backend_supported("vue", tag) ||
                      self.widget_registry.is_backend_supported("vue", &tag_lower));
 
-                // For known sub-widgets, use component-style prop passing
-                if is_known_sub_widget {
+                // For known sub-widgets and external (widget `use`) components,
+                // use component-style prop passing
+                if is_known_sub_widget || is_external_component {
                     let mut attrs = Vec::new();
                     // Track first prop expression for :key binding
                     let mut first_prop_expr: Option<String> = None;
@@ -3504,13 +3683,20 @@ impl VueGenerator {
 
     /// Map AutoUI tag to HTML tag or shadcn-vue component
     fn map_tag(&mut self, tag: &str, self_closing: bool) -> String {
-        // Priority: known sub-widgets > shadcn components > HTML fallback
+        // Priority: known sub-widgets > external (widget `use`) components >
+        // shadcn components > HTML fallback
         // If tag matches a known sub-widget, treat as custom component reference
         if self.known_sub_widgets.contains(tag) {
             if !self.component_refs.contains(&tag.to_string()) {
                 self.component_refs.push(tag.to_string());
             }
             return tag.to_string();
+        }
+
+        // Widget-declared external components (`use { component: ... }`) win
+        // over the built-in registry so user declarations can shadow/extend it.
+        if let Some(comp) = self.ext_components.get(tag) {
+            return comp.name.clone();
         }
 
         // If in shadcn mode and tag has a shadcn component, use it
@@ -9280,6 +9466,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         }
 ;
 
@@ -9316,6 +9503,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: Some(css.to_string()),
+            ext_imports: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9354,6 +9542,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9388,6 +9577,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9433,6 +9623,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -9501,6 +9692,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -10369,6 +10561,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = VueGenerator::new_shadcn();
@@ -10401,6 +10594,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         }
     }
 
@@ -10731,5 +10925,235 @@ widget CodeMenu {
             "wrapper calls preventDefault then handler:\n{}",
             sfc
         );
+    }
+
+    // ====================================================================
+    // Widget `use { ... }` external TS/Vue imports (escape hatch)
+    // ====================================================================
+
+    /// The widget-level `use { ... }` block parses into `decl.ext_imports`
+    /// with kind, symbols, and path intact.
+    #[test]
+    fn test_ext_use_block_parses() {
+        let src = r#"
+widget Icon(language: str) {
+    use {
+        fn: getLanguageIconUrl from "src/front/utils/codeBlockLanguage.ts"
+        fn: marked, purify from "marked"
+        component: FancyBadge from "src/front/components/FancyBadge.vue"
+        component: Smile from "lucide-vue-next"
+        composable: useClock from "src/front/composables/useClock.ts"
+    }
+    view {
+        div { "hi" }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("widget use block must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+
+        assert_eq!(decl.ext_imports.len(), 5, "all five entries parse");
+        assert_eq!(decl.ext_imports[0].kind, crate::ast::ExtImportKind::Fn);
+        assert_eq!(decl.ext_imports[0].symbols.len(), 1);
+        assert_eq!(decl.ext_imports[0].symbols[0].as_str(), "getLanguageIconUrl");
+        assert_eq!(decl.ext_imports[0].path.as_str(), "src/front/utils/codeBlockLanguage.ts");
+        // Comma-separated symbol list
+        assert_eq!(decl.ext_imports[1].symbols.len(), 2);
+        assert_eq!(decl.ext_imports[1].symbols[1].as_str(), "purify");
+        assert_eq!(decl.ext_imports[2].kind, crate::ast::ExtImportKind::Component);
+        assert_eq!(decl.ext_imports[4].kind, crate::ast::ExtImportKind::Composable);
+    }
+
+    /// `fn:` imports become named ES imports; npm specifiers pass through,
+    /// local files are rewritten to the `@/ext/...` alias. The imported
+    /// symbol is callable from `on` handlers and `computed`.
+    #[test]
+    fn test_ext_fn_import_and_call_sites() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Icon(language: str) {
+    use {
+        fn: getLanguageIconUrl from "src/front/utils/codeBlockLanguage.ts"
+        fn: marked from "marked"
+    }
+    msg Msg { Render }
+    model { var url str = "" }
+    computed {
+        iconUrl => getLanguageIconUrl(language)
+    }
+    view {
+        col {
+            onclick: .Render
+        }
+    }
+    on {
+        .Render -> { .url = getLanguageIconUrl(.language) }
+    }
+}
+"#);
+        // Local path → @/ext alias, .ts extension dropped.
+        assert!(
+            sfc.contains("import { getLanguageIconUrl } from '@/ext/src/front/utils/codeBlockLanguage'"),
+            "local fn import via @/ext alias:\n{}",
+            sfc
+        );
+        // npm specifier passes through unchanged.
+        assert!(
+            sfc.contains("import { marked } from 'marked'"),
+            "npm fn import passthrough:\n{}",
+            sfc
+        );
+        // Callable from computed (prop resolves to props.language).
+        assert!(
+            sfc.contains("getLanguageIconUrl(props.language)"),
+            "fn call in computed:\n{}",
+            sfc
+        );
+        // Callable from on handler.
+        assert!(
+            sfc.contains("url.value = getLanguageIconUrl(props.language)"),
+            "fn call in on handler:\n{}",
+            sfc
+        );
+    }
+
+    /// `component:` from a local `.vue` file → default import; usable as a
+    /// view tag (PascalCase or snake_case) with generic `:prop` bindings
+    /// and `@event` listeners.
+    #[test]
+    fn test_ext_component_local_vue() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    use {
+        component: FancyBadge from "src/front/components/FancyBadge.vue"
+    }
+    msg Msg { Picked }
+    model { var label str = "hi" }
+    view {
+        col {
+            FancyBadge {
+                label: .label,
+                onselected: .Picked
+            }
+            fancy_badge {
+                label: .label
+            }
+        }
+    }
+    on {
+        .Picked -> { .label = "picked" }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("import FancyBadge from '@/ext/src/front/components/FancyBadge.vue'"),
+            "default import for local .vue component:\n{}",
+            sfc
+        );
+        // Both tag spellings render as the PascalCase component.
+        let count = sfc.matches("<FancyBadge").count();
+        assert_eq!(count, 2, "both tag spellings instantiate FancyBadge:\n{}", sfc);
+        // Generic prop binding + event listener.
+        assert!(sfc.contains(":label=\"label\""), "prop v-bind:\n{}", sfc);
+        assert!(sfc.contains("@selected=\"Picked\""), "event listener:\n{}", sfc);
+        // No fallback `@/components/FancyBadge.vue` import (registry path).
+        assert!(
+            !sfc.contains("from '@/components/FancyBadge.vue'"),
+            "ext component must not use the @/components fallback:\n{}",
+            sfc
+        );
+    }
+
+    /// `component:` from an npm package → named import (lucide-style).
+    #[test]
+    fn test_ext_component_npm_named_import() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    use {
+        component: Smile from "lucide-vue-next"
+    }
+    view {
+        col {
+            Smile { }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("import { Smile } from 'lucide-vue-next'"),
+            "named npm component import:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("<Smile"), "component tag rendered:\n{}", sfc);
+    }
+
+    /// `composable:` → named import + a single call at `<script setup>`
+    /// top level, return value bound to a derived local const.
+    #[test]
+    fn test_ext_composable_setup_call() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    use {
+        composable: useMenuBounds from "src/front/composables/useMenuBounds.ts"
+    }
+    msg Msg { Open }
+    model { var x int = 0 }
+    view {
+        col {
+            onclick: .Open
+        }
+    }
+    on {
+        .Open -> { .x = 1 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("import { useMenuBounds } from '@/ext/src/front/composables/useMenuBounds'"),
+            "composable import:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("const menuBounds = useMenuBounds()"),
+            "composable called at setup top level:\n{}",
+            sfc
+        );
+    }
+
+    /// The new mechanism expresses the AutoDownEditor case: a declared
+    /// `component: AutoDownEditor from "@autodown/editor"` produces the
+    /// same import + PascalCase tag as the hardcoded registry path.
+    #[test]
+    fn test_ext_component_expresses_autodown_editor_case() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    use {
+        component: AutoDownEditor from "@autodown/editor"
+    }
+    model { var body str = "" }
+    view {
+        col {
+            AutoDownEditor {
+                content: .body
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("import { AutoDownEditor } from '@autodown/editor'"),
+            "same import shape as the registry path:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("<AutoDownEditor"), "component tag:\n{}", sfc);
+        assert!(sfc.contains(":content=\"body\""), "prop binding:\n{}", sfc);
     }
 }
