@@ -323,3 +323,187 @@ fn devtools_subscription<C: Component + 'static>(w: &DevToolsWrapper<C>)
 - 不修改 `Component` trait 核心签名（除非必须加 `Send`）
 - 不支持 Vue+Rust 模式的 MCP（那是浏览器端，用 Playwright）
 - 不实现 Rust 模式的 state 字段读写（首期只支持 action + snapshot + find）
+
+---
+
+## 7. 统一 AutoUI 测试声明格式（跨模式）
+
+### 7.1 设计原则
+
+当前 015-notes 有三套独立测试（Playwright 17 个、VM headless 21 个、MCP ~13 个检查），场景声明分散在 `.spec.ts`、`.rs`、`.py` 中。问题：
+- 同一业务场景（如"点击 Edit → 验证 Save 出现"）在不同模式中重复实现
+- Playwright 断言依赖 DOM/CSS/API，无法直接用于 VM/Rust MCP
+- 新增模式（如 Rust MCP）需要从头编写测试
+
+**方案**：用 Auto 格式（`.at` 风格）声明统一的测试场景，描述**业务意图**而非具体操作。每种模式（Playwright/MCP）编写适配器执行同一套场景声明。
+
+### 7.2 声明格式：`.autotest` 文件
+
+每个 `.autotest` 文件描述一组测试场景。格式借鉴 `acceptance.atd` 的 Given/When/Then，但增加**操作原语**和**断言原语**使其可执行。
+
+```
+# 015-notes.autotest — 跨模式 UI 测试场景声明
+# 每个场景用 Given/When/Then 描述业务意图，附带操作和断言原语。
+# 适配器（Playwright / MCP）将原语映射为具体工具调用。
+
+suite "015-notes 核心流程"
+
+# ── 导航类 ──────────────────────────────────────────────
+
+scenario T1 "笔记切换更新编辑区"
+  given app_loaded
+  when  click_button label="Shopping List"
+  then  exists  text label="Milk"
+  # 模式差异标注：
+  #   web:  断言 .ProseMirror 可见
+  #   vm:   断言 textarea value 包含 "Milk"
+  #   rust: 断言 text vnode 包含 "Milk"
+
+scenario T2a "Pinned tab 无文件夹标题"
+  when  click_button label="Pinned"
+  then  not_exists text label="📁"
+
+scenario T2b "All tab 有文件夹标题"
+  when  click_button label="All"
+  then  exists text label="📁 Notes"
+
+scenario T2c "Recent tab 无文件夹标题"
+  when  click_button label="Recent"
+  then  not_exists text label="📁"
+
+# ── 编辑类 ──────────────────────────────────────────────
+
+scenario T5a "Edit 显示当前笔记内容"
+  given app_loaded
+  when  click_button label="Edit"
+  then  exists  button label="Save"
+  then  exists  button label="Cancel"
+  then  exists  input  label="Note title"   # placeholder 子串匹配
+
+scenario T5b "Cancel 返回只读模式"
+  given editing_mode
+  when  click_button label="Cancel"
+  then  exists  button label="Edit"
+  then  not_exists button label="Save"
+
+scenario T5c "Save 保存标题修改"
+  given editing_mode
+  when  type_text input label="Note title" value="Modified Title"
+  when  click_button label="Save"
+  then  exists  button label="Edit"
+  then  state   field="edit_title" equals=""    # 编辑模式退出后清空
+  #   web: 额外通过 API 验证持久化
+  #   vm:  通过 autoui_state(notes) 验证
+  #   rust: 通过 snapshot diff 验证
+
+scenario T6 "New 创建新笔记"
+  when  click_button label="New"
+  then  state field="notes" length_increased_by=1
+  #   web:  验证新笔记出现在列表
+  #   vm:   autoui_state(notes) len+1
+  #   rust: snapshot 节点数变化
+
+# ── 主题类 ──────────────────────────────────────────────
+
+scenario T11 "Dark mode 切换"
+  when  click_button label="Dark"
+  then  state field="dark_mode" equals=true
+  when  click_button label="Light"
+  then  state field="dark_mode" equals=false
+  #   web:  额外断言 .dark class
+  #   vm:   autoui_state(dark_mode)
+  #   rust: snapshot diff（无 state 工具）
+
+scenario T12 "主题色切换"
+  when  click_button label="" kind="button"   # 色块无 label，需其他定位方式
+  then  state field="accent_color" changed
+  #   web:  getComputedStyle RGB 验证
+  #   vm:   autoui_state(accent_color)
+  #   rust: 截图像素分析（暂不支持）
+```
+
+### 7.3 原语定义
+
+**操作原语（When）**：
+
+| 原语 | 参数 | Playwright 适配 | MCP 适配 |
+|------|------|----------------|---------|
+| `click_button` | `label="X"` | `locator('button:has-text("X")').click()` | `autoui_find(button,X)` → `autoui_action(vnode_N, press)` |
+| `type_text` | `input label="X" value="Y"` | `locator('input[placeholder*="X"]').fill("Y")` | `autoui_find(input,X)` → `autoui_action(vnode_N, type_text, Y)` |
+| `press_key` | `key="Enter"` | `page.keyboard.press("Enter")` | `autoui_keyboard(key=Enter)` |
+
+**断言原语（Then）**：
+
+| 原语 | 参数 | Playwright 适配 | MCP 适配 |
+|------|------|----------------|---------|
+| `exists` | `kind label="X"` | `expect(locator).toBeVisible()` | `autoui_exists(kind,label)` → FOUND |
+| `not_exists` | `kind label="X"` | `expect(locator).toHaveCount(0)` | `autoui_exists(kind,label)` → NOT FOUND |
+| `state` | `field="X" equals=Y` | API 调用或 DOM 检查 | `autoui_state(fields=["X"])` |
+| `state` | `field="X" length_increased_by=N` | API 列表长度 | `autoui_state(fields=["X"])` 比较 |
+| `state` | `field="X" changed` | 前后值比较 | 前后 `autoui_state` 比较 |
+
+**前置条件（Given）**：
+
+| 原语 | 含义 |
+|------|------|
+| `app_loaded` | 应用已启动并渲染完成 |
+| `editing_mode` | 已进入编辑模式（Edit 按钮已点击） |
+
+### 7.4 模式差异处理
+
+场景声明中用 `# 模式差异标注` 注释说明各模式的特殊断言。适配器执行时：
+- 共享的操作和断言原语自动执行
+- 模式专属的断言由适配器条件执行（如 Playwright 额外检查 CSS，MCP 额外检查 state）
+
+**已知不兼容项**（场景声明中标注 `skip_if`）：
+
+| 场景 | 不兼容模式 | 原因 | 替代方案 |
+|------|-----------|------|---------|
+| T1 `.ProseMirror` 断言 | VM/Rust | 无 Tiptap | 改用 textarea value 断言 |
+| T5c API 持久化验证 | VM(merged) | 无 HTTP | 用 `autoui_state(notes)` 验证 |
+| T12 RGB 验证 | VM/Rust | 无 getComputedStyle | 用 `autoui_state(accent_color)` 或截图 |
+| T13 控制台错误 | VM/Rust | 无浏览器控制台 | 检查 stderr 日志 |
+
+### 7.5 适配器架构
+
+```
+.autotest 声明文件（场景 + 原语）
+         │
+    ┌─────┴─────┐
+    ▼           ▼
+ Playwright    MCP
+ Adapter       Adapter
+ (.ts)         (.py)
+    │           │
+    ▼           ▼
+ 浏览器       iced 窗口 (VM/Rust)
+```
+
+- **Playwright Adapter**（`.ts`）：解析 `.autotest`，将原语映射为 Playwright API 调用
+- **MCP Adapter**（`.py`）：解析 `.autotest`，将原语映射为 MCP JSON-RPC 调用
+- 两个适配器共享同一份 `.autotest` 声明，各自处理模式差异
+
+### 7.6 实施计划
+
+#### Task 15: 定义 `.autotest` 格式规范 + 解析器
+
+- 编写格式规范文档（原语定义、语法、模式差异标注）
+- 实现 Python 解析器（`.autotest` → 场景对象列表）
+- 先支持 MCP Adapter，后续再支持 Playwright Adapter
+
+#### Task 16: MCP Adapter 执行器
+
+- 实现场景执行器：解析原语 → 调用 MCP 工具 → 收集结果
+- 处理 `skip_if`（VM 模式跳过 API 验证，Rust 模式跳过 state 验证）
+- 输出测试报告（PASS/FAIL/SKIP + 原因）
+
+#### Task 17: 编写 015-notes 的 `.autotest` 文件
+
+- 将 acceptance.atd 的 T1-T13 场景转换为 `.autotest` 格式
+- 标注模式差异
+- 在 VM 模式和 Rust 模式中分别执行验证
+
+#### Task 18: Playwright Adapter（可选，后续）
+
+- 将现有 `smoke.spec.ts` / `accent-dark.spec.ts` 迁移为 `.autotest` 驱动
+- 或保持现有 Playwright 测试不变，仅 MCP Adapter 使用 `.autotest`
