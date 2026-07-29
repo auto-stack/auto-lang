@@ -616,6 +616,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         }
 ;
 

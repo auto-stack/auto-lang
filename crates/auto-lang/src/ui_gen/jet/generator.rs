@@ -2193,6 +2193,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         }
 ;
 
@@ -2250,6 +2251,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2286,6 +2288,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2395,6 +2398,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2455,6 +2459,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2897,6 +2902,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2945,6 +2951,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2989,6 +2996,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -3144,6 +3152,7 @@ widget TestCardVariant {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -3208,6 +3217,7 @@ fn test_text_with_flex_style() {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
     };
 
     let mut gen = JetGenerator::new();

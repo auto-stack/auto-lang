@@ -1069,6 +1069,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         }
     }
 
@@ -1199,6 +1200,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let comp = DynamicComponent::new(&widget).unwrap();
@@ -1392,6 +1394,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let comp = DynamicComponent::new(&widget).unwrap();
@@ -1463,6 +1466,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut comp = DynamicComponent::new(&widget).unwrap();
@@ -1653,6 +1657,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         comp.reload(&new_widget).unwrap();

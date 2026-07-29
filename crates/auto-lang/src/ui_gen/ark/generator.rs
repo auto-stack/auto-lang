@@ -2184,6 +2184,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         }
 ;
 
@@ -2231,6 +2232,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2283,6 +2285,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2336,6 +2339,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2398,6 +2402,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2460,6 +2465,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2525,6 +2531,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2574,6 +2581,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let mut gen = ArkGenerator::new();

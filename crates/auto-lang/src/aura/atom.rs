@@ -499,6 +499,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         }
 ;
 
@@ -529,6 +530,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         let atom = to_atom(&widget);
@@ -572,6 +574,7 @@ mod tests {
                 key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
             }],
             messages: vec![],
             app: Some(AuraApp {

@@ -100,6 +100,12 @@ pub struct AuraWidget {
     /// Emitted into the component's `<style scoped>` by the Vue backend;
     /// other backends ignore it.
     pub style_css: Option<String>,
+
+    /// External TS/Vue imports from the widget-level `use { ... }` block.
+    /// The Vue backend emits them as ES imports in `<script setup>`;
+    /// `component` entries also become instantiable tags in the view tree.
+    /// Other backends ignore them.
+    pub ext_imports: Vec<crate::ast::ExtImport>,
 }
 
 // ============================================================================
@@ -834,6 +840,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         assert_eq!(widget.name, "Counter");
@@ -933,6 +940,7 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: Vec::new(),
         };
 
         // logic 视图
