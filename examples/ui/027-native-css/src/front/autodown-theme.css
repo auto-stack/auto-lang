@@ -1,0 +1,50 @@
+/* ─── Editor Chrome ─── */
+.autodown-editor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 320px;
+  border: 1px solid var(--ad-border, #e5e7eb);
+  border-radius: 8px;
+  background: var(--ad-surface, #ffffff);
+  overflow: hidden;
+}
+
+.autodown-editor.is-focused {
+  border-color: hsl(var(--ad-primary, 220 90% 56%) / 0.5);
+  box-shadow: 0 0 0 2px hsl(var(--ad-primary, 220 90% 56%) / 0.1);
+}
+
+.autodown-editor-content-wrapper {
+  flex: 1;
+  padding: 1rem 1.25rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+.autodown-editor-content-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+
+.autodown-editor-content-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.autodown-editor-content-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+.autodown-editor-content-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.autodown-editor-content {
+  outline: none;
+  min-height: 100%;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--ad-fg, #111827);
+}

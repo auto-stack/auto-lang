@@ -1,0 +1,79 @@
+widget App {
+    msg Msg {
+        Inc
+    }
+
+    model {
+        var count int = 0
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-4"
+
+            h1 "027 — native CSS pass-through" { class: "text-xl font-bold" }
+
+            // Project-level CSS (pac.at `styles:`) classes, e.g. .autodown-editor
+            col {
+                class: "autodown-editor"
+
+                col {
+                    class: "autodown-editor-content-wrapper"
+                    text "Project-level: pac.at styles file (autodown-theme.css), copied verbatim + imported in main.ts" { class: "autodown-editor-content" }
+                }
+            }
+
+            // Widget-level scoped CSS classes (style block below)
+            col {
+                class: "scoped-card"
+                text "Widget-level: style { } block → scoped SFC style (hover me)" { class: "scoped-label" }
+                button "increment" {
+                    class: "scoped-btn",
+                    onclick: .Inc
+                }
+                text f"count: ${.count}" { class: "scoped-count" }
+            }
+        }
+    }
+
+    on {
+        .Inc -> { .count = .count + 1 }
+    }
+
+    style {
+        /* Widget-level scoped CSS — emitted verbatim into <style scoped>. */
+        .scoped-card {
+            --card-border: #d4d4d8;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 1rem;
+            transition: border-color 0.15s ease;
+        }
+
+        .scoped-card:hover {
+            border-color: #3b82f6;
+        }
+
+        .scoped-btn {
+            width: fit-content;
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            background: #3b82f6;
+            color: white;
+        }
+
+        .scoped-btn:hover {
+            background: #2563eb;
+        }
+
+        .scoped-count::before {
+            content: "» ";
+        }
+
+        @media (max-width: 768px) {
+            .scoped-card {
+                padding: 0.5rem;
+            }
+        }
+    }
+}

@@ -1,0 +1,5 @@
+name: "native-css"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+styles: ["src/front/autodown-theme.css"]
