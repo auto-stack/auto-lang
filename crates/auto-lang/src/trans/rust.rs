@@ -365,6 +365,13 @@ impl RustTrans {
         &mut self.struct_fields
     }
 
+    /// Mutable access to the spec_decls cache (plan 371 defect A: lets callers
+    /// pre-populate spec names from sibling files so cross-module specs resolve
+    /// to Type::Spec / Box<dyn X> on the single-file transpile path).
+    pub fn spec_decls_mut(&mut self) -> &mut HashMap<AutoStr, Vec<SpecMethod>> {
+        &mut self.spec_decls
+    }
+
     pub fn set_edition(&mut self, edition: RustEdition) {
         self.edition = edition;
     }
@@ -870,7 +877,20 @@ impl RustTrans {
                 // Plan 052: Reference transpiles to &T in Rust
                 format!("&{}", self.rust_type_name(inner))
             }
-            Type::User(usr) => self.qualify_type_name(&usr.name.to_string()),
+            Type::User(usr) => {
+                // Plan 371 (defect A): if this bare User type name is actually a
+                // known spec (from this file's pre-scan OR a sibling .at file's
+                // pre-populated spec_decls), emit Box<dyn X> — the parser failed
+                // to mark it Type::Spec because the spec lives in another module
+                // / was declared later. Without this, `role Role` (Role a spec)
+                // emits bare `Role` (E0782). Mirrors what Type::Spec does (below).
+                let name = usr.name.to_string();
+                if self.spec_decls.contains_key(name.as_str()) {
+                    format!("Box<dyn {}>", name)
+                } else {
+                    self.qualify_type_name(&name)
+                }
+            }
             Type::Enum(en) => self.qualify_type_name(&en.borrow().name.to_string()),
             Type::Spec(spec) => format!("Box<dyn {}>", spec.borrow().name), // Spec 作为类型标注 → Box<dyn Trait>
             Type::Union(u) => u.name.to_string(),

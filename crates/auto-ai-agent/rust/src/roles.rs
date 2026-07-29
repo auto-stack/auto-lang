@@ -94,7 +94,7 @@ pub struct RoleDetail {
 /// UI/API can present built-ins uniformly alongside user roles.
 /// 
 /// (Ports the private profession_to_config helper from roles.rs.)
-fn profession_to_config(prof: Role) -> RoleConfig {
+fn profession_to_config(prof: Box<dyn Role>) -> RoleConfig {
     let t = prof.allowed_tools();
     let at = prof.allowed_tiers();
     let s = prof.skills();
@@ -143,7 +143,7 @@ impl RoleRegistry {
 
         return RoleRegistry { roles: roles, names: names };
     }
-    pub fn resolve_role(&self, name: &str) -> Option<Arc<Role>> {
+    pub fn resolve_role(&self, name: &str) -> Option<Arc<Box<dyn Role>>> {
 
 
 

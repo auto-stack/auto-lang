@@ -162,7 +162,7 @@ impl AgentResult {
 /// through Agent.new_shared (takes spec values) instead.
 #[allow(dead_code)]
 pub struct Agent {
-    pub role: Role,
+    pub role: Box<dyn Role>,
     pub tools: ToolRegistry,
     pub memory: Memory,
     pub client: Box<dyn Client>,
@@ -171,7 +171,7 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new_shared(role: Role, client: Box<dyn Client>) -> Agent {
+    pub fn new_shared(role: Box<dyn Role>, client: Box<dyn Client>) -> Agent {
         let limit = role.memory_limit();
         return Agent { role: role, tools: ToolRegistry::new(), memory: Memory::new(limit), client: client, skills_block: None, context_block: None };
     }
@@ -188,7 +188,7 @@ impl Agent {
     pub fn tools(&self) -> ToolRegistry {
         return self.tools.clone();
     }
-    pub fn role(&self) -> Role {
+    pub fn role(&self) -> Box<dyn Role> {
         return self.role.clone();
     }
     pub fn memory_messages(&self) -> Vec<Message> {

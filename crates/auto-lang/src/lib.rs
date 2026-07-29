@@ -3509,14 +3509,27 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                         sib_parser.skip_check = true;
                         if let Ok(sib_ast) = sib_parser.parse() {
                             for stmt in &sib_ast.stmts {
-                                if let crate::ast::Stmt::TypeDecl(td) = stmt {
-                                    let field_names: Vec<auto_val::AutoStr> = td.members.iter()
-                                        .map(|m| m.name.clone()).collect();
-                                    if !field_names.is_empty()
-                                        && !trans.struct_fields().contains_key(&td.name)
-                                    {
-                                        trans.struct_fields_mut().insert(td.name.clone(), field_names);
+                                match stmt {
+                                    crate::ast::Stmt::TypeDecl(td) => {
+                                        let field_names: Vec<auto_val::AutoStr> = td.members.iter()
+                                            .map(|m| m.name.clone()).collect();
+                                        if !field_names.is_empty()
+                                            && !trans.struct_fields().contains_key(&td.name)
+                                        {
+                                            trans.struct_fields_mut().insert(td.name.clone(), field_names);
+                                        }
                                     }
+                                    // Plan 371 (defect A): pre-populate spec names from
+                                    // sibling .at files so cross-module specs (e.g.
+                                    // `use role_def: Role` then `role Role`) resolve to
+                                    // Type::Spec (-> Box<dyn X>) on the single-file path.
+                                    crate::ast::Stmt::SpecDecl(sd) => {
+                                        let name = sd.name.clone();
+                                        if !trans.spec_decls_mut().contains_key(&name) {
+                                            trans.spec_decls_mut().insert(name, sd.methods.clone());
+                                        }
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
